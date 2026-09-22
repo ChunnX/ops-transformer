@@ -44,7 +44,7 @@ BLOCK_SIZE = 32
 # ---- VEC addresses ----
 CUBE_BUFFER_NUM = 2
 VEC_BUFFER_NUM = 2
-VB4_KV = TS_HALF * TS * 4 * VEC_BUFFER_NUM  # [TS_HALF, TS] FP32 = 64KB
+VB4_KV = TS_HALF * TS * 4 * VEC_BUFFER_NUM
 VB_Q = TS * TS * 4
 VB1_Y = TS * VEC_CHUNK * 2 * VEC_BUFFER_NUM
 VB2_DX = TS * VEC_CHUNK * VEC_BUFFER_NUM
@@ -207,7 +207,6 @@ class QuantFlashAttnGradTilingKey:
     # DeterSparseType: 0: DENSE 3: CAUSAL 4: BAND
     sparse_type = TilingKeyField(bits=2, values=[0, 3, 4])
     # seqused_q / seqused_kv: 每 batch 实际使用的序列长度 (<= 定长 S)。
-    # 置 1 时走 varlen 确定性 swizzle 分核, 调度数据由 quant_flash_attn_metadata 经 metadata 下发。
     has_seq_used_q = TilingKeyField(bits=1, values=[0, 1])
     has_seq_used_kv = TilingKeyField(bits=1, values=[0, 1])
 
@@ -220,22 +219,14 @@ def l1_ds(i, j, task_mod2):
 
 
 def is_var_len():
-    """编译期常量: 是否为 seqused varlen 场景。"""
     return layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1
 
 
 def meta_get(const_info, tensor_metadata, idx):
-    """读取 metadata 第二维 (反向调度数据) 的第 idx 个 int32。
-
-    这里刻意只收单个 Tensor 而不是整个 tensor_info: 该函数会在 pl.range 循环内调用,
-    把含 tile_group 的大 tuple 变成循环携带变量会让 CCE codegen 崩在 EmitTupleVariable。
-    """
     return pl.getval(tensor_metadata, const_info.metadata_len + idx)
 
 
 def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
-    """batch b_idx 的实际 Q 长度; 非 seqused 场景即定长 s1。"""
-    # tensor_seq carries used lengths when present; otherwise TND cu offsets.
     if has_seq_used_q == 1:
         return pl.getval(tensor_seq_q, b_idx)
     if layout == 2:
@@ -244,8 +235,6 @@ def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
 
 
 def get_actual_s2_len(const_info, tensor_seq_kv, b_idx):
-    """batch b_idx 的实际 KV 长度; 非 seqused 场景即定长 s2。"""
-    # tensor_seq carries used lengths when present; otherwise TND cu offsets.
     if has_seq_used_kv == 1:
         return pl.getval(tensor_seq_kv, b_idx)
     if layout == 2:
@@ -380,12 +369,6 @@ def init_dq_workspace(const_info, tensor_info):
 
 
 def init_sfmg_workspace(const_info, tensor_info):
-    """清零 sfmg workspace。
-
-    varlen 下 presfmg 会跳过 s1 >= seqused_q[b] 的行, 这些位置若保持未初始化, 后续按 64
-    对齐读取 D 向量时会读到任意比特(可能是 NaN/Inf)。这里的分核方式与 presfmg 的写入分核
-    不同, 因此调用后必须 sync_all 再进入 presfmg。
-    """
     with pl.section_vector():
         if const_info.core_id_vec < const_info.sfmg_used_core_num:
             zero_tt = pl.TileType(
@@ -411,12 +394,8 @@ def init_sfmg_workspace(const_info, tensor_info):
 
 
 def presfmg_quant_tnd_used_hif8(const_info, tensor_info):
-    """Compute SFMG only within each packed batch's effective Q prefix."""
     with pl.section_vector():
         init_dq_workspace(const_info, tensor_info)
-        # Enumerate batch-local chunks using a tiling-derived bound. A chunk
-        # never spans a cu boundary or reads the unused suffix of a batch.
-        # Cache individual fields before the loop to avoid carrying TupleType.
         chunks_per_head = ceil(const_info.s1_size, TS)
         head_count = const_info.n1_size
         task_count = const_info.b_size * head_count * chunks_per_head
@@ -515,8 +494,6 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
                 s1_residual if (data_block_idx + 1) % num_of_128_in_s1 == 0 else n_burst
             )
             b_idx, n_idx, s1_idx = init_index(sfmg_output_offset, const_info)
-            # seqused 场景 s1 >= seqused_q[b] 的行是 padding, attn_out/do 为无效数据,
-            # 截断掉避免算出脏 sfmg (顺带省掉这部分搬运与计算)。
             is_row_valid = True
             if has_seq_used_q == 1:
                 s1_remain = pl.getval(tensor_info.tensor_seq_q, b_idx) - s1_idx
@@ -722,7 +699,6 @@ def _isqrt(x):
     # scalar to avoid PyPTO overwriting the old res/nxt state on the backedge.
     if x < 2:
         return x
-    # This seed and the division-based condition avoid integer overflow.
     res = x // 2 + 1
     while res > x // res:
         res = (res + x // res) // 2
@@ -1276,40 +1252,14 @@ def cal_dense_swizzle_deter_index(
     tensor_seq_kv,
     flag,
 ):
-    """Varlen swizzle based on FAG CalTNDDenseSwizzleIndex.
-
-    Sparse metadata crops globally masked rows/columns and pads the scheduling
-    height to at least min(core_num, column_count). Removing masked tiles from
-    this schedule preserves both per-round dQ uniqueness and fixed KV ownership.
-
-    Dense scheduling below uses m_b/n_b directly; sparse scheduling substitutes
-    the cropped column count and padded scheduling height from metadata.
-    每 batch 的轮数前缀 roundPrefix 由 quant_flash_attn_metadata 算出:
-        roundPrefix[b+1] = roundPrefix[b] + ceil(n_b * n1 / k) * m_b
-    给定全局轮号 r, 先用前缀查出所属 batch, 再在 batch 内解码:
-        delta     = r - roundPrefix[b]
-        linearIdx = delta // m_b * k + j
-        n1_idx    = linearIdx // n_b
-        s2o       = linearIdx %  n_b
-        s1o       = (s2o + delta) % m_b
-    同一 head 内一轮最多 min(k, n_b) 个核并发, 它们的 s1o 互不相同(metadata 已校验
-    m_b >= min(k, n_b)), 因此每块 dQ 在一轮内只被一个核累加, 配合轮间同步即可保证确定性。
-    """
     coordinate_info.batch_id = -1
     j = const_info.core_id_cube
     if flag == True:
         j += 1
-    # 与 loop_max 上界(见主函数)以及非 varlen 的各个分核函数统一用同一个核数来源,
-    # 避免解码与上界取自不同来源时静默失配。前提是 metadata 算 roundPrefix 时用的
-    # aicCoreNum_ 等于这里的 core_num, 两者都是 cube 核数。
     k = const_info.core_num
     if j >= k:
         return -1
     n1 = const_info.n2_size * const_info.g_size
-    # 这个 batch 查找循环嵌在 cal_deter_index 的 pl.range 里面。内层循环体内不能访问任何
-    # tuple(const_info / coordinate_info): 外层作用域的 tuple 会变成内层循环的携带变量,
-    # CCE codegen 会崩在 EmitCarriedAssignments -> EmitTupleVariable。
-    # 因此先把需要的字段取成普通标量, 循环体内只碰 tensor_metadata 和标量。
     meta_base = const_info.metadata_len
     b_size = const_info.b_size
     prefix_base = meta_base + pl.getval(tensor_metadata, meta_base + META_ROUND_PREFIX_OFFSET_IDX)
@@ -1374,7 +1324,6 @@ def cal_dense_swizzle_deter_index(
     coordinate_info.actual_s2_len = actual_s2
     coordinate_info.s1_token = s1_token
     coordinate_info.s2_token = s2_token
-    # This value is only a validity marker in varlen; addressing uses coordinates.
     return (found_b * n1 + n1_idx) * m_b * n_b + s2_idx * m_b + s1_idx
 
 
@@ -1422,8 +1371,6 @@ def gen_band_info(const_info, band_info):
     s2_token = const_info.s2_token
     m_offset = 0
     n_offset = 0
-    # mask_mode=3 且 S1>S2：整列前 skip_m 个 S1 outer 全无效。
-    # 裁掉后再算 p/q，第一块有效落在 loop 0，避免 cal_deter_index 跳空后错位碰旗。
     if const_info.mask_mode == 3 and const_info.s1_size > const_info.s2_size:
         skip_m = (const_info.s1_size - const_info.s2_size) // CUBE_BASEM
         if skip_m > 0 and skip_m < m:
@@ -1540,7 +1487,6 @@ def cal_deter_index(
     next_valid_index = -1
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if is_var_len():
-            # Metadata supplies the per-batch dense or cropped sparse swizzle.
             next_valid_index = cal_dense_swizzle_deter_index(
                 current_round_id,
                 coordinate_info,
@@ -1558,7 +1504,6 @@ def cal_deter_index(
             next_valid_index = cal_causal_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
             )
-            # pass
         else:
             next_valid_index = cal_dense_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
@@ -1593,7 +1538,6 @@ def set_run_info(
     run_info.is_last_process_block = next_coordinate_info.batch_id == -1
     run_info.is_first_process_block = task_id == 0
     last_run_info.is_next_key_reuse = run_info.is_key_reuse
-    # This flag controls K/V cache loads, not whether dK/dV was written before.
     run_info.is_value_reuse = (
         tmp_info.last_s2_idx == coordinate_info.s2_idx
         and tmp_info.last_batch_idx == coordinate_info.batch_id
@@ -1621,8 +1565,6 @@ def set_run_info(
 
     run_info.task_id = task_id
     run_info.task_id_mod2 = task_id % 2
-    # varlen 下每 batch 的 outer/tail 都不同, 统一从 coordinate_info 取 per-block 值。
-    # copy_dqkv2gm 只拿得到 run_info, 所以 s2_outer 需要落到 run_info 上。
     run_info.s2_outer_cur = coordinate_info.s2_outer
     run_info.s1_token = coordinate_info.s1_token
     run_info.s2_token = coordinate_info.s2_token
@@ -1654,13 +1596,8 @@ def set_run_info(
         run_info.deq_scale_do_value = const_info.deq_scale_do_value
 
         if not is_var_len() and (sparse_type == 3 or sparse_type == 4):
-            # Cache reuse only describes the preceding task. A sparse schedule
-            # may return to a previously written column, so always accumulate
-            # into the workspace cleared by init_dq_workspace (as FAG does).
             run_info.kv_need_atomic = True
         elif is_var_len():
-            # swizzle 下 (n1_idx, s2o) 与 linearIdx = (delta // m_b) * k + j 一一对应,
-            # 同一列只会落在唯一一个核上, dk/dv 不存在跨核累加, 只需核内跨 s1 行累加。
             run_info.kv_need_atomic = run_info.is_value_reuse
         else:
             run_info.kv_need_atomic = (
@@ -1687,7 +1624,6 @@ def set_run_info(
     inner_s2_tail_size = (
         128 if run_info.s2_real_size % 128 == 0 else run_info.s2_real_size % 128
     )
-    # mask 对角线按每 batch 的实际矩形右下对齐, varlen 下 delta 是 per-batch 的
     delta = coordinate_info.actual_s1_len - coordinate_info.actual_s2_len
     is_outer_valid = True if _abs((run_info.s1o_idx * CUBE_BASEM - delta)- run_info.s2o_idx * CUBE_BASEN) < 512 else False
     for i in pl.range(4):
@@ -1851,8 +1787,6 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
 
 @pl.vector_function
 def merge_band_attn_mask_vf(attn_tile, attn_pre_tile):
-    # Preserve the packed predicate bits: keep = next & ~pre.
-    # Reinterpret pairs of bytes as uint16 for the bitwise vector operations.
     preg_all_16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT16)
     preg_all_8 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT8)
     for offset in pl.range(0, TS * TS_HALF, 256):
@@ -1862,8 +1796,6 @@ def merge_band_attn_mask_vf(attn_tile, attn_pre_tile):
         pre_words = vf.bit_cast(pre_bytes, dtype=pl.DT_UINT16)
         pre_inverse = vf.not_(pre_words, preg_all_16)
         keep_words = vf.and_(next_words, pre_inverse, preg_all_16)
-        # Keep the merged mask in the second acquired slot. The next pair
-        # can then load into the other two slots while P/dS consumes this one.
         vf.store_align(
             attn_pre_tile + offset,
             vf.bit_cast(keep_words, dtype=pl.DT_INT8),
@@ -1913,7 +1845,6 @@ def compute_p_ds_vf(
     vreg_dps = vf.muls(vreg_dps, ds_scale, preg_all)
 
     for i in pl.range(0, src_m, un_roll_num):
-    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, i * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 1) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 2) * 128)
@@ -1934,12 +1865,11 @@ def compute_p_ds_vf(
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
 
-        # vf.store(sp_tile, vreg_sp1)
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-        # return
+
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2070,7 +2000,6 @@ def compute_p_ds_vf(
         )
 
     for i in pl.range(0, src_m, un_roll_num):
-    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, (i + 4) * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 5) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 6) * 128)
@@ -2096,7 +2025,7 @@ def compute_p_ds_vf(
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-        # vf.store(sp_tile, vreg_sp1)
+
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -2266,9 +2195,6 @@ def compute_p_ds(
 
 
 def cal_atten_mask_offset(run_info, const_info):
-    # Mask coordinates are batch-local, including packed TND. q_start/kv_start
-    # are only for GM addressing; metadata supplies the per-batch token.
-    # Next boundary: s2 - s1 <= s2_token.
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
@@ -2282,7 +2208,6 @@ def cal_atten_mask_offset(run_info, const_info):
 
 
 def cal_atten_mask_offset_pre(run_info, const_info):
-    # pre侧: 有效条件 s1 - s2 <= s1_token, 取出的压缩mask位为1表示被pre边界屏蔽
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
@@ -2314,7 +2239,6 @@ def load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info):
             order=[0, 1],
         )
         if sparse_type == 4:
-            # pre侧复用同一张压缩mask, 位为1的位置由pre边界屏蔽, 与next侧极性相反
             delta_pre = cal_atten_mask_offset_pre(run_info, const_info)
             if delta_pre >= 0:
                 s1_offset_pre = 0
@@ -2334,7 +2258,6 @@ def load_attn_mask(attn_vec, attn_pre_vec, run_info, const_info, tensor_info):
 
 
 def preload_attn_mask(run_info, const_info, tensor_info):
-    # Match the consumer guards: empty sub-blocks must not advance the mask slot.
     if not has_attn_mask:
         return
     if (
@@ -2352,9 +2275,6 @@ def preload_attn_mask(run_info, const_info, tensor_info):
     if current_real_s1 <= 0:
         return
 
-    # Every load acquires the next slot of the shared three-buffer ring.
-    # Band pairs rotate (0, 1), (2, 0), (1, 2); fusion writes the second slot,
-    # leaving the other two available for the next pair of mask loads.
     attn_vec = tensor_info.attn_mask_pool.next()
     attn_pre_vec = attn_vec
     if sparse_type == 4:
@@ -2386,12 +2306,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
 
-    # The last acquired slot holds the final mask: next for causal, or the
-    # second slot overwritten by band fusion. Consumption does not advance it.
     attn_vec = tensor_info.attn_mask_pool.current()
-    # pl.system.bar_all()
-    # pl.printf("222 wenyu  \n")
-    # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
     if layout == 0 or layout == 1 or layout == 2:
         pl.load(
             lse_vec,
@@ -2422,8 +2337,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
     dpds_vec = tensor_info.dpds_vec[sdp_id]
     dpds_vec_bit8 = tensor_info.dpds_vec_bit8[sdp_id]
-    # pl.system.bar_all()
-    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
+
     compute_p_ds(
         sp_vec,
         dpds_vec,
@@ -2443,8 +2357,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         const_info.deq_scale_p_value,
         const_info.deq_scale_p_value * const_info.scale_ds,
     )
-    # pl.system.bar_all()
-    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
+
     if first_half_s1 > BLOCK_SIZE:
         pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [const_info.sub_id * 32, 0])
         pl.insert(p_l1_bit8, sp_vec_bit8[:, 512:768], [const_info.sub_id * 32 + 16, 0])
@@ -2934,8 +2847,6 @@ def process_sp(run_info, const_info, sdp_id, tensor_info):
 
 def process_p_ds(run_info, const_info, sdp_id, tensor_info, tmp_info):
     with pl.section_vector():
-        # Mask data depends only on run_info, so issue MTE2 before waiting for
-        # Cube results and the P/dS L1 buffers. Their original waits stay below.
         preload_attn_mask(run_info, const_info, tensor_info)
         pl.system.wait_cross_core(
             pipe=pl.PipeType.V,
@@ -3209,8 +3120,6 @@ def process_first_s2(
     with pl.section_vector():
         if not last_run_info.is_dq_completed:
             set_quant_run_info(last_run_info, kv_inner_id, 2)
-            # Deterministic schedules assign disjoint Q blocks within a round.
-            # Order whole 512-row writebacks; event 4 still releases each 128-row UB tile.
             if kv_inner_id == 0:
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.MTE3,
@@ -3246,7 +3155,6 @@ def process_first_s2(
 
 
 def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
-    # Complete the preceding logical round, including its dKV pipeline tail.
     if not run_info.is_dkv_completed:
         kv_iib = 3
         with pl.section_vector():
@@ -3297,7 +3205,6 @@ def drain_pending_task(run_info, const_info, tensor_info, tmp_info):
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
             )
 
-    # Every logical round contributes one global phase, including empty rounds.
     with pl.section_vector():
         pl.system.wait_cross_core(
             pipe=pl.PipeType.MTE3,
@@ -3402,7 +3309,6 @@ def process_post_dqkv(const_info, tensor_info):
                     else:
                         pl.store(tensor_info.tensor_dv_out_flat, out_ping, [0, idx])
                     if pong_off < end:
-                        # The pong start can be valid while its full block exceeds total.
                         pong_size = TS * TS if pong_off + TS * TS <= total else tail
                         pl.set_validshape(in_pong, [1, pong_size])
 
@@ -3449,11 +3355,6 @@ def process_post_dqkv(const_info, tensor_info):
 # ════════════════════════════════════════════════════════════════════════
 #  KERNEL (PyPTO Pro SIMD, CV fusion)
 # ════════════════════════════════════════════════════════════════════════
-
-
-# ================================================================
-#  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
-# ================================================================
 @pl.jit(
     auto_mutex=True,
     tiling_key=QuantFlashAttnGradTilingKey,
@@ -3531,8 +3432,6 @@ def quant_flash_attn_grad(
         [tiling.metadata_len, 1],
         dtype=pl.DT_INT32,
     )
-    # Physical packed starts and effective lengths have separate tensor views.
-    # Missing inputs use metadata as an unused, non-null placeholder.
     if layout == 2:
         tensor_cu_q = pl.make_tensor(cu_seqlens_q, [tiling.b + 1], [1], dtype=pl.DT_INT32)
         tensor_cu_kv = pl.make_tensor(cu_seqlens_kv, [tiling.b + 1], [1], dtype=pl.DT_INT32)
@@ -3557,8 +3456,6 @@ def quant_flash_attn_grad(
         [2048, 1],
         dtype=pl.DT_INT8,
     )
-    # Single assignment is required here: make_tensor's stride lowering may
-    # otherwise capture the initial SSA version rather than the reassigned value.
     gm_b = 1 if layout == 2 else tiling.b
     gm_s1 = tiling.t1 if layout == 2 else tiling.s1
     gm_s2 = tiling.t2 if layout == 2 else tiling.s2
@@ -3828,8 +3725,6 @@ def quant_flash_attn_grad(
     sub_id = pl.get_subblock_idx()
     core_id_vec = core_id_cube * pl.get_subblock_num() + sub_id
     core_num = pl.get_block_num()
-    # Scalar descales are invariant across every scheduled block. Read them
-    # once at kernel entry and cache their values in const_info.
     deq_scale_q_value = pl.getval(tensor_q_descale, 0)
     deq_scale_k_value = pl.getval(tensor_k_descale, 0)
     deq_scale_v_value = pl.getval(tensor_v_descale, 0)
@@ -3986,8 +3881,6 @@ def quant_flash_attn_grad(
         addrs=[VA4 + 512 * 9],
         mutex_ids=[18],
     )
-    # One shared ring for both mask boundaries; each slot retains its own
-    # MTE2/V mutex. This uses the same UB space as the former DB + single slot.
     attn_mask_pool = pl.make_tile_group(
         type=pl.TileType(
             shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
@@ -4363,13 +4256,6 @@ def quant_flash_attn_grad(
         gen_band_info(const_info, band_info)
     loop_max = 0
     if is_var_len():
-        # 主循环的 trip count 不能来自 GM: 一旦 pl.range 的上界是 pl.getval 的结果,
-        # 循环携带的 run_info / coordinate_info(TupleType) 会让 CCE codegen 崩在
-        # EmitCarriedAssignments -> EmitTupleVariable。
-        # 这里改用只依赖 tiling 的上界(每 batch 都按定长 S 估):
-        #   真实轮数 = Σ_b ceil(n_b*n1/k)*m_b <= b * ceil(ceil(s2/512)*n1/k) * ceil(s1/512)
-        # 超出真实轮数的那些 round, cal_dense_swizzle_deter_index 因为前缀查不到 batch
-        # 会返回 -1, 走和 sparse 跳块一样的无效块分支, 只是多跑几次空转同步。
         loop_max = (
             const_info.b_size
             * ceil(
@@ -4381,7 +4267,6 @@ def quant_flash_attn_grad(
             * ceil(const_info.s1_size, CUBE_BASEM)
         )
         if sparse_type != 0 or layout == 2:
-            # Sparse short-Q batches may need virtual rows for collision-free dQ.
             loop_max = (
                 const_info.b_size
                 * ceil(const_info.s2_outer * const_info.n1_size, const_info.core_num)
@@ -4389,8 +4274,6 @@ def quant_flash_attn_grad(
             )
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
-    # with pl.section_cube():
-    #     pl.printf("wenyu check1 loop_max : %d \n", loop_max)
     task_id = 0
     next_valid_loop_idx = 0
     next_block_idx = 0
@@ -4403,7 +4286,6 @@ def quant_flash_attn_grad(
         init_coordinate_info(
             const_info, band_info.m_offset, band_info.n_offset, coordinate_infos[1]
         )
-    # varlen 下 dk/dv 不存在跨核累加(见 set_run_info), 无需探测下一个核的首块
     if not is_var_len():
         with pl.section_vector():
             if const_info.s2_outer == 1 :
@@ -4438,8 +4320,6 @@ def quant_flash_attn_grad(
         tensor_seq_q,
         tensor_seq_kv,
     )
-    # with pl.section_cube():
-    #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
@@ -4462,11 +4342,7 @@ def quant_flash_attn_grad(
         if is_valid_block:
             if not is_var_len():
                 is_valid_block = is_valid_for_deter(block_inner_idx, const_info)
-        # with pl.section_cube():
-        #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         if is_valid_block:
-            # A gap may have already drained the previous task. Match one
-            # logical-round writeback phase even when this core has no pending dQ.
             if loop_idx > 0 and run_infos[(task_id + 1) % 2].is_dq_completed:
                 with pl.section_vector():
                     pl.system.wait_cross_core(
@@ -4501,9 +4377,6 @@ def quant_flash_attn_grad(
                     tmp_info[0],
                 )
         else:
-            # Keep pending dQ in its original logical round for every schedule.
-            # Deferring it past a gap can make different rounds update the same
-            # Q tile in one writeback slot and lose deterministic accumulation.
             if loop_idx > 0:
                 drain_pending_task(
                     run_infos[(task_id + 1) % 2],

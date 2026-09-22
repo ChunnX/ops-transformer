@@ -44,8 +44,6 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
-    // Optional placeholders can have a non-null address but zero-sized shape.
-    // Normalize every invocation so all later presence checks agree.
     for (Tensor **slot : {&sequsedQ_, &sequsedKv_}) {
         Tensor *tensor = *slot;
         if (tensor == nullptr) {

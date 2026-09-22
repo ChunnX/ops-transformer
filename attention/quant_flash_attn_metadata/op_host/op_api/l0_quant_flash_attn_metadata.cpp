@@ -43,22 +43,7 @@ const aclTensor *QuantFlashAttnMetadata(const aclTensor *cuSeqlensQOptional, con
            winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion, aicCoreNum, aivCoreNum,
            metadataDimNum, metadataRowSize, metaData);
 
-    // A cached absent optional has a default dtype descriptor. Reusing that
-    // task after the input becomes present can retain the absent dtype while
-    // updating its shape/data. Keep separate task caches for each presence mask.
-    // Static initialization is thread safe and preserves in-flight task lifetime.
-    static auto spaces = [] {
-        std::array<std::unique_ptr<internal::AicpuTaskSpace>, 16> result;
-        for (auto &entry : result) {
-            entry = std::make_unique<internal::AicpuTaskSpace>("QuantFlashAttnMetadata");
-        }
-        return result;
-    }();
-    const uint32_t presenceMask = (cuSeqlensQOptional != nullptr ? 1U : 0U) |
-                                  (cuSeqlensKvOptional != nullptr ? 2U : 0U) |
-                                  (sequsedQOptional != nullptr ? 4U : 0U) |
-                                  (sequsedKvOptional != nullptr ? 8U : 0U);
-    auto &space = *spaces[presenceMask];
+    static internal::AicpuTaskSpace space("QuantFlashAttnMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         QuantFlashAttnMetadata,

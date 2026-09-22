@@ -57,16 +57,10 @@ constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;    // 确定性调度总�
 constexpr uint32_t QUANT_FAG_NEED_INIT_OUTPUT_INDEX = 1U; // dq/dk/dv workspace 是否需要清零
 constexpr uint32_t QUANT_FAG_BATCH_SIZE_INDEX = 2U;       // batch 数, kernel 反查 batch 的循环上界
 constexpr uint32_t QUANT_FAG_SCHEDULE_VALID_INDEX = 3U;   // swizzle 调度是否安全, 0 表示不支持该 shape
-// AIC count used for roundPrefix; checked against kernel pl.get_block_num().
 constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;
-// 数组区: roundPrefix 有 b+1 项, s1Outer/s2Outer 各 b 项
-// 三个 per-batch 数组的起点由 AICPU 按 batch 动态排布后写入下面的标量槽位,
-// kernel 侧直接读起点定位数组, 两侧不重复推导公式, 也就没有固定布局的容量上限。
-constexpr uint32_t QUANT_FAG_ROUND_PREFIX_OFFSET_INDEX = 5U; // roundPrefix 起点, 长度 b+1
-constexpr uint32_t QUANT_FAG_S1_OUTER_OFFSET_INDEX = 6U;     // s1Outer 起点, 长度 b
-constexpr uint32_t QUANT_FAG_S2_OUTER_OFFSET_INDEX = 7U;     // s2Outer 起点, 长度 b
-// 标量区占 [0, QUANT_FAG_ARRAY_BASE_INDEX), 数组区从此处开始紧凑排布
-// Sparse swizzle ABI v2: six per-batch arrays, each of length b.
+constexpr uint32_t QUANT_FAG_ROUND_PREFIX_OFFSET_INDEX = 5U;
+constexpr uint32_t QUANT_FAG_S1_OUTER_OFFSET_INDEX = 6U;
+constexpr uint32_t QUANT_FAG_S2_OUTER_OFFSET_INDEX = 7U;
 constexpr uint32_t QUANT_FAG_ROW_BEGIN_OFFSET_INDEX = 8U;
 constexpr uint32_t QUANT_FAG_COL_BEGIN_OFFSET_INDEX = 9U;
 constexpr uint32_t QUANT_FAG_SCHEDULE_ROWS_OFFSET_INDEX = 10U;
@@ -76,8 +70,7 @@ constexpr uint32_t QUANT_FAG_S2_TOKEN_OFFSET_INDEX = 13U;
 constexpr uint32_t QUANT_FAG_SCHEDULE_VERSION_INDEX = 14U;
 constexpr uint32_t QUANT_FAG_SPARSE_ARRAY_COUNT = 6U;
 constexpr uint32_t QUANT_FAG_ARRAY_BASE_INDEX = 16U;
-// batch 数不再有固定上限, 只受 metadata 第二行实际长度约束(见 GenQuantFagGradMetaData 的容量校验)
-// 分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致
+// FAG分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致
 constexpr uint32_t QUANT_FAG_CUBE_BASE_M = 512U;
 constexpr uint32_t QUANT_FAG_CUBE_BASE_N = 512U;
 

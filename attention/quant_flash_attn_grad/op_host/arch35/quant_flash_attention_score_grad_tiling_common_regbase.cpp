@@ -103,22 +103,7 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase &fBaseParams)
 {
-    // check atten_mask shape when enable atten_mask_compress
     if (fBaseParams.attenMaskCompressMode == 0) {
-        // bool invalid =
-        //     fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
-        //     (static_cast<int64_t>(fBaseParams.attenMaskS1Size) * static_cast<int64_t>(fBaseParams.attenMaskS2Size) <
-        //      static_cast<int64_t>(fBaseParams.s1) * static_cast<int64_t>(fBaseParams.s2));
-        // if (invalid) {
-        //     std::string shapeSizeMsg =
-        //         std::to_string(fBaseParams.attenMaskS1Size) + " *" + std::to_string(fBaseParams.attenMaskS2Size);
-        //     std::string reasonMsg = "When attenMaskOptional is not empty and inputLayout is not TND, "
-        //                             "the shape size of attenMaskOptional cannot be less than" +
-        //                             std::to_string(fBaseParams.s1) + " *" + std::to_string(fBaseParams.s2);
-        //     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("QuantFlashAttentionScoreGrad", "attenMaskOptional",
-        //                                               shapeSizeMsg.c_str(), reasonMsg.c_str());
-        //     return ge::GRAPH_FAILED;
-        // }
         return ge::GRAPH_SUCCESS;
     }
 
