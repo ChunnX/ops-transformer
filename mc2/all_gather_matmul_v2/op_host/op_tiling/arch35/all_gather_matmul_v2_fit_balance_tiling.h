@@ -66,9 +66,9 @@ static const FitBalanceCalibration CALIBRATION = {
         {
             {MatmulDtypeKind::QUANT, false, 1, 1, 8192}, // fp8 量化(glue 真实/假设口径键天然合并)
             // fp4 glue 真实口径: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0}
+            // [上游演化同步点] 若 GetDataTypeSize 补 fp4 条目(glue 将发 1), 此处需补
+            // {QUANT, true, 1, 1, 16384} 行, 否则 miss 落 4096(同款 cpc 缺陷复发)
             {MatmulDtypeKind::QUANT, true, 0, 0, 16384},
-            // fp4 防御行: 上游 GetDataTypeSize 补 fp4 条目(返回 1)后 aBytes=1 的形态
-            {MatmulDtypeKind::QUANT, true, 1, 1, 16384},
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},
