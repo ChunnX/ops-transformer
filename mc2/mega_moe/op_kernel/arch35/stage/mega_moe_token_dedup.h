@@ -165,10 +165,15 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     if (blockJob.totalJobs == 0U) {
         return;
     }
-    // 建表工人平铺：每 block 的 AIV1（编号 jobIndex）与 AIV0（编号 jobIndex+totalJobs）各一。
+    // 建表工人集按档切换（判据见 DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM）：AIV0 参与时按
+    // AIV1=jobIndex / AIV0=jobIndex+totalJobs 平铺；不参与档 AIV0 直接返回，保持 AIV1 单方建表。
+    const bool aiv0Joins = params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM;
+    if (GetSubBlockIdx() != 1U && !aiv0Joins) {
+        return;
+    }
     const uint32_t workerIndex =
         GetSubBlockIdx() == 1U ? blockJob.jobIndex : blockJob.jobIndex + blockJob.totalJobs;
-    const uint32_t totalWorkers = blockJob.totalJobs * 2U;
+    const uint32_t totalWorkers = aiv0Joins ? blockJob.totalJobs * 2U : blockJob.totalJobs;
 
     const uint32_t topK = params.tilingData->topK;
     const uint32_t strideInt32 = dedup.rowDescStrideInt32;

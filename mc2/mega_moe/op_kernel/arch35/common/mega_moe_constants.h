@@ -122,6 +122,11 @@ constexpr int32_t DEDUP_MODE_COMBINE = 0x2;
 // prepass 工作项 chunk 数上限：flag 区按 worldSize*MAX_CHUNKS 上界分配；
 // CalcDedupPrepassChunkTokens 的 floor-clamp 保证实际 chunkCount 不超此值。
 constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;
+// AIV0 参与 prepass 建表只在通信主导档（与收益门的 hiddenDim 分档同轴）开启：该档 prepass 在关键
+// 路径上、AIV0 分担净赢（k16 族/B1025/B1394 实测 -5%~-10%）；计算主导档 prepass 被 GMM 遮住，
+// "发布前等全体 AIV0"的 gate 反而把 dispatch 首发布从"首 chunk 就绪"推迟到"半程建表完成"
+//（B8192 实测劣化 ~200us），保持 AIV1 单方建表。
+constexpr uint32_t DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM = 2048U;
 // prepass UB 三区容量（kernel CalcDedupPrepassChunkTokens 与 host 门 floorChunk 护栏共用，单一真源）。
 constexpr uint32_t DEDUP_ROUTE_LOAD_UB_BYTES = 4U * 1024U;
 constexpr uint32_t DEDUP_COUNT_UB_BYTES = 4U * 1024U;

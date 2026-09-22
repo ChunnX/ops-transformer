@@ -1411,7 +1411,9 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
     // prepass 槽 0（done 计数：AIV1 低 16 位、AIV0 高 16 位）到齐后整张 desc 表方可读；
     // combine 消费点远晚于 prepass 收尾，此处等待实际≈0，仅作契约兜底。
     WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dedupPrepassReadyPtr),
-                          static_cast<int32_t>(GetBlockNum()) | (static_cast<int32_t>(GetBlockNum()) << 16));
+                          params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM
+                              ? (static_cast<int32_t>(GetBlockNum()) | (static_cast<int32_t>(GetBlockNum()) << 16))
+                              : static_cast<int32_t>(GetBlockNum()));
     MM_KTS_T(ktsCombineT0);
 
     const uint32_t strideInt32 =

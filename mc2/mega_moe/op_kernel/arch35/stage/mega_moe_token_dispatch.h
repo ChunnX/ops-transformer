@@ -744,7 +744,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
         return;
     }
-    if (context.dedup.dedupMode != 0) {
+    if (context.dedup.dedupMode != 0 && params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
         // AIV0 参与建表后，其 UB 建表区会被 AIC 的首批 GMM1 tile 覆写（P0 探针实测覆写发生在
         // dispatch 首批发布之后；GMM1 problem 抢全局 tile，任一 AIV1 的发布都可能触发任一 block 的
         // AIC 写其 AIV0 UB）。发布任何 tile 前只等 done 计数高 16 位=全体 AIV0（本 AIV1 自己已建完，
@@ -862,7 +862,10 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     if (GetSubBlockIdx() != 1U) {
         // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次；参与去重建表的 AIV0
         // 经 PrepareDedupPrepassAiv0Local -> LoadAndComputeExpertCountTable 已上报，此处不得重复。
-        if (params.tilingData->dedupMode == 0) {
+        // 条件必须与 PrepareDedupPrepassAiv0Local 的启用门严格互补（含 hiddenDim 档位），
+        // 否则计算主导档的 AIV0 无人上报，ExportAndResetExpertCounts 等 read-done 挂死。
+        if (params.tilingData->dedupMode == 0 ||
+            params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
             CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
         }
         return;
@@ -892,10 +895,12 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
  * dispatch 首批发布之后，而发布侧有 done-gate 挡到全体建表完成）。随后本地复算 count 前缀表
  *（发布仍由 AIV1 独担；count 槽只被读，无并发写）。必须在 BuildDedupRowDescTable 之前调用；
  * 去重关闭或非 AIV0 为空操作。
- * 到达性判据：有共享专家时 AIV0 不参与跨卡输入同步（SyncInputAcrossRanks 对其直接返回），
- * epoch 期望值对 AIV0 不可用（读到未就位的计数槽即永久自旋，2026-09-22 全员死等实翻）——
- * 改等本 block AIV1 的 countTableReady（AIV1 完成 epoch 校验+前缀和才置位，到达性由它背书；
- * AIV0 正常流程本就在下游等同一标志，清零与多 launch 语义均为既有机制），装载后掩低 24 位即可。
+ * 到达性判据：等本 block AIV1 的 countTableReady（AIV1 完成 epoch 校验+前缀和才置位，到达性由它
+ * 背书；AIV0 正常流程本就在下游等同一标志，清零与多 launch 语义均为既有机制），装载后掩低 24 位。
+ * 注：上游已用"count 携带 epoch + WaitForCountTable 整表校验"取代入口跨卡握手，且输入准备阶段
+ * 每个物理 AIV（含 AIV0）都推进自己的同步计数，AIV0 理论上可直接走 WaitForCountTable 与 AIV1
+ * 并行装载；此处保守沿用 countTableReady 串行判据（与 2026-09-22 定版实测形态一致），并行化留作
+ * 后续调优项。
  */
 template <typename ActivationType, typename TopkIndexType>
 __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, const MoeStageCommonConfig &common,
@@ -905,7 +910,8 @@ __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, co
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (dedup.dedupMode == 0 || GetSubBlockIdx() != 0U) {
+    if (dedup.dedupMode == 0 || GetSubBlockIdx() != 0U ||
+        params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
         return;
     }
     const uint32_t cumsumInfoTensorSize = static_cast<uint32_t>(
