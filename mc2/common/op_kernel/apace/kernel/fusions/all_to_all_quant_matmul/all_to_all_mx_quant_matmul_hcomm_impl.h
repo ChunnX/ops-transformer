@@ -27,11 +27,12 @@
  *        再执行 MatmulProcess(REMOTE) 计算通信收到的远端数据，以 local 计算掩盖通信延迟；
  *        最后所有核 Acquire 完成后再统一 Finalize。
  *        kernel 内逐 tile 通过 bufferSyncMgr_.Acquire() → state_->hccl_.Wait(handle) 等待通信完成，
- *        首次 wait 紧挨 data wait 之前执行 hccl->Wait(scaleHandle_)。
+ *        首次 wait 紧挨 data wait 之前执行 hccl->Wait(scaleHandle_)（每核仅一次，掩盖 matmul 头开销）。
  *
  * 输出版本：AIC 逐 tile 通知，AIV 每轮接收并全核同步、重排搬运，每个有界窗口回执一次。
  *
- * \note 非输出版本只启用 AIC；输出版本由 AIC 执行 HCCL 和矩阵计算，AIV 执行转置搬运。
+ * \note all2all_out为空时仅启动AIC；all2all_out非空时同时启动AIC和AIV，
+ *       其中AIC负责HCCL通信和矩阵计算，AIV负责将通信结果重排并写入all2all_out。
  */
 
 #pragma once
