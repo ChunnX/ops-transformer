@@ -120,11 +120,11 @@ __global__ __aicore__ void sparse_flash_mla(
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaCsa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         } else {
             SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         }
     }
 #endif
