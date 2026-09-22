@@ -64,9 +64,6 @@ public:
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
 
-    static constexpr uint32_t L1A_SIZE = L1TileShape::M * L1TileShape::K * sizeof(ElementA);
-    static constexpr uint32_t L1B_SIZE = L1TileShape::N * L1TileShape::K * sizeof(ElementB);
-
     static constexpr uint32_t L0A_SIZE = ArchTag::L0A_SIZE;
     static constexpr uint32_t L0B_SIZE = ArchTag::L0B_SIZE;
     static constexpr uint32_t L0C_SIZE = ArchTag::L0C_SIZE;
@@ -79,12 +76,16 @@ public:
 
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
-    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0, uint32_t kDyn = 128)
     {
+        uint32_t l1ADynSize = L1TileShape::M * kDyn * sizeof(ElementA);
+        uint32_t l1BDynSize = L1TileShape::N * kDyn * sizeof(ElementB);
+
         l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart);
 
         for (uint32_t i = 0; i < STAGES; i++) {
-            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1A_SIZE + L1B_SIZE * i);
+            l1BTensor[i] =
+                resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + l1ADynSize + l1BDynSize * i);
 
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
