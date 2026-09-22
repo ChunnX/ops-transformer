@@ -414,8 +414,10 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
 
     MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS, 0U, 0U, totalWorkItems, chunkTokens, ktsPrepassT0);
-    // 槽 0 = 每核 done 计数：combine 消费 desc 前（远晚于 prepass）等其到齐；本核不等任何人。
-    AtomicAdd(readyBase, static_cast<int32_t>(1));
+    // 槽 0 = done 计数，AIV1 计低 16 位、AIV0 计高 16 位（dispatch 发布 gate 只等高位=全体 AIV0，
+    // AIV1 之间不互等——每个 AIV1 发布前自己必然已建完，等全体 2N 会把 AIV1 拴死、打断
+    // prepass 与 dispatch 的流水交叠，B8192 实测劣化 ~200us）；combine 兜底等全值。本核不等任何人。
+    AtomicAdd(readyBase, GetSubBlockIdx() == 1U ? static_cast<int32_t>(1) : static_cast<int32_t>(1) << 16);
 }
 
 } // namespace MegaMoeImpl

@@ -746,11 +746,17 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     }
     if (context.dedup.dedupMode != 0) {
         // AIV0 参与建表后，其 UB 建表区会被 AIC 的首批 GMM1 tile 覆写（P0 探针实测覆写发生在
-        // dispatch 首批发布之后）。发布任何 tile 前等全体建表工人 done（每 block AIV1+AIV0 各一，
-        // 共 2×blockNum），保证 AIV0 已离开建表区。典型形状下 AIV0 早于此点完成，等待实际≈0；
-        // combine 单开（dispatch 走基线路径）同样经由本入口，覆盖两条路径。首个 wave 之后瞬时通过。
-        WaitUntilGmFlagEquals(reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr),
-                              static_cast<int32_t>(GetBlockNum()) * 2);
+        // dispatch 首批发布之后；GMM1 problem 抢全局 tile，任一 AIV1 的发布都可能触发任一 block 的
+        // AIC 写其 AIV0 UB）。发布任何 tile 前只等 done 计数高 16 位=全体 AIV0（本 AIV1 自己已建完，
+        // AIV1 之间不互等，保住 prepass 与 dispatch 的流水交叠）；combine 单开（dispatch 走基线路径）
+        // 同样经由本入口。首个 wave 之后瞬时通过。
+        __gm__ int32_t *dedupDoneSlot = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
+        const int32_t expectAiv0Done = static_cast<int32_t>(GetBlockNum());
+        while ((ReadGmBypassDCache(dedupDoneSlot) >> 16) != expectAiv0Done) {
+            int64_t gateBackoffStart = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - gateBackoffStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
+            }
+        }
     }
 
     // maxOutputSize 是 Dispatch workspace 的硬边界，先统一裁剪再做分核。
