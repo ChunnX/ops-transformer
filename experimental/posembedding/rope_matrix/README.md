@@ -23,9 +23,9 @@ For example: x = [1, 24, 28800, 128], y = [128, 128], cos/sin = [1, 1, 28800, 12
 
 As the fig shows, we design a Mathematical Equivalence algorithm "Rope-Matrix(ROME)" to accelerate rope.
 The key is to replace tensor rearrage operator by matrix.            
-![image.png](https://raw.gitcode.com/user-images/assets/7673863/75dd5e40-a660-4956-b052-95079eae8f8d/image.png 'image.png')
+![image.png](https://raw.atomgit.com/user-images/assets/7673863/75dd5e40-a660-4956-b052-95079eae8f8d/image.png 'image.png')
 Besides, for 3D-ROPE situation, origin rope-fused need call three times, we just need to call once.
-![image.png](https://raw.gitcode.com/user-images/assets/7673863/9a6d1aa0-9e73-4908-a0c7-c3cebfeda407/image.png 'image.png')
+![image.png](https://raw.atomgit.com/user-images/assets/7673863/9a6d1aa0-9e73-4908-a0c7-c3cebfeda407/image.png 'image.png')
 
 Designing detail：
 By profiling, we find memory bound for both C and V on 910B. Thus, no need CV pipeline, we just simplify run V after C.
@@ -54,7 +54,7 @@ Using ```AscendC::CrossCoreSetFlag``` and ```AscendC::CrossCoreWaitFlag``` to co
 
 ```bash
 from example: https://gitee.com/ascend/samples/blob/master/operator/ascendc/0_introduction/22_baremix_kernellaunch/BareMixInvocation/baremix_custom.cpp
-from example: https://gitcode.com/cann/ops-transformer/blob/master/posembedding/rotary_position_embedding/rotate_half_bf16.h
+from example: https://atomgit.com/cann/ops-transformer/blob/master/posembedding/rotary_position_embedding/rotate_half_bf16.h
 ```
 
 we simplify the code from origin rope-fused operator to fit our cases.

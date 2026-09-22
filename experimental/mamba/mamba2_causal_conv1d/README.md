@@ -6,7 +6,7 @@
 
 **计算流**  
 
-<img src="https://raw.gitcode.com/user-images/assets/7673863/a7e74e1a-1080-4a62-bf45-e172eb790545/image.png" height="300">
+<img src="https://raw.atomgit.com/user-images/assets/7673863/a7e74e1a-1080-4a62-bf45-e172eb790545/image.png" height="300">
 
 ### 自定义Kernel输入输出（I/O）
 

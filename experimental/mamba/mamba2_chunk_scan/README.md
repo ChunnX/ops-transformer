@@ -7,7 +7,7 @@ mamba2_chunk_scan用于在MambaV2 Prefill阶段对chunk内状态执行selective 
 
 **计算流**  
 
-<img src="https://raw.gitcode.com/user-images/assets/7673863/246d0aa8-1ed9-45ff-97db-7ee759ca8334/image.png" height="300">
+<img src="https://raw.atomgit.com/user-images/assets/7673863/246d0aa8-1ed9-45ff-97db-7ee759ca8334/image.png" height="300">
 
 ### Kernel输入输出（I/O）
 

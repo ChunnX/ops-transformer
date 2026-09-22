@@ -7,7 +7,7 @@ mamba2_chunk_state_passing用于在MambaV2 Prefill阶段进行跨chunk状态传�
 
 **计算流**  
 
-<img src="https://raw.gitcode.com/user-images/assets/7673863/49bacbe4-46b1-4780-88e6-2c6327bd97e1/image.png" height="300">
+<img src="https://raw.atomgit.com/user-images/assets/7673863/49bacbe4-46b1-4780-88e6-2c6327bd97e1/image.png" height="300">
 
 ### Kernel输入输出（I/O）
 

@@ -6,7 +6,7 @@ mamba2_chunk_cumsum用于在MambaV2 Prefill阶段对chunk内部执行按时间�
 
 **计算流**
 
-<img src="https://raw.gitcode.com/user-images/assets/7673863/37cc914a-27a6-45a5-a244-2d3756581e37/image.png" height="500">  
+<img src="https://raw.atomgit.com/user-images/assets/7673863/37cc914a-27a6-45a5-a244-2d3756581e37/image.png" height="500">  
 
 ### Kernel输入输出（I/O）
 
