@@ -19,6 +19,7 @@ import time
 import random
 import ctypes
 import copy
+
 try:
     import tensorflow as tf
 except ImportError:
