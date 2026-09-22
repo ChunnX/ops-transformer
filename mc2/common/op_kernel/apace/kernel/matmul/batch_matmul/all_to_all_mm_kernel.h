@@ -10,7 +10,7 @@
 
 /*!
  * \file all_to_all_mm_kernel.h
- * \brief 非量化场景 all-to-all MatMul 实现（GM 累加版）。
+ * \brief 非量化场景 all-to-all MatMul 实现。
  */
 
 #pragma once
@@ -26,7 +26,7 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
-#include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "blaze/gemm/block/block_scheduler_matmul_basic.h"
 #undef WINDOW_LEN
 
 namespace Blaze {
@@ -43,11 +43,13 @@ using AscendC::Te::Get;
 /**
  * @brief 非量化 all-to-all MatMul 内核实现
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
- * 与量化版(all_to_all_qbmm_mx_kernel.h)的差异：
- * 1. 非量化 mmad(block_mmad_matmul_basic.h)为自包含 matmul，无 splitKIdx 接口，无法跨调用保持 L0C 状态，
- *    因此统一采用 GM 累加：第一次写入覆盖写（atomic 关），其余写入原子累加（atomic 开）。
- * 2. 调度器复用 BlockSchedulerQuantBatchMatmulV3（调度逻辑与量化无关），QuantMode 传 DEFAULT 关闭量化对齐。
- * 3. 基本 mmad 每次调用都会累加 bias，kernel 侧按"首次调用真 bias / 其余调用 zero-bias"控制（见 LocalParams.zeroBiasGmAddr）。
+ * 核心机制：
+ * 1. 非量化 mmad(block_mmad_matmul_basic.h) 已支持 splitKIdx 接口：同一个输出块由 rankSize 次
+ *    mmad 调用在 L0C 上跨调用累加，splitKIdx==0 清零 L0C 并加 bias，splitKIdx==splitKNum-1 触发单次 fixpipe。
+ * 2. 调度器使用非量化 BlockSchedulerMatmulBasic：按下标 for 循环遍历（blockIdx 步进 coreNums），
+ *    GetBlockShape 返回 {m, n, k_, batch_}（K 即每 rank 的 K 段长度），尾块由 Params 静态切分，
+ *    不参与尾块切分的核会收到空子片 {0,0,k_,batch_}，kernel 需 continue 跳过。
+ * 3. bias 由 mmad 按 isFirstSplitK 自动只加一次，kernel 对所有调用都传真 bias，无需 zero-bias workspace。
  * 4. 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：调用点直接 commPolicy_.WaitTile(tileIdx)，
  *    编译期由模板参数绑定具体策略，无需继承与 static_cast。
  */
@@ -82,7 +84,7 @@ public:
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<Te::C0_ELEMENT<CType>>>;
     /**
      * @brief 算子模式：REMOTE (远程同步数据后计算), LOCAL (仅本地计算),
-     *                 DEFERRED_SYNC (per-tile 本地先算写 GM → wait_flag → 远程原子累加)
+     *                 DEFERRED_SYNC (per-tile 本地先算驻留 L0C → wait_flag → 远程累加 → 单次 fixpipe)
      */
     enum class MatmulMode : uint32_t {
         REMOTE = 0,
@@ -107,7 +109,6 @@ public:
         uint32_t rankSize;
         uint64_t originalM; // 单卡负责的总 M 行数
         GM_ADDR localAGmAddr; // 本地输入基址
-        GM_ADDR zeroBiasGmAddr; // zero-bias workspace（baseN 大小，tiling 分配并清零，kernel 只读）
         uint32_t localMatmul; // 0: remote, 1: DEFERRED_SYNC 语义, 2: GM 累加
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
@@ -118,7 +119,7 @@ public:
      */
     struct Params {
         ProblemShape problemShape;
-        BlockMmadParams mmadParams;
+        BlockMmadParams mmadParams; // 含 splitKNum，由融合接口按模式设置
         BlockSchedulerParams schParams;
         MMTiling mmTiling;
         LocalParams localParams;
@@ -156,11 +157,9 @@ private:
     __gm__ BType *bGmAddr_;
     __gm__ CType *cGmAddr_; // 输出基址（已根据流水步偏移）
     __gm__ BiasType *biasGmAddr_ = nullptr;
-    __gm__ BiasType *zeroBiasGmAddr_ = nullptr;
 
-    bool isAtomicAdd_{false}; // GM累加模式下需要原子累加到 C
+    bool isAtomicAdd_{false}; // GM累加模式（模式3-REMOTE）需要原子累加到 C
     bool isBias_{false};
-    bool needUpdateTail_{false};
 };
 
 MM_KERNEL_CLASS_TEM_PARAMS
@@ -169,7 +168,7 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::Run(const Pa
     Init(params);
 
     if (isAtomicAdd_) {
-        AscendC::SetAtomicAdd<CType>(); // 开启原子累加
+        AscendC::SetAtomicAdd<CType>(); // 开启原子累加（模式3-REMOTE 单次 fixpipe 累加到 LOCAL 已写的 GM）
     }
     BlockScheduler bs(params.problemShape, params.schParams);
 
@@ -200,7 +199,6 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::Init(const P
         isBias_ = false; // GM累加模式：bias 已在 RunLocalMatmul(LOCAL) 阶段写入 GM，
                          // REMOTE 阶段必须跳过 bias，否则会重复累加 bias 导致精度偏差
     }
-    needUpdateTail_ = false;
     ResetGmAddr(params);
 }
 
@@ -215,7 +213,6 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(
     cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
     localAGmAddr_ = reinterpret_cast<__gm__ AType *>(params.localParams.localAGmAddr);
     biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
-    zeroBiasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.localParams.zeroBiasGmAddr);
 }
 
 MM_KERNEL_CLASS_TEM_PARAMS
@@ -270,7 +267,7 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
     auto rankSize = params.localParams.rankSize;
     auto oriM = params.localParams.originalM;
     bool localFirst = ((params.localParams.matmulMode == MatmulMode::LOCAL) && (params.localParams.localMatmul == 2));
-    // DEFERRED_SYNC: per-tile 内 local 先算写 GM → wait_flag → remote 原子累加。
+    // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     // wait_flag 必须由 kernel 内部发出（在 self rank 的 mmad 之后、其它 rank 的 mmad 之前）。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
 
@@ -280,8 +277,6 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
     auto layoutB = MakeLayoutB{}(rankSize * Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
     auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Te::Get<MNK_N>(params.problemShape));
     auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
-    // zero-bias workspace 全 0，切片始终从 (0,0) 出发，位置无关
-    auto layoutZeroBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, params.mmTiling.baseN);
 
     // 创建 Tensor 句柄
     auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(aGmAddr_), layoutA);
@@ -289,58 +284,49 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), layoutB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
     auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);
-    auto gmZeroBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(zeroBiasGmAddr_), layoutZeroBias);
 
-    // 尾块更新逻辑
-    auto &mTailTile = params.schParams.mTailTile;
-    auto &nTailTile = params.schParams.nTailTile;
-    if (needUpdateTail_ ||
-        (isTailRound && ((bs.GetEndBlockIdx() + 1) + (restBatch * bs.GetTotalCnt())) * mTailTile * nTailTile <=
-                            AscendC::GetBlockNum())) {
-        needUpdateTail_ = true;
-        bs.UpdateTailTile(mTailTile, nTailTile);
-    }
     SetL2Cache(params.problemShape, params.mmTiling.baseM, params.mmTiling.baseN, gmB, gmC);
 
-    BlockCoord blockIdx;
     int64_t mPos = 0L;
     int64_t nPos = 0L;
     constexpr int64_t kPos = 0L;
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
-    // 遍历当前块的调度任务
-    while (bs.GetTileIdx(blockIdx)) {
-        // 复用量化调度器，QuantMode 传 DEFAULT 关闭量化对齐逻辑
-        auto schedShape = bs.template GetBlockShape<QuantMode::DEFAULT, QuantMode::DEFAULT, weightNz>(blockIdx);
-        if ((Te::Get<IDX_M_TILEIDX>(schedShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(schedShape) <= 0)) {
-            return;
+    int64_t curBlockIdx = AscendC::GetBlockIdx();
+    if (curBlockIdx >= bs.GetCoreNums()) {
+        return; // 核数超出实际所需（如 blockNums < coreNums），直接退出
+    }
+    int64_t coreNums = AscendC::GetBlockNum();
+    // 遍历当前块的调度任务（按下标步进，空子片 continue 跳过）
+    for (int64_t blockIdx = curBlockIdx; blockIdx < bs.GetBlockNums(); blockIdx += coreNums) {
+        // 非量化调度器返回 {blkM, blkN, k_, batch_}，K 维即当前 rank 的 K 段长度
+        auto singleShape = bs.template GetBlockShape<transB, BType>(blockIdx);
+        if ((Te::Get<IDX_M_TILEIDX>(singleShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(singleShape) <= 0)) {
+            continue; // 空子片：不参与该尾块切分的核，跳过本次迭代
         }
-        bs.GetTileCoord(blockIdx, mPos, nPos);
-        // 量化调度器 dims2/3 为 split offset，非量化 mmad 需要 blockShape 的 K 维为当前 rank 的 K 段长度
-        BlockShape singleShape{Te::Get<IDX_M_TILEIDX>(schedShape), Te::Get<IDX_N_TILEIDX>(schedShape),
-                               Te::Get<MNK_K>(params.problemShape), 0L};
+        // GetBlockCoord 必须在 GetBlockShape 之后调用（mSplitOffset_ 由 GetBlockShape 计算）
+        auto blockCoord = bs.GetBlockCoord(blockIdx);
+        mPos = Te::Get<MNK_M>(blockCoord);
+        nPos = Te::Get<MNK_N>(blockCoord);
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC = gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
         auto gmBlockBias =
             gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, Te::Get<IDX_N_TILEIDX>(singleShape)));
-        auto gmBlockZeroBias =
-            gmZeroBias.Slice(Te::MakeCoord(0L, 0L), Te::MakeShape(1L, Te::Get<IDX_N_TILEIDX>(singleShape)));
 
         if (localFirst) {
-            // LOCAL 模式：计算本 Rank 的 A 和本 Rank 的 B 对应部分，覆盖写 GM（atomic 关）
+            // LOCAL 模式：计算本 Rank 的 A 和本 Rank 的 B 对应部分，splitKIdx=0（独立 matmul）
             auto actualMPos = rankId * oriM + mPos;
             auto gmBlockA =
                 gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                                AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
             auto gmBlockB = gmB.Slice(AscendC::Te::MakeCoord(rankId * Get<MNK_K>(params.problemShape), nPos),
-                                      AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape),
-                                                             Get<MNK_N>(singleShape)));
+                                      AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
 
-            mmadOp_(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, singleShape);
+            mmadOp_(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, singleShape, nullptr, 0);
         } else if (deferredSync) {
-            // DEFERRED_SYNC 模式（GM 累加版）：
-            // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → GM 覆盖写
+            // DEFERRED_SYNC 模式：
+            // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，splitKIdx=0）
             //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
             auto selfMPos = rankId * oriM + mPos;
             auto gmBlockA_self =
@@ -349,7 +335,7 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
             auto gmBlockB_self =
                 gmB.Slice(AscendC::Te::MakeCoord(rankId * Get<MNK_K>(params.problemShape), nPos),
                           AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-            mmadOp_(gmBlockA_self, gmBlockB_self, gmBlockBias, gmBlockC, singleShape);
+            mmadOp_(gmBlockA_self, gmBlockB_self, gmBlockBias, gmBlockC, singleShape, nullptr, 0);
 
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
@@ -358,9 +344,8 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
                 readyTileIdx++;
                 commPolicy_.WaitTile(readyTileIdx);
             }
-            // Phase 3: 遍历其它 rank，在 GM 上原子累加（zero-bias）
-            AscendC::PipeBarrier<PIPE_ALL>(); // 确保覆盖写 fixpipe 完成后开启原子累加（dav-3510 无 PIPE_FIX）
-            AscendC::SetAtomicAdd<CType>();
+            // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
+            uint32_t remoteRankCnt = 1;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 if (rank == rankId)
                     continue;
@@ -371,12 +356,12 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
                 auto gmBlockB_r =
                     gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
                               AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-                mmadOp_(gmBlockA_remote, gmBlockB_r, gmBlockZeroBias, gmBlockC, singleShape);
+                mmadOp_(gmBlockA_remote, gmBlockB_r, gmBlockBias, gmBlockC, singleShape, nullptr, remoteRankCnt);
+                remoteRankCnt++;
             }
-            AscendC::PipeBarrier<PIPE_ALL>(); // 确保最后原子 fixpipe 完成后关闭原子累加（dav-3510 无 PIPE_FIX）
-            AscendC::SetAtomicNone();
         } else {
-            // REMOTE 模式：等待通信后遍历各 rank 的 A × B
+            // REMOTE 模式：遍历除本 Rank 外的所有其他卡发送过来的数据，L0C 累加，最后一个 rank 触发 fixpipe
+            auto remoteRankCnt = 0UL;
             int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
             int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
@@ -384,53 +369,30 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::ProcessSingl
                 readyTileIdx++;
                 commPolicy_.WaitTile(readyTileIdx);
             }
-            if (isAtomicAdd_) {
-                // GM累加模式（localMatmul==2）：self 已由 LOCAL 阶段写入 GM，此处全部原子累加
-                for (uint64_t rank = 0; rank < rankSize; rank++) {
-                    if (rank == rankId)
-                        continue;
-                    auto actualMPos = rank * oriM + mPos;
-                    auto gmBlockA =
-                        gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                  AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                    auto gmBlockB =
-                        gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
-                                  AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-                    // mmad 已跳过 bias（isBias_=false），此处传 zero-bias 即可
-                    mmadOp_(gmBlockA, gmBlockB, gmBlockZeroBias, gmBlockC, singleShape);
-                }
-            } else {
-                // 远程融合模式（localMatmul==0）：首次调用覆盖写 + 真 bias，其余原子累加 + zero-bias
-                bool isFirstWrite = true;
-                for (uint64_t rank = 0; rank < rankSize; rank++) {
-                    auto actualMPos = rank * oriM + mPos;
-                    // 从通信buffer上切片
-                    auto gmBlockA =
-                        gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                  AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
+            for (uint64_t rank = 0; rank < rankSize; rank++) {
+                auto actualMPos = rank * oriM + mPos;
+                // 从通信buffer上切片
+                auto gmBlockA =
+                    gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                              AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
 
-                    if (rank == rankId) {
+                if (rank == rankId) {
+                    if (params.localParams.localMatmul == 2) {
+                        continue; // GM累加模式：self rank 已在 RunLocalMatmul 计算，REMOTE 阶段跳过
+                    } else {
                         gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape),
                                                                          Get<MNK_K>(params.problemShape)));
                     }
-
-                    auto gmBlockB =
-                        gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
-                                  AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-
-                    // 首次写入覆盖写（atomic 关），其后原子累加（atomic 开）
-                    if (isFirstWrite) {
-                        mmadOp_(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, singleShape);
-                        isFirstWrite = false;
-                        AscendC::PipeBarrier<PIPE_ALL>(); // 确保覆盖写 fixpipe 完成后开启原子累加（dav-3510 无 PIPE_FIX）
-                        AscendC::SetAtomicAdd<CType>();
-                    } else {
-                        mmadOp_(gmBlockA, gmBlockB, gmBlockZeroBias, gmBlockC, singleShape);
-                    }
                 }
-                AscendC::PipeBarrier<PIPE_ALL>(); // 确保最后原子 fixpipe 完成后关闭原子累加（dav-3510 无 PIPE_FIX）
-                AscendC::SetAtomicNone();
+
+                auto gmBlockB =
+                    gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
+                              AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
+
+                // L0C上累加（splitKIdx==0 时 mmad 内部清零 L0C 并加 bias）
+                mmadOp_(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, singleShape, nullptr, remoteRankCnt);
+                remoteRankCnt++;
             }
         }
     }

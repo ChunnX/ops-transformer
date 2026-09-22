@@ -71,8 +71,7 @@ struct AllToAllMmTestTiling {
 
 template <typename AType, typename BType, typename CType, typename BiasType, bool TransA, bool TransB>
 __global__ __aicore__ void all_to_all_mm_kernel_entry(GM_ADDR remoteAGM, GM_ADDR localAGM, GM_ADDR bGM,
-                                                      GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR zeroBiasGM,
-                                                      GM_ADDR tilingGM)
+                                                      GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR tilingGM)
 {
     AllToAllMmTestTiling tiling;
     memcpy(&tiling, tilingGM, sizeof(AllToAllMmTestTiling));
@@ -83,9 +82,7 @@ __global__ __aicore__ void all_to_all_mm_kernel_entry(GM_ADDR remoteAGM, GM_ADDR
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
 
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape,
-                                                                                Blaze::Gemm::NONE_FULL_LOAD_MODE,
-                                                                                LayoutA, LayoutB, AType>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerMatmulBasic<ProblemShape>;
     using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<Blaze::Gemm::NONE_FULL_LOAD_MODE, 0,
                                                               Blaze::Gemm::KernelMmadMultiBlockBasic, 0>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
@@ -108,17 +105,26 @@ __global__ __aicore__ void all_to_all_mm_kernel_entry(GM_ADDR remoteAGM, GM_ADDR
     params.mmadParams.kL0 = tiling.baseK;
     params.mmadParams.l1Stages = tiling.nBufferNum;
     params.mmadParams.l0cStages = (tiling.dbL0C > 1) ? 2 : 1;
-    params.schParams = {static_cast<int64_t>(tiling.baseM), static_cast<int64_t>(tiling.baseN),
-                        static_cast<int64_t>(tiling.mTailTile), static_cast<int64_t>(tiling.nTailTile),
-                        static_cast<int64_t>(tiling.mBaseTailSplitCnt),
-                        static_cast<int64_t>(tiling.nBaseTailSplitCnt), static_cast<int64_t>(tiling.mTailMain),
-                        static_cast<int64_t>(tiling.nTailMain)};
+    // splitKNum：LOCAL=1；模式3-REMOTE(localMatmul==2)=rankSize-1；模式1/2=rankSize
+    params.mmadParams.splitKNum = (tiling.matmulMode == 1) ? 1 :
+                                  (tiling.localMatmul == 2) ? (tiling.rankSize - 1) : tiling.rankSize;
+    params.schParams = {tiling.baseM,                          // mL1
+                        tiling.baseN,                          // nL1
+                        tiling.stepK * tiling.baseK,           // kL1
+                        tiling.baseM,                          // baseM
+                        tiling.baseN,                          // baseN
+                        tiling.baseK,                          // baseK
+                        tiling.mTailTile,                      // mTailCnt
+                        tiling.nTailTile,                      // nTailCnt
+                        tiling.mBaseTailSplitCnt,              // mBaseTailSplitCnt
+                        tiling.nBaseTailSplitCnt,              // nBaseTailSplitCnt
+                        tiling.mTailMain,                      // mTailMain
+                        tiling.nTailMain};                     // nTailMain
     params.mmTiling = {tiling.baseM, tiling.baseN, tiling.baseK, tiling.dbL0C};
     params.localParams = {tiling.rankId,
                           tiling.rankSize,
                           tiling.originalM,
                           localAGM,
-                          zeroBiasGM,
                           tiling.localMatmul,
                           static_cast<typename KernelImpl::MatmulMode>(tiling.matmulMode),
                           tiling.headTileSize};
@@ -182,7 +188,6 @@ public:
         bGM = nullptr;
         biasGM = nullptr;
         cGM = nullptr;
-        zeroBiasGM = nullptr;
         tilingGM = nullptr;
     }
 
@@ -198,8 +203,6 @@ public:
             AscendC::GmFree((void *)biasGM);
         if (cGM)
             AscendC::GmFree((void *)cGM);
-        if (zeroBiasGM)
-            AscendC::GmFree((void *)zeroBiasGM);
         if (tilingGM)
             AscendC::GmFree((void *)tilingGM);
     }
@@ -209,16 +212,15 @@ public:
     GM_ADDR bGM;
     GM_ADDR biasGM;
     GM_ADDR cGM;
-    GM_ADDR zeroBiasGM;
     GM_ADDR tilingGM;
 };
 
 // 运行一次 kernel launch（mode1/mode2 单次，mode3 由调用方先后 launch LOCAL 与 REMOTE）
-void RunOneLaunch(GM_ADDR remoteAGM, GM_ADDR localAGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR zeroBiasGM,
-                  GM_ADDR tilingGM, uint32_t blockNum)
+void RunOneLaunch(GM_ADDR remoteAGM, GM_ADDR localAGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR tilingGM,
+                  uint32_t blockNum)
 {
     auto kernelFunc = all_to_all_mm_kernel_entry<half, half, half, float, false, false>;
-    EXPECT_TRUE(KERNEL_RUN_KF(kernelFunc, blockNum, remoteAGM, localAGM, bGM, biasGM, cGM, zeroBiasGM, tilingGM))
+    EXPECT_TRUE(KERNEL_RUN_KF(kernelFunc, blockNum, remoteAGM, localAGM, bGM, biasGM, cGM, tilingGM))
         << "Kernel execution failed";
 }
 
@@ -260,7 +262,6 @@ void RunAndVerify(AllToAllMmKernelTest &test, uint32_t rankSize, uint32_t oriM, 
     size_t bSize = static_cast<size_t>(rankSize) * k * n * sizeof(half);
     size_t biasSize = static_cast<size_t>(n) * sizeof(float);
     size_t cSize = static_cast<size_t>(oriM) * n * sizeof(half);
-    size_t zeroBiasSize = 16 * sizeof(float);
     size_t tilingSize = sizeof(AllToAllMmTestTiling);
 
     test.remoteAGM = (GM_ADDR)AscendC::GmAlloc(remoteASize);
@@ -268,7 +269,6 @@ void RunAndVerify(AllToAllMmKernelTest &test, uint32_t rankSize, uint32_t oriM, 
     test.bGM = (GM_ADDR)AscendC::GmAlloc(bSize);
     test.biasGM = (GM_ADDR)AscendC::GmAlloc(biasSize);
     test.cGM = (GM_ADDR)AscendC::GmAlloc(cSize);
-    test.zeroBiasGM = (GM_ADDR)AscendC::GmAlloc(zeroBiasSize);
     test.tilingGM = (GM_ADDR)AscendC::GmAlloc(tilingSize);
 
     ASSERT_NE(test.remoteAGM, nullptr);
@@ -276,7 +276,6 @@ void RunAndVerify(AllToAllMmKernelTest &test, uint32_t rankSize, uint32_t oriM, 
     ASSERT_NE(test.bGM, nullptr);
     ASSERT_NE(test.biasGM, nullptr);
     ASSERT_NE(test.cGM, nullptr);
-    ASSERT_NE(test.zeroBiasGM, nullptr);
     ASSERT_NE(test.tilingGM, nullptr);
 
     // 生成 host 侧数据并写入 GM
@@ -294,7 +293,6 @@ void RunAndVerify(AllToAllMmKernelTest &test, uint32_t rankSize, uint32_t oriM, 
     std::memcpy(test.bGM, bHalf.data(), bSize);
     // bias 为 float 类型（BiasType=float），直接以 float 写入
     std::memcpy(test.biasGM, biasHost.data(), biasSize);
-    std::memset(test.zeroBiasGM, 0, zeroBiasSize); // zero-bias workspace 必须清零
     std::memset(test.cGM, 0, cSize);
 
     AllToAllMmTestTiling tiling;
@@ -305,15 +303,12 @@ void RunAndVerify(AllToAllMmKernelTest &test, uint32_t rankSize, uint32_t oriM, 
         // 模式3：LOCAL launch（覆盖写 + bias） → REMOTE launch（跳过 self，原子累加）
         tiling.matmulMode = 1; // MatmulMode::LOCAL
         std::memcpy(test.tilingGM, &tiling, tilingSize);
-        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.zeroBiasGM, test.tilingGM,
-                     blockNum);
+        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.tilingGM, blockNum);
         tiling.matmulMode = 0; // MatmulMode::REMOTE
         std::memcpy(test.tilingGM, &tiling, tilingSize);
-        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.zeroBiasGM, test.tilingGM,
-                     blockNum);
+        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.tilingGM, blockNum);
     } else {
-        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.zeroBiasGM, test.tilingGM,
-                     blockNum);
+        RunOneLaunch(test.remoteAGM, test.localAGM, test.bGM, test.biasGM, test.cGM, test.tilingGM, blockNum);
     }
 
     // 参考实现并比对

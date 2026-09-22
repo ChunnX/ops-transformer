@@ -18,11 +18,10 @@
 #include "apace/kernel/matmul/batch_matmul/all_to_all_mm_urma_impl.h"
 
 __global__ __aicore__ void AllToAllMmKernel_Udma(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR bGM,
-                                                 GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR zeroBiasGM,
-                                                 allToAllMmMatmulTilingData tilingData)
+                                                 GM_ADDR cGM, GM_ADDR biasGM, allToAllMmMatmulTilingData tilingData)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
     Apace::AllToAllMmUrmaImpl<half, half, half, false, true> impl;
-    impl.Init(hcommCtx, aGM, bGM, cGM, biasGM, zeroBiasGM, &tilingData);
+    impl.Init(hcommCtx, aGM, bGM, cGM, biasGM, &tilingData);
     impl.Run();
 }

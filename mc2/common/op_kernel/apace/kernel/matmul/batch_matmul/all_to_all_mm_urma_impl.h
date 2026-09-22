@@ -10,7 +10,7 @@
 
 /*!
  * \file all_to_all_mm_urma_impl.h
- * \brief AlltoAll MatMul（非量化，GM 累加版）— 通信+计算融合实现
+ * \brief AlltoAll MatMul（非量化，L0C splitK 累加版）— 通信+计算融合实现
  *
  * Run():
  *   AIV: RunAllToAll()  根据通信轮次下发通信任务和通知AIC通信已完成
@@ -18,8 +18,9 @@
  *
  * 与量化版(all_to_all_mx_quant_matmul_urma_impl.h)的差异：
  * 1. 无 scale：删除 scaleA/scaleB 通信通道与相关参数。
- * 2. 非量化 kernel 无 splitKIdx 接口，统一采用 GM 累加（首次覆盖写 + 其余原子累加）。
- * 3. 增加 zeroBiasGmAddr（tiling 分配的清零 workspace），用于抑制基本 mmad 的重复 bias 累加。
+ * 2. 非量化 mmad(block_mmad_matmul_basic.h) 已支持 splitKIdx 接口：同一输出块 rankSize 次 mmad
+ *    在 L0C 上跨调用累加，最后一段单次 fixpipe；LOCAL 模式 splitKNum=1 退化为独立 matmul。
+ * 3. 调度器使用非量化 BlockSchedulerMatmulBasic（按下标遍历，尾块静态切分）。
  */
 
 #pragma once
@@ -62,7 +63,7 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
  * 2. AIV 负责背景通信，通过 Hcomm GET 接口从其他卡拉取 A 数据。
  * 3. 通过流水线掩盖通信开销。
  * 4. 计算与通信逻辑合并于此类，便于精细化流水线控制。
- * 5. 非量化 mmad 自包含（无 splitKIdx），GM 累加：首次写入覆盖写，其余写入原子累加。
+ * 5. 非量化 mmad 支持 splitKIdx：同一输出块在 L0C 上跨 rank 累加，最后一段单次 fixpipe 搬出。
  */
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 class AllToAllMmUrmaImpl {
@@ -74,7 +75,7 @@ public:
      * @brief 初始化算子状态和参数
      */
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                GM_ADDR zeroBiasGM, const allToAllMmMatmulTilingData *tilingData);
+                                const allToAllMmMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
      */
@@ -94,8 +95,7 @@ public:
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
 
     // 组件定义
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape, NONE_FULL_LOAD_MODE,
-                                                                                LayoutA, LayoutB, TypeA>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerMatmulBasic<ProblemShape>;
     using DispatchPolicy =
         Blaze::Gemm::MatmulMultiBlockBasic<NONE_FULL_LOAD_MODE, 0, Blaze::Gemm::KernelMmadMultiBlockBasic, 0>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
@@ -126,7 +126,6 @@ private:
         GM_ADDR bGm{nullptr};
         GM_ADDR cGm{nullptr};
         GM_ADDR biasGm{nullptr};
-        GM_ADDR zeroBiasGm{nullptr}; // zero-bias workspace（tiling 分配并清零，kernel 只读）
 
         uint32_t rankId{0};
         int32_t commTurn{0};  // 总流水步数
@@ -154,7 +153,7 @@ private:
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::Init(
-    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR zeroBiasGM,
+    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
     const allToAllMmMatmulTilingData *tilingData)
 {
     tilingData_ = tilingData;
@@ -162,7 +161,6 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
     baseParams_.bGm = bGM;
     baseParams_.cGm = cGM;
     baseParams_.biasGm = biasGM;
-    baseParams_.zeroBiasGm = zeroBiasGM;
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -252,13 +250,17 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
                             baseParams_.rankSize,
                             baseParams_.axisM,
                             baseParams_.aGm,
-                            baseParams_.zeroBiasGm,
                             tilingData_->localMatmul,
                             matmulMode,
                             static_cast<uint32_t>(baseParams_.headMSize)};
 
     if (matmulMode == MatmulMode::LOCAL) {
         mmadParams.cGmAddr = baseParams_.cGm; // 本地模式直接写入输出
+        mmadParams.splitKNum = 1; // 独立 matmul
+    } else {
+        // 模式1/2：rankSize 个 rank 的贡献全部在 L0C 累加；模式3-REMOTE：跳过 self，rankSize-1 个
+        mmadParams.splitKNum =
+            (tilingData_->localMatmul == 2) ? (baseParams_.rankSize - 1) : baseParams_.rankSize;
     }
 
     // 基本 mmad 的 L1/L0 分块与缓冲参数
@@ -273,9 +275,15 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
     mmadParams.l1Stages = mmTile->nBufferNum;
     mmadParams.l0cStages = (mmTile->dbL0c > 1) ? 2 : 1;
 
-    // 调度器参数
+    // 调度器参数（非量化 BlockSchedulerMatmulBasic）
+    // mL1/nL1/kL1 = baseM/baseN/kL1；mTailCnt/nTailCnt 直接映射 tiling 的 mTailTile/nTailTile；
+    // 尾部字段（isHf32/l2CacheMode/sliceM/srcNdStride/innerBatch）用 Params 默认值
     BlockSchedulerParams schedulerParams{mmTile->baseM,
                                          mmTile->baseN,
+                                         static_cast<uint32_t>(mmTile->stepK) * mmTile->baseK,
+                                         mmTile->baseM,
+                                         mmTile->baseN,
+                                         mmTile->baseK,
                                          mmTile->mTailTile,
                                          mmTile->nTailTile,
                                          mmTile->mBaseTailSplitCnt,

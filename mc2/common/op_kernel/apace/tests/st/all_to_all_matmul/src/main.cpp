@@ -213,25 +213,19 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     GM_ADDR deviceA = nullptr;
     GM_ADDR deviceB = nullptr;
     GM_ADDR deviceBias = nullptr;
-    GM_ADDR deviceZeroBias = nullptr;
     GM_ADDR deviceOutput = nullptr;
 
     ACL_CHECK(aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void **)&deviceBias, sizeBias, ACL_MEM_MALLOC_HUGE_ONLY));
-    size_t zeroBiasSize = tilingData.tileMmTilingData.baseN * sizeof(float);
-    ACL_CHECK(aclrtMalloc((void **)&deviceZeroBias, zeroBiasSize, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void **)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
 
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
-    // zero-bias workspace 必须清零（kernel 只读，非首次调用用它抑制 bias 累加）
-    std::vector<float> zeroBiasHost(tilingData.tileMmTilingData.baseN, 0.0f);
-    ACL_CHECK(aclrtMemcpy(deviceZeroBias, zeroBiasSize, zeroBiasHost.data(), zeroBiasSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
     AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
-        devContext, deviceA, deviceB, deviceOutput, deviceBias, deviceZeroBias, tilingData);
+        devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
 
     ACL_CHECK(aclrtSynchronizeStream(stream));
 
@@ -242,7 +236,6 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     aclrtFree(deviceA);
     aclrtFree(deviceB);
     aclrtFree(deviceBias);
-    aclrtFree(deviceZeroBias);
     aclrtFree(deviceOutput);
 
     HcclCommDestroy(comm);
