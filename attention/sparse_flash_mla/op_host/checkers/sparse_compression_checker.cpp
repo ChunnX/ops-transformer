@@ -13,6 +13,7 @@
 
 namespace optiling {
 namespace sparse_mla_checker {
+constexpr int64_t TURBO_QUANT_MODE = 3;
 namespace {
 const char *Op(const CheckContext &context)
 {
@@ -21,7 +22,7 @@ const char *Op(const CheckContext &context)
 
 bool IsTurboQuantEmptyTndIndex(const CheckContext &context, const TensorParam &param, const char *name)
 {
-    return context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == 3 &&
+    return context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE &&
            context.qLayout == Layout::TND && std::string(name) == "cmp_sparse_indices" && param.shape != nullptr &&
            param.shape->GetDimNum() > 0 && param.shape->GetDim(0) == 0;
 }
@@ -80,7 +81,7 @@ ge::graphStatus SparseCompressionChecker::CheckSinglePara(const CheckContext &co
 
 ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext &context) const
 {
-    if (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == 3) {
+    if (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE) {
         OP_CHECK_IF(!context.cmpKv.present || !context.cmpSparseIndices.present,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "cmp_kv/cmp_sparse_indices",
                                                              "TurboQuant requires both inputs"),
