@@ -190,10 +190,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     // CeilDiv(x, CVRATIO): A5(CVRATIO=2)每个vec核处理一半，A6(CVRATIO=1)单核处理全部
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSizeMax, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
+    // CeilDiv(x, CVRATIO): A5(CVRATIO=2)每个vec核处理一半，A6(CVRATIO=1)单核处理全部
+    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSizeMax, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // weight buffer按WEIGHT_T访问；UB_BANK_DEPTH_STRIDE的单位已经是字节，无需再乘数据类型大小。
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<WEIGHT_T>(); // weight
+    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
@@ -201,7 +205,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
 
     pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
+
+    pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
+
+    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(SCORE_T));
 
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(SCORE_T));
     vec1OutUB_ = outBuf_.Get<SCORE_T>(); // out
@@ -491,9 +499,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qScalepingpong = (info.qScaleLoop % 2);
     auto kScalepingpong = (info.kScaleLoop % 2);
     auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, CVRATIO);
+    auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, CVRATIO);
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);
+    int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
     int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);
     int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
 
@@ -562,6 +573,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
+    if constexpr (IS_MXFP4) {
+    auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
     if constexpr (IS_MXFP4 || IS_HIFLOAT4) {
         vector1::BatchMulWeightAndReduceSumMXFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
                                                  (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
@@ -611,6 +624,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     // outUB_ --->  scoreGm
     int64_t vec1OutGmOffset =
         blockId_ % CVRATIO == 0 ?
+        blockId_ % CVRATIO == 0 ?
             curS2Idx :
             s1BaseSizePerAIV * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
     DataCopyExtParams copyOutParams;
@@ -635,6 +649,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
     int64_t curS2StartIdx = info.s2Start * s2BaseSize_;
     int64_t curS2EndIdx = (info.s2LoopEnd + 1) * s2BaseSize_;
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);
+    int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
     int64_t curAivS1Idx = curS1Idx + (blockId_ % CVRATIO) * CeilDiv(curS1ProcNum, CVRATIO);
     int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
 
@@ -675,6 +691,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
             WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
         }
+        uint32_t rowIdx = blockId_ % CVRATIO * CeilDiv(curS1ProcNum, CVRATIO) + i;
+        uint32_t vecOffset = blockId_ % CVRATIO * CeilDiv(s1BaseSize_, CVRATIO) + i;
         uint32_t rowIdx = blockId_ % CVRATIO * CeilDiv(curS1ProcNum, CVRATIO) + i;
         uint32_t vecOffset = blockId_ % CVRATIO * CeilDiv(s1BaseSize_, CVRATIO) + i;
         int64_t outputIdxOffset = 0;
