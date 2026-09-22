@@ -479,20 +479,24 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     const char *tmpmode = attrs->GetStr(CACHE_MODE_IDX);
     if (tmpmode != nullptr) {
         std::string cacheMode = tmpmode;
-        isPagedAttention_ = (cacheMode == "PA" || cacheMode == "PA_BNSD");
-        std::unordered_map<std::string, CacheMode> cacheModeMap = {{"PA", CacheMode::PA},
+        const std::unordered_map<std::string, CacheMode> cacheModeMap = {{"PA", CacheMode::PA},
                                                                    {"PA_BNSD", CacheMode::PA},
                                                                    {"PA_NZ", CacheMode::PA_NZ},
                                                                    {"PA_BLK_BNSD", CacheMode::PA_BLK_BNSD},
                                                                    {"PA_BLK_NZ", CacheMode::PA_BLK_NZ}};
-        auto getCacheMode = [&cacheModeMap](const std::string &mode) -> CacheMode {
-            auto it = cacheModeMap.find(mode);
-            return (it != cacheModeMap.end()) ? it->second : CacheMode::Norm;
-        };
-        currentCacheMode_ = getCacheMode(cacheMode);
+        auto it = cacheModeMap.find(cacheMode);
+        if (it != cacheModeMap.end()) {
+            currentCacheMode_ = it->second;
+        } else {
+            currentCacheMode_ = CacheMode::Norm;
+            OP_LOGW(context_->GetNodeName(), "Get unknown cachemode %s, redirect to default mode Norm.", tmpmode);
+        }
+        // both (cacheMode == "PA" || cacheMode == "PA_BNSD") are mapped to CacheMode::PA
+        isPagedAttention_ = (currentCacheMode_ == CacheMode::PA);
     } else {
         isPagedAttention_ = false;
         currentCacheMode_ = CacheMode::Norm;
+        OP_LOGW(context_->GetNodeName(), "Get Empty cachemode, set to default mode Norm.");
     }
     const bool *isOutputKv = attrs->GetBool(IS_OUTPUT_KV_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, isOutputKv);
