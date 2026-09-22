@@ -164,10 +164,9 @@ std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
 {
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKvStr = std::string(layoutKv);
-    TORCH_CHECK(oriKv.has_value(), "ori_kv must be provided.");
     const bool turboQuantEmptyQuery = quantMode == 3 && layoutQStr == "TND" && q.dim() == DIM_3 && q.size(DIM_0) == 0;
-    TORCH_CHECK(q.numel() > 0 || turboQuantEmptyQuery, "Tensor query is empty.")
-
+    TORCH_CHECK(q.numel() > 0 || turboQuantEmptyQuery, "Tensor query is empty.");
+    TORCH_CHECK(oriKv.has_value(), "ori_kv must be provided.");
     const at::Tensor &oriKvVal = *oriKv;
     // convert str
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());

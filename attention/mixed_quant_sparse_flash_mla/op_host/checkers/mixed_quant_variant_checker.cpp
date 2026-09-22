@@ -68,9 +68,13 @@ ge::graphStatus MixedQuantVariantChecker::CheckSinglePara(const CheckContext &co
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                     Op(context), "KV block size", "TurboQuant block sizes must be in [16, 1024] and aligned to 16"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.oriKvStrides.empty() || context.cmpKvStrides.empty() ||
-                    context.oriKvStrides[0] < context.oriBlockSize * 512 ||
-                    context.cmpKvStrides[0] < context.cmpBlockSize * 258,
+    const uint64_t minOriKvStride =
+        static_cast<uint64_t>(context.oriBlockSize) * static_cast<uint64_t>(context.kvNumHeads) * 512U;
+    const uint64_t minCmpKvStride =
+        static_cast<uint64_t>(context.cmpBlockSize) * static_cast<uint64_t>(context.kvNumHeads) * 258U;
+    OP_CHECK_IF(context.oriKvStrides.empty() || context.cmpKvStrides.empty() || context.oriKvStrides[0] < 0 ||
+                    context.cmpKvStrides[0] < 0 || static_cast<uint64_t>(context.oriKvStrides[0]) < minOriKvStride ||
+                    static_cast<uint64_t>(context.cmpKvStrides[0]) < minCmpKvStride,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                     Op(context), "KV stride", "The first-axis stride must cover one physical TurboQuant cache block"),
                 return ge::GRAPH_FAILED);

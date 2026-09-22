@@ -16,7 +16,6 @@
 #include "mixed_quant_sparse_flash_mla_check.h"
 #include "checkers/mixed_quant_sparse_flash_mla_checker.h"
 #include "../../sparse_flash_mla/op_host/checkers/checker_adapter.h"
-#include "../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "mixed_quant_sparse_flash_mla_tiling.h"
 #include <algorithm>
 
