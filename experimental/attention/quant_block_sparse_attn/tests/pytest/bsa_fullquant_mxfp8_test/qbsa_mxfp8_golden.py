@@ -47,6 +47,9 @@ if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+# Temporary D256 diagnostics; remove after QK alignment is resolved.
+_QK_DUMP = {"directory": None, "index": 0, "context": {}}
+
 # TTK installs multiple root handlers that target the same captured stream.
 # A propagated record is consequently printed once by every handler.  The
 # asset loader imports this module under the private name below; bind that
@@ -433,10 +436,8 @@ def _normalize_case(case):
     )
     # S2 is an internal tile, not an operator input. Accept legacy case files.
     if case["D"] == 256 and case["s2_base_size"] == 512:
-        print(f"[Config] {case.get('name', '<unnamed>')}: D256 s2_base_size 512 -> 256")
         case["s2_base_size"] = 256
     if case["D"] == 64 and case["s2_base_size"] == 1024:
-        print(f"[Config] {case.get('name', '<unnamed>')}: D64 s2_base_size 1024 -> 512")
         case["s2_base_size"] = 512
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
@@ -1577,11 +1578,64 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
     return torch.where(sticky_overflow, sticky_value, finite_value)
 
 
+def _qk_matmul_rounded_cpu(q_block, q_scale, k_mat, k_scale):
+    """CPU rounding model validated against saved MXFP8 QK dumps.
+
+    Align products within each 16-element group to 2**(max_exponent - 18),
+    truncate toward zero, then apply the original 32-element MX descales.
+    For each 32-element group, truncate its scaled sum to the current FP32
+    accumulator spacing before the FP32 addition. This is an empirical model
+    checked against the D64/D256 dumps, including D256 group permutations.
+    FP64 represents the explicit intermediate truncations without extra rounding.
+    Chunk KV rows to avoid materializing an entire M x N x D product tensor.
+    """
+    q = q_block.to(torch.float64)
+    k = k_mat.to(torch.float64)
+    qs = q_scale.to(torch.float64)
+    ks = k_scale.to(torch.float64)
+    result = torch.zeros((q.shape[0], k.shape[0]), dtype=torch.float64, device=q.device)
+    for n_start in range(0, k.shape[0], 64):
+        n_end = min(n_start + 64, k.shape[0])
+        accumulator = result[:, n_start:n_end]
+        for group_start in range(0, q.shape[1], QUANT_GROUP_SIZE):
+            group_sum = torch.zeros_like(accumulator)
+            for d_start in range(group_start, group_start + QUANT_GROUP_SIZE, 16):
+                products = (
+                    q[:, None, d_start:d_start + 16]
+                    * k[None, n_start:n_end, d_start:d_start + 16]
+                )
+                maximum = products.abs().amax(dim=-1, keepdim=True)
+                _, exponent = torch.frexp(maximum)
+                # frexp exponent is one greater than floor(log2(maximum)).
+                step = torch.ldexp(torch.ones_like(maximum), exponent - 19)
+                group_sum += (torch.trunc(products / step) * step).sum(dim=-1)
+            group = group_start // QUANT_GROUP_SIZE
+            increment = group_sum * qs[:, group:group + 1] * ks[None, n_start:n_end, group]
+            _, accumulator_exponent = torch.frexp(accumulator.abs())
+            # FP32 has 24 significant bits; its minimum subnormal step is 2**-149.
+            accumulator_step = torch.ldexp(
+                torch.ones_like(accumulator), torch.clamp(accumulator_exponent - 24, min=-149)
+            )
+            increment = torch.where(
+                accumulator == 0, increment,
+                torch.trunc(increment / accumulator_step) * accumulator_step,
+            )
+            accumulator = (accumulator + increment).to(torch.float32).to(torch.float64)
+        result[:, n_start:n_end] = accumulator
+    return result.to(torch.float32)
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
-    """CPU torch.matmul path: FP32 dequant + matmul."""
+    """CPU MXFP8 QK rounding with the existing non-finite fallback."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
     k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
-    scores = torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
+    qk_raw = torch.matmul(q_dequant, k_dequant.transpose(0, 1))
+    rounded_qk = _qk_matmul_rounded_cpu(q_block, q_scale_block, k_mat, k_scale_mat)
+    # Leave non-finite cases to the existing overflow/NaN handling below.
+    qk_raw = torch.where(
+        torch.isfinite(qk_raw) & torch.isfinite(rounded_qk), rounded_qk, qk_raw
+    )
+    scores = qk_raw * softmax_scale
 
     # Applying the descales before matmul can introduce a non-finite score that
     # does not exist in MXFP8 cube arithmetic.  For example, a finite E4M3
@@ -1592,8 +1646,8 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     # finite FP8 payloads in each 32-element group and applies the group
     # descales afterwards.
     #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial non-finite results.  NaNs present in either
+    # Keep the rounded result for finite values and repair artificial
+    # non-finite results from the dequant + torch.matmul fallback.  NaNs present in either
     # FP8 payload are deliberately excluded from repair and therefore continue
     # to propagate.  A genuine Cube overflow remains non-finite after the
     # grouped recomputation, so replacing it is also semantics-preserving.
@@ -1709,9 +1763,73 @@ def _qk_matmul(
     """Dispatch C1 QK matmul to CPU or NPU path."""
     if use_quant_matmul:
         return _qk_matmul_npu(q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale)
-    return _qk_matmul_cpu(
+    scores = _qk_matmul_cpu(
         q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale
     )
+    if _QK_DUMP["directory"] is not None:
+        rounded_raw = _qk_matmul_rounded_cpu(q_block, q_scale_block, k_mat, k_scale_mat)
+        # Multiplication by 1 preserves the finite raw quant_matmul result.
+        npu_raw = _npu_mxfp8_qk_matmul_impl(
+            q_block, k_mat, q_scale_block, k_scale_mat, 1.0
+        )
+        npu_scaled = _npu_mxfp8_qk_matmul_impl(
+            q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale
+        )
+        q64 = q_block.double() * _expand_d_group_scale(q_scale_block, head_dim).double()
+        k64 = k_mat.double() * _expand_d_group_scale(k_scale_mat, head_dim).double()
+        payload = {
+            "context": dict(_QK_DUMP["context"]), "scale": softmax_scale,
+            "q": q_block.cpu(), "k": k_mat.cpu(),
+            "q_scale": q_scale_block.cpu(), "k_scale": k_scale_mat.cpu(),
+            "cpu_rounded_raw": rounded_raw, "npu_raw": npu_raw,
+            "cpu_scaled": scores, "npu_scaled": npu_scaled,
+            "fp64_raw": q64 @ k64.transpose(0, 1),
+        }
+        if head_dim == 256:
+            # Temporary order probe: preserve the full D256 shape and each
+            # 32-element scale group. Identity is a repeatability control.
+            group_count = head_dim // QUANT_GROUP_SIZE
+            orders = {
+                "identity": list(range(group_count)),
+                "reverse": list(reversed(range(group_count))),
+                "even_odd": list(range(0, group_count, 2)) + list(range(1, group_count, 2)),
+                "swap_halves": list(range(group_count // 2, group_count))
+                    + list(range(group_count // 2)),
+            }
+            payload["group_orders"] = orders
+            for label, order in orders.items():
+                reordered_q = q_block.reshape(-1, group_count, QUANT_GROUP_SIZE)[
+                    :, order, :
+                ].reshape(q_block.shape).contiguous()
+                reordered_k = k_mat.reshape(-1, group_count, QUANT_GROUP_SIZE)[
+                    :, order, :
+                ].reshape(k_mat.shape).contiguous()
+                reordered_qs = q_scale_block[:, order].contiguous()
+                reordered_ks = k_scale_mat[:, order].contiguous()
+                reordered_cpu = _qk_matmul_rounded_cpu(
+                    reordered_q, reordered_qs, reordered_k, reordered_ks
+                )
+                reordered_npu = _npu_mxfp8_qk_matmul_impl(
+                    reordered_q, reordered_k, reordered_qs, reordered_ks, 1.0
+                )
+                payload[f"cpu_raw_{label}"] = reordered_cpu
+                payload[f"npu_raw_{label}"] = reordered_npu
+                logger.info(
+                    "[QK_ORDER] block=%d order=%s cpu_change=%d npu_change=%d raw_diff=%d",
+                    _QK_DUMP["index"], label,
+                    int((reordered_cpu != rounded_raw).sum().item()),
+                    int((reordered_npu != npu_raw).sum().item()),
+                    int((reordered_cpu != reordered_npu).sum().item()),
+                )
+        path = os.path.join(_QK_DUMP["directory"], f"block_{_QK_DUMP['index']:05d}.pt")
+        torch.save(payload, path)
+        logger.info(
+            "[QK_DUMP] %s raw_diff=%d scaled_diff=%d", path,
+            int((rounded_raw != npu_raw).sum().item()),
+            int((scores != npu_scaled).sum().item()),
+        )
+        _QK_DUMP["index"] += 1
+    return scores
 
 
 def _npu_exp_sub(lhs, rhs):
@@ -2204,6 +2322,12 @@ def cpu_mxfp8_golden(
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )
+                    if _QK_DUMP["directory"] is not None:
+                        _QK_DUMP["context"] = {
+                            "batch_idx": batch_idx, "head_idx": head_idx, "n2_idx": n2_idx,
+                            "q_base": q_base, "q_start": q_start,
+                            "q_len": q_len, "kv_len": kv_len, "positions": positions,
+                        }
                     scores = _qk_matmul(
                         q_block,
                         q_scale_block,
@@ -3072,7 +3196,7 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     golden outputs from reusing each other's cache. It also intentionally
     avoids pre-fix cache files whose key did not encode the backend.
     """
-    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul_qk_g16_e18_acc32_v2"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
@@ -3550,9 +3674,17 @@ if __name__ == "__main__":
         action="store_true",
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
+    parser.add_argument(
+        "--dump-qk", default=None, metavar="DIR",
+        help="临时保存 CPU/NPU QK 对照；需要 NPU，仅用于定位，不用于性能测试",
+    )
     args = parser.parse_args()
+    if args.dump_qk and (args.quant_matmul or args.rdv):
+        parser.error("--dump-qk cannot be combined with --quant_matmul or --rdv")
 
     use_quant_matmul = args.quant_matmul
+    if not use_quant_matmul:
+        logger.info("[Config] CPU QK rounding: g16_e18_acc32_v2")
     logger.info(
         "[Config] matmul backend: %s",
         "npu_quant_matmul" if args.quant_matmul else "torch.matmul (CPU)",
@@ -3563,6 +3695,8 @@ if __name__ == "__main__":
     if invalid:
         parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
     mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
+    if args.dump_qk and "cpu" not in mode:
+        parser.error("--dump-qk requires cpu mode (or all)")
 
     if args.debug:
         if args.case_name is None or args.case_id is not None:
@@ -3643,6 +3777,11 @@ if __name__ == "__main__":
             case_name = _cache_case_name(
                 case_id, args.cache_case_name, len(run_case_ids)
             )
+            if args.dump_qk:
+                dump_dir = os.path.join(args.dump_qk, case_id)
+                os.makedirs(dump_dir, exist_ok=True)
+                _QK_DUMP.update(directory=dump_dir, index=0, context={})
+                torch.save({"case": all_cases[case_id]}, os.path.join(dump_dir, "metadata.pt"))
             if debug_artifacts:
                 cache_dir = (
                     debug_artifacts["pt_dir"] if "gen" in mode else args.cache_dir
