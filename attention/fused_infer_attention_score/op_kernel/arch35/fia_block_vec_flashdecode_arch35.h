@@ -275,7 +275,9 @@ protected:
                                 .gS1DealSize = dealRowCount,
                                 .dDealSize = (uint32_t)constInfo.dSizeV};
 
-        if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+        // outLayout 是 dispatcher 下发的编译期常量。FD 位于 vector 热路径，
+        // 使用运行时 outputLayout 会强制实例化四种搬出实现，放大 icache 占用。
+        if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -283,7 +285,7 @@ protected:
                                               constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -291,7 +293,7 @@ protected:
                                               constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -299,7 +301,7 @@ protected:
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -420,7 +422,9 @@ public:
         }
     }
 
-    __aicore__ inline void CopySoftmaxLseOutput(uint32_t actualGSplitSize, uint32_t startRow)
+    // LSE 输出同样是每个 M block 一次的冷路径，拆出热代码以降低 vector icache 压力。
+    __aicore__ inline __attribute__((noinline)) void CopySoftmaxLseOutput(uint32_t actualGSplitSize,
+                                                                         uint32_t startRow)
     {
         if (constInfo.isSoftmaxLseEnable) {
             // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
