@@ -1059,6 +1059,32 @@ inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
 // 通道通信, AGMM quant 语义, 与老 HCCL_MAX_TOTAL_TILES=62 一致)。
 // 量级安全: 块长×单行字节 ≤ 1e6×5e5 = 5e11 << uint64 上限, 免老代码三段溢出回检;
 // 两约束(256MB/轮次预算)冲突时放弃整形保持原切分(老代码 UNSUPPORTED 路径)。
+// 流水线总时估计(§4.37.1, 轮数搜索/门控的统一估值器): 切 N 轮的近似总时——不可重叠段在
+// 流水线两端(与通算顺序对应), 中段取通信/计算瓶颈侧:
+//   通信在前(AG):       T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
+//   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
+// 单块(含 NoCut 候选)返回 serialTotalTime(全串行基准)。totalMmTime/serialTotalTime 由调用方
+// 一次算好传入(搜索循环内不变, 免重复求值)。
+inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult &cut, double totalMmTime,
+                                   double serialTotalTime)
+{
+    if (cut.totalTileCnt <= 1U) {
+        return serialTotalTime; // 单块即 NoCut 候选
+    }
+    const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
+    const double tCommN = ctx.commPerf.TotalCommTime(mValue, cut.totalTileCnt);
+    const uint64_t firstLen = (cut.numShortTile > 0U && !cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
+    const uint64_t lastLen = (cut.numShortTile > 0U && cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
+    if (ctx.order == CommComputeOrder::COMM_FIRST) {
+        const double commFirst = ctx.commPerf.CommTime(firstLen);
+        const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
+        return commFirst + std::max(tCommN - commFirst, totalMmTime - mmLast) + mmLast;
+    }
+    const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
+    const double commLast = ctx.commPerf.CommTime(lastLen);
+    return mmFirst + std::max(totalMmTime - mmFirst, tCommN - commLast) + commLast;
+}
+
 inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t mValue)
 {
     constexpr uint64_t MAX_ROUND_COMM_BYTES = 268435456;               // HCCL 单次调用通信量上限 (256MB)
@@ -1177,33 +1203,15 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     // 长短结构随预算重新整形), T_cut 择优; 全部候选 ≥ T_serial → NoCut。
     // 成本: N₀ ≤ MAX_COMM_ROUNDS(63), 每档纯整数重切 O(块数)——host 侧微秒级。
     const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
-    const double tComm1 = ctx.commPerf.TotalCommTime(mValue, 1U);
-    const double tMm = est.totalMatmulTime;
-    const double tSerial = tComm1 + tMm;
-    auto estimateCutTime = [&](const CommCutResult &c) -> double {
-        if (c.totalTileCnt <= 1U) {
-            return tSerial; // 单块即 NoCut 候选
-        }
-        const double tCommN = ctx.commPerf.TotalCommTime(mValue, c.totalTileCnt);
-        const uint64_t firstLen = (c.numShortTile > 0U && !c.shortTileAtBack) ? c.shortTileLen : c.longTileLen;
-        const uint64_t lastLen = (c.numShortTile > 0U && c.shortTileAtBack) ? c.shortTileLen : c.longTileLen;
-        if (ctx.order == CommComputeOrder::COMM_FIRST) {
-            const double commFirst = ctx.commPerf.CommTime(firstLen);
-            const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
-            return commFirst + std::max(tCommN - commFirst, tMm - mmLast) + mmLast;
-        }
-        const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
-        const double commLast = ctx.commPerf.CommTime(lastLen);
-        return mmFirst + std::max(tMm - mmFirst, tCommN - commLast) + commLast;
-    };
+    const double tSerial = ctx.commPerf.TotalCommTime(mValue, 1U) + est.totalMatmulTime;
     CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
-    double bestT = estimateCutTime(bestCut);
+    double bestT = EstimateCutTotalTime(ctx, bestCut, est.totalMatmulTime, tSerial);
     for (uint64_t budget = 2U; budget < bestCut.totalTileCnt; ++budget) {
         ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
         ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
         ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg);
         MergeEqualTiles(ctx.tilingM);
-        const double t = estimateCutTime(ctx.tilingM.cutRes);
+        const double t = EstimateCutTotalTime(ctx, ctx.tilingM.cutRes, est.totalMatmulTime, tSerial);
         if (t < bestT) {
             bestT = t;
             bestCut = ctx.tilingM.cutRes;
