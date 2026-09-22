@@ -154,7 +154,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | num_heads_q | int | 必选 | 表示q头数 | int32 | - | -
 | num_heads_kv | int | 必选 | 表示ori_kv/cmp_kv头数 | int32 | - | -
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
-| quant_mode | int | 必选 | 量化模式。A5支持1/2；A2/A3支持3，表示融合TQ4反量化的TurboQuant路径。metadata接口接受1、2、3，最终的平台与模式组合由主算子校验。 | int32 | - | -
+| quant_mode | int | 必选 | 量化模式。<term>Ascend 950PR/Ascend 950DT</term>支持1/2；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持3，表示融合TQ4反量化的TurboQuant路径。metadata接口接受1、2、3，最终的平台与模式组合由主算子校验。 | int32 | - | -
 | cu_seqlens_q | tensor | 可选 | 表示输入q处理的变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_cmp_kv | tensor | 可选 | 表示输入cmp_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
@@ -186,11 +186,11 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | tensor | 必选 | 表示公式中的q | float16、bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
-| quant_mode | int | 必选 | A5仅支持1/2并保持原FP8量化布局；A2/A3仅支持3，表示融合TQ4反量化。 | int32 | - | -
-| ori_kv | tensor | 可选 | 原始KV。A5使用fp8_e4m3；A2/A3 TurboQuant必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
-| cmp_kv | tensor | 可选 | 压缩KV。A5使用fp8_e4m3；A2/A3 TurboQuant必须传入UINT8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
+| quant_mode | int | 必选 | <term>Ascend 950PR/Ascend 950DT</term>仅支持1/2并保持原FP8量化布局；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持3，表示融合TQ4反量化。 | int32 | - | -
+| ori_kv | tensor | 可选 | 原始KV。<term>Ascend 950PR/Ascend 950DT</term>使用fp8_e4m3；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
+| cmp_kv | tensor | 可选 | 压缩KV。<term>Ascend 950PR/Ascend 950DT</term>使用fp8_e4m3；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant必须传入UINT8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
-| cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1；A2/A3 TurboQuant必须传入且cmp_kv_k仅支持512或1024。 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
+| cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant必须传入且cmp_kv_k仅支持512或1024。 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
 | ori_block_table | tensor | 可选 | 表示PageAttention场景下ori_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(ori_kv_s_max/ori_kv_block_size))</li></ul>
 | cmp_block_table | tensor | 可选 | 表示PageAttention场景下cmp_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(cmp_kv_s_max/cmp_kv_block_size))</li></ul>
 | cu_seqlens_q | tensor | 可选 | 表示处理输入q变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
@@ -199,7 +199,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | seqused_q | tensor | 可选 | 表示输入q每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_ori_kv | tensor | 可选 | 表示输入ori_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_cmp_kv | tensor | 可选 | 表示输入cmp_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
-| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。A5上当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。A2/A3 TurboQuant不支持传入。 | int32 | ND | <ul><li>(b,)</li></ul>
+| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。<term>Ascend 950PR/Ascend 950DT</term>上当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant不支持传入。 | int32 | ND | <ul><li>(b,)</li></ul>
 | ori_topk_length | tensor | 可选 | 表示ori_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | cmp_topk_length | tensor | 可选 | 表示cmp_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | sinks | tensor | 可选 | 表示各注意力头设置独立可学习虚拟偏移项，用于维持长文本推理时的稳定性 | float32 | ND | <ul><li>(q_n,)</li></ul>
@@ -238,18 +238,18 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
   - 当ori_mask_mode/cmp_mask_mode为0时，ori_kv_k/cmp_kv_k需要大于等于ori_topk_length/cmp_topk_length的最大值。
-  - A5上cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
+  - <term>Ascend 950PR/Ascend 950DT</term>上cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
   - attention_out：tensor类型，公式中的输出。数据类型支持float16、bfloat16，数据格式支持ND，shape和dtype与q一致。
   - return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layout_kv为PA_BBND时，ori_kv和cmp_kv支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
 
-  - `quant_mode=1/2`仅支持Ascend 950PR/Ascend 950DT，q、attention_out的数据类型为bfloat16，ori_kv、cmp_kv的数据类型为fp8_e4m3。
+  - `quant_mode=1/2`仅支持<term>Ascend 950PR/Ascend 950DT</term>，q、attention_out的数据类型为bfloat16，ori_kv、cmp_kv的数据类型为fp8_e4m3。
 
 ### TurboQuant参数约束
 
-`quant_mode=3`时仅支持A2/A3，参数约束如下：
+`quant_mode=3`时仅支持<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，参数约束如下：
 
 | 参数 | 约束 |
 | :--- | :--- |
@@ -259,7 +259,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | 序列参数 | cu_seqlens_q、seqused_ori_kv必须传入；cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_cmp_kv不支持传入。 |
 | Mask与压缩参数 | `ori_mask_mode=4`、`cmp_mask_mode=3`、`ori_win_left>=0`、`ori_win_right=0`，`cmp_ratio`仅支持4或128；cmp_residual_kv不支持传入。 |
 
-下文参数组约束未特别说明时适用于A5的`quant_mode=1/2`场景，TurboQuant以本节为准。
+下文参数组约束未特别说明时适用于<term>Ascend 950PR/Ascend 950DT</term>的`quant_mode=1/2`场景，TurboQuant以本节为准。
 
 ### 特性参数组
 
@@ -314,7 +314,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>q</td>
         <td>
             <ul>
-                <li>A5的dtype支持bfloat16；A2/A3 TurboQuant支持float16、bfloat16</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持bfloat16；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持float16、bfloat16</li>
                 <li>layout_q为BSND时，q的shape为(b, q_s, q_n, q_d)</li>
                 <li>layout_q为TND时，q的shape为(q_t, q_n, q_d)</li>
             </ul>
@@ -325,7 +325,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td rowspan="4">
             <ul>
                 <li>q、attention_out的dtype、shape需相同</li>
-                <li>A5上若cmp_kv传入，ori_kv与cmp_kv的dtype需一致；A2/A3 TurboQuant要求q、ori_kv、attention_out的dtype一致，cmp_kv为uint8</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>上若cmp_kv传入，ori_kv与cmp_kv的dtype需一致；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant要求q、ori_kv、attention_out的dtype一致，cmp_kv为uint8</li>
                 <li>layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致</li>
                 <li>layout_kv为PA_BBND时，layout_q可为BSND或TND</li>
             </ul>
@@ -337,16 +337,16 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
                 <li>q_s > 0</li>
                 <li>0 < q_n <= 128</li>
                 <li>q_d = 512</li>
-                <li>A5要求q_t > 0；A2/A3 TurboQuant允许q_t >= 0</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>要求q_t > 0；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant允许q_t >= 0</li>
                 <li>ori_kv_s > 0</li>
                 <li>cmp_kv_s > 0</li>
                 <li>kv_n = 1</li>
-                <li>A5上quant_mode=1时kv_d=608，quant_mode=2时kv_d=584；A2/A3上quant_mode=3时ori_kv的kv_d=512、cmp_kv的kv_d=258</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>上quant_mode=1时kv_d=608，quant_mode=2时kv_d=584；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>上quant_mode=3时ori_kv的kv_d=512、cmp_kv的kv_d=258</li>
                 <li>ori_kv_t > 0</li>
                 <li>cmp_kv_t > 0</li>
                 <li>ori_kv_block_nums > 0</li>
                 <li>cmp_kv_block_nums > 0</li>
-                <li>A5上1 <= ori_kv_block_size、cmp_kv_block_size <= 1024；A2/A3 TurboQuant还要求block_size为16的倍数</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>上1 <= ori_kv_block_size、cmp_kv_block_size <= 1024；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant还要求block_size为16的倍数</li>
             </ul>
         </td>
     </tr>
@@ -354,7 +354,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>ori_kv</td>
         <td>
             <ul>
-                <li>A5的dtype支持fp8_e4m3；A2/A3 TurboQuant支持float16、bfloat16且与q一致</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持fp8_e4m3；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持float16、bfloat16且与q一致</li>
                 <li>layout_kv为BSND时，ori_kv的shape为(b, ori_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，ori_kv的shape为(ori_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，ori_kv的shape为(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li>
@@ -368,7 +368,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>attention_out</td>
         <td>
             <ul>
-                <li>A5的dtype支持bfloat16；A2/A3 TurboQuant支持float16、bfloat16且与q一致</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持bfloat16；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant支持float16、bfloat16且与q一致</li>
                 <li>layout_q为BSND时，attention_out的shape为(b, q_s, q_n, q_d)</li>
                 <li>layout_q为TND时，attention_out的shape为(q_t, q_n, q_d)</li>
             </ul>
@@ -381,7 +381,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>cmp_kv</td>
         <td>
             <ul>
-                <li>A5的dtype支持fp8_e4m3；A2/A3 TurboQuant固定为uint8</li>
+                <li><term>Ascend 950PR/Ascend 950DT</term>的dtype支持fp8_e4m3；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant固定为uint8</li>
                 <li>layout_kv为BSND时，cmp_kv的shape为(b, cmp_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，cmp_kv的shape为(cmp_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，cmp_kv的shape为(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li>
@@ -780,7 +780,7 @@ metadata校验
                     <li>dtype支持int32</li>
                     <li>shape为(q_t, kv_n, cmp_kv_k)或(b, q_s, kv_n, cmp_kv_k)</li>
                     <li>无效位置填-1，其余为非负整数</li>
-                    <li>A2/A3 TurboQuant仅支持(q_t, 1, 512)或(q_t, 1, 1024)</li>
+                    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant仅支持(q_t, 1, 512)或(q_t, 1, 1024)</li>
                 </ul>
             </td>
             <td>

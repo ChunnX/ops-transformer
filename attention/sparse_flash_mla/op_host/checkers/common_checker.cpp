@@ -206,6 +206,7 @@ ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const Te
     int64_t expectedDim = 512; // 512：预期维度大小
     if (context.variant == OperatorVariant::MIXED_QUANT) {
         if (context.quantMode == 3) {
+            // TurboQuant uses 512 dimensions for ori_kv and 258 bytes for packed cmp_kv.
             expectedDim = std::string(name) == "cmp_kv" ? 258 : 512;
         } else {
             expectedDim = context.quantMode == 1 ? 608 : 584; // 608，584：混合量化模式下根据量化模式选择不同维度

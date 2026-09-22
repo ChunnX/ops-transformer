@@ -67,14 +67,14 @@
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>原始KV，Key和Value共享同一份数据。A5保持原FP8量化布局；A2/A3 TurboQuant使用与q相同dtype的512维KV。</td>
+      <td>原始KV，Key和Value共享同一份数据。<term>Ascend 950PR/Ascend 950DT</term>保持原FP8量化布局；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant使用与q相同dtype的512维KV。</td>
       <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>压缩KV，Key和Value共享同一份数据。A5保持原FP8量化布局；A2/A3 TurboQuant使用UINT8存储的258字节TQ4数据。</td>
+      <td>压缩KV，Key和Value共享同一份数据。<term>Ascend 950PR/Ascend 950DT</term>保持原FP8量化布局；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant使用UINT8存储的258字节TQ4数据。</td>
       <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
     </tr>
@@ -186,7 +186,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。A5仅支持1和2并保持原FP8量化布局；A2/A3仅支持3，表示融合TQ4反量化的TurboQuant路径。</td>
+      <td>表示量化模式。<term>Ascend 950PR/Ascend 950DT</term>仅支持1和2并保持原FP8量化布局；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持3，表示融合TQ4反量化的TurboQuant路径。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -286,8 +286,8 @@
 
 ## 约束说明
 
-- Ascend 950PR/Ascend 950DT仅支持`quant_mode=1/2`：q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN。
-- Atlas A2/A3仅支持`quant_mode=3`的TurboQuant CSA场景：q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，cmp_kv仅支持UINT8。
+- <term>Ascend 950PR/Ascend 950DT</term>仅支持`quant_mode=1/2`：q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持`quant_mode=3`的TurboQuant CSA场景：q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，cmp_kv仅支持UINT8。
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
 - 该接口支持batch一致性。
@@ -318,7 +318,7 @@
 |      cmp_kv_block_nums      |           输入cmp_kv在PagedAttention场景下的block数量         |
 
 - 通用规格约束如下：
-  - kv_n仅支持1，q_d仅支持512。A5上quant_mode=1/2的kv_d分别为608/584；A2/A3 TurboQuant上ori_kv的kv_d为512、cmp_kv的kv_d为258。
+  - kv_n仅支持1，q_d仅支持512。<term>Ascend 950PR/Ascend 950DT</term>上quant_mode=1/2的kv_d分别为608/584；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> TurboQuant上ori_kv的kv_d为512、cmp_kv的kv_d为258。
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1；支持1到128。
   - `ori_mask_mode`支持0、3和4，`cmp_mask_mode`支持0和3，`ori_win_left`和`ori_win_right`支持-1或非负数，-1表示对应方向不受限，只有`ori_mask_mode`为4时，`ori_win_left`和`ori_win_right`可以>=0。
   - `rope_head_dim`仅支持64。
