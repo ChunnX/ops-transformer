@@ -47,9 +47,6 @@ if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-# Temporary D256 diagnostics; remove after QK alignment is resolved.
-_QK_DUMP = {"directory": None, "index": 0, "context": {}}
-
 # TTK installs multiple root handlers that target the same captured stream.
 # A propagated record is consequently printed once by every handler.  The
 # asset loader imports this module under the private name below; bind that
@@ -1763,73 +1760,9 @@ def _qk_matmul(
     """Dispatch C1 QK matmul to CPU or NPU path."""
     if use_quant_matmul:
         return _qk_matmul_npu(q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale)
-    scores = _qk_matmul_cpu(
+    return _qk_matmul_cpu(
         q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale
     )
-    if _QK_DUMP["directory"] is not None:
-        rounded_raw = _qk_matmul_rounded_cpu(q_block, q_scale_block, k_mat, k_scale_mat)
-        # Multiplication by 1 preserves the finite raw quant_matmul result.
-        npu_raw = _npu_mxfp8_qk_matmul_impl(
-            q_block, k_mat, q_scale_block, k_scale_mat, 1.0
-        )
-        npu_scaled = _npu_mxfp8_qk_matmul_impl(
-            q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale
-        )
-        q64 = q_block.double() * _expand_d_group_scale(q_scale_block, head_dim).double()
-        k64 = k_mat.double() * _expand_d_group_scale(k_scale_mat, head_dim).double()
-        payload = {
-            "context": dict(_QK_DUMP["context"]), "scale": softmax_scale,
-            "q": q_block.cpu(), "k": k_mat.cpu(),
-            "q_scale": q_scale_block.cpu(), "k_scale": k_scale_mat.cpu(),
-            "cpu_rounded_raw": rounded_raw, "npu_raw": npu_raw,
-            "cpu_scaled": scores, "npu_scaled": npu_scaled,
-            "fp64_raw": q64 @ k64.transpose(0, 1),
-        }
-        if head_dim == 256:
-            # Temporary order probe: preserve the full D256 shape and each
-            # 32-element scale group. Identity is a repeatability control.
-            group_count = head_dim // QUANT_GROUP_SIZE
-            orders = {
-                "identity": list(range(group_count)),
-                "reverse": list(reversed(range(group_count))),
-                "even_odd": list(range(0, group_count, 2)) + list(range(1, group_count, 2)),
-                "swap_halves": list(range(group_count // 2, group_count))
-                    + list(range(group_count // 2)),
-            }
-            payload["group_orders"] = orders
-            for label, order in orders.items():
-                reordered_q = q_block.reshape(-1, group_count, QUANT_GROUP_SIZE)[
-                    :, order, :
-                ].reshape(q_block.shape).contiguous()
-                reordered_k = k_mat.reshape(-1, group_count, QUANT_GROUP_SIZE)[
-                    :, order, :
-                ].reshape(k_mat.shape).contiguous()
-                reordered_qs = q_scale_block[:, order].contiguous()
-                reordered_ks = k_scale_mat[:, order].contiguous()
-                reordered_cpu = _qk_matmul_rounded_cpu(
-                    reordered_q, reordered_qs, reordered_k, reordered_ks
-                )
-                reordered_npu = _npu_mxfp8_qk_matmul_impl(
-                    reordered_q, reordered_k, reordered_qs, reordered_ks, 1.0
-                )
-                payload[f"cpu_raw_{label}"] = reordered_cpu
-                payload[f"npu_raw_{label}"] = reordered_npu
-                logger.info(
-                    "[QK_ORDER] block=%d order=%s cpu_change=%d npu_change=%d raw_diff=%d",
-                    _QK_DUMP["index"], label,
-                    int((reordered_cpu != rounded_raw).sum().item()),
-                    int((reordered_npu != npu_raw).sum().item()),
-                    int((reordered_cpu != reordered_npu).sum().item()),
-                )
-        path = os.path.join(_QK_DUMP["directory"], f"block_{_QK_DUMP['index']:05d}.pt")
-        torch.save(payload, path)
-        logger.info(
-            "[QK_DUMP] %s raw_diff=%d scaled_diff=%d", path,
-            int((rounded_raw != npu_raw).sum().item()),
-            int((scores != npu_scaled).sum().item()),
-        )
-        _QK_DUMP["index"] += 1
-    return scores
 
 
 def _npu_exp_sub(lhs, rhs):
@@ -2322,12 +2255,6 @@ def cpu_mxfp8_golden(
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )
-                    if _QK_DUMP["directory"] is not None:
-                        _QK_DUMP["context"] = {
-                            "batch_idx": batch_idx, "head_idx": head_idx, "n2_idx": n2_idx,
-                            "q_base": q_base, "q_start": q_start,
-                            "q_len": q_len, "kv_len": kv_len, "positions": positions,
-                        }
                     scores = _qk_matmul(
                         q_block,
                         q_scale_block,
@@ -3195,8 +3122,9 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     Including the backend prevents CPU torch.matmul and npu_quant_matmul
     golden outputs from reusing each other's cache. It also intentionally
     avoids pre-fix cache files whose key did not encode the backend.
+    The CPU version suffix also isolates results from older QK rounding models.
     """
-    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul_qk_g16_e18_acc32_v2"
+    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul_v2"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
@@ -3674,17 +3602,9 @@ if __name__ == "__main__":
         action="store_true",
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
-    parser.add_argument(
-        "--dump-qk", default=None, metavar="DIR",
-        help="临时保存 CPU/NPU QK 对照；需要 NPU，仅用于定位，不用于性能测试",
-    )
     args = parser.parse_args()
-    if args.dump_qk and (args.quant_matmul or args.rdv):
-        parser.error("--dump-qk cannot be combined with --quant_matmul or --rdv")
 
     use_quant_matmul = args.quant_matmul
-    if not use_quant_matmul:
-        logger.info("[Config] CPU QK rounding: g16_e18_acc32_v2")
     logger.info(
         "[Config] matmul backend: %s",
         "npu_quant_matmul" if args.quant_matmul else "torch.matmul (CPU)",
@@ -3695,8 +3615,6 @@ if __name__ == "__main__":
     if invalid:
         parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
     mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
-    if args.dump_qk and "cpu" not in mode:
-        parser.error("--dump-qk requires cpu mode (or all)")
 
     if args.debug:
         if args.case_name is None or args.case_id is not None:
@@ -3777,11 +3695,6 @@ if __name__ == "__main__":
             case_name = _cache_case_name(
                 case_id, args.cache_case_name, len(run_case_ids)
             )
-            if args.dump_qk:
-                dump_dir = os.path.join(args.dump_qk, case_id)
-                os.makedirs(dump_dir, exist_ok=True)
-                _QK_DUMP.update(directory=dump_dir, index=0, context={})
-                torch.save({"case": all_cases[case_id]}, os.path.join(dump_dir, "metadata.pt"))
             if debug_artifacts:
                 cache_dir = (
                     debug_artifacts["pt_dir"] if "gen" in mode else args.cache_dir
