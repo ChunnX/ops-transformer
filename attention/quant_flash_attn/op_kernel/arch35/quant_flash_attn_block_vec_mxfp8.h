@@ -512,12 +512,14 @@ public:
         softmaxLseQueue_.DeQue<float>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
-            // bN2Offset = n2Idx * G * T_total + prefixBS1, 内部按 gIdx * T_total + s1Idx 步进
+            // kernel 内部按 T-major 连续写 G 个 LSE，避免每个 head 对
+            // N-major 输出做跨 T 的 4B strided MTE3。对外仍由 wrapper
+            // 返回 (N, T) 的 transpose view。
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
-                                                                     gmDealRowCount, constInfo_);
+            uint64_t bN2Offset =
+                prefixBS1 * constInfo_.realN2Size * constInfo_.realGSize + runInfo.realN2Idx * constInfo_.realGSize;
+            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
+                                                                 gmDealRowCount, constInfo_);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);

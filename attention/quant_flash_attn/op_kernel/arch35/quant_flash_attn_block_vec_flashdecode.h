@@ -563,11 +563,12 @@ public:
                 Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
+                    // 与 FA 路径一致，kernel 内连续写 T-major，wrapper 返回 (N,T) view。
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
-                                                                             mOffset, actualGSplitSize, constInfo_);
+                    uint64_t bN2Offset = prefixBS1 * constInfo_.realGSize * constInfo_.realN2Size +
+                                         taskInfo_.n2Idx * constInfo_.realGSize;
+                    DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                         actualGSplitSize, constInfo_);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
