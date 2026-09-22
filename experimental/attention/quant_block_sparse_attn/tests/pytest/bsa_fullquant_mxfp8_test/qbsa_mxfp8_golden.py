@@ -332,13 +332,6 @@ def validate_mxfp8_case(case):
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
         )
 
-    expected_s2_base_size = 256 if case["D"] == 256 else 512
-    if case["s2_base_size"] != expected_s2_base_size:
-        raise ValueError(
-            f"s2_base_size must be {expected_s2_base_size} for MXFP8 D={case['D']}, "
-            f"got {case['s2_base_size']}"
-        )
-
     block_size = case.get("block_size")
     sparse_q_block_size = case.get("sparse_q_block_size")
     sparse_kv_block_size = case.get("sparse_kv_block_size")
@@ -431,11 +424,8 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
-    # S2 is an internal tile, not an operator input. Accept legacy case files.
-    if case["D"] == 256 and case["s2_base_size"] == 512:
-        case["s2_base_size"] = 256
-    if case["D"] == 64 and case["s2_base_size"] == 1024:
-        case["s2_base_size"] = 512
+    # S2 is an internal tile derived from D, not an operator input.
+    case["s2_base_size"] = 256 if case["D"] == 256 else 512
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         case[name] = sequence_inputs[name].tolist()
