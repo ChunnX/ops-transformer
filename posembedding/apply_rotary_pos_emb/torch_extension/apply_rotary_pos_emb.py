@@ -153,6 +153,7 @@ class ApplyRotaryPosEmbOpBuilder(OpBuilder):
 
 
 apply_rotary_pos_emb_op_builder = ApplyRotaryPosEmbOpBuilder()
+apply_rotary_pos_emb_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_op_builder.name, "PrivateUse1")
