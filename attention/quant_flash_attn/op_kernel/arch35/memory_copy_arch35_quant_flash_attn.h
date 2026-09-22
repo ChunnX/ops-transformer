@@ -355,30 +355,12 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softm
                                                        uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                        const CONST_INFO_T &constInfo)
 {
-    uint32_t startS1Idx = mOffset / constInfo.gSize;
-    uint32_t startGIdx = mOffset % constInfo.gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
-
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + startGIdx * constInfo.t1Size + s1Idx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount = constInfo.gSize - startGIdx;
-        } else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (constInfo.t1Size - 1) * sizeof(float);
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = dealCount;
+    dataCopyParams.blockLen = sizeof(float);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(softmaxLseGm[bN2Offset + mOffset], lseSrc, dataCopyParams);
 }
 
 template <typename T, typename CONST_INFO_T>
