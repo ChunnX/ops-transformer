@@ -26,29 +26,26 @@ public:
 
     template <bool PHASE>
     __aicore__ inline void Copy2Cache(AscendC::GlobalTensor<T> &inputCache, AscendC::GlobalTensor<T> &outputCache,
-                                      uint32_t srcStart, uint32_t dstStart)
+                                      uint64_t srcStart, uint64_t dstStart)
     {
         event_t eventID = EVENT_ID0;
         uint32_t totalCopyLoop = 0; // 需要搬多少次
         uint32_t tokensPerLoop = 0; // 每次搬几个token
         uint32_t tailTokens = 0;    // 最后一轮需要搬多少个token
+        uint32_t tokenStride = tokenAlignElem_ == 0 ? 1 : tokenAlignElem_;
         if constexpr (PHASE) {
-            totalCopyLoop = ((offsetIdx * tokenSize_) / copyFp16Num);
-            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenSize_;
+            totalCopyLoop = ((offsetIdx * tokenStride) / copyFp16Num);
+            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenStride;
             tailTokens = offsetIdx - totalCopyLoop * tokensPerLoop;
         } else {
             uint32_t remainingLength = seqLen - offsetIdx - headWin;
-            totalCopyLoop = ((remainingLength * tokenSize_) / copyFp16Num);
-            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenSize_;
+            totalCopyLoop = ((remainingLength * tokenStride) / copyFp16Num);
+            tokensPerLoop = totalCopyLoop == 0 ? 0 : copyFp16Num / tokenStride;
             tailTokens = remainingLength - totalCopyLoop * tokensPerLoop;
         }
-        AscendC::DataCopyParams copyParamsIn = {static_cast<uint16_t>(tokensPerLoop), static_cast<uint16_t>(numBlocks_),
-                                                static_cast<uint16_t>(offsetPerLine), 0};
-        AscendC::DataCopyParams copyParamsOut = {static_cast<uint16_t>(tokensPerLoop),
-                                                 static_cast<uint16_t>(numBlocks_), 0, 0};
         if (totalCopyLoop != 0) {
-            CopyKvCacheDoubleBuf(inputCache, copyLocalPing_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocalPing_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tokensPerLoop), tokenBytes_, srcGapBytes_);
         }
         if constexpr (PHASE) { // partA
             srcStart = tokenSize_ * (numHeads_ * consumSeqLen + headId);
@@ -67,13 +64,10 @@ public:
                 copyLocal_ = copyLocalPong_;
                 eventID = EVENT_ID1;
             }
-            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tokensPerLoop), tokenBytes_, srcGapBytes_);
         }
         if (tailTokens != 0) {
-            copyParamsIn = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_),
-                            static_cast<uint16_t>(offsetPerLine), 0};
-            copyParamsOut = {static_cast<uint16_t>(tailTokens), static_cast<uint16_t>(numBlocks_), 0, 0};
             if constexpr (PHASE) {
                 srcStart = tokenSize_ * (numHeads_ * (consumSeqLen + offsetIdx - tailTokens) + headId);
                 dstStart = tokenSize_ * (slotValue + tokensPerLoop * totalCopyLoop);
@@ -88,8 +82,8 @@ public:
                 copyLocal_ = copyLocalPong_;
                 eventID = EVENT_ID1;
             }
-            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart, copyParamsIn,
-                                 copyParamsOut);
+            CopyKvCacheDoubleBuf(inputCache, copyLocal_, outputCache, eventID, srcStart, dstStart,
+                                 static_cast<uint16_t>(tailTokens), tokenBytes_, srcGapBytes_);
         }
     }
 

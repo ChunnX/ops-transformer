@@ -1254,3 +1254,73 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_kc_vc_dim0_mismatch)
         &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+// Compress Alibi/Rope/Omni do not require 32B-aligned head size. These cases lock that
+// contract: fp16 head=16 is aligned, head=20 is a 40B tail, head=13 is below one 32B block.
+static void RunCompressTiling(const std::string &scatterMode, int64_t numHeads, int64_t headSize, uint64_t expectKey)
+{
+    constexpr int64_t seq = 4;
+    constexpr int64_t batch = 1;
+    constexpr int64_t numBlocks = 1;
+    constexpr int64_t blockSize = 8;
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara(
+        "ScatterPaKvCache",
+        {
+            {{{seq, numHeads, headSize}, {seq, numHeads, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{numBlocks, blockSize, 1, headSize}, {numBlocks, blockSize, 1, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{batch * numHeads}, {batch * numHeads}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{seq, numHeads, headSize}, {seq, numHeads, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{numBlocks, blockSize, 1, headSize}, {numBlocks, blockSize, 1, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{batch * numHeads}, {batch * numHeads}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{batch * numHeads}, {batch * numHeads}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{batch}, {batch}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{numBlocks, blockSize, 1, headSize}, {numBlocks, blockSize, 1, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{numBlocks, blockSize, 1, headSize}, {numBlocks, blockSize, 1, headSize}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(scatterMode)},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectKey);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_alibi_aligned_head16)
+{
+    RunCompressTiling("Alibi", 1, 16, 3000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_alibi_unaligned_head20)
+{
+    RunCompressTiling("Alibi", 1, 20, 3000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_alibi_unaligned_head13)
+{
+    RunCompressTiling("Alibi", 1, 13, 3000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_alibi_unaligned_head20_nh2)
+{
+    RunCompressTiling("Alibi", 2, 20, 3000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_alibi_unaligned_head100_nh8)
+{
+    RunCompressTiling("Alibi", 8, 100, 3000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_rope_unaligned_head20)
+{
+    RunCompressTiling("Rope", 1, 20, 4000);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_omni_unaligned_head20)
+{
+    RunCompressTiling("Omni", 1, 20, 6000);
+}

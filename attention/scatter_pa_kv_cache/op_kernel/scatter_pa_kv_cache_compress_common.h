@@ -93,15 +93,36 @@ public:
         }
     }
 
+    __aicore__ inline bool IsTokenBytesAligned(uint32_t tokenBytes)
+    {
+        return tokenBytes > 0 && (tokenBytes % static_cast<uint32_t>(BLOCK_SIZE) == 0);
+    }
+
     template <typename T>
     __aicore__ inline void CopyKvCache(AscendC::GlobalTensor<T> &src, AscendC::LocalTensor<T> &ubAddr,
                                        AscendC::GlobalTensor<T> &dst, uint64_t start, uint64_t cacheStart,
-                                       AscendC::DataCopyParams &copyParamsIn, AscendC::DataCopyParams &copyParamsOut)
+                                       uint16_t tokenCount, uint32_t tokenBytes, uint32_t srcGapBytes)
     {
-        DataCopy(ubAddr, src[start], copyParamsIn);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
-        DataCopy(dst[cacheStart], ubAddr, copyParamsOut);
+        if (tokenCount == 0 || tokenBytes == 0) {
+            return;
+        }
+        if (IsTokenBytesAligned(tokenBytes)) {
+            AscendC::DataCopyParams copyParamsIn = {tokenCount, static_cast<uint16_t>(tokenBytes / BLOCK_SIZE),
+                                                    static_cast<uint16_t>(srcGapBytes / BLOCK_SIZE), 0};
+            AscendC::DataCopyParams copyParamsOut = {tokenCount, static_cast<uint16_t>(tokenBytes / BLOCK_SIZE), 0, 0};
+            DataCopy(ubAddr, src[start], copyParamsIn);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            DataCopy(dst[cacheStart], ubAddr, copyParamsOut);
+        } else {
+            AscendC::DataCopyExtParams copyParamsIn = {tokenCount, tokenBytes, srcGapBytes, 0, 0};
+            AscendC::DataCopyExtParams copyParamsOut = {tokenCount, tokenBytes, 0, 0, 0};
+            AscendC::DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
+            DataCopyPad(ubAddr, src[start], copyParamsIn, padParams);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID1);
+            DataCopyPad(dst[cacheStart], ubAddr, copyParamsOut);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
@@ -109,14 +130,30 @@ public:
     template <typename T>
     __aicore__ inline void CopyKvCacheDoubleBuf(AscendC::GlobalTensor<T> &src, AscendC::LocalTensor<T> &ubAddr,
                                                 AscendC::GlobalTensor<T> &dst, event_t eventID, uint64_t start,
-                                                uint64_t cacheStart, AscendC::DataCopyParams &copyParamsIn,
-                                                AscendC::DataCopyParams &copyParamsOut)
+                                                uint64_t cacheStart, uint16_t tokenCount, uint32_t tokenBytes,
+                                                uint32_t srcGapBytes)
     {
+        if (tokenCount == 0 || tokenBytes == 0) {
+            return;
+        }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventID);
-        DataCopy(ubAddr, src[start], copyParamsIn);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
-        DataCopy(dst[cacheStart], ubAddr, copyParamsOut);
+        if (IsTokenBytesAligned(tokenBytes)) {
+            AscendC::DataCopyParams copyParamsIn = {tokenCount, static_cast<uint16_t>(tokenBytes / BLOCK_SIZE),
+                                                    static_cast<uint16_t>(srcGapBytes / BLOCK_SIZE), 0};
+            AscendC::DataCopyParams copyParamsOut = {tokenCount, static_cast<uint16_t>(tokenBytes / BLOCK_SIZE), 0, 0};
+            DataCopy(ubAddr, src[start], copyParamsIn);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
+            DataCopy(dst[cacheStart], ubAddr, copyParamsOut);
+        } else {
+            AscendC::DataCopyExtParams copyParamsIn = {tokenCount, tokenBytes, srcGapBytes, 0, 0};
+            AscendC::DataCopyExtParams copyParamsOut = {tokenCount, tokenBytes, 0, 0, 0};
+            AscendC::DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
+            DataCopyPad(ubAddr, src[start], copyParamsIn, padParams);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventID);
+            DataCopyPad(dst[cacheStart], ubAddr, copyParamsOut);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventID);
     }
 
@@ -125,7 +162,10 @@ public:
     {
         uint32_t scalarBufStart = 0;
         tokenSize_ = 1 * static_cast<uint64_t>(headSizeK_);
-        numBlocks_ = static_cast<uint32_t>(tokenSize_) * sizeof(T) / BLOCK_SIZE;
+        tokenBytes_ = static_cast<uint32_t>(tokenSize_) * sizeof(T);
+        numBlocks_ = tokenBytes_ / BLOCK_SIZE;
+        srcGapBytes_ = (numHeads_ - 1) * tokenBytes_;
+        tokenAlignElem_ = RoundUp(tokenBytes_, BLOCK_SIZE) / sizeof(T);
         copyFp16Num = TOTAL_BUFFER_SIZE / sizeof(T) / BUFFER_NUM; // partA和partC搬运的数据量
 
         InitScalarTBuf<int32_t>(scalarBuf_, numHeads_ * numBatchs_);
@@ -155,7 +195,13 @@ public:
 
         // 掩码模式一次计算256B，需要考虑对齐
         repeatDivisor = (tokenSize_ <= MAX_MASK_NUM && tokenSize_ % MAX_MASK_NUM == 0) ? MAX_MASK_NUM : MIN_MASK_NUM;
-        addNumPerLoop = PER_FLOAT_NUM / tokenSize_;
+        addNumPerLoop = tokenSize_ == 0 ? 0 : PER_FLOAT_NUM / tokenSize_;
+        if (!IsTokenBytesAligned(tokenBytes_)) {
+            uint32_t tokenStrideF = RoundUp(static_cast<uint32_t>(tokenSize_), 8);
+            uint32_t byT = tokenAlignElem_ == 0 ? 0 : PER_FLOAT_NUM / tokenAlignElem_;
+            uint32_t byF = tokenStrideF == 0 ? 0 : PER_FLOAT_NUM / tokenStrideF;
+            addNumPerLoop = byT < byF ? byT : byF;
+        }
 
         InitTBuf<T>(totalBuf_, TOTAL_BUFFER_SIZE / sizeof(T));
         tokenLocal_ = totalBuf_.GetWithOffset<T>(static_cast<uint32_t>(MAX_FLOAT_NUM), computeBufStart);
@@ -207,7 +253,8 @@ public:
         headWin = static_cast<uint32_t>(winsLocal_.GetValue(startTaskOffset));
         seqLen = static_cast<uint32_t>(seqLenLocal_.GetValue(batchId));
         consumSeqLen = static_cast<uint32_t>(csumSeqLenLocal_.GetValue(batchId));
-        offsetPerLine = (numHeads_ - 1) * numBlocks_; // 每一个token间隔(num_heads-1)*tokenSize 此处单位为32B
+        srcGapBytes_ = (numHeads_ - 1) * tokenBytes_;
+        offsetPerLine = srcGapBytes_ / BLOCK_SIZE; // 对齐路径 DataCopy 的 32B 步长；非对齐走 Pad 的 srcGapBytes_
         offsetIdx = offsetLocal_.GetValue(startTaskOffset);
         offsetIdx = (offsetIdx == -1 || headWin == 0) ? seqLen : offsetIdx; // 当等于-1时, 跳过当前头压缩
     }
@@ -231,6 +278,9 @@ protected:
 
     uint64_t tokenSize_ = 0;
     uint32_t numBlocks_ = 0;
+    uint32_t tokenBytes_ = 0;
+    uint32_t srcGapBytes_ = 0;
+    uint32_t tokenAlignElem_ = 0;
     uint32_t copyFp16Num = 0;
     AscendC::LocalTensor<int32_t> scalarLocal_;     // 存放下面四个标量的总LocalTensor
     AscendC::LocalTensor<int32_t> winsLocal_;       // 临时存放 wins
