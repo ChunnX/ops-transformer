@@ -20,9 +20,8 @@ class AllToAllPermute {
 public:
     static constexpr uint32_t BUFFER_BYTES = 16 * 1024;
 
-    __aicore__ inline void Init(GM_ADDR rawInput, GM_ADDR output, uint64_t rows, uint32_t ranks,
-                               uint64_t bytesPerRank, uint32_t workerId, uint32_t workerCount,
-                               AscendC::TPipe *pipe)
+    __aicore__ inline void Init(GM_ADDR rawInput, GM_ADDR output, uint64_t rows, uint32_t ranks, uint64_t bytesPerRank,
+                                uint32_t workerId, uint32_t workerCount, AscendC::TPipe *pipe)
     {
         // The caller provides valid buffers, a 32-byte-aligned rank segment and a MIX_AIC_1_2 worker assignment.
         rows_ = rows;

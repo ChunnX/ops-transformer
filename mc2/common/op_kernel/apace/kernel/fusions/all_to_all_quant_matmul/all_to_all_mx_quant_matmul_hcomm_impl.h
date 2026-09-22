@@ -159,8 +159,9 @@ public:
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC,
                                                     BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::AllToAllQbmmMxKernel<
-        ProblemShape, BlockMmad, BlockScheduler, HcommCommWaitPolicy<ServerType, EnableHcommAllToAllOut>, false>;
+    using QuantMatmulKernelImpl =
+        Blaze::Gemm::Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler,
+                                                  HcommCommWaitPolicy<ServerType, EnableHcommAllToAllOut>, false>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -216,10 +217,10 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
           bool EnableHcommAllToAllOut>
 __aicore__ inline void
-AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4, EnableHcommAllToAllOut>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
-                                              GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
-                                              GM_ADDR workspaceGM, AscendC::TPipe *pipe)
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+                               EnableHcommAllToAllOut>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
+                                                             GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
+                                                             GM_ADDR workspaceGM, AscendC::TPipe *pipe)
 {
     pipe_ = pipe;
     auto &&commTiling = tilingData_->commTilingData;
@@ -227,8 +228,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
                      commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
     rankDim_ = tilingData_->rankDim;
     if constexpr (EnableHcommAllToAllOut) {
-        commState_.totalTileCnt_ = static_cast<uint32_t>(
-            commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt);
+        commState_.totalTileCnt_ = static_cast<uint32_t>(commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt);
         commState_.nextNotifyTile_ = 0;
         commState_.acknowledgedTiles_ = 0;
     }
@@ -312,9 +312,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
           bool EnableHcommAllToAllOut>
-__aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
-                                                      AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
-                                                      EnableHcommAllToAllOut>::Run()
+__aicore__ inline void
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+                               EnableHcommAllToAllOut>::Run()
 {
     if constexpr (EnableHcommAllToAllOut) {
         if ASCEND_IS_AIC {
@@ -348,8 +348,8 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
           bool EnableHcommAllToAllOut>
 __aicore__ inline void
-AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4, EnableHcommAllToAllOut>::WaitOutputTiles()
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+                               EnableHcommAllToAllOut>::WaitOutputTiles()
 {
     auto &&commTiling = tilingData_->commTilingData;
     const uint64_t elementsPerRank = commTiling.nonSplitAxisSize / rankDim_;
@@ -358,16 +358,17 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
     // This method is called only by AIV in the output specialization; AIC allocates no UB here.
     AllToAllPermute permute;
     permute.Init(commOutGM_, permuteOutGM_, splitAxisSize_, rankDim_, bytesPerRank,
-                 static_cast<uint32_t>(AscendC::GetBlockIdx()),
-                 static_cast<uint32_t>(2 * AscendC::GetBlockNum()), pipe_);
+                 static_cast<uint32_t>(AscendC::GetBlockIdx()), static_cast<uint32_t>(2 * AscendC::GetBlockNum()),
+                 pipe_);
     for (uint32_t tileIdx = 0; tileIdx < commState_.totalTileCnt_; ++tileIdx) {
         AscendC::CrossCoreWaitFlag(HCOMM_DATA_READY_FLAG);
         AscendC::SyncAll<true>();
         const bool isHead = tileIdx < commTiling.splitAxisTileCnt;
         const uint64_t rowCount = isHead ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
-        const uint64_t rowStart = isHead ? static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize :
-            static_cast<uint64_t>(commTiling.splitAxisTileCnt) * commTiling.splitAxisTileSize +
-            (tileIdx - commTiling.splitAxisTileCnt) * commTiling.splitAxisTailSize;
+        const uint64_t rowStart =
+            isHead ? static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize :
+                     static_cast<uint64_t>(commTiling.splitAxisTileCnt) * commTiling.splitAxisTileSize +
+                         (tileIdx - commTiling.splitAxisTileCnt) * commTiling.splitAxisTailSize;
         // AlltoAll's recv contract includes self rank. Keep matmul's original local-x1 path unchanged.
         permute.CopyTile(rowStart, rowCount);
         // Idle AIVs still participate in every notification, barrier and window ACK.
@@ -382,8 +383,8 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
           bool EnableHcommAllToAllOut>
 __aicore__ inline void
-AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4, EnableHcommAllToAllOut>::SetupParams(Params &out, MatmulMode matmulMode)
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+                               EnableHcommAllToAllOut>::SetupParams(Params &out, MatmulMode matmulMode)
 {
     auto &&commTiling = tilingData_->commTilingData;
     const auto &mmTile = tilingData_->tileQbmmTilingData;
@@ -431,8 +432,8 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
           bool EnableHcommAllToAllOut>
 __aicore__ inline void
-AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4, EnableHcommAllToAllOut>::MatmulProcess(MatmulMode matmulMode)
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+                               EnableHcommAllToAllOut>::MatmulProcess(MatmulMode matmulMode)
 {
     Params params;
     SetupParams(params, matmulMode);
