@@ -138,6 +138,12 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
+    // 发起follower两行x2回读的MTE2搬运，使其与下方gate计算重叠；
+    // follower的x2_out在partial交换前已写GM，此处已具备可见性。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -147,11 +153,7 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
 
     // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
     // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
-    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
-    // 避免按tile、按head重复发出MTE2搬运指令。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+    // 回读已在gate计算前发出，此处回收其MTE2完成事件。
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
