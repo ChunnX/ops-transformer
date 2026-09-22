@@ -25,11 +25,16 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
+    // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        sumSq0 = ReduceSumSqFromCache(0, D_);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            sumSq0 += ReduceSumSqFromCache(tOff, tD);
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 

@@ -300,11 +300,16 @@ KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>:
     LoadTokenWeights(token, postVals);
 
     // 第一遍：沿完整D轴计算R1。
+    // D不超过平方缓存容量时一次归约完整D，减少每个分块的ReduceSum与GetValue等待。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    if (D_ <= GAMMA1_CACHE_MAX_D) {
+        sumSq0 = ReduceSumSqFromCache(0, D_);
+    } else {
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            sumSq0 += ReduceSumSqFromCache(tOff, tD);
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
