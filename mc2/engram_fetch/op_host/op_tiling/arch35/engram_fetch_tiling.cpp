@@ -22,6 +22,7 @@
 #include "register/op_def_registry.h"
 #include "../../../op_kernel/engram_fetch_tiling_data.h"
 #include "../../../op_kernel/engram_fetch_tiling_key.h"
+#include "../../../op_api/engram_fetch_mode_def.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -43,6 +44,8 @@ constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK_INDEX = 1U;
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 2U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
+constexpr uint32_t ATTR_FETCH_MODE_INDEX = 5U;
+
 constexpr uint32_t SF_TABLE_INDEX = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
@@ -623,7 +626,7 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
 /**
  * @brief 设置tiling key
  */
-static void SetTilingKey(gert::TilingContext *context, bool isTraining)
+static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isLocalMode)
 {
     const char *nodeName = context->GetNodeName();
     bool hasSf = false;
@@ -637,11 +640,17 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining)
     hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
             fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
             fetchedSfShape->GetStorageShape().GetDim(1) > 0;
-    const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
-                                            GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
+    uint64_t tilingKey;
+    if (isTraining) {
+        // Local mode is inference-only; training was rejected earlier in TilingFunc.
+        tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf);
+    } else {
+        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE, hasSf)
+                                 : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
+    }
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, hasSf=%d).", tilingKey, isTraining,
-            static_cast<int32_t>(hasSf));
+    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, isLocalMode=%d, hasSf=%d).", tilingKey,
+            isTraining, isLocalMode, static_cast<int32_t>(hasSf));
 }
 
 /**
@@ -727,13 +736,29 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
     bool isTraining = false;
+    bool isLocalMode = false;
     auto attrs = context->GetAttrs();
     if (attrs != nullptr) {
         auto withGradPtr = attrs->GetAttrPointer<int64_t>(ATTR_WITH_GRAD_INDEX);
         if (withGradPtr != nullptr && *withGradPtr != 0) {
             isTraining = true;
         }
+        auto fetchModePtr = attrs->GetAttrPointer<int64_t>(ATTR_FETCH_MODE_INDEX);
+        if (fetchModePtr != nullptr) {
+            OP_TILING_CHECK(*fetchModePtr != ENGRAM_FETCH_MODE_SLICED && *fetchModePtr != ENGRAM_FETCH_MODE_LOCAL,
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "fetch_mode",
+                                                      std::to_string(*fetchModePtr).c_str(), "[0, 1]"),
+                            return ge::GRAPH_FAILED);
+            isLocalMode = (*fetchModePtr == ENGRAM_FETCH_MODE_LOCAL);
+        }
     }
+
+    // fetch_mode=local supports inference only
+    OP_TILING_CHECK((isTraining && isLocalMode),
+                    OP_LOGE(nodeName,
+                            "fetch_mode=1 (local, full replication) only supports inference, "
+                            "training (with_grad=1) is not supported."),
+                    return ge::GRAPH_FAILED);
 
     // 1. tensor check (ptr + dtype + shape + format)
     int64_t numTokens = 0;
@@ -765,7 +790,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
     // 5. set tiling key
-    SetTilingKey(context, isTraining);
+    SetTilingKey(context, isTraining, isLocalMode);
 
     // 6. set workspace
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, isTraining) != ge::GRAPH_SUCCESS,
@@ -773,7 +798,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
 
     // 7. print info
     PrintEngramFetchTilingData(tilingData, nodeName);
-    OP_LOGI(nodeName, "EngramFetch tiling end. (isTraining=%d)", isTraining);
+    OP_LOGI(nodeName, "EngramFetch tiling end. (isTraining=%d, isLocalMode=%d)", isTraining, isLocalMode);
     return ge::GRAPH_SUCCESS;
 }
 
