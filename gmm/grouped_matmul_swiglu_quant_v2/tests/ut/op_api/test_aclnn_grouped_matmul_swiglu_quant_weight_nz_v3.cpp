@@ -217,9 +217,6 @@ struct V3Case {
             ret = invoke(xDesc, weightDesc, weightScaleDesc, nullptr, nullptr, xScaleDesc, nullptr, groupListDesc,
                          outputDesc, outputScaleDesc);
         }
-        if (tuningArray != nullptr) {
-            aclDestroyIntArray(tuningArray);
-        }
         return ret;
     }
 };
