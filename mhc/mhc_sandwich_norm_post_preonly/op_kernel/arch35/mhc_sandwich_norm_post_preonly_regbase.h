@@ -249,28 +249,6 @@ __aicore__ inline void Add(const LocalTensor<float> &dst, const LocalTensor<floa
     }
 }
 
-// 手写寄存器归约：每个VF寄存器内Reduce求和，再用VL1 mask顺序累加，
-// 避免高层ReduceSum接口的Scalar调度开销。要求count为VL_FP32的整数倍（本算子D分块均满足）。
-__aicore__ inline void ReduceSumReg(const LocalTensor<float> &dst, const LocalTensor<float> &src, uint32_t count)
-{
-    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        RegTensor<float> srcReg, reduceReg, accReg;
-        MaskReg allMask = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-        MaskReg accMask = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
-        AscendC::Reg::Duplicate(accReg, 0.0f, allMask);
-        for (uint16_t i = 0; i < loops; ++i) {
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Reduce<AscendC::Reg::ReduceType::SUM>(reduceReg, srcReg, allMask);
-            AscendC::Reg::Add(accReg, accReg, reduceReg, accMask);
-        }
-        DataCopy(dstAddr, accReg, accMask);
-    }
-}
-
 __aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
