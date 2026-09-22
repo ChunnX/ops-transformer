@@ -143,6 +143,8 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
     }
     expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
                                  curCoreIndicesElements_ * cols_);
+    // expandedX为写一次不读的流式输出，禁用L2避免冲刷x散射读的缓存驻留
+    expandedXGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale + blockIdx_ * perCoreIndicesElements_,
                                      curCoreIndicesElements_);
 
