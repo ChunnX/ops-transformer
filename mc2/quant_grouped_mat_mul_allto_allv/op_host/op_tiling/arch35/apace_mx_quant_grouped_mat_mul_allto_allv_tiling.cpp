@@ -18,7 +18,9 @@
  *   2. 运行时环境变量 MC2_QUANT_GMM_A2AV_APACE=1；
  *   3. MX 量化模式（gmmX/gmmWeight 量化模式均为 mx）；
  *   4. comm_mode 属性为 ccu（apace hcomm 通路当前仅支持 CCU 引擎）；
- *   5. gmmX 非空且 H1 为 64 的倍数（MX scale 对齐 + SWAT 引擎约束）。
+ *   5. gmmX 非空且 H1 为 64 的倍数（MX scale 对齐 + SWAT 引擎约束）；
+ *   6. gmmX 与 gmmWeight dtype 相同（kernel 侧 APACE_GMM_A2AV_MX_DTYPE_OK 守卫要求，
+ *      混合 MXFP8 组合回退原通路，避免下发 kernel 兜底空跑的 tiling key）。
  */
 
 #include "op_mc2.h"
@@ -76,6 +78,15 @@ bool ApaceMxQuantGroupedMatmulAllToAllvTiling::IsCapable()
         OP_LOGD(opName_, "Apace path requires MX quant mode, skip.");
         return false;
     }
+    // 与 kernel 侧 APACE_GMM_A2AV_MX_DTYPE_OK 守卫对齐：Blaze GroupedMatmulMxKernel 仅支持
+    // A/B 同 dtype；混合 MXFP8（E4M3FN×E5M2 交叉）时 kernel 兜底分支直接 return，
+    // 输出不写且本 rank 静默掉队、对端 hccl Wait 挂死——须在此回退原通路
+    const auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
+    const auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
+    if (gmmXDesc == nullptr || gmmWeightDesc == nullptr || gmmXDesc->GetDataType() != gmmWeightDesc->GetDataType()) {
+        OP_LOGD(opName_, "Apace path requires gmmX/gmmWeight same dtype, skip.");
+        return false;
+    }
     // apace hcomm 通路当前仅支持 CCU 通信引擎
     uint8_t commMode = 0xFFU;
     if ((QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) || (commMode != Mc2Comm::COMM_MODE_CCU)) {
@@ -93,7 +104,8 @@ bool ApaceMxQuantGroupedMatmulAllToAllvTiling::IsCapable()
         OP_LOGD(opName_, "Apace path requires non-empty gmmX and H1 multiple of 64, skip.");
         return false;
     }
-    OP_LOGI(opName_, "ApaceMxQuantGroupedMatmulAllToAllvTiling capable.");
+    // ERROR 级别确保现场可见：这是"tiling 实际选择 apace 通路"的直接证据
+    OP_LOGE(opName_, "Apace tiling选中apace通路(capable) rank判定完毕");
     return true;
 }
 
@@ -107,8 +119,9 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::RunSwatTiling(uint64_t
     const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     const uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
 
-    // mmX/mmWeight dtype 与 gmmX/gmmWeight 一致（CheckMxQuantDtypeConstraints 已校验）
-    if (localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1) {
+    // mmX/mmWeight dtype 与 gmmX/gmmWeight 一致（CheckMxQuantDtypeConstraints 已校验）；
+    // IsCapable 已要求 gmmX/gmmWeight 同 dtype，混合组合不可达（原通路可处理）
+    if (localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1 && localParams_.gmmWeightDtype == ge::DT_FLOAT4_E2M1) {
         RunSwatEngine<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1>(platformInfoPtr, aicNum, aivNum, m, n,
                                                                                   k, transB, mmTile);
     } else if (localParams_.gmmXDtype == ge::DT_FLOAT8_E5M2 && localParams_.gmmWeightDtype == ge::DT_FLOAT8_E5M2) {
@@ -265,8 +278,8 @@ uint64_t ApaceMxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, TILINGKEY_TPL_APACE, true);
-    OP_LOGD(opName_, "Apace GET_TPL_TILING_KEY: [%d,%d,%d,%d,1], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, TILINGKEY_TPL_APACE, tilingKey);
+    // ERROR 级别确保现场可见：key 值可与部署二进制 json 的 kernelList 对账（匹配则实例存在）
+    OP_LOGE(opName_, "Apace tilingKey=%lu (须存在于二进制kernelList, 否则实例缺失)", tilingKey);
     return tilingKey;
 }
 

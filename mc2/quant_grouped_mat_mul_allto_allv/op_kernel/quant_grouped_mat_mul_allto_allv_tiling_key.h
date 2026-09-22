@@ -45,9 +45,9 @@
  * 参数说明：
  * - TILINGKEY_GMM_WEIGHT_TRANS: GMM 计算权重转置场景 (0=不转置, 1=转置)
  * - TILINGKEY_SHARED_MM_WEIGHT_TRANS: 共享专家 MM 计算权重转置场景 (0=不转置, 1=转置)
- * - TILINGKEY_USING_APACE_IMPL: 是否走 apace 通路（与镜像算子 PR 11573 同款机制：
- *   SEL 组合经 ASCENDC_TPL_KERNEL_TYPE_SEL 声明内核任务类型，apace=AIC_ONLY，
- *   原通路=MIX_AIC_1_2；kernel 模板签名携带该参数）
+ * - TILINGKEY_USING_APACE_IMPL: 是否走 apace 通路（SEL 组合经 ASCENDC_TPL_KERNEL_TYPE_SEL
+ *   声明内核任务类型；全部组合统一 MIX_AIC_1_2——MC2 通信域辅助 task 依赖 AIV，
+ *   AIC_ONLY 真机验证 kernel 仅 Init+Finalize 也卡死；kernel 模板签名携带该参数）
  */
 ASCENDC_TPL_ARGS_DECL(QuantGroupedMatMulAlltoAllv,
 

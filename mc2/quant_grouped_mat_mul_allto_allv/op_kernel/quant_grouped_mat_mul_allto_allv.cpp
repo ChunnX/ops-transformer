@@ -72,9 +72,15 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
 #endif
 
     if constexpr (TILINGKEY_USING_APACE_IMPL) {
-        // apace hcomm 融合通路（AIC-only，镜像算子 PR 11573 同款模型）：
-        // GMM 走 Blaze GroupedMatmulMxKernel，AllToAllV 由全部 AIC 核经 Hccl 提交；
-        // 内核任务类型由 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL(AIC_ONLY) 声明
+        // apace hcomm 融合通路（MIX_AIC_1_2，与原通路同款双核模型）：
+        // AIC 走 Blaze GroupedMatmulMxKernel，AIV block0 经 Hccl 提交/等待 AllToAllV，
+        // 其余 AIV 参与 Wait/Finalize 多核协议；
+        // 内核任务类型由 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL(MIX_AIC_1_2) 声明
+        // （MC2 通信域辅助 task 依赖 AIV，不可声明 AIC_ONLY——真机验证 AIC_ONLY 下
+        //   kernel 仅 Init+Finalize 也卡死，与 kernel 内容无关）
+        // 部署自检 magic：block0 首核先写 y[0]=0xA5A5A5A5，host 侧卡死后读 y 前 4 字节
+        // 即可判定"新二进制确实在跑 + 确实走 apace 分支"（排除部署/缓存/通路选择问题）
+        *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
 #if defined(ENABLE_APACE_QUANT_GMM_A2AV)
 #if APACE_GMM_A2AV_MX_DTYPE_OK()
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommQuantGmmAlltoAllvTilingData, apaceTilingData, tilingGM);
