@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-Flash Attention 反向梯度计算算子。根据前向注意力计算的中间结果（softmax_lse、attn_out）和上游梯度（do），计算 Q/K/V 的梯度（dq/dk/dv）。
+Flash Attention 反向梯度计算算子。根据前向注意力计算的中间结果（softmax_lse、attn_out）和上游梯度（do），计算 Q/K/V 的梯度（dq/dk/dv）；提供 `sinks` 时同时计算 sink 的梯度 `dsink`。
 
 其中 $P = Softmax(scale \cdot QK^T - softmax\_lse)$，反向计算公式为：
 
@@ -17,6 +17,19 @@ $$
 $$
 dK=scale \cdot (dS^T \cdot Q)
 $$
+
+当提供 `sinks` 时，前向 softmax 分母额外含 sink 项（`lse` 已包含该贡献），
+其梯度按 batch / S1 / S2 归约：
+
+$$
+dSink=-\sum_{b,s1,s2} P \cdot dP \cdot \exp(sink-softmax\_lse)
+$$
+
+其中 `dP=dO \cdot V^T`。kernel 按 task（s2 块）在块内把 `P \cdot dP` 逐行乘
+`\exp(sink-softmax\_lse)` 后归约，再归约成 `dsink`：每个 AIV 子核把本 task
+的部分和以 fp32 `atomicAdd` 累加到 workspace 中自己独占的槽位行（一行一个
+AIV，只由本 AIV 写，无跨核竞争；进主循环前该行已由 pre 阶段清零）；`sync_all`
+之后由 AIV0 按固定行序（aiv 0..aivCount-1）归约成 `dsink`。
 
 ## 输入输出
 
@@ -45,6 +58,11 @@ $$
 | dq | BF16/FP16 | Query 梯度 |
 | dk | BF16/FP16 | Key 梯度 |
 | dv | BF16/FP16 | Value 梯度 |
+| dsink | FP32 | Sink 梯度，shape 为 (N1,)。`sinks` 为空时为全 0 |
+
+> torch 接口一次性返回 `(dq, dk, dv, dsink)` 四个张量；`dsink` 由 kernel 在
+> workspace 槽位区累加后经固定行序归约写出，torch 层用 `at::zeros` 分配，
+> 保证接口结果始终有定义。
 
 ### 属性
 

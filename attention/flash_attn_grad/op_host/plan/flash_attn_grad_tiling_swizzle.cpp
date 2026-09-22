@@ -54,6 +54,8 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
         trace.swizzleReject = "tnd-layout";
         return;
     }
+    // mask 3/4 不再短路。门槛与 mask0 共用下面的方向 / liveBytes / 列数下限。
+    // 过门后 kernel 走 HeadSliceSplit，未过门走 metadata + skip_invalid。
     if (schedule.usedCube != info.aicNum) {
         trace.swizzleReject = "partial-chip";
         return;

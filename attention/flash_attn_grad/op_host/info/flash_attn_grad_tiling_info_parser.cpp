@@ -27,14 +27,20 @@ bool OptionalInputExists(gert::TilingContext *context, size_t index)
     return (shape != nullptr) && (shape->GetStorageShape().GetDimNum() > 0);
 }
 
-// attn_mask 只在 mask_mode 为 3/4 时有意义；mask_mode=0 下即便传了也不算数
-// （checker 会拒绝这种组合，这里保持与之一致的判定）。
-bool HasAttenMask(gert::TilingContext *context, int64_t maskMode)
+// L2 写 mask 相关解析字段：先把用户 mask=4 且 win=(-1,-1) 归一成有效 maskMode=0，
+// 再按有效 maskMode 派生 hasAttenMask。必须留在 parser，不能进 plan/（L4 不得回写）。
+// 不能做成只返回 bool 的查询：useActualCores / EncodeTilingKey / bn2NeedZero / FillSparse
+// 读的是 maskMode，改写和派生必须在同一处、同一份 info 上完成。
+void FillAttenMaskInfo(gert::TilingContext *context, FagParsedInfo &info)
 {
-    if (maskMode == MASK_MODE_NO_MASK || (maskMode != MASK_MODE_CAUSAL && maskMode != MASK_MODE_WINDOW)) {
-        return false;
+    if (info.maskMode == MASK_MODE_WINDOW && info.winLeft == -1 && info.winRight == -1) {
+        info.maskMode = MASK_MODE_NO_MASK;
     }
-    return OptionalInputExists(context, ATTN_MASK_INDEX);
+    if (info.maskMode == MASK_MODE_CAUSAL || info.maskMode == MASK_MODE_WINDOW) {
+        info.hasAttenMask = OptionalInputExists(context, ATTN_MASK_INDEX);
+    } else {
+        info.hasAttenMask = false;
+    }
 }
 
 // 把两种非 TND 布局折叠成同一种四维紧凑视图 [viewD0, S, viewD2, D]：
@@ -215,7 +221,7 @@ ge::graphStatus ParseFlashAttnGradInfo(gert::TilingContext *context, FagParsedIn
     }
 
     info.hasSeqused = OptionalInputExists(context, SEQUSED_Q_INDEX) || OptionalInputExists(context, SEQUSED_KV_INDEX);
-    info.hasAttenMask = HasAttenMask(context, info.maskMode);
+    FillAttenMaskInfo(context, info);
     info.hasSinks = OptionalInputExists(context, SINKS_INDEX);
 
     FillLayoutView(info);
