@@ -18,15 +18,12 @@ namespace MegaMoeImpl {
 using namespace AscendC;
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-// 清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
+// 仅由 AIV 调用。清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
 // 清零范围一律取自 WorkspaceInfo 在分配处记账的元素数，与布局恒同源。
 template <bool TopkWeightsPrefetch>
 __aicore__ inline void ResetSyncStatus(const AivJobContext &job, const Params &params, int32_t resetBatchElementCount,
                                        LocalTensor<int32_t> &resetTensor)
 {
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
     if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs || resetBatchElementCount <= 0) {
         return;
     }
