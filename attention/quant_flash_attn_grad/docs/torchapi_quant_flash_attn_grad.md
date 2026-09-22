@@ -25,8 +25,9 @@
 
 - **接口功能**:
 
-  `quant_flash_attn_grad`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttnGrad`算子完成HIFLOAT8量化场景下的注意力反向梯度计算。该接口为`quant_flash_attn`正向算子的配套反向接口，用于计算Query、Key、Value的梯度（dq、dk、dv）以及sink梯度（dsink）。当前支持HIFLOAT8量化数据类型，支持BSND、BNSD两种数据排布格式。
-   `quant_flash_attn_grad`的元数据生成接口复用`quant_flash_attn_metadata`，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
+  `quant_flash_attn_grad`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttnGrad`算子完成HIFLOAT8量化场景下的注意力反向梯度计算。该接口为`quant_flash_attn`正向算子的配套反向接口，用于计算Query、Key、Value的梯度（dq、dk、dv）以及sink梯度（dsink）。当前支持HIFLOAT8量化数据类型，支持BSND、BNSD、TND三种数据排布格式；支持全计算（mask_mode=0）、Causal（mask_mode=3）和Sliding Window（mask_mode=4）三种mask模式。
+  在TND排布下，Q、K、V按变长序列打包存储，需通过cu_seqlens_q、cu_seqlens_kv描述各batch的序列长度，也可通过seqused_q、seqused_kv进一步指定各batch实际参与运算的序列长度；在BSND、BNSD排布下可通过seqused_q、seqused_kv截断各batch的冗余运算。
+   `quant_flash_attn_grad`的元数据生成接口复用`quant_flash_attn_metadata`，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。在TND排布或传入seqused_q、seqused_kv的变长场景下，metadata还携带逐batch的调度信息，必须由`quant_flash_attn_metadata`生成并传入。典型调用流程如下：
 
   1. 准备`q`、`k`、`v`等输入。
   2. 调用`quant_flash_attn_metadata`生成`metadata`。
@@ -104,7 +105,7 @@
 
 > [!NOTE]
 >
-> Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。
+> Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。TND排布下Q_T表示所有batch的q序列长度累加和，KV_T表示所有batch的k/v序列长度累加和。
 
 ## 函数原型
 调用quant_flash_attn_grad接口之前，请先调用前置接口quant_flash_attn_metadata，完成quant_flash_attn_grad负载均衡的计算。
@@ -179,20 +180,20 @@ cann_ops_transformer.quant_flash_attn_grad(
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
 | quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
-| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
-| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
-| seqused_q | Tensor | 可选 | Q的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
-| seqused_kv | Tensor | 可选 | KV的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0。TND排布下必须传入，非TND排布不支持传入 | int32 | ND | (B+1,) | × |
+| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0。TND排布下必须传入，非TND排布不支持传入 | int32 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | Q的指定每batch中实际使用的序列长度，截断冗余运算。TND排布下其值需小于等于对应batch的cu_seqlens_q段长度 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | KV的指定每batch中实际使用的序列长度，截断冗余运算。TND排布下其值需小于等于对应batch的cu_seqlens_kv段长度 | int32 | ND | (B,) | × |
 | v_descale | Tensor | 可选 | v的反量化缩放因子 | float32 | ND | (1,) | × |
-| batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为None | int32 | - | - | - |
+| batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。TND排布下不支持传入。默认值为None | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
-| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
-| win_left | int | 可选 | window左界限 | int32 | - | - | - |
-| win_right | int | 可选 | window右界限 | int32 | - | - | - |
-| layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」。当前版本支持0/3/4 | int32 | - | - | - |
+| win_left | int | 可选 | window左界限，仅在mask_mode=4时生效，-1表示该方向不限窗；mask_mode不为4时需保持默认值-1 | int32 | - | - | - |
+| win_right | int | 可选 | window右界限，仅在mask_mode=4时生效，-1表示该方向不限窗；mask_mode不为4时需保持默认值-1 | int32 | - | - | - |
+| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"BSND"、"BNSD"、"TND" | string | - | - | - |
 | layout_q_descale | string | 可选 | 定义输入q_descale张量的布局格式 | string | - | - | - |
-| layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
+| layout_kv | string | 可选 | 定义输入k和v张量的布局格式，支持"BSND"、"BNSD"、"TND" | string | - | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
 | is_grad_enabled | bool | 可选 | 是否启用反向梯度场景的metadata生成。默认值为True。当为True时，metadata用于配套的反向算子quant_flash_attn_grad | BOOL | - | - | - |
 
@@ -200,9 +201,9 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| q | Tensor | 必选 | 公式中的Q，量化数据 | uint8 | ND | BSND: (B, Q_S, Q_N, D)<br>BNSD: (B, Q_N, Q_S, D) | × |
-| k | Tensor | 必选 | 公式中的K，量化数据 | uint8 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
-| v | Tensor | 必选 | 公式中的V，量化数据 | uint8 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
+| q | Tensor | 必选 | 公式中的Q，量化数据 | uint8 | ND | BSND: (B, Q_S, Q_N, D)<br>BNSD: (B, Q_N, Q_S, D)<br>TND: (Q_T, Q_N, D) | × |
+| k | Tensor | 必选 | 公式中的K，量化数据 | uint8 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D)<br>TND: (KV_T, KV_N, D) | × |
+| v | Tensor | 必选 | 公式中的V，量化数据 | uint8 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D)<br>TND: (KV_T, KV_N, D) | × |
 | dout | Tensor | 必选 | 正向输出attn_out对应的梯度，量化数据 | uint8 | ND | 与q的shape一致 | × |
 | attn_out | Tensor | 必选 | 正向计算输出的attn_out | bfloat16 | ND | 与q的shape一致 | × |
 | q_descale | Tensor | 必选 | q的反量化缩放因子 | float32 | ND | (1,) | × |
@@ -211,23 +212,23 @@ cann_ops_transformer.quant_flash_attn_grad(
 | do_descale | Tensor | 必选 | dout的反量化缩放因子 | float32 | ND | (1,) | × |
 | p_scale | Tensor | 必选 | P矩阵的量化缩放因子 | float32 | ND | (1,) | × |
 | ds_scale | Tensor | 必选 | 反量化缩放因子 | float32 | ND | (1,) | × |
-| softmax_lse | Tensor | 必选 | 注意力正向计算的输出softmaxLse | float32 | ND | (B, Q_N, Q_S) | × |
-| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
-| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
-| seqused_q | Tensor | 可选 | 指定每batch中q实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
-| seqused_kv | Tensor | 可选 | 指定每batch中kv实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| softmax_lse | Tensor | 必选 | 注意力正向计算的输出softmaxLse | float32 | ND | BSND/BNSD: (B, Q_N, Q_S)<br>TND: (Q_N, Q_T) | × |
+| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0。TND排布下必须传入，非TND排布不支持传入 | int32 | ND | (B+1,) | × |
+| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0。TND排布下必须传入，非TND排布不支持传入 | int32 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | 指定每batch中q实际使用的序列长度，截断冗余运算。TND排布下其值需小于等于对应batch的cu_seqlens_q段长度 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | 指定每batch中kv实际使用的序列长度，截断冗余运算。TND排布下其值需小于等于对应batch的cu_seqlens_kv段长度 | int32 | ND | (B,) | × |
 | sinks | Tensor | 可选 | sink场景下的输入tensor。当前版本不支持，传None即可 | float32 | ND | (Q_N,) | × |
-| attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | × |
-| metadata | Tensor | 可选 | tiling下沉的aicpu算子输出结果 | int32 | ND | (2, max_schedule_size) | × |
+| attn_mask | Tensor | 可选 | 掩码矩阵，当mask_mode为3或4时必须传入，mask_mode为0时不允许传入 | int8 | ND | (2048, 2048) | × |
+| metadata | Tensor | 可选 | tiling下沉的aicpu算子输出结果，当前不支持不传入，必须由quant_flash_attn_metadata生成 | int32 | ND | (2, max_schedule_size) | × |
 | quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
 | softmax_scale | float | 可选 | 缩放系数，默认值为1.0。推荐值：sqrt(head_dim)的倒数 | float32 | - | - | - |
-| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」。当前版本仅支持0 | int32 | - | - | - |
-| win_left | int | 可选 | window左界限，默认值为-1 | int32 | - | - | - |
-| win_right | int | 可选 | window右界限，默认值为-1 | int32 | - | - | - |
-| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限，-1表示自动推导。默认值为-1 | int32 | - | - | - |
-| max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限，-1表示自动推导。默认值为-1 | int32 | - | - | - |
-| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"BSND"、"BNSD"，默认值为"BSND" | string | - | - | - |
-| layout_kv | string | 可选 | 定义输入k/v张量的布局格式，支持"BSND"、"BNSD"，默认值为"BSND" | string | - | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」。当前版本支持0/3/4 | int32 | - | - | - |
+| win_left | int | 可选 | window左界限，仅在mask_mode=4时生效，-1表示该方向不限窗；mask_mode不为4时需保持默认值-1 | int32 | - | - | - |
+| win_right | int | 可选 | window右界限，仅在mask_mode=4时生效，-1表示该方向不限窗；mask_mode不为4时需保持默认值-1 | int32 | - | - | - |
+| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限（仅TND排布支持），-1表示自动推导。默认值为-1 | int32 | - | - | - |
+| max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限（仅TND排布支持），-1表示自动推导。默认值为-1 | int32 | - | - | - |
+| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"BSND"、"BNSD"、"TND"，默认值为"BSND" | string | - | - | - |
+| layout_kv | string | 可选 | 定义输入k/v张量的布局格式，支持"BSND"、"BNSD"、"TND"，默认值为"BSND" | string | - | - | - |
 
 ### quant_mode 枚举
 `quant_mode`在Python接口中支持传入`IntEnum`枚举或对应int值，枚举定义于`cann_ops_transformer.ops.quant_flash_attn_grad`
@@ -247,7 +248,7 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 > [!NOTE]
 >
-> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前版本仅支持 mask_mode = 0（`ALL`），其他模式暂不支持。
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前版本支持 mask_mode = 0（`ALL`）、3（`CAUSAL`）、4（`WINDOW`）。当 mask_mode 为 3 或 4 时必须传入 attn_mask 矩阵；当 mask_mode 为 0 时不允许传入 attn_mask。mask_mode=4 时通过 win_left/win_right 指定滑窗范围，-1 表示该方向不限窗。
 
 ## 返回值说明
 
@@ -261,9 +262,9 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| dq | Tensor | 必选 | Query的梯度 | bfloat16 | ND | BSND: (B, Q_S, Q_N, D)<br>BNSD: (B, Q_N, Q_S, D) | × |
-| dk | Tensor | 必选 | Key的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
-| dv | Tensor | 必选 | Value的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
+| dq | Tensor | 必选 | Query的梯度 | bfloat16 | ND | BSND: (B, Q_S, Q_N, D)<br>BNSD: (B, Q_N, Q_S, D)<br>TND: (Q_T, Q_N, D) | × |
+| dk | Tensor | 必选 | Key的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D)<br>TND: (KV_T, KV_N, D) | × |
+| dv | Tensor | 必选 | Value的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D)<br>TND: (KV_T, KV_N, D) | × |
 | dsink | Tensor | 必选 | sink的梯度 | float32 | ND | (Q_N,) | × |
 
 ## 约束说明
@@ -466,6 +467,8 @@ cann_ops_transformer.quant_flash_attn_grad(
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_S     |      输入q tensor的序列长度，对应q shape中的S      |
 |    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
+|     Q_T     |      TND排布下所有batch的q序列长度累加和      |
+|    KV_T     |     TND排布下所有batch的k/v序列长度累加和    |
 |     D     |          输入q/k/v tensor以及输出dq/dk/dv隐藏层最小的单元尺寸headdim         |
 
 ### 参数组约束
@@ -503,7 +506,7 @@ cann_ops_transformer.quant_flash_attn_grad(
             <td>
                 <ul>
                     <li>tensor_type仅支持uint8</li>
-                    <li>shape dim仅支持4</li>
+                    <li>shape dim仅支持4（BSND/BNSD）或3（TND）</li>
                 </ul>
             </td>
             <td rowspan="5">
@@ -517,13 +520,20 @@ cann_ops_transformer.quant_flash_attn_grad(
                 </ul>
             </td>
             <td rowspan="5">
-                轴校验：
+                BSND/BNSD轴校验：
                 <ul>
                     <li>65536 > B > 0</li>
                     <li>Q_S ≥ 0；KV_S ≥ 0</li>
                     <li>D仅支持128</li>
                     <li>Q_N % KV_N == 0且Q_N / KV_N > 0（GQA约束）</li>
                     <li>Q_N ≤ 128；KV_N ≤ 128</li>
+                </ul>
+                TND轴校验：
+                <ul>
+                    <li>Q_T ≥ B > 0；KV_T ≥ B > 0（B由cu_seqlens_q的长度减1推导）</li>
+                    <li>Q_N == KV_N（TND排布不支持GQA）</li>
+                    <li>Q_N ≤ 128；KV_N ≤ 128</li>
+                    <li>D仅支持128</li>
                 </ul>
             </td>
         </tr>
@@ -532,7 +542,7 @@ cann_ops_transformer.quant_flash_attn_grad(
             <td>
                 <ul>
                     <li>tensor_type仅支持uint8</li>
-                    <li>shape dim仅支持4</li>
+                    <li>shape dim仅支持4（BSND/BNSD）或3（TND）</li>
                 </ul>
             </td>
         </tr>
@@ -541,7 +551,7 @@ cann_ops_transformer.quant_flash_attn_grad(
             <td>
                 <ul>
                     <li>tensor_type仅支持uint8</li>
-                    <li>shape dim仅支持4</li>
+                    <li>shape dim仅支持4（BSND/BNSD）或3（TND）</li>
                 </ul>
             </td>
         </tr>
@@ -550,7 +560,7 @@ cann_ops_transformer.quant_flash_attn_grad(
             <td>
                 <ul>
                     <li>tensor_type仅支持uint8</li>
-                    <li>shape dim仅支持4</li>
+                    <li>shape dim仅支持4（BSND/BNSD）或3（TND）</li>
                 </ul>
             </td>
         </tr>
@@ -559,32 +569,43 @@ cann_ops_transformer.quant_flash_attn_grad(
             <td>
                 <ul>
                     <li>data_type仅支持bfloat16</li>
-                    <li>shape dim仅支持4</li>
+                    <li>shape dim仅支持4（BSND/BNSD）或3（TND）</li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>layout_q</td>
-            <td>支持BSND/BNSD</td>
+            <td>支持BSND/BNSD/TND</td>
             <td rowspan="2">当前不支持不传入，未传入将发出拦截报警</td>
             <td rowspan="2">layout_q与layout_kv必须一致</td>
-            <td rowspan="2">无</td>
+            <td rowspan="2">
+                <ul>
+                    <li>layout_q为TND时，cu_seqlens_q、cu_seqlens_kv必须传入</li>
+                    <li>layout_q不为TND时，不支持传入cu_seqlens_q、cu_seqlens_kv</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>layout_kv</td>
-            <td>支持BSND/BNSD</td>
+            <td>支持BSND/BNSD/TND</td>
         </tr>
         <tr>
             <td>metadata</td>
             <td>
                 <ul>
                     <li>tensor_type仅支持int32</li>
-                    <li>shape为(2, max_schedule_size)</li>
+                    <li>shape为(2, max_schedule_size)，且第二维需不小于以下长度：
+                        <ul>
+                            <li>TND排布：17 + 10 × B</li>
+                            <li>传入seqused_q或seqused_kv：17 + 3 × B（mask_mode为3或4时为17 + 10 × B）</li>
+                            <li>其他场景：16</li>
+                        </ul>
+                    </li>
                 </ul>
             </td>
-            <td>可选参数</td>
+            <td>当前不支持不传入，未传入将发出拦截报警；且必须由quant_flash_attn_metadata生成</td>
             <td>无</td>
-            <td>无</td>
+            <td>传入时需与quant_flash_attn_metadata生成的结果一致</td>
         </tr>
     </tbody>
     </table>
@@ -709,13 +730,9 @@ cann_ops_transformer.quant_flash_attn_grad(
 mask_mode参数解释
 <ul>
     <li>mask_mode=0，ALL，全计算模式（默认值）</li>
-    <li>mask_mode=3，CAUSAL，Causal模式</li>
-    <li>mask_mode=4，WINDOW，Window模式</li>
+    <li>mask_mode=3，CAUSAL，Causal模式（以右下角为划分的下三角场景）</li>
+    <li>mask_mode=4，WINDOW，Window模式（滑窗场景，需配合win_left和win_right属性使用）</li>
 </ul>
-
-> [!NOTE]
->
-> 当前版本仅支持mask_mode=0（`ALL`），其他模式暂不支持。
 
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
@@ -740,7 +757,7 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>data_type支持int32</li>
-                    <li>当前版本仅支持输入为0</li>
+                    <li>当前版本支持输入为0/3/4</li>
                 </ul>
             </td>
             <td>
@@ -749,11 +766,14 @@ mask_mode参数解释
             <td rowspan="3">
                 <ul>
                     <li>当mask_mode为0时，不支持传入attn_mask</li>
+                    <li>当mask_mode为3或4时，必须传入attn_mask矩阵</li>
                 </ul>
             </td>
             <td rowspan="3">
                 <ul>
-                    <li>当前版本仅支持mask_mode=0，其他模式暂不支持</li>
+                    <li>mask_mode=3时按右下角为基准划分下三角掩码，mask_mode=4时按win_left/win_right划分滑窗掩码</li>
+                    <li>mask_mode不为4时，win_left与win_right必须为-1</li>
+                    <li>mask_mode=3或4时，attn_mask不能为空；mask_mode=0时，attn_mask必须为空</li>
                 </ul>
             </td>
         </tr>
@@ -761,12 +781,12 @@ mask_mode参数解释
             <td>attn_mask</td>
             <td>
                 <ul>
-                    <li>tensor_type支持int8/uint8/bool</li>
+                    <li>tensor_type仅支持int8</li>
                     <li>tensor_shape为(2048, 2048)</li>
                 </ul>
             </td>
             <td>
-                可选输入
+                可选输入，当mask_mode为3或4时必须传入
             </td>
         </tr>
         <tr>
@@ -779,7 +799,7 @@ mask_mode参数解释
             </td>
             <td>
                 可选属性，仅在mask_mode=4时生效
-                <li>默认值为-1，表示无穷（极大值）</li>
+                <li>默认值为-1，表示该方向不限窗（无穷/极大值）</li>
             </td>
         </tr>
     </tbody>
@@ -812,17 +832,29 @@ mask_mode参数解释
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
                     <li>值仅支持非负整数</li>
-                    <li>seqused_q中的值需小于等于Q_S</li>
-                    <li>seqused_kv中的值需小于等于KV_S</li>
+                    <li>BSND/BNSD排布下，seqused_q中的值需小于等于Q_S</li>
+                    <li>BSND/BNSD排布下，seqused_kv中的值需小于等于KV_S</li>
+                    <li>TND排布下，seqused_q中的值需小于等于对应batch的cu_seqlens_q段长度（cu_seqlens_q[b+1] - cu_seqlens_q[b]）</li>
+                    <li>TND排布下，seqused_kv中的值需小于等于对应batch的cu_seqlens_kv段长度（cu_seqlens_kv[b+1] - cu_seqlens_kv[b]）</li>
                 </ul>
             </td>
             <td rowspan="6">可选参数</td>
             <td rowspan="6">无</td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，seqused_q可选传入，B由cu_seqlens_q的长度减1推导</li>
+                    <li>BSND/BNSD排布下传入seqused_q时，seqused_q的shape需为(B,)</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>seqused_kv</td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND时，seqused_kv可选传入，B由cu_seqlens_kv的长度减1推导</li>
+                    <li>BSND/BNSD排布下传入seqused_kv时，seqused_kv的shape需为(B,)</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cu_seqlens_q</td>
@@ -834,7 +866,12 @@ mask_mode参数解释
                     <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于Q_T</li>
                 </ul>
             </td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，必须传入</li>
+                    <li>当layout_q不为TND时，不支持传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cu_seqlens_kv</td>
@@ -846,7 +883,12 @@ mask_mode参数解释
                     <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于KV_T</li>
                 </ul>
             </td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND时，必须传入，且长度需与cu_seqlens_q一致</li>
+                    <li>当layout_kv不为TND时，不支持传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>max_seqlen_q</td>
@@ -854,9 +896,15 @@ mask_mode参数解释
                 <ul>
                     <li>data_type支持int32</li>
                     <li>默认值为-1</li>
+                    <li>仅TND排布支持传入大于0的值，其他排布仅支持-1</li>
                 </ul>
             </td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>仅TND排布支持传入</li>
+                    <li>非TND排布下需保持默认值-1，否则将发出拦截报警</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>max_seqlen_kv</td>
@@ -864,12 +912,23 @@ mask_mode参数解释
                 <ul>
                     <li>data_type支持int32</li>
                     <li>默认值为-1</li>
+                    <li>仅TND排布支持传入大于0的值，其他排布仅支持-1</li>
                 </ul>
             </td>
-            <td>无</td>
+            <td>
+                <ul>
+                    <li>仅TND排布支持传入</li>
+                    <li>非TND排布下需保持默认值-1，否则将发出拦截报警</li>
+                </ul>
+            </td>
         </tr>
     </tbody>
 </table>
+
+> [!NOTE]
+>
+> TND排布下B由cu_seqlens_q（或cu_seqlens_kv）的长度减1推导，要求B不大于Q_T、KV_T；同时传入seqused_q/seqused_kv时，其值表示对应batch实际参与运算的序列长度（取cu_seqlens段的前缀），tiling阶段不校验其具体数值，正确性需用户自行保证。
+> BSND/BNSD排布下不支持传入cu_seqlens_q、cu_seqlens_kv，可通过seqused_q/seqused_kv截断各batch的冗余运算。
 
 #### Sinks参数组
 
@@ -981,8 +1040,169 @@ mask_mode参数解释
         mask_mode=0,
         win_left=-1,
         win_right=-1,
+        layout_q="BSND",
+        layout_kv="BSND",
+    )
+    torch_npu.npu.synchronize()
+    assert dq.shape == (B, Q_S, Q_N, D)
+    assert dk.shape == (B, KV_S, KV_N, D)
+    assert dv.shape == (B, KV_S, KV_N, D)
+    assert dq.dtype == torch.bfloat16
+    ```
+
+- quant_flash_attn_grad调用示例（TND layout + Causal mask，HIFLOAT8量化场景）
+
+    ```python
+    import torch
+    import torch_npu
+    import cann_ops_transformer
+
+    torch_npu.npu.set_device(0)
+
+    B = 2
+    Q_S = 512
+    KV_S = 512
+    Q_N = 1
+    KV_N = 1
+    D = 128
+
+    # TND排布：Q_T/KV_T为各batch序列长度的累加和
+    Q_T = B * Q_S
+    KV_T = B * KV_S
+
+    q = torch.zeros(Q_T, Q_N, D, dtype=torch.uint8, device="npu")
+    k = torch.zeros(KV_T, KV_N, D, dtype=torch.uint8, device="npu")
+    v = torch.zeros(KV_T, KV_N, D, dtype=torch.uint8, device="npu")
+    dout = torch.zeros(Q_T, Q_N, D, dtype=torch.uint8, device="npu")
+    attn_out = torch.zeros(Q_T, Q_N, D, dtype=torch.bfloat16, device="npu")
+
+    # descale / scale: FP32, shape=(1,)
+    q_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    k_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    v_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    do_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    p_scale = torch.ones(1, dtype=torch.float32, device="npu")
+    ds_scale = torch.ones(1, dtype=torch.float32, device="npu")
+
+    # TND排布下softmax_lse的shape为(Q_N, Q_T)
+    softmax_lse = torch.zeros(Q_N, Q_T, dtype=torch.float32, device="npu")
+
+    # 累积序列长度：第一个元素为0，最后一个元素等于Q_T/KV_T
+    cu_seqlens_q = torch.tensor([0, Q_S, Q_T], dtype=torch.int32, device="npu")
+    cu_seqlens_kv = torch.tensor([0, KV_S, KV_T], dtype=torch.int32, device="npu")
+
+    # mask_mode=3（Causal）时必须传入attn_mask
+    attn_mask = torch.tril(torch.ones(2048, 2048, dtype=torch.int8, device="npu"))
+
+    metadata = cann_ops_transformer.quant_flash_attn_metadata(
+        num_heads_q=Q_N,
+        num_heads_kv=KV_N,
+        head_dim=D,
+        quant_mode=0,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        layout_q="TND",
+        layout_kv="TND",
+        layout_out="TND",
+        is_grad_enabled=True
+    )
+
+    dq, dk, dv, dsink = cann_ops_transformer.ops.quant_flash_attn_grad(
+        q, k, v, dout, attn_out,
+        q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale, softmax_lse,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        quant_mode=0,
+        softmax_scale=1.0 / (D ** 0.5),
+        mask_mode=3,
+        win_left=-1,
+        win_right=-1,
+        layout_q="TND",
+        layout_kv="TND",
+    )
+    torch_npu.npu.synchronize()
+    assert dq.shape == (Q_T, Q_N, D)
+    assert dk.shape == (KV_T, KV_N, D)
+    assert dv.shape == (KV_T, KV_N, D)
+    assert dq.dtype == torch.bfloat16
+    ```
+
+- quant_flash_attn_grad调用示例（BSND layout + Sliding Window mask + seqused，HIFLOAT8量化场景）
+
+    ```python
+    import torch
+    import torch_npu
+    import cann_ops_transformer
+
+    torch_npu.npu.set_device(0)
+
+    B = 1
+    Q_S = 512
+    KV_S = 512
+    Q_N = 1
+    KV_N = 1
+    D = 128
+
+    q = torch.zeros(B, Q_S, Q_N, D, dtype=torch.uint8, device="npu")
+    k = torch.zeros(B, KV_S, KV_N, D, dtype=torch.uint8, device="npu")
+    v = torch.zeros(B, KV_S, KV_N, D, dtype=torch.uint8, device="npu")
+    dout = torch.zeros(B, Q_S, Q_N, D, dtype=torch.uint8, device="npu")
+    attn_out = torch.zeros(B, Q_S, Q_N, D, dtype=torch.bfloat16, device="npu")
+
+    # descale / scale: FP32, shape=(1,)
+    q_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    k_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    v_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    do_descale = torch.ones(1, dtype=torch.float32, device="npu")
+    p_scale = torch.ones(1, dtype=torch.float32, device="npu")
+    ds_scale = torch.ones(1, dtype=torch.float32, device="npu")
+
+    # softmax_lse: FP32, shape=(B, Q_N, Q_S)
+    softmax_lse = torch.zeros(B, Q_N, Q_S, dtype=torch.float32, device="npu")
+
+    # 各batch实际参与运算的序列长度，截断冗余运算
+    seqused_q = torch.tensor([Q_S], dtype=torch.int32, device="npu")
+    seqused_kv = torch.tensor([KV_S], dtype=torch.int32, device="npu")
+
+    # mask_mode=4（Sliding Window）时必须传入attn_mask，并通过win_left/win_right指定滑窗范围，-1表示该方向不限窗
+    attn_mask = torch.tril(torch.ones(2048, 2048, dtype=torch.int8, device="npu"))
+    win_left = 128
+    win_right = 0
+
+    metadata = cann_ops_transformer.quant_flash_attn_metadata(
+        num_heads_q=Q_N,
+        num_heads_kv=KV_N,
+        head_dim=D,
+        quant_mode=0,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
+        mask_mode=4,
+        win_left=win_left,
+        win_right=win_right,
+        layout_q="BSND",
+        layout_kv="BSND",
+        is_grad_enabled=True
+    )
+
+    dq, dk, dv, dsink = cann_ops_transformer.ops.quant_flash_attn_grad(
+        q, k, v, dout, attn_out,
+        q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale, softmax_lse,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        quant_mode=0,
+        softmax_scale=1.0 / (D ** 0.5),
+        mask_mode=4,
+        win_left=win_left,
+        win_right=win_right,
         layout_q="BSND",
         layout_kv="BSND",
     )
