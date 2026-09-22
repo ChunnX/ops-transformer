@@ -467,6 +467,10 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeCompress()
     if (CheckInputShapeNorm() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    bool isAlign =
+        ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 && (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
+    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32 in compress mode."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != 1), OP_LOGE(context_, "dim2 of keyCache should be 1."),
                 return ge::GRAPH_FAILED);
 
