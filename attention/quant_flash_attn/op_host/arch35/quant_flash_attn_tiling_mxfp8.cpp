@@ -124,7 +124,9 @@ void QuantFlashAttnTilingImpl::SplitPolicy()
                                            qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
                                            static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
-    flashDecodeFlag_ = true;
+    // MXFP8 prefill 使用行级负载均衡即可，关闭 FD 可避免额外的 workspace
+    // 读写和跨核同步；FIA mxfp8 prefill 同样不走 FlashDecode 路径。
+    flashDecodeFlag_ = decodeS1GMerge_;
 }
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
