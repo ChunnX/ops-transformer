@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include "aclnn_grouped_matmul_add.h"
 #include "aclnn_grouped_matmul_add_v2.h"
 
@@ -264,6 +265,10 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(const aclTensor *x, const aclT
                                                   bool transposeWeight, int64_t groupType, uint64_t *workspaceSize,
                                                   aclOpExecutor **executor)
 {
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(yRef, "yRef"), ACLNN_ERR_PARAM_INVALID);
     const char *opName = "grouped_matmul_add";
     gmm_add_advanced::GroupedMatmulAddParams params{x, weight, groupList, yRef, transposeX, transposeWeight, groupType};
     // Standard syntax, Check parameters.
@@ -277,6 +282,10 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(const aclTensor *x, const ac
                                                     bool transposeWeight, int64_t groupType, int64_t groupListType,
                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(yRef, "yRef"), ACLNN_ERR_PARAM_INVALID);
     const char *opName = "grouped_matmul_add";
     gmm_add_advanced::GroupedMatmulAddParams params{x,          weight,          groupList, yRef,
                                                     transposeX, transposeWeight, groupType, groupListType};

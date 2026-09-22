@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include "aclnn_quant_grouped_matmul_dequant.h"
 #include "aclnn_quant_grouped_matmul_dequant_weight_nz.h"
 #include "quant_grouped_matmul_dequant.h"
@@ -245,6 +246,15 @@ aclnnStatus aclnnQuantGroupedMatmulDequantGetWorkspaceSize(const aclTensor *x, c
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weightScale, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(biasOptional, "biasOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScaleOptional, "xScaleOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xOffsetOptional, "xOffsetOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(smoothScaleOptional, "smoothScaleOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(out, "out"), ACLNN_ERR_PARAM_INVALID);
     L2_DFX_PHASE_1(aclnnQuantGroupedMatmulDequant, DFX_IN(x, weight, weightScale, groupList, biasOptional,
         xScaleOptional, xOffsetOptional, smoothScaleOptional, xQuantMode, transposeWeight), DFX_OUT(out));
     return aclnnQuantGroupedMatmulDequantGetWorkspaceSizeCommon(x, weight, weightScale, groupList, biasOptional,
@@ -259,6 +269,15 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(weightScale, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(biasOptional, "biasOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScaleOptional, "xScaleOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xOffsetOptional, "xOffsetOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(smoothScaleOptional, "smoothScaleOptional"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(out, "out"), ACLNN_ERR_PARAM_INVALID);
     L2_DFX_PHASE_1(aclnnQuantGroupedMatmulDequantWeightNZ,
         DFX_IN(x, weight, weightScale, groupList, biasOptional, xScaleOptional, xOffsetOptional,
         smoothScaleOptional, xQuantMode, transposeWeight),
