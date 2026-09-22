@@ -50,6 +50,9 @@ const static int64_t WEIGHT_SCALE_MULTI_BASE_DIM_SIZE = 2LL;
 // 当前实现支持的共享专家数量上限。
 const static int64_t MAX_SHARED_EXPERT_NUM = 4LL;
 const static int64_t UB_BLOCK_SIZE = 32LL;
+// 预量化输入第一版使用固定的小 tile，先保证双 buffer 搬运预算简单且稳定。
+constexpr uint32_t PRE_QUANT_TILE_TOKENS = 4U;
+constexpr uint32_t PRE_QUANT_STAGE_ALIGN_BYTES = 512U;
 
 const static int64_t FOUR_DIMS = 4LL;
 const static int64_t THREE_DIMS = 3LL;
@@ -1049,6 +1052,56 @@ static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData,
 }
 
 /*
+ * 计算预量化搬运单个 stage 的 UB 占用。
+ * stage 内复用 data、scale 和可选 topK weight 区域，外层再使用两个 stage 做 ping-pong。
+ * 这里固定 B=4；后续如果 tiling data 增加 tile 字段，只需将固定值替换为 host/device 共享的 B。
+ */
+static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
+                                       ge::DataType topKWeightsDataType)
+{
+    const uint64_t tileTokens = PRE_QUANT_TILE_TOKENS;
+    const uint64_t dataBytesPerToken = ops::CeilDiv(static_cast<uint64_t>(tilingData->h),
+                                                    static_cast<uint64_t>(activationElementsPerByte));
+    const uint64_t scaleBytesPerToken =
+        ops::CeilAlign(ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)) *
+                           sizeof(int8_t),
+                       static_cast<uint64_t>(ALIGN_32));
+    const uint64_t dataStageBytes =
+        tileTokens * ops::CeilAlign(dataBytesPerToken, static_cast<uint64_t>(ALIGN_32));
+    const uint64_t scaleStageBytes =
+        tileTokens * ops::CeilAlign(scaleBytesPerToken, static_cast<uint64_t>(ALIGN_32));
+
+    uint64_t weightScratchBytes = 0U;
+    if (tilingData->topkWeightsPrefetch == 1) {
+        const uint64_t weightElementCount = tileTokens * tilingData->topK;
+        const uint64_t fp32WeightBytes =
+            ops::CeilAlign(weightElementCount * sizeof(float), static_cast<uint64_t>(ALIGN_32));
+        if (topKWeightsDataType == ge::DT_BF16) {
+            // BF16 输入和 Cast 后的 FP32 输出不能复用同一段 scratch。
+            const uint64_t bf16WeightBytes =
+                ops::CeilAlign(weightElementCount * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32));
+            weightScratchBytes = bf16WeightBytes + fp32WeightBytes;
+        } else {
+            weightScratchBytes = fp32WeightBytes;
+        }
+    }
+
+    const uint64_t stageBytes = std::max(std::max(dataStageBytes, scaleStageBytes), weightScratchBytes);
+    return static_cast<uint32_t>(ops::CeilAlign(stageBytes, static_cast<uint64_t>(PRE_QUANT_STAGE_ALIGN_BYTES)));
+}
+
+/* 与 CheckAndSetQuantOutDtypes 保持相同判定口径，区分预量化与动态量化的 UB 布局。 */
+static bool IsPreQuantizedX(const gert::TilingContext *context, const MegaMoeConfig &config)
+{
+    auto attrs = context->GetAttrs();
+    auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>(config.attrDispatchQuantModeIndex);
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrDispatchQuantOutDtypeIndex);
+    return dispatchQuantModePtr != nullptr && dispatchQuantOutDtypePtr != nullptr &&
+           *dispatchQuantModePtr == DISPATCH_QUANT_MODE_PASSTHROUGH &&
+           IsSupportedExpertQuantDtype(static_cast<ge::DataType>(*dispatchQuantOutDtypePtr));
+}
+
+/*
  * 计算 dispatch 阶段不随 ring 深度与 route batch 变化的固定 UB 占用。
  */
 static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData)
@@ -1369,7 +1422,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tilingData,
                                                    uint32_t moeActivationElementsPerByte,
                                                    uint32_t sharedActivationElementsPerByte,
-                                                   bool isSharedQuantIndependent, uint32_t topkValidIndexCoreNum)
+                                                   bool isSharedQuantIndependent, bool isPreQuantizedX,
+                                                   ge::DataType topKWeightsDataType, uint32_t topkValidIndexCoreNum)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
@@ -1393,6 +1447,14 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
         ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, topkValidIndexCoreNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
+
+    if (isPreQuantizedX) {
+        // 预量化不执行 ComputeMaxExp/ComputeScale，因此只保留两个搬运 stage 和发送计数器。
+        uint32_t preQuantStageBytes =
+            CalcPreQuantStageBytes(tilingData, moeActivationElementsPerByte, topKWeightsDataType);
+        return resetTensorBytes + 2U * preQuantStageBytes + sendCountAccumulatorBytes;
+    }
+
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
     constexpr uint32_t mxTempTensorBytes = 2U * 1024U;
     return resetTensorBytes + mxTempTensorBytes + 2U * quantOutputBufferBytes + 2U * quantInputBufferBytes +
@@ -1406,13 +1468,15 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
  */
 static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32_t moeActivationElementsPerByte,
                                            uint32_t sharedActivationElementsPerByte, bool isSharedQuantIndependent,
+                                           bool isPreQuantizedX, ge::DataType topKWeightsDataType,
                                            uint32_t availableUbBytes)
 {
     const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
     const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->aicNum : tilingData->blockAivNum;
     uint32_t sendMaskFixedBufferBytes =
         CalcTopkValidIndexFixedBufferBytes(tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte,
-                                           isSharedQuantIndependent, topkValidIndexCoreNum);
+                                           isSharedQuantIndependent, isPreQuantizedX, topKWeightsDataType,
+                                           topkValidIndexCoreNum);
 
     /*
      * 按发送核数均衡分配专家，前 remainder 个发送核多处理一个专家。
@@ -1470,6 +1534,8 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
 
     uint32_t activationElementsPerByte = expertParams.moe.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     uint32_t sharedActivationElementsPerByte = expertParams.shared.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
+    const bool isPreQuantizedX = IsPreQuantizedX(context, config);
+    const ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     // 所有 AIV 核共用同一套 dispatch UB 配置，该布局与分核方式无关。
     // 若 kernel 改为按核拆分 tensor 或调整 copyTmp 槽位布局，需同步更新此处计算。
     tilingData->dispatchBufferConfig =
@@ -1480,9 +1546,9 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
-                                   tilingData->isSharedQuantIndependent == 1U, availableUbBytes);
+                                   tilingData->isSharedQuantIndependent == 1U, isPreQuantizedX,
+                                   topKWeightsDataType, availableUbBytes);
 
-    ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
 }
 
