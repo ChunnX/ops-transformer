@@ -165,11 +165,21 @@ public:
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
+        // [SK调试-临时] 定位SK模式scalar越界的精确位置, 验证完删除
+        printf("[SK-DBG] entry: tiling=%p metadata=%p ws=%p pScale=%p blk=%d sub=%d\r\n",
+               tiling, metadata, workspace, pScale, (int)GetBlockIdx(), (int)GetSubBlockNum());
+
         InitConstInfo();
+        printf("[SK-DBG] after tiling read: bSize=%d coreNum=%d\r\n",
+               (int)constInfo_.bSize, (int)constInfo_.coreNum);
+
         // 运行时FD开关: tiling key恒含isFd, 由AICPU metadata头指示本次是否实际走FD;
         // needInitOutput仍需正常读取(padding行清零), 不能被覆盖
+        printf("[SK-DBG] before metadata[IS_FD/NEED_INIT]\r\n");
         constInfo_.enableFlashDecode = ((__gm__ uint32_t *)metadata)[QFA_HEAD_IS_FD_INDEX] != 0;
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        printf("[SK-DBG] after metadata[15]: isFd=%d needInit=%d\r\n",
+               (int)constInfo_.enableFlashDecode, (int)constInfo_.needInitOutput);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -186,9 +196,12 @@ public:
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         }
+        printf("[SK-DBG] before metadata[0..2]\r\n");
         sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
         metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
         metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
+        printf("[SK-DBG] after metadata[0..2]: secNum=%d aicNum=%d aivNum=%d\r\n",
+               (int)sectionNum_, (int)metadataAicNum_, (int)metadataAivNum_);
 
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
                                       sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
@@ -197,6 +210,7 @@ public:
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
 
         InitMMResBuf(workspace);
+        printf("[SK-DBG] after InitMMResBuf\r\n");
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -208,6 +222,7 @@ public:
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
             vecFaBlock_.ClearOutput();
+            printf("[SK-DBG] after InitVecBlock+ClearOutput\r\n");
         }
 
         if ASCEND_IS_AIC {
@@ -827,6 +842,8 @@ public:
 
     __aicore__ inline void Process()
     {
+        printf("[SK-DBG] Process entry: aicIdx=%d coreNum=%d\r\n",
+               (int)constInfo_.aicIdx, (int)constInfo_.coreNum);
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
