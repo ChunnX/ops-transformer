@@ -274,8 +274,8 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::PostTiling()
 {
     // tiling 数据只声明结构体大小（capacity-8），尾部 8 字节留给框架写入 DFX 指针（atomicIndex）
     context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommQuantGmmAlltoAllvTilingData));
-    // 独占全核：kernel 内含 CrossCore/SyncAll 多核同步原语，需独占启动避免网络挂死
-    context_->SetScheduleMode(1);
+    // 与原通路完全对齐：不设置 SetScheduleMode（原通路为默认 0；独占模式与 MC2 通信域
+    // 辅助 task 的调度交互未知，属未验证组合）
     // 必须全核启动（与原通路 aicCoreNum 口径一致）：kernel 逐批使用 mode-0 全核 FFTS barrier
     // （CrossCoreSetFlag<0>(8)+WaitFlag）及 SyncAll<false>，其计数域为调度域内全部 AIC 核，
     // 部分核启动（SWAT usedCoreNum）时未启动核永不 arrive → barrier 永不释放 → 卡死。

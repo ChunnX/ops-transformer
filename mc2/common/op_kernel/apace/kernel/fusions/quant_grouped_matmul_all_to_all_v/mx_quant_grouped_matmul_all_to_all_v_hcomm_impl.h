@@ -121,6 +121,7 @@ private:
     // 派生维度
     uint32_t e_{0};
     uint32_t ep_{0};
+    uint32_t commRankNum_{1}; // HCCL 通信域真实 rank 数（hccl_.GetRankDim()，与原通路对齐）
     uint64_t h1_{0};
     uint64_t n1_{0};
     uint64_t bs_{0};
@@ -228,6 +229,11 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     // HCCL 初始化（全部核，与原通路 HcclA2avOp::Init 在 kernel 入口无条件调用一致）
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingData, mc2CcTiling)));
+    // 与原通路对齐：通信参数按 HCCL 通信域真实 rank 数展开（而非 tiling 的 epWorldSize）
+    commRankNum_ = hccl_.GetRankDim();
+    if (commRankNum_ == 0U) {
+        commRankNum_ = ep_;
+    }
 
     if ASCEND_IS_AIC {
         // 各 AIC 写入相同表内容后各自消费（与原算子 QuantGroupedMatmul 模板一致）
@@ -292,12 +298,13 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     uint64_t recvCnt[Apace::GMM_A2AV_MAX_RANK_NUM] = {0UL};
     uint64_t recvOff[Apace::GMM_A2AV_MAX_RANK_NUM] = {0UL};
 
+    const uint32_t rankNum = commRankNum_;
     // 一遍扫描：每 rank 全局 token 基（rank-first 布局）+ 本批计数
     uint64_t rankBaseS[Apace::GMM_A2AV_MAX_RANK_NUM] = {0UL};
     uint64_t rankBaseR[Apace::GMM_A2AV_MAX_RANK_NUM] = {0UL};
     uint64_t runS = 0UL;
     uint64_t runR = 0UL;
-    for (uint32_t r = 0U; r < ep_; ++r) {
+    for (uint32_t r = 0U; r < rankNum; ++r) {
         rankBaseS[r] = runS;
         rankBaseR[r] = runR;
         uint64_t batchS = 0UL;
@@ -316,7 +323,7 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
         recvCnt[r] = batchR;
     }
     // 偏移：rank 全局基 + 本批之前专家的 token 前缀（× N1 折算元素数）
-    for (uint32_t r = 0U; r < ep_; ++r) {
+    for (uint32_t r = 0U; r < rankNum; ++r) {
         uint64_t preS = 0UL;
         uint64_t preR = 0UL;
         for (uint32_t eIdx = 0U; eIdx < startExpertIdx; ++eIdx) {
@@ -326,7 +333,7 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
         sendOff[r] = (rankBaseS[r] + preS) * n1_;
         recvOff[r] = (rankBaseR[r] + preR) * n1_;
     }
-    for (uint32_t r = 0U; r < ep_; ++r) {
+    for (uint32_t r = 0U; r < rankNum; ++r) {
         sendCnt[r] *= n1_;
         recvCnt[r] *= n1_;
     }
