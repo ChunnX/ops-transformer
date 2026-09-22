@@ -203,6 +203,25 @@ static void CalcExpandTokenNum(gert::InferShapeContext *context, const int64_t *
     }
 }
 
+static ge::graphStatus GetAndCheckDispatchShape(const char *nodeName, const gert::Shape *xShape,
+                                                const gert::Shape *expertIdsShape, int64_t &bs, int64_t &h, int64_t &k)
+{
+    size_t xDimNum = xShape->GetDimNum();
+    size_t expertDimNum = expertIdsShape->GetDimNum();
+    bs = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(0));
+    h = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(1));
+    int64_t bsTmp = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(0));
+    k = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
+    if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
+        std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
+                               ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and expert_ids", shapeStr.c_str(),
+                                              "Each dim of x and expert_ids must be positive");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
@@ -274,17 +293,10 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                   isSharedDefault, isNoShared) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    size_t xDimNum = xShape->GetDimNum();
-    size_t expertDimNum = expertIdsShape->GetDimNum();
-    int64_t bs = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(0));
-    int64_t h = ((xDimNum == 1U) ? NEG_ONE : xShape->GetDim(1));
-    int64_t bsTmp = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(0));
-    int64_t k = ((expertDimNum == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
-    if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
-        std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
-                               ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x and expert_ids", shapeStr.c_str(),
-                                              "Each dim of x and expert_ids must be positive");
+    int64_t bs = 0;
+    int64_t h = 0;
+    int64_t k = 0;
+    if (GetAndCheckDispatchShape(context->GetNodeName(), xShape, expertIdsShape, bs, h, k) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     int64_t a;
