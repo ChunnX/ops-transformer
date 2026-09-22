@@ -10,28 +10,23 @@
 
 /*!
  * \file mx_quant_grouped_matmul_all_to_all_v_hcomm_impl.h
- * \brief MX 量化 GroupedMatmul + AllToAllV 融合 kernel 实现（Hcomm/CCU 变体）
+ * \brief MX 量化 GroupedMatmul + AllToAllV 融合 kernel 实现（Hcomm/CCU 变体，AIC-only）
  *
- * 框架形态参考 apace all_gather_quant_matmul 的 Hcomm 通路（Hccl 类 + tiling 内嵌
- * Mc2InitTiling/Mc2CcTiling），通算掩盖流水参考原通路 GmmA2avScheduler 的专家分批结构：
+ * 框架形态对齐镜像算子 PR 11573（allto_allv_quant_grouped_matmul）的已验证 AIC-only 模型：
+ * kernel 以 KERNEL_TYPE_AIC_ONLY 启动（tiling key 经 ASCENDC_TPL_KERNEL_TYPE_SEL 声明），
+ * 无 AIV 参与、无 AIC/AIV 跨核 flag；全部 AIC 核执行同一流程，Hccl 客户端经
+ * workingFlag_（GetBlockIdx()==0 的核）自动门控参数写入与 CCU doorbell。
  *
- * Init():
- *   全核: hccl_.InitV2()/SetCcTilingV2()；
- *   AIC : 将 groupList（SPARSE：[专家id, token数]，专家主序）与全局 rank-first
- *         cGroupOffsetTable 写入 user workspace（各 AIC 写入相同值，与原算子模板一致）。
+ * Init()（全部 AIC 核）:
+ *   hccl_.InitV2()/SetCcTilingV2()；BuildGmmTables 写 groupList（SPARSE）与
+ *   rank-first cGroupOffsetTable（各核写相同值）。
  *
- * Run()（专家分批流水，expertNumPerBatch = CeilDiv(e, 4)，totalLoopCnt ≤ 4，与原通路
- *       TARGET_COMM_ROUNDS 口径一致）：
- *   AIC: for 批b: RunGmmKernel(本批 expertNum×ep 组，groupList/cTable 切片 + A/scaleA
- *        基址推进至本批全局 token 偏移) → mode-0 全 AIC barrier 闭合本批产出 →
- *        mode-2 flag 通知 AIV；下一批 GMM 与本批通信重叠（通算掩盖）。
- *        批循环后共享专家 MM（groupNum=1）与 AIV 末批通信/等待重叠。
- *   AIV: 全部 sub-core 逐批 WaitFlag；block 0 逐批提交非阻塞 AlltoAllV<true>
- *        （sendBuf 全局 rank-first 布局中本批的不相交连续 chunk），最后统一 Wait、
- *        SyncAll 后 Finalize。
- *
- * 语义保持：发送缓冲/y 的最终布局与单次聚合提交完全一致
- * （sendBuf 全局 rank-first，y 按 recvCounts 源 rank 聚合顺序），仅执行时序流水化。
+ * Run()（专家分批通算掩盖流水，expertNumPerBatch = CeilDiv(e, 4)，totalLoopCnt ≤ 4）:
+ *   for 批b: RunGmmKernel(本批，groupList/cTable 切片 + A/scaleA 基址推进)
+ *            → PipeBarrier（排空管线，镜像经验）→ mode-0 全 AIC barrier
+ *            （后通信方向必需：保证本批 sendBuf 多核写全部落 GM 后才可通信）
+ *            → hccl_.AlltoAllV<true>(本批 chunk)（全核调用，CCU 异步执行）
+ *   共享专家 MM（与末批通信重叠）→ 逐 handle Wait → Finalize。
  */
 
 #pragma once
@@ -135,9 +130,8 @@ private:
     bool hasSharedMm_{false};
 
     static constexpr uint64_t dataDtype_ = GetA2avHcclDataType<CType>();
-    // 核间同步 flag（与原算子 GmmA2avScheduler 一致：8=AIC barrier, 9=本批 GMM done）
+    // 全 AIC barrier flag（AIC-only 模型，全部核 Set+Wait；避开 CANN 内部 SyncAll 保留 ID 11~14）
     static constexpr uint16_t AIC_BARRIER_FLAG = 8U;
-    static constexpr uint16_t GMM_DONE_FLAG = 9U;
 };
 
 // =================================================================================
@@ -227,14 +221,12 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     cTableGM_ = userWorkspace + tilingData_->wsCTableOffset;
     sharedGroupListGM_ = userWorkspace + tilingData_->wsSharedGroupListOffset;
 
-    // HCCL 初始化（全部核，与 HcclA2avOp/Hcomm 参考实现一致）
+    // HCCL 初始化（全部 AIC 核；workingFlag_ 仅 block 0 真正写共享状态，镜像同款）
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingData, mc2CcTiling)));
 
-    if ASCEND_IS_AIC {
-        // 各 AIC 写入相同表内容后各自消费（与原算子 QuantGroupedMatmul 模板一致）
-        BuildGmmTables();
-    }
+    // 各核写入相同表内容后各自消费（与原算子 QuantGroupedMatmul 模板一致）
+    BuildGmmTables();
 }
 
 // =================================================================================
@@ -381,7 +373,7 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
 }
 
 // =================================================================================
-// 主流程（专家分批通算掩盖流水）
+// 主流程（AIC-only 专家分批通算掩盖流水）
 // =================================================================================
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool TransGmmB,
@@ -391,61 +383,52 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
 {
     const uint32_t expertNumPerBatch = GetExpertNumPerBatch();
 
-    if ASCEND_IS_AIC {
-        // 主 GMM 分批：本批 A/scaleA 基址推进至全局 token 偏移（gmmX 专家主序），
-        // groupList/cTable 按批切片；下一批 GMM 与本批 AIV 通信重叠（通算掩盖）
-        uint64_t batchTokenOffset = 0UL;
-        for (uint32_t start = 0U; start < e_; start += expertNumPerBatch) {
-            const uint32_t actualExpertNum = (start + expertNumPerBatch > e_) ? (e_ - start) : expertNumPerBatch;
-            // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
-            const uint64_t aElemUnits =
-                Blaze::Gemm::IsFp4<AType>() ? ((batchTokenOffset * h1_) >> 1U) : (batchTokenOffset * h1_);
-            RunGmmKernel<TransGmmB>(
-                tilingData_->gmmTile, actualExpertNum * ep_, static_cast<int64_t>(tilingData_->maxM),
-                static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType),
-                gmmWeightGM_, gmmxScaleGM_ + batchTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
-                groupListGM_ + static_cast<uint64_t>(start) * ep_ * 2UL * sizeof(int64_t),
-                Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
-                reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(start) * ep_);
+    // 主 GMM 分批：本批 A/scaleA 基址推进至全局 token 偏移（gmmX 专家主序），
+    // groupList/cTable 按批切片；提交本批 AllToAllV 后立即进入下一批 GMM（通算掩盖）
+    uint64_t batchTokenOffset = 0UL;
+    uint32_t submitted = 0U;
+    for (uint32_t start = 0U; start < e_; start += expertNumPerBatch) {
+        const uint32_t actualExpertNum = (start + expertNumPerBatch > e_) ? (e_ - start) : expertNumPerBatch;
+        // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
+        const uint64_t aElemUnits =
+            Blaze::Gemm::IsFp4<AType>() ? ((batchTokenOffset * h1_) >> 1U) : (batchTokenOffset * h1_);
+        RunGmmKernel<TransGmmB>(
+            tilingData_->gmmTile, actualExpertNum * ep_, static_cast<int64_t>(tilingData_->maxM),
+            static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType), gmmWeightGM_,
+            gmmxScaleGM_ + batchTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
+            groupListGM_ + static_cast<uint64_t>(start) * ep_ * 2UL * sizeof(int64_t),
+            Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
+            reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(start) * ep_);
 
-            // 全 AIC barrier 闭合本批 GMM 产出依赖，再通知 AIV 可通信
-            AscendC::CrossCoreSetFlag<0, PIPE_FIX>(AIC_BARRIER_FLAG);
-            AscendC::CrossCoreWaitFlag(AIC_BARRIER_FLAG);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(GMM_DONE_FLAG);
+        // 镜像经验：GMM Run 后排空管线，保证 fixpipe 产出全部落 GM
+        AscendC::PipeBarrier<PIPE_ALL>();
 
-            batchTokenOffset += BatchTokenCnt(start, actualExpertNum);
-        }
+        // 后通信方向必需的全 AIC barrier：本批 sendBuf 由多核分块写入，
+        // 必须全部落 GM 后才能提交本批 AllToAllV（mode-0 全核同步，与 CANN SyncAllImpl 同机制）
+        AscendC::CrossCoreSetFlag<0, PIPE_FIX>(AIC_BARRIER_FLAG);
+        AscendC::CrossCoreWaitFlag(AIC_BARRIER_FLAG);
 
-        // 共享专家 MM 与 AIV 末批通信/等待重叠（mmY 不参与通信，无跨核依赖）
-        if (hasSharedMm_) {
-            RunGmmKernel<TransMmB>(tilingData_->sharedMmTile, 1U, static_cast<int64_t>(bs_),
-                                   static_cast<int64_t>(tilingData_->n2), static_cast<int64_t>(tilingData_->h2), mmxGM_,
-                                   mmWeightGM_, mmxScaleGM_, mmWeightScaleGM_, mmyGM_, sharedGroupListGM_,
-                                   Apace::GMM_A2AV_GROUP_LIST_TYPE_LENGTH, nullptr);
-        }
-        AscendC::SyncAll<false>();
+        // 全核提交（Hccl 客户端 workingFlag_ 自动门控：仅 block 0 写参数/敲 CCU doorbell，
+        // 其余核仅推进本地句柄计数；CCU 异步执行，与下一批 GMM 重叠）
+        a2avHandles_[submitted] = SubmitAllToAllvBatch(start, actualExpertNum);
+        submitted++;
+        batchTokenOffset += BatchTokenCnt(start, actualExpertNum);
     }
 
-    if ASCEND_IS_AIV {
-        // 逐批 WaitFlag 后立即非阻塞提交本批 AllToAllV（提交与后续批的 flag 等待交错，
-        // 实现通信与下一批 GMM 的重叠）；非 block0 核仅消费 flag 维持计数平衡
-        uint32_t submitted = 0U;
-        for (uint32_t start = 0U; start < e_; start += expertNumPerBatch) {
-            const uint32_t actualExpertNum = (start + expertNumPerBatch > e_) ? (e_ - start) : expertNumPerBatch;
-            AscendC::CrossCoreWaitFlag(GMM_DONE_FLAG);
-            if (GetBlockIdx() == 0) {
-                a2avHandles_[submitted] = SubmitAllToAllvBatch(start, actualExpertNum);
-                submitted++;
-            }
-        }
-        if (GetBlockIdx() == 0) {
-            for (uint32_t i = 0U; i < submitted; ++i) {
-                hccl_.Wait(a2avHandles_[i]);
-            }
-        }
-        AscendC::SyncAll<false>();
-        hccl_.Finalize();
+    // 共享专家 MM 与末批 AllToAllV 重叠（mmY 不参与通信，无跨核依赖）
+    if (hasSharedMm_) {
+        RunGmmKernel<TransMmB>(tilingData_->sharedMmTile, 1U, static_cast<int64_t>(bs_),
+                               static_cast<int64_t>(tilingData_->n2), static_cast<int64_t>(tilingData_->h2), mmxGM_,
+                               mmWeightGM_, mmxScaleGM_, mmWeightScaleGM_, mmyGM_, sharedGroupListGM_,
+                               Apace::GMM_A2AV_GROUP_LIST_TYPE_LENGTH, nullptr);
     }
+    AscendC::PipeBarrier<PIPE_ALL>();
+
+    // 逐 handle Wait：多核协议下非工作核轮询 finishCntGM_（由工作核在 CKE 完成后推进）
+    for (uint32_t i = 0U; i < submitted; ++i) {
+        hccl_.Wait(a2avHandles_[i]);
+    }
+    hccl_.Finalize();
 }
 
 } // namespace Apace

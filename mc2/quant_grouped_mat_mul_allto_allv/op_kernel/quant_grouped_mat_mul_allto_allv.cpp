@@ -54,7 +54,6 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM,
     GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspaceGM == nullptr) {
         return;
     }
@@ -73,7 +72,9 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
 #endif
 
     if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_APACE) {
-        // apace hcomm 融合通路：AIC 走 Blaze GroupedMatmulMxKernel，AIV block 0 走 Hccl AllToAllV
+        // apace hcomm 融合通路（AIC-only，镜像算子 PR 11573 同款模型）：
+        // GMM 走 Blaze GroupedMatmulMxKernel，AllToAllV 由全部 AIC 核经 Hccl 提交；
+        // 内核任务类型由 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL(AIC_ONLY) 声明
 #if defined(ENABLE_APACE_QUANT_GMM_A2AV)
 #if APACE_GMM_A2AV_MX_DTYPE_OK()
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommQuantGmmAlltoAllvTilingData, apaceTilingData, tilingGM);
@@ -95,6 +96,9 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
         return;
 #endif
     }
+
+    // 原通路（CCU/AICPU）：MIX_AIC_1_2 任务类型（AIC 计算 + AIV 通信，历史行为不变）
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     GET_TILING_DATA(tilingData, tilingGM);
     const QuantGmmA2avTilingData *tilingData_ = &tilingData;
