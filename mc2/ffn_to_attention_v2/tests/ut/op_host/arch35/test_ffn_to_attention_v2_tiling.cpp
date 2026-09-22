@@ -13,17 +13,23 @@
 #include <vector>
 #include <gtest/gtest.h>
 #include "../../../../op_kernel/ffn_to_attention_v2_tiling.h"
+#include "../../../../op_kernel/ffn_to_attention_v2_tilling_key.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace FFNToAttentionV2UT {
 namespace {
+
+// GET_TPL_TILING_KEY 宏展开引用不带限定的 g_tilingDeclareParams（由 tilling_key.h 在
+// namespace Mc2Tiling 内生成），此处显式引入该 TU 内符号。
+using Mc2Tiling::g_tilingDeclareParams;
 
 using TensorDescription = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
 struct FFNToAttentionV2CompileInfo {};
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
-constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 2LL * MB_SIZE;
+// 4MB covers requiredWindowSize (~2.5MB for the default shapes: token window + flag sources + address tables).
+constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 4LL * MB_SIZE;
 
 enum class InvalidInput {
     NONE,
@@ -151,12 +157,12 @@ class FFNToAttentionV2Arch35TilingTest : public testing::Test {};
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, NoRankTable)
 {
-    ExecuteTilingCase(BuildInputs(false), BuildAttrs(), ge::GRAPH_SUCCESS, 12UL);
+    ExecuteTilingCase(BuildInputs(false), BuildAttrs(), ge::GRAPH_SUCCESS, GET_TPL_TILING_KEY(false, TILINGKEY_TPL_A5));
 }
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RankTable)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(), ge::GRAPH_SUCCESS, 13UL);
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(), ge::GRAPH_SUCCESS, GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
 }
 
 class FFNToAttentionV2InvalidInputTest : public testing::TestWithParam<InvalidInput> {};
@@ -196,7 +202,8 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsBufferWithoutTokenInfoAlignmentS
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, AcceptsBufferWithTokenInfoAlignmentSpace)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(4LL * MB_SIZE), ge::GRAPH_SUCCESS, 13UL);
+    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(4LL * MB_SIZE), ge::GRAPH_SUCCESS,
+                      GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
 }
 
 } // namespace
