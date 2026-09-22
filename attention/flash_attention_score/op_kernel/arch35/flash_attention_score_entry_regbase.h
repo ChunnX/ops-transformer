@@ -18,6 +18,9 @@
 #include "flash_attention_score_drop_mask_adapter_regbase.h"
 #include "flash_attention_score_kernel_train.h"
 
+// TEMPORARY experiment 2: initialize both cores, then run the guarded Q/K read probe.
+// Both AIC and AIV must initialize: AIV sends ssbuf parameters and flag 15 to AIC.
+// Process only reads Q/K for the z.log reproducer; other inputs stop after initialization.
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #ifdef __DAV_C310_CUBE__ // CUBE 实现
@@ -53,7 +56,7 @@
         if (tilingData->inputParamsRegbase.needDropMaskOp) { \
             FlashAttentionScoreDropMaskAdapterRegbase dropMaskAdapter; \
             dropMaskAdapter.Init(dropMask, user, tilingData, &tPipe); \
-            dropMaskAdapter.Process(); \
+            /* Experiment 2: dropMaskAdapter.Process(); intentionally disabled. */ \
             tPipe.Reset(); \
         } \
         using CubeBlockType = typename BaseApi::FANoQuantBlockCube<__VA_ARGS__>; \
@@ -74,7 +77,7 @@
         if (tilingData->inputParamsRegbase.needDropMaskOp) { \
             FlashAttentionScoreDropMaskAdapterRegbase dropMaskAdapter; \
             dropMaskAdapter.Init(dropMask, user, tilingData, &tPipe); \
-            dropMaskAdapter.Process(); \
+            /* Experiment 2: dropMaskAdapter.Process(); intentionally disabled. */ \
             tPipe.Reset(); \
         } \
         using CubeBlockType = \
