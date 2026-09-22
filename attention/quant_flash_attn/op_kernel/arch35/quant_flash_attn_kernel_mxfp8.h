@@ -163,9 +163,19 @@ public:
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
+        // [SK调试-临时] 定位SK模式scalar越界, 验证完删除
+        printf("[SK-DBG] entry: tiling=%p metadata=%p ws=%p pScale=%p blk=%d sub=%d\r\n",
+               tiling, metadata, workspace, pScale, (int)GetBlockIdx(), (int)GetSubBlockNum());
+
         InitConstInfo();
+        printf("[SK-DBG] after tiling: bSize=%d coreNum=%d\r\n",
+               (int)constInfo_.bSize, (int)constInfo_.coreNum);
+
+        printf("[SK-DBG] before metadata[15]\r\n");
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
         constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)metadata)[1]);
+        printf("[SK-DBG] after metadata[15]: needInit=%d isFd=%d\r\n",
+               (int)constInfo_.needInitOutput, (int)constInfo_.enableFlashDecode);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -182,9 +192,12 @@ public:
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         }
+        printf("[SK-DBG] before metadata[0..2]\r\n");
         sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
         metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
         metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
+        printf("[SK-DBG] after metadata[0..2]: secNum=%d aicNum=%d aivNum=%d\r\n",
+               (int)sectionNum_, (int)metadataAicNum_, (int)metadataAivNum_);
 
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
                                       sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
@@ -193,6 +206,7 @@ public:
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
 
         InitMMResBuf(workspace);
+        printf("[SK-DBG] after InitMMResBuf\r\n");
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -810,6 +824,8 @@ public:
 
     __aicore__ inline void Process()
     {
+        printf("[SK-DBG] Process entry: aicIdx=%d coreNum=%d\r\n",
+               (int)constInfo_.aicIdx, (int)constInfo_.coreNum);
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
