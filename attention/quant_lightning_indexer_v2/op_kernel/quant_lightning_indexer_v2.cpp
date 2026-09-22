@@ -56,6 +56,7 @@ __global__ __aicore__ void quant_lightning_indexer_v2(
     constexpr uint32_t QUANT_MODE_MXFP8 = 3;
     constexpr uint32_t QUANT_MODE_HIFLOAT8 = 4;
     constexpr uint32_t QUANT_MODE_MXFP4 = 5;
+    constexpr uint32_t QUANT_MODE_HIFLOAT4 = 6;
     if (tiling_data->quantMode == QUANT_MODE_FP8) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, fp8_e4m3fn_t, fp8_e4m3fn_t, float, uint16_t, int32_t, PAGE_ATTENTION,
                                  LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), float, float, float);

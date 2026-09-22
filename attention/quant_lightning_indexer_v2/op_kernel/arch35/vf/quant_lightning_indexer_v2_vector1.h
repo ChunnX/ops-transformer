@@ -1577,7 +1577,7 @@ __simd_vf_ void MulWeightAndReduceSumFP4TwoRowsVF(__ubuf__ uint16_t *out0, __ubu
     AscendC::MicroAPI::RegTensor<bfloat16_t> regWeightBrc[2];
     AscendC::MicroAPI::RegTensor<bfloat16_t> regSum[2];
     AscendC::MicroAPI::MaskReg maskAllB16 = 
-        AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern:;ALL>();
+        AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
     AscendC::MicroAPI::MaskReg maskAllB32 = 
         AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
 
@@ -1592,8 +1592,8 @@ __simd_vf_ void MulWeightAndReduceSumFP4TwoRowsVF(__ubuf__ uint16_t *out0, __ubu
     for (uint16_t i = 0; i < gSize; i++) {
         AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK0, qk0 + BF16_QK_ROW_STRIDE * i);
         AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK1, qk1 + BF16_QK_ROW_STRIDE * i);
-        BroadcastLane(regWrightBrc[0], regWeight[0], i);
-        BroadcastLane(regWrightBrc[1], regWeight[1], i);
+        BroadcastLane(regWeightBrc[0], regWeight[0], i);
+        BroadcastLane(regWeightBrc[1], regWeight[1], i);
         AscendC::MicroAPI::MulAddDst(regSum[0], regQK0, regWeightBrc[0], maskAllB16);
         AscendC::MicroAPI::MulAddDst(regSum[1], regQK1, regWeightBrc[1], maskAllB16);
     }
