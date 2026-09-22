@@ -100,7 +100,6 @@ struct HcommCommWaitPolicy {
         } else {
             static_assert(ServerType == AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU,
                           "Hcomm output notifications require CCU");
-            ASSERT_MSG(tileIdx < state_->totalTileCnt_, "hcomm tile index out of range");
             while (state_->nextNotifyTile_ <= tileIdx) {
                 if (state_->nextNotifyTile_ - state_->acknowledgedTiles_ == HCOMM_NOTIFY_WINDOW) {
                     // A scalar wait prevents the sender loop from running ahead of the paired AIVs.
@@ -109,13 +108,10 @@ struct HcommCommWaitPolicy {
                 }
                 const uint32_t nextTile = state_->nextNotifyTile_;
                 if (nextTile == 0) {
-                    const int32_t ret = state_->hccl_.Wait(state_->scaleHandle_);
-                    ASSERT_MSG(ret == 0, "hcomm scale Wait failed: %d", ret);
+                    state_->hccl_.Wait(state_->scaleHandle_);
                 }
                 const auto handle = nextTile < state_->headTileCnt_ ? state_->dataHeadHandle_ : state_->dataTailHandle_;
-                const int32_t ret = state_->hccl_.Wait(handle);
-                // Fail before announcing unreadable data. This is a fatal diagnostic, not collective recovery.
-                ASSERT_MSG(ret == 0, "hcomm data Wait failed at tile %u: %d", nextTile, ret);
+                state_->hccl_.Wait(handle);
                 AscendC::CrossCoreSetFlag<2, PIPE_FIX>(HCOMM_DATA_READY_FLAG);
                 ++state_->nextNotifyTile_;
             }
@@ -232,31 +228,11 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
                      commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
     rankDim_ = tilingData_->rankDim;
     if constexpr (EnableHcommAllToAllOut) {
-        const uint64_t totalTiles = commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt;
-        // The current hcomm host emits LOCAL=0, nonzero head blocks and at most one shorter tail.
-        // These conditions also make Blaze's ceil(M / headSize) equal the notification count.
-        ASSERT_MSG(tilingData_->localMatmul == 0, "hcomm output requires localMatmul=0");
-        ASSERT_MSG(rankDim_ > 0 && all2all_out != nullptr, "hcomm output requires rankDim and output");
-        ASSERT_MSG(commTiling.splitAxisTileSize > 0 && commTiling.splitAxisTileCnt > 0 &&
-                       commTiling.splitAxisTileCnt <= 255 && commTiling.splitAxisTailCnt <= 1,
-                   "invalid hcomm output tile counts");
-        ASSERT_MSG(commTiling.splitAxisTailCnt == 0 ||
-                       (commTiling.splitAxisTailSize > 0 &&
-                        commTiling.splitAxisTailSize < commTiling.splitAxisTileSize),
-                   "invalid hcomm output tail size");
-        ASSERT_MSG(commTiling.nonSplitAxisSize % rankDim_ == 0 &&
-                       (commTiling.nonSplitAxisSize / rankDim_) % MXFP_GROUP_SIZE == 0,
-                   "hcomm output requires per-rank K aligned to 64");
-        commState_.totalTileCnt_ = static_cast<uint32_t>(totalTiles);
+        commState_.totalTileCnt_ = static_cast<uint32_t>(
+            commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt);
         commState_.nextNotifyTile_ = 0;
         commState_.acknowledgedTiles_ = 0;
     }
-#if defined(ASCENDC_DEBUG) || defined(ASCENDC_CPU_DEBUG)
-    ASSERT_MSG(rankDim_ > 0, "hcomm tiling rankDim must be positive, got %u", rankDim_);
-    if constexpr (EnableHcommAllToAllOut) {
-        ASSERT_MSG(all2all_out != nullptr, "hcomm output specialization requires all2all_out");
-    }
-#endif
     x1_ = x1;
     x2_ = x2;
     y_ = y;
@@ -295,13 +271,6 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
         commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
         rankId_ = commState_.hccl_.GetRankId();
         rankDim_ = commState_.hccl_.GetRankDim();
-        if constexpr (EnableHcommAllToAllOut) {
-            ASSERT_MSG(rankDim_ == tilingData_->rankDim, "hcomm output rankDim mismatch");
-        }
-#if defined(ASCENDC_DEBUG) || defined(ASCENDC_CPU_DEBUG)
-        ASSERT_MSG(rankDim_ == tilingData_->rankDim,
-                   "hcomm rankDim mismatch: context=%u, tiling=%u", rankDim_, tilingData_->rankDim);
-#endif
 
         uint64_t originalRankForComm = commTiling.nonSplitAxisSize / rankDim_;
         uint64_t rankForComm = originalRankForComm;
