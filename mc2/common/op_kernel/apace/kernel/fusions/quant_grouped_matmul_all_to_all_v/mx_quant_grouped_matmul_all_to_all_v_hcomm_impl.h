@@ -85,7 +85,6 @@ private:
 
     // 分批流水辅助
     __aicore__ inline uint32_t GetExpertNumPerBatch() const;
-    __aicore__ inline uint64_t BatchTokenCnt(uint32_t startExpertIdx, uint32_t expertNum) const;
     __aicore__ inline AscendC::HcclHandle SubmitAllToAllvBatch(uint32_t startExpertIdx, uint32_t expertNum);
 
     // 通用单次 GMM：分批主 GMM（SPARSE groupList + cGroupOffsetTable 切片）与共享专家 MM（单组 LENGTH）复用
@@ -266,22 +265,6 @@ __aicore__ inline uint32_t MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, 
     return expertNum;
 }
 
-// 本批全部 rank 的 token 总数（gmmX 专家主序下的本批 token 跨度）
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool TransGmmB,
-          bool TransMmB>
-__aicore__ inline uint64_t MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmmB,
-                                                                  TransMmB>::BatchTokenCnt(uint32_t startExpertIdx,
-                                                                                           uint32_t expertNum) const
-{
-    uint64_t tokens = 0UL;
-    for (uint32_t eIdx = startExpertIdx; eIdx < startExpertIdx + expertNum; ++eIdx) {
-        for (uint32_t r = 0U; r < ep_; ++r) {
-            tokens += static_cast<uint64_t>(tilingData_->sendCnt[eIdx + r * e_]);
-        }
-    }
-    return tokens;
-}
-
 // 提交本批 AllToAllV（非阻塞，返回 handle）：在全局 rank-first 的 sendBuf/y 布局中
 // 读取/写入本批的不相交连续 chunk：
 //   sendOff[r] = (rank r 全局基 + rank r 在 start 之前专家的 token 前缀) × N1
@@ -365,12 +348,15 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
     gmmTiling.baseM = mmTile.baseM;
     gmmTiling.baseN = mmTile.baseN;
     gmmTiling.baseK = mmTile.baseK;
+    // 对齐镜像算子 PR 11573 的 tiling 映射（SetApaceMatmulTiling）：scaleKAL1 = kAL1 = stepK*baseK，
+    // l1BufferStage 固定 2。此前 scaleKAL1 用 SWAT 的 scaleKL1（含 scale 复用系数，通常 >= kAL1），
+    // 该取值组合未经真机验证，stage=4 实测 Blaze GMM 挂死
     gmmTiling.kAL1 = static_cast<uint32_t>(mmTile.stepK) * mmTile.baseK;
     gmmTiling.kBL1 = gmmTiling.kAL1;
-    gmmTiling.scaleKAL1 = mmTile.scaleKL1;
+    gmmTiling.scaleKAL1 = gmmTiling.kAL1;
     gmmTiling.isBias = 0U;
     gmmTiling.dbL0C = mmTile.dbL0c;
-    gmmTiling.l1BufferStage = mmTile.nBufferNum;
+    gmmTiling.l1BufferStage = 2U;
     gmmTiling.groupListType = groupListType;
 
     typename GmmKernel::Params params{};
@@ -406,23 +392,35 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
 
     if ASCEND_IS_AIC {
         // AIC：分批 GMM → mode-0 全 AIC barrier（闭合本批多核写依赖）→ mode-2 flag 通知 AIV；
-        // 下一批 GMM 与本批 AIV 通信重叠（通算掩盖）
-        uint64_t batchTokenOffset = 0UL;
-        uint32_t batchCnt = 0U;
+        // 下一批 GMM 与本批 AIV 通信重叠（通算掩盖）。
+        // GMM 调用粒度对齐镜像算子 PR 11573（其验证过的形态）：单 expert 一次调用
+        // （groupNum=ep，m=当前 expert 实际行数），批内 expert 间输出区域经 cTable 不相交、无需 barrier
+        uint64_t expertTokenOffset = 0UL;
         for (uint32_t start = 0U; start < e_; start += expertNumPerBatch) {
             const uint32_t actualExpertNum = (start + expertNumPerBatch > e_) ? (e_ - start) : expertNumPerBatch;
             if (!skipCompute) {
-                // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
-                const uint64_t aElemUnits =
-                    Blaze::Gemm::IsFp4<AType>() ? ((batchTokenOffset * h1_) >> 1U) : (batchTokenOffset * h1_);
-                RunGmmKernel<TransGmmB>(
-                    tilingData_->gmmTile, actualExpertNum * ep_, static_cast<int64_t>(tilingData_->maxM),
-                    static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType),
-                    gmmWeightGM_, gmmxScaleGM_ + batchTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
-                    groupListGM_ + static_cast<uint64_t>(start) * ep_ * 2UL * sizeof(int64_t),
-                    Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
-                    reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(start) * ep_);
-                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint32_t eIdx = start; eIdx < start + actualExpertNum; ++eIdx) {
+                    // 当前 expert 全 rank token 数（镜像的 expertRows 同款口径）
+                    uint64_t expertTokens = 0UL;
+                    for (uint32_t r = 0U; r < ep_; ++r) {
+                        expertTokens += static_cast<uint64_t>(tilingData_->sendCnt[eIdx + r * e_]);
+                    }
+                    if (expertTokens == 0UL) {
+                        continue; // 空 expert 跳过（token 偏移不推进，与全局累计语义一致）
+                    }
+                    // FP4 打包口径与 kernel 内默认 A offset 一致：元素数 (token×K)>>1
+                    const uint64_t aElemUnits =
+                        Blaze::Gemm::IsFp4<AType>() ? ((expertTokenOffset * h1_) >> 1U) : (expertTokenOffset * h1_);
+                    RunGmmKernel<TransGmmB>(
+                        tilingData_->gmmTile, ep_, static_cast<int64_t>(expertTokens), static_cast<int64_t>(n1_),
+                        static_cast<int64_t>(h1_), gmmxGM_ + aElemUnits * sizeof(AType), gmmWeightGM_,
+                        gmmxScaleGM_ + expertTokenOffset * scaleKLen_, gmmWeightScaleGM_, sendBufGM_,
+                        groupListGM_ + static_cast<uint64_t>(eIdx) * ep_ * 2UL * sizeof(int64_t),
+                        Apace::GMM_A2AV_GROUP_LIST_TYPE_SPARSE,
+                        reinterpret_cast<const __gm__ uint64_t *>(cTableGM_) + static_cast<uint64_t>(eIdx) * ep_);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    expertTokenOffset += expertTokens;
+                }
             }
 
             if (!skipComm) {
@@ -436,8 +434,6 @@ MxQuantGroupedMatmulAllToAllvHcommImpl<AType, BType, CType, ServerType, TransGmm
                 AscendC::CrossCoreSetFlag<0, PIPE_FIX>(AIC_BARRIER_FLAG);
                 AscendC::CrossCoreWaitFlag(AIC_BARRIER_FLAG);
             }
-            batchCnt++;
-            batchTokenOffset += BatchTokenCnt(start, actualExpertNum);
         }
 
         // 共享专家 MM 与 AIV 末批通信/等待重叠（mmY 不参与通信，无跨核依赖）
