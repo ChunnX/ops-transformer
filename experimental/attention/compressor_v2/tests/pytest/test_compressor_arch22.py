@@ -14,7 +14,7 @@ import torch
 import torch_npu
 
 from cann_ops_transformer.ops.ds41 import compressor
-from compressor_golden import check_result, cpu_compressor
+from compressor_golden_arch22 import check_result, cpu_compressor
 
 
 @pytest.mark.ci
@@ -24,6 +24,15 @@ from compressor_golden import check_result, cpu_compressor
 @pytest.mark.parametrize("head_dim", [128, 512])
 def test_arch22_ring_state(dtype, layout_th, length, head_dim):
     _run_ring_sequence(dtype, layout_th, [length, 1, 1, 1, 1], head_dim)
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("length", [3, 5])
+def test_arch22_read_before_write_conflict(dtype, length):
+    _run_ring_sequence(
+        dtype, False, [length], head_dim=128, capacity=3, starts=[5], state_padding=1
+    )
 
 
 def _run_ring_sequence(
