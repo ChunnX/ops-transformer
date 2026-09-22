@@ -383,7 +383,7 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
             if (this->tilingData->deterParam.tndLineDeter != 0) {
                 CalTNDCausalLineIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                     this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
                     this->tilingData->deterParam.deterPrefixStep, this->constInfo.sparseMode, coordinateInfo);
             } else {
                 CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(

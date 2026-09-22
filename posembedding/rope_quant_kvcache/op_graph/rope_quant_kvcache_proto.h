@@ -48,6 +48,8 @@ namespace ge {
 * format support ND
 * It is a custom operator.
 */
+#ifndef OPS_PROTO_DEF_ROPEQUANTKVCACHE
+#define OPS_PROTO_DEF_ROPEQUANTKVCACHE
 REG_OP(RopeQuantKvcache)
     .INPUT(qkv, TensorType({DT_FLOAT16}))
     .INPUT(cos, TensorType({DT_FLOAT16}))
@@ -66,6 +68,7 @@ REG_OP(RopeQuantKvcache)
     .ATTR(layout, String, "BSND")
     .ATTR(kv_output, Bool, false)
     .OP_END_FACTORY_REG(RopeQuantKvcache)
+#endif // OPS_PROTO_DEF_ROPEQUANTKVCACHE
 } // namespace ge
 
 #endif // OPS_OP_PROTO_INC_REPO_QUANT_KVCACHE_H_

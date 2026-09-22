@@ -89,6 +89,7 @@ enum class Layout : uint8_t {
 enum class DataType : uint8_t {
     FP32 = 0,
     FP16,
+    BF16,
     INT4,
     INT8,
     INT32,
@@ -201,6 +202,7 @@ static inline uint32_t GetDataTypeByteSize(DataType type)
         case (DataType::INT32):
             return 4U;
         case (DataType::FP16):
+        case (DataType::BF16):
             return 2U;
         case (DataType::INT8):
         case (DataType::FP8):
