@@ -290,8 +290,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
     if (tokenDispatchConfig_.dedup.dedupMode != 0) {
         // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
-        PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, countWorkspace_, params_,
-                                     tokenDispatchScratch_);
+        PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, params_, tokenDispatchScratch_);
         BuildDedupRowDescTable<TopkIndexType>(tokenDispatchConfig_.dedup, commonConfig_,
                                               gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                                               tokenDispatchScratch_);
