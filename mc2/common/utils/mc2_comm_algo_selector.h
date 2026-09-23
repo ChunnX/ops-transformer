@@ -36,6 +36,8 @@ struct CommAlgoEntry {
 
 class Mc2CommAlgoSelector {
 public:
+    // 表项的引擎/卡数/层数/拓扑/数据量区间均为硬约束：全部匹配的表项中取priority最高者（平票取表内靠前者）；
+    // 无任何表项匹配时返回defaultAlgoName；topoType/layerNum查询失败时对应维度不做约束
     static std::string SelectAlgoName(const std::string &opName, const char *group, uint8_t commEngine,
                                       uint64_t commDataBytes, uint32_t rankSize, const CommAlgoEntry *entries,
                                       uint32_t entryCount, const std::string &defaultAlgoName);
