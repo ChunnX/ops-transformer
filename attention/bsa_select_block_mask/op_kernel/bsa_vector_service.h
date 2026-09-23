@@ -165,6 +165,7 @@ __aicore__ inline bool BSAVectorService<BSAT>::FastPoolingKRange(uint32_t batchI
     return poolOP.FastPoolingKRange(batchIdx, headIdx, startKBlock, endKBlock, seqPrefixSumKV);
 }
 
+
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                            uint32_t kChunkStart, uint32_t kChunkSize,

@@ -471,7 +471,10 @@ __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T>
     //   nSize 需对齐到 16（NZ fractal 宽度），尾块 padding 落在本 tile 槽内无害
     FixpipeParamsV220 fixpipeParams;
     fixpipeParams.nSize = ((nSize + C0_SIZE - 1) / C0_SIZE) * C0_SIZE; // NZ: fractal 宽度对齐 16
-    fixpipeParams.mSize = mSize;
+    // fixpipe mSize 须 16 倍数：M=1/非整块尾（变长尾 chunk）实测 fixp_error 异常挂死
+    // （cube error=0 证明 mmad 成功，寄存器实锤 fixpipe 违规）；对齐后多写的 L0C 垃圾行
+    // 落在本 tile 槽内（pass1 只读有效行），无害
+    fixpipeParams.mSize = ((mSize + C0_SIZE - 1) / C0_SIZE) * C0_SIZE;
     fixpipeParams.srcStride = ((mSize + C0_SIZE - 1) / C0_SIZE) * C0_SIZE; // L0C 行 stride（对齐到 16）
     fixpipeParams.dstStride = dstStride; // 32B 单位（调用方按 NZ 语义计算）
     fixpipeParams.ndNum = 1;
