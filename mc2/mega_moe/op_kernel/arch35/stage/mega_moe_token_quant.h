@@ -323,25 +323,10 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
                                                   const PreQuantizedCopyContext &copyContext,
                                                   QuantProcessScratch<ActivationType> &scratch)
 {
-    // x、scale、weight 分别使用独立 B。三阶段仍按顺序复用同一组双 buffer；旧 tiling
-    // 数据没有新字段时回退到 preQuantTileTokens，保持与旧 launch 数据兼容。
-    const uint32_t legacyTileCapacity = params.tilingData->preQuantTileTokens;
-    uint32_t xTileCapacity = params.tilingData->preQuantXTileTokens;
-    uint32_t scaleTileCapacity = params.tilingData->preQuantScaleTileTokens;
-    uint32_t weightTileCapacity = params.tilingData->preQuantWeightTileTokens;
-    if (xTileCapacity == 0U) {
-        xTileCapacity = legacyTileCapacity;
+    uint32_t tileCapacity = params.tilingData->preQuantTileTokens;
+    if (tileCapacity == 0U) {
+        tileCapacity = 1U;
     }
-    if (scaleTileCapacity == 0U) {
-        scaleTileCapacity = legacyTileCapacity;
-    }
-    if (weightTileCapacity == 0U) {
-        weightTileCapacity = legacyTileCapacity;
-    }
-    xTileCapacity = xTileCapacity == 0U ? 1U : xTileCapacity;
-    scaleTileCapacity = scaleTileCapacity == 0U ? 1U : scaleTileCapacity;
-    weightTileCapacity = weightTileCapacity == 0U ? 1U : weightTileCapacity;
-
     // 三个阶段分别遍历整个 token range。这样 slot 0 的 MTE3 可以和 slot 1 的 MTE2 重叠，
     // 又能在阶段边界复用同一片 UB，而不是在一个 tile 内等待 x 写完后立即搬 scale。
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -350,10 +335,9 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
     uint32_t pendingTileStart = 0U;
     uint32_t pendingTileCount = 0U;
     TEventID pendingEvent = EVENT_ID0;
-    for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += xTileCapacity) {
-        uint32_t tileOrdinal = tileStart / xTileCapacity;
-        uint32_t tileCount =
-            xTileCapacity < tokenRange.count - tileStart ? xTileCapacity : tokenRange.count - tileStart;
+    for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += tileCapacity) {
+        uint32_t tileOrdinal = tileStart / tileCapacity;
+        uint32_t tileCount = tileCapacity < tokenRange.count - tileStart ? tileCapacity : tokenRange.count - tileStart;
         bool useFirstBuffer = (tileOrdinal % DOUBLE_BUFFER) == 0U;
         TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
         LocalTensor<uint8_t> stage = useFirstBuffer ? scratch.preQuantStage0 : scratch.preQuantStage1;
@@ -395,10 +379,9 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     hasPendingTile = false;
-    for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += scaleTileCapacity) {
-        uint32_t tileOrdinal = tileStart / scaleTileCapacity;
-        uint32_t tileCount =
-            scaleTileCapacity < tokenRange.count - tileStart ? scaleTileCapacity : tokenRange.count - tileStart;
+    for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += tileCapacity) {
+        uint32_t tileOrdinal = tileStart / tileCapacity;
+        uint32_t tileCount = tileCapacity < tokenRange.count - tileStart ? tileCapacity : tokenRange.count - tileStart;
         bool useFirstBuffer = (tileOrdinal % DOUBLE_BUFFER) == 0U;
         TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
         LocalTensor<uint8_t> stage = useFirstBuffer ? scratch.preQuantStage0 : scratch.preQuantStage1;
@@ -446,10 +429,10 @@ __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, c
         const uint32_t weightValidBytes = common.topK * sizeof(TopkWeightsType);
         const uint32_t weightRowBytes = Ops::Base::CeilAlign(weightValidBytes, static_cast<uint32_t>(ALIGN_32));
         const uint32_t weightOffset = config.quantTokenAlignBytes + config.quantScaleAlignBytes;
-        for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += weightTileCapacity) {
-            uint32_t tileOrdinal = tileStart / weightTileCapacity;
+        for (uint32_t tileStart = 0U; tileStart < tokenRange.count; tileStart += tileCapacity) {
+            uint32_t tileOrdinal = tileStart / tileCapacity;
             uint32_t tileCount =
-                weightTileCapacity < tokenRange.count - tileStart ? weightTileCapacity : tokenRange.count - tileStart;
+                tileCapacity < tokenRange.count - tileStart ? tileCapacity : tokenRange.count - tileStart;
             bool useFirstBuffer = (tileOrdinal % DOUBLE_BUFFER) == 0U;
             TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
             LocalTensor<uint8_t> stage = useFirstBuffer ? scratch.preQuantStage0 : scratch.preQuantStage1;

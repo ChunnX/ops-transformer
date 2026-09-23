@@ -431,30 +431,14 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
         uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
          // Host tiling normally supplies the stage budget; keep a conservative
          // fallback for legacy tiling data.
+        // 新版 host tiling 一定会写入非零预算。旧 tiling 数据或异常输入下仍按一个 token
+        // 计算真实最小 stage，不能用固定 512B 兜底，否则 H=8K 时会与 route ring 重叠。
         if (stageBytes == 0U) {
             uint32_t dataBytes = Ops::Base::CeilAlign(
                 k_ / MoeQuantConfig::A_ELEMS_PER_BYTE, static_cast<uint32_t>(ALIGN_32));
             uint32_t scaleBytes = Ops::Base::CeilAlign(
                 Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)), static_cast<uint32_t>(ALIGN_32));
-            uint32_t legacyTileTokens = params_.tilingData->preQuantTileTokens;
-            uint32_t xTileTokens = params_.tilingData->preQuantXTileTokens;
-            uint32_t scaleTileTokens = params_.tilingData->preQuantScaleTileTokens;
-            uint32_t weightTileTokens = params_.tilingData->preQuantWeightTileTokens;
-            if (xTileTokens == 0U) {
-                xTileTokens = legacyTileTokens;
-            }
-            if (scaleTileTokens == 0U) {
-                scaleTileTokens = legacyTileTokens;
-            }
-            if (weightTileTokens == 0U) {
-                weightTileTokens = legacyTileTokens;
-            }
-            xTileTokens = xTileTokens == 0U ? 1U : xTileTokens;
-            scaleTileTokens = scaleTileTokens == 0U ? 1U : scaleTileTokens;
-            weightTileTokens = weightTileTokens == 0U ? 1U : weightTileTokens;
-            uint64_t dataStageBytes = static_cast<uint64_t>(dataBytes) * xTileTokens;
-            uint64_t scaleStageBytes = static_cast<uint64_t>(scaleBytes) * scaleTileTokens;
-            uint64_t stageBytes64 = dataStageBytes > scaleStageBytes ? dataStageBytes : scaleStageBytes;
+            stageBytes = dataBytes > scaleBytes ? dataBytes : scaleBytes;
             if constexpr (TopkWeightsPrefetch) {
                 uint32_t weightSrcBytes = Ops::Base::CeilAlign(
                     params_.tilingData->topK * static_cast<uint32_t>(sizeof(TopkWeightsType)),
@@ -466,11 +450,9 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
                 if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
                     weightBytes = weightSrcBytes + weightDstBytes;
                 }
-                uint64_t weightStageBytes = static_cast<uint64_t>(weightTileTokens) * weightBytes;
-                stageBytes64 = stageBytes64 > weightStageBytes ? stageBytes64 : weightStageBytes;
+                stageBytes = stageBytes > weightBytes ? stageBytes : weightBytes;
             }
-            stageBytes = static_cast<uint32_t>(
-                Ops::Base::CeilAlign(stageBytes64, static_cast<uint64_t>(ALIGN_512)));
+            stageBytes = Ops::Base::CeilAlign(stageBytes, static_cast<uint32_t>(ALIGN_512));
         }
         quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
         quantScratch_.preQuantStage1 =
