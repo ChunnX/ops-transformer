@@ -61,7 +61,7 @@ struct MatmulAlltoAllV2AclnnTestParam {
     bool outputNull = false;
 };
 
-static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_950[] = {
+static MatmulAlltoAllV2AclnnTestParam g_v2_casesParams_a5[] = {
     // 正常用例 13条
     // caseid按照[算子名-x1x2output_dtype-biasDtype-format-transpose-id]构成，按bias分组
     // ========================bfloat16 系列（6条）========================
@@ -962,13 +962,13 @@ static void TestV2OneParamCase(const MatmulAlltoAllV2AclnnTestParam &param)
     std::cout << "end case " << param.caseName << std::endl;
 }
 
-TEST_F(TestAclnnMatmulAlltoAllV2, CasesParamsTest950)
+TEST_F(TestAclnnMatmulAlltoAllV2, CasesParamsTestA5)
 {
     op::SetPlatformNpuArch(Ops::Base::DAV_3510);
-    if (std::size(g_v2_casesParams_950) != 0) {
-        uint64_t numCases = sizeof(g_v2_casesParams_950) / sizeof(g_v2_casesParams_950[0]);
+    if (std::size(g_v2_casesParams_a5) != 0) {
+        uint64_t numCases = sizeof(g_v2_casesParams_a5) / sizeof(g_v2_casesParams_a5[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {
-            TestV2OneParamCase(g_v2_casesParams_950[idx]);
+            TestV2OneParamCase(g_v2_casesParams_a5[idx]);
         }
     }
     op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);

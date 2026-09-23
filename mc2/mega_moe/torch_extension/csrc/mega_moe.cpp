@@ -410,6 +410,7 @@ constexpr int64_t MOE_PERMUTE_CHUNK = 1024LL;
 constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -501,8 +502,8 @@ int64_t CalcMteCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * routeIndexTypeBytes, ALIGN_32);
     int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * routeIndexAlignSize, ALIGN_512);
 
-    int64_t expertCountRecvSize =
-        CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
+    // 与 kernel 的固定 MTE count 区容量保持一致。
+    int64_t expertCountRecvSize = PEERMEM_MTE_COUNT_REGION_SIZE;
 
     int64_t tokenBytes = CalcTokenScaleBytesA5(hidden, numTopk, topkWeightsType);
     int64_t dispatchRecordAreaSize = CeilAlign(numMaxTokensPerRank * tokenBytes, ALIGN_512);

@@ -22,7 +22,7 @@
 #endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "gather_moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base_a2.h"
 #include "all_gather_matmul_aiv_mode_tiling.h"
 #include "all_gather_matmul_aiv_mode_util.h"
 #include "all_gather_matmul_aiv_mode_padding.h"
@@ -377,11 +377,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 WaitEvent(flag_idx);
             }
 
-            SetAndWaitAivSync(flag_idx);
+            Mc2AivSync::SetAndWaitAivSync(flag_idx);
             if (cal_idx < cal_count) {
                 // Step 2: Rank sync
                 CrossRankSyncV1(FLAG_ZERO_IDX, cal_idx + 1);
-                SetAndWaitAivSync(flag_idx);
+                Mc2AivSync::SetAndWaitAivSync(flag_idx);
             }
 
             if (cal_idx < cal_count && aivIdx == 0 && blockIdx < core_count) {
@@ -405,17 +405,17 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             }
 
             if (cal_idx < cal_count) {
-                SetAndWaitAivSync(flag_idx);
+                Mc2AivSync::SetAndWaitAivSync(flag_idx);
                 CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
-                SetAndWaitAivSync(flag_idx);
+                Mc2AivSync::SetAndWaitAivSync(flag_idx);
                 // 发送aic同步
-                SetAicSync(flag_idx);
+                Mc2AivSync::SetAicSync(flag_idx);
             }
         }
 
         ResetFlags(num_flags);
 
-        SetAndWaitAivSync(FLAG_ONE_IDX);
+        Mc2AivSync::SetAndWaitAivSync(FLAG_ONE_IDX);
 
         if (blockIdx < worldSize && aivIdx == 1) {
             CheckBuffFlag((__gm__ int32_t *)stateAddrPerRank[blockIdx] + FLAG_OFFSET + FLAG_ZERO_IDX, uBuf_, 0);

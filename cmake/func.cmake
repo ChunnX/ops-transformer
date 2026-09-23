@@ -194,6 +194,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         file(GLOB OP_HOST_CMAKE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/ffn/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/gmm/**/op_host/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mhc/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )

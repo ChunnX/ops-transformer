@@ -18,6 +18,11 @@
 
 #include <cstdint>
 
+// 量化模式（host tiling + kernel 共享）
+constexpr uint32_t TG_QUANT_MOD = 1;
+constexpr uint32_t MX_QUANT_MOD = 2;
+constexpr uint32_t PT_QUANT_MOD = 3;
+
 struct QuantReduceScatterTilingInfo {
     uint64_t bs;
     uint64_t hiddenSize;
@@ -27,6 +32,7 @@ struct QuantReduceScatterTilingInfo {
     uint32_t xPerBlock;    // host 侧基于 TARGET_ITER 公式推荐的每块元素数
     uint32_t alignBlock;   // xPerBlock 对齐粒度（元素数，host/kernel共享）
     uint64_t hcclBufferSize;
+    uint32_t quantMode; // 1=TG(KG), 2=MX, 3=PT(pertensor)
 };
 
 struct QuantReduceScatterTilingData {

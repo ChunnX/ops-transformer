@@ -16,15 +16,21 @@ import torch
 def customize_inputs(
     q,
     k_cache,
-    *,
     block_table=None,
     cache_seqlens=None,
     cu_seqlens_q=None,
     seqused_q=None,
     attn_mask=None,
     metadata=None,
-    layout_kv="PA_BBND",
+    head_dim_v=512,
+    softmax_scale=1.0,
     mask_mode=0,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_out="BSND",
+    return_softmax_lse=False,
     **kwargs,
 ):
     for name, tensor in (
@@ -55,13 +61,17 @@ def customize_inputs(
             or max(counts, default=0) > block_table.shape[1]
         ):
             raise ValueError("cache_seqlens exceeds block_table capacity")
-        if sum(counts) > k_cache.shape[0]:
-            raise ValueError("k_cache has too few physical pages")
         table = torch.full_like(block_table, -1)
         page_order = kwargs.get("page_order", "sequential")
         if page_order not in ("sequential", "reverse"):
             raise ValueError(f"Unknown page_order: {page_order}")
+        physical_pages = k_cache.shape[0]
+        if sum(counts) and physical_pages == 0:
+            raise ValueError("nonempty cache sequences require physical pages")
         page_ids = torch.arange(sum(counts), device=table.device)
+        # Reuse physical pages when logical pages across batches exceed storage.
+        if page_ids.numel() > physical_pages:
+            page_ids = page_ids.remainder(physical_pages)
         if page_order == "reverse":
             page_ids = page_ids.flip(0)
         offset = 0

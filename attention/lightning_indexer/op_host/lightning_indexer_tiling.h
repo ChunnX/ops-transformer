@@ -81,6 +81,7 @@ constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_32 = 32;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_24 = 24;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_16 = 16;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_8 = 8;
+constexpr int64_t MAX_SEQ_LEN_LIMIT = 8 * 1024 * 1024;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(LITilingData)
@@ -139,8 +140,8 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
+    uint32_t qkHeadDim = 0;
     // Mask
     int32_t sparseMode = 0;
     // PageAttention
@@ -173,25 +174,25 @@ public:
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckTensorDescriptions() const;
+    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                         const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
-    void GetOptionalInputParaInfo();
     void GetInputParaInfo();
+    void GetOptionalInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAndCheckAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
-    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatchQtnd();
+    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus GetAndCheckInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetHeadDim();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
@@ -199,6 +200,7 @@ public:
     ge::graphStatus CheckBlockCount();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
+    ge::graphStatus CheckSeqLenLimit() const;
     ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetAndCheckN2Size();
