@@ -301,7 +301,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
             " And when sparse_count > 2048, sparse_count must be an integer multiple of 1024"),
         return ge::GRAPH_FAILED);
     
-    if (*opParamInfo_.sparseCount > 8192) {
+    if (*opParamInfo_.sparseCount > 8192) { // 8192表示sparseCount支持上限
         OP_LOGW(opName_, "Sparse_count should > 0 and <= 8192.");
     }
 
