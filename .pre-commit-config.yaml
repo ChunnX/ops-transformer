@@ -57,6 +57,8 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
+        # 包装 entry：输出 tee 到 pre-commit_reports/codespell.log（仍跑在托管 venv）
+        entry: bash scripts/run_codespell.sh
         args: [
             "-L",
             "CANN,cann,NNAL,nnal,ASCEND,ascend,EnQue,CopyIn,ArchType,AND,ND,tbe,copyin,alog,wIh,dout,indexs,inH,padD,outWeight",
