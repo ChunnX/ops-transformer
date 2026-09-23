@@ -680,49 +680,48 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     int32_t dstTokenIdx = 0;
 
     int32_t lastTokenId = -1;
-    uint32_t startTokenId, endTokenId, sendTokenNum;
-    SplitToCore(validTokenNum, moeUsedAivNum_, startTokenId, endTokenId, sendTokenNum, true);
-    if (startTokenId >= validTokenNum) {
-        return;
-    }
-    for (int32_t index = startTokenId; index < endTokenId; index += 1) {
-        int32_t tokenId = index / axisK_;
-        int32_t topKId = index % axisK_;
-        int32_t expertId = validExpertIdsTensor_(index);
-        if (expertId >= moeExpertNum_ || expertId < 0)
-            continue;
-        int32_t toRankId = expertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
-        if (isScalingDownFlag_) {
-            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
-        }
+    // 按完整 token 交错分核，使各核共同推进前部 token，并保留 K 路发送的搬入复用。
+    uint32_t tokenNum = validTokenNum / axisK_;
+    for (uint32_t tokenId = aivId_; tokenId < tokenNum; tokenId += moeUsedAivNum_) {
+        for (uint32_t topKId = 0; topKId < axisK_; ++topKId) {
+            uint32_t index = tokenId * axisK_ + topKId;
+            int32_t expertId = validExpertIdsTensor_(index);
+            if (expertId >= moeExpertNum_ || expertId < 0)
+                continue;
+            int32_t toRankId = expertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+            if (isScalingDownFlag_) {
+                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
+            }
 
-        CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
+            CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
 
-        dstWinGMTensor.SetGlobalBuffer(
-            (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                dataSectionSize_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
-                                                    expertId % moeExpertNumPerRank_) +
-                                dstTokenIdx * hCommuSize_));
-        if (hasElasticInfoFlag_) {
-            dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                                               dataSectionSize_ * (epRankId_ * moeExpertNumPerRank_ +
-                                                                                   expertId % moeExpertNumPerRank_) +
-                                                               dstTokenIdx * hCommuSize_));
+            dstWinGMTensor.SetGlobalBuffer(
+                (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
+                                    dataSectionSize_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
+                                                        expertId % moeExpertNumPerRank_) +
+                                    dstTokenIdx * hCommuSize_));
+            if (hasElasticInfoFlag_) {
+                dstWinGMTensor.SetGlobalBuffer(
+                    (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
+                                        dataSectionSize_ *
+                                            (epRankId_ * moeExpertNumPerRank_ + expertId % moeExpertNumPerRank_) +
+                                        dstTokenIdx * hCommuSize_));
+            }
+            bool isNeedCopyIn;
+            if constexpr (QuantMode > UNQUANT && IsSmoothScaleExist) {
+                isNeedCopyIn = true;
+            } else {
+                isNeedCopyIn = (tokenId != lastTokenId);
+            }
+            if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
+                uint32_t quantExpertIdx = expertId + sharedExpertNum_;
+                TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx, isNeedCopyIn,
+                                     writeExpertScale);
+            } else {
+                TokenToExpert(dstWinGMTensor, inQueue, tokenId, topKId, isNeedCopyIn, lastTokenId, writeExpertScale);
+            }
+            lastTokenId = tokenId;
         }
-        bool isNeedCopyIn;
-        if constexpr (QuantMode > UNQUANT && IsSmoothScaleExist) {
-            isNeedCopyIn = true;
-        } else {
-            isNeedCopyIn = (tokenId != lastTokenId);
-        }
-        if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
-            uint32_t quantExpertIdx = expertId + sharedExpertNum_;
-            TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx, isNeedCopyIn,
-                                 writeExpertScale);
-        } else {
-            TokenToExpert(dstWinGMTensor, inQueue, tokenId, topKId, isNeedCopyIn, lastTokenId, writeExpertScale);
-        }
-        lastTokenId = tokenId;
     }
     if constexpr (Std::IsSame<ExpandXOutType, XType>::value) {
         if (lastTokenId != -1) {
