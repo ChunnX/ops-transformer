@@ -263,9 +263,12 @@ public:
                    __gm__ uint8_t *dequantScaleValue,
                    QSeqParser &qSeqParser, KvSeqParser &kvSeqParser)
     {
-        InitQBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, constInfo_.dSize,
-                    queryGm_, query, qSeqParser);
-        InitQScaleBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size,
+        // Q/Qscale 用折叠头维（realN2 = n2×G, realG = 1，与 kernel 不合轴调度一致）：
+        // 拷贝坐标传 realN2Idx（扁平头索引），gS1Idx 为纯 s1 索引（g 恒为 0）——
+        // 若用分立 (n2Size, gSize) 初始化 + n2Idx 寻址，GQA 时 g>0 的头全部错读 head 0
+        InitQBuffer(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize, constInfo_.s1Size,
+                    constInfo_.dSize, queryGm_, query, qSeqParser);
+        InitQScaleBuffer(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize, constInfo_.s1Size,
                     constInfo_.dSize / MXFP_GROUP_SIZE, queryScaleGm_, dequantScaleQuery, qSeqParser);
         InitKBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSize,
                     keyGm_, key, kvSeqParser);
@@ -575,8 +578,9 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31U) / 32U * 32U;
         FaL1Tensor<QUANT_T, L1Format::NZ> l1Tensor{.tensor = qL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
+        // n2Idx 传 realN2Idx（折叠头索引，GQA 时 = n2*G+g；GM 布局按 realN2×1 折叠初始化）
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                                .n2Idx = runInfo.n2Idx,
+                                .n2Idx = runInfo.realN2Idx,
                                 .gS1Idx = runInfo.gS1Idx,
                                 .dIdx = 0U,
                                 .gS1DealSize = runInfo.actMSize,
@@ -591,8 +595,9 @@ public:
         uint32_t dDealSize = dBaseSize / MXFP_GROUP_SIZE;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = qScaleL1Tensor_[l1BaseOffset], .rowCount = dstStride};
 
+        // 同 CopyQGmToL1：n2Idx 传 realN2Idx（折叠头索引）
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                                .n2Idx = runInfo.n2Idx,
+                                .n2Idx = runInfo.realN2Idx,
                                 .gS1Idx = runInfo.gS1Idx,
                                 .dIdx = 0U,
                                 .gS1DealSize = runInfo.actMSize,
