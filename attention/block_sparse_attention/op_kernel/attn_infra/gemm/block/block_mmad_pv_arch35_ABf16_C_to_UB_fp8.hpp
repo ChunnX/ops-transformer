@@ -42,10 +42,10 @@ template <class L1TileShape_, class L0TileShape_, class ElementA_, class Element
 struct BlockMmadTla<
     // if transposedMm1, P is actually nZ in UB, and nZ in L1,
     // and is transposed to zN while loaded to L0A.
-    MmadAtlasA5BsaPVHif8<transposedMm1>, L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, ElementBias_,
+    MmadAtlasA5BsaPVFp8<transposedMm1>, L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, ElementBias_,
     TileCopy_, TileMmad_> {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaPVHif8<transposedMm1>;
+    using DispatchPolicy = MmadAtlasA5BsaPVFp8<transposedMm1>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
@@ -70,49 +70,27 @@ public:
     static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape_{});
     static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = ArchTag::L0A_SIZE / L0_STAGES;
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
-    static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = ArchTag::L0C_SIZE / L0_STAGES;
 
-    // ---- Plan C: QK 微切, PV 整块 ----
-    //
-    // K 是 PV 的**归约轴**: 沿 K 切开的两块是往同一块 L0C 累加的部分和, 第二条 MMAD
-    // 必须等第一条 (同址累加), FixPipe 又必须等两块都完 —— 所以切 K 拿不到任何
-    // Cube/FixPipe 穿插, 只会多一条 MMAD 和一次 MTE1 握手。故 Plan C 不再切:
-    // 一条 MMAD 吃满 K=256, P[128,256] / V[256,128] 各 32 KiB 连续占一个 outer 槽。
-    // (对照 MM1: 它切的是 M=kv 这条**自由轴**, 两块落进两个独立 L0C 片, 因此能穿插,
-    //  Plan C 原样保留它的微切。)
-    //
-    // L0_MICRO_STAGES 保持 2 不动 —— 它管的是**物理槽粒度**(16 KiB), 不是 K 的切分。
-    // 保持它才使得 l0ATensor[]/l0BTensor[] 的下标->偏移映射与 MM1 逐字节一致:
-    //   槽 0,1 = outer 0 = MM1 的两个微块;  槽 2,3 = outer 1 = PV 的整块。
-    // 事件号也因此天然错开 (MM1 占 0,1; PV 取 bufId*2 = 2), 无需重排。
+    // Plan C keeps PV unsplit along K. One full K tile is processed per MMAD,
+    // while the two micro-slots preserve the MM1/PV L0 buffer and event mapping.
     static constexpr uint32_t L0_MICRO_STAGES = 2;
-    // Plan C: K 不再切分。整块 tile 一次进 L0, kMicroLoopNum 退化为 1,
-    // microK 恒 0, initMmad 里 (microK == 0) 恒真 -> 等价于无累加。
     static constexpr uint32_t L0_TILE_K_MICRO = L0_TILE_K;
     static constexpr uint32_t L0A_MICRO_BUF_SIZE = ArchTag::L0A_SIZE / (L0_STAGES * L0_MICRO_STAGES);
     static constexpr uint32_t L0B_MICRO_BUF_SIZE = ArchTag::L0B_SIZE / (L0_STAGES * L0_MICRO_STAGES);
     static constexpr uint32_t L0C_MICRO_BUF_SIZE = ArchTag::L0C_SIZE / (L0_STAGES * L0_MICRO_STAGES);
-    // 整块 K tile 现在要连续占满**一整个 outer 槽** (32 KiB), 不再是半个。
-    // 这也是 Plan C 成立的前提: 槽里不再有"只放一个 16 KiB tile"的那半浪费。
+    // A full K tile occupies one complete outer slot.
     static_assert(L0A_PINGPONG_BUF_SIZE >= L0_TILE_M * L0_TILE_K_MICRO * sizeof(ElementA),
                   "L0 outer slot too small for the whole K tile of A (Plan C)");
     static_assert(L0B_PINGPONG_BUF_SIZE >= L0_TILE_K_MICRO * L0_TILE_N * sizeof(ElementB),
                   "L0 outer slot too small for the whole K tile of B (Plan C)");
-    // L0C 不拆: 不切 K 之后只有一块 partial-sum tile, FixPipe 一次走完。
     static_assert(L0C_MICRO_BUF_SIZE >= L0_TILE_M * L0_TILE_N * sizeof(ElementAccumulator),
                   "L0C micro slot too small for the OTmp tile");
     static constexpr uint32_t L0A_EVENT_BASE = 0;
     static constexpr uint32_t L0B_EVENT_BASE = L0_STAGES * L0_MICRO_STAGES; // 4
 
-    // 事件号是运行时算出来的, 越界编译不报错只会静默跑飞, 所以在这里把预算钉死。
-    // 用到的最大的号是 L0B_EVENT_BASE + L0_STAGES * L0_MICRO_STAGES - 1 = 7,
-    // 要求 MTE1<->M 这条队列至少有 8 面旗 (Ascend950PR: __NPU_ARCH__ == 3510 时
-    // QUE_MAX_EVENT == 8)。不够就必须改设计, 不是调大数字能解决的。
+    // Keep the computed event range within the MTE1<->M queue depth.
     static_assert(L0B_EVENT_BASE + L0_STAGES * L0_MICRO_STAGES <= AscendC::QUE_MAX_EVENT,
                   "Plan B MM2 needs 8 event ids on the MTE1<->M queue; QUE_MAX_EVENT is smaller");
-
-    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
-    static constexpr bool FULL_QUANT_HIF8 = AscendC::IsSameType<ElementA, hifloat8_t>::value;
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart,
                                    Mm2L1TileHelper &mm2L1TileHelper)
@@ -132,16 +110,12 @@ public:
                 l1BufAddrStart + l1ATileM * l1ATileK * sizeof(ElementA) * l1ABufNum +
                 l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        // L0A/L0B 按小槽切: 下标 = outerId * L0_MICRO_STAGES + microK, 偏移即
-        // outerId * 大槽 + microK * 小槽, 正好等于小槽大小的线性递推。
+        // Address L0A/L0B by outer slot and micro-slot index.
         for (uint32_t i = 0; i < L0_STAGES * L0_MICRO_STAGES; i++) {
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_MICRO_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_MICRO_BUF_SIZE * i);
         }
-        // L0C 也切成 4 片。Plan C 不切 K, 所以 MM2 只用每 outer 的**第 0 片**就够了
-        // (整块 OTmp 不再是两个部分和的累加, 一次 MMAD + 一次 FixPipe 走完)。
-        // 外层槽 stride 从 128 KiB 收到 64 KiB, 与 MM1 的 L0C 布局对齐 ——
-        // 否则两个 MM 会用两套粒度盖同一片物理空间。
+        // Keep the L0C slot mapping aligned with MM1; MM2 uses the first micro-slot.
         for (uint32_t i = 0; i < L0_STAGES * L0_MICRO_STAGES; i++) {
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_MICRO_BUF_SIZE * i);
         }
@@ -192,18 +166,12 @@ public:
         CopyGmToL1B copyGmToL1B;
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset = baseTileStartOffset + curBaseTileSize;
-        // 稀疏情况下对实际选中的部分gather后进行基本块切分
-        // 当前处理的Yblock在gather的序列中的起始偏移，初始值为当前基块的起始偏移
+        // Traverse selected sparse blocks to fill the current tile.
         uint32_t gatheredStartOffset = baseTileStartOffset;
-        // 当前处理的Yblock gather后的下标，初始值为基本块起始偏移对应的按Y方向稀疏block的gather后起始下标
         uint32_t gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
-        // 当前基本块起始偏移对应的按Y方向稀疏后的block内起始偏移
         uint32_t yBlockInnerStartOffset = gatheredStartOffset % blockShapeY;
-        // 当前处理的Yblock原始的下标，初始值为基本块对应的按Y方向稀疏block的原始起始下标
         uint32_t oriYBlockIdx = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
-        // 当前处理的Yblock起始位置在原始序列中的偏移，初始值为基本块在原始序列中的起始偏移
         uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStartOffset;
-        // 逐稀疏block搬移填充基本块过程中，已处理的累积序列长度
         uint32_t dealtLenAccum = 0;
 
         while (dealtLenAccum < curBaseTileSize && gatheredYBlockIdx < yBlockNumRsvd && oriYBlockIdx < yBlockNumAval &&
@@ -213,7 +181,6 @@ public:
                 curYBlockSize = kvSeqlen - oriYBlockIdx * blockShapeY;
             }
             uint32_t gatheredEndOffset = min(gatheredYBlockIdx * blockShapeY + curYBlockSize, baseTileEndOffset);
-            // 当前循环处理的序列长度
             uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
             if (curDealtLen == 0) {
                 break;
@@ -223,13 +190,12 @@ public:
             auto gBTensorTlaTile =
                 GetTile(gBTensor, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
             copyGmToL1B(l1BTensorTlaTile, gBTensorTlaTile);
-            // 为下一次循环刷新循环变量
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
             gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
             yBlockInnerStartOffset = gatheredStartOffset % blockShapeY;
             if (dealtLenAccum < curBaseTileSize) {
-                // 防止最后一次循环之后对GM的访问越界引发硬件error
+                // Avoid reading the sparse index after the final iteration.
                 oriYBlockIdx = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
                 oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStartOffset;
             }
@@ -247,10 +213,7 @@ public:
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
         const uint32_t bufId = static_cast<uint32_t>(l0Stage++ % L0_STAGES);
-        // 槽的事件: 下标 = 基址 + bufId * L0_MICRO_STAGES + microK。
-        // Plan C 不切 K, microK 恒 0, 所以 MM2 在 MTE1_M 这条队列上只用 L0A 的 2 号
-        // 和 L0B 的 6 号各一个 id (MM1 恒 outer 0, 占 L0A 0/1 与 L0B 4 号, 天然错开)。
-        // L0C 走 M_FIX/FIX_M 另一条队列, 只取每 outer 的第 0 片, 号是 0 和 2。
+        // Derive MTE1/M event ids from the outer and micro-slot indices; L0C uses FIX_M.
         const uint32_t l0AMicroBase = L0A_EVENT_BASE + bufId * L0_MICRO_STAGES;
         const uint32_t l0BMicroBase = L0B_EVENT_BASE + bufId * L0_MICRO_STAGES;
         const uint32_t l0CEventId = bufId * L0_MICRO_STAGES;
@@ -267,31 +230,24 @@ public:
         auto l1BTensorTla = tla::MakeTensor(l1BTensor[l1BBufId], l1BLayoutTla, Arch::PositionL1{});
         auto l1ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL1A>(rowNum, curBaseTileSize);
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId], l1ALayoutTla, Arch::PositionL1{});
-        // load V full base tile to L1 before crossCoreSync
+        // Load the full V tile to L1 before the cross-core wait.
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
         SparseVBaseTileL1FullLoad(gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile,
                                   blockShapeY, yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
-        // fwd crossCoreSync from online sm to mm2
+        // Wait for online softmax to publish P.
         WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
-        // P full base tile already on L1
         uint32_t mL0LoopNum = CeilDiv(rowNum, L0_TILE_M);
         uint32_t nL0LoopNum = CeilDiv(embed, L0_TILE_N);
         uint32_t kL0LoopNum = CeilDiv(curBaseTileSize, L0_TILE_K);
-        // while splitting the base tile OTmp to 2 AIVs,
-        // the order of the elements in each column is expected to be preserved,
-        // which means a column in l0C cannot be chunked and processed by dualMode FixPipe seperately.
-        // therefore, FixPipe won't launch until each portion(chunked only by columns, based on nbuffer strategy)
-        // of the base tile is ready on l0C
+        // Preserve column order when splitting OTmp between AIVs; issue Fixpipe after each L0C portion is ready.
         for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
             uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (embed - nL0Itr * L0_TILE_N) : L0_TILE_N;
             auto l0CLayoutTla = tla::MakeLayoutL0C(rowNum, l0TileNAct);
             auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CEventId], l0CLayoutTla, Arch::PositionL0C{});
             for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                 uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mL0Itr * L0_TILE_M) : L0_TILE_M;
-                // uint32_t mLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNum, mL0Itr);
-                // different m chunks will be concated in the same piece of l0C buffer
                 auto l0CTensorTlaTile = GetTile(l0CTensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
                                                 tla::MakeShape(l0TileMAct, l0TileNAct));
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
@@ -303,19 +259,13 @@ public:
                                                  ? (l0TileKAct - microK * L0_TILE_K_MICRO)
                                                  : L0_TILE_K_MICRO;
                         uint32_t microKOffset = kL0Itr * L0_TILE_K + microK * L0_TILE_K_MICRO;
-                        // 小槽按下标取。取模是为了 curBaseTileSize 超过一个 L0_TILE_K 时
-                        // 仍只在已分配的小槽里轮转, 不越界; 槽内的 M_MTE1/MTE1_M 握手序
-                        // 保证复用同一小槽时不会写读打架。
-                        // Plan C 下 kMicroLoopNum 恒 1、microK 恒 0, 取模是恒等操作,
-                        // 保留是为了 KV 尾块 (curBaseTileSize < L0_TILE_K) 时公式不特判。
+                        // Rotate within the allocated micro-slots for K tails and reuse.
                         const uint32_t l0AEventId = l0AMicroBase + microK % L0_MICRO_STAGES;
-                        // L0A 事件基址 0, 事件号即缓冲片下标; L0B 基址 4, 两者要分开。
                         const uint32_t l0BSlot = bufId * L0_MICRO_STAGES + microK % L0_MICRO_STAGES;
                         const uint32_t l0BEventId = l0BMicroBase + microK % L0_MICRO_STAGES;
                         bool lastK = (kL0Itr == kL0LoopNum - 1) && (microK == kMicroLoopNum - 1);
 
-                        // when L0B buffers wouldn't be reused across the k loop
-                        // redundant L0B load caused by m loop can be avoided
+                        // Reuse L0B across the K loop when possible.
                         auto l1BTensorTlaTile =
                             GetTile(l1BTensorTla, tla::MakeCoord(microKOffset, nL0Itr * L0_TILE_N),
                                     tla::MakeShape(microKAct, l0TileNAct));
@@ -346,10 +296,6 @@ public:
                             SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
                         }
 
-                        // Plan C 不切 K, microK 恒 0, 所以这一条退化成
-                        // "每个 KV tile 的第一条 MMAD 覆盖写" —— **没有部分和累加**。
-                        // (Plan B 的 (microK == 0) 条件在这里恒真, 保留是为了与
-                        //  curBaseTileSize > L0_TILE_K 的多趟 K 循环共用同一套公式。)
                         bool initMmad = (kL0Itr == 0) && (microK == 0);
                         uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);

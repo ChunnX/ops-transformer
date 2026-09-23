@@ -77,15 +77,9 @@ public:
         gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengthsKv);
         AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
-        AscendC::GlobalTensor<float> gQDequantScale;
-        AscendC::GlobalTensor<float> gKDequantScale;
-        AscendC::GlobalTensor<float> gVDequantScale;
-        gQDequantScale.SetGlobalBuffer((__gm__ float *)params.qDequantScale);
-        gKDequantScale.SetGlobalBuffer((__gm__ float *)params.kDequantScale);
-        gVDequantScale.SetGlobalBuffer((__gm__ float *)params.vDequantScale);
-        qDequantScaleValue_ = gQDequantScale.GetValue(0);
-        kDequantScaleValue_ = gKDequantScale.GetValue(0);
-        vDequantScaleValue_ = gVDequantScale.GetValue(0);
+        qDequantScaleValue_ = *((__gm__ float *)params.qDequantScale);
+        kDequantScaleValue_ = *((__gm__ float *)params.kDequantScale);
+        vDequantScaleValue_ = *((__gm__ float *)params.vDequantScale);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -95,11 +89,8 @@ public:
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
 
-        hasPQuantScale_ = pQuantScale != nullptr;
-        if (hasPQuantScale_) {
-            AscendC::GlobalTensor<float> gPQuantScale;
-            gPQuantScale.SetGlobalBuffer((__gm__ float *)pQuantScale);
-            pQuantScale_ = gPQuantScale.GetValue(0);
+        if (pQuantScale != nullptr) {
+            pQuantScale_ = *((__gm__ float *)pQuantScale);
         } else {
             pQuantScale_ = 16.0f;
         }
@@ -445,7 +436,6 @@ public:
                     // uses the real row count and writes only valid Q rows.
                     GemmCoord cubeBlockShapePV{qBaseTile_, embed_, kvSTileSizeAct};
                     uint32_t ubOTmpBufId = gatheredKvSTileIdxDe % UB_OTMP_BUF_STAGES;
-                    // 核间同步flagId规律：每份dst对应一个id，从小到大顺序依次为qk->sm, sm->pv, pv->re
                     uint32_t Mm2ToReFlagId = ubOTmpBufId + UB_S_BUF_STAGES + pL1BufNum_;
 #ifdef __DAV_CUBE__
                     uint32_t l1PBufId = gatheredKvSTileIdxDe % pL1BufNum_;
@@ -596,20 +586,14 @@ public:
         // Value
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        // L0A: 2 outer x 2 micro = 4 片。Plan C 下 MM1 稳态占 0/1 (g=1 那次走 2/3),
-        // MM2 整块占 2 —— id 2 由 g=1 的 MM1 交接给 MM2, 两边握手序刚好接上。
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        // L0B: MM1 的 Q 用 4 (g=1 那次 6), MM2 的 V 整块占 6 —— 同样在 6 上交接。
-        // Plan C 下 5/7 不再被任何人取用, 这里仍种满 4..7: 多个没人等的旗标是安全的,
-        // 少一个会被等的旗标则直接死锁, 所以宁多勿少。
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID4);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID5);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID7);
-        // L0C: MM1 的 4 个小槽占 0..3 (MM2 只用 0 和 2)
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
@@ -720,7 +704,6 @@ private:
     float qDequantScaleValue_{1.0f};
     float kDequantScaleValue_{1.0f};
     float vDequantScaleValue_{1.0f};
-    bool hasPQuantScale_;
     float pQuantScale_;
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
