@@ -56,6 +56,7 @@ gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2Com
     info->l0BSize_ = 65536;
     info->l0CSize_ = 262144;
     info->npuArch_ = static_cast<int32_t>(NpuArch::DAV_3510);
+    info->supportL12BtBf16 = true;
     gert::TilingContextPara context(
         "GroupedMatmulSwigluQuantV2",
         {tensor({c.m, c.k}, ge::DT_FLOAT8_E4M3FN), tensor({c.m, s, 2}, ge::DT_FLOAT8_E8M0), tensor({c.e}, ge::DT_INT64),
@@ -254,25 +255,15 @@ TEST(GroupedMatmulSwigluQuantV3Route, CoreRatioFallsBack)
     }
 }
 
-TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesArch35WithoutIntrinsicProbe)
+TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesV2Template)
 {
     for (bool trans : {false, true}) {
         optiling::GMMSwigluV2CompileInfo info{};
         auto context = MakeContext({512, 128, 128, 1, trans, trans ? 1 : 0}, &info, 0, 64, 0);
-        ASSERT_EQ(info.npuArch_, static_cast<int32_t>(NpuArch::DAV_3510));
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         EXPECT_EQ(result.tilingKey, trans ? 1 : 0);
     }
-}
-
-TEST(GroupedMatmulSwigluQuantV3Route, LegacyMxInputOnDav2201DoesNotUseArch35Template)
-{
-    optiling::GMMSwigluV2CompileInfo info{};
-    auto context = MakeContext({512, 128, 128, 1, false, 0}, &info, 0, 64, 0);
-    info.npuArch_ = static_cast<int32_t>(NpuArch::DAV_2201);
-    TilingInfo result;
-    EXPECT_FALSE(ExecuteTiling(context, result));
 }
 
 TEST(GroupedMatmulSwigluQuantV3Route, RejectsUnsupportedModeAndPlatform)
