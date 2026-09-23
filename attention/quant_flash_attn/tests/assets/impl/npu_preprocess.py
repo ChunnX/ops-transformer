@@ -146,20 +146,28 @@ def build_metadata_arguments(
 
     is_tnd_q = layout_q == "TND"
     is_tnd_kv = layout_kv == "TND"
+    # TND 与 NTD (GQA FP8, quant_mode=6) 均为 varlen 布局, metadata/主算子都需要
+    # cu_seqlens_q 推导 batch (与 graph.py 一致); 仅 cu_seqlens_q=None 时
+    # _calculate_batch_size 兜底返回 0 → AICPU 拦截。
+    is_varlen_q = is_tnd_q or layout_q == "NTD"
 
     # Mirror the original two-phase golden implementations:
     #   - cu_seqlens only feeds the metadata op for TND layouts (otherwise None),
     #     and batch_size is only provided for non-TND layouts.
     # 空 (0,) 张量归一成 None, 否则 torch_extension 重算 batch_size 时会把
     # size(0)=0 误当 batch (参考 flash_attn 资产的 _resolve_tensor)。
-    cu_q = _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_tnd_q else None
+    cu_q = (
+        _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_varlen_q else None
+    )
     cu_kv = (
         _resolve_tensor(cu_seqlens_kv, kwargs, "cu_seqlens_kv") if is_tnd_kv else None
     )
     seq_q = _resolve_tensor(seqused_q, kwargs, "seqused_q")
     seq_kv = _resolve_tensor(seqused_kv, kwargs, "seqused_kv")
     batch_size = (
-        None if is_tnd_q else _derive_batch_size(q_shape, layout_q, cu_q, seq_q, kwargs)
+        None
+        if is_varlen_q
+        else _derive_batch_size(q_shape, layout_q, cu_q, seq_q, kwargs)
     )
 
     return {
@@ -275,6 +283,38 @@ def run(
     logging.info(
         "[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode
     )
+
+    # GQA FP8 PA: K/V cache slot 末尾带 K_SCALE_ROWS(=4) 行 scale, 主算子
+    # kernel 从 k 的 dim[2] 推导 block_size, 132 != 128 会被 tiling 拦截。
+    # eager 路径 ttk 直接把 slot tensor 传给主算子, 这里 set_ 原地重绑定为
+    # 数据切片视图 (ttk args 持有同一对象), 与 graph 路径 graph.py __init__
+    # 的 [:, :, :bs, :] 切片对齐; golden 用 raw_inputs 不受影响。
+    _block_size_attr = int(get_attribute(kwargs, "block_size", 0) or 0)
+    # layout_kv 是主算子位置参数, eager hook 的 kwargs 拿不到;
+    # csv attributes 里对应 enable_pa/kv_cache_layout, 用后者判断 PA 布局。
+    _kv_layout = str(
+        get_attribute(kwargs, "kv_cache_layout", get_attribute(kwargs, "layout_kv", ""))
+        or ""
+    )
+    _is_pa_layout = get_attribute(kwargs, "enable_pa", False) or _kv_layout.startswith(
+        "PA"
+    )
+    if (
+        int(quant_mode) == 6
+        and _block_size_attr > 0
+        and _is_pa_layout
+        and k is not None
+        and v is not None
+        and k.dim() == 4
+        and k.shape[2] == _block_size_attr + 4  # 4 = K_SCALE_ROWS
+    ):
+        k.set_(k[:, :, :_block_size_attr, :])
+        v.set_(v[:, :, :_block_size_attr, :])
+        logging.info(
+            "[%s] GQA FP8 PA: slice k/v cache to data rows %s",
+            testcase_name,
+            tuple(k.shape),
+        )
 
     arguments = build_metadata_arguments(
         q,

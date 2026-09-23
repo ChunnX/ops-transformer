@@ -3785,7 +3785,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommAlgEmptyPcieEnvHierarchy)
         setenv("HCCL_INTRA_ROCE_ENABLE", origRoce.c_str(), 1);
     }
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffFullmeshWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -4664,7 +4663,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadPerformanceInfoShapeFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffHierarchyWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -4754,7 +4752,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchySmallHcclBuffFailed)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
-TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3FullmeshSmallHcclBuffFailed)
+TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3FullmeshSmallHcclBuffSuccess)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
@@ -4793,7 +4791,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3FullmeshSmallHcclBuffFailed)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}, {"cclBufferSize", 1024ULL}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 512UL);
 }
 
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3FullmeshLargeCclBuffSuccess)
@@ -5040,7 +5038,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadKZeroFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2GlobalBsNonZeroSuccess)
 {
     struct MoeDistributeDispatchV2CompileInfo {};

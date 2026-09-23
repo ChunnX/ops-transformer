@@ -260,8 +260,11 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         p_scale_cpu = p_scale
         block_table_cpu = block_table
 
+        _descale_fmt = "e8m0" if quant_mode not in (0, 6) else "fp32"
+
         logger.info(
-            "[GRAPH] 透传 fp8+e8m0 (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",
+            "[GRAPH] 透传 fp8+%s (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",
+            _descale_fmt,
             tuple(q_fp8.shape),
             tuple(k_fp8.shape),
             tuple(v_fp8.shape),
@@ -335,6 +338,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         layout_kv = inputs["layout_kv"]
         is_tnd_q = layout_q == "TND"
         is_tnd_kv = layout_kv == "TND"
+        # TND 与 NTD (GQA FP8, quant_mode=6) 均为 varlen 布局, metadata/主算子都需要
+        # cu_seqlens_q 推导 batch (golden eager 路径无条件传 cu_seqlens_q);
+        # 仅 cu_seqlens_q=None 时 _calculate_batch_size 兜底返回 0 → AICPU 拦截。
+        is_varlen_q = is_tnd_q or layout_q == "NTD"
 
         # cu_seqlens/seqused 直接用入参 _t（NPU tensor，inputs.py 已 in-place 写入真实值，
         # 保留 CSV tensor_dtypes：空/异常 dtype 原样传给算子被拦截）。
@@ -364,13 +371,13 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             int(inputs["kv_n"]),
             int(D),
             int(quant_mode),
-            cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
+            cu_seqlens_q=cu_seqlens_q_t if is_varlen_q else None,
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            batch_size=(batch_size if batch_size is not None else q_shape[0])
-            if not is_tnd_q
-            else None,
+            batch_size=None
+            if is_varlen_q
+            else (batch_size if batch_size is not None else q_shape[0]),
             max_seqlen_q=int(inputs["max_seqlen_q"]),
             max_seqlen_kv=int(inputs["max_seqlen_kv"]),
             head_dim_v=head_dim_v,
@@ -385,6 +392,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             self.metadata = self.metadata.to(inputs["q"].device)
 
         # ---- 6. 存所有 forward 需要的入参为 self. 属性 ----
+        # GQA FP8: k/v cache 末 K_SCALE_ROWS(=4) 行 scale 的剥离统一由
+        # npu_preprocess 的 set_ 原地切片完成 (aclgraph 模式下 hook 同样先于
+        # graph 执行, 到这里 k/v 已是纯数据行), 此处直接透传。
         self.q = inputs["q"]
         self.k = inputs["k"]
         self.v = inputs["v"]
@@ -394,7 +404,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         self.quant_mode = int(quant_mode)
         self.block_table = inputs["block_table"]
         self.p_scale = inputs["p_scale"]
-        self.cu_seqlens_q = cu_seqlens_q_t if is_tnd_q else None
+        self.cu_seqlens_q = cu_seqlens_q_t if is_varlen_q else None
         self.cu_seqlens_kv = cu_seqlens_kv_t if is_tnd_kv else None
         self.seqused_q = seqused_q_t
         self.seqused_kv = seqused_kv_t

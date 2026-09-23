@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_compressor_v2.cpp
- * \brief CompressorV2 算子 aclnn 调用示例（A3 / ascend910_93）
+ * \brief CompressorV2 算子 aclnn 调用示例（A2/A3）
  *        场景：D=512, cmp_ratio=4, 循环buffer（cache_mode=2）, BSH layout, BF16
  */
 
@@ -144,7 +144,7 @@ int main()
     std::vector<bfloat16> wkvHostData(wkvSize, bfloat16(0.1f));
     std::vector<bfloat16> wgateHostData(wgateSize, bfloat16(0.1f));
     std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
-    std::vector<int32_t> stateBlockTableHostData(B, 1);
+    std::vector<int32_t> stateBlockTableHostData(B, 0);
     std::vector<int32_t> startPosHostData(B, 0);
     std::vector<bfloat16> cmpKvHostData(cmpKvSize, bfloat16(0.0f));
 
@@ -209,6 +209,28 @@ int main()
     LOG_PRINT("CompressorV2 execution succeeded.\n");
     PrintBf16Result(cmpKvShape, &cmpKvDeviceAddr);
 
+    ret = aclrtMemcpy(cmpKvHostData.data(), cmpKvSize * sizeof(bfloat16), cmpKvDeviceAddr, cmpKvSize * sizeof(bfloat16),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = aclrtMemcpy(stateCacheHostData.data(), stateCacheSize * sizeof(float), stateCacheDeviceAddr,
+                      stateCacheSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    const float inputValue = static_cast<float>(xHostData.front());
+    const float expectedState = hiddenSize * inputValue * inputValue;
+    const float expectedOutput = static_cast<float>(bfloat16(expectedState));
+    bool precisionPassed = true;
+    for (const auto &value : cmpKvHostData) {
+        precisionPassed = precisionPassed && std::isfinite(static_cast<float>(value)) &&
+                          std::abs(static_cast<float>(value) - expectedOutput) <= 0.0078125f * expectedOutput;
+    }
+    for (int64_t index = 0; index < stateCacheSize; ++index) {
+        const float expected = index < S * 2 * headDim ? expectedState : 0.1f;
+        const float tolerance = index < S * 2 * headDim ? 1e-5f + 1e-4f * expected : 0.0f;
+        precisionPassed = precisionPassed && std::isfinite(stateCacheHostData[index]) &&
+                          std::abs(stateCacheHostData[index] - expected) <= tolerance;
+    }
+    LOG_PRINT("CompressorV2 output/state validation: %s\n", precisionPassed ? "PASS" : "FAIL");
+
     // 10. 释放资源
     aclDestroyTensor(x);
     aclDestroyTensor(wkv);
@@ -233,5 +255,5 @@ int main()
     aclrtResetDevice(deviceId);
     aclFinalize();
 
-    return 0;
+    return precisionPassed ? 0 : 1;
 }

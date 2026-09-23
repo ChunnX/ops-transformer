@@ -19,6 +19,10 @@
 #include "arch22/arch_info_arch22.h"
 #elif __NPU_ARCH__ == 3510
 #include "arch35/arch_info_arch35.h"
+#elif __NPU_ARCH__ == 9201
+#include "arch36/arch_info_arch36.h"
+#elif __NPU_ARCH__ == 9202
+#include "arch36/arch_info_arch36.h"
 #elif __NPU_ARCH__ == 5102
 #include "arch38/arch_info_arch38.h"
 #endif

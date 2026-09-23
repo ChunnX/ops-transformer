@@ -173,7 +173,7 @@ TEST_F(MatmulReduceScatterV2AclnnTest, E4m3fnNotSupport)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// =================== CCU 模式测试 (DAV_3510 / ASCEND950) ===================
+// =================== CCU 模式测试 (DAV_3510 / A5) ===================
 
 class MatmulReduceScatterV2CcuModeTest : public testing::Test {
 protected:

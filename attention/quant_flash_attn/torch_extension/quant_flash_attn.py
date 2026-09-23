@@ -126,6 +126,37 @@ _OUT_LAYOUT_EXPECTED_NDIM = {
     "BNSD": 4,
 }
 
+# layout 一致性校验表, 与 op_host/checkers/quant_checker.cpp 中 QFA_LAYOUT_CONSTRAINT_TABLE 的
+# requireLayoutConsistent 字段保持一致。仅记录需要 layout_q/kv/out 三者一致的 quant_mode。
+_LAYOUT_REQUIRE_CONSISTENT = {
+    # HIF8: layout_q, layout_kv, layout_out 三者必须相同
+    int(QuantMode.A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32),
+}
+
+# layout_q 与 layout_out 必须一致的 quant_mode (但 layout_kv 可以不同)
+_LAYOUT_REQUIRE_Q_OUT_CONSISTENT = {
+    # MxFP8: layout_q=TND, layout_out=TND, 但 layout_kv 可为 PA 场景
+    int(QuantMode.A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32),
+}
+
+
+def _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out):
+    """校验 layout 一致性
+    - HIF8: layout_q、layout_kv、layout_out 三者必须相同
+    - MxFP8: layout_q 与 layout_out 必须相同(layout_kv 可不同, 支持 PA 场景)"""
+    if quant_mode in _LAYOUT_REQUIRE_CONSISTENT:
+        torch._check(
+            layout_q == layout_kv == layout_out,
+            lambda: f"When quant_mode is {quant_mode}, layout_q, layout_kv and layout_out must be the same, "
+            f"but got layout_q={layout_q!r}, layout_kv={layout_kv!r}, layout_out={layout_out!r}",
+        )
+    elif quant_mode in _LAYOUT_REQUIRE_Q_OUT_CONSISTENT:
+        torch._check(
+            layout_q == layout_out,
+            lambda: f"When quant_mode is {quant_mode}, layout_q and layout_out must be the same, "
+            f"but got layout_q={layout_q!r}, layout_out={layout_out!r}",
+        )
+
 
 def _get_output_shape_sizes(q, v, layout_q, layout_kv):
     """提取决定输出 shape 的维度: q 的 B/T、S、N 维度(D 恒为 q 最后一维, 不提取)
@@ -133,6 +164,9 @@ def _get_output_shape_sizes(q, v, layout_q, layout_kv):
     调用前需保证 q/v 维度数已通过 _LAYOUT_EXPECTED_NDIM 校验。"""
     if layout_q == "TND":
         t_size, b_size, s_size, n_size = q.size(0), None, None, q.size(1)
+    elif layout_q == "NTD":
+        # GQA FP8 (quant_mode=6): q 为 [N, T, D], 输出/lse 与 TND 同形 (T/N 主序不同)
+        t_size, b_size, s_size, n_size = q.size(1), None, None, q.size(0)
     elif layout_q == "BSND":
         t_size, b_size, s_size, n_size = None, q.size(0), q.size(1), q.size(2)
     else:
@@ -266,15 +300,24 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
                 q, v, layout_q, layout_kv
             )
-            if layout_q == "TND":
+            if layout_q in ("TND", "NTD"):
+                # NTD (GQA FP8, quant_mode=6) 的 lse 与 TND 同为 (N, T)
                 softmax_out_size = (n_size, t_size)
             else:
                 softmax_out_size = (b_size, n_size, s_size)
 
             if layout_out == "TND":
                 torch._check(
-                    layout_q == "TND",
-                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
+                    layout_q == "TND"
+                    or (
+                        layout_q == "NTD"
+                        and int(quant_mode)
+                        == int(
+                            QuantMode.A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32
+                        )
+                    ),
+                    lambda: f"When the layout of output is TND, the layout of query must be TND "
+                    f"(or NTD when quant_mode=6), but got {layout_q}",
                 )
                 attention_out_size = (t_size, n_size, d_size)
             elif layout_out == "BNSD":
@@ -357,6 +400,8 @@ def quant_flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
     head_dim_v = head_dim if head_dim_v is None else head_dim_v
+
+    _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
 
     max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
@@ -479,6 +524,8 @@ def quant_flash_attn(
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
 
+    _check_layout_constraint(quant_mode, layout_q, layout_kv, layout_out)
+
     # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 AttributeError/IndexError
     torch._check(q is not None, lambda: "q must not be None")
     torch._check(v is not None, lambda: "v must not be None")
@@ -535,18 +582,12 @@ def quant_flash_attn(
             )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
-        if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
-        if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
+        for name, tensor in (("q", q), ("k", k), ("v", v)):
+            if tensor.dtype != torch.float4_e2m1fn_x2:
+                raise ValueError(
+                    f"In MxFP4 mode (quant_mode=5), {name} must be "
+                    f"float4_e2m1fn_x2, but got {tensor.dtype}"
+                )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
