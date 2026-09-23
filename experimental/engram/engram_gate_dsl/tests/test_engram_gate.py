@@ -14,7 +14,10 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from engram_gate import EngramGate, engram_gate  # noqa: E402
+import engram_gate as _module  # noqa: E402
+EngramGate = _module.EngramGate
+EngramGateKernel = _module.EngramGateKernel
+engram_gate = _module.engram_gate
 
 
 def _golden(x, key, value, weight, eps, clamp_value, image_mask=None):
@@ -44,7 +47,13 @@ def test_engram_gate_compile_default_shape():
     pytest.importorskip("cannbotdsl")
     import cannbotdsl
 
-    EngramGate(eps=1e-6, clamp_value=1e-6).run.compile(
+    if torch.npu.is_available():
+        max_blocks = torch.npu.get_device_properties(0).vector_core_num
+        vl = _module._device_vl_lanes(torch.device("npu:0"))
+    else:
+        max_blocks = 8
+        vl = 64
+    EngramGate(eps=1e-6, clamp_value=1e-6, max_blocks=max_blocks, vl=vl).run.compile(
         cannbotdsl.TensorSpec((2, 4, 5120), cannbotdsl.dtypes.bfloat16),
         cannbotdsl.TensorSpec((2, 4, 5120), cannbotdsl.dtypes.bfloat16),
         cannbotdsl.TensorSpec((2, 5120), cannbotdsl.dtypes.bfloat16),
@@ -80,41 +89,6 @@ def test_engram_gate_npu_precision(t, mask_kind, eps, clamp_value):
         None if image_mask is None else image_mask.npu(),
         eps=eps,
         clamp_value=clamp_value,
-    )
-    torch.npu.synchronize()
-    actual_cpu = actual.cpu()
-    max_error = (actual_cpu.float() - expected.float()).abs().max().item()
-    assert torch.allclose(
-        actual_cpu.float(), expected.float(), atol=2e-2, rtol=2e-2
-    ), f"max absolute error: {max_error}"
-    if image_mask is not None:
-        assert torch.equal(actual_cpu[image_mask], x[image_mask])
-
-
-@pytest.mark.npu
-@pytest.mark.parametrize(
-    "t,hc,dim,mask_kind",
-    [
-        pytest.param(3, 4, 64, "none", id="single_full_segment"),
-        pytest.param(3, 4, 65, "none", id="tail_one"),
-        pytest.param(5, 4, 127, "partial", id="sub_128_odd_partial_mask"),
-        pytest.param(17, 2, 5121, "none", id="model_dim_plus_one"),
-        pytest.param(5, 4, 5121, "partial", id="model_dim_plus_one_partial_mask"),
-    ],
-)
-def test_engram_gate_npu_precision_arbitrary_dim(t, hc, dim, mask_kind):
-    pytest.importorskip("torch_npu")
-    x, key, value, weight = _inputs(t, hc, dim, 20260920 + dim)
-    image_mask = None
-    if mask_kind == "partial":
-        image_mask = torch.arange(t) % 2 == 1
-    expected = _golden(x, key, value, weight, 1e-6, 1e-6, image_mask)
-    actual = engram_gate(
-        x.npu(),
-        key.npu(),
-        value.npu(),
-        weight.npu(),
-        None if image_mask is None else image_mask.npu(),
     )
     torch.npu.synchronize()
     actual_cpu = actual.cpu()
@@ -239,3 +213,86 @@ def test_engram_gate_npu_precision_large_dim(t, hc, dim, mask_kind):
     ), f"max absolute error: {max_error}"
     if image_mask is not None:
         assert torch.equal(actual_cpu[image_mask], x[image_mask])
+
+
+@pytest.mark.npu
+@pytest.mark.parametrize(
+    "t,hc,dim,mask_kind",
+    [
+        pytest.param(3, 4, 64, "none", id="single_full_segment"),
+        pytest.param(3, 4, 65, "none", id="tail_one"),
+        pytest.param(5, 4, 127, "partial", id="sub_128_odd_partial_mask"),
+        pytest.param(17, 2, 5121, "none", id="model_dim_plus_one"),
+        pytest.param(5, 4, 5121, "partial", id="model_dim_plus_one_partial_mask"),
+    ],
+)
+def test_engram_gate_npu_precision_arbitrary_dim(t, hc, dim, mask_kind):
+    pytest.importorskip("torch_npu")
+    x, key, value, weight = _inputs(t, hc, dim, 20260920 + dim)
+    image_mask = None
+    if mask_kind == "partial":
+        image_mask = torch.arange(t) % 2 == 1
+    expected = _golden(x, key, value, weight, 1e-6, 1e-6, image_mask)
+    actual = engram_gate(
+        x.npu(),
+        key.npu(),
+        value.npu(),
+        weight.npu(),
+        None if image_mask is None else image_mask.npu(),
+    )
+    torch.npu.synchronize()
+    actual_cpu = actual.cpu()
+    max_error = (actual_cpu.float() - expected.float()).abs().max().item()
+    assert torch.allclose(
+        actual_cpu.float(), expected.float(), atol=2e-2, rtol=2e-2
+    ), f"max absolute error: {max_error}"
+    if image_mask is not None:
+        assert torch.equal(actual_cpu[image_mask], x[image_mask])
+
+
+@pytest.mark.npu
+def test_device_vector_core_count_matches_device():
+    pytest.importorskip("torch_npu")
+    props = torch.npu.get_device_properties(0)
+    _module._VECTOR_CORE_COUNTS.clear()
+    assert _module._device_vector_core_count(torch.device("npu:0")) == props.vector_core_num
+
+
+@pytest.mark.npu
+@pytest.mark.parametrize(
+    "t,hc,dim,forced_blocks",
+    [
+        pytest.param(72, 4, 5120, 8, id="reduced_blocks_specialized"),
+        pytest.param(61, 3, 5120, 7, id="reduced_blocks_generic"),
+        pytest.param(5, 4, 5120, 3, id="blocks_below_hc"),
+    ],
+)
+def test_engram_gate_forced_block_count_precision(t, hc, dim, forced_blocks):
+    pytest.importorskip("torch_npu")
+    x, key, value, weight = _inputs(t, hc, dim, 20260924 + t)
+    image_mask = torch.arange(t) % 2 == 1
+    expected = _golden(x, key, value, weight, 1e-6, 1e-6, image_mask)
+    _module._VECTOR_CORE_COUNTS.clear()
+    _module._VECTOR_CORE_COUNTS[0] = forced_blocks
+    try:
+        actual = engram_gate(
+            x.npu(), key.npu(), value.npu(), weight.npu(), image_mask.npu()
+        )
+        torch.npu.synchronize()
+    finally:
+        _module._VECTOR_CORE_COUNTS.clear()
+    actual_cpu = actual.cpu()
+    max_error = (actual_cpu.float() - expected.float()).abs().max().item()
+    assert torch.allclose(
+        actual_cpu.float(), expected.float(), atol=2e-2, rtol=2e-2
+    ), f"max absolute error: {max_error}"
+    assert torch.equal(actual_cpu[image_mask], x[image_mask])
+
+
+@pytest.mark.npu
+def test_device_vl_lanes_probe():
+    pytest.importorskip("torch_npu")
+
+    lanes = _module._device_vl_lanes(torch.device("npu:0"))
+    assert lanes > 0 and lanes & (lanes - 1) == 0
+    assert _module._device_vl_lanes(torch.device("npu:0")) == lanes
