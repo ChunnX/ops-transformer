@@ -94,7 +94,7 @@ void FreeDeviceAddr(void *deviceAddr)
     }
 }
 
-int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
+int launchOneThreadDispatchV2AndCombineV2_A5(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
@@ -332,7 +332,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     return 0;
 }
 
-int run_example_on_A3A5()
+int run_example_on_A5()
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -373,7 +373,7 @@ int run_example_on_A3A5()
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
         threads[rankId].reset(new (std::nothrow)
-                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
+                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A5, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
@@ -396,7 +396,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     LOG_PRINT("Example on <Atlas A5> will be executed!\n");
-    run_example_on_A3A5();
+    run_example_on_A5();
 
     return 0;
 }
