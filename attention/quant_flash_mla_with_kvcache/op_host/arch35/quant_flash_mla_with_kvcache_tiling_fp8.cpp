@@ -107,18 +107,11 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetPlatMemoryInfo()
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::InitImplParam()
 {
-    const gert::Tensor *cuSeqLenQ = qmlaInfo_->opParamInfo.cuSeqlensQ.tensor;
-    uint32_t cuSeqLenQDims = (cuSeqLenQ != nullptr && cuSeqLenQ->GetShapeSize() > 0)
-                                 ? static_cast<uint32_t>(cuSeqLenQ->GetShapeSize())
-                                 : 0U;
-    cuSeqLenQFlag_ =
-        !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr) || (cuSeqLenQ->GetData<int32_t>() == nullptr));
-
-    const gert::Tensor *seqUsedQ = qmlaInfo_->opParamInfo.sequsedQ.tensor;
-    uint32_t seqUsedQDims = (seqUsedQ != nullptr && seqUsedQ->GetShapeSize() > 0)
-                                ? static_cast<uint32_t>(seqUsedQ->GetShapeSize())
-                                : 0U;
-    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
+    // Online static compilation provides input shapes without runtime tensor data.
+    const auto *cuSeqLenQShape = qmlaInfo_->opParamInfo.cuSeqlensQ.shape;
+    cuSeqLenQFlag_ = cuSeqLenQShape != nullptr && cuSeqLenQShape->GetStorageShape().GetShapeSize() > 0;
+    const auto *seqUsedQShape = qmlaInfo_->opParamInfo.sequsedQ.shape;
+    seqUsedQFlag_ = seqUsedQShape != nullptr && seqUsedQShape->GetStorageShape().GetShapeSize() > 0;
 
     // MLA固定切分
     sOuterFactor_ = MLA_SOUTER_32;
