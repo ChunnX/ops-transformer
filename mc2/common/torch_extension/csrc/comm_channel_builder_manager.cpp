@@ -99,6 +99,22 @@ public:
         return bufSize;
     }
 
+    /*!
+     * \brief 判断是否为单机（单服务器）拓扑
+     *
+     * HCCL rank graph 仅存在 1 个 net layer 时，所有 rank 同属一个通信域（单机）；
+     * 多层拓扑意味着跨服务器/超节点组网。供仅支持单机窗口通信的算子做部署约束校验。
+     */
+    bool IsSingleServerTopology() const
+    {
+        uint32_t layerNum = 0;
+        uint32_t *layerList = nullptr;
+        auto hcclRet = HcclRankGraphGetLayersFunc(comm_, &layerList, &layerNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS && layerList != nullptr && layerNum > 0,
+                    "Get HCCL layers failed, ret: ", hcclRet);
+        return layerNum == 1;
+    }
+
 private:
     HcclComm comm_ = nullptr;
     std::string group_;
@@ -112,7 +128,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_rank_id", &CommChannelBuilderManager::GetRankId)
         .def("get_rank_size", &CommChannelBuilderManager::GetRankSize)
         .def("create_context", &CommChannelBuilderManager::CreateContext, py::arg("ctx_tag"))
-        .def("get_hccl_buffer_size", &CommChannelBuilderManager::GetHcclBufferSize);
+        .def("get_hccl_buffer_size", &CommChannelBuilderManager::GetHcclBufferSize)
+        .def("is_single_server_topology", &CommChannelBuilderManager::IsSingleServerTopology);
 }
 
 } // namespace op_api
