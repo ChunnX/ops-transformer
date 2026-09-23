@@ -113,6 +113,19 @@ bash experimental/attention/indexer_prologue_k_dsl/tests/test.sh
 alias 返回值的 mutation-only schema，以满足 PyTorch AOT functionalization；
 公开接口仍返回原地更新后的 `k_cache`。
 
+`test_aclgraph.py` 覆盖两个层级：
+
+- 4 个基础布局（mode 0 有/无 scale、mode 1 G=4/8），命中 net wheel 内置的
+  AOT variant；
+- 50 条部署用例，与 arena 部署矩阵同源（T=1..8192 含非对齐 7777、
+  mode 0/1、G=2/4/8/16、norm_eps 1e-6/5e-7/1e-5、strided cache view 与
+  重复 index），每条用例先 eager 预热触发 Native JIT，再对 capture 与
+  replay 两个阶段分别与 CPU golden 比对，并校验 strided backing 的
+  未选中行保持不变。
+
+比对允许极稀疏的 E2M1 边界差异（同号相邻档位、或 +0.0/-0.0 两种零编码；
+上限约每百万元素 10 字节，实测约 4），scale 字节与非数据区域保持逐位一致。
+
 `wk` 使用 FRACTAL_NZ 私有格式，ACLGraph 必须关闭输入 clone，否则
 `empty_like` 生成的捕获输入会退化为 ND：
 
