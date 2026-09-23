@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn_kernel_dn.h
+ * \file flash_attn_kernel_dn_unmerged.h
  * \brief FlashAttentionNoQuantGqaKernelDnUnmerged —— Dn 路径专用 kernel 模板（独立类）。
  */
 
