@@ -76,4 +76,14 @@ private:
     uint32_t blockIdx_ = 0U;
 };
 
+// MatmulImpl的局部状态远大于Vector路径对象。独立栈帧可避免统一入口为所有tiling key
+// 预留Cube对象空间，保证非Cube路径的资源布局不受影响。
+__aicore__ __attribute__((noinline)) void RunMhcSandwichNormPostPreonlyCube(
+    GM_ADDR phi, GM_ADDR workspace, uint32_t totalTokens, uint32_t d, const TCubeTiling *mmTiling)
+{
+    MhcSandwichNormPostPreonlyCube op;
+    op.Init(phi, workspace, totalTokens, d, mmTiling);
+    op.Process();
+}
+
 #endif // MHC_SANDWICH_NORM_POST_PREONLY_CUBE_H_
