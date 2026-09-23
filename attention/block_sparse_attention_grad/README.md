@@ -354,7 +354,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 </table>
 
 <ul>
-- <term>Atlas 训练产品系列</term>、<term>Atlas A3训练产品系列</term>:
+- <term>Atlas训练系列产品</term>、<term>Atlas A3训练系列产品</term>:
 不支持FLOAT8_E5M2、FLOAT8_E4M3FN。
 </ul>
 
