@@ -100,17 +100,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 }
             }
             CacheX2TileForLane(token, tOff, tD, true, false);
-            if (cubeProj_) {
-                AccumulateCubeSumSqAndStore(token, tOff, tD, sumSqHalf);
-            } else {
-                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
-            }
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
-    }
-
-    if (cubeProj_) {
-        // mode4中AIV0使用原flag，AIV1使用+16；PIPE_MTE3保证两行FP32 x2已写入workspace。
-        CrossCoreSetFlag<0x4, PIPE_MTE3>(CUBE_INPUT_READY_FLAG + laneId_ * AIV1_FLAG_OFFSET);
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
@@ -149,19 +140,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
-    if (cubeProj_) {
-        // AIC的FIX写回完成后读取四路FP32投影；结果槽保持32B对齐。
-        CrossCoreWaitFlag<0x4, PIPE_MTE2>(CUBE_RESULT_READY_FLAG);
-        DataCopy(partialBuf, cubeDotGm_[(uint64_t)token * PARTIAL_SLOT_ELEMS], PARTIAL_SLOT_ELEMS);
-        SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            xHatVals[o] = partialBuf.GetValue(o);
-        }
-    } else {
-        for (uint32_t o = 0; o < N_MAX; ++o) {
-            xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
-        }
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 

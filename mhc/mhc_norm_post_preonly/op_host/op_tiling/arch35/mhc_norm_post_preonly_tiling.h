@@ -47,8 +47,8 @@ TILING_DATA_FIELD_DEF(float, invK); // 1.0f / (N*D)
 
 // 是否在MHC_Post与MHC_Pre之间执行RMSNorm_mid
 TILING_DATA_FIELD_DEF(uint32_t, useRmsMid); // 0表示关闭，1表示开启
-// A5执行方案：1=单AIV，2=双sibling Vector投影，3=双sibling+Cube投影。
-TILING_DATA_FIELD_DEF(uint32_t, coresPerToken);
+// A5执行方案。bit2选择双sibling AIV模板，其他组合回退单AIV。
+TILING_DATA_FIELD_DEF(uint32_t, coresPerToken); // 取值为1或2
 
 // 是否返回h_in_f32
 TILING_DATA_FIELD_DEF(int8_t, returnHInF32); // TILING_DATA_FIELD_DEF接口不支持bool

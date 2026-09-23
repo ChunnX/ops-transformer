@@ -21,7 +21,6 @@
 // ========================================================================
 
 #include "arch35/mhc_norm_post_preonly_kernel.h"
-#include "arch35/mhc_norm_post_preonly_cube.h"
 
 extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
     GM_ADDR h_out, GM_ADDR residual, GM_ADDR h_post, GM_ADDR h_res, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
@@ -81,20 +80,6 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
         KERNEL_TASK_TYPE(7, KERNEL_TYPE_MIX_AIC_1_2);
         if ASCEND_IS_AIV {
             KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.Process();
-        }
-    } else if (TILING_KEY_IS(13)) {
-        KERNEL_TASK_TYPE(13, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIC {
-            GET_TILING_DATA(td, tiling);
-            MhcNormPostPreonlyCube op;
-            op.Init(phi, GetUserWorkspace(workspace), td.totalTokens, td.embedDim);
-            op.Process();
-        }
-        if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
