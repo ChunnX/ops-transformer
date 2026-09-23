@@ -24,7 +24,7 @@ attentionOut = softmax((Q @ K^T) / sqrt(D), masked_by_sliding_tile_window) @ V
 | head dimension | `D > 0` 且 `D % 8 == 0` |
 | tile | 固定 `[6,8,8]` |
 | window | 长度为 3 的 `[t,h,w]` 广播，或长度为 `3*N` 的逐 head 三元组；每个三元组的三个值均须为正奇数 |
-| sequence | 由 `seqShape` 对应画布 token 数与 `textLength` 共同确定 |
+| sequence | `seqShape=1` 支持任务书的 padded storage：`S-image_tokens <= 512` 且 `textLength <= S-image_tokens`；`seqShape=2/3` 为无 text 的固定画布长度 |
 
 ACLNN L2 对 `q/k/v` 显式执行 `Contiguous`，因此非连续输入先 materialize 为连续 BNSD，再进入自定义
 Ascend C 路径。输入输出 shape/dtype 不匹配、非法 window 或其他不支持 metadata 会返回参数错误；实现不调用
@@ -47,13 +47,15 @@ L2 负责契约校验、输入连续化和 window 规范化。shape 一致的任
 | 运行时条件 | tiling key / 路径 | 说明 |
 | --- | --- | --- |
 | `dtype=BF16 && D=64` | key 1 / BF16 D64 lean 变体 | 编译期裁剪不需要的通用分支，保留 runtime B/N/sequence/window 解码 |
-| 其他合法 dtype/D | key 0 / 通用变体 | runtime heads、`1/sqrt(D)`、分块 D 和逐 head window |
+| 已证明的 FP16 shape family | key 2/3/5/7/8/9 | N1 packed、D72 non-full grouped、D16 text grouped 和 D256 text packed |
+| D256 padded-text 分片 | key 10/11 | solution-owned partial/merge，按 runtime capacity 分片并合并 |
+| 其余合法 dtype/D | key 0 / 通用变体 | runtime heads、`1/sqrt(D)`、分块 D、逐 head window 和 D72 full-window 双概率 PV |
 | 非法 metadata | 无 kernel / fail loudly | 返回参数错误，不 fallback |
 
-key 0/1 均由本目录源码构建并打包。内核在变体内部继续按合法 runtime metadata 选择固定 384-row task
-decode、grouped/compact 或动态通用数据流；case id、输入值和 timing 不参与分派。设备端使用 solution-owned
-MIX kernel 完成 QK、online softmax、PV、
-rescale、归一化和写回。BF16 路径不发射外部 `Cast(Q/K/V) + FAI + Cast(O)` 链；当前 CATLASS PV
+所有 tiling key 均由本目录源码构建并打包。内核在变体内部继续按合法 runtime metadata 选择固定
+384-row task decode、grouped/compact 或动态通用数据流；case id、输入值和 timing 不参与分派。设备端使用
+solution-owned Ascend C kernel 完成 QK、online softmax、PV、rescale、归一化和写回。BF16 路径不发射外部
+`Cast(Q/K/V) + FAI + Cast(O)` 链；当前 CATLASS PV
 lowering 所需的 V tile 在同一次 STA kernel 内 staging 为 half，随后沿标准 online-softmax/PV/rescale
 数据流直接写回 BF16。该内部表示转换不是独立 Cast 算子，也不是 framework/vendor fallback。
 
@@ -85,26 +87,32 @@ g++ -std=c++17 -Wall -Wextra -Werror \
 ALL_SLIDING_TILE_ATTENTION_CASE_GUARD_TESTS_PASSED dynamic_heads=1..128 head_dim_multiple=8
 ```
 
-22-case NPU reviewer 复跑入口：
+原始任务书 50-case NPU 功能复跑入口：
 
 ```bash
 source /path/to/cann/set_env.sh
-bash experimental/attention/sliding_tile_attention/examples/run_22cases.sh
+bash experimental/attention/sliding_tile_attention/examples/run_taskbook_cases.sh
 ```
 
-脚本会构建当前源码生成的自定义算子包，并安装到 `/tmp` 下的隔离 OPP 根中执行原 18 个固定快路径保护
-case，以及 case 19、23、24、25 四个 N/D/window/batch/layout 泛化 case 和独立空 Tensor API 检查。
-runner 固定执行上述 22 个 case；未列入该表的 workload 不由这份自验证日志给出性能结论。
-设备输入使用非零、非均匀
-Q/K 和确定性 V，host 期望值显式应用 runtime `1/sqrt(D)`，并采样所有合法的
-`0,7,63,64,127,128,D-1` 列；退出时删除临时
-目录，不修改活动 CANN 的 `vendors/config.ini` 或 vendor 目录。预期最终标志：
+该入口逐项执行任务书 `all_sta.json` 的 case 0..49；dtype、B/N/S/D、window、textLength、hasText 和
+seqShape 与原始表一致。每个 case 都在当前 PR 构建的 ACLNN custom op 上执行，检查独立解析期望值、padded
+storage query、同输入 bitwise 确定性和空 Tensor API。任务书中的历史性能数值不作为此功能复跑的结论。
+
+该入口构建当前源码生成的自定义算子包，并安装到 `/tmp` 下的隔离 OPP 根中，随后在该隔离包上执行任务书
+50 例和独立空 Tensor API 检查；未列入任务书 case 表的 workload 不由这份自验证日志给出结论。
+设备输入使用非零、非均匀 Q/K 和确定性 V，host 期望值显式应用 runtime `1/sqrt(D)`，并采样所有合法的
+`0,7,63,64,127,128,D-1` 列；退出时删除临时目录，不修改活动 CANN 的 `vendors/config.ini` 或 vendor
+目录。预期最终标志：
 
 ```text
 API_PASS empty_tensor workspace=0
-ALL_LOCAL_SLIDING_TILE_ATTENTION_CASES_PASSED cases=22
+ALL_LOCAL_SLIDING_TILE_ATTENTION_CASES_PASSED suite=taskbook cases=50
 ```
 
-这 22 个 case 是 reviewer 可复跑的代表性证据，不是完整支持域。当前 PR 的原始运行日志、逐 case
-精度/设备延迟 CSV、源码摘要和校验清单位于 [docs/evidence](docs/evidence)，完整判定边界见
-[docs/self_validation.md](docs/self_validation.md)。
+任务书 50 例证明规定 case 全部执行；该 case 集合不是完整支持域的穷举。
+当前 PR 源码树已完成任务书 50/50 复跑；50 个设备 case 均为 bitwise deterministic，空 Tensor
+workspace0/API 检查通过；未达 0.8x 的 case 说明见
+[docs/self_validation.md](docs/self_validation.md) 的性能见顶分析。原始日志、逐 case 精度/设备延迟 CSV、
+任务书字段映射、源码摘要和校验清单位于
+[docs/evidence](docs/evidence)，完整判定边界见 [docs/self_validation.md](docs/self_validation.md)。CSV 延迟仅用于
+本地复现和异常定位，不采用任务书历史性能数值，也不构成性能达标或 speedup 声明。

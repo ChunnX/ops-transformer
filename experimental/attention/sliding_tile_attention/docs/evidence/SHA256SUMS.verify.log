@@ -1,0 +1,14 @@
+WORKDIR=/workspace3/lcw/ops-transformer
+COMMAND=sha256sum -c operator_source.sha256 && sha256sum -c current_reproducer.sha256 && sha256sum -c SHA256SUMS
+experimental/attention/sliding_tile_attention/CMakeLists.txt: OK
+experimental/attention/sliding_tile_attention/op_host/CMakeLists.txt: OK
+experimental/attention/sliding_tile_attention/op_host/config/ascend910_93/sliding_tile_attention_fai_binary.json: OK
+experimental/attention/sliding_tile_attention/op_host/config/ascend910_93/sliding_tile_attention_fai_simplified_key.ini: OK
+experimental/attention/sliding_tile_attention/op_host/config/ascend910b/sliding_tile_attention_fai_binary.json: OK
+experimental/attention/sliding_tile_attention/op_host/config/ascend910b/sliding_tile_attention_fai_simplified_key.ini: OK
+
+experimental/attention/sliding_tile_attention/docs/evidence/run_taskbook_cases.log: OK
+experimental/attention/sliding_tile_attention/docs/evidence/taskbook_case_manifest.csv: OK
+experimental/attention/sliding_tile_attention/docs/evidence/taskbook_self_validation.csv: OK
+experimental/attention/sliding_tile_attention/docs/evidence/operator_source.sha256: OK
+experimental/attention/sliding_tile_attention/docs/evidence/current_reproducer.sha256: OK

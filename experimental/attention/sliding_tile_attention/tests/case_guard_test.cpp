@@ -73,9 +73,9 @@ int main()
                 "hasText must match textLength");
     ok &= Check(!IsSupportedMetadata(1, 1, STEPVIDEO_SEQUENCE + 8, 8, 0, false, STEPVIDEO_SEQ_SHAPE_ID, oneHead),
                 "sequence must match the selected canvas plus textLength");
-    ok &= Check(!IsSupportedMetadata(1, 1, FASTVIDEO_IMAGE_SEQUENCE + 256, 8, 256, true,
-                                     FASTVIDEO_SEQ_SHAPE_ID, oneHead),
-                "text and canvas families remain task-book fixed");
+    ok &=
+        Check(IsSupportedMetadata(1, 1, FASTVIDEO_IMAGE_SEQUENCE + 256, 8, 256, true, FASTVIDEO_SEQ_SHAPE_ID, oneHead),
+              "text storage capacity may exceed the original 128-token task case");
 
     if (!ok) {
         return EXIT_FAILURE;

@@ -10,6 +10,7 @@
 
 #include "aclnn_sliding_tile_attention.h"
 
+#include "../../op_kernel/sliding_tile_attention_launch.h"
 #include "../sliding_tile_attention_case_guard.h"
 #include "sliding_tile_attention.h"
 
@@ -29,8 +30,8 @@ namespace {
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT = {DataType::DT_FLOAT16, DataType::DT_BF16};
 
 aclnnStatus CheckRequiredPointers(const aclTensor *q, const aclTensor *k, const aclTensor *v,
-                                  const aclIntArray *windowSize, const aclTensor *output,
-                                  const uint64_t *workspaceSize, aclOpExecutor *const *executor)
+                                  const aclIntArray *windowSize, const aclTensor *output, const uint64_t *workspaceSize,
+                                  aclOpExecutor *const *executor)
 {
     OP_CHECK_NULL(q, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(k, return ACLNN_ERR_PARAM_NULLPTR);
@@ -79,15 +80,15 @@ aclnnStatus ReadNormalizedWindows(const aclIntArray *windowSize, int64_t heads,
     }
     if (!sliding_tile_attention::NormalizeWindows(raw.data(), static_cast<int64_t>(raw.size()), heads, windows)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "windowSize must contain three positive odd values or 3*N positive odd values; got values=%lu, N=%ld.",
+                "windowSize must contain three positive values or 3*N positive values; got values=%lu, N=%ld.",
                 valueCount, static_cast<long>(heads));
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckNonEmptyMetadata(const aclTensor *q, const aclIntArray *windowSize, int64_t textLength,
-                                  bool hasText, int64_t seqShape)
+aclnnStatus CheckNonEmptyMetadata(const aclTensor *q, const aclIntArray *windowSize, int64_t textLength, bool hasText,
+                                  int64_t seqShape)
 {
     const auto &shape = q->GetViewShape();
     const int64_t batch = shape.GetDim(0);
@@ -99,15 +100,14 @@ aclnnStatus CheckNonEmptyMetadata(const aclTensor *q, const aclIntArray *windowS
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (!sliding_tile_attention::IsSupportedMetadata(batch, heads, sequence, headDim, textLength, hasText, seqShape,
                                                      windows)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "SlidingTileAttention requires B>0, 1<=N<=128, D>0 divisible by 8, a supported canvas, and S=canvas+textLength.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "SlidingTileAttention requires B>0, 1<=N<=128, D>0 divisible by 8, a "
+                                         "supported canvas, and S=canvas+textLength.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus MakeInputsContiguous(const aclTensor *&q, const aclTensor *&k, const aclTensor *&v,
-                                 aclOpExecutor *executor)
+aclnnStatus MakeInputsContiguous(const aclTensor *&q, const aclTensor *&k, const aclTensor *&v, aclOpExecutor *executor)
 {
     q = l0op::Contiguous(q, executor);
     CHECK_RET(q != nullptr, ACLNN_ERR_INNER_NULLPTR);

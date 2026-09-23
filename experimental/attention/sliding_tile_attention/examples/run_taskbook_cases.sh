@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms of
+# the CANN Open Software License Agreement Version 2.0.
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
+#
+# Reviewer entry for the task-book self-validation suite: builds the custom operator
+# package for the selected SoC, installs it into a temporary OPP root, compiles the
+# local runner from files inside this source tree, runs the 50 task-book cases and
+# prints one unambiguous pass marker.
 
 set -euo pipefail
 
@@ -55,15 +57,15 @@ for generatedRoot in "${REPO_ROOT}/build" "${REPO_ROOT}/output"; do
     fi
 done
 SOURCE_TREE_SHA256="$({
-    find experimental/attention/sliding_tile_attention/CMakeLists.txt \
+    /usr/bin/find experimental/attention/sliding_tile_attention/CMakeLists.txt \
         experimental/attention/sliding_tile_attention/op_host \
         experimental/attention/sliding_tile_attention/op_kernel \
         experimental/attention/sliding_tile_attention/examples \
         experimental/attention/sliding_tile_attention/tests \
         cmake/func.cmake \
-        -type f -print0 | sort -z |
-        xargs -0 sha256sum
-} | sha256sum | awk '{print $1}')"
+        -type f -print0 | /usr/bin/sort -z |
+        /usr/bin/xargs -0 /usr/bin/sha256sum
+} | /usr/bin/sha256sum | /usr/bin/awk '{print $1}')"
 echo "SLIDING_TILE_ATTENTION_SOURCE_TREE_SHA256=${SOURCE_TREE_SHA256}"
 bash build.sh --pkg --experimental "--soc=${SOC_VERSION}" --ops=sliding_tile_attention \
     "--vendor_name=${VENDOR_NAME}" "-j${BUILD_THREADS}"
@@ -89,11 +91,11 @@ for required in "${CUSTOM_INCLUDE}/aclnnop/aclnn_sliding_tile_attention.h" "${CU
 done
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror \
-    "${SCRIPT_DIR}/test_aclnn_sliding_tile_attention_22cases.cpp" \
+    "${SCRIPT_DIR}/test_aclnn_sliding_tile_attention_cases.cpp" \
     -I"${CANN_INCLUDE}" -I"${CUSTOM_INCLUDE}" \
     "${CUSTOM_LIBRARY}" "${CANN_LIBRARY}/libascendcl.so" "${CANN_LIBRARY}/libnnopbase.so" \
     -Wl,-rpath,"${CUSTOM_OPP_ROOT}/op_api/lib" -Wl,-rpath,"${CANN_LIBRARY}" \
-    -o "${RUNNER_BUILD_DIR}/sliding_tile_attention_22cases"
+    -o "${RUNNER_BUILD_DIR}/sliding_tile_attention_cases"
 
 export ASCEND_CUSTOM_OPP_PATH="${CUSTOM_OPP_ROOT}${ASCEND_CUSTOM_OPP_PATH:+:${ASCEND_CUSTOM_OPP_PATH}}"
 export LD_LIBRARY_PATH="${CUSTOM_OPP_ROOT}/op_api/lib:${CANN_LIBRARY}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
@@ -101,5 +103,5 @@ export SLIDING_TILE_ATTENTION_DEVICE_ID="${DEVICE_ID}"
 export SLIDING_TILE_ATTENTION_WARMUP="${SLIDING_TILE_ATTENTION_WARMUP:-3}"
 export SLIDING_TILE_ATTENTION_MEASURE_REPEAT="${SLIDING_TILE_ATTENTION_MEASURE_REPEAT:-5}"
 export SLIDING_TILE_ATTENTION_REPORT_PATH="${SLIDING_TILE_ATTENTION_REPORT_PATH:-${REPO_ROOT}/sliding_tile_attention_self_validation.csv}"
-"${RUNNER_BUILD_DIR}/sliding_tile_attention_22cases"
+"${RUNNER_BUILD_DIR}/sliding_tile_attention_cases"
 echo "SLIDING_TILE_ATTENTION_SELF_VALIDATION_REPORT=${SLIDING_TILE_ATTENTION_REPORT_PATH}"
