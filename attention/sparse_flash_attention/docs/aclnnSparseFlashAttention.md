@@ -369,7 +369,6 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>
           <ul>
                 <li>True表示返回，False表示不返回；默认值为False。</li>
-                <li>该参数仅在训练场景支持；layoutKv为PA_BSND时，仅<term>Ascend 950PR/Ascend 950DT</term>支持。</li>
           </ul>
       </td>
       <td>BOOL</td>
