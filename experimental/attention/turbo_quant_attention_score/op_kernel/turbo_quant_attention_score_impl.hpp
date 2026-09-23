@@ -28,8 +28,9 @@ constexpr uint32_t DOT_SLOT = 2 * SCALAR_SLOT;
 
 __aicore__ inline uint32_t AlignUpBytes(uint32_t bytes, uint32_t ubBlockSize)
 {
-    if (ubBlockSize == 0U) {
-        ubBlockSize = 32U;
+    // ubBlockSize comes from Ops::Base::GetUbBlockSize on host; do not hardcode 32.
+    if (ubBlockSize <= 1U) {
+        return bytes;
     }
     return (bytes + ubBlockSize - 1U) / ubBlockSize * ubBlockSize;
 }
@@ -60,9 +61,6 @@ public:
         usedCoreNum_ = tiling->usedCoreNum;
         groups_ = tiling->groups;
         ubBlockSize_ = tiling->ubBlockSize;
-        if (ubBlockSize_ == 0U) {
-            ubBlockSize_ = 32U;
-        }
         qjlCoeff_ = tiling->qjlCoeff;
         mseBits_ = mseBits;
         totalRows_ = static_cast<uint64_t>(numTokens_) * numQHeads_;
@@ -1178,7 +1176,7 @@ private:
     uint32_t kvTile_ = 0;
     uint32_t usedCoreNum_ = 0;
     uint32_t groups_ = 0;
-    uint32_t ubBlockSize_ = 32;
+    uint32_t ubBlockSize_ = 0;
     uint32_t kShare_ = 2;
     uint32_t mseBits_ = 3;
     uint64_t totalRows_ = 0;

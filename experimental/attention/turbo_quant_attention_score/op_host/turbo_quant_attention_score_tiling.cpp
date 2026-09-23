@@ -240,12 +240,8 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     params.kvTile = static_cast<uint32_t>(
         std::min<uint64_t>(std::min<uint64_t>((budget - fixedBytes) / perKv, MAX_KV_TILE), params.maxKvLen));
     OP_CHECK_IF(params.kvTile == 0U, OP_LOGE(context, "calculated kvTile is zero"), return ge::GRAPH_FAILED);
-    if (isPrefill) {
-        // A2 192KB UB: allow larger tile to cut prefill loop overhead (was 32).
-        params.kvTile = std::min(params.kvTile, 64U);
-    } else {
-        params.kvTile = std::min(params.kvTile, 64U);
-    }
+    // Cap tile for A2 192KB UB loop overhead (decode/prefill share the same upper bound).
+    params.kvTile = std::min(params.kvTile, 64U);
 
     uint32_t coreNum = platform.GetCoreNumAiv();
     OP_CHECK_IF(coreNum == 0U, OP_LOGE(context, "AIV core num is zero"), return ge::GRAPH_FAILED);

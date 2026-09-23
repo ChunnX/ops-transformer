@@ -58,13 +58,10 @@ public:
 
         this->Attr("mse_bits").AttrType(OPTIONAL).Int(3);
 
+        // Keep DynamicShapeSupportFlag for custom-package dynamic impl path on A2.
+        // Drop other Dynamic* / PrecisionReduce flags per community checklist (redundant).
         OpAICoreConfig aicoreConfig;
-        aicoreConfig.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(false)
-            .DynamicRankSupportFlag(false)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
+        aicoreConfig.DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "turbo_quant_attention_score");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);

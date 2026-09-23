@@ -43,15 +43,15 @@ extern "C" __global__ __aicore__ void turbo_quant_attention_score(GM_ADDR queryR
     const auto *tilingData = &tilingDataIn;
 
     NsTurboQuantAttentionScore::TurboQuantAttentionScoreImpl<DTYPE_KEY_CACHE_NORM> op;
-    if (TILING_KEY_IS(0)) {
+    if (TILING_KEY_IS(optiling::TQAS_TILING_KEY_MSE2)) {
         op.Init(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma, blockTable, seqLens,
                 attnScores, tilingData, 2U);
         op.Process();
-    } else if (TILING_KEY_IS(1)) {
+    } else if (TILING_KEY_IS(optiling::TQAS_TILING_KEY_MSE3)) {
         op.Init(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma, blockTable, seqLens,
                 attnScores, tilingData, 3U);
         op.Process();
-    } else if (TILING_KEY_IS(2)) {
+    } else if (TILING_KEY_IS(optiling::TQAS_TILING_KEY_MSE4)) {
         op.Init(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma, blockTable, seqLens,
                 attnScores, tilingData, 4U);
         op.Process();
