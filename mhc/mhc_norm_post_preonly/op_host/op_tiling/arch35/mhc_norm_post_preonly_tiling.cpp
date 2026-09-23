@@ -28,6 +28,7 @@ constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
+constexpr uint64_t TILING_KEY_CUBE_PROJECTION = 1ULL << 3;
 
 static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
 {
@@ -195,7 +196,10 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     const bool enableDualSibling =
         totalTokens == 4U && dualSiblingDim && !returnHInF32 &&
         (hOutDesc->GetDataType() == ge::DT_BF16 || hOutDesc->GetDataType() == ge::DT_FLOAT16);
-    const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
+    // O13独立路由：仅目标5op BF16 shape启用FP32 Cube Phi投影，其他shape保持已验证Vector路径。
+    const bool enableCubeProjection = enableDualSibling && useRmsMid && D == 5120U &&
+                                      hOutDesc->GetDataType() == ge::DT_BF16;
+    const uint32_t coresPerToken = enableCubeProjection ? 3U : (enableDualSibling ? 2U : 1U);
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
     uint32_t remainTokens = totalTokens % usedCoreNum;
@@ -225,15 +229,19 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     tiling.set_coresPerToken(coresPerToken);
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    // CrossCore同步不占GM；双sibling路径每个token只分配一个32B partial1槽。
+    // 双sibling partial槽固定为每token 64B。Cube路径额外保存每token 4D 个FP32 x2和32B投影结果。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr) {
         OP_LOGE("MhcNormPostPreonly", "GetWorkspaceSizes is nullptr");
         return ge::GRAPH_FAILED;
     }
-    currentWorkspace[0] =
-        sysWsBytes + (enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U);
+    const size_t partialBytes =
+        enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U;
+    const size_t cubeBytes = enableCubeProjection
+                                 ? (size_t)totalTokens * ((size_t)N * D * sizeof(float) + PARTIAL_SLOT_BYTES)
+                                 : 0U;
+    currentWorkspace[0] = sysWsBytes + partialBytes + cubeBytes;
 
     // 输出Tiling数据
     context->SetBlockDim(usedCoreNum);
@@ -242,7 +250,8 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     }
     uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
                          (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
-                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
+                         (enableDualSibling ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL) |
+                         (enableCubeProjection ? TILING_KEY_CUBE_PROJECTION : 0ULL);
     context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());

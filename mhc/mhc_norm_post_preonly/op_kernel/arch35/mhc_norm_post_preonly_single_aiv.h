@@ -287,6 +287,36 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
     }
 }
 
+// Cube投影路径只在AIV保留R4平方和；两条lane把各自连续两行FP32 x2写入workspace，
+// mode4的PIPE_MTE3通知保证AIC读取前写回完成。MTE3读取与本地Vector平方可并行。
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateCubeSumSqAndStore(
+    uint32_t token, uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2])
+{
+    LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+    const uint32_t headBegin = laneId_ * 2U;
+    const uint64_t gmBase = (uint64_t)token * K_ + (uint64_t)headBegin * D_ + tOff;
+
+    SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+    WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+    DataCopy(cubeX2Gm_[gmBase], x2, tD);
+    DataCopy(cubeX2Gm_[gmBase + D_], x2[dimTile_], tD);
+
+    LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
+    MhcNormRegBase::Mul(out, x2, x2, tD);
+    PipeBarrier<PIPE_V>();
+    MhcNormRegBase::Mul(tmp, x2[dimTile_], x2[dimTile_], tD);
+    PipeBarrier<PIPE_V>();
+    MhcNormRegBase::Add(out, out, tmp, tD);
+    PipeBarrier<PIPE_V>();
+    sumSqHalf[laneId_] += ReduceSumPrecise(out, tD);
+    // 平方归约隐藏MTE3读取；返回前确认可安全覆写紧凑FP32 x2缓存。
+    SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
+    WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
+}
+
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void
 KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleAiv(uint32_t token)

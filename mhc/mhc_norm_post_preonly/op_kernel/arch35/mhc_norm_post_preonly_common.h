@@ -32,6 +32,9 @@ constexpr uint32_t POST_COMB_SIZE    = 8 + 16; // h_post[8] + h_res[16] buffer �
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;     // 每个lane的partial固定占32B
 constexpr uint16_t MID_READY_FLAG = 0;         // R2平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;        // R4/R5 partial交换完成标志
+constexpr uint16_t CUBE_INPUT_READY_FLAG = 8;  // AIV写完FP32 x2后通知AIC
+constexpr uint16_t CUBE_RESULT_READY_FLAG = 9; // AIC写完四路投影后通知leader AIV
+constexpr uint32_t AIV1_FLAG_OFFSET = 16;       // mode4中第二个sibling AIV的flag偏移
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
