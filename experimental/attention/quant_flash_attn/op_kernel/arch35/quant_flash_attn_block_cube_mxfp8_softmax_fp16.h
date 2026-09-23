@@ -112,11 +112,11 @@ private:
     FaGmTensor<SCALE_T, GmFormat::BNSD, int32_t> valueScaleGm_;
 
     // ===== L1 Buffer =====
-    // --- 共享区（P/pScale，AIC/AIV 同偏移，常量来源 common_def.h）---
-    LocalTensor<QUANT_T> pL1V0Tensor_;
-    LocalTensor<QUANT_T> pL1V1Tensor_;
-    LocalTensor<SCALE_T> pScaleL1V0Tensor_;
-    LocalTensor<SCALE_T> pScaleL1V1Tensor_;
+    // --- 共享区（P/pScale，AIC/AIV 同偏移，常量来源 common_def.h L1 v3）---
+    // P 槽核间交错布局下双核槽不连续——统一走宽视图 + L1_PSLOT(core, ring) 计算基址
+    LocalTensor<QUANT_T> l1SharedTensor_;   // L1 共享区整域视图（P 数据，交错槽）
+    LocalTensor<SCALE_T> pScaleL1V0Tensor_; // V0 pscale 网格槽（[0, 4608B)，AIV 直写窗口内）
+    LocalTensor<SCALE_T> pScaleL1V1Tensor_; // V1 pscale 网格槽（[4608, 9216B)，AIV 直写窗口内）
 
     // --- 私有区（Q 及 scale / KV 合用 ring）---
     LocalTensor<QUANT_T>  qL1Tensor_;
@@ -288,14 +288,12 @@ public:
         AllocEventID();
 
         // ===== L1 共享区 =====
-        pL1V0Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V0_BASE,
-                                            L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE);
-        pL1V1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V1_BASE,
-                                            L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE);
+        // P 槽核间交错布局（common_def L1_PSLOT）：整域宽视图，P 基址由 LoadPToL0B 按槽计算
+        l1SharedTensor_ = LocalTensor<QUANT_T>(TPosition::A1, 0, L1_SHARED_REGION_SIZE);
         pScaleL1V0Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V0_BASE,
-                                                 L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE);
+                                                 L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE);
         pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
-                                                 L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
+                                                 L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE);
 
         // ===== L1 私有区 =====
         qL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_Q_BASE,
@@ -365,7 +363,9 @@ public:
         scaleParams.srcStride = scaleParams.yStep;
         scaleParams.dstStride = scaleParams.yStep;
 
-        LoadData(mm2L0ATensor_.template ReinterpretCast<QUANT_T>(),
+        // dst 必须 mx_fp8_e4m3_t 直传（带 scale 的 LoadData 类型契约：Tuple<mx_fp8_e4m3_t, fp8_e4m3fn_t>，
+        // plain-plain 组合触发 kernel_operator_mm_impl.h 静态断言——2026-09-22 全量重编暴露）
+        LoadData(mm2L0ATensor_,
                  oneFillVL1Tensor_.template ReinterpretCast<QUANT_T>(),
                  oneFillVScaleL1Tensor_,
                  dataParams, scaleParams);
@@ -744,37 +744,35 @@ public:
     __aicore__ inline void LoadPToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore,
                                         uint32_t subKIdx, uint32_t actSubKSize)
     {
-        // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1（固定满宽）、ifTranspose=true
-        uint32_t pSlot = runInfo.pSlot;
-
-        LocalTensor<QUANT_T> &pL1Tensor      = (vCore == 0U) ? pL1V0Tensor_  : pL1V1Tensor_;
-        LocalTensor<SCALE_T> &pScaleL1Tensor  = (vCore == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
-
+        // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1（固定满宽）、ifTranspose=true。
+        // subLoop 粒度槽（L1 v3）：每 subK 一槽 [128,128]，mStartPosition 恒 0、srcStride 恒 8
+        //（槽内行数固定 128），subK → 槽选择（ring = loop×2+subK，核间交错 L1_PSLOT）
         uint32_t actSubKSizeAlign64 = (actSubKSize + 63U) / 64U * 64U;  // S2 方向 64 对齐（DN 同款）
-        uint32_t actS2SizeAlign64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;  // 整槽 S2 对齐
 
-        uint32_t pL1Offset       = pSlot * 256U * 128U;
-        uint32_t pScaleL1Offset  = pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE;  // 含 padding 的槽尺寸
+        uint32_t pRing = L1_PRING(runInfo.loop, subKIdx);
+        uint32_t pL1Offset = L1_PSLOT(vCore, pRing);
+        uint32_t pScaleL1Offset = pRing * L1_PSCALE_SINGLE_SLOT_SIZE;  // pscale 同 ring（本 subK 专属槽）
 
         LoadData2DParamsV2 dataParams;
-        dataParams.mStartPosition = subKIdx * (MM2_SUB_K_SIZE / 16U);   // subK 偏移沿 m（S2 方向）
+        dataParams.mStartPosition = 0U;                                  // 恒 0（subK → 槽选择）
         dataParams.kStartPosition = 0U;
-        dataParams.mStep = actSubKSizeAlign64 / 16U;                    // m 沿 S2：当前 subK 切片
-        dataParams.kStep = S1_SUB_BLOCK_SIZE / 32U;                     // k 沿 S1：固定满宽 128/32=4
-        dataParams.srcStride = actS2SizeAlign64 / 16U;  // 整槽 S2 跨步（不随 subK 变）
-        dataParams.dstStride = S1_SUB_BLOCK_SIZE / 16U;                 // L0B 固定 pitch 128/16=8
-        dataParams.ifTranspose = true;                                  // L1 NZ [S2,S1] → L0B [K=S2, N=S1]
+        dataParams.mStep = actSubKSizeAlign64 / 16U;                     // m 沿 S2：本 subK 有效行
+        dataParams.kStep = S1_SUB_BLOCK_SIZE / 32U;                      // k 沿 S1：固定满宽 128/32=4
+        dataParams.srcStride = 128U / 16U;                                // 恒 8（槽内行数固定 128）
+        dataParams.dstStride = S1_SUB_BLOCK_SIZE / 16U;                   // L0B 固定 pitch 128/16=8
+        dataParams.ifTranspose = true;                                    // L1 NZ [S2,S1] → L0B [K=S2, N=S1]
 
         LoadData2DMxParams scaleParams;
-        scaleParams.xStartPosition = 0U;                                // x 沿 S1（与 data k 同向）
-        scaleParams.yStartPosition = subKIdx * (MM2_SUB_K_SIZE / 64U);  // y 沿 S2 组方向，subK 偏移
-        scaleParams.xStep = S1_SUB_BLOCK_SIZE / 16U;                    // 128/16 = 8
-        scaleParams.yStep = (actSubKSizeAlign64 + 63U) / 64U;
-        scaleParams.srcStride = actS2SizeAlign64 / 64U + 1U;  // DN 同款 bank 冲突预留 +1
+        scaleParams.xStartPosition = 0U;                                  // x 沿 S1（与 data k 同向）
+        scaleParams.yStartPosition = 0U;                                  // 恒 0（槽即本 subK 专属）
+        scaleParams.xStep = S1_SUB_BLOCK_SIZE / 16U;                      // 128/16 = 8
+        scaleParams.yStep = (actSubKSizeAlign64 + 63U) / 64U;             // 本 subK 的 y 单元数（128→2，64→1）
+        scaleParams.srcStride = 3U;                                       // x 行距 = 2 y + 1 bank pad（DN 款）
         scaleParams.dstStride = scaleParams.yStep;
 
         uint32_t l0bOffset = 0U;
-        LoadData(pL0BTensor_[l0bOffset], pL1Tensor[pL1Offset],
+        LocalTensor<SCALE_T> &pScaleL1Tensor = (vCore == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
+        LoadData(pL0BTensor_[l0bOffset], l1SharedTensor_[pL1Offset],
                  pScaleL1Tensor[pScaleL1Offset], dataParams, scaleParams);
     }
 
@@ -806,7 +804,8 @@ public:
 
         uint32_t kvL1Offset      = kvBufId_ * L1_KV_SINGLE_SLOT_SIZE;
         uint32_t kvScaleL1Offset = kvBufId_ * L1_KVSCALE_SINGLE_SLOT_SIZE;
-        LoadData(mm2L0ATensor_.template ReinterpretCast<QUANT_T>(), kvL1Tensor_[kvL1Offset],
+        // dst mx 直传（InitL0BufferForReduceSum 同款类型契约：plain-plain 触发静态断言）
+        LoadData(mm2L0ATensor_, kvL1Tensor_[kvL1Offset],
                  kvScaleL1Tensor_[kvScaleL1Offset], dataParams, scaleParams);
     }
 

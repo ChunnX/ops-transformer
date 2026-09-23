@@ -156,20 +156,33 @@ struct RunInfoMxfp8SoftmaxFp16 {
 };
 
 // ===== L1 共享布局（AIC/AIV 同偏移，block cube/vector 共同引用）=====
-constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE;          // = 3
+// ===== L1 共享布局 v3（2026-09-22 subLoop 粒度 + AIV 直写窗口优先级排布）=====
+// 背景：AIV 经 MTE3 直写 L1 仅窗口 [0, 0x20000)（128KB）有效（0x10000 可写 /
+// 0x20000+0x28000+0x30000 实测静默丢弃，探针实验留档）——原布局 pscale 在 0x30000+ 全丢。
+// v3 原则：pscale（小件、影响所有任务）全部前置窗口内；P 槽 subLoop 粒度（16KB/槽）
+// 核间交错排布，窗口内可容纳 7 槽（loop 0 双核 + loop 1 的 V0s1/V1s0/V0s1 中 3 槽），
+// 其余越窗为多任务已知限制（需 GM 中转或 SE 确认窗口，另立里程碑）。
+// P 槽改 subLoop 粒度的动机：写读粒度对齐（V1 subLoop 写 ⇄ C2 subK 读），
+// 尾块 S2∈(129,192] 时旧公式 subLoopIdx×4KB 固定写越过 s2Align64=192 的列组边界
+// 覆盖下一列组有效数据（KVS704 尾块 192 必踩）——槽定长 16KB 后结构性消除。
+constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE * 2U;    // = 6（3 任务 × 2 subLoop）
 
-constexpr uint32_t L1_P_V0_SINGLE_SLOT_SIZE      = 256 * 128; // fp8 [256,128] = 32KB
-constexpr uint32_t L1_P_V1_SINGLE_SLOT_SIZE      = 256 * 128;
-// e8m0 (256×128/32=1024B) + bank 冲突预留 padding（DN 同几何 L1_P_DESCALE_SIZE=32*5*8=1280；
-// 配套 LoadPToL0B scale srcStride = S2/64 + 1 的 +1 预留，实现期数值对拍后可再精确调整）
-constexpr uint32_t L1_PSCALE_V0_SINGLE_SLOT_SIZE = 1280;
-constexpr uint32_t L1_PSCALE_V1_SINGLE_SLOT_SIZE = 1280;
+constexpr uint32_t L1_P_SINGLE_SLOT_SIZE = 128 * 128;             // fp8 [128,128] = 16KB（subLoop 粒度）
+// e8m0 scale 网格槽（subLoop 粒度）：[8 x 单元（S1 16 列/组 × 2B 对）][2 y 单元 + 1 pad] × 32B
+// = 768B；y 单元 = 64 S2 行组，读侧 yStart 恒 0（subK → 槽选择）
+constexpr uint32_t L1_PSCALE_SINGLE_SLOT_SIZE = 768;
 
-constexpr uint32_t L1_P_V0_BASE = 0;
-constexpr uint32_t L1_P_V1_BASE = L1_P_V0_BASE + L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE;
-constexpr uint32_t L1_PSCALE_V0_BASE = L1_P_V1_BASE + L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE;
-constexpr uint32_t L1_PSCALE_V1_BASE = L1_PSCALE_V0_BASE + L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE;
-constexpr uint32_t L1_SHARED_REGION_SIZE = L1_PSCALE_V1_BASE + L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE;
+// pscale 全前置（AIV 直写窗口内——pscale 影响所有任务，必须全部可写）
+constexpr uint32_t L1_PSCALE_V0_BASE = 0;
+constexpr uint32_t L1_PSCALE_V1_BASE = L1_PSCALE_V0_BASE + L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_P_SLOTS_BASE = L1_PSCALE_V1_BASE + L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE;
+// P 数据槽核间交错寻址（ring = loop×2+subLoopIdx，周期 6）：
+// 槽序 v0r0,v1r0,v0r1,v1r1,…——窗口内前 7 槽，loop 0 双核全保
+// common_def 同被 op_host（g++）引用，函数需 __aicore__ 标注而 host 无此属性——用宏
+#define L1_PSLOT(core, ring) (L1_P_SLOTS_BASE + ((ring) * 2U + (core)) * L1_P_SINGLE_SLOT_SIZE)
+// P ring 槽号（loop×2+subLoopIdx 自动 mod 6：loop 周期 3）
+#define L1_PRING(loop, subLoop) (((loop) * 2U + (subLoop)) % 6U)
+constexpr uint32_t L1_SHARED_REGION_SIZE = L1_P_SLOTS_BASE + 2U * L1_P_BUFCNT * L1_P_SINGLE_SLOT_SIZE;
 
 // ===== V 核 UB 跨核契约（AIC Fixpipe 跨核写入 / VectorBlock 分配与消费，两侧同源引用）=====
 // 单位约定（对齐 LocalTensor(TPosition, addr, size)：addr=字节地址、size=元素数）：

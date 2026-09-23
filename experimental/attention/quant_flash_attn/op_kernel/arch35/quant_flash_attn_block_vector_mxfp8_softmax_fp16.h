@@ -51,9 +51,10 @@ private:
     static constexpr uint32_t UB_SMAX_SLOT = s1BaseSize / 2;                // [128] half
     static constexpr uint32_t UB_SMAX_BUFCNT = 3;                           // mloop%3
     static constexpr uint32_t UB_SEXP_BUFCNT = 3;                           // loop%3
-    static constexpr uint32_t UB_PSCALE_SLOT = s1BaseSize / 2;              // [128] e8m0
-    static constexpr uint32_t UB_PSCALE_TASKS = 3;                          // loop%3
-    static constexpr uint32_t UB_PSCALE_SUBLOOPS = 2;                       // subLoopIdx
+    static constexpr uint32_t UB_PSCALE_SUBLOOPS = 2;                       // subLoopUsedMaxUB 槽数
+    // pscale 网格影像（共享常量同源 vf_common_def，B1 教训）：[ring][768B]，ring 周期 6
+    static constexpr uint32_t UB_PSCALE_SLOT = QfaVectorApi::QFA_UB_PSCALE_SLOT;    // 768B/槽
+    static constexpr uint32_t UB_PSCALE_RINGS = QfaVectorApi::QFA_UB_PSCALE_RINGS;  // 6
 
     // ===== UB BASE 常量链（mm1Res/mm2Res 的 BASE 用 common_def 值，不自引用）=====
     static constexpr uint32_t UB_VEC1P_BASE = UB_MM2RES_BASE + UB_MM2RES_SIZE * sizeof(MM_OUT_T);
@@ -64,7 +65,9 @@ private:
     static constexpr uint32_t UB_BSMAX_BASE = UB_SEXP_BASE + UB_SMAX_SLOT * UB_SEXP_BUFCNT * sizeof(MM_OUT_T);
     static constexpr uint32_t UB_SUBMAX_BASE = UB_BSMAX_BASE + UB_SMAX_SLOT * sizeof(SOFTMAX_T);
     static constexpr uint32_t UB_PSCALE_BASE = UB_SUBMAX_BASE + UB_SMAX_SLOT * UB_PSCALE_SUBLOOPS * sizeof(SOFTMAX_T);
-    static constexpr uint32_t UB_TOTAL = UB_PSCALE_BASE + UB_PSCALE_SLOT * UB_PSCALE_TASKS * UB_PSCALE_SUBLOOPS * sizeof(SCALE_T);
+    static constexpr uint32_t UB_NZIDX_BASE = UB_PSCALE_BASE + UB_PSCALE_SLOT * UB_PSCALE_RINGS;
+    // pNzIdxUB 索引表 256B 计入总量（原实现漏计）
+    static constexpr uint32_t UB_TOTAL = UB_NZIDX_BASE + 256;
     static_assert(UB_TOTAL <= 256 * 1024, "V-core UB budget (256KB) exceeded");
 
     // ===== UB Tensor 成员（对齐设计 §4 表）=====
@@ -77,14 +80,14 @@ private:
     LocalTensor<MM_OUT_T> softmaxExpUB_;  // [3][128] fp32，跨块因子 fp32 位模式（loop%3）
     LocalTensor<SOFTMAX_T> blockStartMaxUB_;   // [128] half，块首 K^{blkStart} 快照
     LocalTensor<SOFTMAX_T> subLoopUsedMaxUB_;  // [2][128] half，各 subLoop k_i（供末 subLoop 算 pscale）
-    LocalTensor<SCALE_T> pscaleUB_;      // [3][2][128] e8m0，[loop%3][subLoopIdx]
-    LocalTensor<uint8_t> pNzIdxUB_;      // P NZ 打包 Gather 索引表
+    LocalTensor<SCALE_T> pscaleGridUB_;  // [6][768B] pscale L1 网格影像（[ring]，VF 散布 + 连续整槽发 L1）
+    LocalTensor<uint8_t> pNzIdxUB_;      // P NZ 打包 Gather 索引表（pscale 改字节对后唯一消费者是 P 存储）
 
     // ===== L1 共享区视图成员（AIC L1，V1 经 MTE3 写入 P/pscale 的目标地址）=====
-    LocalTensor<QUANT_T> pL1V0Tensor_;         // V0 的 P 数据（fp8，AIC L1）
-    LocalTensor<QUANT_T> pL1V1Tensor_;         // V1 的 P 数据（fp8，AIC L1）
-    LocalTensor<SCALE_T> pScaleL1V0Tensor_;    // V0 的 pscale（e8m0，AIC L1）
-    LocalTensor<SCALE_T> pScaleL1V1Tensor_;    // V1 的 pscale（e8m0，AIC L1）
+    // P 槽核间交错布局（common_def L1_PSLOT 宏）下双核槽不连续——统一走宽视图 + 计算基址
+    LocalTensor<QUANT_T> l1SharedTensor_;       // L1 共享区整域视图（P 数据，交错槽）
+    LocalTensor<SCALE_T> pScaleL1V0Tensor_;    // V0 的 pscale（[0, 4608B) 窗口内）
+    LocalTensor<SCALE_T> pScaleL1V1Tensor_;    // V1 的 pscale（[4608, 9216B) 窗口内）
 
     // ===== 依赖注入 =====
     const ConstInfo &constInfo_;          // 核信息（subBlockIdx、scaleValue 等）
@@ -133,25 +136,22 @@ public:
         softmaxMaxUB_ = LocalTensor<SOFTMAX_T>(TPosition::VECCALC, UB_SMAX_BASE,
                                               UB_SMAX_SLOT * UB_SMAX_BUFCNT);
         softmaxExpUB_ = LocalTensor<MM_OUT_T>(TPosition::VECCALC, UB_SEXP_BASE,
-                                             UB_SMAX_SLOT * UB_SEXP_BUFCNT);
+                                              UB_SMAX_SLOT * UB_SEXP_BUFCNT);
         blockStartMaxUB_ = LocalTensor<SOFTMAX_T>(TPosition::VECCALC, UB_BSMAX_BASE, UB_SMAX_SLOT);
         subLoopUsedMaxUB_ = LocalTensor<SOFTMAX_T>(TPosition::VECCALC, UB_SUBMAX_BASE,
                                                   UB_SMAX_SLOT * UB_PSCALE_SUBLOOPS);
-        pscaleUB_ = LocalTensor<SCALE_T>(TPosition::VECCALC, UB_PSCALE_BASE,
-                                        UB_PSCALE_SLOT * UB_PSCALE_TASKS * UB_PSCALE_SUBLOOPS);
-        pNzIdxUB_ = LocalTensor<uint8_t>(TPosition::VECCALC, UB_PSCALE_BASE +
-                                         UB_PSCALE_SLOT * UB_PSCALE_TASKS * UB_PSCALE_SUBLOOPS * sizeof(SCALE_T),
+        pscaleGridUB_ = LocalTensor<SCALE_T>(TPosition::VECCALC, UB_PSCALE_BASE,
+                                             UB_PSCALE_SLOT * UB_PSCALE_RINGS);
+        pNzIdxUB_ = LocalTensor<uint8_t>(TPosition::VECCALC, UB_NZIDX_BASE,
                                          256);  // 索引表 256B（实现期可调）
 
-        // ② L1 共享区视图（按 common_def 常量构造，不分配、不初始化）
-        pL1V0Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V0_BASE,
-                                            L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE);
-        pL1V1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V1_BASE,
-                                            L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE);
+        // ② L1 共享区视图（按 common_def 常量构造，不分配、不初始化）。
+        //    P 槽核间交错布局下双核槽不连续——整域宽视图 + L1_PSLOT(core, ring) 计算基址
+        l1SharedTensor_ = LocalTensor<QUANT_T>(TPosition::A1, 0, L1_SHARED_REGION_SIZE);
         pScaleL1V0Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V0_BASE,
-                                                 L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE);
+                                                 L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE);
         pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
-                                                 L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
+                                                 L1_P_BUFCNT * L1_PSCALE_SINGLE_SLOT_SIZE);
 
         // ③ Gather 解交织索引表初始化（2026-09-20 定稿，设计 §9.1-③：无 Gather 方案作废，此表转正）
         //    公式 idx[i*128+j] = i + 2j（i∈{0,1}，j∈[0,128)）——一张表两个消费者：
@@ -210,64 +210,48 @@ public:
 
         // softmax 主体：max 归约 → 量化合并 → exp → cast fp8 → NZ 打包
         QfaVectorApi::VfSoftmaxFp16ToFp8(vec1PUb_, softmaxMaxUB_, subLoopUsedMaxUB_, pNzIdxUB_,
-                                           mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
-                                           mmSlot, stateSlot);
+                                            mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
+                                            mmSlot, stateSlot);
 
-        // P → AIC L1（MTE3；设计 §9.1 三段链终稿段③——按列组 4 次连续拷贝）
+        // P → AIC L1（MTE3；subLoop 粒度槽：ring = loop×2+subLoopIdx，核间交错 L1_PSLOT）
         SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
         WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
-        LocalTensor<QUANT_T> &pL1Target = (constInfo_.subBlockIdx == 0U) ? pL1V0Tensor_ : pL1V1Tensor_;
-        // L1 布局契约（LoadPToL0B 反推）：单元 (S2 行 r, 列组 j) 地址 = (j×A + r)×32B，
-        // A = actS2SizeAlign64（任务级 S2 64 对齐）。本子循环贡献每列组的行段 [subLoop×128, +128)。
-        // vec1PUb 暂存 = 列组主序 [4 组 × 128 行]，组 j 连续 4KB → 每组一次纯连续拷贝
-        uint32_t s2Align64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
-        constexpr uint32_t pSlotSize = s2SubLoopSize * (s1BaseSize / 2);   // 暂存槽 16KB
-        constexpr uint32_t groupBytes = s2SubLoopSize * 32;                // 每列组 128 行 × 32B = 4KB
-        constexpr uint32_t groupCount = (s1BaseSize / 2) / 32;             // 128 列 / 32 列每组 = 4
-        uint32_t l1SlotBase = runInfo.pSlot * L1_P_V0_SINGLE_SLOT_SIZE;
-        for (uint32_t j = 0; j < groupCount; j++) {
-            DataCopy(pL1Target[l1SlotBase + j * s2Align64 * 32 + subLoopIdx * groupBytes],
-                     vec1PUb_[subLoopIdx * pSlotSize + j * groupBytes], groupBytes);
-        }
+        // L1 P 槽（16KB）与 vec1PUb 暂存槽（16KB）布局完全同构：列组主序 [4 组 × 128 行]，
+        // 组 j @ j×4KB、行 r @ r×32B → 一次 16KB 纯连续拷贝。
+        // 尾块 S2∈(129,192] 时写满 16KB 也安全（槽定长不出界；垃圾行被 Mmad k=actSubKSize 截断）
+        // ——结构性消除旧跳写公式 subLoopIdx×4KB 越过 s2Align64=192 列组边界的 bug
+        uint32_t pRing = L1_PRING(runInfo.loop, subLoopIdx);
+        constexpr uint32_t pSlotSize = s2SubLoopSize * (s1BaseSize / 2);   // 16KB（= L1_P_SINGLE_SLOT_SIZE）
+        DataCopy(l1SharedTensor_[L1_PSLOT(constInfo_.subBlockIdx, pRing)],
+                 vec1PUb_[subLoopIdx * pSlotSize], pSlotSize);
 
-        // ===== 末 subLoop epilogue：跨块因子 + pscale 统一写 =====
+        // ===== 末 subLoop epilogue：跨块因子 + pscale 网格影像直发 =====
         if (isLastSub) {
             // 跨块 rescale 因子（非首块才算）
             if (!runInfo.isFirstS2Loop) {
                 QfaVectorApi::VfCalcRescaleFactor(softmaxExpUB_, blockStartMaxUB_, softmaxMaxUB_,
                                                    taskSlot, stateSlot);
             }
-            // pscale 各 subLoop 统一写（末 subLoop 恒为 127，跳过计算）
+            // pscale：所有 subLoop 统一计算 + 网格直落（末 subLoop 的 k_i = K_final——
+            // accMax 单调累积 → Δk 恒 0 → 127，走通用路径无需特判；读侧每个被读的 y 行
+            // 都由本任务的 V1 写过，无陈旧读取，不需要 cube 侧预填）
             LocalTensor<SCALE_T> &pScaleL1Target =
                 (constInfo_.subBlockIdx == 0U) ? pScaleL1V0Tensor_ : pScaleL1V1Tensor_;
-            LocalTensor<uint8_t> pscaleU8 = pscaleUB_.template ReinterpretCast<uint8_t>();
-            // PScale L1 布局：NZ 2D，每 S2 组（32 元素）一行 × 128B/行。
-            // 行间距 = (actS2Align64/64+1)*32B，匹配 cube LoadData2DMx srcStride（bank 冲突 +1）。
-            // 同一 subLoop 内所有 S2 组共享相同 [128] pscale（softmax max 为 per-S1，与 S2 行无关），
-            // 故每 subLoop 的 [128] 需复制到 s2SubLoopSize/32=4 行。
-            constexpr uint32_t mxfpGroupSize = 32;
-            constexpr uint32_t s2GroupsPerSubLoop = s2SubLoopSize / mxfpGroupSize;  // 128/32 = 4
-            uint32_t actS2Align64 = (runInfo.actSingleLoopS2Size + 63U) / 64U * 64U;
-            uint32_t l1RowStride = (actS2Align64 / 64U + 1U) * 32U;  // bytes
+            LocalTensor<uint8_t> pscaleGridU8 = pscaleGridUB_.template ReinterpretCast<uint8_t>();
             for (uint32_t i = 0; i < c1v1Loop; i++) {
-                if (i < c1v1Loop - 1) {
-                    QfaVectorApi::VfCalcPScale(pscaleU8, subLoopUsedMaxUB_, softmaxMaxUB_,
-                                               pNzIdxUB_, taskSlot, i, stateSlot);
-                } else {
-                    // 末 subLoop pscale 恒为 2^0：e8m0 字节 127（uint8 视图填充，避免 e8m0 标量填充限制）
-                    Duplicate(pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
-                              static_cast<uint8_t>(127), UB_PSCALE_SLOT);
-                }
-                SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
-                WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
-                // 将 [128] pscale 复制到 s2GroupsPerSubLoop 个 S2 组行
-                for (uint32_t g = 0; g < s2GroupsPerSubLoop; g++) {
-                    uint32_t l1Row = i * s2GroupsPerSubLoop + g;
-                    DataCopy(pScaleL1Target.template ReinterpretCast<uint8_t>()
-                                 [runInfo.pSlot * L1_PSCALE_V0_SINGLE_SLOT_SIZE + l1Row * l1RowStride],
-                             pscaleU8[(taskSlot * UB_PSCALE_SUBLOOPS + i) * UB_PSCALE_SLOT],
-                             UB_PSCALE_SLOT);
-                }
+                uint32_t psRing = L1_PRING(runInfo.loop, i);
+                QfaVectorApi::VfCalcPScale(pscaleGridU8, subLoopUsedMaxUB_, softmaxMaxUB_,
+                                           psRing, i, stateSlot);
+            }
+            // 一次连续整槽拷贝进 L1（768B count-form——唯一实测可靠的 AIV MTE3 UB→L1 形态；
+            // strided 直发实测 scrambled，故镜像 DN/权威两段式：VF 散布 UB 网格 + 连续整槽发）
+            SetFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+            WaitFlag<HardEvent::V_MTE3>(EVT_P_COPY);
+            for (uint32_t i = 0; i < c1v1Loop; i++) {
+                uint32_t psRing = L1_PRING(runInfo.loop, i);
+                DataCopy(pScaleL1Target.template ReinterpretCast<uint8_t>()
+                             [psRing * L1_PSCALE_SINGLE_SLOT_SIZE],
+                         pscaleGridU8[psRing * UB_PSCALE_SLOT], L1_PSCALE_SINGLE_SLOT_SIZE);
             }
             // 为下一任务的顶部等待补 Set（全部 P/pscale MTE3 排空后触发）
             SetFlag<HardEvent::MTE3_V>(EVT_P_COPY);
@@ -289,7 +273,7 @@ public:
                                                    softmaxExpUB_, taskSlot);
         } else {
             QfaVectorApi::VfFlashUpdateAcc<true>(stage2OutUB_, accRowsumUB_, mm2ResUB_,
-                                                  softmaxExpUB_, taskSlot);
+                                                   softmaxExpUB_, taskSlot);
         }
 
         // ===== (2) 末块：除 + cast + 转置写 + GM 输出（设计 §6.2 步骤(2)）=====

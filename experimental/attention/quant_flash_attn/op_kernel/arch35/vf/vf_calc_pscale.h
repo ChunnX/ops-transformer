@@ -11,7 +11,7 @@
 
 /*!
  * \file vf_calc_pscale.h
- * \brief V1 末 subLoop 统一算 pscale：整数减法 + 字节加 127 → e8m0，[128]
+ * \brief V1 末 subLoop 统一算 pscale：Δk+127 → e8m0 字节对，直落 768B 网格影像槽
  */
 
 #ifndef VF_CALC_PSCALE_H_
@@ -28,78 +28,76 @@ using namespace AscendC::Reg;
 
 /*
  * @ingroup VfaVectorApi
- * @brief 计算第 i 个 subLoop 的 pscale = e8m0(k_i - K_final + 127)
+ * @brief 计算第 i 个 subLoop 的 pscale = e8m0(k_i - K_final + 127)，直落 768B 网格影像槽
  *
- * 输入均为 half log2 整数域量化指数。输出 e8m0 字节值 = 指数差 + 127。
+ * 输入均为 half log2 整数域量化指数。输出字节对影像 [v,v,v,v,…]（e8m0 值重复对，
+ * 与 oneFill E8M0_ONE_U16=0x7F7F 同构——L1 Mx 网格单元内每列 2 字节的契约）。
+ * 网格契约（subLoop 粒度槽）：单元 (x, y) 地址 = (3x+y)×32B，x=0..7 为 S1 16 列组
+ * （× 2 字节对），y=0..1 为 S2 64 行组 + 1 bank pad（读侧 yStart 恒 0、srcStride=3）。
+ * subLoop 的值广播到 y=0/1 两行（槽即本 subLoop 专属，无跨 subLoop 偏移）。
+ * 末 subLoop 的 k_i = K_final（accMax 单调累积）→ Δk 恒 0 → 127，通用路径无特判。
  *
- * @param [out] pscale      输出 [128] e8m0 字节（pscaleUB[taskSlot][i] 槽位，以 uint8_t 视图传入）
+ * @param [out] pscaleGrid  768B 网格影像槽（pscaleGridUB[ring]，uint8 视图）
  * @param [in]  subLoopMax  本 subLoop 量化指数 k_i（subLoopUsedMaxUB[i]，half 整数）
- * @param [in]  finalMax    分块最终量化指数 K^{final}（softmaxMaxUB[stateSlot]，half 整数）
- *
- * 分层约定（MxFP4 同款）：vf 参数用 uint8_t*（原始字节），e8m0 语义由 __aicore__
- * 调用层负责（传入前 ReinterpretCast）。
+ * @param [in]  finalMax    分块最终量化指数 K_final（softmaxMaxUB[stateSlot]，half 整数）
  */
-__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscale, __ubuf__ half *subLoopMax,
-                                         __ubuf__ half *finalMax, __ubuf__ uint8_t *nzIdx)
+__simd_vf__ inline void VfCalcPScaleVF(__ubuf__ uint8_t *pscaleGrid, __ubuf__ half *subLoopMax,
+                                        __ubuf__ half *finalMax)
 {
     RegTensor<half> vreg_sub_loop_max;
     RegTensor<half> vreg_final_max;
-    RegTensor<half> vreg_delta_k;       // Δk = k_i - K_final（整数，≤ 0）
-    RegTensor<uint8_t> vreg_scale;      // Cast 产物（偶位 = 值，奇位 = 零）→ Gather 压缩
-    RegTensor<uint8_t> vreg_idx;        // 解交织索引表（与 P 存储共用一张 pNzIdxUB）
+    RegTensor<half> vreg_delta_k;       // Δk = k_i - K_final（整数，≤ 0；末 subLoop 恒 0）
+    RegTensor<uint8_t> vreg_scale_even; // Cast 偶位产物（奇位清零）
+    RegTensor<uint8_t> vreg_scale_odd;  // Cast 奇位产物（偶位清零）
     MaskReg preg_half = CreateMask<half, MaskPattern::ALL>();
     MaskReg preg_u8 = CreateMask<uint8_t, MaskPattern::ALL>();
-    uint32_t pscale_valid_count = 128;  // 有效数据 128 字节（防 ALL 掩码写 256B 溢出到下一槽位）
-    MaskReg preg_u8_valid = UpdateMask<uint8_t>(pscale_valid_count);
 
-    // ① half 域整数运算：Δk = k_i - K_final，+127 → e8m0 字节值
+    // ① half 域整数运算：Δk = k_i - K_final，+127 → e8m0 字节值（负值钳 0 = 2^-127）
     LoadAlign(vreg_sub_loop_max, subLoopMax);
     LoadAlign(vreg_final_max, finalMax);
     Sub(vreg_delta_k, vreg_sub_loop_max, vreg_final_max, preg_half);
     Adds(vreg_delta_k, vreg_delta_k, NUM_127, preg_half);
     Maxs(vreg_delta_k, vreg_delta_k, ZERO_VALUE, preg_half);
 
-    // ② 窄化 half[128] → uint8[128]（2026-09-20 修正，设计 §7.3 定稿）：
-    //    官方文档证实窄化 Cast 为交织放置——原同源双 Cast+Or 得重复对（后 64 值丢失，bug）。
-    //    改单 Cast：128 个值落偶数位（奇位被清零）→ Gather 取偶位压缩为顺序字节。
-    //    共用表（idx[k]=2k, k<128；idx[128+k]=2k+1）对两消费者都成立：
-    //    P 解交织得 [行i | 行i+1]；pscale 得 [顺序 128 字节 | 零]（奇位源是零）
-    Cast<uint8_t, half, castTraitZero>(vreg_scale, vreg_delta_k, preg_half);
-    LoadAlign(vreg_idx, nzIdx);
-    Gather(vreg_scale, vreg_scale, vreg_idx);
+    // ② 字节对影像：Cast Zero（偶位）/ One（奇位）同源配对 + Or → [v,v,v,v,…] 256B
+    //    （8 个 32B 块，块 x = S1 列组 x 的 16 列字节对——单元内 2 字节/列契约）
+    Cast<uint8_t, half, castTraitZero>(vreg_scale_even, vreg_delta_k, preg_half);
+    Cast<uint8_t, half, castTraitOne>(vreg_scale_odd, vreg_delta_k, preg_half);
+    Or(vreg_scale_even, vreg_scale_even, vreg_scale_odd, preg_u8);
 
-    // ③ 存 e8m0 buffer（uint8 位模式 = 2^Δk 的 e8m0 编码；部分掩码只写有效 128 字节）
-    StoreAlign(pscale, vreg_scale, preg_u8_valid);
+    // ③ 散布到网格 y=0 / y=1 两行（同值广播）：256B 寄存器 = 8 个 32B 块，
+    //    blockStride=3（32B 单位）→ 块 x 落 base + x×96B = (3x+y)×32B
+    //    （镜像权威 compute_pscale_vf 的 StoreAlign DATA_BLOCK_COPY 机制）
+    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+        pscaleGrid + 0U, vreg_scale_even, 3U, preg_u8);
+    StoreAlign<uint8_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+        pscaleGrid + 32U, vreg_scale_even, 3U, preg_u8);
 }
 
 /*
  * @ingroup VfaVectorApi
  * @brief VfCalcPScale 的 __aicore__ wrapper：接收 LocalTensor + 槽位索引，内部转指针调 vf
  *
- * @param [in] pscaleUB        pscale 缓冲（uint8_t 视图，[taskSlot][subLoopIdx][128] 布局）
- * @param [in] usedMaxUB       subLoop k_i 缓冲（[subLoopIdx][128] 布局）
- * @param [in] softmaxMaxUB    accMax 缓冲（[stateSlot][128] 布局）
- * @param [in] nzIdxUB         解交织索引表（与 P 存储共用 pNzIdxUB，256B）
- * @param [in] taskSlot        任务槽（0..2）
- * @param [in] subLoopIdx      subLoop 序号（0..2）
- * @param [in] stateSlot       accMax 状态槽（0..2）
+ * @param [in] pscaleGridUB  768B 网格影像缓冲（[ring][768B] 布局，uint8 视图）
+ * @param [in] usedMaxUB     subLoop k_i 缓冲（[subLoopIdx][128] half 布局）
+ * @param [in] softmaxMaxUB  accMax 缓冲（[stateSlot][128] half 布局）
+ * @param [in] ringIdx       ring 槽号（(loop×2+subLoopIdx) mod 6）
+ * @param [in] subLoopIdx    subLoop 序号（0..1，k_i 槽索引）
+ * @param [in] stateSlot     accMax 状态槽（0..2）
  */
-__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleUB,
+__aicore__ inline void VfCalcPScale(const LocalTensor<uint8_t> &pscaleGridUB,
                                      const LocalTensor<half> &usedMaxUB,
                                      const LocalTensor<half> &softmaxMaxUB,
-                                     const LocalTensor<uint8_t> &nzIdxUB, uint32_t taskSlot,
-                                     uint32_t subLoopIdx, uint32_t stateSlot)
+                                     uint32_t ringIdx, uint32_t subLoopIdx, uint32_t stateSlot)
 {
-    constexpr uint32_t pscaleSlot = 128;        // 单 pscale 槽字节数
-    constexpr uint32_t pscaleSubLoops = 3;      // 每 task 槽的 subLoop 数
-    __ubuf__ uint8_t *pscalePtr = reinterpret_cast<__ubuf__ uint8_t *>(pscaleUB.GetPhyAddr())
-                                    + (taskSlot * pscaleSubLoops + subLoopIdx) * pscaleSlot;
+    // 布局常量同源引用（B1 教训）：槽步长统一走 vf_common_def 共享常量
+    __ubuf__ uint8_t *gridPtr = reinterpret_cast<__ubuf__ uint8_t *>(pscaleGridUB.GetPhyAddr())
+                                  + ringIdx * QFA_UB_PSCALE_SLOT;
     __ubuf__ half *subLoopMaxPtr = reinterpret_cast<__ubuf__ half *>(usedMaxUB.GetPhyAddr())
-                                     + subLoopIdx * pscaleSlot;
+                                     + subLoopIdx * QFA_UB_SMAX_SLOT;
     __ubuf__ half *finalMaxPtr = reinterpret_cast<__ubuf__ half *>(softmaxMaxUB.GetPhyAddr())
-                                   + stateSlot * pscaleSlot;
-    __ubuf__ uint8_t *nzIdxPtr = reinterpret_cast<__ubuf__ uint8_t *>(nzIdxUB.GetPhyAddr());
-    VfCalcPScaleVF(pscalePtr, subLoopMaxPtr, finalMaxPtr, nzIdxPtr);
+                                   + stateSlot * QFA_UB_SMAX_SLOT;
+    VfCalcPScaleVF(gridPtr, subLoopMaxPtr, finalMaxPtr);
 }
 
 } // namespace QfaVectorApi

@@ -106,6 +106,14 @@ constexpr half LN2    = static_cast<half>(0.6931471806f);  // P 归一化用：k
 constexpr half INV_LN2 = static_cast<half>(1.4426950409f); // 量化用：max/ln2
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);  // fp16 最小值（accMax 复位）
 
+// ===== pscale UB 网格影像共享常量（单一来源：block_vector 分配侧与 vf wrapper 消费侧同源引用） =====
+// B1 教训（2026-09-22）：wrapper 自带步长与分配侧漂移（曾 pscaleSubLoops 3≠2）→ taskSlot≥1
+// 错位 + taskSlot=2 越界砸 pNzIdxUB。槽 = 768B 的 L1 网格影像（[8x][2y+1pad]×32B，与 L1 槽同构），
+// ring 槽号 = (loop×2 + subLoopIdx) mod 6
+constexpr uint32_t QFA_UB_PSCALE_SLOT = 768;    // 单 pscale 槽字节数（L1 网格影像同构）
+constexpr uint32_t QFA_UB_PSCALE_RINGS = 6;     // ring 槽数（loop×2+subLoopIdx，周期 6）
+constexpr uint32_t QFA_UB_SMAX_SLOT = 128;      // 单 max 槽元素数（S1 半宽 [128]）
+
 } // namespace QfaVectorApi
 } // namespace QFA_KERNEL
 

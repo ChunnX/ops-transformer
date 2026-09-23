@@ -177,10 +177,10 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
  */
 template <typename T = half, typename T2 = fp8_e4m3fn_t>
 __aicore__ inline void VfSoftmaxFp16ToFp8(const LocalTensor<T2> &pDst, const LocalTensor<half> &accMax,
-                                           const LocalTensor<half> &usedMaxOut,
-                                           const LocalTensor<uint8_t> &nzIdx, const LocalTensor<T> &x,
-                                           half pScale, uint32_t validRows, uint32_t subLoopIdx,
-                                           uint32_t mmSlot, uint32_t stateSlot)
+                                            const LocalTensor<half> &usedMaxOut,
+                                            const LocalTensor<uint8_t> &nzIdx, const LocalTensor<T> &x,
+                                            half pScale, uint32_t validRows, uint32_t subLoopIdx,
+                                            uint32_t mmSlot, uint32_t stateSlot)
 {
     constexpr uint32_t s2SubLoopSize = 128;
     constexpr uint32_t s1HalfSize = 128;

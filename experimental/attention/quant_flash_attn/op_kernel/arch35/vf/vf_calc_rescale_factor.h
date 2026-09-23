@@ -65,8 +65,8 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
     Sub(vreg_delta_k, vreg_blk_start, vreg_final, preg_half);
 
     // ② +127（fp32 指数偏置）并防御负值
-    Adds(vreg_delta_k, vreg_delta_k, 127.0h, preg_half);
-    Maxs(vreg_delta_k, vreg_delta_k, 0.0h, preg_half);
+    Adds(vreg_delta_k, vreg_delta_k, NUM_127, preg_half);
+    Maxs(vreg_delta_k, vreg_delta_k, ZERO_VALUE, preg_half);
 
     // ③ 宽度展开：half[128] → int32[64]×2
     //    RegLayout::ZERO 取偶数位元素（e0, e2, ...），RegLayout::ONE 取奇数位（e1, e3, ...）
@@ -97,9 +97,9 @@ __simd_vf__ inline void VfCalcRescaleFactorVF(__ubuf__ float *softmaxExp, __ubuf
  * @param [in] stateSlot        accMax 状态槽（0..2）
  */
 __aicore__ inline void VfCalcRescaleFactor(const LocalTensor<float> &softmaxExpUB,
-                                            const LocalTensor<half> &blockStartMaxUB,
-                                            const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
-                                            uint32_t stateSlot)
+                                             const LocalTensor<half> &blockStartMaxUB,
+                                             const LocalTensor<half> &softmaxMaxUB, uint32_t taskSlot,
+                                             uint32_t stateSlot)
 {
     constexpr uint32_t smaxSlot = 128;  // 单槽 half 元素数
     __ubuf__ float *expPtr = reinterpret_cast<__ubuf__ float *>(softmaxExpUB.GetPhyAddr())

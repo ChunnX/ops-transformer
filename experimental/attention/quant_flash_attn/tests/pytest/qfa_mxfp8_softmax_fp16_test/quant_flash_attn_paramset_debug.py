@@ -59,6 +59,26 @@ TEST_PARAMS = {
         "p_scale": [1.0],
         "enable_lse": [False],
     },
+    # 全随机：S1=256 / S2=128——单 subLoop 路径（actSingleLoopS2Size=128，c1v1Loop=1，
+    # 首个 subLoop 即末 subLoop，pscale 恒 2^0=1），验证 KVS128 半块调度与单节 softmax 链。
+    # 注：S2 需为 QUANT_GROUP_SIZE(64) 的倍数（golden 生成 reshape 约束）——128 ✓
+    "BNSD_B1_QS256_KVS128_Nq1_Nkv1_D128_qm3": {
+        "B": [1],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[128]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
     # 多 S2 分块：单行 3 个 S2 块（256+256+192 尾块），验证 isFirstS2Loop/isLastS2Loop 翻转、
     # softmaxStateSlot 跨块推进、actSingleLoopS2Size=192 尾块、C2/V2 逐块触发
     # 注：S2 需为 QUANT_GROUP_SIZE(64) 的倍数（golden 生成 reshape 约束）
