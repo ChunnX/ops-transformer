@@ -154,8 +154,9 @@ private:
     int64_t filteredCount_;
     int64_t entriesAligned_;
     int64_t maskBytes_;
-    int64_t expertTokensBufElems_; // expertTokensLocal 缓冲元素数（KEY_VALUE 需 2 倍）
-    int64_t expertCountElements_;  // 实际写出 expertTokens 的元素数
+    int64_t expertTokensBufElems_;   // expertTokensLocal 缓冲元素数（KEY_VALUE 需 2 倍）
+    int64_t expertCountElements_;    // 实际写出 expertTokens 的元素数
+    int64_t expertTokensGmElements_; // expertTokens GM 输出的元素数（KEY_VALUE 为 expertNum*2）
 
     // 公共 UB region offsets (byte offsets from buf_ start)
     int64_t xLocalOffset_;
@@ -374,9 +375,11 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     filteredCount_ = 0;
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-        expertTokensBufElems_ = expertNum_ * EXPERT_ID_VALUE_NUM;
+        expertTokensBufElems_ = Min(actualExpertNum_ + 1, expertNum_) * EXPERT_ID_VALUE_NUM;
+        expertTokensGmElements_ = expertNum_ * EXPERT_ID_VALUE_NUM;
     } else {
         expertTokensBufElems_ = actualExpertNum_;
+        expertTokensGmElements_ = actualExpertNum_;
     }
     expertCountElements_ = expertTokensBufElems_;
 
@@ -692,6 +695,9 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::WriteExpertToken
         return;
     }
     LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        InitGlobalMemory(expertTokensGm_, expertTokensGmElements_, static_cast<int64_t>(0));
+    }
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     // COUNT/CUMSUM: expertCountElements_==actualExpertNum_；KEY_VALUE: 非零对*2+哨兵
     uint32_t expertCount = static_cast<uint32_t>(expertCountElements_);

@@ -720,7 +720,8 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
         } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-            int64_t kvTotalElements = expertNum_ * EXPERT_ID_VALUE_NUM;
+            int64_t kvTotalElements =
+                (actualExpertNum_ == expertNum_) ? actualExpertNum_ * 2 : (actualExpertNum_ + 1) * 2;
             Duplicate(expertTokensLocal, static_cast<int64_t>(0), static_cast<int32_t>(kvTotalElements));
             SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
             int64_t kvOffset = 0;
@@ -732,6 +733,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
                     kvOffset++;
                 }
             }
+            InitGlobalMemory(expertTokensGm_, expertNum_ * EXPERT_ID_VALUE_NUM, static_cast<int64_t>(0));
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                          static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
