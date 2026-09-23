@@ -787,19 +787,39 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
     context_->SetBlockDim(std::max(usedCoreNum_, reduceBlockNum));
     OP_LOGD(context_->GetNodeName(), "reduceBlockNum :%ld, usedCoreNum_ = %ld.\n", reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
+
     auto workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
+
     auto partialTypeSize = (dCosFlag_ == DCOS_FLAG_ON && IsBroadcastPartialFloatTemplate(dxTilingKey)) ?
                                PARTIAL_TYPE_SIZE :
                                ge::GetSizeByDataType(dtype_);
-    auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
+    // 用 GetUserWorkspaceRowNum() 而非直接展开 b_*s_*max(nQ_,nK_): A 模板的 MergeDim 已把
+    // b_ 改写为 B*N*S, workspace 尺寸必须随之走, 详见 apply_rotary_pos_emb_grad_tiling.h
+    auto usrWorkSpaceSize = GetUserWorkspaceRowNum() * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
+
     if (dCosFlag_ == DCOS_FLAG_ON) {
         context_->SetScheduleMode(SCHEDULE_MODE_BATCH); // batch mode, all cores start simultaneously
         if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
             constexpr int64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
-            workspaces[0] = workspaces[0] + SYS_WORKSPACE_SIZE;
+            usrWorkSpaceSize += SYS_WORKSPACE_SIZE;
         }
+        if (IsBroadcastPartialFloatTemplate(dxTilingKey)) {
+            // BAB/AB: TilingReduce() 已把 reduce workspace 基值写入 workspaces[0],
+            // 用户 workspace 接在其后, 必须累加
+            workspaces[0] += usrWorkSpaceSize;
+        } else {
+            // A 模板: 该路径下没有任何前置写入者, 直接赋值。
+            // 不能写成 workspaces[0] += ...: 框架构造的 workspace 容器初值不保证为 0,
+            // 部分环境为未初始化内存, 累加会得到随机值 —— 大则白申请巨量显存, 回绕则
+            // 实际开小, kernel 阶段 2/3 写 wsQ/wsK 时越界。
+            workspaces[0] = usrWorkSpaceSize;
+        }
+    } else {
+        // 无 grad_cos/grad_sin: 同样没有前置写入者, 直接赋值
+        workspaces[0] = usrWorkSpaceSize;
     }
-    workspaces[0] = workspaces[0] + usrWorkSpaceSize;
+
     OP_LOGD(context_->GetNodeName(), "workspaces[0] :%ld, usrWorkSpaceSize = %ld.\n", workspaces[0], usrWorkSpaceSize);
     return ge::GRAPH_SUCCESS;
 }

@@ -39,6 +39,14 @@ protected:
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
 
+    // MergeDim 已把 b_ 改写为 B*N*S (nQ_=nK_=s_=1), 部分积行数即为改写后的 b_。
+    // 必须覆盖: kernel 侧 apt.cpp 也是按改写后的 tilingData.ropeGradParams.b 计算
+    // wsQ/wsK 偏移, 基类默认的 b_*s_*max(nQ_,nK_) 在 nQ!=nK 时会偏小, 导致越界写。
+    int64_t GetUserWorkspaceRowNum() const override
+    {
+        return b_;
+    }
+
 private:
     ge::graphStatus MergeDim();
     ge::graphStatus SplitCore();

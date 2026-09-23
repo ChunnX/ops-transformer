@@ -143,6 +143,15 @@ protected:
     ge::graphStatus TilingReduce();
     ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey);
 
+    // 用户 workspace 的元素行数 = 每份部分积的行数。
+    // BAB/AB 未改写 b_/s_/nQ_/nK_, 按原始 shape 计算即可;
+    // A 模板的 MergeDim 已把 b_ 改写为 B*N*S (nQ_=nK_=s_=1), 必须覆盖此函数,
+    // 否则申请量与 kernel 侧按改写后 b 计算的 wsQ/wsK 偏移对不上, nQ!=nK 时会越界写。
+    virtual int64_t GetUserWorkspaceRowNum() const
+    {
+        return b_ * s_ * std::max(nQ_, nK_);
+    }
+
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
     const static int64_t DIM_NUM = 4;
