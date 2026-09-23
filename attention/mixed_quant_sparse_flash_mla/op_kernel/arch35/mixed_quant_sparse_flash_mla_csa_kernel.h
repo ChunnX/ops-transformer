@@ -498,7 +498,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         }
     }
     if ASCEND_IS_AIV {
-        vecBlock.InitSinksAfterSync(this->constInfo);
+        vecBlock.InitSinks(this->constInfo);
     }
     FdRunInfo fdRunInfo;
     if ASCEND_IS_AIV {
