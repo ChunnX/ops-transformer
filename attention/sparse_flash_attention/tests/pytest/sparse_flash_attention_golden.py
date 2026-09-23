@@ -737,11 +737,34 @@ def _t_increattention_bnsd(fa_param, quantize_exp=True):
         curr_actualSeq_q = actualSeqLengths_q[batch]
         curr_actualSeq = actualSeqLengths_kv[batch]
         qLastPrefill = 0 if batch == 0 else sum(actualSeqLengths_q[0:batch])
+        # 行无效仅存在于 sparse_mode=3 且 act_q > act_kv: 右下三角 mask 下前 act_q - act_kv 行
+        # threshold = act_kv - act_q + s1 + 1 <= 0, 无任何有效 KV; sparse_mode=0 无行无效
+        # English: invalid rows only exist for sparse_mode=3 with act_q > act_kv: under the
+        # bottom-right causal mask the first act_q - act_kv rows have threshold <= 0 and no
+        # valid KV; no invalid rows for sparse_mode=0
+        rowInvalidNum = (
+            curr_actualSeq_q - curr_actualSeq
+            if sparse_mode == 3 and curr_actualSeq_q > curr_actualSeq
+            else 0
+        )
         for n2Idx in range(numKeyValueHeads):
             for s1Idx in range(curr_actualSeq_q):
-                if s1Idx < curr_actualSeq_q - curr_actualSeq and sparse_mode != 0:
+                if s1Idx < rowInvalidNum:
+                    # 行无效: 对齐算子 InitAllZeroOutput 语义(arch22) / needInit 预清零+跳行(arch35),
+                    # attentionOut/softmaxMax/softmaxSum 均输出 0(有 sinks 时无效行同样为 0)
+                    # English: invalid row: align with kernel semantics (InitAllZeroOutput on
+                    # arch22 / needInit pre-zero + row skip on arch35), attentionOut/softmaxMax/
+                    # softmaxSum are all zeros (also zeros with sinks for invalid rows)
                     y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = torch.zeros(
                         [g, out_shape_bnsd[-1]], dtype=torch.float32
+                    )
+                    set_softmax_lse(
+                        batch,
+                        n2Idx,
+                        s1Idx,
+                        qLastPrefill,
+                        torch.zeros(g, dtype=torch.float32),
+                        torch.zeros(g, dtype=torch.float32),
                     )
                     continue
                 q_curr = q_bnsd_tensor[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :]
