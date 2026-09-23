@@ -252,11 +252,11 @@ def test_engram_gate_npu_precision_arbitrary_dim(t, hc, dim, mask_kind):
 
 
 @pytest.mark.npu
-def test_device_vector_core_count_matches_device():
+def test_vector_core_count_query():
     pytest.importorskip("torch_npu")
-    props = torch.npu.get_device_properties(0)
-    _module._VECTOR_CORE_COUNTS.clear()
-    assert _module._device_vector_core_count(torch.device("npu:0")) == props.vector_core_num
+    count = _module._vector_core_count()
+    assert count > 0
+    assert _module._vector_core_count() == count
 
 
 @pytest.mark.npu
@@ -268,20 +268,16 @@ def test_device_vector_core_count_matches_device():
         pytest.param(5, 4, 5120, 3, id="blocks_below_hc"),
     ],
 )
-def test_engram_gate_forced_block_count_precision(t, hc, dim, forced_blocks):
+def test_engram_gate_forced_block_count_precision(t, hc, dim, forced_blocks, monkeypatch):
     pytest.importorskip("torch_npu")
     x, key, value, weight = _inputs(t, hc, dim, 20260924 + t)
     image_mask = torch.arange(t) % 2 == 1
     expected = _golden(x, key, value, weight, 1e-6, 1e-6, image_mask)
-    _module._VECTOR_CORE_COUNTS.clear()
-    _module._VECTOR_CORE_COUNTS[0] = forced_blocks
-    try:
-        actual = engram_gate(
-            x.npu(), key.npu(), value.npu(), weight.npu(), image_mask.npu()
-        )
-        torch.npu.synchronize()
-    finally:
-        _module._VECTOR_CORE_COUNTS.clear()
+    monkeypatch.setattr(_module, "_vector_core_count", lambda: forced_blocks)
+    actual = engram_gate(
+        x.npu(), key.npu(), value.npu(), weight.npu(), image_mask.npu()
+    )
+    torch.npu.synchronize()
     actual_cpu = actual.cpu()
     max_error = (actual_cpu.float() - expected.float()).abs().max().item()
     assert torch.allclose(

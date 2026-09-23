@@ -21,30 +21,23 @@ from cannbotdsl.lang.control_flow import range as dsl_range
 from cannbotdsl.lang.vf import vf
 from cannbotdsl.ops import reg as rr
 from cannbotdsl.ops.arch import get_block_idx, get_block_num
+from cannbotdsl.ops.info import get_platform_info
 from cannbotdsl.ops.memcpy import mem_copy
 
 __all__ = ["EngramGate", "EngramGateKernel", "engram_gate"]
 
 
 VL = 64  # fp32 lanes in one 256-byte raw vector register
-_VECTOR_CORE_COUNTS: dict = {}
-
-
-def _device_vector_core_count(device) -> int:
-    index = device.index
-    if index is None:
-        index = torch.npu.current_device()
-    count = _VECTOR_CORE_COUNTS.get(index)
-    if count is None:
-        props = torch.npu.get_device_properties(index)
-        count = getattr(props, "vector_core_num", None)
-        if not isinstance(count, int) or count <= 0:
-            raise RuntimeError(
-                f"cannot determine vector core count of npu device {index} "
-                f"({type(props).__name__} provides vector_core_num={count!r}); "
-                "pass max_blocks explicitly to EngramGate"
-            )
-        _VECTOR_CORE_COUNTS[index] = count
+def _vector_core_count() -> int:
+    info = get_platform_info()
+    count = info.vector_core_num
+    if not isinstance(count, int) or count <= 0:
+        raise RuntimeError(
+            "cannot determine the NPU vector core count "
+            f"(platform info available={info.available}, "
+            f"vector_core_num={count!r}); "
+            "pass max_blocks explicitly to EngramGate"
+        )
     return count
 
 
@@ -1612,7 +1605,7 @@ def engram_gate(
         value2 = value.flatten(0, -2)
         out3 = out.flatten(0, -3)
         mask1 = image_mask.flatten() if image_mask is not None else None
-    max_blocks = _device_vector_core_count(x.device)
+    max_blocks = _vector_core_count()
     if mask1 is not None:
         EngramGate(eps, clamp_value, dim, hc_mult, max_blocks).run(
             x3, key3, value2, weight, out3, mask=mask1
