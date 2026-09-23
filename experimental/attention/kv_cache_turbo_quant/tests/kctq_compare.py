@@ -77,6 +77,9 @@ def main():
         flat = np.flatnonzero(got_idx != exp_idx)[:5]
         print("     前 5 个 idx 不一致位置(展平):", flat.tolist())
     print("RESULT:", "PASS" if (idx_bad == 0 and qjl_bad == 0) else "FAIL")
+    print("注：本行只统计 idx/qjl 逐字节一致的诊断口径（严于官方精度标准，"
+          "standard §0 不覆盖位打包类输出）；"
+          "整卷绑定判据为随后 V3（官方标准阈值）与性能门槛。")
 
 
 if __name__ == "__main__":

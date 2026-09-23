@@ -1,7 +1,12 @@
 # 自测（精度 / 性能）
 
-本目录给出 KvCacheTurboQuant 的**可复现自测**：5 个指定 case（`case.json`，任务包原样）的
-**逐字节对拍**、**V3 双口径精度**与**计时**。
+本目录给出 KvCacheTurboQuant 的**可复现自测**，共三套：
+
+| 套件 | 入口 | 内容 |
+| --- | --- | --- |
+| ① 指定用例自测 | `run_all.sh` | `case.json` 的 5 个 case：计时 + 逐字节对拍 + V3 双口径精度 |
+| ② 边界用例 | `run_edge_cases.sh` | 9 个边界 shape（head 数上下界、tail 非整块、wave 临界、零/近零行）：对拍 + V3 |
+| ③ 非法输入拒绝 | `invalid_cases.py` | 11 个非法输入（shape/dtype/attr 越界）必须被 tiling 拒绝 |
 
 ## 0. 依赖
 
@@ -55,6 +60,37 @@ bash tests/run_all.sh
 `run_all.sh` 会按 `case.json` 依次跑 5 个 case：算子 → `kctq_compare.py`（逐字节对拍）→
 `kctq_v3_precision.py`（V3 双口径），并在最后打印汇总。
 
+### 4.1 边界用例套件
+
+覆盖任务书 §4.2 要求之外的边界 shape（`edge_cases.json`），逐 case 与 `golden.py` 对拍：
+
+```bash
+export KCTQ_MATERIAL=<任务包目录> KCTQ_GOLDEN=$KCTQ_MATERIAL/golden.py
+export KCTQ_BIN=/tmp/kctq_example/test_aclnn_kv_cache_turbo_quant
+bash tests/run_edge_cases.sh          # 9 个用例，逐个打印 对拍 PASS/FAIL + 中位数
+```
+
+| 用例 | 覆盖点 |
+| --- | --- |
+| `heads4_t32_b3` / `heads32_t8_b3` | `num_kv_heads` 下界 4 / 上界 32（GQA 广播比 1:8、1:1） |
+| `heads4_t1_b2` / `heads32_t1_b4` | 最小 tokens（1）与 bits 2/4 组合 |
+| `tail_t3_h8_b3` / `tail_t9_h8_b4` / `tail_t17_h8_b2` | tokens 非核数整数倍（对齐尾块） |
+| `wave_t2081_h8_b3` | 2081 行触发多轮/尾轮调度 |
+| `edge_rows_t8_h8_b3` | 行内容边界：全 0 行、次正规量级行、正负成对抵消行 |
+
+### 4.2 非法输入拒绝套件
+
+```bash
+python tests/invalid_cases.py --json /tmp/invalid_cases.json
+```
+
+用 `examples` 驱动器的 `--neg <mode>` 逐项构造非法输入，要求 `GetWorkspaceSize` 返回非 0
+（驱动器退出码非 0）。覆盖 `op_host/kv_cache_turbo_quant_tiling.cpp` 的全部校验点：
+`mse_bits ∉ {2,3,4}`（5/1）、`kv_vectors` rank=2、`head_dim≠128`、`num_kv_heads < 4`（2）、
+`> 32`（64）、`kv_vectors` dtype≠BF16、`rotation_matrix` 形状≠[128,128]、
+`rotation_matrix`/`qjl_matrix` dtype≠FP32、空 tensor（tokens=0）；并含 `valid_base`
+合法基准自检（必须被接受），防止"全部拒绝"式的假通过。
+
 ### 单步命令（等价）
 
 ```bash
@@ -73,10 +109,16 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
   `GetWorkspaceSize` + workspace `aclrtMalloc` + launch + sync（保守口径）。
   若需"预分配 workspace"口径，把分配移出计时环即可（同一实现、同一数据）。
 - **对拍**：与任务包 `golden.py` **逐字节**比较四个输出，打印每个输出的不一致数量与匹配率；
-  末行 `RESULT: PASS/FAIL` 仅表示 `idx`/`qjl` 无不一致。
+  末行 `RESULT: PASS/FAIL` 只统计 `idx`/`qjl` 是否逐字节完全一致，**是严于官方精度标准的
+  诊断口径**（官方 `experimental_standard.md` §0 不覆盖位打包类输出）。
 - **已知差异（非逻辑差异）**：`quant_gamma` 在 3-bit 档、`quant_qjl` 在 4-bit 档各有 **1 个单点**
-  因浮点归约顺序产生 1 ULP / 1 bit 级差异（其余三个输出逐位一致）；逐 case 明细见日志。
-  是否需要逐位全等取决于官方判定口径，见个人仓 `task_submission/` 中的精度报告与口径说明。
+  因行范数的 fp32 归约顺序产生 1 ULP / 1 bit 级差异（其余输出逐位一致，两个矩阵的 GEMM
+  乘积 `u` 与参考逐位相同）。因此 4-bit 档的对拍末行会打印 `RESULT: FAIL` 而 V3 精度
+  仍 `PASS`：**绑定判据为 V3（官方标准阈值）与性能门槛**，对拍行用于量化暴露面。
+  逐 case 明细见各 case 日志，是否需要逐位全等取决于官方判定口径，见个人仓
+  `task_submission/` 中的精度报告与口径说明。
+- **非法输入**：判据是"必须被拒绝"，且 `valid_base` 必须被接受；打印的 `error` 字段区分
+  拒绝来源（`561002` tiling 校验失败 / `161002` OpDef dtype 不一致）。
 - **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
   主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
 
@@ -89,4 +131,10 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
 | `gen_case_input.py` | 生成某个 case 的 `kv_vectors.bin`（BF16） |
 | `kctq_compare.py` | 与 `golden.py` 逐字节对拍（`--material` 指定任务包目录） |
 | `kctq_v3_precision.py` | V3 双口径精度（decode 两条路径 × 两种分母；`--golden` 指定 `golden.py`） |
-| `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总 |
+| `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总（套件①） |
+| `edge_cases.json` | 边界用例形状表（套件②） |
+| `gen_edge_input.py` | 生成边界用例输入；`--pattern edge-rows` 造零行/次正规行/抵消行 |
+| `run_edge_cases.sh` | 一键跑 9 个边界用例（套件②） |
+| `invalid_cases.py` | 非法输入拒绝套件（套件③，驱动 `examples` 的 `--neg` 模式） |
+
+> 运行产物（`_out/`、`data/`、`inputs/`）不入库，见 `.gitignore`。

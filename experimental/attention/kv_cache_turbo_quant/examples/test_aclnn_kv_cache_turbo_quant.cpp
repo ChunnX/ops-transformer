@@ -35,6 +35,7 @@ struct Args {
     std::string qjl;
     std::string out;
     std::string label = "case";
+    std::string neg;  // 非法输入自测模式（见 tests/invalid_cases.py）；非空时期望被拒绝
     int64_t tokens = 0;
     int64_t heads = 0;
     int64_t bits = 3;
@@ -85,6 +86,10 @@ bool ParseArgs(int argc, char **argv, Args *args)
         } else if (key == "--bits") {
             if (!need("--bits")) return false;
             args->bits = std::atoll(value);
+            ++i;
+        } else if (key == "--neg") {
+            if (!need("--neg")) return false;
+            args->neg = value;
             ++i;
         } else if (key == "--warmup") {
             if (!need("--warmup")) return false;
@@ -188,6 +193,19 @@ int main(int argc, char **argv)
                argv[0]);
         return 2;
     }
+    // ---- 非法输入自测（--neg <mode>）：只改属性/张量描述符，期望 GetWorkspaceSize 非 0 拒绝 ----
+    if (args.neg == "mse-bits-5") {
+        args.bits = 5;
+    } else if (args.neg == "mse-bits-1") {
+        args.bits = 1;
+    } else if (!args.neg.empty() && args.neg != "kv-rank2" && args.neg != "head-dim-64" &&
+               args.neg != "heads-2" && args.neg != "heads-64" && args.neg != "kv-fp32" &&
+               args.neg != "rot-64" && args.neg != "rot-bf16" && args.neg != "qjl-bf16" &&
+               args.neg != "empty") {
+        printf("unknown --neg mode: %s\n", args.neg.c_str());
+        return 2;
+    }
+
     const int64_t rows = args.tokens * args.heads;
     const int64_t idxBytes = args.bits * kHeadDim / 8;
     const int64_t qjlBytes = kHeadDim / 8;
@@ -220,6 +238,33 @@ int main(int argc, char **argv)
     const std::vector<int64_t> qjlShape = {args.tokens, args.heads, qjlBytes};
     const std::vector<int64_t> scalarShape = {args.tokens, args.heads};
 
+    // 非法输入自测：改张量描述符/ dtype（缓冲区大小不变；负例不会进入执行阶段）
+    std::vector<int64_t> kvShapeT = kvShape;
+    std::vector<int64_t> matShapeT = matShape;
+    std::vector<int64_t> qjlShapeT = matShape;
+    aclDataType kvDtype = ACL_BF16;
+    aclDataType rotDtype = ACL_FLOAT;
+    aclDataType qjlDtype = ACL_FLOAT;
+    if (args.neg == "kv-rank2") {
+        kvShapeT = {args.tokens * args.heads, kHeadDim};
+    } else if (args.neg == "head-dim-64") {
+        kvShapeT = {args.tokens, args.heads, 64};
+    } else if (args.neg == "heads-2") {
+        kvShapeT = {args.tokens, 2, kHeadDim};
+    } else if (args.neg == "heads-64") {
+        kvShapeT = {args.tokens, 64, kHeadDim};
+    } else if (args.neg == "empty") {
+        kvShapeT = {0, args.heads, kHeadDim};
+    } else if (args.neg == "kv-fp32") {
+        kvDtype = ACL_FLOAT;
+    } else if (args.neg == "rot-64") {
+        matShapeT = {64, 64};
+    } else if (args.neg == "rot-bf16") {
+        rotDtype = ACL_BF16;
+    } else if (args.neg == "qjl-bf16") {
+        qjlDtype = ACL_BF16;
+    }
+
     void *kvDev = nullptr;
     void *rotDev = nullptr;
     void *qjlDev = nullptr;
@@ -240,9 +285,9 @@ int main(int argc, char **argv)
         return 5;
     }
 
-    aclTensor *kvTensor = MakeTensor(kvShape, ACL_BF16, kvDev);
-    aclTensor *rotTensor = MakeTensor(matShape, ACL_FLOAT, rotDev);
-    aclTensor *qjlTensor = MakeTensor(matShape, ACL_FLOAT, qjlDev);
+    aclTensor *kvTensor = MakeTensor(kvShapeT, kvDtype, kvDev);
+    aclTensor *rotTensor = MakeTensor(matShapeT, rotDtype, rotDev);
+    aclTensor *qjlTensor = MakeTensor(qjlShapeT, qjlDtype, qjlDev);
     aclTensor *idxTensor = MakeTensor(idxShape, ACL_UINT8, idxDev);
     aclTensor *qjlOutTensor = MakeTensor(qjlShape, ACL_UINT8, qjlOutDev);
     aclTensor *normTensor = MakeTensor(scalarShape, ACL_BF16, normDev);
@@ -261,6 +306,11 @@ int main(int argc, char **argv)
             &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
             printf("%s GetWorkspaceSize failed: %d %s\n", args.label.c_str(), ret, aclGetRecentErrMsg());
+            failed = true;
+            break;
+        }
+        if (!args.neg.empty()) {  // 非法输入自测：期望被拒绝，被接受则记为失败
+            printf("%s NEG NOT REJECTED (mode=%s)\n", args.label.c_str(), args.neg.c_str());
             failed = true;
             break;
         }
