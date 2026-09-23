@@ -24,6 +24,7 @@
 #include "log/log.h"
 #include "../../../common/include/op_kernel/attention_ffn_schedule.h"
 #include <limits>
+#include <string>
 #include "../op_kernel/arch35/ffn_worker_batching_arch35_tiling_def.h"
 
 namespace optiling {
@@ -87,7 +88,6 @@ constexpr int64_t TILING_KEY_RECV = 101;
 
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t NUM_FOUR = 4;
-constexpr int64_t NUM_EIGHT = 8;
 constexpr int64_t GL_ROW_BYTES = static_cast<int64_t>(sizeof(int64_t)) * NUM_TWO; // 一行 = [expert_id, tokenNum]
 constexpr int64_t GL_UB_FRACTION = 16;                                            // group_list 拼装区取 UB 的 1/16
 
@@ -192,17 +192,23 @@ private:
 ge::graphStatus FfnWorkerBatchingTilingArch35::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "platformInfo is null"),
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
 
     aivNum_ = static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv());
-    OP_CHECK_IF(aivNum_ == 0, OP_LOGE(context_->GetNodeName(), "Get aivNum failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivNum_ == 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivNum_),
+                                                      "failed to get a positive vector core count"),
+                return ge::GRAPH_FAILED);
 
     // 先声明预留，再取容量：平台在 GetCoreMemSize 中已扣除本次预留，得到 vector core 真实可用 UB。
     ascendcPlatform.ReserveLocalMemory(platform_ascendc::ReservedSize::RESERVED_SIZE_32K);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
-    OP_CHECK_IF(ubSize_ == 0, OP_LOGE(context_->GetNodeName(), "Get ubSize failed: 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ubSize_ == 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "ubSize", std::to_string(ubSize_),
+                                                      "failed to get a positive UB size"),
+                return ge::GRAPH_FAILED);
 
     sysWorkspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
@@ -213,21 +219,25 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::CheckInputParam()
     auto inputDesc = context_->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
     ge::DataType xdtype = inputDesc->GetDataType();
-    OP_CHECK_IF(xdtype != ge::DT_INT8,
-                OP_LOGE(context_->GetNodeName(), "Input dtype:%s not int8", Ops::Base::ToString(xdtype).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xdtype != ge::DT_INT8,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "schedule_context", Ops::Base::ToString(xdtype), "int8"),
+        return ge::GRAPH_FAILED);
 
     auto inputX = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputX);
     auto xShape = Ops::Transformer::OpTiling::EnsureNotScalar(inputX->GetStorageShape());
     OP_CHECK_IF(xShape.GetDimNum() != 1,
-                OP_LOGE(context_->GetNodeName(), "x shape %s dim num not 1", Ops::Base::ToString(xShape).c_str()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "schedule_context",
+                                             std::to_string(xShape.GetDimNum()), "1"),
                 return ge::GRAPH_FAILED);
     // 所有公共入口均需保护固定 1024B context 读取；Torch wrapper 的检查不能
     // 覆盖直接 ACLNN/GE 调用。空输入也必须在下发 kernel 前拒绝。
-    OP_CHECK_IF(xShape.GetDim(0) < CONTEXT_BYTES,
-                OP_LOGE(context_->GetNodeName(), "schedule_context needs at least %ld bytes", CONTEXT_BYTES),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xShape.GetDim(0) < CONTEXT_BYTES,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "schedule_context dim[0]", std::to_string(xShape.GetDim(0)),
+                                  "at least " + std::to_string(CONTEXT_BYTES)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -237,10 +247,10 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::GetAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     const int64_t *expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expertNumPtr);
-    OP_CHECK_IF(
-        *expertNumPtr > EXPERT_IDX_MAX || *expertNumPtr <= 0,
-        OP_LOGE(context_->GetNodeName(), "expert_num:%ld should be in range (0, %ld]", *expertNumPtr, EXPERT_IDX_MAX),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*expertNumPtr > EXPERT_IDX_MAX || *expertNumPtr <= 0,
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_num", std::to_string(*expertNumPtr),
+                                          "in (0, " + std::to_string(EXPERT_IDX_MAX) + "]"),
+                return ge::GRAPH_FAILED);
     expertNum_ = *expertNumPtr;
 
     if (ParseMaxOutShape(attrs) != ge::GRAPH_SUCCESS) {
@@ -258,36 +268,51 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseMaxOutShape(const gert::Runt
     const gert::ContinuousVector *maxOutShapePtr = attrs->GetAttrPointer<gert::ContinuousVector>(MAX_OUT_SHAPE_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context_, maxOutShapePtr);
     OP_CHECK_IF(maxOutShapePtr->GetSize() != static_cast<size_t>(NUM_FOUR),
-                OP_LOGE(context_->GetNodeName(), "The max_out_shape size:%lu not equal 4.", maxOutShapePtr->GetSize()),
+                OP_LOGE_WITH_INVALID_ATTR_SIZE(context_->GetNodeName(), "max_out_shape",
+                                               std::to_string(maxOutShapePtr->GetSize()), std::to_string(NUM_FOUR)),
                 return ge::GRAPH_FAILED);
     const int64_t *maxOutShapeArray = reinterpret_cast<const int64_t *>(maxOutShapePtr->GetData());
     A_ = maxOutShapeArray[INDEX_ZERO];
     BS_ = maxOutShapeArray[INDEX_ONE];
     K_ = maxOutShapeArray[INDEX_TWO];
     H_ = maxOutShapeArray[INDEX_THREE];
+    OP_CHECK_IF((A_ > MAX_SESSION_NUM || A_ <= 0),
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[0]", std::to_string(A_),
+                                          "in (0, " + std::to_string(MAX_SESSION_NUM) + "]"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        (A_ > MAX_SESSION_NUM || A_ <= 0),
-        OP_LOGE(context_->GetNodeName(), "max_out_shape[0]:%ld should be in range of (0, %ld]", A_, MAX_SESSION_NUM),
+        BS_ <= 0,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[1]", std::to_string(BS_), "greater than 0"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(BS_ <= 0, OP_LOGE(context_->GetNodeName(), "max_out_shape[1]:%ld should be greater than 0", BS_),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF((K_ > MAX_K_NUM || K_ <= 0),
-                OP_LOGE(context_->GetNodeName(), "max_out_shape[2]:%ld should be in range of (0, %ld]", K_, MAX_K_NUM),
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[2]", std::to_string(K_),
+                                          "in (0, " + std::to_string(MAX_K_NUM) + "]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(H_ <= 0, OP_LOGE(context_->GetNodeName(), "max_out_shape[3]:%ld should be greater than 0", H_),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        H_ <= 0,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[3]", std::to_string(H_), "greater than 0"),
+        return ge::GRAPH_FAILED);
 
     // Check before multiplying: a post-product bound cannot undo signed overflow.
     OP_CHECK_IF(A_ > std::numeric_limits<int64_t>::max() / BS_,
-                OP_LOGE(context_->GetNodeName(), "A*BS overflows int64"), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "max_out_shape[0], max_out_shape[1]",
+                                                       std::to_string(A_) + ", " + std::to_string(BS_),
+                                                       "A*BS must not overflow int64"),
+                return ge::GRAPH_FAILED);
     const int64_t aBs = A_ * BS_;
     OP_CHECK_IF(aBs > std::numeric_limits<int64_t>::max() / K_,
-                OP_LOGE(context_->GetNodeName(), "A*BS*K overflows int64"), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context_->GetNodeName(), "max_out_shape[0], max_out_shape[1], max_out_shape[2]",
+                    std::to_string(A_) + ", " + std::to_string(BS_) + ", " + std::to_string(K_),
+                    "A*BS*K must not overflow int64"),
+                return ge::GRAPH_FAILED);
     Y_ = aBs * K_;
     // Indices/counts are int32. This representation bound does not impose the
     // old 2^22 FP32 limit: large positions still use the integer gather path.
     OP_CHECK_IF(Y_ > std::numeric_limits<int32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "Y exceeds int32 index/count capacity"), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "A*BS*K", std::to_string(Y_),
+                                          "at most " + std::to_string(std::numeric_limits<int32_t>::max())),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -298,10 +323,12 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
     const int64_t *tokenDtype = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     if (tokenDtype != nullptr) {
         OP_CHECK_IF((*tokenDtype < Arch35Config::TOKEN_FP16 || *tokenDtype > Arch35Config::TOKEN_FP4_E2M1),
-                    OP_LOGE(context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2, 3, 4, 5]", *tokenDtype),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "token_dtype", std::to_string(*tokenDtype),
+                                              "one of [0, 1, 2, 3, 4, 5]"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(*tokenDtype == Arch35Config::TOKEN_FP4_E2M1 && H_ % Arch35Config::FP4_VALUES_PER_BYTE != 0,
-                    OP_LOGE(context_->GetNodeName(), "float4_e2m1 requires even H, got %ld", H_),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[3]", std::to_string(H_),
+                                              "even when token_dtype is 5 (float4_e2m1)"),
                     return ge::GRAPH_FAILED);
         tokenDtype_ = *tokenDtype;
     }
@@ -309,7 +336,8 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
     const int64_t *needSchedulePtr = attrs->GetAttrPointer<int64_t>(NEED_SCHEDULE_ATTR);
     if (needSchedulePtr != nullptr) {
         OP_CHECK_IF((*needSchedulePtr < 0 || *needSchedulePtr > 1),
-                    OP_LOGE(context_->GetNodeName(), "need_schedule:%ld must be one of [0, 1]", *needSchedulePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "need_schedule",
+                                              std::to_string(*needSchedulePtr), "one of [0, 1]"),
                     return ge::GRAPH_FAILED);
         needSchedule_ = *needSchedulePtr;
     }
@@ -321,25 +349,29 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
     }
     const int64_t *layNumPtr = attrs->GetAttrPointer<int64_t>(LAY_NUM_ATTR);
     if (layNumPtr != nullptr) {
-        OP_CHECK_IF(
-            (*layNumPtr < 0 || *layNumPtr > expertNum),
-            OP_LOGE(context_->GetNodeName(), "layer_num:%ld must be in range of [0, %ld]", *layNumPtr, expertNum),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*layNumPtr < 0 || *layNumPtr > expertNum),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "layer_num", std::to_string(*layNumPtr),
+                                              "in [0, " + std::to_string(expertNum) + "]"),
+                    return ge::GRAPH_FAILED);
         layerNum_ = *layNumPtr;
     }
     // Only asynchronous RECV interprets layer_num. Keep the legacy NORM/synchronous
     // contracts (including layer_num=0) unchanged; never divide by their default 0.
     if (needSchedule_ == 1 && syncFlag_) {
-        OP_CHECK_IF(
-            layerNum_ == 0 || expertNum % layerNum_ != 0,
-            OP_LOGE(context_->GetNodeName(), "async RECV requires layer_num > 0 and expert_num divisible by layer_num"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layerNum_ == 0 || expertNum % layerNum_ != 0,
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        context_->GetNodeName(), "layer_num, expert_num",
+                        std::to_string(layerNum_) + ", " + std::to_string(expertNum),
+                        "async RECV requires layer_num > 0 and expert_num divisible by layer_num"),
+                    return ge::GRAPH_FAILED);
     }
     // H is stored as uint32 in the runtime context. Check narrowing before
     // deriving payload bytes. FP4 stores two values per byte; MX scale follows
     // the token and uses one byte per 32 logical elements (including tail).
     OP_CHECK_IF(H_ > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "H exceeds uint32 context capacity"), return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "max_out_shape[3]", std::to_string(H_),
+                                          "at most " + std::to_string(std::numeric_limits<uint32_t>::max())),
+                return ge::GRAPH_FAILED);
     const int64_t tokenBytes =
         tokenDtype_ <= Arch35Config::TOKEN_BF16 ?
             H_ * sizeof(uint16_t) :
@@ -354,17 +386,21 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
         static_cast<int64_t>(std::numeric_limits<uint32_t>::max() / Arch35Config::TOKEN_STRIDE_ALIGNMENT) *
         Arch35Config::TOKEN_STRIDE_ALIGNMENT;
     OP_CHECK_IF(tokenBytes + scaleBytes > maxAlignedStride,
-                OP_LOGE(context_->GetNodeName(), "token payload cannot fit a 512B-aligned uint32 HS"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "tokenBytes + scaleBytes", std::to_string(tokenBytes + scaleBytes),
+                    "must fit a 512B-aligned uint32 stride of at most " + std::to_string(maxAlignedStride) + " bytes"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FfnWorkerBatchingTilingArch35::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(CheckInputParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckInputParam failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetAttrsInfo() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "GetAttrsInfo failed."),
-                return ge::GRAPH_FAILED);
+    if (CheckInputParam() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (GetAttrsInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -394,7 +430,8 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
     flatElements_ = (needSchedule_ == 1) ? A_ * bskAlign_ : Y_;
     // RECV padding contributes to the original index space too.
     OP_CHECK_IF(flatElements_ > std::numeric_limits<int32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "aligned flat length exceeds int32 index capacity"),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "flatElements", std::to_string(flatElements_),
+                                          "at most " + std::to_string(std::numeric_limits<int32_t>::max())),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->flatElements = flatElements_;
 
@@ -421,7 +458,9 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
         needSchedule_ == BATCH_MODE ? A_ * ONE_BLK_BYTES * Arch35Config::RECV_WAITER_FLAG_BUFFERS + ONE_BLK_BYTES : 0;
     const int64_t minUb = std::max<int64_t>(CONTEXT_BYTES, std::max(minGather, std::max(minGroup, minWaiter)));
     OP_CHECK_IF(static_cast<int64_t>(ubSize_) < minUb,
-                OP_LOGE(context_->GetNodeName(), "available UB cannot hold minimum phase buffers"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "ubSize", std::to_string(ubSize_),
+                    "minimum phase buffers require at least " + std::to_string(minUb) + " bytes"),
                 return ge::GRAPH_FAILED);
 
     tilingDataPtr_->syncFlag = syncFlag_;
@@ -544,7 +583,7 @@ void FfnWorkerBatchingTilingArch35::LayoutWorkspace()
     wsPairB_ = off;
     off += sortSegNum_ * sortLenPerSeg_;
     wsSegCnt_ = off;
-    off += sortSegNum_ * (ONE_BLK_BYTES / static_cast<int64_t>(sizeof(int32_t)));
+    off += sortSegNum_ * INT32_PER_BLOCK;
     wsSortedIds_ = off;
     off += Y_;
     wsGatherIdx_ = off;
@@ -553,10 +592,10 @@ void FfnWorkerBatchingTilingArch35::LayoutWorkspace()
     // 异步载荷为 (A+1)*32B：头块低 8B 存选中 micro batch，后 A 块低 4B 各存一个 flag。
     // A=1024 时载荷为 32800B；末尾可能另有最多 28B 的起点对齐空隙。
     // 默认路径只记录段起点，不分配快照载荷；其 kernel 也不会访问该段。
-    off = (off + NUM_EIGHT - 1) / NUM_EIGHT * NUM_EIGHT;
+    off = (off + INT32_PER_BLOCK - 1) / INT32_PER_BLOCK * INT32_PER_BLOCK;
     tilingDataPtr_->wsReady = off;
     if (needSchedule_ == 1 && syncFlag_) {
-        off += (A_ + 1) * (ONE_BLK_BYTES / static_cast<int64_t>(sizeof(int32_t)));
+        off += (A_ + 1) * INT32_PER_BLOCK;
     }
     userWorkspaceWords_ = off;
 

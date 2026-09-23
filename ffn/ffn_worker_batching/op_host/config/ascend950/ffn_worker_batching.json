@@ -30,7 +30,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -41,28 +41,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -73,8 +51,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -85,7 +85,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -96,7 +96,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -168,7 +168,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -179,28 +179,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -211,8 +189,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -223,7 +223,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -234,7 +234,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -306,7 +306,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -317,28 +317,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -349,8 +327,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -361,7 +361,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -372,7 +372,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -444,7 +444,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -455,28 +455,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -487,8 +465,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -499,7 +499,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -510,7 +510,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -582,7 +582,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -593,28 +593,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -625,8 +603,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -637,7 +637,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -648,7 +648,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -720,7 +720,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -731,28 +731,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -763,8 +741,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -775,7 +775,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float8_e8m0",
                     "format": "ND",
                     "paramType": "required",
@@ -786,7 +786,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",

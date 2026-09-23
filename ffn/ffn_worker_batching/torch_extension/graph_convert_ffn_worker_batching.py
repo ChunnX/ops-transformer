@@ -72,6 +72,9 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(layer_num, Int, 0)
         .ATTR(sync_flag, Bool, false)
         """
+        from .ffn_worker_batching import _checked_y_rows
+
+        _checked_y_rows(max_out_shape)
         # ge_op normally checks only non-default optional attributes. Even when
         # sync_flag is False, require the UPDATED prototype: an older registration
         # has a shorter attribute array than the current tiling implementation.

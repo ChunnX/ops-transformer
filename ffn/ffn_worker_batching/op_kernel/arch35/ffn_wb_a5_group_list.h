@@ -22,7 +22,7 @@
  * 两张掩码各做一次 GatherMask 压缩,得到**等长**的首下标列与末下标列,逐元素相减即每专家
  * token 数。全程向量:不按 expert_id 散射写,也不需要 GM 直方图与跨核原子累加。
  *
- * 为何不用 SIMT 按 expert_id 散射计数:SIMT 访问 __local_mem__ 被限制在 UB 的低 8KB
+ * 为何不用 SIMT 按 expert_id 散射计数:SIMT 访问 __ubuf__ 被限制在 UB 的低 8KB
  * (固定值,与 asc_vf_call 的 dim3 线程数无关,实测把线程数减半阈值不动),按 expert_id
  * 写 slot[cur] 在专家数超过 2048 时越界;越界写静默生效,会踩坏同一 UB 上的其它数据
  * (曾表现为编译器溢出到栈上的 totalValid 被清零,后续 gather 整段被跳过而硬件不报异常)。
