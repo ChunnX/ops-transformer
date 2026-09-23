@@ -64,15 +64,18 @@ aclnnStatus aclnnSlidingTileAttention(
 - `q/k/v/output` 必须是相同 shape、dtype 的 rank-4 BNSD Tensor。
 - dtype 仅支持 FLOAT16 和 BFLOAT16。
 - 非空输入满足 `B > 0`、`1 <= N <= 128`、`D > 0` 且 `D % 8 == 0`。
-- tile 固定为 `[6,8,8]`；`S` 必须等于 `seqShape` 对应画布 token 数加 `textLength`。
+- tile 固定为 `[6,8,8]`。`seqShape=1` 时，`S` 可包含任务书定义的 text storage padding：
+  `0 <= S-image_tokens <= 512`、`0 <= textLength <= S-image_tokens` 且 `hasText=true`；padding query 产生
+  输出，但不作为 K/V。`seqShape=2/3` 时 `S` 必须等于对应画布 token 数、`textLength=0`、`hasText=false`。
 - `windowSize` 长度必须为 3 或 `3*N`；长度 3 广播到全部 head，每个三元组的三个值均须为正奇数。
 - `textLength >= 0`，且 `hasText == (textLength > 0)`。
 - ACLNN L2 对 `q/k/v` 显式调用 `Contiguous`。非连续输入会 materialize 为连续 Tensor，调用方无需预先拷贝。
 - shape 一致的任意空 Tensor 在 `GetWorkspaceSize` 直接返回 `ACLNN_SUCCESS`，workspace 为 0，不进入 L0，
   不创建 AI Core launcher，也不发射 kernel。
-- `dtype=BF16 && D=64` 选择 tiling key 1 的 lean 编译变体；其余合法 dtype/D 选择 key 0 通用变体。
-  变体内部可继续按 runtime N/画布/window 选择固定 task decode 或动态数据流。所有选择仅依赖运行时
-  shape/dtype/属性，不依赖 case id、输入值或已知 workload。
+- `dtype=BF16 && D=64` 选择 key 1 lean 变体；已证明的 FP16 shape family 选择 key 2/3/5/7/8/9；
+  D256 padded-text partial/merge 选择 key 10/11；其余合法 dtype/D 选择 key 0 通用变体。变体内部可继续按
+  runtime B/N/画布/window/capacity 选择固定 task decode、grouped/compact 或动态数据流。所有选择仅依赖
+  运行时 shape/dtype/属性，不依赖 case id、输入值或已知 workload。
 - 范围外 metadata 返回 `ACLNN_ERR_PARAM_INVALID`，不做 framework、vendor 或其他 backend fallback。
 
 ## 返回值
@@ -84,17 +87,17 @@ aclnnStatus aclnnSlidingTileAttention(
 
 ## 调用示例
 
-完整 C++ 调用、原 18-case 保护集及动态/非连续/空 Tensor 代表性检查入口位于：
+完整 C++ 调用、任务书 50-case、原 18-case 保护集及动态/非连续/空 Tensor 代表性检查入口位于：
 
 ```text
 experimental/attention/sliding_tile_attention/examples/
 ```
 
 ```bash
-bash experimental/attention/sliding_tile_attention/examples/run_22cases.sh
+bash experimental/attention/sliding_tile_attention/examples/run_taskbook_cases.sh
 ```
 
-该 runner 共执行自验证表中列出的 22 个设备 case 和一个空 Tensor API 检查，不代表接口完整动态支持域。
-未列入该表的 workload 不由这份 runner 日志给出性能结论。非零、非均匀 Q/K 输入和 host 解析期望值会
-实际验证 runtime `1/sqrt(D)`，并覆盖所有合法的 `0,7,63,64,127,128,D-1` 输出列采样。原始证据见
-[`docs/evidence`](evidence)。
+taskbook 入口执行原始 `all_sta.json` 的全部 50 个设备 case；reviewer 入口执行自验证表中的 22 个额外设备
+case。两者都执行空 Tensor API 检查、解析精度采样和同输入 bitwise 确定性检查，不代表接口完整动态支持域。
+当前源码摘要上的结果分别为 50/50 与 22/22；未列入相应表的 workload 不由该日志给出性能结论。任务书历史
+性能数值和本地 CSV 延迟均不作为接口性能结论。原始证据见 [`docs/evidence`](evidence)。

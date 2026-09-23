@@ -20,6 +20,9 @@
 #include "register/op_def_registry.h"
 
 #include "sliding_tile_attention_case_guard.h"
+#define OPFORGE_RESOURCE_LEDGER_HOST_PROJECTION_ONLY
+#include "../op_kernel/resource_ledger.hpp"
+#undef OPFORGE_RESOURCE_LEDGER_HOST_PROJECTION_ONLY
 #include "sliding_tile_attention_tiling.h"
 #include "../op_kernel/sliding_tile_attention_tiling_key.h"
 
@@ -33,13 +36,17 @@ constexpr int64_t FAI_KV_ROWS = FAI_STACK_BLOCK_COUNT * FAI_QUERY_ROWS;
 constexpr int64_t FAI_WORKSPACE_STAGES = 5;
 constexpr int64_t FAI_BASE_WORKSPACE_BYTES_PER_ELEM = 14;
 constexpr int64_t FAI_DUAL_PROBABILITY_BYTES_PER_ELEM = 6;
+static_assert(OPFORGE_DUAL_PROBABILITY_WORKSPACE_VALID(FAI_DUAL_PROBABILITY_BYTES_PER_ELEM, sizeof(uint16_t),
+                                                       sizeof(float)),
+              "host residual workspace must match the device main/residual PV ownership");
 constexpr int64_t FAI_QK_SLICE_DIM = 128;
 constexpr int64_t FAI_QUERY_ROWS_PER_CORE = 128;
 constexpr int64_t FAI_SCORE_WORKSPACE_BLOCK_ELEMS = FAI_QUERY_ROWS_PER_CORE * 512;
 constexpr int64_t FAI_QUERY_CHUNKS_PER_TILE = 3;
+constexpr int64_t FAI_QUERY_CHUNKS_PER_PAIR = 6;
 constexpr int64_t FAI_SOFTMAX_DM_SLOTS = FAI_WORKSPACE_STAGES;
-constexpr int64_t FAI_SOFTMAX_STATE_VALUES_PER_CORE =
-    (2 * FAI_QUERY_CHUNKS_PER_TILE + FAI_QUERY_CHUNKS_PER_TILE * FAI_SOFTMAX_DM_SLOTS) * FAI_QUERY_ROWS_PER_CORE;
+constexpr int64_t FAI_BLOCK_TABLE_BYTES_PER_CORE =
+    FAI_WORKSPACE_STAGES * FAI_STACK_BLOCK_COUNT * static_cast<int64_t>(sizeof(int32_t));
 
 constexpr size_t ATTR_BATCH = 0;
 constexpr size_t ATTR_HEADS = 1;
@@ -50,6 +57,82 @@ constexpr size_t ATTR_HAS_TEXT = 5;
 constexpr size_t ATTR_SEQ_SHAPE = 6;
 
 int64_t CeilDiv(int64_t value, int64_t divisor) { return (value + divisor - 1) / divisor; }
+
+int64_t WindowStart(int64_t coord, int64_t window, int64_t extent)
+{
+    if (window >= extent) {
+        return 0;
+    }
+    const int64_t radius = window / 2;
+    const int64_t center = std::max(radius, std::min(coord, extent - 1 - radius));
+    return center - radius;
+}
+
+int64_t BuildAxisGroups(int64_t extent, int64_t window, int64_t *starts, int64_t *spans)
+{
+    int64_t count = 0;
+    for (int64_t coord = 0; coord < extent;) {
+        const bool pair =
+            coord + 1 < extent && WindowStart(coord, window, extent) == WindowStart(coord + 1, window, extent);
+        starts[count] = coord;
+        spans[count] = pair ? 2 : 1;
+        ++count;
+        coord += pair ? 2 : 1;
+    }
+    return count;
+}
+
+void BuildD16PairPlan(SlidingTileAttentionMeta &meta, bool pairInputSupported)
+{
+    meta.pair_axis = -1;
+    meta.pair_group_count = 0;
+    meta.grouped_query_chunks = FAI_QUERY_CHUNKS_PER_TILE;
+    if (!pairInputSupported || meta.dim != 16 || meta.has_text == 0 || meta.heads <= 0) {
+        return;
+    }
+    for (int64_t head = 1; head < meta.heads; ++head) {
+        for (int64_t axis = 0; axis < 3; ++axis) {
+            if (meta.windows[head * 3 + axis] != meta.windows[axis]) {
+                return;
+            }
+        }
+    }
+    const int64_t extents[3] = {meta.grid_t, meta.grid_h, meta.grid_w};
+    const int64_t axisOrder[3] = {2, 1, 0};
+    int64_t bestCount = std::numeric_limits<int64_t>::max();
+    int64_t bestExtent = 1;
+    int64_t bestStarts[SLIDING_TILE_ATTENTION_PAIR_GROUP_CAPACITY] = {0};
+    int64_t bestSpans[SLIDING_TILE_ATTENTION_PAIR_GROUP_CAPACITY] = {0};
+    for (int64_t order = 0; order < 3; ++order) {
+        const int64_t axis = axisOrder[order];
+        int64_t starts[SLIDING_TILE_ATTENTION_PAIR_GROUP_CAPACITY] = {0};
+        int64_t spans[SLIDING_TILE_ATTENTION_PAIR_GROUP_CAPACITY] = {0};
+        const int64_t count = BuildAxisGroups(extents[axis], meta.windows[axis], starts, spans);
+        // Select the axis that minimizes actual image-job count.  Comparing the
+        // ratios by cross multiplication keeps the guard deterministic without
+        // introducing floating-point metadata in the tiling record.
+        const bool better = meta.pair_axis < 0 || count * bestExtent < bestCount * extents[axis];
+        if (better) {
+            bestCount = count;
+            bestExtent = extents[axis];
+            meta.pair_axis = axis;
+            for (int64_t index = 0; index < count; ++index) {
+                bestStarts[index] = starts[index];
+                bestSpans[index] = spans[index];
+            }
+        }
+    }
+    if (meta.pair_axis < 0 || bestCount >= extents[meta.pair_axis]) {
+        meta.pair_axis = -1;
+        return;
+    }
+    meta.pair_group_count = bestCount;
+    meta.grouped_query_chunks = FAI_QUERY_CHUNKS_PER_PAIR;
+    for (int64_t index = 0; index < bestCount; ++index) {
+        meta.pair_group_start[index] = bestStarts[index];
+        meta.pair_group_span[index] = bestSpans[index];
+    }
+}
 
 bool CheckedMultiply(int64_t lhs, int64_t rhs, int64_t &result)
 {
@@ -105,13 +188,25 @@ bool TotalChunks(const SlidingTileAttentionMeta &meta, bool usesGroupedTileJobs,
 {
     const int64_t numTiles = meta.grid_t * meta.grid_h * meta.grid_w;
     if (usesGroupedTileJobs) {
+        const int64_t textChunksPerHead = meta.has_text != 0 ? CeilDiv(meta.seq - meta.image_seq, FAI_QUERY_ROWS) : 0;
+        // The grouped-text refinement is correctness-clean but rejected after an active-window regression.
+        const bool groupedTextD16 = false;
+        const int64_t textJobsPerHead = groupedTextD16 ? 1 : textChunksPerHead;
+        int64_t jobsPerHead = 0;
         int64_t batchHeads = 0;
-        return CheckedMultiply(meta.batch, meta.heads, batchHeads) &&
-               CheckedMultiply(batchHeads, numTiles, totalChunks);
+        int64_t imageJobs = numTiles;
+        if (meta.pair_axis >= 0) {
+            const int64_t axisExtent =
+                meta.pair_axis == 0 ? meta.grid_t : (meta.pair_axis == 1 ? meta.grid_h : meta.grid_w);
+            imageJobs = numTiles / axisExtent * meta.pair_group_count;
+        }
+        return CheckedAdd(imageJobs, textJobsPerHead, jobsPerHead) &&
+               CheckedMultiply(meta.batch, meta.heads, batchHeads) &&
+               CheckedMultiply(batchHeads, jobsPerHead, totalChunks);
     }
     const int64_t chunksPerTile = CeilDiv(meta.tile_numel, FAI_QUERY_ROWS);
     const int64_t imageChunksPerHead = numTiles * chunksPerTile;
-    const int64_t textChunksPerHead = meta.has_text != 0 ? CeilDiv(meta.text_len, FAI_QUERY_ROWS) : 0;
+    const int64_t textChunksPerHead = meta.has_text != 0 ? CeilDiv(meta.seq - meta.image_seq, FAI_QUERY_ROWS) : 0;
     int64_t batchHeads = 0;
     return CheckedMultiply(meta.batch, meta.heads, batchHeads) &&
            CheckedMultiply(batchHeads, imageChunksPerHead + textChunksPerHead, totalChunks);
@@ -215,8 +310,7 @@ ge::graphStatus FillMeta(gert::TilingContext *context, SlidingTileAttentionMeta 
     const int64_t *rawWindows = windowTensor->GetData<int64_t>();
     sliding_tile_attention::WindowValues normalizedWindows;
     if (!sliding_tile_attention::NormalizeWindows(rawWindows, rawWindowCount, meta.heads, normalizedWindows)) {
-        OP_LOGE(context,
-                "SlidingTileAttention windows must contain three or 3*N positive odd values; values=%ld, N=%ld.",
+        OP_LOGE(context, "SlidingTileAttention windows must contain three or 3*N positive values; values=%ld, N=%ld.",
                 static_cast<long>(rawWindowCount), static_cast<long>(meta.heads));
         return ge::GRAPH_FAILED;
     }
@@ -224,12 +318,12 @@ ge::graphStatus FillMeta(gert::TilingContext *context, SlidingTileAttentionMeta 
     for (int64_t index = 0; index < meta.window_count; ++index) {
         meta.windows[index] = normalizedWindows[static_cast<size_t>(index)];
     }
-
     dtype = inputDesc->GetDataType();
     if (dtype != ge::DT_FLOAT16 && dtype != ge::DT_BF16) {
         OP_LOGE(context, "SlidingTileAttention dtype is unsupported: %d.", static_cast<int>(dtype));
         return ge::GRAPH_FAILED;
     }
+    BuildD16PairPlan(meta, OPFORGE_D16_PAIR_INPUT_SUPPORTED(dtype, ge::DT_FLOAT16, ge::DT_BF16));
     if (!sliding_tile_attention::IsSupportedMetadata(meta.batch, meta.heads, meta.seq, meta.dim, meta.text_len,
                                                      *hasText, *seqShape, normalizedWindows)) {
         OP_LOGE(context, "SlidingTileAttention runtime metadata is unsupported.");
@@ -248,7 +342,7 @@ ge::graphStatus SetWorkspace(gert::TilingContext *context, int64_t bytes)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
+ge::graphStatus SlidingTileAttentionFaiTilingImpl(gert::TilingContext *context, bool partialMode)
 {
     SlidingTileAttentionMeta meta;
     ge::DataType dtype = ge::DT_FLOAT16;
@@ -280,6 +374,11 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
     tiling.set_gridW(meta.grid_w);
     tiling.set_tileNumel(meta.tile_numel);
     tiling.set_windowCount(meta.window_count);
+    tiling.set_pairAxis(meta.pair_axis);
+    tiling.set_pairGroupCount(meta.pair_group_count);
+    tiling.set_groupedQueryChunks(meta.grouped_query_chunks);
+    tiling.set_pairGroupStart(meta.pair_group_start);
+    tiling.set_pairGroupSpan(meta.pair_group_span);
     tiling.set_windows(meta.windows);
     tiling.set_dtype(dtype == ge::DT_BF16 ? 1 : 0);
     const float softmaxScale = 1.0f / std::sqrt(static_cast<float>(meta.dim));
@@ -295,15 +394,35 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
             break;
         }
     }
+    const bool packedD72N1NonFull = dtype == ge::DT_FLOAT16 && meta.heads == 1 && meta.has_text == 0 &&
+                                    meta.text_len == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 72 &&
+                                    !fullWindow;
+    const bool packedD72MultiheadNonFull = dtype == ge::DT_FLOAT16 && meta.heads != 1 && meta.has_text == 0 &&
+                                           meta.text_len == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS &&
+                                           meta.dim == 72 && !fullWindow;
     const bool groupedQkD72 = dtype == ge::DT_FLOAT16 && meta.has_text == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS &&
                               meta.dim > 64 && meta.dim <= FAI_QK_SLICE_DIM && !fullWindow;
+    const bool groupedQkD16 =
+        (dtype == ge::DT_FLOAT16 || dtype == ge::DT_BF16) && meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 16;
     const bool groupedQkD8 =
         dtype == ge::DT_FLOAT16 && meta.has_text == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 8;
-    const bool groupedQk = groupedQkD72 || groupedQkD8;
-    const bool compactFullWindow = dtype == ge::DT_FLOAT16 && meta.has_text == 0 &&
-                                   meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim > 64 &&
-                                   meta.dim <= FAI_QK_SLICE_DIM && fullWindow;
-    const bool usesGroupedTileJobs = groupedQk || compactFullWindow;
+    const bool packedD256Text = dtype == ge::DT_FLOAT16 && meta.heads == 1 && meta.has_text != 0 && meta.text_len > 0 &&
+                                meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 256 && meta.window_count >= 3 &&
+                                meta.windows[0] == 3 && meta.windows[1] == 3 && meta.windows[2] == 3;
+    if (partialMode &&
+        (!packedD256Text || meta.batch != 1 || meta.text_len > SLIDING_TILE_ATTENTION_PARTIAL_MAX_TEXT_ROWS)) {
+        OP_LOGE(context, "D256 text partial mode received metadata outside its capacity guard.");
+        return ge::GRAPH_FAILED;
+    }
+    const bool groupedQk = groupedQkD72 || groupedQkD16 || groupedQkD8;
+    // The D32 single-query packed kernel owns one 128-row query chunk. Keep
+    // host work cardinality aligned with DecodeTask so every tile chunk runs.
+    const bool singleQueryPackedD32 = dtype == ge::DT_FLOAT16 && meta.has_text == 0 &&
+                                      meta.text_len == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 32;
+    // D16 grouping is valid only when the semantic text tail is empty.
+    const bool usesGroupedTileJobs = (dtype == ge::DT_FLOAT16 && meta.has_text == 0 &&
+                                      meta.tile_numel == 3 * FAI_QUERY_ROWS && !singleQueryPackedD32) ||
+                                     groupedQkD16 || packedD256Text;
     int64_t totalJobs = 0;
     if (!TotalChunks(meta, usesGroupedTileJobs, totalJobs)) {
         OP_LOGE(context, "SlidingTileAttention total work overflows int64.");
@@ -311,6 +430,11 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
     }
     const int64_t coreNum = AicCoreNum(context);
     const int64_t blockDim = totalJobs > 0 ? std::max<int64_t>(1, std::min(coreNum, totalJobs)) : 1;
+    if (partialMode && (blockDim > SLIDING_TILE_ATTENTION_PARTIAL_MAX_PRODUCERS ||
+                        CeilDiv(meta.seq, FAI_STACK_BLOCK_COUNT * FAI_QUERY_ROWS) < blockDim)) {
+        OP_LOGE(context, "D256 text partial producer count exceeds capacity or would create an empty shard.");
+        return ge::GRAPH_FAILED;
+    }
     int64_t outputWorkspaceBlockElems = 0;
     int64_t workspaceBlockElems = 0;
     const int64_t outputDim = CeilDiv(meta.dim, static_cast<int64_t>(16)) * 16;
@@ -319,7 +443,7 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     workspaceBlockElems = std::max(FAI_SCORE_WORKSPACE_BLOCK_ELEMS, outputWorkspaceBlockElems);
-    const int64_t workspaceChunkFactor = groupedQk ? FAI_QUERY_CHUNKS_PER_TILE : 1;
+    const int64_t workspaceChunkFactor = groupedQk ? meta.grouped_query_chunks : 1;
     int64_t workspaceElems = 0;
     int64_t blockWorkspaceElems = 0;
     if (!CheckedMultiply(blockDim, workspaceBlockElems, blockWorkspaceElems) ||
@@ -344,8 +468,9 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
     const int64_t qkSliceCount = CeilDiv(outputDim, FAI_QK_SLICE_DIM);
     int64_t extraScoreBytesPerElem = 0;
     int64_t workspaceBytesPerElem = 0;
+    const bool usesDualProbabilityWorkspace = meta.dim > FAI_QK_SLICE_DIM || meta.dim == 72;
     const int64_t dynamicProbabilityBytesPerElem =
-        meta.dim > FAI_QK_SLICE_DIM ? FAI_DUAL_PROBABILITY_BYTES_PER_ELEM : 0;
+        usesDualProbabilityWorkspace ? FAI_DUAL_PROBABILITY_BYTES_PER_ELEM : 0;
     if (!CheckedMultiply(qkSliceCount - 1, static_cast<int64_t>(sizeof(float)), extraScoreBytesPerElem) ||
         !CheckedAdd(FAI_BASE_WORKSPACE_BYTES_PER_ELEM + dynamicProbabilityBytesPerElem, extraScoreBytesPerElem,
                     workspaceBytesPerElem) ||
@@ -356,10 +481,18 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
     }
     int64_t softmaxStateValues = 0;
     int64_t softmaxStateBytes = 0;
-    if (!CheckedMultiply(blockDim, FAI_SOFTMAX_STATE_VALUES_PER_CORE, softmaxStateValues) ||
+    const int64_t softmaxStateValuesPerCore =
+        (2 * meta.grouped_query_chunks + meta.grouped_query_chunks * FAI_SOFTMAX_DM_SLOTS) * FAI_QUERY_ROWS_PER_CORE;
+    if (!CheckedMultiply(blockDim, softmaxStateValuesPerCore, softmaxStateValues) ||
         !CheckedMultiply(softmaxStateValues, static_cast<int64_t>(sizeof(float)), softmaxStateBytes) ||
         !CheckedAdd(workspaceBytes, softmaxStateBytes, workspaceBytes)) {
         OP_LOGE(context, "SlidingTileAttention grouped softmax-state workspace overflows int64.");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t blockTableBytes = 0;
+    if (!CheckedMultiply(blockDim, FAI_BLOCK_TABLE_BYTES_PER_CORE, blockTableBytes) ||
+        !CheckedAdd(workspaceBytes, blockTableBytes, workspaceBytes)) {
+        OP_LOGE(context, "SlidingTileAttention block-table workspace overflows int64.");
         return ge::GRAPH_FAILED;
     }
     const int64_t qkDim = ((meta.dim + 15) / 16) * 16;
@@ -425,8 +558,101 @@ ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
     }
     rawTiling->SetDataSize(tiling.GetDataSize());
     context->SetBlockDim(blockDim);
-    context->SetTilingKey(dtype == ge::DT_BF16 && meta.dim == 64 ? SLIDING_TILE_ATTENTION_TILING_KEY_BF16_D64_LEAN :
-                                                                   SLIDING_TILE_ATTENTION_TILING_KEY_GENERAL);
+    const bool packedD128N1 = dtype == ge::DT_FLOAT16 && meta.heads == 1 && meta.has_text == 0 && meta.text_len == 0 &&
+                              meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 128;
+    const bool packedD256N1 = dtype == ge::DT_FLOAT16 && meta.heads == 1 && meta.has_text == 0 && meta.text_len == 0 &&
+                              meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim == 256 && meta.window_count >= 3 &&
+                              meta.windows[0] == 3 && meta.windows[1] == 3 && meta.windows[2] == 3;
+    const bool packedD3SliceN1 = dtype == ge::DT_FLOAT16 && meta.heads == 1 && meta.has_text == 0 &&
+                                 meta.text_len == 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS && meta.dim > 256 &&
+                                 meta.dim <= 384 && meta.window_count >= 3 && meta.windows[0] == 3 &&
+                                 meta.windows[1] == 3 && meta.windows[2] == 3;
+    const bool groupedD16Text =
+        meta.dim == 16 && meta.has_text != 0 && meta.text_len > 0 && meta.tile_numel == 3 * FAI_QUERY_ROWS;
+    context->SetTilingKey(partialMode               ? OPFORGE_STA_TILING_KEY_FP16_D256_TEXT_PARTIAL :
+                          packedD128N1              ? OPFORGE_STA_TILING_KEY_FP16_D128_N1_PACKED :
+                          packedD256N1              ? OPFORGE_STA_TILING_KEY_FP16_D256_N1_PACKED :
+                          packedD256Text            ? OPFORGE_STA_TILING_KEY_FP16_D256_TEXT_PACKED :
+                          packedD3SliceN1           ? OPFORGE_STA_TILING_KEY_FP16_D3SLICE_N1_PACKED :
+                          packedD72N1NonFull        ? OPFORGE_STA_TILING_KEY_FP16_D72_N1_NONFULL_GROUPED :
+                          packedD72MultiheadNonFull ? OPFORGE_STA_TILING_KEY_FP16_D72_N1_NONFULL_GROUPED :
+                          groupedD16Text            ? OPFORGE_STA_TILING_KEY_D16_TEXT_GROUPED :
+                                                      OPFORGE_STA_TILING_KEY_GENERAL);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SlidingTileAttentionFaiTiling(gert::TilingContext *context)
+{
+    return SlidingTileAttentionFaiTilingImpl(context, false);
+}
+
+ge::graphStatus SlidingTileAttentionFaiD256TextPartialTiling(gert::TilingContext *context)
+{
+    return SlidingTileAttentionFaiTilingImpl(context, true);
+}
+
+ge::graphStatus SlidingTileAttentionFaiD256TextMergeTiling(gert::TilingContext *context)
+{
+    SlidingTileAttentionMeta meta;
+    ge::DataType dtype = ge::DT_FLOAT16;
+    if (FillMeta(context, meta, dtype) != ge::GRAPH_SUCCESS || dtype != ge::DT_FLOAT16 || meta.batch != 1 ||
+        meta.heads != 1 || meta.dim != 256 || meta.has_text == 0 || meta.text_len <= 0 ||
+        meta.text_len > SLIDING_TILE_ATTENTION_PARTIAL_MAX_TEXT_ROWS) {
+        OP_LOGE(context, "D256 text merge received metadata outside its capacity guard.");
+        return ge::GRAPH_FAILED;
+    }
+    auto rawTiling = context->GetRawTilingData();
+    if (rawTiling == nullptr || rawTiling->GetData() == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    SlidingTileAttentionHostTilingData tiling;
+    tiling.set_batch(meta.batch);
+    tiling.set_heads(meta.heads);
+    tiling.set_seq(meta.seq);
+    tiling.set_dim(meta.dim);
+    tiling.set_imageSeq(meta.image_seq);
+    tiling.set_textLen(meta.text_len);
+    tiling.set_hasText(meta.has_text);
+    tiling.set_canvasT(meta.canvas_t);
+    tiling.set_canvasH(meta.canvas_h);
+    tiling.set_canvasW(meta.canvas_w);
+    tiling.set_tileT(meta.tile_t);
+    tiling.set_tileH(meta.tile_h);
+    tiling.set_tileW(meta.tile_w);
+    tiling.set_gridT(meta.grid_t);
+    tiling.set_gridH(meta.grid_h);
+    tiling.set_gridW(meta.grid_w);
+    tiling.set_tileNumel(meta.tile_numel);
+    tiling.set_windowCount(meta.window_count);
+    tiling.set_pairAxis(meta.pair_axis);
+    tiling.set_pairGroupCount(meta.pair_group_count);
+    tiling.set_groupedQueryChunks(meta.grouped_query_chunks);
+    tiling.set_pairGroupStart(meta.pair_group_start);
+    tiling.set_pairGroupSpan(meta.pair_group_span);
+    tiling.set_windows(meta.windows);
+    tiling.set_dtype(0);
+    tiling.set_softmaxScale(1.0f / std::sqrt(static_cast<float>(meta.dim)));
+    tiling.set_reserved(0);
+    const int64_t producerCount = AicCoreNum(context);
+    if (producerCount > SLIDING_TILE_ATTENTION_PARTIAL_MAX_PRODUCERS) {
+        OP_LOGE(context, "D256 text merge producer count exceeds partial tensor capacity.");
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t mergeBlocks = std::max<int64_t>(1, std::min(producerCount, CeilDiv(meta.text_len, 2)));
+    tiling.set_totalWork(meta.text_len);
+    tiling.set_workPerBlock(CeilDiv(meta.text_len, mergeBlocks));
+    tiling.set_workspaceBlocks(producerCount);
+    tiling.set_workspaceBlockElems(0);
+    tiling.set_workspaceElems(0);
+    if (SetWorkspace(context, 0) != ge::GRAPH_SUCCESS ||
+        tiling.GetDataSize() != sizeof(SlidingTileAttentionTilingData) ||
+        rawTiling->GetCapacity() < tiling.GetDataSize()) {
+        return ge::GRAPH_FAILED;
+    }
+    tiling.SaveToBuffer(rawTiling->GetData(), rawTiling->GetCapacity());
+    rawTiling->SetDataSize(tiling.GetDataSize());
+    context->SetBlockDim(mergeBlocks);
+    context->SetTilingKey(OPFORGE_STA_TILING_KEY_FP16_D256_TEXT_MERGE);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -438,6 +664,14 @@ ge::graphStatus TilingParse([[maybe_unused]] gert::TilingParseContext *context) 
 
 IMPL_OP_OPTILING(SlidingTileAttentionFai)
     .Tiling(SlidingTileAttentionFaiTiling)
+    .TilingInputsDataDependency({3})
+    .TilingParse<SlidingTileAttentionCompileInfo>(TilingParse);
+IMPL_OP_OPTILING(SlidingTileAttentionFaiD256TextPartial)
+    .Tiling(SlidingTileAttentionFaiD256TextPartialTiling)
+    .TilingInputsDataDependency({3})
+    .TilingParse<SlidingTileAttentionCompileInfo>(TilingParse);
+IMPL_OP_OPTILING(SlidingTileAttentionFaiD256TextMerge)
+    .Tiling(SlidingTileAttentionFaiD256TextMergeTiling)
     .TilingInputsDataDependency({3})
     .TilingParse<SlidingTileAttentionCompileInfo>(TilingParse);
 

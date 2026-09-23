@@ -20,9 +20,9 @@
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
-#include "catlass/epilogue/block/block_epilogue.hpp"
 #include "catlass/epilogue/block/block_epilogue_online_softmax_no_mask.hpp"
 #include "catlass/epilogue/block/block_epilogue_rescale_o_no_split_row.hpp"
+#include "catlass/epilogue/block/block_epilogue.hpp"
 #include "catlass/epilogue/dispatch_policy.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
 #include "catlass/gemm/block/block_mmad_fai_pv_normal.hpp"
@@ -36,6 +36,7 @@
 #include "catlass/gemm/block/block_mmad_fai_pv_grouped_d72.hpp"
 #include "catlass/gemm/block/block_mmad_fai_qk_grouped.hpp"
 #include "catlass/gemm/block/block_mmad_fai_qk_sliced_accum.hpp"
+#include "resource_ledger.hpp"
 #include "sliding_tile_attention_tiling_data.h"
 #include "sliding_tile_attention_tiling_key.h"
 
@@ -68,6 +69,7 @@ constexpr uint32_t FAI_KV_BASE_ROWS = 128;
 constexpr uint32_t FAI_QK_SLICE_DIM = 128;
 constexpr uint32_t TILE_ELEMENTS = 384;
 constexpr uint32_t QUERY_CHUNKS_PER_TILE = TILE_ELEMENTS / FAI_QUERY_ROWS;
+constexpr uint32_t D16_PAIR_QUERY_COUNT = 6;
 constexpr uint32_t GRID_HEIGHT_TILES = 6;
 constexpr uint32_t UB_REGION_BYTES = 16 * 1024;
 constexpr uint32_t UB_SUBREGION_BYTES = 1024;
@@ -79,6 +81,29 @@ constexpr uint32_t BF16_CAST_SOURCE_REPEAT_STRIDE = 4;
 constexpr uint32_t FAI_STACK_BLOCK_COUNT = 4;
 constexpr uint32_t FAI_PRELAUNCH_DEPTH = 4;
 constexpr uint32_t FAI_RING_STAGE_COUNT = FAI_PRELAUNCH_DEPTH + 1;
+constexpr uint32_t D16_PAIR_PRELAUNCH_DEPTH = static_cast<uint32_t>(
+    opforge::ascend_c::resource_ledger::protocol::kD16PairPrelaunchDepth);
+static_assert(opforge::ascend_c::resource_ledger::protocol::ValidateCrossCorePrelaunch(
+    opforge::ascend_c::resource_ledger::protocol::kD16PairQueryCount, D16_PAIR_PRELAUNCH_DEPTH,
+    opforge::ascend_c::resource_ledger::protocol::kD16PairOwnedTokenBudget));
+constexpr std::size_t D256_PACKED_BLOCK_BYTES = FAI_KV_BASE_ROWS * 256 * sizeof(half);
+constexpr std::size_t D256_PACKED_OWNER_BYTES = FAI_STACK_BLOCK_COUNT * D256_PACKED_BLOCK_BYTES;
+static_assert(opforge::ascend_c::resource_ledger::gm::Span(FAI_KV_BASE_ROWS, 256, 256, sizeof(half)) ==
+                  D256_PACKED_BLOCK_BYTES,
+              "D256 packed K/V block span must match one physical 128-row owner");
+static_assert(opforge::ascend_c::resource_ledger::gm::Fits((FAI_STACK_BLOCK_COUNT - 1) * D256_PACKED_BLOCK_BYTES,
+                                                           D256_PACKED_BLOCK_BYTES, D256_PACKED_OWNER_BYTES),
+              "D256 packed four-block address envelope exceeds its synthetic GM owner");
+constexpr std::size_t FAI_BLOCK_TABLE_BYTES_PER_CORE = FAI_RING_STAGE_COUNT * FAI_STACK_BLOCK_COUNT * sizeof(int32_t);
+constexpr opforge::ascend_c::resource_ledger::Region FAI_BLOCK_TABLE_REGIONS[] = {
+    {1, 0, FAI_BLOCK_TABLE_BYTES_PER_CORE, alignof(int32_t), 0, 2, FAI_BLOCK_TABLE_BYTES_PER_CORE},
+};
+constexpr opforge::ascend_c::resource_ledger::Access FAI_BLOCK_TABLE_ACCESSES[] = {
+    {1, (FAI_RING_STAGE_COUNT - 1) * FAI_STACK_BLOCK_COUNT * sizeof(int32_t), FAI_STACK_BLOCK_COUNT * sizeof(int32_t),
+     FAI_STACK_BLOCK_COUNT * sizeof(int32_t), FAI_BLOCK_TABLE_BYTES_PER_CORE, alignof(int32_t), 0},
+};
+static_assert(opforge::ascend_c::resource_ledger::ValidateAccesses(FAI_BLOCK_TABLE_REGIONS, FAI_BLOCK_TABLE_ACCESSES),
+              "STA paged block-table ring exceeds its per-core GM owner");
 
 constexpr uint32_t FAI_AIV_SUBBLOCK_COUNT = 2;
 constexpr uint32_t RESCALE_TILE_ELEMENTS = 4096;
@@ -89,31 +114,124 @@ constexpr uint32_t RESCALE_SCALE_UB_OFFSET = 10 * UB_REGION_BYTES;
 constexpr uint32_t RESCALE_ROW_SCALE_ELEMENTS = FAI_QUERY_ROWS / FAI_AIV_SUBBLOCK_COUNT;
 constexpr uint32_t GROUPED_STATE_UB_OFFSET = 11 * UB_REGION_BYTES;
 constexpr uint32_t GROUPED_STATE_CHUNK_ELEMENTS = RESCALE_ROW_SCALE_ELEMENTS;
-constexpr uint32_t GROUPED_STATE_MAX_ELEMENTS = QUERY_CHUNKS_PER_TILE * GROUPED_STATE_CHUNK_ELEMENTS;
-constexpr uint32_t GROUPED_STATE_SUM_ELEMENTS = QUERY_CHUNKS_PER_TILE * GROUPED_STATE_CHUNK_ELEMENTS;
-constexpr uint32_t GROUPED_STATE_DM_ELEMENTS =
-    QUERY_CHUNKS_PER_TILE * FAI_RING_STAGE_COUNT * GROUPED_STATE_CHUNK_ELEMENTS;
-constexpr uint32_t GROUPED_STATE_TOTAL_BYTES =
-    (GROUPED_STATE_MAX_ELEMENTS + GROUPED_STATE_SUM_ELEMENTS + GROUPED_STATE_DM_ELEMENTS) * sizeof(float);
+constexpr uint32_t GROUPED_STATE_MAX_ELEMENTS = D16_PAIR_QUERY_COUNT * GROUPED_STATE_CHUNK_ELEMENTS;
+constexpr uint32_t GROUPED_STATE_SUM_ELEMENTS = D16_PAIR_QUERY_COUNT * GROUPED_STATE_CHUNK_ELEMENTS;
+constexpr uint32_t GROUPED_STATE_DM_ELEMENTS = D16_PAIR_QUERY_COUNT * FAI_RING_STAGE_COUNT *
+                                               GROUPED_STATE_CHUNK_ELEMENTS;
+constexpr uint32_t GROUPED_STATE_TOTAL_BYTES = (GROUPED_STATE_MAX_ELEMENTS + GROUPED_STATE_SUM_ELEMENTS +
+                                                GROUPED_STATE_DM_ELEMENTS) *
+                                               sizeof(float);
 static_assert(GROUPED_STATE_TOTAL_BYTES <= UB_REGION_BYTES, "grouped state must fit the unused no-mask UB region");
+static_assert(opforge::ascend_c::resource_ledger::protocol::ValidateUbResidentState(
+    D16_PAIR_QUERY_COUNT, FAI_RING_STAGE_COUNT, GROUPED_STATE_CHUNK_ELEMENTS, sizeof(float), UB_REGION_BYTES));
+// D16 narrow-score bridge: the staged fp16 row tile lives in the free 16 KiB region
+// between the rescale `go` owner and the softmax TV owner. It carries no new UB
+// capacity - the authored live set still ends at UB_SIZE - and the staged owner is
+// released by its own V->MTE2 slot so the next iteration's copy cannot overwrite a
+// tile the vector upcast is still reading.
+constexpr uint32_t NARROW_SCORE_STAGE_UB_OFFSET = 9 * UB_REGION_BYTES;
+constexpr uint32_t NARROW_SCORE_BLOCK_ELEMENTS = DATA_BLOCK_BYTES / sizeof(half);
+constexpr uint32_t NARROW_SCORE_STAGE_EVENT =
+    opforge::ascend_c::resource_ledger::kNarrowScoreStageVMte2Slot;
+static_assert(opforge::ascend_c::resource_ledger::NarrowScoreStageSlotIsIsolated(NARROW_SCORE_STAGE_EVENT),
+              "the D16 narrow-score stage edge must own a dedicated V_MTE2 slot");
 constexpr uint32_t BF16_CONVERT_CHUNK_ELEMENTS = 4096;
 constexpr uint32_t BF16_CONVERT_VECTOR_ELEMENTS = 2048;
 constexpr uint32_t QK_STAGE_TILE_ELEMENTS = BF16_CONVERT_CHUNK_ELEMENTS;
 constexpr uint32_t BF16_CONVERT_SOURCE_UB_OFFSET = 11 * UB_REGION_BYTES;
-constexpr uint32_t BF16_CONVERT_DESTINATION_UB_OFFSET =
-    BF16_CONVERT_SOURCE_UB_OFFSET + BF16_CONVERT_CHUNK_ELEMENTS * sizeof(bfloat16_t);
+constexpr uint32_t BF16_CONVERT_DESTINATION_UB_OFFSET = BF16_CONVERT_SOURCE_UB_OFFSET +
+                                                        BF16_CONVERT_CHUNK_ELEMENTS * sizeof(bfloat16_t);
 // StageKv drains this bridge before online softmax reuses CATLASS TV scratch.
 constexpr uint32_t BF16_CONVERT_FLOAT_UB_OFFSET = 10 * UB_REGION_BYTES;
 constexpr uint32_t SOFTMAX_CENTER_UB_OFFSET = 6 * UB_REGION_BYTES;
 constexpr uint32_t SOFTMAX_RUNTIME_SCALE_BLOCK_UB_OFFSET = SOFTMAX_CENTER_UB_OFFSET;
-constexpr uint32_t SOFTMAX_RUNTIME_SCALE_VECTOR_UB_OFFSET =
-    SOFTMAX_RUNTIME_SCALE_BLOCK_UB_OFFSET + FLOAT_BLOCK_ELEMENTS * sizeof(float);
+constexpr uint32_t SOFTMAX_RUNTIME_SCALE_VECTOR_UB_OFFSET = SOFTMAX_RUNTIME_SCALE_BLOCK_UB_OFFSET +
+                                                            FLOAT_BLOCK_ELEMENTS * sizeof(float);
 constexpr uint32_t SOFTMAX_TV_UB_OFFSET = 10 * UB_REGION_BYTES;
 constexpr uint32_t SOFTMAX_GM_UB_OFFSET = 10 * UB_REGION_BYTES + 10 * UB_SUBREGION_BYTES;
 constexpr uint32_t SOFTMAX_LL_UB_OFFSET = 10 * UB_REGION_BYTES + 11 * UB_SUBREGION_BYTES;
 constexpr uint32_t SOFTMAX_GL_UB_OFFSET = 10 * UB_REGION_BYTES + 12 * UB_SUBREGION_BYTES;
+// The D32 packed route's online softmax and rescale epilogue only claim the
+// sub-regions 10*UB_REGION_BYTES + {0,8,9,10,11,12,13}*UB_SUBREGION_BYTES, so
+// +5*UB_SUBREGION_BYTES is an unused 512-byte parking slot for the continuous
+// stream's running row sum.
+constexpr uint32_t STREAM_PARK_UB_OFFSET = 10 * UB_REGION_BYTES + 5 * UB_SUBREGION_BYTES;
+// Per-stream-position task row-sum snapshots for the continuous stream. The snapshot
+// must be indexed by the stream position, not by the ring slot: a task whose last
+// stack lands exactly FAI_PRELAUNCH_DEPTH positions after the previous task's last
+// stack would otherwise save its own row sum over the slot the delayed swap is about
+// to read. STREAM_SNAPSHOT_COUNT is therefore larger than FAI_PRELAUNCH_DEPTH so the
+// save and the swap at the same stream position never touch the same slot. The
+// snapshot is UB-resident: the D32 leaf's online softmax and rescale epilogue claim
+// only 10*UB_REGION_BYTES + {0,8,9,10,11,12,13}*UB_SUBREGION_BYTES, so the +5..+7
+// sub-region block is unused and holds the park slot plus the snapshot array.
+constexpr uint32_t STREAM_SNAPSHOT_UB_OFFSET = STREAM_PARK_UB_OFFSET + UB_SUBREGION_BYTES;
+constexpr uint32_t STREAM_SNAPSHOT_ROW_ELEMENTS = FAI_QUERY_ROWS / FAI_AIV_SUBBLOCK_COUNT;
+constexpr uint32_t STREAM_SNAPSHOT_COUNT = 8;
+
+// The UB->UB row-sum handoff must use a V-annotated primitive. The installed
+// `DataCopy(const LocalTensor<T>&, const LocalTensor<T>&, const DataCopyParams&)`
+// overload carries no caller-side `__inout_pipe__` annotation, so the compiler's
+// pipe model cannot order it against `PipeBarrier<PIPE_V>`; `AscendC::Copy` is
+// `__inout_pipe__(V)` and lowers to `vcopy`.
+//
+// `Copy`'s single-`uint64_t` overload is the *count* form: the header documents
+// it as `@param [in] mask[]/mask mask array/count`, and
+// `AscendCUtils::SetMask<T>(int32_t len)` builds the hardware mask from that
+// element count. Passing a bitmask (e.g. `~0ULL`) here is wrong: `len` becomes
+// -1 and the generated mask is garbage.
+//
+// `CopyRepeatParams` is `(dstStride, srcStride, dstRepeatSize, srcRepeatSize)`.
+// The authoritative contiguous-copy defaults are the CANN C-API ones
+// (`asc/impl/c_api/instr_impl/npu_arch_2201/utils_impl/utils_impl.h`:
+// `ASC_C_API_DEFAULT_BLOCK_STRIDE = 1`, `ASC_C_API_DEFAULT_REPEAT_STRIDE = 8`),
+// and the CATLASS reference uses the same pair
+// (`catlass/epilogue/tile/tile_broadcast_inplace_by_row.hpp`). `dstStride` is
+// the intra-repeat block stride, so `0` collapses every block onto one address
+// and corrupts the copy; the repeat size is the repeat span in datablocks
+// (`BLK_NUM_PER_VECTOR_FRACTAL = 8`).
+
+// OPFORGE_DEVICE_INLINE_LAYOUT_FORMULA: resource-ledger constexpr helpers are
+// host-only, so the repeat span is re-expressed as a device-inline formula.
+__aicore__ inline uint32_t StreamHandoffCopyRepeatSize(uint32_t rowCount)
+{
+    return rowCount / FLOAT_BLOCK_ELEMENTS;
+}
+
+constexpr uint16_t kStreamHandoffBlockStride =
+    opforge::ascend_c::resource_ledger::UbCopyContiguousBlockStride();
+
+static_assert(opforge::ascend_c::resource_ledger::ValidateUbHandoffCopyContract(
+                  opforge::ascend_c::resource_ledger::kStreamHandoffCopy),
+              "the D32 stream row-sum handoff must use a V-annotated copy under PipeBarrier<PIPE_V>");
+
+constexpr opforge::ascend_c::resource_ledger::UbOverwriteContract kAccumUbVectorToMte2Reuse = {
+    opforge::ascend_c::resource_ledger::UbAccessRole::VectorReader,
+    opforge::ascend_c::resource_ledger::UbAccessRole::Mte2Writer,
+    opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2, opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2,
+    true};
+constexpr opforge::ascend_c::resource_ledger::UbOverwriteContract kPartialUbVectorToMte2Reuse = {
+    opforge::ascend_c::resource_ledger::UbAccessRole::VectorReader,
+    opforge::ascend_c::resource_ledger::UbAccessRole::Mte2Writer,
+    opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2, opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2,
+    true};
+constexpr opforge::ascend_c::resource_ledger::UbOverwriteContract kSrcUbVectorToMte2Reuse = {
+    opforge::ascend_c::resource_ledger::UbAccessRole::VectorReader,
+    opforge::ascend_c::resource_ledger::UbAccessRole::Mte2Writer,
+    opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2, opforge::ascend_c::resource_ledger::UbReuseEvent::V_MTE2,
+    true};
 constexpr float PROBABILITY_RESIDUAL_SCALE = 4096.0f;
 constexpr float PROBABILITY_RESIDUAL_ADD_BACK = 0.5f / PROBABILITY_RESIDUAL_SCALE;
+constexpr opforge::ascend_c::resource_ledger::protocol::DualProbabilityNumericContract kD72ResidualContract = {
+    true, true, true, true, true, true, true, PROBABILITY_RESIDUAL_SCALE, PROBABILITY_RESIDUAL_ADD_BACK};
+static_assert(
+    opforge::ascend_c::resource_ledger::protocol::ValidateDualProbabilityNumericContract(kD72ResidualContract),
+    "D72 compact residual probability must close its FP32-to-main/residual-to-PV-to-addback chain");
+constexpr opforge::ascend_c::resource_ledger::L0cReuseContract kD72MainResidualL0cContract = {
+    opforge::ascend_c::resource_ledger::L0cCompletionProtocol::UnitFlag,
+    opforge::ascend_c::resource_ledger::L0cCompletionProtocol::UnitFlag, true, true, true};
+static_assert(opforge::ascend_c::resource_ledger::ValidateL0cReuseContract(kD72MainResidualL0cContract),
+              "D72 main and residual PV must share one unit-flag L0C completion protocol");
 constexpr uint32_t SUM_V_TILE_ROWS = 32;
 constexpr uint32_t SUM_V_ACCUMULATOR_COUNT = 4;
 constexpr uint32_t DYNAMIC_CENTER_COLUMN_TILE = 64;
@@ -172,18 +290,18 @@ __aicore__ inline uint32_t StaCeilDiv(uint32_t a, uint32_t b) { return (a + b - 
 
 __aicore__ inline uint32_t StaAlignUp(uint32_t a, uint32_t b) { return StaCeilDiv(a, b) * b; }
 
-__aicore__ inline void LoadSlidingTileAttentionTilingData(GM_ADDR tiling, SlidingTileAttentionTilingData &out)
+__aicore__ inline void LoadSlidingTileAttentionTilingData(GM_ADDR tiling, SlidingTileAttentionTilingData& out)
 {
-    auto *dst64 = reinterpret_cast<uint64_t *>(&out);
-    const __gm__ auto *src64 = reinterpret_cast<const __gm__ uint64_t *>(tiling);
-    constexpr int64_t TILING_WORD_COUNT =
-        static_cast<int64_t>(sizeof(SlidingTileAttentionTilingData) / sizeof(uint64_t));
+    auto* dst64 = reinterpret_cast<uint64_t*>(&out);
+    const __gm__ auto* src64 = reinterpret_cast<const __gm__ uint64_t*>(tiling);
+    constexpr int64_t TILING_WORD_COUNT = static_cast<int64_t>(sizeof(SlidingTileAttentionTilingData) /
+                                                               sizeof(uint64_t));
     for (int64_t i = 0; i < TILING_WORD_COUNT; ++i) {
         dst64[i] = src64[i];
     }
     constexpr int64_t TILING_BYTE_START = TILING_WORD_COUNT * static_cast<int64_t>(sizeof(uint64_t));
-    auto *dst8 = reinterpret_cast<uint8_t *>(&out);
-    const __gm__ auto *src8 = reinterpret_cast<const __gm__ uint8_t *>(tiling);
+    auto* dst8 = reinterpret_cast<uint8_t*>(&out);
+    const __gm__ auto* src8 = reinterpret_cast<const __gm__ uint8_t*>(tiling);
     for (int64_t i = TILING_BYTE_START; i < static_cast<int64_t>(sizeof(SlidingTileAttentionTilingData)); ++i) {
         dst8[i] = src8[i];
     }
@@ -200,6 +318,7 @@ struct StaFaiWorkspace {
     GM_ADDR softmax_max = nullptr;
     GM_ADDR softmax_sum = nullptr;
     GM_ADDR softmax_dm = nullptr;
+    GM_ADDR block_table = nullptr;
     GM_ADDR q_stage = nullptr;
     GM_ADDR k_stage = nullptr;
     GM_ADDR v_stage = nullptr;
@@ -211,10 +330,11 @@ struct StaFaiWorkspace {
 template <typename T>
 __aicore__ inline StaFaiWorkspace MakeFaiWorkspace(GM_ADDR workspace, int64_t stagedElems, int64_t blocks,
                                                    int64_t blockElems, int64_t dim, bool withQkStaging,
-                                                   bool withVStaging, bool withDualProbability)
+                                                   bool withVStaging, bool withDualProbability,
+                                                   int64_t groupedQueryChunks)
 {
     StaFaiWorkspace out;
-    __gm__ uint8_t *base = (__gm__ uint8_t *)workspace;
+    __gm__ uint8_t* base = (__gm__ uint8_t*)workspace;
     int64_t offset = 0;
     int64_t qkDim = ((dim + VECTOR_BLOCK_ELEMENTS - 1) / VECTOR_BLOCK_ELEMENTS) * VECTOR_BLOCK_ELEMENTS;
     int64_t qkSliceCount = (qkDim + FAI_QK_SLICE_DIM - 1) / FAI_QK_SLICE_DIM;
@@ -239,13 +359,15 @@ __aicore__ inline StaFaiWorkspace MakeFaiWorkspace(GM_ADDR workspace, int64_t st
     offset += stagedElems * static_cast<int64_t>(sizeof(float));
     if (needsGroupedSoftmaxState) {
         out.softmax_max = base + offset;
-        offset += blocks * QUERY_CHUNKS_PER_TILE * FAI_QUERY_ROWS * static_cast<int64_t>(sizeof(float));
+        offset += blocks * groupedQueryChunks * FAI_QUERY_ROWS * static_cast<int64_t>(sizeof(float));
         out.softmax_sum = base + offset;
-        offset += blocks * QUERY_CHUNKS_PER_TILE * FAI_QUERY_ROWS * static_cast<int64_t>(sizeof(float));
+        offset += blocks * groupedQueryChunks * FAI_QUERY_ROWS * static_cast<int64_t>(sizeof(float));
         out.softmax_dm = base + offset;
-        offset += blocks * QUERY_CHUNKS_PER_TILE * FAI_RING_STAGE_COUNT * FAI_QUERY_ROWS *
+        offset += blocks * groupedQueryChunks * FAI_RING_STAGE_COUNT * FAI_QUERY_ROWS *
                   static_cast<int64_t>(sizeof(float));
     }
+    out.block_table = base + offset;
+    offset += blocks * FAI_RING_STAGE_COUNT * FAI_STACK_BLOCK_COUNT * static_cast<int64_t>(sizeof(int32_t));
     if (withQkStaging) {
         out.q_stage = base + offset;
         int64_t queryStageSlots = dim == 8 ? QUERY_CHUNKS_PER_TILE : 1;
@@ -263,7 +385,8 @@ __aicore__ inline StaFaiWorkspace MakeFaiWorkspace(GM_ADDR workspace, int64_t st
     return out;
 }
 
-template <typename InputT, typename OutputT, bool LeanD64 = false>
+template <typename InputT, typename OutputT, bool PACKED_D128 = false, bool PACKED_D256 = false,
+          bool PACKED_D72_FULL = false, bool PACKED_D3SLICE = false, bool PACKED_D256_TEXT = false>
 class SlidingTileAttentionFaiTextOp {
 public:
     using ArchTag = Arch::AtlasA2;
@@ -292,9 +415,11 @@ public:
     using L1TileShape = GemmShape<FAI_QUERY_ROWS, FAI_KV_BASE_ROWS, FAI_KV_BASE_ROWS>;
     using L0TileShape = L1TileShape;
     using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQK<false, true>;
+    using DispatchPolicyQKPaged = Gemm::MmadAtlasA2FAIQK<true, true>;
     using DispatchPolicyQKGrouped = Gemm::MmadAtlasA2FAIQK<false, true>;
     using DispatchPolicyQKSliced = Gemm::MmadAtlasA2FAIQK<false, false>;
     using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<false, true>;
+    using DispatchPolicyPVPaged = Gemm::MmadAtlasA2FAIPV<true, true>;
     using DispatchPolicyPVDynamicSingleBlock = Gemm::MmadAtlasA2FAIPV<false, true>;
     using DispatchPolicyPVDynamicMultiBlock = Gemm::MmadAtlasA2FAIPV<false, false>;
     using QType = Gemm::GemmType<ElementQ, LayoutQ>;
@@ -308,39 +433,109 @@ public:
     using MaskType = Gemm::GemmType<ElementMask, LayoutMask>;
     using UpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
     using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShape, L0TileShape, QType, KType, SType>;
-    using BlockMmadQKCompact =
-        Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShape, L0TileShape, QType, KType, CompactSType>;
+    using BlockMmadQKPaged = Gemm::Block::BlockMmad<DispatchPolicyQKPaged, L1TileShape, L0TileShape, QType, KType,
+                                                    SType>;
+    using BlockMmadQKCompact = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShape, L0TileShape, QType, KType,
+                                                      CompactSType>;
     using BlockMmadQKGrouped = SlidingTileAttentionCatlass::BlockMmadFaiQkGrouped<DispatchPolicyQKGrouped, L1TileShape,
                                                                                   L0TileShape, QType, KType, SType>;
-    using BlockMmadQKSlicedAccum =
-        SlidingTileAttentionCatlass::BlockMmadFaiQkSlicedAccum<DispatchPolicyQKSliced, L1TileShape, L0TileShape, QType,
-                                                               KType, SType>;
-    using BlockMmadPVNormal =
-        Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShape, L0TileShape, PType, VType, OTmpType>;
-    using BlockMmadPVDynamicSingleBlock =
-        SlidingTileAttentionCatlass::BlockMmadFaiPvDynamic<DispatchPolicyPVDynamicSingleBlock, L1TileShape, L0TileShape,
-                                                           PType, VType, OTmpType>;
-    using BlockMmadPVDynamicMultiBlock =
-        SlidingTileAttentionCatlass::BlockMmadFaiPvDynamic<DispatchPolicyPVDynamicMultiBlock, L1TileShape, L0TileShape,
-                                                           PType, VType, OTmpType>;
-    using BlockMmadPVGroupedD72 =
-        SlidingTileAttentionCatlass::BlockMmadFaiPvGroupedD72<DispatchPolicyPVDynamicSingleBlock, L1TileShape,
-                                                              L0TileShape, PType, VType, OTmpType>;
-    using EpilogueOnlineSoftmax =
-        Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2OnlineSoftmax, PType, SType, MaskType>;
-    using EpilogueRescaleO =
-        Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2RescaleO, OType, OTmpType, UpdateType>;
+    using BlockMmadQKPackedSingle = SlidingTileAttentionCatlass::BlockMmadFaiQkGrouped<
+        DispatchPolicyQKGrouped, L1TileShape, L0TileShape, QType, KType, SType, 1, 4>;
+    using BlockMmadQKGroupedPairD16 = SlidingTileAttentionCatlass::BlockMmadFaiQkGrouped<
+        DispatchPolicyQKGrouped, L1TileShape, L0TileShape, QType, KType, SType, 6, 2>;
+    // Sibling QK block that publishes the D16 score tile as fp16 through the public
+    // fixpipe cast mode. Only the D16 no-text pair route selects it; the element
+    // geometry of the tile is unchanged, so the half tile occupies half the bytes.
+    using STypeHalf = Gemm::GemmType<half, LayoutS>;
+    using BlockMmadQKGroupedPairD16Half = SlidingTileAttentionCatlass::BlockMmadFaiQkGrouped<
+        DispatchPolicyQKGrouped, L1TileShape, L0TileShape, QType, KType, STypeHalf, 6, 2>;
+    using BlockMmadQKSlicedAccum = SlidingTileAttentionCatlass::BlockMmadFaiQkSlicedAccum<
+        DispatchPolicyQKSliced, L1TileShape, L0TileShape, QType, KType, SType>;
+    using BlockMmadPVNormal = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShape, L0TileShape, PType, VType,
+                                                     OTmpType>;
+    using BlockMmadPVPaged = Gemm::Block::BlockMmad<DispatchPolicyPVPaged, L1TileShape, L0TileShape, PType, VType,
+                                                    OTmpType>;
+    using BlockMmadPVDynamicSingleBlock = SlidingTileAttentionCatlass::BlockMmadFaiPvDynamic<
+        DispatchPolicyPVDynamicSingleBlock, L1TileShape, L0TileShape, PType, VType, OTmpType>;
+    using BlockMmadPVDynamicMultiBlock = SlidingTileAttentionCatlass::BlockMmadFaiPvDynamic<
+        DispatchPolicyPVDynamicMultiBlock, L1TileShape, L0TileShape, PType, VType, OTmpType>;
+    using BlockMmadPVGroupedD72 = SlidingTileAttentionCatlass::BlockMmadFaiPvGroupedD72<
+        DispatchPolicyPVDynamicSingleBlock, L1TileShape, L0TileShape, PType, VType, OTmpType>;
+    using BlockMmadPVPackedSingleD32 = SlidingTileAttentionCatlass::BlockMmadFaiPvGroupedD72<
+        DispatchPolicyPVDynamicSingleBlock, L1TileShape, L0TileShape, PType, VType, OTmpType, 1, 32>;
+    using BlockMmadPVGroupedPairD16 = SlidingTileAttentionCatlass::BlockMmadFaiPvGroupedD72<
+        DispatchPolicyPVDynamicSingleBlock, L1TileShape, L0TileShape, PType, VType, OTmpType, 6, 16>;
+    using EpilogueOnlineSoftmax = Epilogue::Block::SlidingTileAttentionOnlineSoftmaxEpilogue<PType, SType, MaskType>;
+    using EpilogueRescaleO = Epilogue::Block::SlidingTileAttentionRescaleOEpilogue<OType, OTmpType, UpdateType>;
+    static_assert(opforge::ascend_c::resource_ledger::protocol::ValidateD16NarrowScoreStage(
+                      NARROW_SCORE_STAGE_UB_OFFSET,
+                      opforge::ascend_c::resource_ledger::protocol::kD16NarrowScoreStageBytes,
+                      RESCALE_GO_UB_OFFSET + RESCALE_TILE_ELEMENTS * sizeof(float), SOFTMAX_TV_UB_OFFSET,
+                      Arch::AtlasA2::UB_SIZE, EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM,
+                      opforge::ascend_c::resource_ledger::protocol::kD16NarrowScoreStageElems),
+                  "the D16 narrow-score stage must fit the free UB owner between the rescale go and softmax TV owners");
     static constexpr bool NEEDS_INPUT_STAGING = !std::is_same_v<ElementInput, half>;
     static constexpr bool USE_DUAL_PROBABILITY = false;
 
-    static_assert(!LeanD64 || (std::is_same_v<ElementInput, bfloat16_t> && std::is_same_v<ElementO, bfloat16_t>),
-                  "The lean D64 implementation is owned by the matched BF16 path");
-
+    static_assert(opforge::ascend_c::resource_ledger::ValidateD32RowReduction384(
+                      opforge::ascend_c::resource_ledger::kD32RowReduction384),
+                  "the D32 384-column row-reduction tree must fit the existing score and reduction UB owners");
+    static_assert(!std::is_same_v<ElementInput, bfloat16_t> ||
+                      opforge::ascend_c::resource_ledger::ValidateBf16D32RowReduction384Dtype(
+                          {sizeof(ElementInput), sizeof(ElementS), sizeof(float), sizeof(ElementP), sizeof(ElementO),
+                           true}),
+                  "the BF16 D32 specialization must preserve FP32 score/state and FP16 probability ownership");
+    static_assert(!std::is_same_v<ElementInput, half> ||
+                      opforge::ascend_c::resource_ledger::ValidateD32TextRowReduction384(
+                          {sizeof(ElementInput), sizeof(ElementS), sizeof(float), sizeof(ElementP), TILE_ELEMENTS,
+                           TILE_ELEMENTS, true, true}),
+                  "the FP16 D32 text specialization must retain exact-column selection and generic tail fallback");
+    static_assert(!std::is_same_v<ElementInput, bfloat16_t> ||
+                      opforge::ascend_c::resource_ledger::ValidateBf16D16RowReduction384(
+                          {16U, TILE_ELEMENTS, TILE_ELEMENTS, 64U, 8U, 16U, 8192U, 1024U, 1024U, true, true}),
+                  "the BF16 D16 row-reduction specialization must retain its text-pair guard and scratch contract");
+    static_assert(opforge::ascend_c::resource_ledger::ValidateBf16D32SingleQueryPackedWindow(
+                      {BlockMmadQKPackedSingle::QUERY_COUNT, FAI_QUERY_ROWS, 32U, TILE_ELEMENTS, 3U, 1152U,
+                       BlockMmadQKPackedSingle::BLOCK_ROWS, BlockMmadQKPackedSingle::MAX_STACK_BLOCKS,
+                       FAI_RING_STAGE_COUNT, FAI_PRELAUNCH_DEPTH, sizeof(ElementS), sizeof(ElementP),
+                       sizeof(ElementOTmp), true, true, true, true}),
+                  "the BF16 D32 packed path must retain its single-query offset and ring contract");
+    static_assert(opforge::ascend_c::resource_ledger::ValidateD32PackedStreamSlot(
+                      opforge::ascend_c::resource_ledger::kD32PackedStreamSlot),
+                  "the D32 packed route must keep a ring deeper than its publication delay and retain "
+                  "per-task first/last stack ownership when the slot index is streamed across tasks");
     static_assert((std::is_same_v<ElementInput, half> && std::is_same_v<ElementO, half>) ||
                       (std::is_same_v<ElementInput, bfloat16_t> && std::is_same_v<ElementO, bfloat16_t>),
                   "STA FAI supports matched fp16 or bf16 public input/output types");
 
     CATLASS_DEVICE SlidingTileAttentionFaiTextOp() {}
+
+    CATLASS_DEVICE bool UsesD32RowReduction384() const
+    {
+        if (meta.dim != 32 || meta.tile_numel != TILE_ELEMENTS) {
+            return false;
+        }
+        if (meta.has_text == 0) {
+            return meta.text_len == 0;
+        }
+        return std::is_same_v<ElementInput, half>;
+    }
+
+    CATLASS_DEVICE bool UsesRowReduction384() const
+    {
+        if (UsesD32RowReduction384()) {
+            return true;
+        }
+        if constexpr (!std::is_same_v<ElementInput, bfloat16_t> || !std::is_same_v<ElementO, bfloat16_t>) {
+            return false;
+        }
+        const int64_t textCapacity = meta.seq - meta.image_seq;
+        return meta.dim == 16 && meta.tile_numel == TILE_ELEMENTS && meta.has_text != 0 && meta.pair_axis >= 0 &&
+               meta.text_len > FAI_QUERY_ROWS && meta.text_len <= textCapacity &&
+               textCapacity >= 2 * static_cast<int64_t>(FAI_QUERY_ROWS) &&
+               textCapacity <= 4 * static_cast<int64_t>(FAI_QUERY_ROWS) &&
+               textCapacity % static_cast<int64_t>(FAI_QUERY_ROWS) == 0;
+    }
 
     CATLASS_DEVICE void Init(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, uint32_t softmaxScaleBitsIn,
                              SlidingTileAttentionMeta metaIn, int64_t totalJobsIn, float softmaxScaleIn,
@@ -350,41 +545,43 @@ public:
         totalJobs = totalJobsIn;
         softmaxScale = softmaxScaleIn;
         workspace = workspaceIn;
-        qInputGm.SetGlobalBuffer((__gm__ ElementInput *)q);
-        kInputGm.SetGlobalBuffer((__gm__ ElementInput *)k);
-        vInputGm.SetGlobalBuffer((__gm__ ElementInput *)v);
+        qInputGm.SetGlobalBuffer((__gm__ ElementInput*)q);
+        kInputGm.SetGlobalBuffer((__gm__ ElementInput*)k);
+        vInputGm.SetGlobalBuffer((__gm__ ElementInput*)v);
         if (NeedsQkStaging()) {
-            qGm.SetGlobalBuffer((__gm__ ElementQ *)workspace.q_stage);
-            kGm.SetGlobalBuffer((__gm__ ElementK *)workspace.k_stage);
+            qGm.SetGlobalBuffer((__gm__ ElementQ*)workspace.q_stage);
+            kGm.SetGlobalBuffer((__gm__ ElementK*)(UsesOwnedStridedKLoader() ? k : workspace.k_stage));
         } else {
-            qGm.SetGlobalBuffer((__gm__ ElementQ *)q);
-            kGm.SetGlobalBuffer((__gm__ ElementK *)k);
+            qGm.SetGlobalBuffer((__gm__ ElementQ*)q);
+            kGm.SetGlobalBuffer((__gm__ ElementK*)k);
         }
         if constexpr (NEEDS_INPUT_STAGING) {
-            vGm.SetGlobalBuffer((__gm__ ElementV *)workspace.v_stage);
+            vGm.SetGlobalBuffer((__gm__ ElementV*)workspace.v_stage);
         } else {
-            vGm.SetGlobalBuffer((__gm__ ElementV *)v);
+            vGm.SetGlobalBuffer((__gm__ ElementV*)v);
         }
-        outGm.SetGlobalBuffer((__gm__ ElementO *)out);
-        dummyBlockTable.SetGlobalBuffer((__gm__ int32_t *)workspace.o_update);
-        sGm.SetGlobalBuffer((__gm__ ElementS *)workspace.s);
-        compactSGm.SetGlobalBuffer((__gm__ ElementCompactS *)workspace.s);
-        pGm.SetGlobalBuffer((__gm__ ElementP *)workspace.p);
-        oTmpGm.SetGlobalBuffer((__gm__ ElementOTmp *)workspace.o_temp);
+        outGm.SetGlobalBuffer((__gm__ ElementO*)out);
+        dummyBlockTable.SetGlobalBuffer((__gm__ int32_t*)workspace.o_update);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)workspace.block_table);
+        sGm.SetGlobalBuffer((__gm__ ElementS*)workspace.s);
+        compactSGm.SetGlobalBuffer((__gm__ ElementCompactS*)workspace.s);
+        sGmHalf.SetGlobalBuffer((__gm__ half*)workspace.s);
+        pGm.SetGlobalBuffer((__gm__ ElementP*)workspace.p);
+        oTmpGm.SetGlobalBuffer((__gm__ ElementOTmp*)workspace.o_temp);
         if (UsesResidualProbability()) {
-            pLoGm.SetGlobalBuffer((__gm__ ElementP *)workspace.p_lo);
-            oTmpLoGm.SetGlobalBuffer((__gm__ ElementOTmp *)workspace.o_temp_lo);
+            pLoGm.SetGlobalBuffer((__gm__ ElementP*)workspace.p_lo);
+            oTmpLoGm.SetGlobalBuffer((__gm__ ElementOTmp*)workspace.o_temp_lo);
         }
-        oUpdateGm.SetGlobalBuffer((__gm__ ElementUpdate *)workspace.o_update);
-        softmaxMaxGm.SetGlobalBuffer((__gm__ float *)workspace.softmax_max);
-        softmaxSumGm.SetGlobalBuffer((__gm__ float *)workspace.softmax_sum);
-        softmaxDmGm.SetGlobalBuffer((__gm__ float *)workspace.softmax_dm);
+        oUpdateGm.SetGlobalBuffer((__gm__ ElementUpdate*)workspace.o_update);
+        softmaxMaxGm.SetGlobalBuffer((__gm__ float*)workspace.softmax_max);
+        softmaxSumGm.SetGlobalBuffer((__gm__ float*)workspace.softmax_sum);
+        softmaxDmGm.SetGlobalBuffer((__gm__ float*)workspace.softmax_dm);
         softmaxScaleBits = softmaxScaleBitsIn;
         if constexpr (USE_DUAL_PROBABILITY) {
-            correctionGm.SetGlobalBuffer((__gm__ float *)workspace.correction);
+            correctionGm.SetGlobalBuffer((__gm__ float*)workspace.correction);
         }
         if (UsesResidualProbability()) {
-            correctionGm.SetGlobalBuffer((__gm__ float *)workspace.correction);
+            correctionGm.SetGlobalBuffer((__gm__ float*)workspace.correction);
         }
     }
 
@@ -404,78 +601,268 @@ public:
         if constexpr (NEEDS_INPUT_STAGING) {
             AscendC::SyncAll<false>();
         }
-        if constexpr (LeanD64) {
-            static constexpr uint32_t L1_QK_BYTES =
-                BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K * sizeof(ElementQ) +
-                BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K * sizeof(ElementK) * 2;
-            BlockMmadQK blockMmadQK(resource);
-            BlockMmadQKSlicedAccum blockMmadQKSlicedAccum(resource);
-            BlockMmadPVNormal blockMmadPVNormal(resource, L1_QK_BYTES);
-            BlockMmadPVDynamicSingleBlock blockMmadPVDynamicSingleBlock(resource, L1_QK_BYTES);
-            BlockMmadPVDynamicMultiBlock blockMmadPVDynamicMultiBlock(resource, L1_QK_BYTES);
+        if constexpr (!(PACKED_D256 || PACKED_D3SLICE)) {
+            if (NeedsQkStaging() && meta.dim > FAI_QK_SLICE_DIM) {
+                Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qStageFree);
+                if (NeedsKvQkStaging()) {
+                    Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(kvStageFree);
+                }
+            }
+        }
+        static constexpr uint32_t L1_QK_GROUPED_BYTES = QUERY_CHUNKS_PER_TILE * BlockMmadQKGrouped::L1_A_BYTES +
+                                                        2 * BlockMmadQKGrouped::L1_B_BYTES;
+        static constexpr uint32_t L1_QK_D128_EARLY_PUBLISH_BYTES = QUERY_CHUNKS_PER_TILE *
+                                                                       BlockMmadQKGrouped::L1_A_BYTES +
+                                                                   BlockMmadQKGrouped::MAX_STACK_BLOCKS *
+                                                                       BlockMmadQKGrouped::L1_B_BYTES;
+        static constexpr uint32_t L1_PV_PACKED_D128_BYTES = BlockMmadPVGroupedD72::L1_A_BYTES +
+                                                            BlockMmadPVGroupedD72::MAX_STACK_BLOCKS *
+                                                                BlockMmadPVGroupedD72::L1_B_BLOCK_BYTES;
+        static_assert(L1_QK_D128_EARLY_PUBLISH_BYTES + L1_PV_PACKED_D128_BYTES <= ArchTag::L1_SIZE,
+                      "packed D128 grouped QK plus sequential PV exceeds L1 capacity");
+        static constexpr uint32_t L1_QK_PACKED_SINGLE_BYTES =
+            BlockMmadQKPackedSingle::QUERY_COUNT * BlockMmadQKPackedSingle::L1_A_BYTES +
+            BlockMmadQKPackedSingle::RESIDENT_K_STAGES * BlockMmadQKPackedSingle::L1_B_BYTES;
+        static constexpr uint32_t L1_PV_PACKED_SINGLE_D32_BYTES =
+            BlockMmadPVPackedSingleD32::L1_A_BYTES +
+            BlockMmadPVPackedSingleD32::MAX_STACK_BLOCKS * BlockMmadPVPackedSingleD32::L1_B_BLOCK_BYTES;
+        static_assert(L1_QK_PACKED_SINGLE_BYTES + L1_PV_PACKED_SINGLE_D32_BYTES <= ArchTag::L1_SIZE,
+                      "single-query packed D32 QK/PV owners exceed L1 capacity");
+        static constexpr uint32_t L1_PV_DYNAMIC_BYTES = BlockMmadPVDynamicMultiBlock::L1A_SIZE *
+                                                            BlockMmadPVDynamicMultiBlock::STAGES *
+                                                            BlockMmadPVDynamicMultiBlock::STAGES +
+                                                        BlockMmadPVDynamicMultiBlock::L1B_SIZE *
+                                                            BlockMmadPVDynamicMultiBlock::STAGES;
+        static_assert(L1_QK_D128_EARLY_PUBLISH_BYTES + L1_PV_DYNAMIC_BYTES <= ArchTag::L1_SIZE,
+                      "D128 query-major QK plus dynamic PV exceeds L1 capacity");
+        static constexpr uint32_t L1_QK_NORMAL_BYTES = BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K *
+                                                           sizeof(ElementQ) +
+                                                       BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K *
+                                                           sizeof(ElementK) * 2;
+        static_assert(2 * BlockMmadQKSlicedAccum::L1_A_SIZE + BlockMmadQKSlicedAccum::L1_B_SIZE <= L1_QK_NORMAL_BYTES,
+                      "cached D256 Q slices plus one K slice exceed the existing QK L1 owner");
+        static constexpr uint32_t L1_QK_D3SLICE_BYTES = 3 * BlockMmadQKSlicedAccum::L1_A_SIZE +
+                                                        BlockMmadQKSlicedAccum::L1_B_SIZE;
+        static_assert(L1_QK_D3SLICE_BYTES + L1_PV_DYNAMIC_BYTES <= ArchTag::L1_SIZE,
+                      "three-slice packed QK plus dynamic PV exceeds L1 capacity");
+        const uint32_t l1QkBytes = PACKED_D3SLICE ?
+                                       L1_QK_D3SLICE_BYTES :
+                                   (PACKED_D72_FULL || UsesD128GroupedEarlyPublishPath()) ?
+                                       L1_QK_D128_EARLY_PUBLISH_BYTES :
+                                       ((UsesGroupedQkPath() || UsesCompactFullWindowPath()) ? L1_QK_GROUPED_BYTES :
+                                                                                               L1_QK_NORMAL_BYTES);
+        if (UsesD32SingleQueryPackedWindow()) {
+            BlockMmadQKPackedSingle blockMmadQK(resource);
+            BlockMmadPVPackedSingleD32 blockMmadPV(resource, L1_QK_PACKED_SINGLE_BYTES);
+            uint32_t coreIdx = AscendC::GetBlockIdx();
+            uint32_t coreNum = AscendC::GetBlockNum();
+            ProcessAicSingleQueryPackedD32Stream(blockMmadQK, blockMmadPV, coreIdx, coreNum);
+            WaitAicEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D72_FULL) {
+            BlockMmadQKGrouped blockMmadQKGrouped(resource);
+            BlockMmadPVNormal blockMmadPVNormal(resource, l1QkBytes);
+            BlockMmadPVDynamicSingleBlock blockMmadPVDynamicSingleBlock(resource, l1QkBytes);
+            BlockMmadPVDynamicMultiBlock blockMmadPVDynamicMultiBlock(resource, l1QkBytes);
+            BlockMmadPVGroupedD72 blockMmadPVGroupedD72(resource, l1QkBytes);
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
             for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
-                ProcessAicTask(taskIdx, blockMmadQK, sGm, false, blockMmadQKSlicedAccum, blockMmadPVNormal,
-                               blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                ProcessAicGroupedTask(taskIdx, blockMmadQKGrouped, blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
+                                      blockMmadPVDynamicMultiBlock, blockMmadPVGroupedD72);
             }
             WaitAicEvents();
+            AscendC::SyncAll<false>();
             return;
         }
-        if (NeedsQkStaging() && meta.dim > FAI_QK_SLICE_DIM) {
-            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qStageFree);
-            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(kvStageFree);
-        }
-        static constexpr uint32_t L1_QK_GROUPED_BYTES =
-            QUERY_CHUNKS_PER_TILE * BlockMmadQKGrouped::L1_A_BYTES + 2 * BlockMmadQKGrouped::L1_B_BYTES;
-        static constexpr uint32_t L1_QK_NORMAL_BYTES =
-            BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K * sizeof(ElementQ) +
-            BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K * sizeof(ElementK) * 2;
-        const uint32_t l1QkBytes =
-            (UsesGroupedQkPath() || UsesCompactFullWindowPath()) ? L1_QK_GROUPED_BYTES : L1_QK_NORMAL_BYTES;
         if (UsesCompactFullWindowPath()) {
             BlockMmadQKCompact blockMmadQKCompact(resource);
+            BlockMmadQKPaged blockMmadQKPaged(resource);
             BlockMmadQKSlicedAccum blockMmadQKSlicedAccum(resource);
             BlockMmadPVNormal blockMmadPVNormal(resource, l1QkBytes);
+            BlockMmadPVPaged blockMmadPVPaged(resource, l1QkBytes);
             BlockMmadPVDynamicSingleBlock blockMmadPVDynamicSingleBlock(resource, l1QkBytes);
             BlockMmadPVDynamicMultiBlock blockMmadPVDynamicMultiBlock(resource, l1QkBytes);
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
             for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
                 for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
-                    ProcessAicTask(GroupedChunkTaskIndex(taskIdx, chunk), blockMmadQKCompact, compactSGm, true,
-                                   blockMmadQKSlicedAccum, blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
-                                   blockMmadPVDynamicMultiBlock);
+                    ProcessAicTask(GroupedChunkTaskIndex(taskIdx, chunk), blockMmadQKCompact, blockMmadQKPaged,
+                                   compactSGm, true, blockMmadQKSlicedAccum, blockMmadPVNormal, blockMmadPVPaged,
+                                   blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
                 }
             }
             WaitAicEvents();
+            // Compact and sliced paths share mixed AIC/AIV resources. Close the
+            // block-wide ownership boundary before handing them to a later launch.
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if (meta.pair_axis >= 0 && UsesGroupedD16QkPath()) {
+            static_assert(BlockMmadQKGroupedPairD16::QUERY_COUNT ==
+                          opforge::ascend_c::resource_ledger::protocol::kD16PairQueryCount);
+            static constexpr uint32_t L1_QK_PAIR_D16_BYTES = BlockMmadQKGroupedPairD16::QUERY_COUNT *
+                                                                 BlockMmadQKGroupedPairD16::L1_A_BYTES +
+                                                             BlockMmadQKGroupedPairD16::RESIDENT_K_STAGES *
+                                                                 BlockMmadQKGroupedPairD16::L1_B_BYTES;
+            static constexpr uint32_t L1_PV_PAIR_D16_BYTES = BlockMmadPVGroupedPairD16::L1_A_BYTES +
+                                                             BlockMmadPVGroupedPairD16::MAX_STACK_BLOCKS *
+                                                                 BlockMmadPVGroupedPairD16::L1_B_BLOCK_BYTES;
+            static_assert(L1_QK_PAIR_D16_BYTES + L1_PV_PAIR_D16_BYTES <= ArchTag::L1_SIZE,
+                          "D16 pair QK/PV owners exceed L1 capacity");
+            BlockMmadQKGroupedPairD16 blockMmadQKPair(resource);
+            BlockMmadQKGroupedPairD16Half blockMmadQKPairHalf(resource);
+            BlockMmadPVGroupedPairD16 blockMmadPVPair(resource, L1_QK_PAIR_D16_BYTES);
+            uint32_t coreIdx = AscendC::GetBlockIdx();
+            uint32_t coreNum = AscendC::GetBlockNum();
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (IsGroupedImageJob(taskIdx)) {
+                    if (meta.dim == 16 && meta.has_text == 0) {
+                        ProcessAicGroupedPairD16Task(taskIdx, blockMmadQKPairHalf, blockMmadPVPair, sGmHalf,
+                                                     sizeof(ElementS) / sizeof(half));
+                    } else {
+                        ProcessAicGroupedPairD16Task(taskIdx, blockMmadQKPair, blockMmadPVPair, sGm,
+                                                     sizeof(ElementS) / sizeof(ElementS));
+                    }
+                }
+            }
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIC phase=image_done\n");
+            }
+#endif
+            AscendC::SyncAll<false>();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIC phase=sync1_done\n");
+            }
+#endif
+            BlockMmadQK blockMmadQK(resource);
+            BlockMmadQKPaged blockMmadQKPaged(resource);
+            BlockMmadQKSlicedAccum blockMmadQKSlicedAccum(resource);
+            BlockMmadPVNormal blockMmadPVNormal(resource, L1_QK_NORMAL_BYTES);
+            BlockMmadPVPaged blockMmadPVPaged(resource, L1_QK_NORMAL_BYTES);
+            BlockMmadPVDynamicSingleBlock blockMmadPVDynamicSingleBlock(resource, L1_QK_NORMAL_BYTES);
+            BlockMmadPVDynamicMultiBlock blockMmadPVDynamicMultiBlock(resource, L1_QK_NORMAL_BYTES);
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (!IsGroupedImageJob(taskIdx)) {
+                    if (UsesGroupedTextD16Path()) {
+                        if (IsFirstGroupedTextJob(taskIdx)) {
+                            ProcessAicGroupedTextD16Task(taskIdx, blockMmadQKPair, blockMmadPVPair);
+                        }
+                    } else {
+                        ProcessAicTask(MixedTextTaskIndex(taskIdx), blockMmadQK, blockMmadQKPaged, sGm, false,
+                                       blockMmadQKSlicedAccum, blockMmadPVNormal, blockMmadPVPaged,
+                                       blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                    }
+                }
+            }
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIC phase=text_done\n");
+            }
+#endif
+            WaitAicEvents();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIC phase=events_done\n");
+            }
+#endif
+            AscendC::SyncAll<false>();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIC phase=sync2_done\n");
+            }
+#endif
             return;
         }
         BlockMmadQK blockMmadQK(resource);
+        BlockMmadQKPaged blockMmadQKPaged(resource);
         BlockMmadQKGrouped blockMmadQKGrouped(resource);
         BlockMmadQKSlicedAccum blockMmadQKSlicedAccum(resource);
         BlockMmadPVNormal blockMmadPVNormal(resource, l1QkBytes);
+        BlockMmadPVPaged blockMmadPVPaged(resource, l1QkBytes);
         BlockMmadPVDynamicSingleBlock blockMmadPVDynamicSingleBlock(resource, l1QkBytes);
         BlockMmadPVDynamicMultiBlock blockMmadPVDynamicMultiBlock(resource, l1QkBytes);
         BlockMmadPVGroupedD72 blockMmadPVGroupedD72(resource, l1QkBytes);
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
+        if constexpr (PACKED_D128) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                ProcessAicPackedD128Task(taskIdx, blockMmadQKGrouped, blockMmadPVGroupedD72);
+            }
+            WaitAicEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D256) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                    ProcessAicPackedD256Task(GroupedChunkTaskIndex(taskIdx, chunk), blockMmadQKSlicedAccum,
+                                             blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
+                                             blockMmadPVDynamicMultiBlock);
+                }
+            }
+            WaitAicEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D3SLICE) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                    ProcessAicPackedD3SliceTask(GroupedChunkTaskIndex(taskIdx, chunk), blockMmadQKSlicedAccum,
+                                                blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
+                                                blockMmadPVDynamicMultiBlock);
+                }
+            }
+            WaitAicEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D256_TEXT) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (IsGroupedImageJob(taskIdx)) {
+                    for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                        ProcessAicPackedD256Task<true>(GroupedChunkTaskIndex(taskIdx, chunk), blockMmadQKSlicedAccum,
+                                                       blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
+                                                       blockMmadPVDynamicMultiBlock);
+                    }
+                } else {
+                    ProcessAicTask(MixedTextTaskIndex(taskIdx), blockMmadQK, blockMmadQKPaged, sGm, false,
+                                   blockMmadQKSlicedAccum, blockMmadPVNormal, blockMmadPVPaged,
+                                   blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                    AscendC::CrossCoreWaitFlag(DYNAMIC_TASK_DONE_FLAG_ID);
+                }
+            }
+            WaitAicEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
         for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
             if (UsesGroupedQkPath()) {
-                ProcessAicGroupedTask(taskIdx, blockMmadQKGrouped, blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
-                                      blockMmadPVDynamicMultiBlock, blockMmadPVGroupedD72);
+                if (IsGroupedImageJob(taskIdx)) {
+                    ProcessAicGroupedTask(taskIdx, blockMmadQKGrouped, blockMmadPVNormal, blockMmadPVDynamicSingleBlock,
+                                          blockMmadPVDynamicMultiBlock, blockMmadPVGroupedD72);
+                } else {
+                    ProcessAicTask(MixedTextTaskIndex(taskIdx), blockMmadQK, blockMmadQKPaged, sGm, false,
+                                   blockMmadQKSlicedAccum, blockMmadPVNormal, blockMmadPVPaged,
+                                   blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                }
                 continue;
             }
             uint32_t chunkCount = UsesGroupedTileJobs() ? QUERY_CHUNKS_PER_TILE : 1;
             for (uint32_t chunk = 0; chunk < chunkCount; ++chunk) {
                 uint32_t chunkTaskIdx = UsesGroupedTileJobs() ? GroupedChunkTaskIndex(taskIdx, chunk) : taskIdx;
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
-                const bool debugFirstD256Task =
-                    meta.dim > FAI_QK_SLICE_DIM && chunkTaskIdx < coreNum * QUERY_CHUNKS_PER_TILE;
+                const bool debugFirstD256Task = meta.dim > FAI_QK_SLICE_DIM &&
+                                                chunkTaskIdx < coreNum * QUERY_CHUNKS_PER_TILE;
 #endif
-                ProcessAicTask(chunkTaskIdx, blockMmadQK, sGm, false, blockMmadQKSlicedAccum, blockMmadPVNormal,
-                               blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                ProcessAicTask(chunkTaskIdx, blockMmadQK, blockMmadQKPaged, sGm, false, blockMmadQKSlicedAccum,
+                               blockMmadPVNormal, blockMmadPVPaged, blockMmadPVDynamicSingleBlock,
+                               blockMmadPVDynamicMultiBlock);
                 if (meta.dim > FAI_QK_SLICE_DIM) {
                     AscendC::CrossCoreWaitFlag(DYNAMIC_TASK_DONE_FLAG_ID);
                 }
@@ -488,6 +875,7 @@ public:
             }
         }
         WaitAicEvents();
+        AscendC::SyncAll<false>();
     }
 
     template <>
@@ -495,19 +883,17 @@ public:
     {
         const float activeSoftmaxScale = meta.dim == 64 ? D64_SOFTMAX_SCALE : softmaxScale;
         InitAivEvents();
-        if constexpr (LeanD64) {
+        if constexpr (PACKED_D72_FULL) {
             EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, activeSoftmaxScale);
             EpilogueRescaleO epilogueRescaleO(resource);
             uint32_t subBlockNum = AscendC::GetSubBlockNum();
             uint32_t coreIdx = AscendC::GetBlockIdx() / subBlockNum;
             uint32_t coreNum = AscendC::GetBlockNum();
-            StageAllV();
-            AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::SyncAll<false>();
             for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
-                ProcessAivTask(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
+                ProcessAivGroupedTask(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
             }
             WaitAivEvents();
+            AscendC::SyncAll<false>();
             return;
         }
         if (UsesCompactFullWindowPath()) {
@@ -523,6 +909,9 @@ public:
                 }
             }
             WaitAivEvents();
+            // Compact path must match the non-compact epilogue and drain all local
+            // producers before the next launch can reuse L0/L1 resources.
+            AscendC::SyncAll<false>();
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
             if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
                 AscendC::printf("STA_LIFECYCLE AIV_DONE dim=%u jobs=%u\\n", static_cast<uint32_t>(meta.dim),
@@ -531,20 +920,137 @@ public:
 #endif
             return;
         }
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, activeSoftmaxScale);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, activeSoftmaxScale, UsesRowReduction384());
         EpilogueRescaleO epilogueRescaleO(resource);
 
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
         uint32_t coreIdx = AscendC::GetBlockIdx() / subBlockNum;
         uint32_t coreNum = AscendC::GetBlockNum();
+        if (meta.pair_axis >= 0 && UsesGroupedD16QkPath()) {
+            if constexpr (NEEDS_INPUT_STAGING) {
+                // BF16 pair jobs consume the same immutable staged-V tensor as the
+                // generic path. Publish it before entering the pair event lifecycle
+                // so this collective matches the AIC entrance collective.
+                StageAllV();
+                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::SyncAll<false>();
+            }
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (IsGroupedImageJob(taskIdx)) {
+                    if (meta.dim == 16 && meta.has_text == 0) {
+                        ProcessAivGroupedPairD16Task(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO, sGmHalf,
+                                                     sizeof(ElementS) / sizeof(half));
+                    } else {
+                        ProcessAivGroupedPairD16Task(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO, compactSGm,
+                                                     sizeof(ElementS) / sizeof(ElementS));
+                    }
+                }
+            }
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIV phase=image_done\n");
+            }
+#endif
+            AscendC::SyncAll<false>();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIV phase=sync1_done\n");
+            }
+#endif
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (!IsGroupedImageJob(taskIdx)) {
+                    if (UsesGroupedTextD16Path()) {
+                        if (IsFirstGroupedTextJob(taskIdx)) {
+                            ProcessAivGroupedTextD16Task(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
+                        }
+                    } else {
+                        ProcessAivTask(MixedTextTaskIndex(taskIdx), epilogueOnlineSoftmax, epilogueRescaleO);
+                    }
+                }
+            }
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIV phase=text_done\n");
+            }
+#endif
+            WaitAivEvents();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIV phase=events_done\n");
+            }
+#endif
+            AscendC::SyncAll<false>();
+#if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
+            if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+                AscendC::printf("STA_PAIR_STAGE engine=AIV phase=sync2_done\n");
+            }
+#endif
+            return;
+        }
+        if constexpr (PACKED_D128) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                ProcessAivPackedD128Task(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
+            }
+            WaitAivEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D256) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                    ProcessAivPackedD256Task(GroupedChunkTaskIndex(taskIdx, chunk), epilogueOnlineSoftmax,
+                                             epilogueRescaleO);
+                }
+            }
+            WaitAivEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D3SLICE) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                    ProcessAivPackedD3SliceTask(GroupedChunkTaskIndex(taskIdx, chunk), epilogueOnlineSoftmax,
+                                                epilogueRescaleO);
+                }
+            }
+            WaitAivEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
+        if constexpr (PACKED_D256_TEXT) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+                if (IsGroupedImageJob(taskIdx)) {
+                    for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                        ProcessAivPackedD256Task<true>(GroupedChunkTaskIndex(taskIdx, chunk), epilogueOnlineSoftmax,
+                                                       epilogueRescaleO);
+                    }
+                } else {
+                    ProcessAivTask(MixedTextTaskIndex(taskIdx), epilogueOnlineSoftmax, epilogueRescaleO);
+                    AscendC::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(DYNAMIC_TASK_DONE_FLAG_ID);
+                }
+            }
+            WaitAivEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
         if constexpr (NEEDS_INPUT_STAGING) {
             StageAllV();
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::SyncAll<false>();
         }
+        if (UsesD32SingleQueryPackedWindow()) {
+            ProcessAivSingleQueryPackedD32Stream(epilogueOnlineSoftmax, epilogueRescaleO, coreIdx, coreNum);
+            WaitAivEvents();
+            AscendC::SyncAll<false>();
+            return;
+        }
         for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
             if (UsesGroupedQkPath()) {
-                ProcessAivGroupedTask(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
+                if (IsGroupedImageJob(taskIdx)) {
+                    ProcessAivGroupedTask(taskIdx, epilogueOnlineSoftmax, epilogueRescaleO);
+                } else {
+                    ProcessAivTask(MixedTextTaskIndex(taskIdx), epilogueOnlineSoftmax, epilogueRescaleO);
+                }
                 continue;
             }
             uint32_t chunkCount = UsesGroupedTileJobs() ? QUERY_CHUNKS_PER_TILE : 1;
@@ -557,6 +1063,7 @@ public:
             }
         }
         WaitAivEvents();
+        AscendC::SyncAll<false>();
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
             AscendC::printf("STA_LIFECYCLE AIV_DONE dim=%u jobs=%u\\n", static_cast<uint32_t>(meta.dim),
@@ -566,13 +1073,39 @@ public:
     }
 
 private:
+    CATLASS_DEVICE bool UsesD32SingleQueryPackedWindow() const
+    {
+        if constexpr ((!std::is_same_v<ElementInput, half> && !std::is_same_v<ElementInput, bfloat16_t>) ||
+                      (!std::is_same_v<ElementO, half> && !std::is_same_v<ElementO, bfloat16_t>)) {
+            return false;
+        }
+        return meta.has_text == 0 && meta.text_len == 0 && meta.tile_numel == TILE_ELEMENTS && meta.dim == 32;
+    }
+
     CATLASS_DEVICE bool UsesGroupedQkPath() const
     {
+        if constexpr (PACKED_D72_FULL) {
+            return true;
+        }
+        if (UsesGroupedD16QkPath()) {
+            return true;
+        }
         if constexpr (!std::is_same_v<ElementInput, half> || !std::is_same_v<ElementO, half>) {
             return false;
         }
         return UsesGroupedD8QkPath() || (meta.has_text == 0 && meta.tile_numel == TILE_ELEMENTS && meta.dim > 64 &&
                                          meta.dim <= FAI_QK_SLICE_DIM && !UsesCompactFullWindowPath());
+    }
+
+    CATLASS_DEVICE bool UsesGroupedD16QkPath() const { return meta.tile_numel == TILE_ELEMENTS && meta.dim == 16; }
+
+    CATLASS_DEVICE bool UsesD128GroupedEarlyPublishPath() const
+    {
+        if constexpr (!std::is_same_v<ElementInput, half> || !std::is_same_v<ElementO, half>) {
+            return false;
+        }
+        return meta.has_text == 0 && meta.tile_numel == TILE_ELEMENTS && meta.dim == 128 &&
+               !UsesCompactFullWindowPath();
     }
 
     CATLASS_DEVICE bool UsesGroupedD8QkPath() const
@@ -583,14 +1116,39 @@ private:
         return meta.has_text == 0 && meta.tile_numel == TILE_ELEMENTS && meta.dim == 8;
     }
 
+    CATLASS_DEVICE bool UsesGroupedD16PvPath() const
+    {
+        return meta.tile_numel == TILE_ELEMENTS && meta.dim == 16 && !UsesCompactFullWindowPath();
+    }
+
     CATLASS_DEVICE bool UsesGroupedD72PvPath() const
     {
-        // The grouped D72 PV path is not correct for all legal per-head windows.
-        // Route D72 through the existing dynamic PV implementation instead.
+        if constexpr (PACKED_D72_FULL) {
+            return true;
+        }
+        // Other D72 windows retain the independently validated dynamic-PV path.
         return false;
     }
 
-    CATLASS_DEVICE bool UsesPackedD72ImageStacks() const { return UsesGroupedD72PvPath(); }
+    CATLASS_DEVICE bool UsesPackedD72ImageStacks() const
+    {
+        // D16 image segments contain an integral number of 128-row blocks, so
+        // adjacent segments may share a four-block stack without changing the
+        // lexicographic attention order or introducing padded rows.
+        return UsesGroupedD72PvPath() || UsesGroupedD16PvPath();
+    }
+
+    CATLASS_DEVICE bool UsesPackedD128N1ImageStacks() const
+    {
+        if constexpr (!PACKED_D128) {
+            return false;
+        }
+        if constexpr (!std::is_same_v<ElementInput, half> || !std::is_same_v<ElementO, half>) {
+            return false;
+        }
+        return meta.batch > 0 && meta.heads == 1 && meta.has_text == 0 && meta.text_len == 0 &&
+               meta.tile_numel == TILE_ELEMENTS && meta.dim == 128;
+    }
 
     CATLASS_DEVICE bool UsesCompactFullWindowPath() const
     {
@@ -611,14 +1169,124 @@ private:
         return true;
     }
 
-    CATLASS_DEVICE bool UsesGroupedTileJobs() const { return UsesGroupedQkPath() || UsesCompactFullWindowPath(); }
+    CATLASS_DEVICE bool UsesGroupedTileJobs() const
+    {
+        if constexpr (PACKED_D256_TEXT) {
+            return true;
+        }
+        if (UsesGroupedD16QkPath()) {
+            return true;
+        }
+        // Host tiling uses grouped jobs for every FP16 no-text tile family.
+        // Other BF16 paths retain one task per 128-row query chunk.
+        if constexpr (!std::is_same_v<ElementInput, half> || !std::is_same_v<ElementO, half>) {
+            return false;
+        }
+        return meta.tile_numel == TILE_ELEMENTS && meta.has_text == 0;
+    }
 
     CATLASS_DEVICE uint32_t GroupedChunkTaskIndex(uint32_t groupedTaskIdx, uint32_t chunk) const
     {
         uint32_t tilesPerHead = static_cast<uint32_t>(meta.grid_t * meta.grid_h * meta.grid_w);
-        uint32_t tile = groupedTaskIdx % tilesPerHead;
-        uint32_t batchHead = groupedTaskIdx / tilesPerHead;
-        return batchHead * tilesPerHead * QUERY_CHUNKS_PER_TILE + tile * QUERY_CHUNKS_PER_TILE + chunk;
+        uint32_t jobsPerHead = GroupedJobsPerHead();
+        uint32_t localJob = groupedTaskIdx % jobsPerHead;
+        uint32_t batchHead = groupedTaskIdx / jobsPerHead;
+        uint32_t genericChunksPerHead = tilesPerHead * QUERY_CHUNKS_PER_TILE + TextChunksPerHead();
+        if (meta.pair_axis < 0 || localJob >= PairImageJobsPerHead()) {
+            if (UsesGroupedTextD16Path()) {
+                uint32_t textGroup = localJob - PairImageJobsPerHead();
+                return batchHead * genericChunksPerHead + tilesPerHead * QUERY_CHUNKS_PER_TILE +
+                       textGroup * D16_PAIR_QUERY_COUNT + chunk;
+            }
+            return batchHead * genericChunksPerHead + localJob * QUERY_CHUNKS_PER_TILE + chunk;
+        }
+        uint32_t tile = PairTileId(localJob, chunk / QUERY_CHUNKS_PER_TILE);
+        return batchHead * genericChunksPerHead + tile * QUERY_CHUNKS_PER_TILE + chunk % QUERY_CHUNKS_PER_TILE;
+    }
+
+    CATLASS_DEVICE uint32_t TextChunksPerHead() const
+    {
+        return meta.has_text != 0 ? StaCeilDiv(static_cast<uint32_t>(meta.seq - meta.image_seq), FAI_QUERY_ROWS) : 0;
+    }
+
+    CATLASS_DEVICE bool UsesGroupedTextD16Path() const
+    {
+        // Correctness-clean but rejected: eval_20260829_231103 regressed active time.
+        return false;
+    }
+
+    CATLASS_DEVICE uint32_t TextJobsPerHead() const { return UsesGroupedTextD16Path() ? 1U : TextChunksPerHead(); }
+
+    CATLASS_DEVICE uint32_t GroupedJobsPerHead() const { return PairImageJobsPerHead() + TextJobsPerHead(); }
+
+    CATLASS_DEVICE uint32_t PairImageJobsPerHead() const
+    {
+        uint32_t tiles = static_cast<uint32_t>(meta.grid_t * meta.grid_h * meta.grid_w);
+        if (meta.pair_axis < 0) {
+            return tiles;
+        }
+        uint32_t axisExtent = meta.pair_axis == 0 ? static_cast<uint32_t>(meta.grid_t) :
+                                                    (meta.pair_axis == 1 ? static_cast<uint32_t>(meta.grid_h) :
+                                                                           static_cast<uint32_t>(meta.grid_w));
+        return tiles / axisExtent * static_cast<uint32_t>(meta.pair_group_count);
+    }
+
+    CATLASS_DEVICE uint32_t PairTileId(uint32_t localJob, uint32_t member) const
+    {
+        uint32_t groupCount = static_cast<uint32_t>(meta.pair_group_count);
+        uint32_t group = localJob % groupCount;
+        uint32_t outer = localJob / groupCount;
+        uint32_t axisCoord = static_cast<uint32_t>(meta.pair_group_start[group]) + member;
+        uint32_t t = 0;
+        uint32_t h = 0;
+        uint32_t w = 0;
+        if (meta.pair_axis == 2) {
+            h = outer % static_cast<uint32_t>(meta.grid_h);
+            t = outer / static_cast<uint32_t>(meta.grid_h);
+            w = axisCoord;
+        } else if (meta.pair_axis == 1) {
+            w = outer % static_cast<uint32_t>(meta.grid_w);
+            t = outer / static_cast<uint32_t>(meta.grid_w);
+            h = axisCoord;
+        } else {
+            w = outer % static_cast<uint32_t>(meta.grid_w);
+            h = outer / static_cast<uint32_t>(meta.grid_w);
+            t = axisCoord;
+        }
+        return (t * static_cast<uint32_t>(meta.grid_h) + h) * static_cast<uint32_t>(meta.grid_w) + w;
+    }
+
+    CATLASS_DEVICE uint32_t GroupedQueryCount(uint32_t groupedTaskIdx) const
+    {
+        uint32_t localJob = groupedTaskIdx % GroupedJobsPerHead();
+        if (meta.pair_axis < 0 || localJob >= PairImageJobsPerHead()) {
+            return QUERY_CHUNKS_PER_TILE;
+        }
+        uint32_t group = localJob % static_cast<uint32_t>(meta.pair_group_count);
+        return static_cast<uint32_t>(meta.pair_group_span[group]) * QUERY_CHUNKS_PER_TILE;
+    }
+
+    CATLASS_DEVICE bool IsGroupedImageJob(uint32_t groupedTaskIdx) const
+    {
+        uint32_t localJob = groupedTaskIdx % GroupedJobsPerHead();
+        return localJob < PairImageJobsPerHead();
+    }
+
+    CATLASS_DEVICE bool IsFirstGroupedTextJob(uint32_t groupedTaskIdx) const
+    {
+        uint32_t localJob = groupedTaskIdx % GroupedJobsPerHead();
+        return UsesGroupedTextD16Path() && localJob == PairImageJobsPerHead();
+    }
+
+    CATLASS_DEVICE uint32_t MixedTextTaskIndex(uint32_t groupedTaskIdx) const
+    {
+        uint32_t tilesPerHead = static_cast<uint32_t>(meta.grid_t * meta.grid_h * meta.grid_w);
+        uint32_t jobsPerHead = GroupedJobsPerHead();
+        uint32_t localJob = groupedTaskIdx % jobsPerHead;
+        uint32_t batchHead = groupedTaskIdx / jobsPerHead;
+        uint32_t genericChunksPerHead = tilesPerHead * QUERY_CHUNKS_PER_TILE + TextChunksPerHead();
+        uint32_t textChunk = localJob - PairImageJobsPerHead();
+        return batchHead * genericChunksPerHead + tilesPerHead * QUERY_CHUNKS_PER_TILE + textChunk;
     }
 
     struct TaskInfo {
@@ -658,7 +1326,21 @@ private:
         uint32_t stackSeqTile = 0;
         uint32_t stackSeqCount = 0;
         uint64_t packedBlockOffsets[FAI_STACK_BLOCK_COUNT] = {};
+        uint32_t packedBlockIds[FAI_STACK_BLOCK_COUNT] = {};
         uint32_t packedBlockCount = 0;
+        bool usesPagedTable = false;
+    };
+
+    // One scalar bookkeeping entry per five-slot D32 packed ring stage. The streaming
+    // D32 route keeps the ring live across 128-row query-chunk tasks, so each stage
+    // also remembers the owning task's row count, local stack index, stack total, and
+    // output base. The owned payload (score/P/OTmp slot contents) and its event
+    // protocol are unchanged.
+    struct PackedD32RingEntry {
+        StackInfo stack;
+        uint32_t qRows = 0;
+        uint32_t stackTotal = 0;
+        uint64_t outOffset = 0;
     };
 
     CATLASS_DEVICE TaskInfo DecodeTask(uint32_t taskIdx) const
@@ -681,8 +1363,9 @@ private:
         uint32_t chunksPerTile = StaCeilDiv(static_cast<uint32_t>(meta.tile_numel), FAI_QUERY_ROWS);
         uint32_t numTiles = static_cast<uint32_t>(meta.grid_t * meta.grid_h * meta.grid_w);
         uint32_t imageChunksPerHead = numTiles * chunksPerTile;
-        uint32_t textChunksPerHead =
-            meta.has_text != 0 ? StaCeilDiv(static_cast<uint32_t>(meta.text_len), FAI_QUERY_ROWS) : 0;
+        uint32_t textChunksPerHead = meta.has_text != 0 ?
+                                         StaCeilDiv(static_cast<uint32_t>(meta.seq - meta.image_seq), FAI_QUERY_ROWS) :
+                                         0;
         info.qBlocks = imageChunksPerHead + textChunksPerHead;
         uint32_t localChunk = taskIdx % info.qBlocks;
         uint32_t tmp = taskIdx / info.qBlocks;
@@ -700,7 +1383,7 @@ private:
             uint32_t textChunk = localChunk - imageChunksPerHead;
             uint32_t textOffset = textChunk * FAI_QUERY_ROWS;
             info.qStart = static_cast<uint32_t>(meta.image_seq) + textOffset;
-            info.qRows = StaMin(FAI_QUERY_ROWS, static_cast<uint32_t>(meta.text_len) - textOffset);
+            info.qRows = StaMin(FAI_QUERY_ROWS, static_cast<uint32_t>(meta.seq - meta.image_seq) - textOffset);
             info.isText = 1;
         }
         return info;
@@ -740,7 +1423,7 @@ private:
         return coord > maxCenter ? maxCenter : coord;
     }
 
-    CATLASS_DEVICE WindowRange GetWindowRange(const TaskInfo &info) const
+    CATLASS_DEVICE WindowRange GetWindowRange(const TaskInfo& info) const
     {
         WindowRange range;
         uint32_t gridT = static_cast<uint32_t>(meta.grid_t);
@@ -798,7 +1481,7 @@ private:
         return start > maxStart ? maxStart : start;
     }
 
-    CATLASS_DEVICE uint32_t SegmentCount(const TaskInfo &info) const
+    CATLASS_DEVICE uint32_t SegmentCount(const TaskInfo& info) const
     {
         WindowRange range;
         if (info.isText == 0) {
@@ -807,7 +1490,7 @@ private:
         return SegmentCountFromRange(info, range);
     }
 
-    CATLASS_DEVICE SegmentInfo GetSegment(const TaskInfo &info, uint32_t segmentIdx) const
+    CATLASS_DEVICE SegmentInfo GetSegment(const TaskInfo& info, uint32_t segmentIdx) const
     {
         WindowRange range;
         if (info.isText == 0) {
@@ -816,7 +1499,7 @@ private:
         return GetSegmentFromRange(info, range, segmentIdx);
     }
 
-    CATLASS_DEVICE uint32_t SegmentCountFromRange(const TaskInfo &info, const WindowRange &range) const
+    CATLASS_DEVICE uint32_t SegmentCountFromRange(const TaskInfo& info, const WindowRange& range) const
     {
         if (info.isText != 0) {
             return 1;
@@ -828,13 +1511,13 @@ private:
         return count;
     }
 
-    CATLASS_DEVICE SegmentInfo GetSegmentFromRange(const TaskInfo &info, const WindowRange &range,
+    CATLASS_DEVICE SegmentInfo GetSegmentFromRange(const TaskInfo& info, const WindowRange& range,
                                                    uint32_t segmentIdx) const
     {
         SegmentInfo seg;
         if (info.isText != 0) {
             seg.start = 0;
-            seg.len = static_cast<uint32_t>(meta.seq);
+            seg.len = static_cast<uint32_t>(meta.image_seq + meta.text_len);
             return seg;
         }
 
@@ -875,7 +1558,7 @@ private:
         return value / span;
     }
 
-    CATLASS_DEVICE uint32_t TotalStackSeqNum(const TaskInfo &info) const
+    CATLASS_DEVICE uint32_t TotalStackSeqNum(const TaskInfo& info) const
     {
         WindowRange range;
         if (info.isText == 0) {
@@ -884,14 +1567,21 @@ private:
         return TotalStackSeqNumFromRange(info, range);
     }
 
-    CATLASS_DEVICE uint32_t TotalStackSeqNumFromRange(const TaskInfo &info, const WindowRange &range) const
+    CATLASS_DEVICE uint32_t TotalStackSeqNumFromRange(const TaskInfo& info, const WindowRange& range) const
     {
         uint32_t stackTile = FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS;
         if (info.isText != 0) {
-            return StaCeilDiv(static_cast<uint32_t>(meta.seq), stackTile);
+            return StaCeilDiv(static_cast<uint32_t>(meta.image_seq + meta.text_len), stackTile);
+        }
+        if (UsesPagedD64ImageStacks()) {
+            uint32_t imageStacks = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+            uint32_t textStacks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), stackTile);
+            return imageStacks + textStacks;
         }
         if (UsesPackedD72ImageStacks()) {
-            return StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+            uint32_t imageStacks = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+            uint32_t textStacks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), stackTile);
+            return imageStacks + textStacks;
         }
         uint32_t imageSegments = (range.tEnd - range.tStart) * (range.hEnd - range.hStart);
         uint32_t imageSegLen = (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel);
@@ -902,30 +1592,33 @@ private:
         return total;
     }
 
-    CATLASS_DEVICE uint32_t PackedImageBlockCount(const WindowRange &range) const
+    CATLASS_DEVICE uint32_t PackedImageBlockCount(const WindowRange& range) const
     {
         uint32_t segmentCount = (range.tEnd - range.tStart) * (range.hEnd - range.hStart);
-        uint32_t blocksPerSegment =
-            (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) / FAI_KV_BASE_ROWS;
+        uint32_t blocksPerSegment = (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) /
+                                    FAI_KV_BASE_ROWS;
         return segmentCount * blocksPerSegment;
     }
 
-    CATLASS_DEVICE StackInfo MakePackedImageStack(const TaskInfo &info, const WindowRange &range,
-                                                  uint32_t stackSeqCount, uint64_t headBase, uint32_t embed) const
+    CATLASS_DEVICE StackInfo MakePackedImageStack(const TaskInfo& info, const WindowRange& range,
+                                                  uint32_t stackSeqCount, uint64_t headBase, uint32_t embed,
+                                                  uint32_t blocksPerSegment, uint32_t totalBlocks) const
     {
         StackInfo stack;
-        uint32_t blocksPerSegment =
-            (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) / FAI_KV_BASE_ROWS;
-        uint32_t totalBlocks = PackedImageBlockCount(range);
         uint32_t firstBlock = stackSeqCount * FAI_STACK_BLOCK_COUNT;
         stack.packedBlockCount = StaMin(FAI_STACK_BLOCK_COUNT, totalBlocks - firstBlock);
+        uint32_t segmentIdx = firstBlock / blocksPerSegment;
+        uint32_t blockInSegment = firstBlock - segmentIdx * blocksPerSegment;
+        SegmentInfo segment = GetSegmentFromRange(info, range, segmentIdx);
         for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
-            uint32_t packedBlock = firstBlock + block;
-            uint32_t segmentIdx = packedBlock / blocksPerSegment;
-            uint32_t blockInSegment = packedBlock - segmentIdx * blocksPerSegment;
-            SegmentInfo segment = GetSegmentFromRange(info, range, segmentIdx);
-            stack.packedBlockOffsets[block] =
-                headBase + static_cast<uint64_t>(segment.start + blockInSegment * FAI_KV_BASE_ROWS) * embed;
+            uint32_t blockStart = segment.start + blockInSegment * FAI_KV_BASE_ROWS;
+            stack.packedBlockOffsets[block] = headBase + static_cast<uint64_t>(blockStart) * embed;
+            stack.packedBlockIds[block] = blockStart / FAI_KV_BASE_ROWS;
+            ++blockInSegment;
+            if (block + 1 < stack.packedBlockCount && blockInSegment == blocksPerSegment) {
+                blockInSegment = 0;
+                segment = GetSegmentFromRange(info, range, ++segmentIdx);
+            }
         }
         stack.segLen = stack.packedBlockCount * FAI_KV_BASE_ROWS;
         stack.computeSegLen = stack.segLen;
@@ -934,6 +1627,235 @@ private:
         stack.kvIdx = 0;
         stack.computeKvIdx = 0;
         stack.stackSeqTile = stack.segLen;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = headBase;
+        stack.computeKvOffset = headBase;
+        stack.computeVOffset = headBase;
+        stack.usesPagedTable = UsesPagedD64ImageStacks();
+        return stack;
+    }
+
+    CATLASS_DEVICE StackInfo MakePackedImageStack(const TaskInfo& info, const WindowRange& range,
+                                                  uint32_t stackSeqCount, uint64_t headBase, uint32_t embed) const
+    {
+        uint32_t blocksPerSegment = (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) /
+                                    FAI_KV_BASE_ROWS;
+        return MakePackedImageStack(info, range, stackSeqCount, headBase, embed, blocksPerSegment,
+                                    PackedImageBlockCount(range));
+    }
+
+    CATLASS_DEVICE uint32_t FullTextStackCount() const
+    {
+        uint32_t validRows = static_cast<uint32_t>(meta.image_seq + meta.text_len);
+        return StaCeilDiv(validRows, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+    }
+
+    CATLASS_DEVICE StackInfo MakeFullTextStack(uint32_t stackSeqCount, uint64_t headBase, uint32_t embed) const
+    {
+        StackInfo stack;
+        uint32_t firstRow = stackSeqCount * FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS;
+        uint32_t validRows = static_cast<uint32_t>(meta.image_seq + meta.text_len);
+        stack.stackSeqTile = StaMin(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, validRows - firstRow);
+        stack.packedBlockCount = StaCeilDiv(stack.stackSeqTile, FAI_KV_BASE_ROWS);
+        for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
+            stack.packedBlockOffsets[block] = headBase +
+                                              static_cast<uint64_t>(firstRow + block * FAI_KV_BASE_ROWS) * embed;
+            stack.packedBlockIds[block] = (firstRow + block * FAI_KV_BASE_ROWS) / FAI_KV_BASE_ROWS;
+        }
+        stack.segLen = stack.stackSeqTile;
+        stack.computeSegLen = stack.stackSeqTile;
+        stack.kvLoopNoMask = stack.packedBlockCount;
+        stack.computeKvLoopNoMask = stack.packedBlockCount;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = headBase + static_cast<uint64_t>(firstRow) * embed;
+        stack.computeKvOffset = stack.kvOffset;
+        stack.computeVOffset = stack.kvOffset;
+        return stack;
+    }
+
+    CATLASS_DEVICE uint32_t PackedImageTextStackCount(const WindowRange& range) const
+    {
+        uint32_t imageStacks = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        uint32_t textStacks = StaCeilDiv(static_cast<uint32_t>(meta.text_len),
+                                         FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+        return imageStacks + textStacks;
+    }
+
+    CATLASS_DEVICE StackInfo MakePackedImageOrTextStack(const TaskInfo& info, const WindowRange& range,
+                                                        uint32_t stackSeqCount, uint64_t headBase, uint32_t embed) const
+    {
+        uint32_t imageStacks = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        if (stackSeqCount < imageStacks) {
+            return MakePackedImageStack(info, range, stackSeqCount, headBase, embed);
+        }
+        StackInfo stack;
+        uint32_t textStackIdx = stackSeqCount - imageStacks;
+        uint32_t firstTextBlock = textStackIdx * FAI_STACK_BLOCK_COUNT;
+        uint32_t totalTextBlocks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), FAI_KV_BASE_ROWS);
+        stack.packedBlockCount = StaMin(FAI_STACK_BLOCK_COUNT, totalTextBlocks - firstTextBlock);
+        uint32_t firstTextRow = firstTextBlock * FAI_KV_BASE_ROWS;
+        stack.stackSeqTile = StaMin(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS,
+                                    static_cast<uint32_t>(meta.text_len) - firstTextRow);
+        for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
+            uint32_t blockStart = static_cast<uint32_t>(meta.image_seq) + (firstTextBlock + block) * FAI_KV_BASE_ROWS;
+            stack.packedBlockOffsets[block] = headBase + static_cast<uint64_t>(blockStart) * embed;
+            stack.packedBlockIds[block] = blockStart / FAI_KV_BASE_ROWS;
+        }
+        stack.segLen = stack.stackSeqTile;
+        stack.computeSegLen = stack.stackSeqTile;
+        stack.kvLoopNoMask = stack.packedBlockCount;
+        stack.computeKvLoopNoMask = stack.packedBlockCount;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = headBase + static_cast<uint64_t>(meta.image_seq) * embed;
+        stack.computeKvOffset = stack.kvOffset;
+        stack.computeVOffset = stack.kvOffset;
+        return stack;
+    }
+
+    CATLASS_DEVICE uint32_t PackedCombinedImageTextStackCount(const WindowRange& range) const
+    {
+        uint32_t imageBlocks = PackedImageBlockCount(range);
+        uint32_t textBlocks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), FAI_KV_BASE_ROWS);
+        return StaCeilDiv(imageBlocks + textBlocks, FAI_STACK_BLOCK_COUNT);
+    }
+
+    CATLASS_DEVICE StackInfo MakePackedCombinedImageTextStack(const TaskInfo& info, const WindowRange& range,
+                                                              uint32_t stackSeqCount, uint64_t headBase,
+                                                              uint32_t embed) const
+    {
+        uint32_t imageBlocks = PackedImageBlockCount(range);
+        uint32_t totalTextBlocks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), FAI_KV_BASE_ROWS);
+        uint32_t firstBlock = stackSeqCount * FAI_STACK_BLOCK_COUNT;
+        StackInfo stack;
+        uint32_t firstTextBlock = 0;
+        if (firstBlock < imageBlocks) {
+            stack = MakePackedImageStack(info, range, stackSeqCount, headBase, embed);
+            if (stack.packedBlockCount == FAI_STACK_BLOCK_COUNT || totalTextBlocks == 0) {
+                return stack;
+            }
+        } else {
+            firstTextBlock = firstBlock - imageBlocks;
+        }
+
+        uint32_t imageBlockCount = stack.packedBlockCount;
+        uint32_t textBlockCapacity = FAI_STACK_BLOCK_COUNT - imageBlockCount;
+        uint32_t textBlockCount = StaMin(textBlockCapacity, totalTextBlocks - firstTextBlock);
+        uint32_t firstTextRow = firstTextBlock * FAI_KV_BASE_ROWS;
+        uint32_t textRows = StaMin(textBlockCount * FAI_KV_BASE_ROWS,
+                                   static_cast<uint32_t>(meta.text_len) - firstTextRow);
+        for (uint32_t block = 0; block < textBlockCount; ++block) {
+            uint32_t packedBlock = imageBlockCount + block;
+            uint32_t blockStart = static_cast<uint32_t>(meta.image_seq) + (firstTextBlock + block) * FAI_KV_BASE_ROWS;
+            stack.packedBlockOffsets[packedBlock] = headBase + static_cast<uint64_t>(blockStart) * embed;
+            stack.packedBlockIds[packedBlock] = blockStart / FAI_KV_BASE_ROWS;
+        }
+        stack.packedBlockCount = imageBlockCount + textBlockCount;
+        stack.stackSeqTile = imageBlockCount * FAI_KV_BASE_ROWS + textRows;
+        stack.segLen = stack.stackSeqTile;
+        stack.computeSegLen = stack.stackSeqTile;
+        stack.kvLoopNoMask = stack.packedBlockCount;
+        stack.computeKvLoopNoMask = stack.packedBlockCount;
+        stack.kvIdx = 0;
+        stack.computeKvIdx = 0;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = imageBlockCount == 0 ? headBase + static_cast<uint64_t>(meta.image_seq) * embed : headBase;
+        stack.computeKvOffset = stack.kvOffset;
+        stack.computeVOffset = stack.kvOffset;
+        return stack;
+    }
+
+    CATLASS_DEVICE StackInfo MakePackedWindow3D256Stack(const WindowRange& range, uint32_t stackSeqCount,
+                                                        uint64_t headBase) const
+    {
+        constexpr uint32_t BLOCKS_PER_SEGMENT = 9;
+        constexpr uint32_t SEGMENTS_PER_TIME = 3;
+        constexpr uint32_t TOTAL_BLOCKS = 81;
+        constexpr uint32_t EMBED = 256;
+        StackInfo stack;
+        uint32_t firstBlock = stackSeqCount * FAI_STACK_BLOCK_COUNT;
+        stack.packedBlockCount = StaMin(FAI_STACK_BLOCK_COUNT, TOTAL_BLOCKS - firstBlock);
+        for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
+            uint32_t ordinal = firstBlock + block;
+            uint32_t segmentIdx = ordinal / BLOCKS_PER_SEGMENT;
+            uint32_t blockInSegment = ordinal - segmentIdx * BLOCKS_PER_SEGMENT;
+            uint32_t relT = segmentIdx / SEGMENTS_PER_TIME;
+            uint32_t relH = segmentIdx - relT * SEGMENTS_PER_TIME;
+            uint32_t tileId = ((range.tStart + relT) * static_cast<uint32_t>(meta.grid_h) + range.hStart + relH) *
+                                  static_cast<uint32_t>(meta.grid_w) +
+                              range.wStart;
+            uint32_t blockStart = tileId * TILE_ELEMENTS + blockInSegment * FAI_KV_BASE_ROWS;
+            stack.packedBlockOffsets[block] = headBase + static_cast<uint64_t>(blockStart) * EMBED;
+            stack.packedBlockIds[block] = blockStart / FAI_KV_BASE_ROWS;
+        }
+        stack.segLen = stack.packedBlockCount * FAI_KV_BASE_ROWS;
+        stack.computeSegLen = stack.segLen;
+        stack.kvLoopNoMask = stack.packedBlockCount;
+        stack.computeKvLoopNoMask = stack.packedBlockCount;
+        stack.stackSeqTile = stack.segLen;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = headBase;
+        stack.computeKvOffset = headBase;
+        stack.computeVOffset = headBase;
+        return stack;
+    }
+
+    CATLASS_DEVICE StackInfo MakePackedWindow3D3SliceStack(const WindowRange& range, uint32_t stackSeqCount,
+                                                           uint64_t headBase, uint32_t embed) const
+    {
+        constexpr uint32_t BLOCKS_PER_SEGMENT = 9;
+        constexpr uint32_t SEGMENTS_PER_TIME = 3;
+        constexpr uint32_t TOTAL_BLOCKS = 81;
+        StackInfo stack;
+        uint32_t firstBlock = stackSeqCount * FAI_STACK_BLOCK_COUNT;
+        stack.packedBlockCount = StaMin(FAI_STACK_BLOCK_COUNT, TOTAL_BLOCKS - firstBlock);
+        for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
+            uint32_t ordinal = firstBlock + block;
+            uint32_t segmentIdx = ordinal / BLOCKS_PER_SEGMENT;
+            uint32_t blockInSegment = ordinal - segmentIdx * BLOCKS_PER_SEGMENT;
+            uint32_t relT = segmentIdx / SEGMENTS_PER_TIME;
+            uint32_t relH = segmentIdx - relT * SEGMENTS_PER_TIME;
+            uint32_t tileId = ((range.tStart + relT) * static_cast<uint32_t>(meta.grid_h) + range.hStart + relH) *
+                                  static_cast<uint32_t>(meta.grid_w) +
+                              range.wStart;
+            uint32_t blockStart = tileId * TILE_ELEMENTS + blockInSegment * FAI_KV_BASE_ROWS;
+            stack.packedBlockOffsets[block] = headBase + static_cast<uint64_t>(blockStart) * embed;
+            stack.packedBlockIds[block] = blockStart / FAI_KV_BASE_ROWS;
+        }
+        stack.segLen = stack.packedBlockCount * FAI_KV_BASE_ROWS;
+        stack.computeSegLen = stack.segLen;
+        stack.kvLoopNoMask = stack.packedBlockCount;
+        stack.computeKvLoopNoMask = stack.packedBlockCount;
+        stack.stackSeqTile = stack.segLen;
+        stack.stackSeqCount = stackSeqCount;
+        stack.kvOffset = headBase;
+        stack.computeKvOffset = headBase;
+        stack.computeVOffset = headBase;
+        return stack;
+    }
+
+    CATLASS_DEVICE bool UsesPagedD64ImageStacks() const { return meta.dim == 64 && meta.tile_numel == TILE_ELEMENTS; }
+
+    CATLASS_DEVICE uint32_t PagedImageStackCount(const WindowRange& range) const
+    {
+        return StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+    }
+
+    CATLASS_DEVICE StackInfo MakePagedD64TextStack(const TaskInfo& info, const WindowRange& range,
+                                                   uint32_t stackSeqCount, uint64_t headBase, uint32_t embed) const
+    {
+        uint32_t imageStackCount = PagedImageStackCount(range);
+        if (stackSeqCount < imageStackCount) {
+            return MakePackedImageStack(info, range, stackSeqCount, headBase, embed);
+        }
+        StackInfo stack;
+        uint32_t textStack = stackSeqCount - imageStackCount;
+        uint32_t textKvIdx = textStack * FAI_STACK_BLOCK_COUNT;
+        uint32_t textBlocks = StaCeilDiv(static_cast<uint32_t>(meta.text_len), FAI_KV_BASE_ROWS);
+        stack.kvOffset = headBase + static_cast<uint64_t>(meta.image_seq) * embed;
+        stack.segLen = static_cast<uint32_t>(meta.text_len);
+        stack.kvLoopNoMask = textBlocks;
+        stack.kvIdx = textKvIdx;
+        stack.stackSeqTile = StackSeqTile(stack.segLen, textBlocks, textKvIdx);
         stack.stackSeqCount = stackSeqCount;
         return stack;
     }
@@ -965,11 +1887,29 @@ private:
 
     CATLASS_DEVICE uint64_t WorkspaceOffset(uint32_t coreIdx, uint32_t pingpong, uint32_t chunk = 0) const
     {
-        uint32_t chunkCount = UsesGroupedQkPath() ? QUERY_CHUNKS_PER_TILE : 1;
+        uint32_t chunkCount = UsesGroupedQkPath() ? static_cast<uint32_t>(meta.grouped_query_chunks) : 1;
         return static_cast<uint64_t>(coreIdx) * static_cast<uint64_t>(workspace.block_elems) * FAI_RING_STAGE_COUNT *
                    chunkCount +
                static_cast<uint64_t>(chunk) * static_cast<uint64_t>(workspace.block_elems) * FAI_RING_STAGE_COUNT +
                static_cast<uint64_t>(pingpong) * static_cast<uint64_t>(workspace.block_elems);
+    }
+
+    CATLASS_DEVICE uint64_t BlockTableOffset(uint32_t coreIdx, uint32_t slot) const
+    {
+        return (static_cast<uint64_t>(coreIdx) * FAI_RING_STAGE_COUNT + slot) * FAI_STACK_BLOCK_COUNT;
+    }
+
+    CATLASS_DEVICE GlobalTensor<int32_t> StackBlockTable(uint32_t coreIdx, uint32_t slot)
+    {
+        return blockTableGm[BlockTableOffset(coreIdx, slot)];
+    }
+
+    CATLASS_DEVICE void StoreStackBlockTable(const StackInfo& stack, uint32_t coreIdx, uint32_t slot)
+    {
+        GlobalTensor<int32_t> table = StackBlockTable(coreIdx, slot);
+        for (uint32_t block = 0; block < stack.packedBlockCount; ++block) {
+            table.SetValue(block, static_cast<int32_t>(stack.packedBlockIds[block]));
+        }
     }
 
     CATLASS_DEVICE uint64_t CompactScoreOffset(uint32_t coreIdx, uint32_t pingpong) const
@@ -979,12 +1919,15 @@ private:
 
     CATLASS_DEVICE uint64_t SoftmaxStateOffset(uint32_t coreIdx, uint32_t chunk) const
     {
-        return (static_cast<uint64_t>(coreIdx) * QUERY_CHUNKS_PER_TILE + chunk) * FAI_QUERY_ROWS;
+        return (static_cast<uint64_t>(coreIdx) * static_cast<uint64_t>(meta.grouped_query_chunks) + chunk) *
+               FAI_QUERY_ROWS;
     }
 
     CATLASS_DEVICE uint64_t SoftmaxDmOffset(uint32_t coreIdx, uint32_t chunk, uint32_t slot) const
     {
-        return ((static_cast<uint64_t>(coreIdx) * QUERY_CHUNKS_PER_TILE + chunk) * FAI_RING_STAGE_COUNT + slot) *
+        return ((static_cast<uint64_t>(coreIdx) * static_cast<uint64_t>(meta.grouped_query_chunks) + chunk) *
+                    FAI_RING_STAGE_COUNT +
+                slot) *
                FAI_QUERY_ROWS;
     }
 
@@ -1164,6 +2107,10 @@ private:
     CATLASS_DEVICE void AccumulateQkSlices(uint32_t taskIdx, uint32_t stackSeqCount, uint64_t sOffset, uint32_t rowNum,
                                            uint32_t columnNum, uint32_t rowStride)
     {
+        static_assert(opforge::ascend_c::resource_ledger::ValidateUbOverwriteContract(kAccumUbVectorToMte2Reuse),
+                      "accumUb requires Vector-reader to next-MTE2-writer release");
+        static_assert(opforge::ascend_c::resource_ledger::ValidateUbOverwriteContract(kPartialUbVectorToMte2Reuse),
+                      "partialUb requires Vector-reader to next-MTE2-writer release");
         uint32_t sliceCount = QkSliceCount();
         if (sliceCount <= 1 || rowNum == 0 || columnNum == 0) {
             return;
@@ -1224,14 +2171,21 @@ private:
         return meta.dim < 64 && QkDim() != static_cast<uint32_t>(meta.dim);
     }
 
+    CATLASS_DEVICE bool UsesOwnedStridedKLoader() const { return QkSliceCount() > 1; }
+
+    CATLASS_DEVICE bool NeedsKvQkStaging() const { return NeedsQkStaging() && !UsesOwnedStridedKLoader(); }
+
     CATLASS_DEVICE uint32_t QkComputeStride() const
     {
         return NeedsQkStaging() ? QkStageStride() : static_cast<uint32_t>(meta.dim);
     }
 
-    CATLASS_DEVICE bool UsesResidualProbability() const { return meta.dim > FAI_QK_SLICE_DIM; }
+    CATLASS_DEVICE bool UsesResidualProbability() const
+    {
+        return !PACKED_D72_FULL && meta.dim == 72 && UsesCompactFullWindowPath();
+    }
 
-    CATLASS_DEVICE void SetComputeStackInfo(StackInfo &stack, uint32_t coreIdx, uint32_t slot) const
+    CATLASS_DEVICE void SetComputeStackInfo(StackInfo& stack, uint32_t coreIdx, uint32_t slot) const
     {
         (void)coreIdx;
         (void)slot;
@@ -1264,8 +2218,10 @@ private:
                                          uint32_t debugTask, uint32_t debugStage, int32_t debugStack, int32_t debugSlot)
     {
         if constexpr (NEEDS_INPUT_STAGING) {
-            LocalTensor<ElementInput> srcUb =
-                resource.ubBuf.template GetBufferByByte<ElementInput>(BF16_CONVERT_SOURCE_UB_OFFSET);
+            static_assert(opforge::ascend_c::resource_ledger::ValidateUbOverwriteContract(kSrcUbVectorToMte2Reuse),
+                          "srcUb requires Vector-reader to next-MTE2-writer release");
+            LocalTensor<ElementInput> srcUb = resource.ubBuf.template GetBufferByByte<ElementInput>(
+                BF16_CONVERT_SOURCE_UB_OFFSET);
             LocalTensor<half> dstUb = resource.ubBuf.template GetBufferByByte<half>(BF16_CONVERT_DESTINATION_UB_OFFSET);
             LocalTensor<float> floatUb = resource.ubBuf.template GetBufferByByte<float>(BF16_CONVERT_FLOAT_UB_OFFSET);
             uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
@@ -1298,7 +2254,7 @@ private:
         }
     }
 
-    CATLASS_DEVICE void StageQuery(const TaskInfo &info, uint32_t taskIdx, uint32_t coreIdx, uint64_t qOffset)
+    CATLASS_DEVICE void StageQuery(const TaskInfo& info, uint32_t taskIdx, uint32_t coreIdx, uint64_t qOffset)
     {
         if (NeedsQkStaging()) {
             if (meta.dim > FAI_QK_SLICE_DIM) {
@@ -1326,9 +2282,9 @@ private:
         Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(inputQReady);
     }
 
-    CATLASS_DEVICE void StageKv(const StackInfo &stack, uint32_t taskIdx, uint32_t coreIdx, uint32_t slot)
+    CATLASS_DEVICE void StageKv(const StackInfo& stack, uint32_t taskIdx, uint32_t coreIdx, uint32_t slot)
     {
-        if (NeedsQkStaging()) {
+        if (NeedsKvQkStaging()) {
             if (meta.dim > FAI_QK_SLICE_DIM) {
                 Arch::CrossCoreWaitFlag(kvStageFree);
             }
@@ -1348,10 +2304,12 @@ private:
         if (rows == 0) {
             return;
         }
-        LocalTensor<ElementInput> srcUb =
-            resource.ubBuf.template GetBufferByByte<ElementInput>(BF16_CONVERT_SOURCE_UB_OFFSET);
-        LocalTensor<ElementInput> packedUb =
-            resource.ubBuf.template GetBufferByByte<ElementInput>(BF16_CONVERT_DESTINATION_UB_OFFSET);
+        static_assert(opforge::ascend_c::resource_ledger::ValidateUbOverwriteContract(kSrcUbVectorToMte2Reuse),
+                      "srcUb requires Vector-reader to next-MTE2-writer release");
+        LocalTensor<ElementInput> srcUb = resource.ubBuf.template GetBufferByByte<ElementInput>(
+            BF16_CONVERT_SOURCE_UB_OFFSET);
+        LocalTensor<ElementInput> packedUb = resource.ubBuf.template GetBufferByByte<ElementInput>(
+            BF16_CONVERT_DESTINATION_UB_OFFSET);
         uint32_t dim = static_cast<uint32_t>(meta.dim);
         uint32_t sliceCount = QkSliceCount();
         uint32_t sliceStorageDim = QkSliceStorageDim();
@@ -1366,8 +2324,8 @@ private:
                 uint32_t inputAligned = StaAlignUp(current, VECTOR_BLOCK_ELEMENTS);
                 for (uint32_t row = subBlockIdx * rowsPerTile; row < rows; row += subBlockNum * rowsPerTile) {
                     uint32_t currentRows = StaMin(rowsPerTile, rows - row);
-                    uint64_t dstOffset =
-                        QkSliceStageOffset(sliceIdx, rowCapacity) + static_cast<uint64_t>(row) * sliceStorageDim;
+                    uint64_t dstOffset = QkSliceStageOffset(sliceIdx, rowCapacity) +
+                                         static_cast<uint64_t>(row) * sliceStorageDim;
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
                     AscendC::DataCopyPad(srcUb, src[static_cast<uint64_t>(row) * dim + column],
                                          AscendC::DataCopyExtParams(currentRows, current * sizeof(ElementInput),
@@ -1375,11 +2333,15 @@ private:
                                          AscendC::DataCopyPadExtParams<ElementInput>(true, 0, inputAligned - current,
                                                                                      static_cast<ElementInput>(0.0f)));
                     AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::Duplicate(packedUb, static_cast<ElementInput>(0.0f), currentRows * packed);
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    for (uint32_t tileRow = 0; tileRow < currentRows; ++tileRow) {
-                        AscendC::DataCopy(packedUb[static_cast<uint64_t>(tileRow) * packed],
-                                          srcUb[static_cast<uint64_t>(tileRow) * inputAligned], inputAligned);
+                    if (current == packed && inputAligned == packed) {
+                        AscendC::DataCopy(packedUb, srcUb, currentRows * packed);
+                    } else {
+                        AscendC::Duplicate(packedUb, static_cast<ElementInput>(0.0f), currentRows * packed);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        for (uint32_t tileRow = 0; tileRow < currentRows; ++tileRow) {
+                            AscendC::DataCopy(packedUb[static_cast<uint64_t>(tileRow) * packed],
+                                              srcUb[static_cast<uint64_t>(tileRow) * inputAligned], inputAligned);
+                        }
                     }
                     AscendC::PipeBarrier<PIPE_ALL>();
                     AscendC::DataCopyPad(
@@ -1397,8 +2359,8 @@ private:
             uint32_t inputAligned = StaAlignUp(current, VECTOR_BLOCK_ELEMENTS);
             for (uint32_t row = subBlockIdx * rowsPerTile; row < rows; row += subBlockNum * rowsPerTile) {
                 uint32_t currentRows = StaMin(rowsPerTile, rows - row);
-                uint64_t dstOffset =
-                    QkSliceStageOffset(sliceIdx, rowCapacity) + static_cast<uint64_t>(row) * sliceStorageDim;
+                uint64_t dstOffset = QkSliceStageOffset(sliceIdx, rowCapacity) +
+                                     static_cast<uint64_t>(row) * sliceStorageDim;
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
                 AscendC::DataCopyPad(srcUb, src[static_cast<uint64_t>(row) * dim + column],
                                      AscendC::DataCopyExtParams(currentRows, current * sizeof(ElementInput),
@@ -1427,11 +2389,12 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
     }
 
-    CATLASS_DEVICE void RunAicPvStack(uint32_t taskIdx, const TaskInfo &info, const StackInfo &stack, uint32_t coreIdx,
-                                      uint32_t embed, uint32_t strideKV, const LayoutV &layoutV,
-                                      BlockMmadPVNormal &blockMmadPVNormal,
-                                      BlockMmadPVDynamicSingleBlock &blockMmadPVDynamicSingleBlock,
-                                      BlockMmadPVDynamicMultiBlock &blockMmadPVDynamicMultiBlock,
+    template <bool USE_PACKED_OFFSETS = false, bool FORCE_EXPLICIT_SINGLE_BLOCK_PV = false>
+    CATLASS_DEVICE void RunAicPvStack(uint32_t taskIdx, const TaskInfo& info, const StackInfo& stack, uint32_t coreIdx,
+                                      uint32_t embed, uint32_t strideKV, const LayoutV& layoutV,
+                                      BlockMmadPVNormal& blockMmadPVNormal,
+                                      BlockMmadPVDynamicSingleBlock& blockMmadPVDynamicSingleBlock,
+                                      BlockMmadPVDynamicMultiBlock& blockMmadPVDynamicMultiBlock,
                                       uint32_t workspaceChunk = 0)
     {
         uint32_t pvPingPong = StackSlot(stack.stackSeqCount);
@@ -1465,14 +2428,42 @@ private:
                               softmaxReady);
         } else if (embed <= FAI_QK_SLICE_DIM) {
             const uint32_t outputStride = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
-            blockMmadPVDynamicSingleBlock(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP, layoutV, pvShape,
-                                          computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV, outputStride,
-                                          softmaxReady);
+            if (UsesResidualProbability()) {
+                blockMmadPVDynamicSingleBlock(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP, layoutV,
+                                              pvShape, computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV,
+                                              outputStride, softmaxReady);
+            } else if (UsesD128GroupedEarlyPublishPath() &&
+                       stack.stackSeqTile == FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS) {
+                blockMmadPVDynamicSingleBlock.FullD128(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP,
+                                                       layoutV, computeKvIdx, strideKV, outputStride, softmaxReady);
+            } else {
+                blockMmadPVDynamicSingleBlock(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP, layoutV,
+                                              pvShape, computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV,
+                                              outputStride, softmaxReady);
+            }
         } else {
             const uint32_t outputStride = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
-            blockMmadPVDynamicMultiBlock(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP, layoutV, pvShape,
-                                         computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV, outputStride,
-                                         softmaxReady);
+            if constexpr (USE_PACKED_OFFSETS) {
+                static_assert(!FORCE_EXPLICIT_SINGLE_BLOCK_PV ||
+                                  opforge::ascend_c::resource_ledger::ValidateL0cReuseContract(
+                                      {opforge::ascend_c::resource_ledger::L0cCompletionProtocol::ExplicitMFixFixM,
+                                       opforge::ascend_c::resource_ledger::L0cCompletionProtocol::ExplicitMFixFixM,
+                                       true, true, true}),
+                              "forced packed single-block PV must retain explicit same-L0C completion");
+                if (stack.packedBlockCount == 1 && !FORCE_EXPLICIT_SINGLE_BLOCK_PV) {
+                    blockMmadPVDynamicSingleBlock.ComputePackedD256(
+                        pGm[pOffset], vGm, oTmpGm[pOffset], layoutP, layoutV, pvShape, 1, stack.stackSeqTile,
+                        outputStride, softmaxReady, stack.packedBlockOffsets);
+                } else {
+                    blockMmadPVDynamicMultiBlock.ComputePackedD256(
+                        pGm[pOffset], vGm, oTmpGm[pOffset], layoutP, layoutV, pvShape, stack.packedBlockCount,
+                        stack.stackSeqTile, outputStride, softmaxReady, stack.packedBlockOffsets);
+                }
+            } else {
+                blockMmadPVDynamicMultiBlock(pGm[pOffset], vGm[computeVOffset], oTmpGm[pOffset], layoutP, layoutV,
+                                             pvShape, computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV,
+                                             outputStride, softmaxReady);
+            }
         }
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
         if (debugFirstD256Pv) {
@@ -1487,19 +2478,110 @@ private:
         Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvReady);
         if (UsesResidualProbability()) {
             const uint32_t outputStride = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
-            blockMmadPVDynamicMultiBlock(pLoGm[pOffset], vGm[computeVOffset], oTmpLoGm[pOffset], layoutP, layoutV,
-                                         pvShape, computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV,
-                                         outputStride, softmaxLowReady);
+            blockMmadPVDynamicSingleBlock(pLoGm[pOffset], vGm[computeVOffset], oTmpLoGm[pOffset], layoutP, layoutV,
+                                          pvShape, computeKvIdx, computeKvLoopNoMask, computeSegLen, strideKV,
+                                          outputStride, softmaxLowReady);
             Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvLowReady);
         }
     }
 
-    CATLASS_DEVICE void RunAivRescaleStack(uint32_t taskIdx, const StackInfo &stack, uint32_t coreIdx,
-                                           uint64_t outOffset, uint32_t qRows, uint32_t embed, uint32_t embedRound,
-                                           uint32_t totalStackSeqNum, EpilogueRescaleO &epilogueRescaleO,
-                                           uint32_t workspaceChunk = 0, bool waitForPvReady = true)
+    CATLASS_DEVICE void RunAicPagedPvStack(const TaskInfo& info, const StackInfo& stack, uint32_t coreIdx,
+                                           const LayoutV& layoutV, BlockMmadPVPaged& blockMmadPVPaged)
     {
-        uint32_t pvStackMod = StackSlot(stack.stackSeqCount);
+        uint32_t slot = StackSlot(stack.stackSeqCount);
+        uint64_t pOffset = WorkspaceOffset(coreIdx, slot);
+        LayoutP layoutP(info.qRows, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+        GemmCoord pvShape{info.qRows, static_cast<uint32_t>(meta.dim), stack.stackSeqTile};
+        uint32_t pagedKvIdx = 0;
+        uint32_t pagedKvLoop = stack.packedBlockCount;
+        uint32_t blockSize = FAI_KV_BASE_ROWS;
+        blockMmadPVPaged(pGm[pOffset], vGm[stack.computeVOffset], oTmpGm[pOffset], StackBlockTable(coreIdx, slot),
+                         layoutP, layoutV, pvShape, pagedKvIdx, pagedKvLoop, blockSize, stack.computeSegLen,
+                         static_cast<uint32_t>(meta.dim), softmaxReady);
+        Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvReady);
+    }
+
+    // D32 continuous stream only: the rescale of a task's last stack is issued
+    // FAI_PRELAUNCH_DEPTH stream positions later, so by then the next task's
+    // online softmax has already overwritten the running row-sum buffer. The
+    // task's final row sum is therefore parked in the per-ring-slot softmax
+    // state and swapped back in around the rescale. The running row sum is
+    // parked in the online-softmax GM scratch, which is dead between the two
+    // softmax calls that bracket the rescale.
+    // D32 continuous stream only: the rescale of a task's last stack is issued
+    // FAI_PRELAUNCH_DEPTH stream positions later, so by then the next task's
+    // online softmax has already overwritten the running row-sum buffer. The
+    // task's final row sum is parked in a UB-resident snapshot and swapped back in
+    // around the rescale, so no GM round-trip is needed. The UB->UB copies use the
+    // block-copy form with PIPE_V barriers, matching the established
+    // SaveGroupedSoftmaxStateUb/RestoreGroupedSoftmaxStateUb ordering.
+    CATLASS_DEVICE void SaveStreamTaskFinalGl(uint32_t snapshotIdx, uint32_t qRows)
+    {
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t rowSplit = qRows / subBlockNum;
+        uint32_t rowCount = subBlockIdx == subBlockNum - 1 ? qRows - rowSplit : rowSplit;
+        LocalTensor<float> glUb = resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_GL_UB_OFFSET);
+        LocalTensor<float> snapUb = resource.ubBuf.template GetBufferByByte<float>(STREAM_SNAPSHOT_UB_OFFSET);
+        // The copy reads `glUb`, which the online softmax's V-pipe UpdateGlobalRowSum
+        // wrote, so a V-pipe barrier orders the leading edge.
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Copy<float, true>(snapUb[snapshotIdx * STREAM_SNAPSHOT_ROW_ELEMENTS], glUb, rowCount, 1,
+                                   AscendC::CopyRepeatParams(kStreamHandoffBlockStride, kStreamHandoffBlockStride,
+                                                             StreamHandoffCopyRepeatSize(rowCount),
+                                                             StreamHandoffCopyRepeatSize(rowCount)));
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE void SwapStreamTaskFinalGl(uint32_t snapshotIdx, uint32_t qRows)
+    {
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t rowSplit = qRows / subBlockNum;
+        uint32_t rowCount = subBlockIdx == subBlockNum - 1 ? qRows - rowSplit : rowSplit;
+        LocalTensor<float> glUb = resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_GL_UB_OFFSET);
+        LocalTensor<float> parkUb = resource.ubBuf.template GetBufferByByte<float>(STREAM_PARK_UB_OFFSET);
+        LocalTensor<float> snapUb = resource.ubBuf.template GetBufferByByte<float>(STREAM_SNAPSHOT_UB_OFFSET);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Copy<float, true>(parkUb, glUb, rowCount, 1,
+                                   AscendC::CopyRepeatParams(kStreamHandoffBlockStride, kStreamHandoffBlockStride,
+                                                             StreamHandoffCopyRepeatSize(rowCount),
+                                                             StreamHandoffCopyRepeatSize(rowCount)));
+        AscendC::Copy<float, true>(glUb, snapUb[snapshotIdx * STREAM_SNAPSHOT_ROW_ELEMENTS], rowCount, 1,
+                                   AscendC::CopyRepeatParams(kStreamHandoffBlockStride, kStreamHandoffBlockStride,
+                                                             StreamHandoffCopyRepeatSize(rowCount),
+                                                             StreamHandoffCopyRepeatSize(rowCount)));
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE void RestoreStreamRunningGl(uint32_t qRows)
+    {
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t rowSplit = qRows / subBlockNum;
+        uint32_t rowCount = subBlockIdx == subBlockNum - 1 ? qRows - rowSplit : rowSplit;
+        LocalTensor<float> glUb = resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_GL_UB_OFFSET);
+        LocalTensor<float> parkUb = resource.ubBuf.template GetBufferByByte<float>(STREAM_PARK_UB_OFFSET);
+        // The park copy reads `glUb`, which the online softmax's V-pipe
+        // UpdateGlobalRowSum wrote, so a V-pipe barrier orders the leading edge.
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Copy<float, true>(glUb, parkUb, rowCount, 1,
+                                   AscendC::CopyRepeatParams(kStreamHandoffBlockStride, kStreamHandoffBlockStride,
+                                                             StreamHandoffCopyRepeatSize(rowCount),
+                                                             StreamHandoffCopyRepeatSize(rowCount)));
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE void RunAivRescaleStack(uint32_t taskIdx, const StackInfo& stack, uint32_t coreIdx,
+                                           uint64_t outOffset, uint32_t qRows, uint32_t embed, uint32_t embedRound,
+                                           uint32_t totalStackSeqNum, EpilogueRescaleO& epilogueRescaleO,
+                                           uint32_t workspaceChunk = 0, bool waitForPvReady = true,
+                                           uint32_t explicitSlot = UINT32_MAX)
+    {
+        // The streaming D32 route indexes the ring by the continuous per-core stack
+        // sequence while keeping stack.stackSeqCount as the task-local index used for
+        // the first/last-stack recurrence flags.
+        uint32_t pvStackMod = explicitSlot == UINT32_MAX ? StackSlot(stack.stackSeqCount) : explicitSlot;
         uint32_t recurrenceSlot = pvStackMod;
         uint64_t oTmpOffset = WorkspaceOffset(coreIdx, pvStackMod, workspaceChunk);
         LayoutO layoutO(qRows, embed);
@@ -1724,7 +2806,7 @@ private:
         AscendC::SetVectorMask<int8_t>(0, mask);
     }
 
-    CATLASS_DEVICE void RunBf16RecurrenceStack(uint32_t taskIdx, const StackInfo &stack, uint64_t oTmpOffset,
+    CATLASS_DEVICE void RunBf16RecurrenceStack(uint32_t taskIdx, const StackInfo& stack, uint64_t oTmpOffset,
                                                uint64_t outOffset, uint32_t qRows, uint32_t embed, uint32_t embedRound,
                                                bool isFirstStack, bool isLastStack, uint32_t pvStackMod)
     {
@@ -1747,8 +2829,8 @@ private:
         LocalTensor<float> sumVUb = resource.ubBuf.template GetBufferByByte<float>(CORRECTION_SUM_V_UB_OFFSET);
         LocalTensor<float> correctionUb = resource.ubBuf.template GetBufferByByte<float>(CORRECTION_VALUE_UB_OFFSET);
         LocalTensor<float> centerUb = resource.ubBuf.template GetBufferByByte<float>(CORRECTION_CENTER_UB_OFFSET);
-        LocalTensor<float> centerBroadcastUb =
-            resource.ubBuf.template GetBufferByByte<float>(CORRECTION_BROADCAST_UB_OFFSET);
+        LocalTensor<float> centerBroadcastUb = resource.ubBuf.template GetBufferByByte<float>(
+            CORRECTION_BROADCAST_UB_OFFSET);
         uint32_t rowCountRound = StaAlignUp(rowCount, EpilogueRescaleO::FLOAT_BLOCK_SIZE);
         uint32_t elemCount = rowCount * embed;
         uint32_t stateElemCount = rowCount * embedRound;
@@ -1857,21 +2939,21 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
     }
 
-    CATLASS_DEVICE void ComputeSumV(uint32_t taskIdx, const StackInfo &stack, uint64_t correctionOffset,
+    CATLASS_DEVICE void ComputeSumV(uint32_t taskIdx, const StackInfo& stack, uint64_t correctionOffset,
                                     uint32_t strideKV)
     {
         LocalTensor<ElementV> srcUb = resource.ubBuf.template GetBufferByByte<ElementV>(SUM_V_SOURCE_UB_OFFSET);
         LocalTensor<float> floatUb = resource.ubBuf.template GetBufferByByte<float>(SUM_V_FLOAT_UB_OFFSET);
         LocalTensor<float> accum0 = resource.ubBuf.template GetBufferByByte<float>(SUM_V_ACCUM_UB_OFFSET);
-        LocalTensor<float> accum1 =
-            resource.ubBuf.template GetBufferByByte<float>(SUM_V_ACCUM_UB_OFFSET + SUM_V_ACCUM_STRIDE_BYTES);
-        LocalTensor<float> accum2 =
-            resource.ubBuf.template GetBufferByByte<float>(SUM_V_ACCUM_UB_OFFSET + 2 * SUM_V_ACCUM_STRIDE_BYTES);
+        LocalTensor<float> accum1 = resource.ubBuf.template GetBufferByByte<float>(SUM_V_ACCUM_UB_OFFSET +
+                                                                                   SUM_V_ACCUM_STRIDE_BYTES);
+        LocalTensor<float> accum2 = resource.ubBuf.template GetBufferByByte<float>(SUM_V_ACCUM_UB_OFFSET +
+                                                                                   2 * SUM_V_ACCUM_STRIDE_BYTES);
         LocalTensor<float> accum3 = resource.ubBuf.template GetBufferByByte<float>(
             SUM_V_ACCUM_UB_OFFSET + (SUM_V_ACCUMULATOR_COUNT - 1) * SUM_V_ACCUM_STRIDE_BYTES);
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
-        uint64_t computeVOffset =
-            stack.computeVOffset + static_cast<uint64_t>(stack.computeKvIdx) * FAI_KV_BASE_ROWS * strideKV;
+        uint64_t computeVOffset = stack.computeVOffset +
+                                  static_cast<uint64_t>(stack.computeKvIdx) * FAI_KV_BASE_ROWS * strideKV;
         for (uint32_t colBase = 0; colBase < strideKV; colBase += DYNAMIC_CENTER_COLUMN_TILE) {
             uint32_t cols = StaMin(DYNAMIC_CENTER_COLUMN_TILE, strideKV - colBase);
             uint32_t colsRound = StaAlignUp(cols, FLOAT_BLOCK_ELEMENTS);
@@ -1930,9 +3012,17 @@ private:
         (void)taskIdx;
     }
 
-    CATLASS_DEVICE void RunCompactOnlineSoftmax(EpilogueOnlineSoftmax &epilogueOnlineSoftmax,
-                                                uint64_t compactScoreOffset, uint64_t pOffset, const LayoutP &layoutP,
-                                                const LayoutS &layoutS, GemmCoord qkShape, bool isFirstStack,
+    // `ScoreElem` is `ElementCompactS` for every incumbent compact route and `half`
+    // only for the D16 no-text pair bridge, where the fixpipe publishes the score tile
+    // as fp16 and this row loop stages and upcasts one row tile per iteration.
+    // `scoreScale` maps an fp32 score stage-base offset to the half view's base offset
+    // for the same byte (2 for the bridge); offsets inside a stage stay unscaled
+    // because the half tile keeps the fp32 element geometry.
+    template <class ScoreElem>
+    CATLASS_DEVICE void RunCompactOnlineSoftmax(EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                AscendC::GlobalTensor<ScoreElem> scoreGm, uint64_t scoreScale,
+                                                uint64_t compactScoreOffset, uint64_t pOffset, const LayoutP& layoutP,
+                                                const LayoutS& layoutS, GemmCoord qkShape, bool isFirstStack,
                                                 uint32_t qRows, uint32_t curStackMod)
     {
         constexpr uint32_t P_BLOCK_ELEMENTS = 16;
@@ -1952,6 +3042,7 @@ private:
         uint32_t rowLoops = StaCeilDiv(rowActual, rowTile);
         LocalTensor<float> pFloatUb = resource.ubBuf.template GetBufferByByte<float>(0);
         LocalTensor<ElementP> pPackedUb = resource.ubBuf.template GetBufferByByte<ElementP>(4 * UB_REGION_BYTES);
+        LocalTensor<float> residualUb = resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_CENTER_UB_OFFSET);
 
         for (uint32_t loop = 0; loop < rowLoops; ++loop) {
             uint32_t pingpong = loop % 2;
@@ -1966,22 +3057,65 @@ private:
             uint32_t elemCount = currentRows * columnNumRound;
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(pingpong);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingpong);
-            if (columnNumRound == columnNumPad) {
-                AscendC::DataCopy(pFloatUb[sUbOffset], compactSGm[compactScoreOffset + scoreOffset],
+            if constexpr (std::is_same_v<ScoreElem, half>) {
+                // Narrow-score bridge: stage the row tile (row stride `columnNumPad` in
+                // halves) in its own UB owner. The staged owner was released by the
+                // previous iteration's upcast, or armed once at launch entry.
+                static_assert(opforge::ascend_c::resource_ledger::ValidateUbOverwriteContract(
+                                  opforge::ascend_c::resource_ledger::kNarrowScoreStageReuse),
+                              "the staged narrow score requires a Vector-reader to next-MTE2-writer release");
+                AscendC::LocalTensor<half> narrowStageUb =
+                    resource.ubBuf.template GetBufferByByte<half>(NARROW_SCORE_STAGE_UB_OFFSET);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(NARROW_SCORE_STAGE_EVENT);
+                AscendC::DataCopy(narrowStageUb, scoreGm[compactScoreOffset * scoreScale + scoreOffset],
+                                  AscendC::DataCopyParams(currentRows, columnNumRound / NARROW_SCORE_BLOCK_ELEMENTS,
+                                                          (columnNumPad - columnNumRound) / NARROW_SCORE_BLOCK_ELEMENTS,
+                                                          0));
+            } else if (columnNumRound == columnNumPad) {
+                AscendC::DataCopy(pFloatUb[sUbOffset], scoreGm[compactScoreOffset + scoreOffset],
                                   AscendC::DataCopyParams(1, elemCount / S_BLOCK_ELEMENTS, 0, 0));
             } else {
-                AscendC::DataCopy(pFloatUb[sUbOffset], compactSGm[compactScoreOffset + scoreOffset],
+                AscendC::DataCopy(pFloatUb[sUbOffset], scoreGm[compactScoreOffset + scoreOffset],
                                   AscendC::DataCopyParams(currentRows, columnNumRound / S_BLOCK_ELEMENTS,
                                                           (columnNumPad - columnNumRound) / S_BLOCK_ELEMENTS, 0));
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(pingpong);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingpong);
+            if constexpr (std::is_same_v<ScoreElem, half>) {
+                // Upcast the staged halves into the fp32 S owner. The repeat strides are
+                // counted in 32-byte blocks of the operand's own element type, so the
+                // half source advances 4 blocks per repeat while the float destination
+                // advances 8 - the exact mirror of `DownCastP`'s (1, 1, 4, 8) pattern.
+                // The all-ones mask must be restored because the row reductions that
+                // follow issue with isSetMask=false.
+                AscendC::LocalTensor<half> narrowStageUb =
+                    resource.ubBuf.template GetBufferByByte<half>(NARROW_SCORE_STAGE_UB_OFFSET);
+                AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+                AscendC::Cast<float, half, false>(
+                    pFloatUb[sUbOffset], narrowStageUb, AscendC::RoundMode::CAST_NONE, (uint64_t)0,
+                    (currentRows * columnNumRound + FLOAT_VECTOR_ELEMENTS - 1) / FLOAT_VECTOR_ELEMENTS,
+                    AscendC::UnaryRepeatParams(1, 1, 8,
+                                               (FLOAT_VECTOR_ELEMENTS * sizeof(half)) / DATA_BLOCK_BYTES));
+                AscendC::PipeBarrier<PIPE_V>();
+                // The V pipe reaches this flag only after the upcast has read the stage,
+                // so the next iteration's copy can reuse the owner safely.
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(NARROW_SCORE_STAGE_EVENT);
+            }
             ScaleSFromTiling(sUbOffset, currentRows, columnNumRound);
             epilogueOnlineSoftmax.CalcLocalRowMax(sUbOffset, rowRound, columnNum, columnNumRound, rowInLoop);
             epilogueOnlineSoftmax.UpdateGlobalRowMax(currentRows, rowRound, columnNum, columnNumRound, dmOffset,
                                                      rowInLoop, isFirstStack);
             epilogueOnlineSoftmax.CalcExp(sUbOffset, currentRows, rowRound, columnNum, columnNumRound, rowInLoop);
             epilogueOnlineSoftmax.DownCastP(sUbOffset, currentRows, columnNumRound);
+            if (UsesResidualProbability()) {
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Cast(residualUb, pPackedUb[sUbOffset], AscendC::RoundMode::CAST_NONE, elemCount);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Sub(residualUb, pFloatUb[sUbOffset], residualUb, elemCount);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Muls(residualUb, residualUb, PROBABILITY_RESIDUAL_SCALE, elemCount);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
             epilogueOnlineSoftmax.CalcLocalRowSum(sUbOffset, rowRound, columnNum, columnNumRound, rowInLoop);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingpong);
 
@@ -1998,11 +3132,27 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingpong);
             epilogueOnlineSoftmax.UpdateGlobalRowSum(sUbOffset, currentRows, rowRound, dmOffset, rowInLoop,
                                                      isFirstStack);
+            if (UsesResidualProbability()) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingpong);
+                AscendC::Cast(pPackedUb[sUbOffset], residualUb, AscendC::RoundMode::CAST_RINT, elemCount);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingpong);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingpong);
+                if (columnNumRound == columnNumPad) {
+                    AscendC::DataCopy(pLoGm[pOffset + outputOffset], pPackedUb[sUbOffset],
+                                      AscendC::DataCopyParams(1, elemCount / P_BLOCK_ELEMENTS, 0, 0));
+                } else {
+                    AscendC::DataCopy(pLoGm[pOffset + outputOffset], pPackedUb[sUbOffset],
+                                      AscendC::DataCopyParams(currentRows, columnNumRound / P_BLOCK_ELEMENTS, 0,
+                                                              (columnNumPad - columnNumRound) / P_BLOCK_ELEMENTS));
+                }
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingpong);
+            }
         }
     }
 
-    CATLASS_DEVICE void RunOnlineSoftmax(EpilogueOnlineSoftmax &epilogueOnlineSoftmax, uint64_t pOffset,
-                                         const LayoutP &layoutP, const LayoutS &layoutS, GemmCoord qkShape,
+    CATLASS_DEVICE void RunOnlineSoftmax(EpilogueOnlineSoftmax& epilogueOnlineSoftmax, uint64_t pOffset,
+                                         const LayoutP& layoutP, const LayoutS& layoutS, GemmCoord qkShape,
                                          bool isFirstStack, uint32_t qRows, uint32_t curStackMod,
                                          uint32_t recurrenceSlot = UINT32_MAX)
     {
@@ -2030,7 +3180,6 @@ private:
         LocalTensor<float> pFloatUb = resource.ubBuf.template GetBufferByByte<float>(0);
         LocalTensor<ElementP> pPackedUb = resource.ubBuf.template GetBufferByByte<ElementP>(4 * UB_REGION_BYTES);
         LocalTensor<float> residualUb = resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_CENTER_UB_OFFSET);
-
         for (uint32_t loop = 0; loop < rowLoops + 1; ++loop) {
             if (loop < rowLoops) {
                 uint32_t pingpong = loop % 2;
@@ -2113,10 +3262,10 @@ private:
     CATLASS_DEVICE void ScaleSFromTiling(uint32_t sUbOffset, uint32_t rowNum, uint32_t columnNumRound)
     {
         LocalTensor<float> sUb = resource.ubBuf.template GetBufferByByte<float>(0);
-        LocalTensor<float> scaleBlockUb =
-            resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_RUNTIME_SCALE_BLOCK_UB_OFFSET);
-        LocalTensor<float> scaleVectorUb =
-            resource.ubBuf.template GetBufferByByte<float>(SOFTMAX_RUNTIME_SCALE_VECTOR_UB_OFFSET);
+        LocalTensor<float> scaleBlockUb = resource.ubBuf.template GetBufferByByte<float>(
+            SOFTMAX_RUNTIME_SCALE_BLOCK_UB_OFFSET);
+        LocalTensor<float> scaleVectorUb = resource.ubBuf.template GetBufferByByte<float>(
+            SOFTMAX_RUNTIME_SCALE_VECTOR_UB_OFFSET);
         LocalTensor<uint32_t> scaleBlockBits = scaleBlockUb.ReinterpretCast<uint32_t>();
         for (uint32_t index = 0; index < FLOAT_BLOCK_ELEMENTS; ++index) {
             scaleBlockBits.SetValue(index, softmaxScaleBits);
@@ -2131,11 +3280,476 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    CATLASS_DEVICE void ProcessAicGroupedTask(uint32_t groupedTaskIdx, BlockMmadQKGrouped &blockMmadQKGrouped,
-                                              BlockMmadPVNormal &blockMmadPVNormal,
-                                              BlockMmadPVDynamicSingleBlock &blockMmadPVDynamicSingleBlock,
-                                              BlockMmadPVDynamicMultiBlock &blockMmadPVDynamicMultiBlock,
-                                              BlockMmadPVGroupedD72 &blockMmadPVGroupedD72)
+    // AIC owner of the D32 packed route. One continuous stack stream per core: the
+    // five-slot score/P/OTmp ring is indexed by the global per-core stack sequence
+    // instead of restarting at every 128-row query-chunk task, so the four-stack
+    // QK lookahead and the PV drain stay full across task boundaries. Per-task
+    // first/last-stack semantics survive because each ring entry keeps its original
+    // task-local stack index. No arithmetic, transfer, allocation, or launch changes.
+    CATLASS_DEVICE void ProcessAicSingleQueryPackedD32Stream(BlockMmadQKPackedSingle& blockMmadQK,
+                                                             BlockMmadPVPackedSingleD32& blockMmadPV,
+                                                             uint32_t coreIdx, uint32_t coreNum)
+    {
+        const uint32_t embed = static_cast<uint32_t>(meta.dim);
+        const LayoutK layoutK(embed, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        const LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        const uint64_t scoreChunkStride = static_cast<uint64_t>(workspace.block_elems) * FAI_RING_STAGE_COUNT;
+        PackedD32RingEntry ring[FAI_RING_STAGE_COUNT];
+        uint64_t streamSeq = 0;
+        for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+            TaskInfo info = DecodeTask(taskIdx);
+            if (info.qRows == 0) {
+                continue;
+            }
+            uint64_t headBase = HeadBase(info.batch, info.head);
+            uint64_t qOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+            LayoutQ layoutQ(info.qRows, embed, embed);
+            WindowRange range = GetWindowRange(info);
+            // OPFORGE_DIAGNOSTIC_STAGE_CUT: qL1 read/write credit. `LoadQueries` only
+            // protects qL1 against its own previous copy (the MTE1_MTE2(EVENT_ID6)
+            // self-loop), so the first task's qL1 reads are not ordered against the
+            // second task's qL1 overwrite. This pair makes the next task's LoadQueries
+            // wait for this task's MTE1 reads. Reachability: AIC D32 packed stream only.
+            // Producer: this task's ComputeStackQueryMajor/ComputeStack copyL1ToL0A reads.
+            // Consumer: the next task's LoadQueries copyGmToL1A write. Payload: qL1.
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
+            blockMmadQK.LoadQueries(qGm[qOffset], layoutQ, info.qRows, info.qRows, 1U);
+            uint32_t blocksPerSegment = (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) /
+                                        FAI_KV_BASE_ROWS;
+            uint32_t totalBlocks = PackedImageBlockCount(range);
+            uint32_t stackCount = StaCeilDiv(totalBlocks, FAI_STACK_BLOCK_COUNT);
+            for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount, ++streamSeq) {
+                uint32_t slot = static_cast<uint32_t>(streamSeq % FAI_RING_STAGE_COUNT);
+                StackInfo cur = MakePackedImageStack(info, range, stackSeqCount, headBase, embed, blocksPerSegment,
+                                                     totalBlocks);
+                PackedD32RingEntry& entry = ring[slot];
+                entry.stack = cur;
+                entry.qRows = info.qRows;
+                entry.stackTotal = stackCount;
+                uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+                if (cur.packedBlockCount == FAI_STACK_BLOCK_COUNT) {
+                    blockMmadQK.ComputeStackQueryMajor(kGm, sGm[sOffset], layoutK, info.qRows, cur.stackSeqTile, 0,
+                                                       cur.packedBlockCount, cur.stackSeqTile, embed, scoreChunkStride,
+                                                       qkReady, cur.packedBlockOffsets);
+                } else {
+                    blockMmadQK.ComputeStack(kGm, sGm[sOffset], layoutK, info.qRows, cur.stackSeqTile, 0,
+                                             cur.packedBlockCount, cur.stackSeqTile, embed, scoreChunkStride, qkReady,
+                                             cur.packedBlockOffsets, 1U);
+                }
+                if (streamSeq >= FAI_PRELAUNCH_DEPTH) {
+                    uint64_t delayedSeq = streamSeq - FAI_PRELAUNCH_DEPTH;
+                    uint32_t delayedSlot = static_cast<uint32_t>(delayedSeq % FAI_RING_STAGE_COUNT);
+                    RunAicSingleQueryPackedD32PvStack(ring[delayedSlot], coreIdx, embed, layoutV, blockMmadPV,
+                                                      delayedSlot);
+                }
+            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
+        }
+        uint64_t drainStart = streamSeq > FAI_PRELAUNCH_DEPTH ? streamSeq - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint64_t delayedSeq = drainStart; delayedSeq < streamSeq; ++delayedSeq) {
+            uint32_t delayedSlot = static_cast<uint32_t>(delayedSeq % FAI_RING_STAGE_COUNT);
+            RunAicSingleQueryPackedD32PvStack(ring[delayedSlot], coreIdx, embed, layoutV, blockMmadPV, delayedSlot);
+        }
+    }
+
+    CATLASS_DEVICE void RunAicSingleQueryPackedD32PvStack(const PackedD32RingEntry& entry, uint32_t coreIdx,
+                                                          uint32_t embed, const LayoutV& layoutV,
+                                                          BlockMmadPVPackedSingleD32& blockMmadPV, uint32_t slot)
+    {
+        const StackInfo& stack = entry.stack;
+        uint64_t offset = WorkspaceOffset(coreIdx, slot);
+        LayoutP layoutP(entry.qRows, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+        blockMmadPV.LoadV(vGm, layoutV, stack.stackSeqTile, 0, stack.packedBlockCount, stack.stackSeqTile, embed,
+                          stack.packedBlockOffsets);
+        blockMmadPV.ComputeQuery(pGm[offset], oTmpGm[offset], layoutP, entry.qRows, embed, stack.stackSeqTile, embed,
+                                 softmaxReady, 0U);
+        Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvReady);
+        blockMmadPV.ReleaseV();
+    }
+
+    // AIV mirror of the same continuous stream. Both cores walk the identical
+    // per-core task order, so the global stack sequence yields the same slot on both
+    // sides and the existing ready/ack pairs still bound each slot's reuse distance.
+    //
+    // The online softmax runs `kSoftmaxLookaheadDepth` rounds behind the stack the
+    // AIV is currently registering. Without that lookahead `softmax(r)` can only
+    // start after the AIC has published the whole `QK^T(r)` of the same round, so a
+    // serial `QK^T` term sits in front of the AIV's vector work every round; with it,
+    // `softmax(r - 1)` overlaps `QK^T(r)`. The ring-slot disjointness and the
+    // per-stack `qkReady`/`softmaxReady` credit counts are bound in the copied
+    // resource ledger (`StreamLookaheadSlotsAreDisjoint`).
+    CATLASS_DEVICE void RunAivLookaheadSoftmax(EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                               const PackedD32RingEntry* ring, uint32_t coreIdx, uint32_t embed,
+                                               uint64_t seq)
+    {
+        uint32_t slot = static_cast<uint32_t>(seq % FAI_RING_STAGE_COUNT);
+        const PackedD32RingEntry& entry = ring[slot];
+        LayoutP layoutP(entry.qRows, entry.stack.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+        LayoutS layoutS(entry.qRows, entry.stack.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+        GemmCoord qkShape{entry.qRows, entry.stack.stackSeqTile, embed};
+        uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+        Arch::CrossCoreWaitFlag(qkReady);
+        RunOnlineSoftmax(epilogueOnlineSoftmax, sOffset, layoutP, layoutS, qkShape, entry.stack.stackSeqCount == 0,
+                         entry.qRows, slot);
+        if (entry.stack.stackSeqCount + 1 == entry.stackTotal) {
+            SaveStreamTaskFinalGl(static_cast<uint32_t>(seq % STREAM_SNAPSHOT_COUNT), entry.qRows);
+        }
+        Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+    }
+
+    CATLASS_DEVICE void ProcessAivSingleQueryPackedD32Stream(EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                             EpilogueRescaleO& epilogueRescaleO, uint32_t coreIdx,
+                                                             uint32_t coreNum)
+    {
+        static_assert(opforge::ascend_c::resource_ledger::kStreamRingStageCount == FAI_RING_STAGE_COUNT,
+                      "the ledger ring depth must match the kernel ring depth");
+        static_assert(opforge::ascend_c::resource_ledger::kRescaleLookaheadDepth == FAI_PRELAUNCH_DEPTH,
+                      "the ledger rescale lookahead must match the kernel prelaunch depth");
+        static_assert(opforge::ascend_c::resource_ledger::StreamLookaheadSlotsAreDisjoint(
+                          opforge::ascend_c::resource_ledger::kStreamRingStageCount,
+                          opforge::ascend_c::resource_ledger::kSoftmaxLookaheadDepth,
+                          opforge::ascend_c::resource_ledger::kRescaleLookaheadDepth),
+                      "the softmax/rescale lookahead reads must not alias the round's ring write");
+        const uint32_t embed = static_cast<uint32_t>(meta.dim);
+        const uint32_t embedRound = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
+        PackedD32RingEntry ring[FAI_RING_STAGE_COUNT];
+        uint64_t streamSeq = 0;
+        for (uint32_t taskIdx = coreIdx; taskIdx < static_cast<uint32_t>(totalJobs); taskIdx += coreNum) {
+            TaskInfo info = DecodeTask(taskIdx);
+            if (info.qRows == 0) {
+                continue;
+            }
+            uint64_t headBase = HeadBase(info.batch, info.head);
+            uint64_t outOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+            WindowRange range = GetWindowRange(info);
+            uint32_t blocksPerSegment = (range.wEnd - range.wStart) * static_cast<uint32_t>(meta.tile_numel) /
+                                        FAI_KV_BASE_ROWS;
+            uint32_t totalBlocks = PackedImageBlockCount(range);
+            uint32_t stackCount = StaCeilDiv(totalBlocks, FAI_STACK_BLOCK_COUNT);
+            for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount, ++streamSeq) {
+                uint32_t slot = static_cast<uint32_t>(streamSeq % FAI_RING_STAGE_COUNT);
+                StackInfo cur = MakePackedImageStack(info, range, stackSeqCount, headBase, embed, blocksPerSegment,
+                                                     totalBlocks);
+                PackedD32RingEntry& entry = ring[slot];
+                entry.stack = cur;
+                entry.qRows = info.qRows;
+                entry.stackTotal = stackCount;
+                entry.outOffset = outOffset;
+                if (streamSeq >= opforge::ascend_c::resource_ledger::kSoftmaxLookaheadDepth) {
+                    RunAivLookaheadSoftmax(epilogueOnlineSoftmax, ring, coreIdx, embed,
+                                           streamSeq - opforge::ascend_c::resource_ledger::kSoftmaxLookaheadDepth);
+                }
+                if (streamSeq >= FAI_PRELAUNCH_DEPTH) {
+                    uint64_t delayedSeq = streamSeq - FAI_PRELAUNCH_DEPTH;
+                    uint32_t delayedSlot = static_cast<uint32_t>(delayedSeq % FAI_RING_STAGE_COUNT);
+                    uint32_t delayedSnapshotIdx = static_cast<uint32_t>(delayedSeq % STREAM_SNAPSHOT_COUNT);
+                    const PackedD32RingEntry& delayed = ring[delayedSlot];
+                    const bool delayedIsLast = delayed.stack.stackSeqCount + 1 == delayed.stackTotal;
+                    if (delayedIsLast) {
+                        SwapStreamTaskFinalGl(delayedSnapshotIdx, delayed.qRows);
+                    }
+                    RunAivRescaleStack(0U, delayed.stack, coreIdx, delayed.outOffset, delayed.qRows, embed, embedRound,
+                                       delayed.stackTotal, epilogueRescaleO, 0U, true, delayedSlot);
+                    if (delayedIsLast) {
+                        RestoreStreamRunningGl(delayed.qRows);
+                    }
+                }
+            }
+        }
+        // Drain the lookahead softmax before the rescale drain: the rescale of the
+        // final stack reads the snapshot this softmax saves.
+        for (uint64_t seq = (streamSeq > opforge::ascend_c::resource_ledger::kSoftmaxLookaheadDepth
+                                 ? streamSeq - opforge::ascend_c::resource_ledger::kSoftmaxLookaheadDepth
+                                 : 0);
+             seq < streamSeq; ++seq) {
+            RunAivLookaheadSoftmax(epilogueOnlineSoftmax, ring, coreIdx, embed, seq);
+        }
+        uint64_t drainStart = streamSeq > FAI_PRELAUNCH_DEPTH ? streamSeq - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint64_t delayedSeq = drainStart; delayedSeq < streamSeq; ++delayedSeq) {
+            uint32_t delayedSlot = static_cast<uint32_t>(delayedSeq % FAI_RING_STAGE_COUNT);
+            uint32_t delayedSnapshotIdx = static_cast<uint32_t>(delayedSeq % STREAM_SNAPSHOT_COUNT);
+            const PackedD32RingEntry& delayed = ring[delayedSlot];
+            const bool delayedIsLast = delayed.stack.stackSeqCount + 1 == delayed.stackTotal;
+            if (delayedIsLast) {
+                SwapStreamTaskFinalGl(delayedSnapshotIdx, delayed.qRows);
+            }
+            RunAivRescaleStack(0U, delayed.stack, coreIdx, delayed.outOffset, delayed.qRows, embed, embedRound,
+                               delayed.stackTotal, epilogueRescaleO, 0U, true, delayedSlot);
+            if (delayedIsLast) {
+                RestoreStreamRunningGl(delayed.qRows);
+            }
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAicPackedD128Task(uint32_t groupedTaskIdx, BlockMmadQKGrouped& blockMmadQKGrouped,
+                                                 BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
+    {
+        TaskInfo infos[QUERY_CHUNKS_PER_TILE];
+        for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        constexpr uint32_t embed = 128;
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        uint64_t qOffset = headBase + static_cast<uint64_t>(infos[0].qStart) * embed;
+        LayoutQ layoutQ(FAI_QUERY_ROWS, embed, embed);
+        LayoutK layoutK(embed, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        blockMmadQKGrouped.LoadQueries(qGm[qOffset], layoutQ, FAI_QUERY_ROWS, FAI_QUERY_ROWS);
+        WindowRange range = GetWindowRange(infos[0]);
+        ProcessAicPackedImageStacks<true>(infos, range, coreIdx, embed, headBase, layoutK, layoutV, blockMmadQKGrouped,
+                                          blockMmadPVGroupedD72);
+    }
+
+    CATLASS_DEVICE void ProcessAivPackedD128Task(uint32_t groupedTaskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                 EpilogueRescaleO& epilogueRescaleO)
+    {
+        TaskInfo infos[QUERY_CHUNKS_PER_TILE];
+        uint64_t outOffsets[QUERY_CHUNKS_PER_TILE];
+        for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            outOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                                static_cast<uint64_t>(infos[chunk].qStart) * 128;
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        constexpr uint32_t embed = 128;
+        constexpr uint32_t embedRound = 128;
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        WindowRange range = GetWindowRange(infos[0]);
+        ProcessAivPackedD72Stacks(groupedTaskIdx, infos, outOffsets, range, coreIdx, embed, embedRound, headBase,
+                                  epilogueOnlineSoftmax, epilogueRescaleO);
+    }
+
+    CATLASS_DEVICE void ProcessAicPackedD72FullTask(uint32_t groupedTaskIdx, BlockMmadQKGrouped& blockMmadQKGrouped,
+                                                    BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
+    {
+        TaskInfo infos[QUERY_CHUNKS_PER_TILE];
+        for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        constexpr uint32_t embed = 72;
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        uint64_t qOffset = headBase + static_cast<uint64_t>(infos[0].qStart) * embed;
+        LayoutQ layoutQ(FAI_QUERY_ROWS, embed, embed);
+        LayoutK layoutK(embed, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        blockMmadQKGrouped.LoadQueries(qGm[qOffset], layoutQ, FAI_QUERY_ROWS, FAI_QUERY_ROWS);
+        WindowRange range = GetWindowRange(infos[0]);
+        ProcessAicPackedImageStacks<false>(infos, range, coreIdx, embed, headBase, layoutK, layoutV, blockMmadQKGrouped,
+                                           blockMmadPVGroupedD72);
+    }
+
+    CATLASS_DEVICE void ProcessAivPackedD72FullTask(uint32_t groupedTaskIdx,
+                                                    EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                    EpilogueRescaleO& epilogueRescaleO)
+    {
+        TaskInfo infos[QUERY_CHUNKS_PER_TILE];
+        uint64_t outOffsets[QUERY_CHUNKS_PER_TILE];
+        for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            outOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                                static_cast<uint64_t>(infos[chunk].qStart) * 72;
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        constexpr uint32_t embed = 72;
+        constexpr uint32_t embedRound = 80;
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        WindowRange range = GetWindowRange(infos[0]);
+        ProcessAivPackedD72Stacks(groupedTaskIdx, infos, outOffsets, range, coreIdx, embed, embedRound, headBase,
+                                  epilogueOnlineSoftmax, epilogueRescaleO);
+    }
+
+    template <bool INCLUDE_TEXT = false>
+    CATLASS_DEVICE void ProcessAicPackedD256Task(uint32_t taskIdx, BlockMmadQKSlicedAccum& blockMmadQKSlicedAccum,
+                                                 BlockMmadPVNormal& blockMmadPVNormal,
+                                                 BlockMmadPVDynamicSingleBlock& blockMmadPVDynamicSingleBlock,
+                                                 BlockMmadPVDynamicMultiBlock& blockMmadPVDynamicMultiBlock)
+    {
+        TaskInfo info = DecodeTask(taskIdx);
+        if (info.qRows == 0) {
+            return;
+        }
+        constexpr uint32_t embed = 256;
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        uint64_t headBase = HeadBase(info.batch, info.head);
+        uint64_t qOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        WindowRange range = GetWindowRange(info);
+        blockMmadQKSlicedAccum.LoadPackedD256Queries(qInputGm[qOffset], info.qRows, embed);
+        uint32_t stackCount = INCLUDE_TEXT ? PackedCombinedImageTextStackCount(range) :
+                                             StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = INCLUDE_TEXT ?
+                                MakePackedCombinedImageTextStack(info, range, stackSeqCount, headBase, embed) :
+                                MakePackedWindow3D256Stack(range, stackSeqCount, headBase);
+            ring[slot] = cur;
+            uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+            blockMmadQKSlicedAccum.ComputePackedD256Stack(kGm, sGm[sOffset], info.qRows, cur.stackSeqTile,
+                                                          FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS,
+                                                          cur.packedBlockOffsets);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qkReady);
+            if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                RunAicPvStack<true>(taskIdx, info, delayed, coreIdx, embed, embed, layoutV, blockMmadPVNormal,
+                                    blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+            }
+        }
+        uint32_t drainStart = stackCount > FAI_PRELAUNCH_DEPTH ? stackCount - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAicPvStack<true>(taskIdx, info, delayed, coreIdx, embed, embed, layoutV, blockMmadPVNormal,
+                                blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+        }
+    }
+
+    template <bool INCLUDE_TEXT = false>
+    CATLASS_DEVICE void ProcessAivPackedD256Task(uint32_t taskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                 EpilogueRescaleO& epilogueRescaleO)
+    {
+        TaskInfo info = DecodeTask(taskIdx);
+        if (info.qRows == 0) {
+            return;
+        }
+        constexpr uint32_t embed = 256;
+        constexpr uint32_t embedRound = 256;
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint64_t headBase = HeadBase(info.batch, info.head);
+        uint64_t qOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+        uint64_t outOffset = qOffset;
+        WindowRange range = GetWindowRange(info);
+        uint32_t stackCount = INCLUDE_TEXT ? PackedCombinedImageTextStackCount(range) :
+                                             StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = INCLUDE_TEXT ?
+                                MakePackedCombinedImageTextStack(info, range, stackSeqCount, headBase, embed) :
+                                MakePackedWindow3D256Stack(range, stackSeqCount, headBase);
+            ring[slot] = cur;
+            uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+            LayoutP layoutP(info.qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            LayoutS layoutS(info.qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
+            Arch::CrossCoreWaitFlag(qkReady);
+            RunOnlineSoftmax(epilogueOnlineSoftmax, sOffset, layoutP, layoutS, qkShape, stackSeqCount == 0, info.qRows,
+                             slot);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+            if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, stackCount,
+                                   epilogueRescaleO);
+            }
+        }
+        uint32_t drainStart = stackCount > FAI_PRELAUNCH_DEPTH ? stackCount - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, stackCount,
+                               epilogueRescaleO);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAicPackedD3SliceTask(uint32_t taskIdx, BlockMmadQKSlicedAccum& blockMmadQKSlicedAccum,
+                                                    BlockMmadPVNormal& blockMmadPVNormal,
+                                                    BlockMmadPVDynamicSingleBlock& blockMmadPVDynamicSingleBlock,
+                                                    BlockMmadPVDynamicMultiBlock& blockMmadPVDynamicMultiBlock)
+    {
+        TaskInfo info = DecodeTask(taskIdx);
+        if (info.qRows == 0) {
+            return;
+        }
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        uint64_t headBase = HeadBase(info.batch, info.head);
+        uint64_t qOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        WindowRange range = GetWindowRange(info);
+        blockMmadQKSlicedAccum.LoadPackedD3SliceQueries(qInputGm[qOffset], info.qRows, embed);
+        uint32_t stackCount = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedWindow3D3SliceStack(range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+            uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+            blockMmadQKSlicedAccum.ComputePackedD3SliceStack(kGm, sGm[sOffset], info.qRows, cur.stackSeqTile,
+                                                             FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed,
+                                                             cur.packedBlockOffsets);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qkReady);
+            if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                RunAicPvStack<true, true>(taskIdx, info, delayed, coreIdx, embed, embed, layoutV, blockMmadPVNormal,
+                                          blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+            }
+        }
+        uint32_t drainStart = stackCount > FAI_PRELAUNCH_DEPTH ? stackCount - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAicPvStack<true, true>(taskIdx, info, delayed, coreIdx, embed, embed, layoutV, blockMmadPVNormal,
+                                      blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAivPackedD3SliceTask(uint32_t taskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                    EpilogueRescaleO& epilogueRescaleO)
+    {
+        TaskInfo info = DecodeTask(taskIdx);
+        if (info.qRows == 0) {
+            return;
+        }
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint32_t embedRound = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint64_t headBase = HeadBase(info.batch, info.head);
+        uint64_t outOffset = headBase + static_cast<uint64_t>(info.qStart) * embed;
+        WindowRange range = GetWindowRange(info);
+        uint32_t stackCount = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedWindow3D3SliceStack(range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+            uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+            LayoutP layoutP(info.qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            LayoutS layoutS(info.qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
+            Arch::CrossCoreWaitFlag(qkReady);
+            RunOnlineSoftmax(epilogueOnlineSoftmax, sOffset, layoutP, layoutS, qkShape, stackSeqCount == 0, info.qRows,
+                             slot);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+            if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, stackCount,
+                                   epilogueRescaleO);
+            }
+        }
+        uint32_t drainStart = stackCount > FAI_PRELAUNCH_DEPTH ? stackCount - FAI_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, stackCount,
+                               epilogueRescaleO);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAicGroupedTask(uint32_t groupedTaskIdx, BlockMmadQKGrouped& blockMmadQKGrouped,
+                                              BlockMmadPVNormal& blockMmadPVNormal,
+                                              BlockMmadPVDynamicSingleBlock& blockMmadPVDynamicSingleBlock,
+                                              BlockMmadPVDynamicMultiBlock& blockMmadPVDynamicMultiBlock,
+                                              BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
     {
         TaskInfo infos[QUERY_CHUNKS_PER_TILE];
         for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
@@ -2161,8 +3775,8 @@ private:
 
         WindowRange range = GetWindowRange(infos[0]);
         if (UsesPackedD72ImageStacks()) {
-            ProcessAicPackedD72Stacks(infos, range, coreIdx, embed, headBase, layoutK, layoutV, blockMmadQKGrouped,
-                                      blockMmadPVGroupedD72);
+            ProcessAicPackedImageStacks<false>(infos, range, coreIdx, embed, headBase, layoutK, layoutV,
+                                               blockMmadQKGrouped, blockMmadPVGroupedD72);
             return;
         }
         uint32_t stackSeqCount = 0;
@@ -2198,18 +3812,24 @@ private:
                 }
                 uint64_t computeKvOffset = UsesGroupedD8QkPath() ? KvStageOffset(coreIdx, slot) : kvOffset;
                 uint32_t computeKvIdx = UsesGroupedD8QkPath() ? 0 : kvIdx;
-                uint32_t computeKvBlocks =
-                    UsesGroupedD8QkPath() ? StaCeilDiv(cur.stackSeqTile, FAI_KV_BASE_ROWS) : kvLoopNoMask;
+                uint32_t computeKvBlocks = UsesGroupedD8QkPath() ? StaCeilDiv(cur.stackSeqTile, FAI_KV_BASE_ROWS) :
+                                                                   kvLoopNoMask;
                 uint32_t computeSegLen = UsesGroupedD8QkPath() ? cur.stackSeqTile : seg.len;
-                blockMmadQKGrouped.ComputeStack(kGm[computeKvOffset], sGm[scoreBase], layoutK, FAI_QUERY_ROWS,
-                                                cur.stackSeqTile, computeKvIdx, computeKvBlocks, computeSegLen,
-                                                qkStride, scoreChunkStride, qkReady);
+                if (UsesD128GroupedEarlyPublishPath()) {
+                    blockMmadQKGrouped.ComputeStackQueryMajor(
+                        kGm[computeKvOffset], sGm[scoreBase], layoutK, FAI_QUERY_ROWS, cur.stackSeqTile, computeKvIdx,
+                        computeKvBlocks, computeSegLen, qkStride, scoreChunkStride, qkReady);
+                } else {
+                    blockMmadQKGrouped.ComputeStack(kGm[computeKvOffset], sGm[scoreBase], layoutK, FAI_QUERY_ROWS,
+                                                    cur.stackSeqTile, computeKvIdx, computeKvBlocks, computeSegLen,
+                                                    qkStride, scoreChunkStride, qkReady);
+                }
 
                 if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                    const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                     if (UsesGroupedD72PvPath()) {
                         RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
-                    } else if (UsesGroupedD8QkPath()) {
+                    } else if (UsesGroupedD8QkPath() || UsesGroupedD16PvPath()) {
                         RunAicGroupedD8PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
                     } else {
                         for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
@@ -2226,10 +3846,10 @@ private:
 
         uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             if (UsesGroupedD72PvPath()) {
                 RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
-            } else if (UsesGroupedD8QkPath()) {
+            } else if (UsesGroupedD8QkPath() || UsesGroupedD16PvPath()) {
                 RunAicGroupedD8PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
             } else {
                 for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
@@ -2242,17 +3862,128 @@ private:
         }
     }
 
-    CATLASS_DEVICE void ProcessAicPackedD72Stacks(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE],
-                                                  const WindowRange &range, uint32_t coreIdx, uint32_t embed,
-                                                  uint64_t headBase, const LayoutK &layoutK, const LayoutV &layoutV,
-                                                  BlockMmadQKGrouped &blockMmadQKGrouped,
-                                                  BlockMmadPVGroupedD72 &blockMmadPVGroupedD72)
+    CATLASS_DEVICE void RunAicGroupedPairD16PvStack(const TaskInfo (&infos)[6], uint32_t queryCount,
+                                                    const StackInfo& stack, uint32_t coreIdx, uint32_t embed,
+                                                    const LayoutV& layoutV, BlockMmadPVGroupedPairD16& blockMmadPV)
     {
-        uint32_t stackCount = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        uint32_t slot = StackSlot(stack.stackSeqCount);
+        blockMmadPV.LoadV(vGm, layoutV, stack.stackSeqTile, 0, stack.packedBlockCount, stack.stackSeqTile, embed,
+                          stack.packedBlockOffsets);
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            uint64_t offset = WorkspaceOffset(coreIdx, slot, chunk);
+            LayoutP layoutP(infos[chunk].qRows, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            blockMmadPV.ComputeQuery(pGm[offset], oTmpGm[offset], layoutP, infos[chunk].qRows, embed,
+                                     stack.stackSeqTile, StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS), softmaxReady, chunk);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvReady);
+        }
+        blockMmadPV.ReleaseV();
+    }
+
+    template <class QKBlockType, class ScoreElem>
+    CATLASS_DEVICE void ProcessAicGroupedPairD16Task(uint32_t groupedTaskIdx, QKBlockType& blockMmadQK,
+                                                     BlockMmadPVGroupedPairD16& blockMmadPV,
+                                                     AscendC::GlobalTensor<ScoreElem> scoreGm, uint64_t scoreScale)
+    {
+        uint32_t queryCount = GroupedQueryCount(groupedTaskIdx);
+        TaskInfo infos[6];
+        uint64_t qOffsets[6];
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            qOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                              static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        LayoutQ layoutQ(FAI_QUERY_ROWS, embed, embed);
+        LayoutK layoutK(embed, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        blockMmadQK.LoadQueriesOffsets(qGm, layoutQ, FAI_QUERY_ROWS, qOffsets, queryCount);
+        WindowRange range = GetWindowRange(infos[0]);
+        uint32_t stackCount = PackedImageTextStackCount(range);
         StackInfo ring[FAI_RING_STAGE_COUNT];
         for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
             uint32_t slot = StackSlot(stackSeqCount);
-            StackInfo cur = MakePackedImageStack(infos[0], range, stackSeqCount, headBase, embed);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+            uint64_t scoreBase = WorkspaceOffset(coreIdx, slot, 0);
+            uint64_t scoreChunkStride = static_cast<uint64_t>(workspace.block_elems) * FAI_RING_STAGE_COUNT;
+            blockMmadQK.ComputeStack(kGm, scoreGm[scoreBase * scoreScale], layoutK, FAI_QUERY_ROWS, cur.stackSeqTile, 0,
+                                     cur.packedBlockCount, cur.stackSeqTile, embed, scoreChunkStride, qkReady,
+                                     cur.packedBlockOffsets, queryCount);
+            if (stackSeqCount >= D16_PAIR_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - D16_PAIR_PRELAUNCH_DEPTH)];
+                RunAicGroupedPairD16PvStack(infos, queryCount, delayed, coreIdx, embed, layoutV, blockMmadPV);
+            }
+        }
+        uint32_t drainStart = stackCount > D16_PAIR_PRELAUNCH_DEPTH ? stackCount - D16_PAIR_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAicGroupedPairD16PvStack(infos, queryCount, delayed, coreIdx, embed, layoutV, blockMmadPV);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAicGroupedTextD16Task(uint32_t groupedTaskIdx, BlockMmadQKGroupedPairD16& blockMmadQK,
+                                                     BlockMmadPVGroupedPairD16& blockMmadPV)
+    {
+        uint32_t queryCount = TextChunksPerHead();
+        TaskInfo infos[6];
+        uint64_t qOffsets[6];
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            uint32_t taskIdx = GroupedChunkTaskIndex(groupedTaskIdx, chunk);
+            infos[chunk] = DecodeTask(taskIdx);
+            if (infos[chunk].isText == 0 || infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            qOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                              static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx();
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        WindowRange range = GetWindowRange(infos[0]);
+        LayoutQ layoutQ(FAI_QUERY_ROWS, embed, embed);
+        LayoutK layoutK(embed, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        LayoutV layoutV(FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
+        blockMmadQK.LoadQueriesOffsets(qGm, layoutQ, FAI_QUERY_ROWS, qOffsets, queryCount);
+        uint32_t stackCount = PackedImageTextStackCount(range);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+            uint64_t scoreBase = WorkspaceOffset(coreIdx, slot, 0);
+            uint64_t scoreChunkStride = static_cast<uint64_t>(workspace.block_elems) * FAI_RING_STAGE_COUNT;
+            blockMmadQK.ComputeStack(kGm, sGm[scoreBase], layoutK, FAI_QUERY_ROWS, cur.stackSeqTile, 0,
+                                     cur.packedBlockCount, cur.stackSeqTile, embed, scoreChunkStride, qkReady,
+                                     cur.packedBlockOffsets, queryCount);
+            if (stackSeqCount >= D16_PAIR_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - D16_PAIR_PRELAUNCH_DEPTH)];
+                RunAicGroupedPairD16PvStack(infos, queryCount, delayed, coreIdx, embed, layoutV, blockMmadPV);
+            }
+        }
+        uint32_t drainStart = stackCount > D16_PAIR_PRELAUNCH_DEPTH ? stackCount - D16_PAIR_PRELAUNCH_DEPTH : 0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAicGroupedPairD16PvStack(infos, queryCount, delayed, coreIdx, embed, layoutV, blockMmadPV);
+        }
+    }
+
+    template <bool D128>
+    CATLASS_DEVICE void ProcessAicPackedImageStacks(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE],
+                                                    const WindowRange& range, uint32_t coreIdx, uint32_t embed,
+                                                    uint64_t headBase, const LayoutK& layoutK, const LayoutV& layoutV,
+                                                    BlockMmadQKGrouped& blockMmadQKGrouped,
+                                                    BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
+    {
+        uint32_t stackCount = PackedImageTextStackCount(range);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < stackCount; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
             ring[slot] = cur;
 
             uint64_t scoreBase = WorkspaceOffset(coreIdx, slot, 0);
@@ -2262,21 +3993,46 @@ private:
                                             cur.packedBlockOffsets);
 
             if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
-                RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                if constexpr (D128) {
+                    RunAicPackedD128PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+                } else {
+                    RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+                }
             }
         }
 
         uint32_t drainStart = stackCount > FAI_PRELAUNCH_DEPTH ? stackCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
-            RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            if constexpr (D128) {
+                RunAicPackedD128PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+            } else {
+                RunAicGroupedD72PvStack(infos, delayed, coreIdx, embed, layoutV, blockMmadPVGroupedD72);
+            }
         }
     }
 
-    CATLASS_DEVICE void RunAicGroupedD72PvStack(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE], const StackInfo &stack,
-                                                uint32_t coreIdx, uint32_t embed, const LayoutV &layoutV,
-                                                BlockMmadPVGroupedD72 &blockMmadPVGroupedD72)
+    CATLASS_DEVICE void RunAicPackedD128PvStack(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE], const StackInfo& stack,
+                                                uint32_t coreIdx, uint32_t embed, const LayoutV& layoutV,
+                                                BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
+    {
+        uint32_t slot = StackSlot(stack.stackSeqCount);
+        blockMmadPVGroupedD72.LoadV(vGm, layoutV, stack.stackSeqTile, 0, stack.packedBlockCount, stack.stackSeqTile,
+                                    embed, stack.packedBlockOffsets);
+        for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+            uint64_t offset = WorkspaceOffset(coreIdx, slot, chunk);
+            LayoutP layoutP(infos[chunk].qRows, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+            blockMmadPVGroupedD72.ComputeQuerySingleD128(pGm[offset], oTmpGm[offset], layoutP, infos[chunk].qRows,
+                                                         stack.stackSeqTile, embed, softmaxReady);
+            Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(pvReady);
+        }
+        blockMmadPVGroupedD72.ReleaseV();
+    }
+
+    CATLASS_DEVICE void RunAicGroupedD72PvStack(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE], const StackInfo& stack,
+                                                uint32_t coreIdx, uint32_t embed, const LayoutV& layoutV,
+                                                BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
     {
         uint32_t slot = StackSlot(stack.stackSeqCount);
         if (stack.packedBlockCount != 0) {
@@ -2297,9 +4053,9 @@ private:
         blockMmadPVGroupedD72.ReleaseV();
     }
 
-    CATLASS_DEVICE void RunAicGroupedD8PvStack(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE], const StackInfo &stack,
-                                               uint32_t coreIdx, uint32_t embed, const LayoutV &layoutV,
-                                               BlockMmadPVGroupedD72 &blockMmadPVGroupedD72)
+    CATLASS_DEVICE void RunAicGroupedD8PvStack(const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE], const StackInfo& stack,
+                                               uint32_t coreIdx, uint32_t embed, const LayoutV& layoutV,
+                                               BlockMmadPVGroupedD72& blockMmadPVGroupedD72)
     {
         uint32_t slot = StackSlot(stack.stackSeqCount);
         // The grouped helper retains each V block in L1 while all three 128-row queries consume it.
@@ -2316,10 +4072,10 @@ private:
         blockMmadPVGroupedD72.ReleaseV();
     }
 
-    CATLASS_DEVICE void RunAivGroupedRescaleStack(uint32_t groupedTaskIdx, const StackInfo &stack, uint32_t coreIdx,
+    CATLASS_DEVICE void RunAivGroupedRescaleStack(uint32_t groupedTaskIdx, const StackInfo& stack, uint32_t coreIdx,
                                                   const uint64_t (&outOffsets)[QUERY_CHUNKS_PER_TILE], uint32_t embed,
                                                   uint32_t embedRound, uint32_t totalStackSeqNum,
-                                                  EpilogueRescaleO &epilogueRescaleO)
+                                                  EpilogueRescaleO& epilogueRescaleO)
     {
         if (!UsesGroupedD72PvPath()) {
             for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
@@ -2339,8 +4095,8 @@ private:
         for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
             Arch::CrossCoreWaitFlag(pvReady);
         }
-        uint32_t startChunk =
-            (QUERY_CHUNKS_PER_TILE - stack.stackSeqCount % QUERY_CHUNKS_PER_TILE) % QUERY_CHUNKS_PER_TILE;
+        uint32_t startChunk = (QUERY_CHUNKS_PER_TILE - stack.stackSeqCount % QUERY_CHUNKS_PER_TILE) %
+                              QUERY_CHUNKS_PER_TILE;
         for (uint32_t orderIdx = 0; orderIdx < QUERY_CHUNKS_PER_TILE; ++orderIdx) {
             uint32_t chunk = (startChunk + orderIdx) % QUERY_CHUNKS_PER_TILE;
             RestoreGroupedSoftmaxStateUb(chunk, false);
@@ -2358,8 +4114,8 @@ private:
         }
     }
 
-    CATLASS_DEVICE void ProcessAivGroupedTask(uint32_t groupedTaskIdx, EpilogueOnlineSoftmax &epilogueOnlineSoftmax,
-                                              EpilogueRescaleO &epilogueRescaleO)
+    CATLASS_DEVICE void ProcessAivGroupedTask(uint32_t groupedTaskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                              EpilogueRescaleO& epilogueRescaleO)
     {
         TaskInfo infos[QUERY_CHUNKS_PER_TILE];
         uint64_t outOffsets[QUERY_CHUNKS_PER_TILE];
@@ -2368,8 +4124,8 @@ private:
             if (infos[chunk].qRows != FAI_QUERY_ROWS) {
                 return;
             }
-            outOffsets[chunk] =
-                HeadBase(infos[chunk].batch, infos[chunk].head) + static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
+            outOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                                static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
         }
         uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
         uint32_t embed = static_cast<uint32_t>(meta.dim);
@@ -2426,8 +4182,8 @@ private:
                     LayoutP layoutP(FAI_QUERY_ROWS, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
                     GemmCoord qkShape{FAI_QUERY_ROWS, cur.stackSeqTile, embed};
                     Arch::CrossCoreWaitFlag(qkReady);
-                    RunCompactOnlineSoftmax(epilogueOnlineSoftmax, workspaceOffset, workspaceOffset, layoutP, layoutS,
-                                            qkShape, stackSeqCount == 0, FAI_QUERY_ROWS, slot);
+                    RunCompactOnlineSoftmax(epilogueOnlineSoftmax, compactSGm, 1, workspaceOffset, workspaceOffset,
+                                            layoutP, layoutS, qkShape, stackSeqCount == 0, FAI_QUERY_ROWS, slot);
                     if (UsesGroupedD72PvPath()) {
                         SaveGroupedSoftmaxStateUb(chunk);
                         SaveGroupedSoftmaxDmUb(chunk, slot);
@@ -2439,7 +4195,7 @@ private:
                 }
 
                 if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                    const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                     RunAivGroupedRescaleStack(groupedTaskIdx, delayed, coreIdx, outOffsets, embed, embedRound,
                                               totalStackSeqNum, epilogueRescaleO);
                 }
@@ -2449,28 +4205,123 @@ private:
 
         uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             RunAivGroupedRescaleStack(groupedTaskIdx, delayed, coreIdx, outOffsets, embed, embedRound, totalStackSeqNum,
                                       epilogueRescaleO);
         }
     }
 
-    CATLASS_DEVICE void ProcessAivPackedD72Stacks(uint32_t groupedTaskIdx,
-                                                  const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE],
-                                                  const uint64_t (&outOffsets)[QUERY_CHUNKS_PER_TILE],
-                                                  const WindowRange &range, uint32_t coreIdx, uint32_t embed,
-                                                  uint32_t embedRound, uint64_t headBase,
-                                                  EpilogueOnlineSoftmax &epilogueOnlineSoftmax,
-                                                  EpilogueRescaleO &epilogueRescaleO)
+    CATLASS_DEVICE void RunAivGroupedPairD16Rescale(uint32_t groupedTaskIdx, const TaskInfo (&infos)[6],
+                                                    uint32_t queryCount, const StackInfo& stack, uint32_t coreIdx,
+                                                    const uint64_t (&outOffsets)[6], uint32_t embed,
+                                                    uint32_t embedRound, uint32_t totalStackSeqNum,
+                                                    EpilogueRescaleO& epilogueRescaleO)
     {
-        uint32_t totalStackSeqNum = StaCeilDiv(PackedImageBlockCount(range), FAI_STACK_BLOCK_COUNT);
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            RestoreGroupedSoftmaxStateUb(chunk, false);
+            RestoreGroupedSoftmaxDmUb(chunk, StackSlot(stack.stackSeqCount));
+            if (stack.stackSeqCount != 0) {
+                RestoreGroupedGoState(coreIdx, chunk, FAI_QUERY_ROWS, embedRound);
+            }
+            RunAivRescaleStack(GroupedChunkTaskIndex(groupedTaskIdx, chunk), stack, coreIdx, outOffsets[chunk],
+                               infos[chunk].qRows, embed, embedRound, totalStackSeqNum, epilogueRescaleO, chunk);
+            if (stack.stackSeqCount + 1 < totalStackSeqNum) {
+                SaveGroupedGoState(coreIdx, chunk, FAI_QUERY_ROWS, embedRound);
+            }
+            // pairSlotDrained: the five-slot age prevents overwrite until recurrence state is saved.
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAivGroupedTextD16Task(uint32_t groupedTaskIdx,
+                                                     EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                     EpilogueRescaleO& epilogueRescaleO)
+    {
+        uint32_t queryCount = TextChunksPerHead();
+        TaskInfo infos[6];
+        uint32_t taskIndices[6];
+        uint64_t outOffsets[6];
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            taskIndices[chunk] = GroupedChunkTaskIndex(groupedTaskIdx, chunk);
+            infos[chunk] = DecodeTask(taskIndices[chunk]);
+            if (infos[chunk].isText == 0 || infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            outOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                                static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
+        }
+        // OPFORGE_DEVICE_INLINE_LAYOUT_FORMULA: normalize logical AIV lanes to the physical
+        // workspace owner proven by ValidateAivPhysicalWorkspaceOwner in resource_ledger.hpp.
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint32_t embedRound = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        WindowRange range = GetWindowRange(infos[0]);
+        uint32_t totalStackSeqNum = PackedImageTextStackCount(range);
         StackInfo ring[FAI_RING_STAGE_COUNT];
         for (uint32_t stackSeqCount = 0; stackSeqCount < totalStackSeqNum; ++stackSeqCount) {
             uint32_t slot = StackSlot(stackSeqCount);
-            StackInfo cur = MakePackedImageStack(infos[0], range, stackSeqCount, headBase, embed);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
             ring[slot] = cur;
+            for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+                uint64_t workspaceOffset = WorkspaceOffset(coreIdx, slot, chunk);
+                if (stackSeqCount != 0) {
+                    RestoreGroupedSoftmaxStateUb(chunk, true);
+                }
+                LayoutS layoutS(infos[chunk].qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+                LayoutP layoutP(infos[chunk].qRows, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+                GemmCoord qkShape{infos[chunk].qRows, cur.stackSeqTile, embed};
+                Arch::CrossCoreWaitFlag(qkReady);
+                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, compactSGm, 1, workspaceOffset, workspaceOffset,
+                                        layoutP, layoutS, qkShape, stackSeqCount == 0, infos[chunk].qRows, slot);
+                SaveGroupedSoftmaxStateUb(chunk);
+                SaveGroupedSoftmaxDmUb(chunk, slot);
+                Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+            }
+            if (stackSeqCount >= D16_PAIR_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - D16_PAIR_PRELAUNCH_DEPTH)];
+                RunAivGroupedPairD16Rescale(groupedTaskIdx, infos, queryCount, delayed, coreIdx, outOffsets, embed,
+                                            embedRound, totalStackSeqNum, epilogueRescaleO);
+            }
+        }
+        uint32_t drainStart = totalStackSeqNum > D16_PAIR_PRELAUNCH_DEPTH ?
+                                  totalStackSeqNum - D16_PAIR_PRELAUNCH_DEPTH :
+                                  0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < totalStackSeqNum; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAivGroupedPairD16Rescale(groupedTaskIdx, infos, queryCount, delayed, coreIdx, outOffsets, embed,
+                                        embedRound, totalStackSeqNum, epilogueRescaleO);
+        }
+    }
 
-            for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+    template <class ScoreElem>
+    CATLASS_DEVICE void ProcessAivGroupedPairD16Task(uint32_t groupedTaskIdx,
+                                                     EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                     EpilogueRescaleO& epilogueRescaleO,
+                                                     AscendC::GlobalTensor<ScoreElem> scoreGm, uint64_t scoreScale)
+    {
+        uint32_t queryCount = GroupedQueryCount(groupedTaskIdx);
+        TaskInfo infos[6];
+        uint64_t outOffsets[6];
+        for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
+            infos[chunk] = DecodeTask(GroupedChunkTaskIndex(groupedTaskIdx, chunk));
+            if (infos[chunk].qRows != FAI_QUERY_ROWS) {
+                return;
+            }
+            outOffsets[chunk] = HeadBase(infos[chunk].batch, infos[chunk].head) +
+                                static_cast<uint64_t>(infos[chunk].qStart) * meta.dim;
+        }
+        uint32_t coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint32_t embed = static_cast<uint32_t>(meta.dim);
+        uint32_t embedRound = StaAlignUp(embed, VECTOR_BLOCK_ELEMENTS);
+        uint64_t headBase = HeadBase(infos[0].batch, infos[0].head);
+        WindowRange range = GetWindowRange(infos[0]);
+        uint32_t totalStackSeqNum = PackedImageTextStackCount(range);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < totalStackSeqNum; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+            for (uint32_t chunk = 0; chunk < queryCount; ++chunk) {
                 uint64_t workspaceOffset = WorkspaceOffset(coreIdx, slot, chunk);
                 if (stackSeqCount != 0) {
                     RestoreGroupedSoftmaxStateUb(chunk, true);
@@ -2479,15 +4330,70 @@ private:
                 LayoutP layoutP(FAI_QUERY_ROWS, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
                 GemmCoord qkShape{FAI_QUERY_ROWS, cur.stackSeqTile, embed};
                 Arch::CrossCoreWaitFlag(qkReady);
-                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, workspaceOffset, workspaceOffset, layoutP, layoutS,
-                                        qkShape, stackSeqCount == 0, FAI_QUERY_ROWS, slot);
+                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, scoreGm, scoreScale, workspaceOffset, workspaceOffset,
+                                        layoutP, layoutS, qkShape, stackSeqCount == 0, FAI_QUERY_ROWS, slot);
                 SaveGroupedSoftmaxStateUb(chunk);
                 SaveGroupedSoftmaxDmUb(chunk, slot);
                 Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
             }
+            if (stackSeqCount >= D16_PAIR_PRELAUNCH_DEPTH) {
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - D16_PAIR_PRELAUNCH_DEPTH)];
+                RunAivGroupedPairD16Rescale(groupedTaskIdx, infos, queryCount, delayed, coreIdx, outOffsets, embed,
+                                            embedRound, totalStackSeqNum, epilogueRescaleO);
+            }
+        }
+        uint32_t drainStart = totalStackSeqNum > D16_PAIR_PRELAUNCH_DEPTH ?
+                                  totalStackSeqNum - D16_PAIR_PRELAUNCH_DEPTH :
+                                  0;
+        for (uint32_t delayedIdx = drainStart; delayedIdx < totalStackSeqNum; ++delayedIdx) {
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+            RunAivGroupedPairD16Rescale(groupedTaskIdx, infos, queryCount, delayed, coreIdx, outOffsets, embed,
+                                        embedRound, totalStackSeqNum, epilogueRescaleO);
+        }
+    }
+
+    CATLASS_DEVICE void ProcessAivPackedD72Stacks(uint32_t groupedTaskIdx,
+                                                  const TaskInfo (&infos)[QUERY_CHUNKS_PER_TILE],
+                                                  const uint64_t (&outOffsets)[QUERY_CHUNKS_PER_TILE],
+                                                  const WindowRange& range, uint32_t coreIdx, uint32_t embed,
+                                                  uint32_t embedRound, uint64_t headBase,
+                                                  EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                                  EpilogueRescaleO& epilogueRescaleO)
+    {
+        uint32_t totalStackSeqNum = PackedImageTextStackCount(range);
+        StackInfo ring[FAI_RING_STAGE_COUNT];
+        for (uint32_t stackSeqCount = 0; stackSeqCount < totalStackSeqNum; ++stackSeqCount) {
+            uint32_t slot = StackSlot(stackSeqCount);
+            StackInfo cur = MakePackedImageOrTextStack(infos[0], range, stackSeqCount, headBase, embed);
+            ring[slot] = cur;
+
+            for (uint32_t chunk = 0; chunk < QUERY_CHUNKS_PER_TILE; ++chunk) {
+                uint64_t workspaceOffset = WorkspaceOffset(coreIdx, slot, chunk);
+                if (stackSeqCount != 0) {
+                    if (UsesGroupedD72PvPath()) {
+                        RestoreGroupedSoftmaxStateUb(chunk, true);
+                    } else {
+                        RestoreSoftmaxState(coreIdx, chunk, FAI_QUERY_ROWS, true);
+                    }
+                }
+                LayoutS layoutS(FAI_QUERY_ROWS, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+                LayoutP layoutP(FAI_QUERY_ROWS, cur.stackSeqTile, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS);
+                GemmCoord qkShape{FAI_QUERY_ROWS, cur.stackSeqTile, embed};
+                Arch::CrossCoreWaitFlag(qkReady);
+                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, compactSGm, 1, workspaceOffset, workspaceOffset,
+                                        layoutP, layoutS, qkShape, stackSeqCount == 0, FAI_QUERY_ROWS, slot);
+                if (UsesGroupedD72PvPath()) {
+                    SaveGroupedSoftmaxStateUb(chunk);
+                    SaveGroupedSoftmaxDmUb(chunk, slot);
+                } else {
+                    SaveSoftmaxState(coreIdx, chunk, FAI_QUERY_ROWS);
+                    SaveSoftmaxDm(coreIdx, chunk, slot, FAI_QUERY_ROWS);
+                }
+                Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+            }
 
             if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                 RunAivGroupedRescaleStack(groupedTaskIdx, delayed, coreIdx, outOffsets, embed, embedRound,
                                           totalStackSeqNum, epilogueRescaleO);
             }
@@ -2495,18 +4401,19 @@ private:
 
         uint32_t drainStart = totalStackSeqNum > FAI_PRELAUNCH_DEPTH ? totalStackSeqNum - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < totalStackSeqNum; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             RunAivGroupedRescaleStack(groupedTaskIdx, delayed, coreIdx, outOffsets, embed, embedRound, totalStackSeqNum,
                                       epilogueRescaleO);
         }
     }
 
     template <typename QkBlock, typename ScoreElement>
-    CATLASS_DEVICE void ProcessAicTask(uint32_t taskIdx, QkBlock &blockMmadQK, GlobalTensor<ScoreElement> &scoreGm,
-                                       bool compactScore, BlockMmadQKSlicedAccum &blockMmadQKSlicedAccum,
-                                       BlockMmadPVNormal &blockMmadPVNormal,
-                                       BlockMmadPVDynamicSingleBlock &blockMmadPVDynamicSingleBlock,
-                                       BlockMmadPVDynamicMultiBlock &blockMmadPVDynamicMultiBlock)
+    CATLASS_DEVICE void ProcessAicTask(uint32_t taskIdx, QkBlock& blockMmadQK, BlockMmadQKPaged& blockMmadQKPaged,
+                                       GlobalTensor<ScoreElement>& scoreGm, bool compactScore,
+                                       BlockMmadQKSlicedAccum& blockMmadQKSlicedAccum,
+                                       BlockMmadPVNormal& blockMmadPVNormal, BlockMmadPVPaged& blockMmadPVPaged,
+                                       BlockMmadPVDynamicSingleBlock& blockMmadPVDynamicSingleBlock,
+                                       BlockMmadPVDynamicMultiBlock& blockMmadPVDynamicMultiBlock)
     {
         TaskInfo info = DecodeTask(taskIdx);
         if (info.qRows == 0) {
@@ -2523,8 +4430,8 @@ private:
         uint32_t qStrideHeads = 1;
         uint32_t stackSeqCount = 0;
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
-        const bool debugFirstD256Task =
-            meta.dim > FAI_QK_SLICE_DIM && taskIdx < AscendC::GetBlockNum() * QUERY_CHUNKS_PER_TILE;
+        const bool debugFirstD256Task = meta.dim > FAI_QK_SLICE_DIM &&
+                                        taskIdx < AscendC::GetBlockNum() * QUERY_CHUNKS_PER_TILE;
         if (debugFirstD256Task) {
             AscendC::printf("STA_AIC_STAGE phase=task_enter dim=%u task=%u block=%u\\n",
                             static_cast<uint32_t>(meta.dim), taskIdx, AscendC::GetBlockIdx());
@@ -2554,6 +4461,55 @@ private:
         if (qkEmbed <= FAI_KV_BASE_ROWS) {
             blockMmadQK.loadQGM(qGm[computeQOffset], layoutQ, info.qRows, qNBlockSize, qStrideHeads);
         }
+        if (UsesPagedD64ImageStacks() && info.isText == 0) {
+            uint32_t totalStackSeqNum = TotalStackSeqNumFromRange(info, range);
+            for (stackSeqCount = 0; stackSeqCount < totalStackSeqNum; ++stackSeqCount) {
+                uint32_t curSlot = StackSlot(stackSeqCount);
+                StackInfo cur = MakePagedD64TextStack(info, range, stackSeqCount, headBase, embed);
+                SetComputeStackInfo(cur, coreIdx, curSlot);
+                if (cur.usesPagedTable) {
+                    StoreStackBlockTable(cur, coreIdx, curSlot);
+                }
+                ring[curSlot] = cur;
+
+                uint64_t sOffset = WorkspaceOffset(coreIdx, curSlot);
+                GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
+                uint32_t blockSize = FAI_KV_BASE_ROWS;
+                if (cur.usesPagedTable) {
+                    uint32_t pagedKvIdx = 0;
+                    uint32_t pagedKvLoop = cur.packedBlockCount;
+                    blockMmadQKPaged(qGm[computeQOffset], kGm[cur.computeKvOffset], scoreGm[sOffset],
+                                     StackBlockTable(coreIdx, curSlot), layoutQ, layoutK, qkShape, pagedKvIdx,
+                                     pagedKvLoop, blockSize, cur.computeSegLen, qkStride);
+                } else {
+                    blockMmadQK(qGm[computeQOffset], kGm[cur.computeKvOffset], scoreGm[sOffset], dummyBlockTable,
+                                layoutQ, layoutK, qkShape, cur.computeKvIdx, cur.computeKvLoopNoMask, blockSize,
+                                cur.computeSegLen, qkStride);
+                }
+                Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qkReady);
+
+                if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    if (delayed.usesPagedTable) {
+                        RunAicPagedPvStack(info, delayed, coreIdx, layoutV, blockMmadPVPaged);
+                    } else {
+                        RunAicPvStack(taskIdx, info, delayed, coreIdx, embed, strideKV, layoutV, blockMmadPVNormal,
+                                      blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                    }
+                }
+            }
+            uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
+            for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
+                const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+                if (delayed.usesPagedTable) {
+                    RunAicPagedPvStack(info, delayed, coreIdx, layoutV, blockMmadPVPaged);
+                } else {
+                    RunAicPvStack(taskIdx, info, delayed, coreIdx, embed, strideKV, layoutV, blockMmadPVNormal,
+                                  blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
+                }
+            }
+            return;
+        }
         uint32_t segCount = SegmentCountFromRange(info, range);
         for (uint32_t segIdx = 0; segIdx < segCount; ++segIdx) {
             SegmentInfo seg = GetSegmentFromRange(info, range, segIdx);
@@ -2582,10 +4538,11 @@ private:
                 ring[curSlot] = cur;
 
                 uint32_t sPingPong = curSlot;
-                uint64_t sOffset =
-                    compactScore ? CompactScoreOffset(coreIdx, sPingPong) : WorkspaceOffset(coreIdx, sPingPong);
+                uint64_t sOffset = compactScore ?
+                                       WorkspaceOffset(coreIdx, sPingPong) * (sizeof(ElementS) / sizeof(ScoreElement)) :
+                                       WorkspaceOffset(coreIdx, sPingPong);
                 GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
-                if (NeedsQkStaging()) {
+                if (NeedsKvQkStaging()) {
                     AscendC::CrossCoreWaitFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(inputKvReady.id);
                 }
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
@@ -2595,22 +4552,24 @@ private:
                                     static_cast<uint32_t>(meta.dim), taskIdx, AscendC::GetBlockIdx());
                 }
 #endif
-                uint64_t qkKvOffset = NeedsQkStaging() ? KvStageOffset(coreIdx, curSlot) : cur.computeKvOffset;
-                uint32_t qkKvIdx = NeedsQkStaging() ? 0 : cur.computeKvIdx;
-                uint32_t qkKvLoopNoMask =
-                    NeedsQkStaging() ? StaCeilDiv(cur.stackSeqTile, FAI_KV_BASE_ROWS) : cur.computeKvLoopNoMask;
-                uint32_t qkSegLen = NeedsQkStaging() ? cur.stackSeqTile : cur.computeSegLen;
+                uint64_t qkKvOffset = NeedsKvQkStaging() ? KvStageOffset(coreIdx, curSlot) : cur.computeKvOffset;
+                uint32_t qkKvIdx = NeedsKvQkStaging() ? 0 : cur.computeKvIdx;
+                uint32_t qkKvLoopNoMask = NeedsKvQkStaging() ? StaCeilDiv(cur.stackSeqTile, FAI_KV_BASE_ROWS) :
+                                                               cur.computeKvLoopNoMask;
+                uint32_t qkSegLen = NeedsKvQkStaging() ? cur.stackSeqTile : cur.computeSegLen;
                 if (qkEmbed <= FAI_KV_BASE_ROWS) {
                     blockMmadQK(qGm[computeQOffset], kGm[qkKvOffset], scoreGm[sOffset], dummyBlockTable, layoutQ,
                                 layoutK, qkShape, qkKvIdx, qkKvLoopNoMask, ConstU32(FAI_KV_BASE_ROWS), qkSegLen,
                                 qkStride);
                 } else {
                     uint32_t sliceCount = QkSliceCount();
-                    blockMmadQKSlicedAccum(qGm[computeQOffset], kGm[qkKvOffset], sGm[sOffset], info.qRows,
-                                           cur.stackSeqTile, sliceCount, FAI_QUERY_ROWS * FAI_QK_SLICE_DIM,
-                                           FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS * FAI_QK_SLICE_DIM,
-                                           FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed);
-                    Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(kvStageFree);
+                    blockMmadQKSlicedAccum(
+                        qGm[computeQOffset], kGm[qkKvOffset], sGm[sOffset], info.qRows, cur.stackSeqTile, sliceCount,
+                        FAI_QUERY_ROWS * FAI_QK_SLICE_DIM, FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS * FAI_QK_SLICE_DIM,
+                        FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS, embed, UsesOwnedStridedKLoader() ? embed : 0);
+                    if (NeedsKvQkStaging()) {
+                        Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(kvStageFree);
+                    }
                 }
 #if defined(OPFORGE_STA_LIFECYCLE_DEBUG)
                 if (debugFirstQkStack) {
@@ -2625,7 +4584,7 @@ private:
                 Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_FIX>(qkReady);
 
                 if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                    const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                     RunAicPvStack(taskIdx, info, delayed, coreIdx, embed, strideKV, layoutV, blockMmadPVNormal,
                                   blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
                 }
@@ -2635,7 +4594,7 @@ private:
 
         uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             RunAicPvStack(taskIdx, info, delayed, coreIdx, embed, strideKV, layoutV, blockMmadPVNormal,
                           blockMmadPVDynamicSingleBlock, blockMmadPVDynamicMultiBlock);
         }
@@ -2650,8 +4609,8 @@ private:
 #endif
     }
 
-    CATLASS_DEVICE void ProcessAivCompactTask(uint32_t taskIdx, EpilogueOnlineSoftmax &epilogueOnlineSoftmax,
-                                              EpilogueRescaleO &epilogueRescaleO)
+    CATLASS_DEVICE void ProcessAivCompactTask(uint32_t taskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                              EpilogueRescaleO& epilogueRescaleO)
     {
         TaskInfo info = DecodeTask(taskIdx);
         if (info.qRows == 0) {
@@ -2698,12 +4657,15 @@ private:
                 LayoutS layoutS(info.qRows, cur.stackSeqTile, stackSeqTilePad);
                 GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
                 Arch::CrossCoreWaitFlag(qkReady);
-                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, compactScoreOffset, pOffset, layoutP, layoutS, qkShape,
-                                        stackSeqCount == 0, info.qRows, slot);
+                RunCompactOnlineSoftmax(epilogueOnlineSoftmax, compactSGm, 1, compactScoreOffset, pOffset, layoutP,
+                                        layoutS, qkShape, stackSeqCount == 0, info.qRows, slot);
                 Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+                if (UsesResidualProbability()) {
+                    Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxLowReady);
+                }
 
                 if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                    const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                     RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound,
                                        totalStackSeqNum, epilogueRescaleO);
                 }
@@ -2713,14 +4675,14 @@ private:
 
         uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, totalStackSeqNum,
                                epilogueRescaleO);
         }
     }
 
-    CATLASS_DEVICE void ProcessAivTask(uint32_t taskIdx, EpilogueOnlineSoftmax &epilogueOnlineSoftmax,
-                                       EpilogueRescaleO &epilogueRescaleO)
+    CATLASS_DEVICE void ProcessAivTask(uint32_t taskIdx, EpilogueOnlineSoftmax& epilogueOnlineSoftmax,
+                                       EpilogueRescaleO& epilogueRescaleO)
     {
         TaskInfo info = DecodeTask(taskIdx);
         if (info.qRows == 0) {
@@ -2742,6 +4704,37 @@ private:
         StackInfo ring[FAI_RING_STAGE_COUNT];
 
         StageQuery(info, taskIdx, coreIdx, qOffset);
+
+        if (UsesPagedD64ImageStacks() && info.isText == 0) {
+            for (stackSeqCount = 0; stackSeqCount < totalStackSeqNum; ++stackSeqCount) {
+                uint32_t slot = StackSlot(stackSeqCount);
+                StackInfo cur = MakePagedD64TextStack(info, range, stackSeqCount, headBase, embed);
+                SetComputeStackInfo(cur, coreIdx, slot);
+                ring[slot] = cur;
+
+                uint64_t sOffset = WorkspaceOffset(coreIdx, slot);
+                LayoutS layoutS(info.qRows, cur.stackSeqTile, stackSeqTilePad);
+                LayoutP layoutP(info.qRows, cur.stackSeqTile, stackSeqTilePad);
+                GemmCoord qkShape{info.qRows, cur.stackSeqTile, embed};
+                Arch::CrossCoreWaitFlag(qkReady);
+                RunOnlineSoftmax(epilogueOnlineSoftmax, sOffset, layoutP, layoutS, qkShape, stackSeqCount == 0,
+                                 info.qRows, slot);
+                Arch::CrossCoreSetFlag<FFTS_AIV_PAIR_MODE, PIPE_MTE3>(softmaxReady);
+
+                if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound,
+                                       totalStackSeqNum, epilogueRescaleO);
+                }
+            }
+            uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
+            for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
+                const StackInfo& delayed = ring[StackSlot(delayedIdx)];
+                RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound,
+                                   totalStackSeqNum, epilogueRescaleO);
+            }
+            return;
+        }
 
         uint32_t segCount = SegmentCountFromRange(info, range);
         for (uint32_t segIdx = 0; segIdx < segCount; ++segIdx) {
@@ -2778,7 +4771,7 @@ private:
                 }
 
                 if (stackSeqCount >= FAI_PRELAUNCH_DEPTH) {
-                    const StackInfo &delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
+                    const StackInfo& delayed = ring[StackSlot(stackSeqCount - FAI_PRELAUNCH_DEPTH)];
                     RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound,
                                        totalStackSeqNum, epilogueRescaleO);
                 }
@@ -2788,7 +4781,7 @@ private:
 
         uint32_t drainStart = stackSeqCount > FAI_PRELAUNCH_DEPTH ? stackSeqCount - FAI_PRELAUNCH_DEPTH : 0;
         for (uint32_t delayedIdx = drainStart; delayedIdx < stackSeqCount; ++delayedIdx) {
-            const StackInfo &delayed = ring[StackSlot(delayedIdx)];
+            const StackInfo& delayed = ring[StackSlot(delayedIdx)];
             RunAivRescaleStack(taskIdx, delayed, coreIdx, outOffset, info.qRows, embed, embedRound, totalStackSeqNum,
                                epilogueRescaleO);
         }
@@ -2802,7 +4795,7 @@ private:
         return FAI_STACK_BLOCK_COUNT * FAI_KV_BASE_ROWS;
     }
 
-    CATLASS_DEVICE uint32_t &ConstU32(uint32_t value)
+    CATLASS_DEVICE uint32_t& ConstU32(uint32_t value)
     {
         tmpU32 = value;
         return tmpU32;
@@ -2869,6 +4862,10 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
         }
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+        // The D16 narrow-score stage owner starts released: its first row-loop copy
+        // consumes this arming, and every later copy consumes the previous iteration's
+        // upcast release.
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(NARROW_SCORE_STAGE_EVENT);
     }
 
     CATLASS_DEVICE void WaitAivEvents()
@@ -2888,6 +4885,7 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(NARROW_SCORE_STAGE_EVENT);
     }
 
     SlidingTileAttentionMeta meta;
@@ -2913,8 +4911,10 @@ private:
     GlobalTensor<ElementV> vGm;
     GlobalTensor<ElementO> outGm;
     GlobalTensor<int32_t> dummyBlockTable;
+    GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<ElementS> sGm;
     GlobalTensor<ElementCompactS> compactSGm;
+    GlobalTensor<half> sGmHalf;
     GlobalTensor<ElementP> pGm;
     GlobalTensor<ElementP> pLoGm;
     GlobalTensor<float> correctionGm;
@@ -2927,7 +4927,8 @@ private:
     uint32_t softmaxScaleBits = 0;
 };
 
-template <typename InputT, typename OutputT, bool LeanD64 = false>
+template <typename InputT, typename OutputT, bool PACKED_D128, bool PACKED_D256, bool PACKED_D72_FULL,
+          bool PACKED_D3SLICE, bool PACKED_D256_TEXT>
 __aicore__ inline void SlidingTileAttentionFaiBody(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out,
                                                    uint32_t softmaxScaleBits, SlidingTileAttentionMeta meta,
                                                    int64_t totalJobs, float softmaxScale, StaFaiWorkspace workspace)
@@ -2935,11 +4936,15 @@ __aicore__ inline void SlidingTileAttentionFaiBody(GM_ADDR q, GM_ADDR k, GM_ADDR
     if (totalJobs <= 0) {
         return;
     }
-    SlidingTileAttentionFaiTextOp<InputT, OutputT, LeanD64> op;
+    SlidingTileAttentionFaiTextOp<InputT, OutputT, PACKED_D128, PACKED_D256, PACKED_D72_FULL, PACKED_D3SLICE,
+                                  PACKED_D256_TEXT>
+        op;
     op.Init(q, k, v, out, softmaxScaleBits, meta, totalJobs, softmaxScale, workspace);
     op.Process();
 }
 
+template <bool PACKED_D128, bool PACKED_D256, bool PACKED_D72_FULL, bool PACKED_D3SLICE = false,
+          bool PACKED_D256_TEXT = false>
 __aicore__ inline void SlidingTileAttentionFaiEntry(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR workspace,
                                                     GM_ADDR tiling)
 {
@@ -2947,31 +4952,24 @@ __aicore__ inline void SlidingTileAttentionFaiEntry(GM_ADDR q, GM_ADDR k, GM_ADD
     SlidingTileAttentionTilingData tilingData;
     LoadSlidingTileAttentionTilingData(tiling, tilingData);
     float softmaxScale = tilingData.softmax_scale;
-    uint32_t softmaxScaleBits = *reinterpret_cast<uint32_t *>(&tilingData.softmax_scale);
-    GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
+    uint32_t softmaxScaleBits = *reinterpret_cast<uint32_t*>(&tilingData.softmax_scale);
+    GM_ADDR userWorkspace = workspace;
     bool withQkStaging = (tilingData.meta.dim % VECTOR_BLOCK_ELEMENTS) != 0 || tilingData.meta.dim > FAI_QK_SLICE_DIM;
-    bool withCorrection = tilingData.meta.dim > FAI_QK_SLICE_DIM;
+    bool withCorrection = tilingData.meta.dim > FAI_QK_SLICE_DIM || tilingData.meta.dim == 72;
     if (tilingData.dtype == 1) {
         auto ws = MakeFaiWorkspace<bfloat16_t>(userWorkspace, tilingData.workspace_elems, tilingData.workspace_blocks,
                                                tilingData.workspace_block_elems, tilingData.meta.dim, withQkStaging,
-                                               true, withCorrection);
-        // Keep numeric literals here: CANN uses these branches to emit the
-        // per-key kernel variants during precompilation.
-        if (TILING_KEY_IS(1)) {
-            SlidingTileAttentionFaiBody<bfloat16_t, bfloat16_t, true>(q, k, v, out, softmaxScaleBits, tilingData.meta,
-                                                                      tilingData.total_work, softmaxScale, ws);
-        } else if (TILING_KEY_IS(0)) {
-            SlidingTileAttentionFaiBody<bfloat16_t, bfloat16_t>(q, k, v, out, softmaxScaleBits, tilingData.meta,
-                                                                tilingData.total_work, softmaxScale, ws);
-        }
+                                               true, withCorrection, tilingData.meta.grouped_query_chunks);
+        SlidingTileAttentionFaiBody<bfloat16_t, bfloat16_t, PACKED_D128, PACKED_D256, PACKED_D72_FULL, PACKED_D3SLICE,
+                                    PACKED_D256_TEXT>(q, k, v, out, softmaxScaleBits, tilingData.meta,
+                                                      tilingData.total_work, softmaxScale, ws);
     } else {
         auto ws = MakeFaiWorkspace<half>(userWorkspace, tilingData.workspace_elems, tilingData.workspace_blocks,
                                          tilingData.workspace_block_elems, tilingData.meta.dim, withQkStaging, false,
-                                         withCorrection);
-        if (TILING_KEY_IS(0)) {
-            SlidingTileAttentionFaiBody<half, half>(q, k, v, out, softmaxScaleBits, tilingData.meta,
-                                                    tilingData.total_work, softmaxScale, ws);
-        }
+                                         withCorrection, tilingData.meta.grouped_query_chunks);
+        SlidingTileAttentionFaiBody<half, half, PACKED_D128, PACKED_D256, PACKED_D72_FULL, PACKED_D3SLICE,
+                                    PACKED_D256_TEXT>(q, k, v, out, softmaxScaleBits, tilingData.meta,
+                                                      tilingData.total_work, softmaxScale, ws);
     }
 }
 
@@ -2982,5 +4980,19 @@ extern "C" __global__ __aicore__ void sliding_tile_attention_fai(GM_ADDR q, GM_A
                                                                  GM_ADDR out, GM_ADDR workspace, GM_ADDR tiling)
 {
     (void)windows;
-    SlidingTileAttentionFaiEntry(q, k, v, out, workspace, tiling);
+    if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_GENERAL)) {
+        SlidingTileAttentionFaiEntry<false, false, false>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_FP16_D128_N1_PACKED)) {
+        SlidingTileAttentionFaiEntry<true, false, false>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_FP16_D256_N1_PACKED)) {
+        SlidingTileAttentionFaiEntry<false, true, false>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_FP16_D3SLICE_N1_PACKED)) {
+        SlidingTileAttentionFaiEntry<false, false, false, true>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_FP16_D256_TEXT_PACKED)) {
+        SlidingTileAttentionFaiEntry<false, false, false, false, true>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_FP16_D72_N1_NONFULL_GROUPED)) {
+        SlidingTileAttentionFaiEntry<false, false, true>(q, k, v, out, workspace, tiling);
+    } else if (TILING_KEY_IS(OPFORGE_STA_TILING_KEY_D16_TEXT_GROUPED)) {
+        SlidingTileAttentionFaiEntry<false, false, false>(q, k, v, out, workspace, tiling);
+    }
 }

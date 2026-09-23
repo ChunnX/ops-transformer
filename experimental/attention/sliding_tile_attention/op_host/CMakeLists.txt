@@ -14,17 +14,12 @@ if(BUILD_OPEN_PROJECT)
     )
 endif()
 
-set(SLIDING_TILE_ATTENTION_CATLASS_INCLUDE "${CMAKE_SOURCE_DIR}/3rdparty/catlass/include")
-if(NOT EXISTS "${SLIDING_TILE_ATTENTION_CATLASS_INCLUDE}/catlass/catlass.hpp")
-    message(FATAL_ERROR
-        "SlidingTileAttention requires the repository CATLASS submodule. Run: "
-        "git submodule update --init --recursive 3rdparty/catlass")
-endif()
-
 add_ops_compile_options(
     OP_NAME SlidingTileAttentionFai
-    OPTIONS -I${SLIDING_TILE_ATTENTION_CATLASS_INCLUDE}
-            --cce-auto-sync=off
+    OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+            # The kernel carries its own event/flag protocol and was validated with
+            # the compiler's default auto-synchronization enabled; keep the default
+            # instead of forcing `--cce-auto-sync=off`.
             -Wno-deprecated-declarations
             -Werror
             -mllvm -cce-vf-remove-membar=false

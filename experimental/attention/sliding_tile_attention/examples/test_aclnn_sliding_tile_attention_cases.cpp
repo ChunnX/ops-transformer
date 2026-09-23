@@ -53,157 +53,32 @@ constexpr int DEFAULT_MEASURE_ITERATIONS = 5;
 using WindowValues = std::vector<int64_t>;
 
 const WindowValues SOURCE_WINDOW_PATTERN = {
-    1,
-    1,
-    1,
-    3,
-    3,
-    3,
-    3,
-    5,
-    5,
-    5,
-    5,
-    5,
-    1,
-    3,
-    3,
-    3,
-    3,
-    5,
-    5,
-    5,
-    7,
-    7,
-    7,
-    7,
+    1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5, 5, 1, 3, 3, 3, 3, 5, 5, 5, 7, 7, 7, 7,
 };
 const WindowValues WIDE_WINDOW_PATTERN = {
-    7,
-    7,
-    7,
-    7,
-    5,
-    7,
-    5,
-    7,
-    7,
-    5,
-    5,
-    7,
-    7,
-    3,
-    5,
-    3,
-    7,
-    5,
-    5,
-    7,
-    3,
-    7,
-    7,
-    5,
+    7, 7, 7, 7, 5, 7, 5, 7, 7, 5, 5, 7, 7, 3, 5, 3, 7, 5, 5, 7, 3, 7, 7, 5,
 };
 const WindowValues UNIFORM_333_WINDOW_PATTERN = {
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
-    3,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 };
 const WindowValues WAN_MIXED_WINDOW_PATTERN = {
-    3,
-    3,
-    5,
-    3,
-    1,
-    9,
-    1,
-    3,
-    5,
-    5,
-    5,
-    5,
-    3,
-    5,
-    7,
-    5,
-    3,
-    7,
-    1,
-    1,
-    1,
-    7,
-    7,
-    7,
+    3, 3, 5, 3, 1, 9, 1, 3, 5, 5, 5, 5, 3, 5, 7, 5, 3, 7, 1, 1, 1, 7, 7, 7,
 };
 const WindowValues GENERAL_N3_WINDOW_PATTERN = {
-    1,
-    1,
-    1,
-    3,
-    3,
-    3,
-    5,
-    5,
-    5,
+    1, 1, 1, 3, 3, 3, 5, 5, 5,
 };
 constexpr int64_t WIDE_INT64_WINDOW = (1LL << 32) + 1;
+const WindowValues TASK_N3_PER_AXIS_WINDOW_PATTERN = {
+    WIDE_INT64_WINDOW, 1, 1, 1, 3, 1, 1, 1, 5,
+};
 const WindowValues GENERAL_N3_WIDE_AXIS_WINDOW_PATTERN = {
-    WIDE_INT64_WINDOW,
-    3,
-    5,
-    5,
-    WIDE_INT64_WINDOW,
-    7,
-    7,
-    9,
-    WIDE_INT64_WINDOW,
+    WIDE_INT64_WINDOW, 3, 5, 5, WIDE_INT64_WINDOW, 7, 7, 9, WIDE_INT64_WINDOW,
 };
 const WindowValues WIDE_INT64_WINDOW_PATTERN = {
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
-    WIDE_INT64_WINDOW,
+    WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW,
+    WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW,
+    WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW,
+    WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW, WIDE_INT64_WINDOW,
 };
 
 enum class DType {
@@ -229,6 +104,7 @@ struct CaseSpec {
     WindowValues windows;
     bool useBroadcastWindow;
     bool useNonContiguousStorage;
+    int64_t inputSequence = 0;
 };
 
 struct DeviceTensor {
@@ -366,25 +242,15 @@ float StorageToFloat(uint16_t value, DType dtype)
     return dtype == DType::FP16 ? HalfToFloat(value) : Bf16ToFloat(value);
 }
 
-const char *DTypeName(DType dtype)
-{
-    return dtype == DType::FP16 ? "FP16" : "BF16";
-}
+const char *DTypeName(DType dtype) { return dtype == DType::FP16 ? "FP16" : "BF16"; }
 
-aclDataType AclDType(DType dtype)
-{
-    return dtype == DType::FP16 ? ACL_FLOAT16 : ACL_BF16;
-}
+aclDataType AclDType(DType dtype) { return dtype == DType::FP16 ? ACL_FLOAT16 : ACL_BF16; }
 
-int64_t ImageSequence(const Canvas &canvas)
-{
-    return canvas.time * canvas.height * canvas.width;
-}
+int64_t ImageSequence(const Canvas &canvas) { return canvas.time * canvas.height * canvas.width; }
 
-int64_t Sequence(const CaseSpec &spec)
-{
-    return ImageSequence(spec.canvas) + spec.textLength;
-}
+int64_t Sequence(const CaseSpec &spec) { return ImageSequence(spec.canvas) + spec.textLength; }
+
+int64_t InputSequence(const CaseSpec &spec) { return spec.inputSequence > 0 ? spec.inputSequence : Sequence(spec); }
 
 std::vector<int64_t> ContiguousStrides(const std::vector<int64_t> &shape)
 {
@@ -457,28 +323,30 @@ float KeyValue(int64_t token, int64_t dim)
     return K_VALUE_BASE + static_cast<float>((3 * tile + dim) & 7LL) * K_VALUE_SCALE;
 }
 
-float DimValue(int64_t dim)
-{
-    return static_cast<float>(dim & 3LL) * DIM_VALUE_SCALE;
-}
+float DimValue(int64_t dim) { return static_cast<float>(dim & 3LL) * DIM_VALUE_SCALE; }
 
 uint16_t VStorageValue(int64_t token, int64_t dim, DType dtype)
 {
     return FloatToStorage(TokenValue(token) + DimValue(dim), dtype);
 }
 
-float QuantizedValue(float value, DType dtype)
-{
-    return StorageToFloat(FloatToStorage(value, dtype), dtype);
-}
+float QuantizedValue(float value, DType dtype) { return StorageToFloat(FloatToStorage(value, dtype), dtype); }
 
 bool InitializeInputs(const CaseSpec &spec, const DeviceTensor &q, const DeviceTensor &k, const DeviceTensor &v,
                       const DeviceTensor &output)
 {
-    auto ret = aclrtMemset(output.data, output.bytes, 0, output.bytes);
-    if (ret != ACL_SUCCESS) {
-        std::fprintf(stderr, "aclrtMemset(output) failed: %d\n", ret);
-        return false;
+    const std::array<std::pair<const char *, const DeviceTensor *>, 4> tensors = {{
+        {"q", &q},
+        {"k", &k},
+        {"v", &v},
+        {"output", &output},
+    }};
+    for (const auto &[name, tensor] : tensors) {
+        const auto ret = aclrtMemset(tensor->data, tensor->bytes, 0, tensor->bytes);
+        if (ret != ACL_SUCCESS) {
+            std::fprintf(stderr, "aclrtMemset(%s) failed: %d\n", name, ret);
+            return false;
+        }
     }
 
     const int64_t sequence = Sequence(spec);
@@ -496,10 +364,11 @@ bool InitializeInputs(const CaseSpec &spec, const DeviceTensor &q, const DeviceT
         }
     }
     const size_t headBytes = hostQ.size() * sizeof(uint16_t);
+    const size_t deviceHeadStrideBytes = static_cast<size_t>(q.strides[1]) * sizeof(uint16_t);
     for (int64_t batch = 0; batch < spec.batch; ++batch) {
         for (int64_t head = 0; head < spec.heads; ++head) {
             const int64_t headIndex = batch * spec.heads + head;
-            const size_t headOffset = static_cast<size_t>(headIndex) * headBytes;
+            const size_t headOffset = static_cast<size_t>(headIndex) * deviceHeadStrideBytes;
             const std::array<std::pair<const char *, const std::vector<uint16_t> *>, 3> inputs = {{
                 {"q", &hostQ},
                 {"k", &hostK},
@@ -508,8 +377,8 @@ bool InitializeInputs(const CaseSpec &spec, const DeviceTensor &q, const DeviceT
             const std::array<const DeviceTensor *, 3> destinations = {{&q, &k, &v}};
             for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex) {
                 auto *headDestination = static_cast<uint8_t *>(destinations[inputIndex]->data) + headOffset;
-                ret = aclrtMemcpy(headDestination, headBytes, inputs[inputIndex].second->data(), headBytes,
-                                  ACL_MEMCPY_HOST_TO_DEVICE);
+                const auto ret = aclrtMemcpy(headDestination, headBytes, inputs[inputIndex].second->data(), headBytes,
+                                             ACL_MEMCPY_HOST_TO_DEVICE);
                 if (ret != ACL_SUCCESS) {
                     std::fprintf(stderr, "aclrtMemcpy(%s) failed: %d, batch=%ld, head=%ld, rowBytes=%zu\n",
                                  inputs[inputIndex].first, ret, static_cast<long>(batch), static_cast<long>(head),
@@ -555,12 +424,8 @@ WindowRange GetWindowRange(const CaseSpec &spec, int64_t head, int64_t query)
     const int64_t hStart = OddWindowStart(queryH, windowH, gridH);
     const int64_t wStart = OddWindowStart(queryW, windowW, gridW);
     return {
-        tStart,
-        tStart + (windowT < gridT ? windowT : gridT),
-        hStart,
-        hStart + (windowH < gridH ? windowH : gridH),
-        wStart,
-        wStart + (windowW < gridW ? windowW : gridW),
+        tStart, tStart + (windowT < gridT ? windowT : gridT), hStart, hStart + (windowH < gridH ? windowH : gridH),
+        wStart, wStart + (windowW < gridW ? windowW : gridW),
     };
 }
 
@@ -574,7 +439,7 @@ double AttentionScore(const CaseSpec &spec, int64_t query, int64_t keyToken)
 {
     double dot = 0.0;
     for (int64_t dim = 0; dim < spec.headDim; ++dim) {
-        const double qValue = QuantizedValue(QueryValue(query, dim), spec.dtype);
+        const double qValue = query < Sequence(spec) ? QuantizedValue(QueryValue(query, dim), spec.dtype) : 0.0;
         const double kValue = QuantizedValue(KeyValue(keyToken, dim), spec.dtype);
         dot += qValue * kValue;
     }
@@ -667,47 +532,79 @@ std::vector<SamplePoint> SamplePoints(const CaseSpec &spec)
             samples.push_back({0, spec.heads > 5 ? 5 : spec.heads - 1, imageSequence, dim});
         }
     }
+    if (InputSequence(spec) > Sequence(spec)) {
+        for (int64_t dim : dims) {
+            samples.push_back({spec.batch - 1, 0, InputSequence(spec) - 1, dim});
+        }
+    }
     return samples;
 }
 
-std::vector<CaseSpec> BuildCases()
+std::vector<CaseSpec> BuildTaskbookCases()
 {
     constexpr Canvas FASTVIDEO_CANVAS = {30, 48, 80};
     constexpr Canvas STEPVIDEO_CANVAS = {36, 48, 48};
     constexpr Canvas WAN_CANVAS = {18, 48, 80};
     return {
-        {1, DType::FP16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, SOURCE_WINDOW_PATTERN, false, false},
-        {2, DType::BF16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, SOURCE_WINDOW_PATTERN, false, false},
-        {3, DType::FP16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, WIDE_WINDOW_PATTERN, false, false},
-        {4, DType::BF16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, WIDE_WINDOW_PATTERN, false, false},
-        {5, DType::FP16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, SOURCE_WINDOW_PATTERN, false, false},
-        {6, DType::BF16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, SOURCE_WINDOW_PATTERN, false, false},
-        {7, DType::FP16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, WIDE_WINDOW_PATTERN, false, false},
-        {8, DType::BF16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, WIDE_WINDOW_PATTERN, false, false},
-        {9, DType::FP16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, UNIFORM_333_WINDOW_PATTERN, false, false},
-        {10, DType::BF16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, UNIFORM_333_WINDOW_PATTERN, false, false},
-        {11, DType::FP16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, UNIFORM_333_WINDOW_PATTERN, false,
-         false},
-        {12, DType::BF16, 1, 8, 64, FASTVIDEO_CANVAS, FASTVIDEO_TEXT_LENGTH, 1, UNIFORM_333_WINDOW_PATTERN, false,
-         false},
-        {13, DType::FP16, 1, 8, 64, WAN_CANVAS, 0, 3, UNIFORM_333_WINDOW_PATTERN, false, false},
-        {14, DType::BF16, 1, 8, 64, WAN_CANVAS, 0, 3, UNIFORM_333_WINDOW_PATTERN, false, false},
-        {15, DType::FP16, 1, 8, 64, WAN_CANVAS, 0, 3, WAN_MIXED_WINDOW_PATTERN, false, false},
-        {16, DType::BF16, 1, 8, 64, WAN_CANVAS, 0, 3, WAN_MIXED_WINDOW_PATTERN, false, false},
-        {17, DType::FP16, 2, 8, 64, WAN_CANVAS, 0, 3, UNIFORM_333_WINDOW_PATTERN, false, false},
-        {18, DType::BF16, 1, 8, 64, STEPVIDEO_CANVAS, 0, 2, UNIFORM_333_WINDOW_PATTERN, true, false},
-        {19, DType::FP16, 1, 3, 72, WAN_CANVAS, 0, 3, GENERAL_N3_WINDOW_PATTERN, false, false},
-        {23, DType::FP16, 1, 1, 72, WAN_CANVAS, 0, 3, UNIFORM_333_WINDOW_PATTERN, true, true},
-        {24, DType::FP16, 3, 1, 72, WAN_CANVAS, 0, 3, WIDE_INT64_WINDOW_PATTERN, true, false},
-        {25, DType::BF16, 2, 3, 72, WAN_CANVAS, 0, 3, GENERAL_N3_WIDE_AXIS_WINDOW_PATTERN, false, true},
+        {0, DType::BF16, 4, 1, 32, WAN_CANVAS, 0, 3, {1, 5, 7}, true, false, 69120},
+        {1, DType::FP16, 4, 1, 32, STEPVIDEO_CANVAS, 0, 2, {1, 3, 5}, true, false, 82944},
+        {2, DType::BF16, 1, 5, 32, FASTVIDEO_CANVAS, 41, 1, {1, 9, 3}, true, false, 115264},
+        {3, DType::FP16, 5, 3, 16, STEPVIDEO_CANVAS, 0, 2, {7, 5, 5}, true, false, 82944},
+        {4, DType::BF16, 11, 2, 16, WAN_CANVAS, 0, 3, {5, 7, 1}, true, false, 69120},
+        {5, DType::BF16, 5, 4, 16, STEPVIDEO_CANVAS, 0, 2, {1, 9, 7}, true, false, 82944},
+        {6, DType::FP16, 5, 5, 16, WAN_CANVAS, 0, 3, {9, 7, 5}, true, false, 69120},
+        {7, DType::FP16, 4, 4, 16, FASTVIDEO_CANVAS, 87, 1, {1, 7, 7}, true, false, 115456},
+        {8, DType::BF16, 14, 1, 32, WAN_CANVAS, 0, 3, {3, 1, 5}, true, false, 69120},
+        {9, DType::BF16, 2, 14, 16, WAN_CANVAS, 0, 3, {5, 9, 9}, true, false, 69120},
+        {10, DType::BF16, 5, 7, 16, STEPVIDEO_CANVAS, 0, 2, {9, 7, 9}, true, false, 82944},
+        {11, DType::BF16, 12, 3, 16, STEPVIDEO_CANVAS, 0, 2, {1, 1, 7}, true, false, 82944},
+        {12, DType::FP16, 4, 9, 16, STEPVIDEO_CANVAS, 0, 2, {9, 9, 1}, true, false, 82944},
+        {13, DType::BF16, 4, 11, 16, STEPVIDEO_CANVAS, 0, 2, {7, 7, 1}, true, false, 82944},
+        {14, DType::BF16, 3, 9, 32, WAN_CANVAS, 0, 3, {1, 9, 1}, true, false, 69120},
+        {15, DType::FP16, 9, 2, 32, FASTVIDEO_CANVAS, 9, 1, {7, 7, 1}, true, false, 115328},
+        {16, DType::BF16, 2, 10, 32, FASTVIDEO_CANVAS, 27, 1, {3, 3, 5}, true, false, 115264},
+        {17, DType::BF16, 10, 4, 16, FASTVIDEO_CANVAS, 18, 1, {7, 5, 3}, true, false, 115328},
+        {18, DType::FP16, 9, 9, 16, STEPVIDEO_CANVAS, 0, 2, {5, 5, 1}, true, false, 82944},
+        {19, DType::FP16, 15, 4, 16, FASTVIDEO_CANVAS, 41, 1, {3, 5, 7}, true, false, 115456},
+        {20, DType::FP16, 4, 8, 32, FASTVIDEO_CANVAS, 216, 1, {7, 5, 9}, true, false, 115456},
+        {21, DType::BF16, 3, 9, 64, WAN_CANVAS, 0, 3, {7, 3, 3}, true, false, 69120},
+        {22, DType::FP16, 12, 9, 16, WAN_CANVAS, 0, 3, {5, 7, 9}, true, false, 69120},
+        {23, DType::BF16, 6, 10, 32, WAN_CANVAS, 0, 3, {1, 3, 9}, true, false, 69120},
+        {24, DType::BF16, 12, 3, 32, FASTVIDEO_CANVAS, 112, 1, {1, 1, 3}, true, false, 115328},
+        {25, DType::FP16, 3, 13, 32, FASTVIDEO_CANVAS, 34, 1, {5, 7, 3}, true, false, 115264},
+        {26, DType::FP16, 10, 16, 16, WAN_CANVAS, 0, 3, {5, 9, 7}, true, false, 69120},
+        {27, DType::FP16, 15, 11, 16, WAN_CANVAS, 0, 3, {9, 1, 1}, true, false, 69120},
+        {28, DType::BF16, 6, 14, 32, WAN_CANVAS, 0, 3, {1, 1, 9}, true, false, 69120},
+        {29, DType::BF16, 3, 12, 64, STEPVIDEO_CANVAS, 0, 2, {7, 5, 3}, true, false, 82944},
+        {30, DType::FP16, 7, 16, 16, FASTVIDEO_CANVAS, 63, 1, {5, 9, 1}, true, false, 115264},
+        {31, DType::BF16, 16, 7, 16, FASTVIDEO_CANVAS, 239, 1, {1, 1, 7}, true, false, 115456},
+        {32, DType::FP16, 8, 10, 32, STEPVIDEO_CANVAS, 0, 2, {3, 7, 5}, true, false, 82944},
+        {33, DType::FP16, 15, 4, 32, FASTVIDEO_CANVAS, 11, 1, {9, 3, 5}, true, false, 115264},
+        {34, DType::BF16, 14, 3, 64, STEPVIDEO_CANVAS, 0, 2, {5, 7, 1}, true, false, 82944},
+        {35, DType::FP16, 11, 11, 16, FASTVIDEO_CANVAS, 35, 1, {3, 3, 3}, true, false, 115328},
+        {36, DType::FP16, 3, 15, 64, STEPVIDEO_CANVAS, 0, 2, {7, 7, 5}, true, false, 82944},
+        {37, DType::FP16, 7, 8, 64, WAN_CANVAS, 0, 3, {5, 7, 1}, true, false, 69120},
+        {38, DType::BF16, 7, 8, 64, WAN_CANVAS, 0, 3, {9, 7, 7}, true, false, 69120},
+        {39, DType::FP16, 8, 6, 64, STEPVIDEO_CANVAS, 0, 2, {9, 7, 7}, true, false, 82944},
+        {40, DType::BF16, 14, 12, 16, FASTVIDEO_CANVAS, 24, 1, {3, 7, 1}, true, false, 115264},
+        {41, DType::FP16, 12, 12, 32, WAN_CANVAS, 0, 3, {1, 1, 3}, true, false, 69120},
+        {42, DType::BF16, 8, 16, 32, STEPVIDEO_CANVAS, 0, 2, {1, 3, 3}, true, false, 82944},
+        {43, DType::FP16, 10, 13, 32, STEPVIDEO_CANVAS, 0, 2, {3, 5, 1}, true, false, 82944},
+        {44, DType::BF16, 6, 14, 64, STEPVIDEO_CANVAS, 0, 2, {7, 7, 3}, true, false, 82944},
+        {45, DType::FP16, 13, 16, 32, STEPVIDEO_CANVAS, 0, 2, {1, 7, 7}, true, false, 82944},
+        {46, DType::BF16, 14, 6, 64, FASTVIDEO_CANVAS, 118, 1, {3, 1, 9}, true, false, 115328},
+        {47, DType::FP16, 9, 13, 64, STEPVIDEO_CANVAS, 0, 2, {3, 1, 3}, true, false, 82944},
+        {48, DType::FP16, 16, 9, 64, WAN_CANVAS, 0, 3, {7, 7, 3}, true, false, 69120},
+        {49, DType::BF16, 15, 12, 64, STEPVIDEO_CANVAS, 0, 2, {9, 5, 1}, true, false, 82944},
     };
 }
 
-bool ReadAndCheckSamples(const CaseSpec &spec, const DeviceTensor &output, PrecisionStats &stats)
+bool ReadRawSamples(const CaseSpec &spec, const DeviceTensor &output, std::vector<uint16_t> &values)
 {
-    const float tolerance = spec.dtype == DType::FP16 ? FP16_TOLERANCE : BF16_TOLERANCE;
-    bool passed = true;
-    for (const SamplePoint &sample : SamplePoints(spec)) {
+    values.clear();
+    const std::vector<SamplePoint> samples = SamplePoints(spec);
+    values.reserve(samples.size());
+    for (const SamplePoint &sample : samples) {
         const int64_t flatIndex = sample.batch * output.strides[0] + sample.head * output.strides[1] +
                                   sample.query * output.strides[2] + sample.dim * output.strides[3];
         uint16_t raw = 0;
@@ -717,6 +614,23 @@ bool ReadAndCheckSamples(const CaseSpec &spec, const DeviceTensor &output, Preci
             std::fprintf(stderr, "case=%d sample copy failed: %d\n", spec.id, ret);
             return false;
         }
+        values.push_back(raw);
+    }
+    return true;
+}
+
+bool ReadAndCheckSamples(const CaseSpec &spec, const DeviceTensor &output, PrecisionStats &stats,
+                         std::vector<uint16_t> &rawValues)
+{
+    const float tolerance = spec.dtype == DType::FP16 ? FP16_TOLERANCE : BF16_TOLERANCE;
+    const std::vector<SamplePoint> samples = SamplePoints(spec);
+    if (!ReadRawSamples(spec, output, rawValues)) {
+        return false;
+    }
+    bool passed = true;
+    for (size_t sampleIndex = 0; sampleIndex < samples.size(); ++sampleIndex) {
+        const SamplePoint &sample = samples[sampleIndex];
+        const uint16_t raw = rawValues[sampleIndex];
         const float actual = StorageToFloat(raw, spec.dtype);
         const float expected = ExpectedValue(spec, sample);
         const float absoluteError = std::fabs(actual - expected);
@@ -873,7 +787,7 @@ bool MeasureCase(const CaseSpec &spec, const DeviceTensor &q, const DeviceTensor
 bool RunCase(const CaseSpec &spec, aclrtStream stream, int warmupIterations, int measureIterations,
              std::ofstream &report)
 {
-    const int64_t sequence = Sequence(spec);
+    const int64_t sequence = InputSequence(spec);
     const std::vector<int64_t> shape = {spec.batch, spec.heads, sequence, spec.headDim};
     const int64_t storageHeadDim = spec.useNonContiguousStorage ? spec.headDim + 8 : spec.headDim;
     DeviceTensor q;
@@ -895,6 +809,8 @@ bool RunCase(const CaseSpec &spec, aclrtStream stream, int warmupIterations, int
     bool hugeMemInitialized = false;
     TimingStats timing;
     PrecisionStats precision;
+    std::vector<uint16_t> firstOutputSamples;
+    std::vector<uint16_t> repeatedOutputSamples;
 
     if (!CreateTensor(shape, AclDType(spec.dtype), q, storageHeadDim) ||
         !CreateTensor(shape, AclDType(spec.dtype), k, storageHeadDim) ||
@@ -920,11 +836,25 @@ bool RunCase(const CaseSpec &spec, aclrtStream stream, int warmupIterations, int
         std::fprintf(stderr, "case=%d timing failed\n", spec.id);
         goto cleanup;
     }
-    passed = ReadAndCheckSamples(spec, output, precision);
+    passed = ReadAndCheckSamples(spec, output, precision, firstOutputSamples);
+    if (passed) {
+        if (!ExecuteOnce(spec, q, k, v, windowArray, output, workspace, workspaceCapacity, stream)) {
+            std::fprintf(stderr, "case=%d deterministic repeat execute failed\n", spec.id);
+            passed = false;
+        } else if (aclrtSynchronizeStream(stream) != ACL_SUCCESS) {
+            std::fprintf(stderr, "case=%d deterministic repeat stream sync failed\n", spec.id);
+            passed = false;
+        } else if (!ReadRawSamples(spec, output, repeatedOutputSamples)) {
+            passed = false;
+        } else if (firstOutputSamples != repeatedOutputSamples) {
+            std::fprintf(stderr, "case=%d deterministic sample comparison failed\n", spec.id);
+            passed = false;
+        }
+    }
     if (passed) {
         std::printf("CASE_PASS id=%d dtype=%s shape=[%ld,%ld,%ld,%ld] samples=%lu max_abs=%.8g mae=%.8g rmse=%.8g "
                     "tol=%.8g latency_us_median=%.3f latency_us_min=%.3f latency_us_max=%.3f warmup=%d repeat=%d "
-                    "text=%ld window_values=%lu layout=%s\n",
+                    "text=%ld window_values=%lu layout=%s deterministic=bitwise\n",
                     spec.id, DTypeName(spec.dtype), static_cast<long>(spec.batch), static_cast<long>(spec.heads),
                     static_cast<long>(sequence), static_cast<long>(spec.headDim),
                     static_cast<unsigned long>(precision.samples), precision.maxAbsoluteError,
@@ -941,7 +871,7 @@ bool RunCase(const CaseSpec &spec, aclrtStream stream, int warmupIterations, int
                << std::sqrt(precision.sumSquaredError / static_cast<double>(precision.samples)) << ','
                << (spec.dtype == DType::FP16 ? FP16_TOLERANCE : BF16_TOLERANCE) << ',' << timing.medianUs << ','
                << timing.minUs << ',' << timing.maxUs << ',' << warmupIterations << ',' << measureIterations << ','
-               << (spec.useNonContiguousStorage ? "non_contiguous_d_stride" : "contiguous") << '\n';
+               << (spec.useNonContiguousStorage ? "non_contiguous_d_stride" : "contiguous") << ",bitwise\n";
         report.flush();
         std::fflush(stdout);
     }
@@ -1148,7 +1078,8 @@ int main()
         return EXIT_FAILURE;
     }
     report << "case_id,dtype,batch,heads,sequence,head_dim,samples,max_abs_error,mean_abs_error,rmse,"
-              "abs_tolerance,latency_us_median,latency_us_min,latency_us_max,warmup,measure_repeat,layout\n";
+              "abs_tolerance,latency_us_median,latency_us_min,latency_us_max,warmup,measure_repeat,layout,"
+              "deterministic\n";
     auto ret = aclInit(nullptr);
     if (ret != ACL_SUCCESS) {
         std::fprintf(stderr, "aclInit failed: %d\n", ret);
@@ -1170,7 +1101,7 @@ int main()
     }
 
     int passedCases = 0;
-    const std::vector<CaseSpec> cases = BuildCases();
+    const std::vector<CaseSpec> cases = BuildTaskbookCases();
     std::vector<const CaseSpec *> casesToRun;
     if (!caseSequence.empty()) {
         for (int caseId : caseSequence) {
@@ -1230,7 +1161,8 @@ int main()
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    std::printf("ALL_LOCAL_SLIDING_TILE_ATTENTION_CASES_PASSED cases=%d report=%s warmup=%d repeat=%d\n", passedCases,
-                resolvedReportPath.c_str(), warmupIterations, measureIterations);
+    std::printf("ALL_LOCAL_SLIDING_TILE_ATTENTION_CASES_PASSED suite=%s cases=%d report=%s warmup=%d repeat=%d\n",
+                "taskbook", passedCases, resolvedReportPath.c_str(), warmupIterations,
+                measureIterations);
     return EXIT_SUCCESS;
 }

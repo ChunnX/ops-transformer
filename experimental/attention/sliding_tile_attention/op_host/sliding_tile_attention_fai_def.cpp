@@ -14,8 +14,7 @@ namespace ops {
 
 class SlidingTileAttentionFai : public OpDef {
 public:
-    explicit SlidingTileAttentionFai(const char *name)
-        : OpDef(name)
+    explicit SlidingTileAttentionFai(const char *name) : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
