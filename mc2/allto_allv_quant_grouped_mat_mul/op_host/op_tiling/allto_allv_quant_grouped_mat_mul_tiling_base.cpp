@@ -39,7 +39,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCommonPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommonPlatformInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommonPlatformInfo() const
 {
     OP_TILING_CHECK((aicCoreNum_ == 0U),
                     OP_LOGE(context_->GetNodeName(), "platform info is invalid, aic num can not be 0."),
@@ -194,7 +194,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange() const
 {
     // check sendCounts/recvCounts size
     uint64_t sendCountsSize = sendCountsPtr_->GetSize();
@@ -428,7 +428,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCountsTensorShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCountsTensorShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckCountsTensorShapeInfo.");
     // sendCountsTensor only support nullptr
@@ -580,12 +580,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmYShapeInfo() const
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmYShapeInfo.");
     // check mmX, mmWeight and mmY all be nullptr or all be not nullptr
@@ -669,7 +669,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckOptionalMatmulFormats()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckOptionalMatmulFormats() const
 {
     auto mmXDesc = context_->GetOptionalInputDesc(MM_X_INDEX);
     if (mmXDesc != nullptr) {

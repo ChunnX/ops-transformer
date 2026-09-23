@@ -177,7 +177,9 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!IsA2avAivOnlyEnabled()) {
+        return;
+    }
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
     CalcBatchSendRecvCounts(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis);
     CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, rankDim_, e_, startExpertIdx, axis,
@@ -192,7 +194,9 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommData(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!IsA2avAivOnlyEnabled()) {
+        return;
+    }
     uint64_t axis = N1_;
     if constexpr (commBeforeComputeFlag) {
         axis = CeilDiv(H1_, PACK_FACTOR);
@@ -228,14 +232,18 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitScale(uint32_t startExpertIdx)
 {
-    A2AV_AIV_ONLY();
+    if (!IsA2avAivOnlyEnabled()) {
+        return;
+    }
     hccl_.Wait(alltoAllvScaleHandleId_[startExpertIdx]);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Wait(uint32_t startExpertIdx)
 {
-    A2AV_AIV_ONLY();
+    if (!IsA2avAivOnlyEnabled()) {
+        return;
+    }
     hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
 }
 
@@ -243,7 +251,9 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(uint32_t allNum,
                                                                                           uint32_t step)
 {
-    A2AV_AIV_ONLY();
+    if (!IsA2avAivOnlyEnabled()) {
+        return;
+    }
     for (uint32_t i = 0U; i < allNum; i += step) {
         hccl_.Wait(alltoAllvHandleId_[i]);
     }
@@ -254,7 +264,9 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
                                                                                               uint32_t expertNum,
                                                                                               GM_ADDR dstBuffer)
 {
-    A2AV_AIV_ALL();
+    if (!IsA2avAivAllEnabled()) {
+        return;
+    }
     if (!permuteBufInitialized_) {
         TPipe *pipe = GetTPipePtr();
         pipe->InitBuffer(permuteTBuf_, PERMUTE_BUF_SIZE);
