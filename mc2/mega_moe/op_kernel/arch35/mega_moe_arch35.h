@@ -429,23 +429,17 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
         // 新版 host tiling 一定会写入非零预算。旧 tiling 数据或异常输入下仍按一个 token
         // 计算真实最小 stage，不能用固定 512B 兜底，否则 H=8K 时会与 route ring 重叠。
         if (stageBytes == 0U) {
-            uint32_t dataBytes = Ops::Base::CeilAlign(
-                k_ / MoeQuantConfig::A_ELEMS_PER_BYTE, static_cast<uint32_t>(ALIGN_32));
-            uint32_t scaleBytes = Ops::Base::CeilAlign(
-                Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)), static_cast<uint32_t>(ALIGN_32));
-            stageBytes = dataBytes > scaleBytes ? dataBytes : scaleBytes;
+            uint32_t tileTokens = params_.tilingData->preQuantTileTokens == 0U
+                                      ? 1U
+                                      : params_.tilingData->preQuantTileTokens;
+            stageBytes = quantProcessConfig_.quantTokenScaleAlignBytes * tileTokens;
             if constexpr (TopkWeightsPrefetch) {
                 uint32_t weightSrcBytes = Ops::Base::CeilAlign(
                     params_.tilingData->topK * static_cast<uint32_t>(sizeof(TopkWeightsType)),
                     static_cast<uint32_t>(ALIGN_32));
-                uint32_t weightDstBytes = Ops::Base::CeilAlign(
-                    params_.tilingData->topK * static_cast<uint32_t>(sizeof(float)),
-                    static_cast<uint32_t>(ALIGN_32));
-                uint32_t weightBytes = weightDstBytes;
                 if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-                    weightBytes = weightSrcBytes + weightDstBytes;
+                    stageBytes += weightSrcBytes * tileTokens;
                 }
-                stageBytes = stageBytes > weightBytes ? stageBytes : weightBytes;
             }
             stageBytes = Ops::Base::CeilAlign(stageBytes, static_cast<uint32_t>(ALIGN_512));
         }

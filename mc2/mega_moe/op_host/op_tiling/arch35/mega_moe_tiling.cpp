@@ -1504,23 +1504,14 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
                                        uint32_t tileTokens, ge::DataType topKWeightsDataType)
 {
-    uint64_t dataRowBytes = ops::CeilAlign(
-        static_cast<uint64_t>(tilingData->h) / activationElementsPerByte, static_cast<uint64_t>(ALIGN_32));
-    uint64_t scaleCount = ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32));
-    uint64_t scaleRowBytes = ops::CeilAlign(scaleCount, static_cast<uint64_t>(ALIGN_32));
-    uint64_t stageBytes = std::max(dataRowBytes, scaleRowBytes) * tileTokens;
-
-    if (tilingData->topkWeightsPrefetch == 1) {
+    // Store complete dispatch records so one MTE3 writes a whole tile.
+    uint64_t stageBytes = static_cast<uint64_t>(CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte)) *
+                          tileTokens;
+    if (tilingData->topkWeightsPrefetch == 1 && topKWeightsDataType == ge::DT_BF16) {
         uint64_t weightSrcRowBytes = ops::CeilAlign(
             static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType),
             static_cast<uint64_t>(ALIGN_32));
-        uint64_t weightDstRowBytes = ops::CeilAlign(
-            static_cast<uint64_t>(tilingData->topK) * sizeof(float), static_cast<uint64_t>(ALIGN_32));
-        uint64_t weightBytes = tileTokens * weightDstRowBytes;
-        if (topKWeightsDataType == ge::DT_BF16) {
-            weightBytes = tileTokens * (weightSrcRowBytes + weightDstRowBytes);
-        }
-        stageBytes = std::max(stageBytes, weightBytes);
+        stageBytes += weightSrcRowBytes * tileTokens;
     }
     return static_cast<uint32_t>(ops::CeilAlign(stageBytes, static_cast<uint64_t>(ALIGN_512)));
 }
@@ -1563,15 +1554,18 @@ static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
     // PrepareLocalTokens 按 blockAivNum 个 AIV 分工，stage 不需要为 route 上界之外的 token 预留空间。
     uint32_t maxTokensPerAiv =
         ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
-    // 用单 token stage 给候选搜索一个安全上界，避免在大 batch 上逐个扫描明显不可能的 B。
-    uint32_t oneTokenStageBytes =
-        CalcPreQuantStageBytes(tilingData, activationElementsPerByte, 1U, topKWeightsDataType);
-    uint32_t maxTokensByStage = oneTokenStageBytes == 0U ? 0U : availableUbBytes / (2U * oneTokenStageBytes);
-    uint32_t maxTileTokens = std::min(
-        std::min(maxTokensPerAiv, PRE_QUANT_MAX_DMA_BLOCK_COUNT), std::max(maxTokensByStage, 1U));
-    maxTileTokens = std::max(maxTileTokens, 1U);
+    // 先按单 token 的 scale 宽度对齐 512B 计算 B，再按完整 record 的 UB 占用向下收缩。
+    uint32_t scaleRowBytes = static_cast<uint32_t>(ops::CeilAlign(
+        ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)),
+        static_cast<uint64_t>(ALIGN_32)));
+    // Use the single-token scale row as the only performance target for B.
+    uint32_t scaleBasedTokens = std::max(
+        1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512), static_cast<uint64_t>(scaleRowBytes))));
+    uint32_t candidate = std::min(std::min(scaleBasedTokens, maxTokensPerAiv), PRE_QUANT_MAX_DMA_BLOCK_COUNT);
+    candidate = std::max(candidate, 1U);
 
-    for (uint32_t candidate = maxTileTokens; candidate > 0U; --candidate) {
+    // Reduce B only if the complete token/scale/weight tile cannot fit in UB.
+    for (; candidate > 0U; --candidate) {
         tilingData->preQuantTileTokens = candidate;
         tilingData->preQuantStageBytes =
             CalcPreQuantStageBytes(tilingData, activationElementsPerByte, candidate, topKWeightsDataType);
