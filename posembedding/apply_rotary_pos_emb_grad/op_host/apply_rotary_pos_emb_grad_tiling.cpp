@@ -15,6 +15,7 @@
 #include <cmath>
 #include <graph/utils/type_utils.h>
 #include "tiling/tiling_api.h"
+#include "platform/soc_spec.h"
 #include "apply_rotary_pos_emb_grad_tiling.h"
 #include "../op_kernel/arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "../op_kernel/arch35/apply_rotary_pos_emb_grad_dag.h"
@@ -788,10 +789,27 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
     OP_LOGD(context_->GetNodeName(), "reduceBlockNum :%ld, usedCoreNum_ = %ld.\n", reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     auto partialTypeSize = (dCosFlag_ == DCOS_FLAG_ON && IsBroadcastPartialFloatTemplate(dxTilingKey)) ?
                                PARTIAL_TYPE_SIZE :
                                ge::GetSizeByDataType(dtype_);
     auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    const auto npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_9201 || npuArch == NpuArch::DAV_9202) {
+        if (dCosFlag_ == DCOS_FLAG_ON) {
+            context_->SetScheduleMode(SCHEDULE_MODE_BATCH); // batch mode, all cores start simultaneously
+            if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+                constexpr int64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
+                usrWorkSpaceSize += SYS_WORKSPACE_SIZE;
+            }
+        }
+        const bool hasReduceBase = (dCosFlag_ == DCOS_FLAG_ON) && IsBroadcastPartialFloatTemplate(dxTilingKey);
+        workspaces[0] = hasReduceBase ? (workspaces[0] + usrWorkSpaceSize) : usrWorkSpaceSize;
+        OP_LOGD(context_->GetNodeName(), "workspaces[0] :%ld, usrWorkSpaceSize = %ld.\n", workspaces[0],
+                usrWorkSpaceSize);
+        return ge::GRAPH_SUCCESS;
+    }
     if (dCosFlag_ == DCOS_FLAG_ON) {
         context_->SetScheduleMode(SCHEDULE_MODE_BATCH); // batch mode, all cores start simultaneously
         if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
