@@ -14,7 +14,7 @@
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 // ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
 template <typename T, typename CONST_INFO_T>
