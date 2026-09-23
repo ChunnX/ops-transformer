@@ -58,10 +58,6 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
     }
 
     if constexpr (USE_RMS_MID) {
-        // gamma2首片缓存此时已经空闲；提前发起本lane首个head的搬运，
-        // 与midSq写回、sibling会合和标量invRms计算重叠。
-        LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-        LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_, GetTileD(0));
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
         for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
@@ -82,10 +78,9 @@ __aicore__ inline void KernelMhcSandwichNormPostPreonly<T, USE_RMS_MID, RETURN_H
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
+            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            if (tile != 0U) {
-                LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
-            }
+            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
             for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
