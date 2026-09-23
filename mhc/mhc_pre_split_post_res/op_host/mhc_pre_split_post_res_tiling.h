@@ -10,11 +10,13 @@
 
 /*!
  * \file mhc_pre_split_post_res_tiling.h
- * \brief
+ * \brief MhcPreSplitPostRes TilingData/CompileInfo 定义与 Tiling 解析类声明
  */
 
 #ifndef MHC_PRE_SPLIT_POST_RES_TILING_H_
 #define MHC_PRE_SPLIT_POST_RES_TILING_H_
+
+#include "mhc_pre_split_post_res_const.h"
 
 #include "exe_graph/runtime/tiling_context.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -25,7 +27,9 @@
 
 namespace optiling {
 
-// Tiling key 定义（constexpr，支持 optiling:: 命名空间限定访问）
+// Tiling key（schMode 模板实参）定义（constexpr，支持 optiling:: 命名空间限定访问，UT 亦引用）。
+// 与 op_kernel/arch35/mhc_pre_split_post_res_tiling_key.h 的 MHC_PRS_SCH_MODE_* 宏同值互锚
+// （kernel 侧无法 include 本头文件，两侧改动必须同步）；Host 侧经 GET_TPL_TILING_KEY 编码进 TilingKey。
 // 单Tile模式：dimLoop==1（D<=2560）；token 不足（T < coreNum/2）时每token使用2个核心，否则1个
 constexpr uint64_t MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE = 0;
 // 多Tile模式：dimLoop>1（D>2560）；token 不足（T < coreNum/2）时每token使用2个核心，否则1个
@@ -34,8 +38,8 @@ constexpr uint64_t MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE = 1;
 // -----------算子TilingData定义（15个字段）---------------
 BEGIN_TILING_DATA_DEF(MhcPreSplitPostResTilingData)
 TILING_DATA_FIELD_DEF(int64_t, totalLength);     // B*S 或 T，合轴后的token总数
-TILING_DATA_FIELD_DEF(int64_t, N);               // 超连接维度 (固定4)
-TILING_DATA_FIELD_DEF(int64_t, D);               // Dim维度 (白名单 2560/5120/6144/7168)
+TILING_DATA_FIELD_DEF(int64_t, n);               // 超连接维度 (固定4)
+TILING_DATA_FIELD_DEF(int64_t, d);               // Dim维度 (白名单 2560/5120/6144/7168)
 TILING_DATA_FIELD_DEF(int64_t, phiRows);         // N^2+N，phi的第一维
 TILING_DATA_FIELD_DEF(int64_t, dimTile);         // 核内D的分块大小，min(D, 2560)
 TILING_DATA_FIELD_DEF(int64_t, dimLoop);         // D需要几个tile
@@ -88,8 +92,8 @@ protected:
 
     // 算子参数
     int64_t  totalLength_   = 0;   // 合轴后 T = B*S 或直接 T
-    int64_t  N_             = 0;
-    int64_t  D_             = 0;
+    int64_t  n_             = 0;
+    int64_t  d_             = 0;
     int64_t  phiRows_       = 0;   // N^2 + N（完整形态）或 N（仅 post 形态，无 h_res）
     bool     hasRes_        = true; // phi 行数为 N^2+N 时为 true（h_res 必选）
     int64_t  dimTile_       = 0;
@@ -103,7 +107,7 @@ protected:
     int64_t  reduceWorkSize_  = 0;   // ReduceSum work tensor大小（float元素数）
     float    invK_            = 0.0f; // 1.0f/(N*D)
 
-    float    normEps_     = 1e-6f;
+    float    normEps_     = MHC_DEFAULT_NORM_EPS;
 
     // tiling key
     uint64_t tilingKey_ = 0;

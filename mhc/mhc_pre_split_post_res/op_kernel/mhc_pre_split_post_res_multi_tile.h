@@ -20,8 +20,8 @@
  *            （Phase A 的 xFp32 未持久化，Phase B 需从 xGm_ 重读；双核下每核只算一半 phi 行）
  *
  * xHat 本地下标规则（phiRowStart 由调用方传入）：
- *   row < N_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
- *   row >= N_ → AlignUp(postCount) + (row - resStart)  （h_res 段）
+ *   row < n_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
+ *   row >= n_ → AlignUp(postCount) + (row - resStart)  （h_res 段）
  */
 
 #ifndef MHC_PRE_SPLIT_POST_RES_KERNEL_MULTI_TILE_H_
@@ -45,11 +45,11 @@ class KernelMhcMultiTile : public KernelMhcBase<T> {
     using Base::ComputePhiDot;
     using Base::CopyInBias;
     using Base::CopyInXTile;
-    using Base::D_;
+    using Base::d_;
     using Base::InitCommonBuffers;
     using Base::InitGM;
     using Base::invK_;
-    using Base::N_;
+    using Base::n_;
     using Base::normEps_;
     using Base::phiRows_;
     using Base::PrefetchPhiRow;
@@ -69,8 +69,8 @@ public:
     {
         pipe_ = pipe;
         totalLength_ = tiling->totalLength;
-        N_ = tiling->N;
-        D_ = tiling->D;
+        n_ = tiling->n;
+        d_ = tiling->d;
         phiRows_ = tiling->phiRows;
         dimTile_ = tiling->dimTile;
         dimLoop_ = tiling->dimLoop;
@@ -112,15 +112,15 @@ public:
 
 private:
     // 将 phi 行号映射到 xHat 本地下标：
-    //   row < N_  → row - phiRowStart（core0 h_post 段，phiRowStart==0）
-    //   row >= N_ → AlignUp(postCount) + (row - resStart)（h_res 段）
+    //   row < n_  → row - phiRowStart（core0 h_post 段，phiRowStart==0）
+    //   row >= n_ → AlignUp(postCount) + (row - resStart)（h_res 段）
     __aicore__ inline int64_t LocalIdxOf(int64_t row, int64_t phiRowStart) const
     {
-        if (row < N_) {
+        if (row < n_) {
             return row - phiRowStart;
         }
-        int64_t postCount = (N_ > phiRowStart) ? (N_ - phiRowStart) : NUM_ZERO;
-        int64_t resStart = (phiRowStart >= N_) ? phiRowStart : N_;
+        int64_t postCount = (n_ > phiRowStart) ? (n_ - phiRowStart) : NUM_ZERO;
+        int64_t resStart = (phiRowStart >= n_) ? phiRowStart : n_;
         return AlignUp(postCount) + (row - resStart);
     }
 
@@ -128,13 +128,13 @@ private:
     __aicore__ inline int64_t TileCopyD(int64_t d) const
     {
         int64_t dimOff = d * dimTile_;
-        int64_t copyDRaw = (d == dimLoop_ - 1) ? (D_ - dimOff) : dimTile_;
+        int64_t copyDRaw = (d == dimLoop_ - 1) ? (d_ - dimOff) : dimTile_;
         return copyDRaw;
     }
 
     __aicore__ inline void ProcessOneToken(int64_t tokenIdx, int64_t phiRowStart, int64_t phiRowEnd)
     {
-        int64_t xTokenOff = tokenIdx * N_ * D_;
+        int64_t xTokenOff = tokenIdx * n_ * d_;
 
         // ── Phase A：双缓冲流水累加 sumSq ────────────────────────────
         //
@@ -152,6 +152,7 @@ private:
 
         // 预取 tile 0
         CopyInXTile(xTokenOff, 0, TileCopyD(0));
+        LocalTensor<float> xFp32Base = this->xFp32Buf_.template Get<float>();
 
         for (int64_t d = 0; d < dimLoop_ - 1; d++) {
             int64_t copyD = TileCopyD(d);
@@ -161,9 +162,15 @@ private:
             CopyInXTile(xTokenOff, (d + 1) * dimTile_, copyDNext);
 
             // 等待当前 tile 就绪，Cast → AccumSumSq（原地 Mul）
+            // arch35：Cast 写入 tile 偏移 d*n*dimTile（整 token 拼接持久化，供 Phase B 复用）；
+            // 910b：写偏移 0（xFp32 逐 tile 复用，AccumSumSq 原地写毁数据）
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+            LocalTensor<float> xFp32 = xFp32Base[d * dimTile_ * n_];
+#else
+            LocalTensor<float> xFp32 = xFp32Base;
+#endif
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
-            LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(N_ * copyD));
+            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
             // AccumSumSq 末尾已无 PipeBarrier，sumSq.SetValue 是标量写，
@@ -174,9 +181,13 @@ private:
         // 收尾：处理最后一个 tile（已由上一轮或首次预取发出）
         {
             int64_t copyD = TileCopyD(dimLoop_ - 1);
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+            LocalTensor<float> xFp32 = xFp32Base[(dimLoop_ - 1) * dimTile_ * n_];
+#else
+            LocalTensor<float> xFp32 = xFp32Base;
+#endif
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
-            LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(N_ * copyD));
+            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
             // sumSq.GetValue(0) 是标量读，不依赖 V 流水，无需 PipeBarrier
@@ -187,14 +198,29 @@ private:
 
         // ── Phase B：双缓冲流水计算 xHat ─────────────────────────────
         //
-        // 流水时序同 Phase A：先 prefetch d+1，再处理 d。
-        // 每个 tile 内部 phiRowQue_（depth=2）已对 phi 行做双缓冲，
-        // 此处外层对 x tile 的 MTE2 再加一层重叠。
-        //
+        // arch35：Phase A 已将整 token 的 xFp32 按 tile 拼接持久化（Regbase 归约对 xFp32
+        // 只读不覆盖），此处直接按偏移切片复用，免除 x 的 GM 重读（PERF-6：每 token 省一遍
+        // x 搬运）；tile 内 phiRowQue_（depth=2）对 phi 行做双缓冲。
+        // 910b：AccumSumSq 原地写毁 xFp32，维持两遍遍历（重新 CopyInXTile + Cast，
+        // 流水时序同 Phase A：先 prefetch d+1 再处理 d，外层对 x tile 的 MTE2 加一层重叠）。
         LocalTensor<float> xHat = this->xHatBuf_.template Get<float>();
         Duplicate(xHat, FLOAT_ZERO, static_cast<uint32_t>(AlignUp(phiRows_)));
         PipeBarrier<PIPE_V>();
 
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+        for (int64_t d = 0; d < dimLoop_; d++) {
+            int64_t dimOff = d * dimTile_;
+            int64_t copyD = TileCopyD(d);
+            LocalTensor<float> xFp32 = xFp32Base[d * dimTile_ * n_];
+
+            PrefetchPhiRow(phiRowStart, dimOff, copyD);
+            for (int64_t row = phiRowStart; row < phiRowEnd - 1; row++) {
+                PrefetchPhiRow(row + 1, dimOff, copyD);
+                ComputePhiDot(xFp32, xHat, LocalIdxOf(row, phiRowStart), copyD, pipe_);
+            }
+            ComputePhiDot(xFp32, xHat, LocalIdxOf(phiRowEnd - 1, phiRowStart), copyD, pipe_);
+        }
+#else
         // 预取 tile 0
         CopyInXTile(xTokenOff, 0, TileCopyD(0));
 
@@ -209,7 +235,7 @@ private:
             // 等待当前 tile 就绪，Cast → phi 行双缓冲流水
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
             LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(N_ * copyD));
+            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
 
@@ -227,7 +253,7 @@ private:
             int64_t copyD = TileCopyD(dimLoop_ - 1);
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
             LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(N_ * copyD));
+            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
 
@@ -238,26 +264,27 @@ private:
             }
             ComputePhiDot(xFp32, xHat, LocalIdxOf(phiRowEnd - 1, phiRowStart), copyD, pipe_);
         }
+#endif
         // ComputePhiDot 末尾是 SetValue（标量写）+ FreeTensor，不发 V 指令，
         // Muls 不需要等待 V 流水 drain，无需 PipeBarrier
 
         // xHat 乘以 invRms，完成 RMS norm
         int64_t rowCount = phiRowEnd - phiRowStart;
-        int64_t xHatUsed = (phiRowEnd <= N_) ? rowCount : LocalIdxOf(phiRowEnd - 1, phiRowStart) + 1;
+        int64_t xHatUsed = (phiRowEnd <= n_) ? rowCount : LocalIdxOf(phiRowEnd - 1, phiRowStart) + 1;
         Muls(xHat, xHat, invRms, static_cast<uint32_t>(xHatUsed));
         PipeBarrier<PIPE_V>();
 
         LocalTensor<float> biasLocal = this->biasBuf_.template Get<float>();
 
-        // 本核有 h_post 段（仅 core0，phiRowStart < N_）：行 [0, N_)
-        if (phiRowStart < N_) {
-            int64_t postCount = N_ - phiRowStart;
+        // 本核有 h_post 段（仅 core0，phiRowStart < n_）：行 [0, n_)
+        if (phiRowStart < n_) {
+            int64_t postCount = n_ - phiRowStart;
             CopyInBias(biasLocal, phiRowStart, postCount, pipe_);
             ComputeAndWriteHPost(tokenIdx, xHat, biasLocal, phiRowStart, postCount, pipe_);
         }
 
-        // 本核有 h_res 段（core0: [N_, phiRowMid)；core1: [phiRowMid, phiRows)）
-        int64_t resStart = (phiRowStart >= N_) ? phiRowStart : N_;
+        // 本核有 h_res 段（core0: [n_, phiRowMid)；core1: [phiRowMid, phiRows)）
+        int64_t resStart = (phiRowStart >= n_) ? phiRowStart : n_;
         if (resStart < phiRowEnd) {
             int64_t resCount = phiRowEnd - resStart;
             int64_t resLocalOff = LocalIdxOf(resStart, phiRowStart);

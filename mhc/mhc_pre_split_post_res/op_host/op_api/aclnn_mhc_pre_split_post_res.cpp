@@ -20,6 +20,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
+#include "../mhc_pre_split_post_res_const.h"
 #include "mhc_pre_split_post_res.h"
 #include "aclnn_mhc_pre_split_post_res.h"
 
@@ -35,11 +36,8 @@ constexpr size_t DIM_NUM_3 = 3;
 constexpr size_t DIM_NUM_4 = 4;
 constexpr size_t DIM_NUM_1 = 1;
 constexpr size_t DIM_NUM_2 = 2;
-constexpr int64_t N_VALUE = 4;
-constexpr int64_t D_2560 = 2560;
-constexpr int64_t D_5120 = 5120;
-constexpr int64_t D_6144 = 6144;
-constexpr int64_t D_7168 = 7168;
+// n 固定值与 D 白名单统一来自 mhc_pre_split_post_res_const.h（与 tiling 单一事实来源）
+using optiling::MHC_N_VALUE;
 
 static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const char *reason)
 {
@@ -50,7 +48,8 @@ static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const
     return true;
 }
 
-static bool CheckOutputParameter(const void *value, const char *name)
+template <typename T>
+static bool CheckOutputParameter(const T *value, const char *name)
 {
     if (value == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMhcPreSplitPostResGetWorkspaceSize", name, "nullptr",
@@ -100,7 +99,8 @@ static bool CheckTensorShape(const aclTensor *tensor, const char *name, std::ini
 
 static bool IsSupportedD(int64_t d)
 {
-    return d == D_2560 || d == D_5120 || d == D_6144 || d == D_7168;
+    return d == optiling::MHC_D_2560 || d == optiling::MHC_D_5120 || d == optiling::MHC_D_6144 ||
+           d == optiling::MHC_D_7168;
 }
 
 static bool CheckNonEmptyTensor(const aclTensor *tensor, const char *name)
@@ -143,8 +143,9 @@ static bool CheckOutputShape(const aclTensor *x, const aclTensor *phi, const acl
     auto xShape = x->GetViewShape();
     auto phiShape = phi->GetViewShape();
     size_t xRank = xShape.GetDimNum();
-    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(2) : xShape.GetDim(1);
-    int64_t t = xRank == DIM_NUM_4 ? xShape.GetDim(0) * xShape.GetDim(1) : xShape.GetDim(0);
+    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_TWO) : xShape.GetDim(optiling::MHC_DIM_ONE);
+    int64_t t = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_ZERO) * xShape.GetDim(optiling::MHC_DIM_ONE)
+                                  : xShape.GetDim(optiling::MHC_DIM_ZERO);
     int64_t phiRows = phiShape.GetDim(0);
     if (xRank == DIM_NUM_4) {
         if (!CheckTensorShape(hPostOut, "hPostOut", {xShape.GetDim(0), xShape.GetDim(1), n})) {
@@ -171,7 +172,8 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const a
 {
     CHECK_RET(CheckRequiredTensor(x, "x", "required input tensor must not be nullptr"), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckRequiredTensor(phi, "phi", "required input tensor must not be nullptr"), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckRequiredTensor(alpha, "alpha", "required input tensor must not be nullptr"), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckRequiredTensor(alpha, "alpha", "required input tensor must not be nullptr"),
+              ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckRequiredTensor(bias, "bias", "required input tensor must not be nullptr"), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckRequiredTensor(hPostOut, "hPostOut", "required output tensor must not be nullptr"),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -186,13 +188,15 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const a
                   CheckNonEmptyTensor(alpha, "alpha") && CheckNonEmptyTensor(bias, "bias"),
               ACLNN_ERR_PARAM_INVALID);
     auto xShape = x->GetViewShape();
-    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(2) : xShape.GetDim(1);
-    int64_t d = xRank == DIM_NUM_4 ? xShape.GetDim(3) : xShape.GetDim(2);
-    CHECK_RET(n == N_VALUE && IsSupportedD(d), ACLNN_ERR_PARAM_INVALID);
+    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_TWO) : xShape.GetDim(optiling::MHC_DIM_ONE);
+    int64_t d = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_THREE) : xShape.GetDim(optiling::MHC_DIM_TWO);
+    CHECK_RET(n == MHC_N_VALUE && IsSupportedD(d), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorDtype(x, "x", DataType::DT_BF16) || CheckTensorDtype(x, "x", DataType::DT_FLOAT16),
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorDtype(phi, "phi", DataType::DT_FLOAT) && CheckTensorDtype(alpha, "alpha", DataType::DT_FLOAT) &&
-                  CheckTensorDtype(bias, "bias", DataType::DT_FLOAT) && CheckTensorDtype(hPostOut, "hPostOut", DataType::DT_FLOAT),
+    CHECK_RET(CheckTensorDtype(phi, "phi", DataType::DT_FLOAT) &&
+                  CheckTensorDtype(alpha, "alpha", DataType::DT_FLOAT) &&
+                  CheckTensorDtype(bias, "bias", DataType::DT_FLOAT) &&
+                  CheckTensorDtype(hPostOut, "hPostOut", DataType::DT_FLOAT),
               ACLNN_ERR_PARAM_INVALID);
     if (hResOut != nullptr) {
         CHECK_RET(CheckTensorDtype(hResOut, "hResOut", DataType::DT_FLOAT), ACLNN_ERR_PARAM_INVALID);
@@ -224,6 +228,7 @@ aclnnStatus MhcPreSplitPostResCommonProcess(const aclTensor *x, const aclTensor 
               ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     // 输入非连续自动转连续；输出 h_post/h_res 要求连续（README 约束：非连续 ×）
     x = l0op::Contiguous(x, uniqueExecutor.get());
@@ -243,7 +248,7 @@ aclnnStatus MhcPreSplitPostResCommonProcess(const aclTensor *x, const aclTensor 
     const int64_t nValue = x->GetViewShape().GetDim(x->GetViewShape().GetDimNum() - 2);
     if (phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
         CHECK_COND(hResOut != nullptr, ACLNN_ERR_PARAM_INVALID,
-                   "h_res output is required when phi rows is N^2+N (%ld).", nValue * nValue + nValue);
+                   "h_res output is required when the number of phi rows is N^2+N (%ld).", nValue * nValue + nValue);
     } else if (hResOut != nullptr) {
         CHECK_COND(hResOut->IsEmpty(), ACLNN_ERR_PARAM_INVALID,
                    "h_res output must be empty for post-only phi shape.");

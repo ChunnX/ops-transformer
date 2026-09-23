@@ -27,8 +27,8 @@ namespace MhcPreSplitPostRes {
 
 struct MhcPreSplitPostResTilingData {
     int64_t totalLength;     // B*S 或 T，合轴后的token总数
-    int64_t N;               // 超连接维度 (固定4)
-    int64_t D;               // Dim维度 (白名单 2560/5120/6144/7168)
+    int64_t n;               // 超连接维度 (固定4)
+    int64_t d;               // Dim维度 (白名单 2560/5120/6144/7168)
     int64_t phiRows;         // N^2+N，phi的第一维
     int64_t dimTile;         // 核内D的分块大小，min(D, 2560)
     int64_t dimLoop;         // D需要几个tile

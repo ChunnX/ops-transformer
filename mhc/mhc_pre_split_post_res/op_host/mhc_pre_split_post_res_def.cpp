@@ -10,8 +10,10 @@
 
 /*!
  * \file mhc_pre_split_post_res_def.cpp
- * \brief
+ * \brief MhcPreSplitPostRes 算子原型（输入输出/attr/AICore 配置）注册
  */
+#include "mhc_pre_split_post_res_const.h"
+
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -58,7 +60,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("norm_eps").AttrType(OPTIONAL).Float(optiling::MHC_DEFAULT_NORM_EPS);
 
         // 本算子仅支持 ascend950（A5）：走独立 kernel 入口（arch35 APT 实现）
         OpAICoreConfig configApt;

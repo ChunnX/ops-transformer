@@ -28,17 +28,19 @@
 namespace MhcPreSplitPostRes {
 using namespace AscendC;
 
-constexpr int64_t FP32_BYTES = 4;           // float 单元素字节数
-constexpr int64_t FP32_ALIGN_ELEM = 8;      // 向量操作最小对齐单位：32B / 4B = 8 个 float
-constexpr int64_t DATACOPY_MIN_BYTES = 32;  // DataCopy 硬件要求最小块大小
+// 常量架构归属标注（RegBase 专项 RB-5）：[general] 两代际通用；[compat] 仅 910b（Membase）
+// 路径使用；[RegBase-native] 仅 ascend950（arch35）Regbase 路径使用。
+constexpr int64_t FP32_BYTES = 4;           // [general] float 单元素字节数
+constexpr int64_t FP32_ALIGN_ELEM = 8;      // [general] 向量操作最小对齐单位：32B / 4B = 8 个 float
+constexpr int64_t DATACOPY_MIN_BYTES = 32;  // [general] DataCopy 硬件要求最小块大小
 
-// 二叉树累加需要
-// float 下每 repeat 最多处理 256B/4B = 64 个元素
+// [compat] 910b 二叉树累加需要：float 下每 repeat 最多处理 256B/4B = 64 个元素
 constexpr uint32_t ONE_REP_FLOAT = 64u;
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-// ascend950（arch35）Regbase：一条向量指令的 fp32 lane 数（寄存器宽度 256B）
+// [RegBase-native] ascend950（arch35）Regbase：一条向量指令的 fp32 lane 数（寄存器宽度 256B）
 constexpr uint32_t REG_VL_FP32 = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(sizeof(float));
 #endif
+// [compat] 910b WholeReduceSum/BinaryRepeatParams 参数（arch35 Regbase 路径不使用）
 constexpr uint32_t DEFAULT_BLK_STRIDE = 1u;
 constexpr uint32_t DEFAULT_REP_STRIDE = 8u;
 constexpr uint32_t SIXTEEN_U = 16u;
@@ -88,14 +90,12 @@ protected:
     __aicore__ inline void InitGM(
         GM_ADDR xAddr, GM_ADDR phiAddr, GM_ADDR alphaAddr, GM_ADDR biasAddr, GM_ADDR hPostAddr, GM_ADDR hResAddr)
     {
-        xGm_.SetGlobalBuffer((__gm__ T *)xAddr, static_cast<uint64_t>(totalLength_) * N_ * D_);
-        phiGm_.SetGlobalBuffer((__gm__ float *)phiAddr, static_cast<uint64_t>(phiRows_) * N_ * D_);
+        xGm_.SetGlobalBuffer((__gm__ T *)xAddr, static_cast<uint64_t>(totalLength_) * n_ * d_);
+        phiGm_.SetGlobalBuffer((__gm__ float *)phiAddr, static_cast<uint64_t>(phiRows_) * n_ * d_);
         alphaGm_.SetGlobalBuffer((__gm__ float *)alphaAddr, NUM_TWO);  // [alpha0, alpha1]
         biasGm_.SetGlobalBuffer((__gm__ float *)biasAddr, static_cast<uint64_t>(phiRows_));
-        hPostGm_.SetGlobalBuffer((__gm__ float *)hPostAddr, static_cast<uint64_t>(totalLength_) * N_);
-        hResGm_.SetGlobalBuffer((__gm__ float *)hResAddr, static_cast<uint64_t>(totalLength_) * N_ * N_);
-        alpha0_ = alphaGm_.GetValue(0);
-        alpha1_ = alphaGm_.GetValue(1);
+        hPostGm_.SetGlobalBuffer((__gm__ float *)hPostAddr, static_cast<uint64_t>(totalLength_) * n_);
+        hResGm_.SetGlobalBuffer((__gm__ float *)hResAddr, static_cast<uint64_t>(totalLength_) * n_ * n_);
     }
 
     // doubleBufferX=false（默认，SINGLE_TILE）：xInQueue_ depth=1，squareBuf_ 正常初始化。
@@ -104,10 +104,19 @@ protected:
     __aicore__ inline void InitCommonBuffers(
         TPipe *pipe, int64_t dimTile, int64_t reduceWorkSize, bool doubleBufferX = false)
     {
-        int64_t xTileElems = N_ * dimTile;
+        int64_t xTileElems = n_ * dimTile;
         // xInQueue_ depth：SINGLE_TILE=1，MULTI_TILE=2（双缓冲）
-        pipe->InitBuffer(xInQueue_, doubleBufferX ? 2 : 1, static_cast<uint32_t>(xTileElems * sizeof(T)));
-        pipe->InitBuffer(xFp32Buf_, static_cast<uint32_t>(xTileElems * FP32_BYTES));
+        pipe->InitBuffer(xInQueue_, doubleBufferX ? NUM_TWO : NUM_ONE, static_cast<uint32_t>(xTileElems * sizeof(T)));
+        // xFp32Buf_：arch35（ascend950）扩为整 token 全量 n*d 并按 tile 拼接布局
+        // （tile d 存于偏移 d*xTileElems）——Regbase 归约对 xFp32 只读不覆盖，Phase B 直接
+        // 复用持久化数据，免除 x 的 GM 重读（PERF-6）；910b 路径 AccumSumSq 原地写毁 xFp32，
+        // 维持 n*dimTile 逐 tile 复用 + 两遍遍历。
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+        int64_t xFp32Elems = n_ * d_;
+#else
+        int64_t xFp32Elems = xTileElems;
+#endif
+        pipe->InitBuffer(xFp32Buf_, static_cast<uint32_t>(xFp32Elems * FP32_BYTES));
         // phiRowQue_ 深度 2：一个 tile 在 MTE2 传输，同时另一个 tile 在向量计算
         pipe->InitBuffer(phiRowQue_, NUM_TWO, static_cast<uint32_t>(xTileElems * FP32_BYTES));
 
@@ -117,20 +126,42 @@ protected:
         pipe->InitBuffer(biasBuf_, static_cast<uint32_t>(xHatAligned * FP32_BYTES));
 
         // sumSqBuf_：存放 ReduceSum(x^2) 的累加结果，大小 FP32_ALIGN_ELEM 个 float
-        // squareBuf_：存放 x^2 的中间结果（MULTI_TILE 跳过，改用原地 Mul 节省 UB）
-        // sumSqDotBuf_ / dotBuf_：布局为 [result(FP32_ALIGN_ELEM float) | work(reduceWorkSize float)]
-        // reduceBufElems : ReduceSum api所需空间，ADD+WholeReduceSum实现后未使用，暂时保存。
+        // squareBuf_：存放 x^2 的中间结果，仅 910b 路径需要（MULTI_TILE 跳过，改用原地 Mul；
+        //   arch35 Regbase 在寄存器内完成平方与归约、xFp32 只读，SINGLE 也不分配）
+        // sumSqDotBuf_ / dotBuf_：布局为 [result(FP32_ALIGN_ELEM float) | work(reduceWorkSize float)]，
+        //   work 段仅 910b WholeReduceSum 需要；arch35 Regbase 归约只访问结果槽 [0]，不分配 work 段。
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+        int64_t reduceBufElems = FP32_ALIGN_ELEM;
+#else
         int64_t reduceBufElems = FP32_ALIGN_ELEM + reduceWorkSize;
+#endif
         pipe->InitBuffer(sumSqBuf_, static_cast<uint32_t>(FP32_ALIGN_ELEM * FP32_BYTES));
+#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 310)
         if (!doubleBufferX) {
-            // SINGLE_TILE：AccumSumSq 需要 squareBuf_ 暂存 x^2（xFp32 在后续 ComputePhiDot 中仍需使用）
+            // SINGLE_TILE（910b）：AccumSumSq 需要 squareBuf_ 暂存 x^2（xFp32 在后续 ComputePhiDot 中仍需使用）
             pipe->InitBuffer(squareBuf_, static_cast<uint32_t>(xTileElems * FP32_BYTES));
         }
+#endif
         pipe->InitBuffer(dotBuf_, static_cast<uint32_t>(reduceBufElems * FP32_BYTES));
         pipe->InitBuffer(sumSqDotBuf_, static_cast<uint32_t>(reduceBufElems * FP32_BYTES));
 
-        pipe->InitBuffer(hPostOutQueue_, 1, static_cast<uint32_t>(AlignUp(N_) * FP32_BYTES));
-        pipe->InitBuffer(hResOutQueue_, 1, static_cast<uint32_t>(AlignUp(N_ * N_) * FP32_BYTES));
+        pipe->InitBuffer(hPostOutQueue_, NUM_ONE, static_cast<uint32_t>(AlignUp(n_) * FP32_BYTES));
+        pipe->InitBuffer(hResOutQueue_, NUM_ONE, static_cast<uint32_t>(AlignUp(n_ * n_) * FP32_BYTES));
+
+        // alphaBuf_：alpha[2] 标量经 GM→UB 搬运后从 UB 标量读（GlobalTensor::GetValue 属黑名单 API）。
+        // MTE2_S：等 MTE2 搬运完成后再由标量单元读取。
+        pipe->InitBuffer(alphaBuf_, static_cast<uint32_t>(FP32_ALIGN_ELEM * FP32_BYTES));
+        LocalTensor<float> alphaLocal = alphaBuf_.Get<float>();
+        DataCopyExtParams params;
+        params.blockCount = 1;
+        params.srcStride = 0;
+        params.dstStride = 0;
+        params.blockLen = static_cast<uint32_t>(NUM_TWO * FP32_BYTES);
+        DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
+        DataCopyPad(alphaLocal, alphaGm_[NUM_ZERO], params, pad);
+        SetWaitFlag<HardEvent::MTE2_S>(pipe);
+        alpha0_ = alphaLocal.GetValue(0);
+        alpha1_ = alphaLocal.GetValue(1);
     }
 
     // 从 xGm_[xTokenOff + dimOff] 搬入当前 token 的一个 dimTile（N 行 × copyD 列）到 xInQueue_
@@ -138,9 +169,9 @@ protected:
     {
         LocalTensor<T> xLocal = xInQueue_.AllocTensor<T>();
         DataCopyExtParams cp;
-        cp.blockCount = static_cast<uint16_t>(N_);
+        cp.blockCount = static_cast<uint16_t>(n_);
         cp.blockLen = static_cast<uint32_t>(copyD * sizeof(T));
-        cp.srcStride = static_cast<uint32_t>((D_ - copyD) * sizeof(T));
+        cp.srcStride = static_cast<uint32_t>((d_ - copyD) * sizeof(T));
         cp.dstStride = 0;
         DataCopyPadExtParams<T> pad{false, 0, 0, 0};
         DataCopyPad(xLocal, xGm_[xTokenOff + dimOff], cp, pad);
@@ -164,15 +195,24 @@ protected:
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
         auto srcAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)sqDot.GetPhyAddr();
-        const uint32_t elemCount = static_cast<uint32_t>(N_ * copyD);
+        const uint32_t elemCount = static_cast<uint32_t>(n_ * copyD);
         uint32_t sreg = elemCount;
         const uint16_t repeatTimes = static_cast<uint16_t>((elemCount + REG_VL_FP32 - 1U) / REG_VL_FP32);
         __VEC_SCOPE__
         {
-            AscendC::Reg::RegTensor<float> x, prod, part, acc;
+            AscendC::Reg::RegTensor<float> x;
+            AscendC::Reg::RegTensor<float> prod;
+            AscendC::Reg::RegTensor<float> part;
+            AscendC::Reg::RegTensor<float> acc;
             AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-            // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane），对齐 fkle ReduceLoop 写法
+            // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
+            // examples/fast_kernel_launch_example/.../ascend910_93 fkle ReduceLoop（MicroAPI，DAV_2201
+            // 族）——源码经 VF_CALL 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共
+            // 头），arch35 上以 __VEC_SCOPE__ 直调等价实现。
+            // Reg::ReduceSum/Duplicate/DataCopy 来源佐证：官方 cann-samples RmsNormQuant（DataCopy
+            // <DIST_FIRST_ELEMENT_B32>）+ 仓内 fkle ReduceLoop（ReduceSum/Duplicate）；签名以目标
+            // CANN 9.2.0 SDK header 为最终依据（编译通过即签名级验证）。
             AscendC::Reg::MaskReg maskFirst = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
             AscendC::Reg::Duplicate(acc, FLOAT_ZERO, maskAll);
             for (uint16_t i = 0; i < repeatTimes; ++i) {
@@ -188,12 +228,12 @@ protected:
         // GetValue/SetValue 是标量读写，不发 V 指令，无需 PipeBarrier
         sumSq.SetValue(0, sumSq.GetValue(0) + sqDot.GetValue(0));
 #else
-        uint32_t totalNum = static_cast<uint32_t>(N_ * copyD);
+        uint32_t totalNum = static_cast<uint32_t>(n_ * copyD);
         LocalTensor<float> srcTmp;
         if constexpr (!INPLACE) {
             // SINGLE_TILE：用 squareBuf_ 暂存 x^2，保留 xFp32 原始值
             LocalTensor<float> square = squareBuf_.Get<float>();
-            Mul(square, xFp32, xFp32, static_cast<uint32_t>(N_ * copyD));
+            Mul(square, xFp32, xFp32, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             // 二叉树折叠 + WholeReduceSum，与 ComputePhiDot 保持一致
             SetMaskCount();
@@ -202,7 +242,7 @@ protected:
             totalNum = BinaryTreeFold(srcTmp, totalNum);
         } else {
             // MULTI_TILE Phase A：原地 Mul，xFp32 被覆盖为 x^2；squareBuf_ 不访问
-            Mul(xFp32, xFp32, xFp32, static_cast<uint32_t>(N_ * copyD));
+            Mul(xFp32, xFp32, xFp32, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             // 二叉树折叠 + WholeReduceSum，与 ComputePhiDot 保持一致
             SetMaskCount();
@@ -226,12 +266,12 @@ protected:
     {
         LocalTensor<float> phiRow = phiRowQue_.AllocTensor<float>();
         DataCopyExtParams cp;
-        cp.blockCount = static_cast<uint16_t>(N_);
+        cp.blockCount = static_cast<uint16_t>(n_);
         cp.blockLen = static_cast<uint32_t>(copyD * FP32_BYTES);
-        cp.srcStride = static_cast<uint32_t>((D_ - copyD) * FP32_BYTES);
+        cp.srcStride = static_cast<uint32_t>((d_ - copyD) * FP32_BYTES);
         cp.dstStride = 0;
         DataCopyPadExtParams<float> pad{false, 0, 0, 0};
-        DataCopyPad(phiRow, phiGm_[row * N_ * D_ + dimOff], cp, pad);
+        DataCopyPad(phiRow, phiGm_[row * n_ * d_ + dimOff], cp, pad);
         phiRowQue_.EnQue(phiRow);
     }
 
@@ -240,7 +280,7 @@ protected:
     // ascend950（arch35）Regbase：Reg 内 Mul + ReduceSum 段折叠 + 段间 Add 链（段内二叉、
     // 段间固定顺序的确定性归约）；phi 行 UB 数据只读，不再原地覆盖。
     __aicore__ inline void ComputePhiDot(
-        LocalTensor<float> &xFp32, LocalTensor<float> &xHat, int64_t localIdx, int64_t copyD, TPipe *pipe)
+        const LocalTensor<float> &xFp32, LocalTensor<float> &xHat, int64_t localIdx, int64_t copyD, TPipe *pipe)
     {
         LocalTensor<float> phiRow = phiRowQue_.DeQue<float>();
         LocalTensor<float> dot = dotBuf_.Get<float>();
@@ -248,15 +288,25 @@ protected:
         auto xAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
         auto phiAddr = (__ubuf__ float *)phiRow.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)dot.GetPhyAddr();
-        const uint32_t elemCount = static_cast<uint32_t>(N_ * copyD);
+        const uint32_t elemCount = static_cast<uint32_t>(n_ * copyD);
         uint32_t sreg = elemCount;
         const uint16_t repeatTimes = static_cast<uint16_t>((elemCount + REG_VL_FP32 - 1U) / REG_VL_FP32);
         __VEC_SCOPE__
         {
-            AscendC::Reg::RegTensor<float> x, phi, prod, part, acc;
+            AscendC::Reg::RegTensor<float> x;
+            AscendC::Reg::RegTensor<float> phi;
+            AscendC::Reg::RegTensor<float> prod;
+            AscendC::Reg::RegTensor<float> part;
+            AscendC::Reg::RegTensor<float> acc;
             AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-            // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane），对齐 fkle ReduceLoop 写法
+            // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
+            // examples/fast_kernel_launch_example/.../ascend910_93 fkle ReduceLoop（MicroAPI，DAV_2201
+            // 族）——源码经 VF_CALL 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共
+            // 头），arch35 上以 __VEC_SCOPE__ 直调等价实现。
+            // Reg::ReduceSum/Duplicate/DataCopy 来源佐证：官方 cann-samples RmsNormQuant（DataCopy
+            // <DIST_FIRST_ELEMENT_B32>）+ 仓内 fkle ReduceLoop（ReduceSum/Duplicate）；签名以目标
+            // CANN 9.2.0 SDK header 为最终依据（编译通过即签名级验证）。
             AscendC::Reg::MaskReg maskFirst = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
             AscendC::Reg::Duplicate(acc, FLOAT_ZERO, maskAll);
             for (uint16_t i = 0; i < repeatTimes; ++i) {
@@ -274,13 +324,13 @@ protected:
         xHat.SetValue(localIdx, xHat.GetValue(localIdx) + dot.GetValue(0));
         phiRowQue_.FreeTensor(phiRow);
 #else
-        Mul(phiRow, phiRow, xFp32, static_cast<uint32_t>(N_ * copyD));
+        Mul(phiRow, phiRow, xFp32, static_cast<uint32_t>(n_ * copyD));
         PipeBarrier<PIPE_V>();
 
         // 二叉树折叠：每轮将后半段加到前半段，直至剩余 ≤ ONE_REP_FLOAT 个元素
-        // phiRow 空间 = N_*D floats（由 phiRowQue_ 保证），原地操作安全
+        // phiRow 空间 = n_*D floats（由 phiRowQue_ 保证），原地操作安全
         SetMaskCount();
-        uint32_t totalNum = static_cast<uint32_t>(N_ * copyD);
+        uint32_t totalNum = static_cast<uint32_t>(n_ * copyD);
         LocalTensor<float> srcTmp = phiRow;
         // 调用通用二叉树折叠
         totalNum = BinaryTreeFold(srcTmp, totalNum);
@@ -302,7 +352,6 @@ protected:
     // 搬入 count bias 到 biasLocal，
     __aicore__ inline void CopyInBias(LocalTensor<float> biasLocal, int64_t biasStart, int64_t count, TPipe *pipe)
     {
-        int64_t available = phiRows_ - biasStart;
         DataCopyExtParams params;
         params.blockCount = 1;
         params.srcStride = 0;
@@ -316,8 +365,14 @@ protected:
 
     // 计算 hPostOut = 2*sigmoid(alpha0*xHat[0:postCount] + biasLocal[0:postCount])，
     // 写出到 hPostGm_[tokenIdx*N + gmRowStart : gmRowStart+postCount)
-    __aicore__ inline void ComputeAndWriteHPost(int64_t tokenIdx, LocalTensor<float> &xHat,
-        LocalTensor<float> &biasLocal, int64_t gmRowStart, int64_t postCount, TPipe *pipe)
+    //
+    // 输出队列同步契约（标准 EnQue/DeQue 流程，与 xInQueue_/phiRowQue_ 范式一致）：
+    //   EnQue       ：V 侧写完发 V→MTE3 就绪事件（替代手动 SetWaitFlag<V_MTE3>）；
+    //   DeQue       ：等 V 写完成后才下发 DataCopyPad（MTE3 读）；
+    //   FreeTensor  ：slot 归还 TQue，由队列内建 MTE3_V 屏障保证该 slot 下次
+    //   AllocTensor 不早于在途 MTE3 读完成——跨 token 复用同一 UB buffer 无竞态。
+    __aicore__ inline void ComputeAndWriteHPost(int64_t tokenIdx, const LocalTensor<float> &xHat,
+        const LocalTensor<float> &biasLocal, int64_t gmRowStart, int64_t postCount, TPipe *pipe)
     {
         LocalTensor<float> hPostOut = hPostOutQueue_.AllocTensor<float>();
         Muls(hPostOut, xHat, alpha0_, static_cast<uint32_t>(postCount));
@@ -327,34 +382,39 @@ protected:
         Sigmoid<float, true>(hPostOut, hPostOut, static_cast<uint32_t>(postCount));
         PipeBarrier<PIPE_V>();
         Muls(hPostOut, hPostOut, FLOAT_TWO, static_cast<uint32_t>(postCount));
-        SetWaitFlag<HardEvent::V_MTE3>(pipe);
+        hPostOutQueue_.EnQue(hPostOut);
+        LocalTensor<float> hPostCopy = hPostOutQueue_.DeQue<float>();
         DataCopyExtParams op;
         op.blockCount = 1;
         op.blockLen = static_cast<uint32_t>(postCount * FP32_BYTES);
         op.srcStride = 0;
         op.dstStride = 0;
-        DataCopyPad(hPostGm_[tokenIdx * N_ + gmRowStart], hPostOut, op);
-        hPostOutQueue_.FreeTensor(hPostOut);
+        DataCopyPad(hPostGm_[tokenIdx * n_ + gmRowStart], hPostCopy, op);
+        hPostOutQueue_.FreeTensor(hPostCopy);
     }
 
     // 计算 hResOut = alpha1*xHat[localOff:localOff+resCount] + biasLocal[localOff:localOff+resCount]，
     // 写出到 hResGm_[tokenIdx*N*N + (gmRowStart-N) : (gmRowStart-N)+resCount)
-    __aicore__ inline void ComputeAndWriteHRes(int64_t tokenIdx, LocalTensor<float> &xHat,
-        LocalTensor<float> &biasLocal, int64_t gmRowStart, int64_t localOff, int64_t resCount, TPipe *pipe)
+    //
+    // 输出队列同步契约：与 ComputeAndWriteHPost 相同（EnQue/DeQue 标准流程，
+    // FreeTensor 后由队列内建 MTE3_V 屏障保证跨 token 复用无竞态）。
+    __aicore__ inline void ComputeAndWriteHRes(int64_t tokenIdx, const LocalTensor<float> &xHat,
+        const LocalTensor<float> &biasLocal, int64_t gmRowStart, int64_t localOff, int64_t resCount, TPipe *pipe)
     {
         LocalTensor<float> hResOut = hResOutQueue_.AllocTensor<float>();
         Muls(hResOut, xHat[localOff], alpha1_, static_cast<uint32_t>(resCount));
         PipeBarrier<PIPE_V>();
         Add(hResOut, hResOut, biasLocal[localOff], static_cast<uint32_t>(resCount));
         PipeBarrier<PIPE_V>();
-        SetWaitFlag<HardEvent::V_MTE3>(pipe);
+        hResOutQueue_.EnQue(hResOut);
+        LocalTensor<float> hResCopy = hResOutQueue_.DeQue<float>();
         DataCopyExtParams op;
         op.blockCount = 1;
         op.blockLen = static_cast<uint32_t>(resCount * FP32_BYTES);
         op.srcStride = 0;
         op.dstStride = 0;
-        DataCopyPad(hResGm_[tokenIdx * N_ * N_ + (gmRowStart - N_)], hResOut, op);
-        hResOutQueue_.FreeTensor(hResOut);
+        DataCopyPad(hResGm_[tokenIdx * n_ * n_ + (gmRowStart - n_)], hResCopy, op);
+        hResOutQueue_.FreeTensor(hResCopy);
     }
 
 protected:
@@ -378,11 +438,14 @@ protected:
     TBuf<TPosition::VECCALC> dotBuf_;
     TBuf<TPosition::VECCALC> sumSqDotBuf_;
     TBuf<TPosition::VECCALC> biasBuf_;
+    TBuf<TPosition::VECCALC> alphaBuf_;
 
     int64_t totalLength_ = 0;
-    int64_t N_ = 0;
-    int64_t D_ = 0;
+    int64_t n_ = 0;
+    int64_t d_ = 0;
     int64_t phiRows_ = 0;
+    // 默认值与 op_host/mhc_pre_split_post_res_const.h 的 MHC_DEFAULT_NORM_EPS 同源互锚
+    // （kernel 侧编译环境隔离无法 include host 头，改动必须两侧同步）
     float normEps_ = 1e-6f;
     float alpha0_ = 1.0f;
     float alpha1_ = 1.0f;

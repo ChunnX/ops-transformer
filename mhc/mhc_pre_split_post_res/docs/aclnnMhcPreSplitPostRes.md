@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：MhcPreSplitPostRes是MhcPre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支。具体流程为：将输入x展平并转FP32后计算RMSNorm的InvRMS因子，执行线性投影得到x_hat，然后切分为post分支和comb分支分别计算h_post和h_res。**h_res为可选输出，由phi形态决定**：phi行数为n^2+n（完整形态）时输出h_post与h_res；phi行数为n（仅post形态）时仅输出h_post（h_res传空）。
+- 接口功能：MhcPreSplitPostRes是MhcPre算子的一部分，负责计算mHC（Manifold-Constrained Hyper-Connections）架构中x2输入对应的post分支和comb/Res分支。具体流程为：将输入x展平并转FP32后计算RMSNorm的InvRMS因子，执行线性投影得到x_hat，然后切分为post分支和comb分支分别计算h_post和h_res。**h_res为可选输出，由phi形态决定**：phi行数为n^2+n（完整形态）时输出h_post与h_res；phi行数为n（仅post形态）时仅输出h_post（h_res传空）
 
 
 - 计算公式：
@@ -70,7 +70,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnMhcPreSplitPostResGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPreSplitPostRes"接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMhcPreSplitPostResGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSplitPostRes`接口执行计算。
 
 ```c++
 aclnnStatus aclnnMhcPreSplitPostResGetWorkspaceSize(
@@ -305,7 +305,7 @@ aclnnStatus aclnnMhcPreSplitPostRes(
   | :------- | :----------------- | :------------------------------------- |
   | T或B*S   | 1及以上             | B*S或T至少为1，当前实现不设置上限               |
   | n        | 4                  | 固定为4                                |
-  | D        | {2560,5120,6144,7168} | 仅支持 4 种典型值，其余拦截              |
+  | D        | {2560,5120,6144,7168} | 仅支持4种典型值，其余拦截              |
 
 ## 调用示例
 

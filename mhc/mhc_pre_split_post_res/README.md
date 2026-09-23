@@ -5,15 +5,15 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                       |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                               |    ×     |
 
 ## 功能说明
 
-- **算子功能**：MhcPreSplitPostRes 算子是 MhcPre 算子的一部分，负责计算 mHC（Manifold-Constrained Hyper Connection）架构中 x2 输入对应的 post 分支和 comb/Res 分支，输出 h_post 和 h_res 两个变换矩阵（h_res 为可选输出：phi 行数为 n^2+n 时输出，为 n 时仅输出 h_post、h_res 为 0 元素 tensor）。具体流程为：将输入 x 展平并转 FP32 后计算 RMSNorm 的 invRms 因子，执行线性投影得到 x_hat，然后切分为 post 分支和 comb 分支分别计算 h_post 和 h_res。
+- **算子功能**：MhcPreSplitPostRes算子是MhcPre算子的一部分，负责计算mHC（Manifold-Constrained Hyper Connection）架构中x2输入对应的post分支和comb/Res分支，输出h_post和h_res两个变换矩阵（h_res为可选输出：phi行数为n^2+n时输出，为n时仅输出h_post、h_res为0元素tensor）。具体流程为：将输入x展平并转FP32后计算RMSNorm的invRms因子，执行线性投影得到x_hat，然后切分为post分支和comb分支分别计算h_post和h_res
 
 - **计算公式**：
 
@@ -117,7 +117,7 @@
 |:--- |:--- |:--- |
 | T或B*S | 1及以上 | B*S或T至少为1，当前实现不设置上限。|
 | n | 4 | n为固定值4。|
-| D | 白名单 {2560,5120,6144,7168} | D仅支持 2560/5120/6144/7168 四种典型值，其余值拦截。|
+| D | 白名单 {2560,5120,6144,7168} | D仅支持2560/5120/6144/7168四种典型值，其余值拦截。|
 
 - 典型值：
 

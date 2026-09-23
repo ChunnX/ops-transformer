@@ -197,7 +197,7 @@ cann_ops_transformer.mhc_pre_split_post_res(x, phi, alpha, bias, norm_eps=1e-6) 
   - 输出`h_post`、`h_res`的数据类型均为float32。
 
 - 维度约束：
-  - `x`支持4维(B, S, n, D)或3维(T, n, D)格式，其中n固定为4，D仅支持白名单{2560, 5120, 6144, 7168}；T无上限（>=1）。
+  - `x`支持4维（B, S, n, D）或3维（T, n, D）格式，其中n固定为4，D仅支持白名单{2560, 5120, 6144, 7168}；T无上限（>=1）。
   - `phi`的维度为(n<sup>2</sup>+n, n·D)（完整形态，输出h_res）或(n, n·D)（仅post形态，h_res返回0元素Tensor），其中n、D与`x`保持一致。
   - `alpha`的维度为(2)。
   - `bias`的维度与`phi`的第0维保持一致（n<sup>2</sup>+n 或 n）。

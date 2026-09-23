@@ -46,7 +46,7 @@ bool MhcPreSplitPostRes(const aclTensor *x, const aclTensor *phi, const aclTenso
     const int64_t nValue = x->GetViewShape().GetDim(xRank - 2);
     if (hResOut == nullptr && phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "MhcPreSplitPostRes h_res output is required when phi rows is N^2+N (%ld).",
+                "MhcPreSplitPostRes h_res output is required when the number of phi rows is N^2+N (%ld).",
                 nValue * nValue + nValue);
         return false;
     }

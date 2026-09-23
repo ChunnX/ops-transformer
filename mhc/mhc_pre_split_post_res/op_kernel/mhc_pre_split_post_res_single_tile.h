@@ -17,8 +17,8 @@
  *   core1 (phiRowStart=phiRowMid)：处理 h_res 行 [phiRowMid, phiRows)
  *
  * xHat 本地下标规则（phiRowStart 由调用方传入）：
- *   row < N_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
- *   row >= N_ → AlignUp(postCount) + (row - resStart)  （h_res 段）
+ *   row < n_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
+ *   row >= n_ → AlignUp(postCount) + (row - resStart)  （h_res 段）
  */
 
 #ifndef MHC_PRE_SPLIT_POST_RES_SINGLE_TILE_H_
@@ -42,11 +42,11 @@ class KernelMhcSingleTile : public KernelMhcBase<T> {
     using Base::ComputePhiDot;
     using Base::CopyInBias;
     using Base::CopyInXTile;
-    using Base::D_;
+    using Base::d_;
     using Base::InitCommonBuffers;
     using Base::InitGM;
     using Base::invK_;
-    using Base::N_;
+    using Base::n_;
     using Base::normEps_;
     using Base::phiRows_;
     using Base::PrefetchPhiRow;
@@ -66,21 +66,20 @@ public:
     {
         pipe_ = pipe;
         totalLength_ = tiling->totalLength;
-        N_ = tiling->N;
-        D_ = tiling->D;
+        n_ = tiling->n;
+        d_ = tiling->d;
         phiRows_ = tiling->phiRows;
         normEps_ = tiling->normEps;
         invK_ = tiling->invK;
         phiRowMid_ = tiling->phiRowMid;
-        blockDim_ = tiling->blockDim;
         baseT_ = tiling->baseT;
         tailT_ = tiling->tailT;
         coreTAct_ = tiling->coreTAct;
         coresPerToken_ = tiling->coresPerToken;
 
         InitGM(xAddr, phiAddr, alphaAddr, biasAddr, hPostAddr, hResAddr);
-        // dimTile 传入 D_，表示全量 D 一次搬入，无 dimLoop 循环
-        InitCommonBuffers(pipe, D_, tiling->reduceWorkSize);
+        // dimTile 传入 d_，表示全量 D 一次搬入，无 dimLoop 循环
+        InitCommonBuffers(pipe, d_, tiling->reduceWorkSize);
     }
 
     __aicore__ inline void Process()
@@ -107,28 +106,28 @@ public:
 
 private:
     // 将 phi 行号映射到 xHat 本地下标：
-    //   row < N_  → row - phiRowStart（core0 h_post 段，phiRowStart==0）
-    //   row >= N_ → AlignUp(postCount) + (row - resStart)（h_res 段）
+    //   row < n_  → row - phiRowStart（core0 h_post 段，phiRowStart==0）
+    //   row >= n_ → AlignUp(postCount) + (row - resStart)（h_res 段）
     __aicore__ inline int64_t LocalIdxOf(int64_t row, int64_t phiRowStart) const
     {
-        if (row < N_) {
+        if (row < n_) {
             return row - phiRowStart;
         }
-        int64_t postCount = (N_ > phiRowStart) ? (N_ - phiRowStart) : NUM_ZERO;
-        int64_t resStart = (phiRowStart >= N_) ? phiRowStart : N_;
+        int64_t postCount = (n_ > phiRowStart) ? (n_ - phiRowStart) : NUM_ZERO;
+        int64_t resStart = (phiRowStart >= n_) ? phiRowStart : n_;
         return AlignUp(postCount) + (row - resStart);
     }
 
     __aicore__ inline void ProcessOneToken(int64_t tokenIdx, int64_t phiRowStart, int64_t phiRowEnd)
     {
-        int64_t xTokenOff = tokenIdx * N_ * D_;
+        int64_t xTokenOff = tokenIdx * n_ * d_;
 
-        int64_t copyD = D_;
+        int64_t copyD = d_;
 
         CopyInXTile(xTokenOff, 0, copyD);
         LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
         LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-        Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(N_ * copyD));
+        Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
         PipeBarrier<PIPE_V>();
         this->xInQueue_.FreeTensor(xLocal);
 
@@ -153,21 +152,21 @@ private:
 
         // xHat 乘以 invRms，完成 RMS norm
         int64_t rowCount = phiRowEnd - phiRowStart;
-        int64_t xHatUsed = (phiRowEnd <= N_) ? rowCount : LocalIdxOf(phiRowEnd - 1, phiRowStart) + 1;
+        int64_t xHatUsed = (phiRowEnd <= n_) ? rowCount : LocalIdxOf(phiRowEnd - 1, phiRowStart) + 1;
         Muls(xHat, xHat, invRms, static_cast<uint32_t>(xHatUsed));
         PipeBarrier<PIPE_V>();
 
         LocalTensor<float> biasLocal = this->biasBuf_.template Get<float>();
 
-        // 本核有 h_post 段（仅 core0，phiRowStart < N_）
-        if (phiRowStart < N_) {
-            int64_t postCount = N_ - phiRowStart;
+        // 本核有 h_post 段（仅 core0，phiRowStart < n_）
+        if (phiRowStart < n_) {
+            int64_t postCount = n_ - phiRowStart;
             CopyInBias(biasLocal, phiRowStart, postCount, pipe_);
             ComputeAndWriteHPost(tokenIdx, xHat, biasLocal, phiRowStart, postCount, pipe_);
         }
 
-        // 本核有 h_res 段（core0: [N_, phiRowMid)；core1: [phiRowMid, phiRows)）
-        int64_t resStart = (phiRowStart >= N_) ? phiRowStart : N_;
+        // 本核有 h_res 段（core0: [n_, phiRowMid)；core1: [phiRowMid, phiRows)）
+        int64_t resStart = (phiRowStart >= n_) ? phiRowStart : n_;
         if (resStart < phiRowEnd) {
             int64_t resCount = phiRowEnd - resStart;
             int64_t resLocalOff = LocalIdxOf(resStart, phiRowStart);
@@ -179,7 +178,6 @@ private:
 private:
     TPipe *pipe_ = nullptr;
     int64_t phiRowMid_ = 0;
-    int64_t blockDim_ = 0;
     int64_t baseT_ = 0;
     int64_t tailT_ = 0;
     int64_t coreTAct_ = 0;

@@ -10,12 +10,14 @@
 
 /*!
  * \file mhc_pre_split_post_res_tiling.cpp
- * \brief
+ * \brief MhcPreSplitPostRes 算子 Tiling 切分与校验实现
  */
 
 #include <cmath>
 
+#include "mhc_pre_split_post_res_const.h"
 #include "mhc_pre_split_post_res_tiling.h"
+#include "../op_kernel/arch35/mhc_pre_split_post_res_tiling_key.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 
@@ -37,12 +39,6 @@ static constexpr int64_t MHC_H_RES_INDEX = 1;
 // Attr Index
 static constexpr int64_t MHC_NORM_EPS_INDEX = 0;
 
-// Dim Index
-static constexpr int64_t MHC_DIM_ZERO = 0;
-static constexpr int64_t MHC_DIM_ONE = 1;
-static constexpr int64_t MHC_DIM_TWO = 2;
-static constexpr int64_t MHC_DIM_THREE = 3;
-
 // Num constants
 static constexpr int64_t MHC_NUM_ZERO = 0;
 static constexpr int64_t MHC_NUM_ONE = 1;
@@ -50,19 +46,7 @@ static constexpr int64_t MHC_NUM_TWO = 2;
 static constexpr int64_t MHC_NUM_THREE = 3;
 static constexpr int64_t MHC_NUM_FOUR = 4;
 
-// 固定参数
-static constexpr int64_t MHC_N_VALUE = 4;          // N 固定为4
-static constexpr int64_t MHC_DIM_TILE_MAX = 2560;  // UB单次能处理的最大D大小
-
-// 入参限制
-static constexpr int64_t MHC_MIN_T = 1;  // T 无上限（B·S 折叠后任意规模）
-// D 白名单：仅支持 4 种典型 shape（2560/5120/6144/7168，均为 128 对齐）
-static constexpr int64_t MHC_D_2560 = 2560;
-static constexpr int64_t MHC_D_5120 = 5120;
-static constexpr int64_t MHC_D_6144 = 6144;
-static constexpr int64_t MHC_D_7168 = 7168;
-
-static constexpr int64_t MIN_FP32_ALIGN_ELEM_SIZE = 8;
+// 规格常量（MHC_N_VALUE/D 白名单/MHC_DIM_* 等）统一来自 mhc_pre_split_post_res_const.h
 
 // --------------------------GetOpName-------------------------------------
 ge::graphStatus MhcPreSplitPostResInfoParser::GetOpName()
@@ -90,7 +74,8 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GetNpuInfo()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
         coreNum_ = ascendcPlatform.GetCoreNumAiv();
         uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-        OP_CHECK_IF(aicNum == 0 || coreNum_ == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
+        OP_CHECK_IF(aicNum == 0 || coreNum_ == 0, OP_LOGE(opName_, "number of cores obtained is 0."),
+            return GRAPH_FAILED);
 
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
@@ -100,10 +85,10 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GetNpuInfo()
     }
 
     OP_CHECK_IF(coreNum_ == 0 || ubSize_ == 0,
-        OP_LOGE(opName_, "coreNum=%lu, ubSize=%lu obtained from platform/compile info is invalid.", coreNum_, ubSize_),
+        OP_LOGE(opName_, "coreNum=%lu, ubSize=%lu obtained from platform/compile info are invalid.", coreNum_, ubSize_),
         return GRAPH_FAILED);
     OP_CHECK_IF(socVersion_ != platform_ascendc::SocVersion::ASCEND950,
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_),
+        OP_LOGE(opName_, "SOC Version[%d] is not supported.", static_cast<int32_t>(socVersion_)),
         return GRAPH_FAILED);
 
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
@@ -126,7 +111,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GetAttrInfo()
         attrsPtr == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrs() returned nullptr."), return ge::GRAPH_FAILED);
 
     auto normEpsPtr = attrsPtr->GetFloat(MHC_NORM_EPS_INDEX);
-    normEps_ = (normEpsPtr != nullptr ? *normEpsPtr : 1e-6f);
+    normEps_ = (normEpsPtr != nullptr ? *normEpsPtr : MHC_DEFAULT_NORM_EPS);
     OP_CHECK_IF(!std::isfinite(normEps_) || normEps_ <= 0.0f,
         OP_LOGE(context_->GetNodeName(), "norm_eps(%f) must be finite and greater than 0.", normEps_),
         return ge::GRAPH_FAILED);
@@ -148,29 +133,29 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckXValid()
 
     if (xDimNum == MHC_NUM_FOUR) {
         // BSND: [B, S, N, D]
-        int64_t B = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
-        int64_t S = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
-        N_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_TWO);
-        D_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_THREE);
-        totalLength_ = B * S;
+        int64_t batchSize = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
+        int64_t seqLen = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
+        n_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_TWO);
+        d_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_THREE);
+        totalLength_ = batchSize * seqLen;
     } else {
         // TND: [T, N, D]
         totalLength_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
-        N_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
-        D_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_TWO);
+        n_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
+        d_ = xShapePtr->GetStorageShape().GetDim(MHC_DIM_TWO);
     }
 
     bool isValid = true;
     isValid = isValid && (totalLength_ >= MHC_MIN_T);
-    isValid = isValid && (N_ == MHC_N_VALUE);
-    isValid = isValid && (D_ == MHC_D_2560 || D_ == MHC_D_5120 || D_ == MHC_D_6144 || D_ == MHC_D_7168);
+    isValid = isValid && (n_ == MHC_N_VALUE);
+    isValid = isValid && (d_ == MHC_D_2560 || d_ == MHC_D_5120 || d_ == MHC_D_6144 || d_ == MHC_D_7168);
     OP_CHECK_IF(!isValid,
         OP_LOGE(context_->GetNodeName(),
             "x shape is invalid: T=%ld, N=%ld, D=%ld (N must be 4; D must be one of "
             "2560/5120/6144/7168).",
             totalLength_,
-            N_,
-            D_),
+            n_,
+            d_),
         return ge::GRAPH_FAILED);
 
     auto xDesc = context_->GetInputDesc(MHC_X_INDEX);
@@ -198,18 +183,18 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckPhiValid()
     int64_t phiDim0 = phiShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
     int64_t phiDim1 = phiShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
     phiRows_ = phiDim0;
-    hasRes_ = (phiDim0 == N_ * N_ + N_);
+    hasRes_ = (phiDim0 == n_ * n_ + n_);
 
     bool isValid = true;
-    isValid = isValid && (phiDim0 == N_ * N_ + N_ || phiDim0 == N_);
-    isValid = isValid && (phiDim1 == N_ * D_);
+    isValid = isValid && (phiDim0 == n_ * n_ + n_ || phiDim0 == n_);
+    isValid = isValid && (phiDim1 == n_ * d_);
     OP_CHECK_IF(!isValid,
         OP_LOGE(context_->GetNodeName(),
             "phi shape invalid: expected [%ld, %ld] or [%ld, %ld], got [%ld, %ld].",
-            N_ * N_ + N_,
-            N_ * D_,
-            N_,
-            N_ * D_,
+            n_ * n_ + n_,
+            n_ * d_,
+            n_,
+            n_ * d_,
             phiDim0,
             phiDim1),
         return ge::GRAPH_FAILED);
@@ -294,25 +279,23 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CalcTokenGrouping()
 
 ge::graphStatus MhcPreSplitPostResInfoParser::CalcReduceParams()
 {
-    // 保留，暂未使用
-    // -------------------------------------------------------
-    // ReduceSum work tensor 大小（float）：
-    //   xTileElems = N * dimTile
-    //   elementsPerRepeat = 256B / sizeof(float) = 64
-    //   elementsPerBlock  =  32B / sizeof(float) = 8
-    //   workNeed = RoundUp(xTileElems / 64, 8) * 8
-    // -------------------------------------------------------
-    int64_t xTileElems = N_ * dimTile_;
-    int64_t workNeed = ((xTileElems / 64 + 7) / 8) * 8;
-    if (workNeed < MIN_FP32_ALIGN_ELEM_SIZE)
-        workNeed = MIN_FP32_ALIGN_ELEM_SIZE;  // 最小 FP32_ALIGN_ELEM = 8
+    // ReduceSum work tensor 大小（float），仅 910b kernel 路径消费（arch35 Regbase 归约不用 work 段）：
+    //   xTileElems = n * dimTile
+    //   workNeed = RoundUp(xTileElems / MHC_ELEMS_PER_REPEAT_FLOAT, MIN_FP32_ALIGN_ELEM_SIZE)
+    //             * MIN_FP32_ALIGN_ELEM_SIZE
+    int64_t xTileElems = n_ * dimTile_;
+    int64_t workNeed = ((xTileElems / MHC_ELEMS_PER_REPEAT_FLOAT + MIN_FP32_ALIGN_ELEM_SIZE - 1) /
+                        MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
+    if (workNeed < MIN_FP32_ALIGN_ELEM_SIZE) {
+        workNeed = MIN_FP32_ALIGN_ELEM_SIZE;
+    }
     reduceWorkSize_ = workNeed;
 
     // invK = 1/(N*D)，RmsNorm 均值系数；host 侧浮点运算，无 aicore 类型限制
-    invK_ = 1.0f / static_cast<float>(N_ * D_);
+    invK_ = 1.0f / static_cast<float>(n_ * d_);
 
     OP_LOGD(context_->GetNodeName(), "reduceWorkSize: %ld (xTileElems=%ld)", reduceWorkSize_, xTileElems);
-    OP_LOGD(context_->GetNodeName(), "invK: %f (N=%ld, D=%ld)", invK_, N_, D_);
+    OP_LOGD(context_->GetNodeName(), "invK: %f (N=%ld, D=%ld)", invK_, n_, d_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -322,18 +305,25 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
     const int64_t fp32Bytes = 4;
     const int64_t alignedPhiRows = ((phiRows_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) *
                                    MIN_FP32_ALIGN_ELEM_SIZE;
-    const int64_t xTileElemsUb = N_ * dimTile_;
+    const int64_t xTileElemsUb = n_ * dimTile_;
+    const int64_t alignedN = ((n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
+    const int64_t alignedNN =
+        ((n_ * n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
+    // fixedUbBytes 逐项镜像 kernel InitCommonBuffers 固定分配（arch35/ascend950 形态，本算子仅注册 950）：
+    // xHatBuf_/biasBuf_（AlignUp(phiRows)+8）、dotBuf_/sumSqDotBuf_（仅 8 结果槽，work 段仅 910b 需要
+    // 已不分配）、sumSqBuf_（8）、alphaBuf_（8）、hPostOutQueue_/hResOutQueue_（AlignUp(N)/AlignUp(N*N)）
     const int64_t fixedUbBytes = 2 * (alignedPhiRows + MIN_FP32_ALIGN_ELEM_SIZE) * fp32Bytes +
-                                 2 * (MIN_FP32_ALIGN_ELEM_SIZE + reduceWorkSize_) * fp32Bytes +
-                                 MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes;
+                                 2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
+                                 2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
+                                 (alignedN + alignedNN) * fp32Bytes;
     // 线性增长 buffer（对应 kernel InitCommonBuffers）：xInQueue_(2B/元素，SINGLE depth1/MULTI depth2)、
-    // xFp32Buf_(4B)、squareBuf_(4B，仅 SINGLE 分配)、phiRowQue_(4B，depth2)
+    // xFp32Buf_(4B，arch35 全量 n*d 按 tile 拼接持久化——Phase B 免除 x 的 GM 重读)、
+    // phiRowQue_(4B，depth2)；squareBuf_ 仅 910b 路径需要，arch35 不分配
     const bool isSingleTile = (dimLoop_ == MHC_NUM_ONE);
     const int64_t xInQueueBytes = xTileElemsUb * xElemBytes * (isSingleTile ? MHC_NUM_ONE : MHC_NUM_TWO);
-    const int64_t xFp32BufBytes = xTileElemsUb * fp32Bytes;
-    const int64_t squareBufBytes = isSingleTile ? xTileElemsUb * fp32Bytes : MHC_NUM_ZERO;
+    const int64_t xFp32BufBytes = n_ * d_ * fp32Bytes;
     const int64_t phiRowQueBytes = xTileElemsUb * fp32Bytes * MHC_NUM_TWO;
-    const int64_t ubUsageBytes = xInQueueBytes + xFp32BufBytes + squareBufBytes + phiRowQueBytes + fixedUbBytes;
+    const int64_t ubUsageBytes = xInQueueBytes + xFp32BufBytes + phiRowQueBytes + fixedUbBytes;
     OP_CHECK_IF(ubUsageBytes > static_cast<int64_t>(ubSize_),
         OP_LOGE(opName_,
             "UB usage %ld exceeds ubSize %lu (dimTile=%ld, dimLoop=%ld), check tiling/UB budget.",
@@ -346,18 +336,20 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
 {
     // D轴分块：dimTile = min(D, 2560)。D 已由 CheckXValid 保证白名单取值；
     // 尾块不足 dimTile 时由 kernel 的 TileCopyD 按 D - dimOff 计算
-    dimTile_ = D_ > MHC_DIM_TILE_MAX ? MHC_DIM_TILE_MAX : D_;
+    dimTile_ = d_ > MHC_DIM_TILE_MAX ? MHC_DIM_TILE_MAX : d_;
 
     // D轴需要几个tile
-    dimLoop_ = (D_ + dimTile_ - MHC_NUM_ONE) / dimTile_;
+    dimLoop_ = (d_ + dimTile_ - MHC_NUM_ONE) / dimTile_;
 
-    // 每token使用核数：token 数不足以填满一半核数时启用双核 phi 行并行
+    // 每token使用核数：token 数不足以填满一半核数（T*2 <= coreNum，含 T==coreNum/2 边界——
+    // 该点双核恰可放满全部核，单核则半数核空闲）时启用双核 phi 行并行
     // （SINGLE/MULTI 路径统一，D>2560 场景同样生效，对齐设计 2.7：小 T 时把 phi 读负载摊到 2*T 核）
-    // token 充足（totalLength >= coreNum/2）时单核已能饱和所有核，双核只引入额外开销。
+    // token 充足（T >= coreNum）时单核即可用满所有核，双核只引入额外开销（T∈[coreNum/2, coreNum)
+    // 区间为单核过渡区，仅 T 个核活跃）。
     // 仅 post 形态（phiRows==N，无 h_res）恒单核：双核 phi 行对半（phiRowMid=N/2）会把
     // h_post 的 N 行劈到两个核，而 h_post 段仅 core0 写出（xHat 各核只算自己的半行），
     // 且该形态 phi 仅 N 行搬运量小、单核足够。
-    bool needDualCore = hasRes_ && (totalLength_ < static_cast<int64_t>(coreNum_) / MHC_NUM_TWO);
+    bool needDualCore = hasRes_ && (totalLength_ * MHC_NUM_TWO <= static_cast<int64_t>(coreNum_));
     coresPerToken_ = needDualCore ? MHC_NUM_TWO : MHC_NUM_ONE;
 
     // phi行分配：双核模式下，phiRowMid是前半部分的行数
@@ -366,13 +358,16 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
     phiRowMid_ = (coresPerToken_ == MHC_NUM_TWO) ? (phiRows_ / MHC_NUM_TWO) : phiRows_;
 
     // tilingKey
-    tilingKey_ = (dimLoop_ == MHC_NUM_ONE) ? MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE : MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
+    // schMode 经 GET_TPL_TILING_KEY 编码进 TilingKey（单参数 1bit，编码值即 0/1），
+    // kernel 侧按 arch35/mhc_pre_split_post_res_tiling_key.h 的 SEL 表实例化模板入口
+    tilingKey_ = (dimLoop_ == MHC_NUM_ONE) ? GET_TPL_TILING_KEY(MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE)
+                                           : GET_TPL_TILING_KEY(MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE);
 
     // h_res 为可选输出（对齐 mhc_pre tiling 的 hasResi 校验）：完整形态（phi 行数 N^2+N）
     // 必须提供 h_res 输出 desc；仅 post 形态（hasRes_==false）不校验。
     if (hasRes_) {
         OP_CHECK_IF(context_->GetOutputDesc(MHC_H_RES_INDEX) == nullptr,
-            OP_LOGE(opName_, "h_res output is required when phi rows is N^2+N (%ld).", phiRows_),
+            OP_LOGE(opName_, "h_res output is required when the number of phi rows is N^2+N (%ld).", phiRows_),
             return ge::GRAPH_FAILED);
     }
 
@@ -386,7 +381,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
         OP_LOGE(opName_, "currentWorkspace is nullptr"),
         return ge::GRAPH_FAILED);
     currentWorkspace[0] = wsBytes;
-    OP_LOGD(context_->GetNodeName(), "wsBytes: %zu (blockDim=%ld, N=%ld, D=%ld)", wsBytes, blockDim_, N_, D_);
+    OP_LOGD(context_->GetNodeName(), "wsBytes: %zu (blockDim=%ld, N=%ld, D=%ld)", wsBytes, blockDim_, n_, d_);
 
     if (CalcReduceParams() != ge::GRAPH_SUCCESS || CheckUbBudget() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -397,17 +392,17 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
 // --------------------------ParseAndCheck-------------------------------------
 ge::graphStatus MhcPreSplitPostResInfoParser::ParseAndCheck()
 {
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo()) {
+    if (GetOpName() != ge::GRAPH_SUCCESS || GetNpuInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != GetAttrInfo()) {
+    if (GetAttrInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != CheckXValid() || ge::GRAPH_SUCCESS != CheckPhiValid() ||
-        ge::GRAPH_SUCCESS != CheckAlphaValid() || ge::GRAPH_SUCCESS != CheckBiasValid()) {
+    if (CheckXValid() != ge::GRAPH_SUCCESS || CheckPhiValid() != ge::GRAPH_SUCCESS ||
+        CheckAlphaValid() != ge::GRAPH_SUCCESS || CheckBiasValid() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != GenerateTiling()) {
+    if (GenerateTiling() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -423,8 +418,8 @@ static ge::graphStatus TilingPrepareForMhcPreSplitPostRes(gert::TilingParseConte
 ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
 {
     tilingData_.set_totalLength(totalLength_);
-    tilingData_.set_N(N_);
-    tilingData_.set_D(D_);
+    tilingData_.set_n(n_);
+    tilingData_.set_d(d_);
     tilingData_.set_phiRows(phiRows_);
     tilingData_.set_dimTile(dimTile_);
     tilingData_.set_dimLoop(dimLoop_);
@@ -444,8 +439,8 @@ ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
     context_->SetBlockDim(blockDim_);
 
     OP_LOGD(context_->GetNodeName(), "totalLength: %ld", totalLength_);
-    OP_LOGD(context_->GetNodeName(), "N: %ld", N_);
-    OP_LOGD(context_->GetNodeName(), "D: %ld", D_);
+    OP_LOGD(context_->GetNodeName(), "N: %ld", n_);
+    OP_LOGD(context_->GetNodeName(), "D: %ld", d_);
     OP_LOGD(context_->GetNodeName(), "phiRows: %ld", phiRows_);
     OP_LOGD(context_->GetNodeName(), "dimTile: %ld", dimTile_);
     OP_LOGD(context_->GetNodeName(), "dimLoop: %ld", dimLoop_);
