@@ -18,15 +18,14 @@
  *   - 一次 matmul 调用覆盖所有 rank 段, 无 R 循环
  *   - per-tile 流水: AIC 逐 tile SetFlag, AIV 逐 tile WaitFlag + AllToAll + reduceSum
  *
- * 架构 (v5: 逐 tile 交错 + 通算重叠流水):
+ * 架构 (v6: 逐 tile 交错 + 通算重叠流水 + 单 barrier 化):
  *   AIC: RunInterleavedMatmul(): for t = 0..T-1:
  *          LOCAL 片段(t) → [L1 排空] → REMOTE 片段(t) → SetFlag(tid)
  *        flag 语义 = 本 block tile t 全部片段完成 (local+remote)
  *   AIV: for t = 0..T-1: RunOneTileTurn(t)
- *          = 全核 WaitFlag(tid) → SyncAll#1 → 通信核 Commit/Wait (PUT tile t)
- *            ‖ 计算核 ReduceSum(t-1)  [掩盖并行: 归约与下一 tile 通信重叠]
- *            → SyncAll#2 → 并行 fence (R 核各 1 远端) → SyncAll#3
- *        末尾: 计算核补做 ReduceSum(T-1)
+ *          = 全核 WaitFlag(tid) → SyncAll#1 → 通信核 PUT(t)+drain+fence(t)
+ *            ‖ 计算核 ReduceSum(t-1)  [掩盖并行: 归约与通信重叠]
+ *        末尾: SyncAll 终局 → 计算核补做 ReduceSum(T-1)
  *
  * 关键设计:
  *   - 无 R 循环: FragmentTensor 打包 rankSize 个 fragment, 一次调用覆盖一个 tile 的全部 rank 段
@@ -41,6 +40,12 @@
  *   - local 片段就绪: 随 tile flag (LOCAL+REMOTE 同 flag) + SyncAll#1 聚合, 无独立信号
  *   - 通算重叠 (v5): reduceSum(t-1) 与 PUT(t) 逐 turn 重叠, 用通信时间掩盖 AIV 归约访存
  *     (内存 Bound case cube 利用率仅 4~34%, 串行归约无法掩盖); 逐 turn fence 为 R 核并行
+ *   - 单 barrier 化 (v6): v5 每 turn 3 次 SyncAll (#1/#2/#3) + fence 串行卡在 #2/#3 之间,
+ *     小 tile 场景 (如 N=640 commTurn=8) 同步开销超过重叠收益 (隔离测试负掩盖率 -0.63);
+ *     v6 依赖分析证明 #2/#3 可消: fence 协议为成对握手 + 单调计数, 只依赖本核 drain,
+ *     不需要全核汇合; fence 结论经下一轮 SyncAll#1(t+1) 传播 (通信核过 #1 前必先完成
+ *     fence(t), RS(t) 在 #1(t+1) 之后故安全); fence 同时脱离关键路径, 与 RS(t-1) 及
+ *     AIC tile(t+1) 计算重叠。barrier 数 3T → T+1
  */
 
 #pragma once
@@ -385,14 +390,14 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 }
 
 // =================================================================================
-// AIV 侧: v5 逐 turn 通信 + 重叠归约流水 (掩盖并行)
+// AIV 侧: v6 逐 turn 通信 + 重叠归约流水 (掩盖并行, 单 barrier 化)
 // =================================================================================
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
     // 角色分离 — 后 rankSize 核仅通信, 前 rsCoreNum 核仅计算, 其余核仅参与 SyncAll。
-    // v5 流水: turn t 内计算核 reduceSum(t-1) 与通信核 PUT(t) 重叠执行 (v1 掩盖结构回归,
+    // v6 流水: turn t 内计算核 reduceSum(t-1) 与通信核 PUT(t)+fence(t) 重叠执行 (v1 掩盖结构回归,
     // 替代 v2 收尾统一串行归约 — 内存 Bound case 的 cube 利用率仅 4~34%, 串行归约无法用
     // 通信时间掩盖 AIV 访存, 为 v2 相对 v1 性能回退的主因)。
     AivRunContext ctx;
@@ -402,7 +407,11 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         RunOneTileTurn(ctx, tileIdx);
     }
 
-    // 末 tile 归约 (turn T-1 的 fence 已证 PUT(T-1) 到达; selfPartial 同 turn 已证)
+    // 终局 SyncAll: 传播末 turn fence(T-1) 结论给全部核 (循环内无 #3, 由本屏障兜底),
+    // 同时保证全部核 SyncAll 调用计数平衡 (每核 T 次 turn 内 + 1 次终局 = T+1)
+    SyncAll<true>();
+
+    // 末 tile 归约 (终局 SyncAll 已证 PUT(T-1) 到达; selfPartial 同 turn 已证)
     if (ctx.isComputeBlock) {
         ReduceSumTile(ctx, ctx.commTurn - 1);
     }
@@ -434,15 +443,25 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     ctx.isComputeBlock = (blockIdx < ctx.rsCoreNum);     // 前 rsCoreNum 核: reduceSum
 }
 
-// 一轮通算重叠步 (v5): Wait(tid) → SyncAll → 通信核 PUT(t) ‖ 计算核 reduceSum(t-1)
-// → SyncAll → 并行 fence → SyncAll。
+// 一轮通算重叠步 (v6): Wait(tid) → SyncAll#1 → 通信核 PUT(t)+drain+fence(t) ‖ 计算核 RS(t-1)。
 //  - Wait(tid) + SyncAll#1: 本 block 及 (聚合后) 全部 AIC 核的 tile t LOCAL+REMOTE 片段完成
 //    ⇒ PUT(t) 源 (workspace remote 片段) 就绪;
-//  - 计算核 reduceSum(t-1) 与通信核 PUT(t) 在 SyncAll#1/#2 之间重叠执行:
-//    其 win 依赖 (PUT(t-1) 到达) 由 turn t-1 末尾的 fence 证明,
+//  - 计算核 reduceSum(t-1) 与通信核 PUT(t)+fence(t) 在 SyncAll#1 之后重叠执行:
+//    其 win 依赖 (PUT(t-1) 到达) 由 turn t-1 末尾的 fence 证明 (经本轮 SyncAll#1 传播),
 //    其 selfPartial 依赖 (local(t-1)) 由 turn t-1 的 Wait/SyncAll#1 传递证明;
-//  - 末尾 fence (R 核并行, 三轮评审意见2) + SyncAll#3: 证明本 rank 收到全部远端 PUT(t),
-//    供 turn t+1 的 reduceSum(t) 使用; T 个 turn 计数器递增对称, rendezvous 语义同收尾单次 fence。
+//  - fence (R 核并行, 三轮评审意见2) 紧跟本核 PUT drain 执行, 与计算核 RS(t-1) 及
+//    AIC tile(t+1) 计算重叠, 脱离关键路径。
+//
+// v6 单 barrier 化正确性论证 (v5 的 #2/#3 消除依据):
+//  1. fence 协议为成对握手 (本核 jobIndex j ↔ 远端 rank j 的 core r) + 单调计数器:
+//     每核只依赖自己 PUT(t) 的 drain 结果即可进入 fence, 无需等其他核的 PUT/RS 汇合 (#2 冗余);
+//     对端计数只增不减, 跨轮 skew 下提前观察到更大值仍满足 >= 判定, 无丢失唤醒;
+//  2. fence(t) 结论传播: RS(t) 在 turn t+1 的 SyncAll#1 之后执行, 而通信核到达该屏障前
+//     必已完成 fence(t) (程序序), 故 #1(t+1) 已携带 fence(t) 结论 (#3 冗余);
+//  3. 全核 SyncAll 计数平衡: 每核每 turn 1 次 (#1) + 循环后终局 1 次 = T+1 次;
+//  4. 末 turn fence(T-1) 结论由 RunAllToAllAndReduceSum 循环后的终局 SyncAll 传播;
+//  5. win/workspace 每 tile 区域互不相交 (tileMOffset/tileByteOffset 累积), fence 与 RS
+//     并发访问无覆盖风险; T=1 退化场景 (2 barrier) 同样成立。
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunOneTileTurn(
     const AivRunContext &ctx, uint32_t tileIdx)
@@ -450,25 +469,20 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     // 全核 Wait (通信核/计算核/多余核同序同次, 计数平衡); flagid = tid (三轮评审意见1)
     CrossCoreWaitFlag<AIC_NOTIFY_MODE, PIPE_S>(tileIdx);
 
-    // SyncAll#1: 聚合全部 AIV 核的 Wait 通过 ⇒ 全部 AIC 核 tile t 的 LOCAL+REMOTE 片段完成
+    // SyncAll#1: 聚合全部 AIV 核的 Wait 通过 ⇒ 全部 AIC 核 tile t 的 LOCAL+REMOTE 片段完成;
+    // 同时传播上一 turn 的 fence 结论 (通信核过此屏障前必已完成 fence(t-1), 见函数头注释论证 2)
     SyncAll<true>();
 
     if (ctx.isCommBlock) {
         allToAllC_.template Commit<BARRIER_NONE>(); // PUT tile t (WriteNbi, 跳过 self target)
         allToAllC_.template Wait<BARRIER_NONE>();   // Drain (本核 outbound PUT 完成)
+        // fence 紧跟本核 drain: R 个通信核并行轮询 (每核 1 个远端), 证 PUT(t) 已到达本 rank win;
+        // 与计算核 RS(t-1) / AIC tile(t+1) 重叠, 不在关键路径串行等待
+        teamBarrier_.CrossDevice();
     }
     if (ctx.isComputeBlock && tileIdx > 0) {
-        ReduceSumTile(ctx, tileIdx - 1); // 与通信核 PUT(t) 重叠; turn 0 无前序 tile 可归约
+        ReduceSumTile(ctx, tileIdx - 1); // 与通信核 PUT(t)+fence(t) 重叠; turn 0 无前序 tile 可归约
     }
-
-    // SyncAll#2: 汇合 PUT(t) 与 reduceSum(t-1)
-    SyncAll<true>();
-
-    // fence: R 个通信核并行轮询 (每核 1 个远端), 证 PUT(t) 已到达本 rank win
-    teamBarrier_.CrossDevice();
-
-    // SyncAll#3: 将 fence 结论传播给全部核
-    SyncAll<true>();
 }
 
 // 单 tile reduceSum: 计算核将 tileIdx 行区间的 rankSize 份部分和归约写入输出区
