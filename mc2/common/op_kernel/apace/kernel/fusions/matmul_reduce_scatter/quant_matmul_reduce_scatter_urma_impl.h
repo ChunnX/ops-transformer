@@ -208,12 +208,13 @@ private:
     __aicore__ inline void RunAllToAllAndReduceSum();             // AIV: 逐 turn 通信 + 重叠归约流水
     __aicore__ inline void InitAivRunContext(AivRunContext &ctx); // AIV: 角色判定 + 形状派生
     __aicore__ inline void RunOneTileTurn(const AivRunContext &ctx, uint32_t tileIdx); // AIV: 一轮通算重叠步
-    __aicore__ inline void ReduceSumTile(const AivRunContext &ctx, uint32_t tileIdx);  // AIV: 单 tile reduceSum
+    __aicore__ inline void ReduceSumTile(const AivRunContext &ctx, uint32_t tileIdx,
+                                         uint32_t fullBatch);           // AIV: 单 tile reduceSum
     __aicore__ inline void WaitRemoteFenceDone(uint32_t expectedCount); // AIV: 本地轮询 fence 完成计数
     __aicore__ inline uint32_t GetTileM(uint32_t tileIdx);              // 获取 tile 的 M 大小
     __aicore__ inline uint64_t GetTileMOffset(uint32_t tileIdx);        // 获取 tile 的 M 偏移
     __aicore__ inline void DoReduceSum(uint32_t tileM, uint64_t tileMOffset, uint32_t nSize, uint32_t rowBytes,
-                                       uint64_t stride, uint32_t rsCoreNum);
+                                       uint64_t stride, uint32_t rsCoreNum, uint32_t fullBatch);
 };
 
 // =================================================================================
@@ -423,7 +424,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     }
     if (ctx.isComputeBlock) {
         WaitRemoteFenceDone(ctx.commTurn);
-        ReduceSumTile(ctx, ctx.commTurn - 1);
+        ReduceSumTile(ctx, ctx.commTurn - 1, 1U); // 尾声: 无并发 PUT, 全量批量加载
     }
 }
 
@@ -500,7 +501,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     if (ctx.isComputeBlock && tileIdx > 0) {
         // 本地轮询全部通信核 fence 计数 >= tileIdx ⇒ fence(tileIdx-1) 完成 ⇒ win[t-1] 数据齐
         WaitRemoteFenceDone(tileIdx);
-        ReduceSumTile(ctx, tileIdx - 1); // 与通信核 fence(t-1)+Drain(t) 并行; turn 0 无前序 tile
+        ReduceSumTile(ctx, tileIdx - 1, 0U); // 在途: 与 PUT(t) 并发, 配对批量 (防 GM 突发争抢)
     }
 }
 
@@ -548,14 +549,14 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 // 单 tile reduceSum: 计算核将 tileIdx 行区间的 rankSize 份部分和归约写入输出区
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::ReduceSumTile(
-    const AivRunContext &ctx, uint32_t tileIdx)
+    const AivRunContext &ctx, uint32_t tileIdx, uint32_t fullBatch)
 {
     uint32_t tileM = GetTileM(tileIdx);
     if (tileM == 0) {
         return;
     }
     uint64_t tileMOffset = GetTileMOffset(tileIdx);
-    DoReduceSum(tileM, tileMOffset, ctx.nSize, ctx.rowBytes, ctx.rowStride, ctx.rsCoreNum);
+    DoReduceSum(tileM, tileMOffset, ctx.nSize, ctx.rowBytes, ctx.rowStride, ctx.rsCoreNum, fullBatch);
 }
 
 // =================================================================================
@@ -583,7 +584,8 @@ __aicore__ inline uint64_t QuantMatmulReduceScatterImpl<AType, BType, CType, Tra
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::DoReduceSum(
-    uint32_t tileM, uint64_t tileMOffset, uint32_t nSize, uint32_t rowBytes, uint64_t stride, uint32_t rsCoreNum)
+    uint32_t tileM, uint64_t tileMOffset, uint32_t nSize, uint32_t rowBytes, uint64_t stride, uint32_t rsCoreNum,
+    uint32_t fullBatch)
 {
     using ReduceSumType = AiVReduceSumImpl::ReduceSumForAlltoAll<CType, float>;
     typename ReduceSumType::RsParams rsParams;
@@ -595,6 +597,10 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     rsParams.aivNum = rsCoreNum;
     rsParams.rowStride = stride;
     rsParams.nSize = nSize;
+    // UB 低地址保留区: commBuf (COMM_WORKSPACE_SIZE) + barrierBuf/fence 轮询 buffer
+    // (BARRIER_FLAG_SIZE), RS slot 布局整体上移避开, 防轮询 MTE2 写与 RS V 读竞态
+    rsParams.ubReservedBytes = COMM_WORKSPACE_SIZE + BARRIER_FLAG_SIZE;
+    rsParams.fullBatch = fullBatch;
     reduceSum_.Init(rsParams);
     reduceSum_.ExecuteReduceSum(tileM);
 }
