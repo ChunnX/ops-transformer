@@ -46,8 +46,7 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 static constexpr int64_t CMP_MAX_LEN = 7;
-// APACE 使能 env 覆盖（B2：初期默认 v1 路径；env 置 1 时非量化+rankDim≤64 可走 APACE 分支）
-static constexpr const char *APACE_IMPL_ENABLE_ENV = "ASCEND_MC2_AGMV2_APACE_IMPL";
+// 非量化恒走 APACE（R13 拍板，USING_APACE_IMPL 维度删除），v1 实现保留编译、不派发
 // commTile 256 对齐封顶（方案 §5.1 方案 A + a2a AlignCutResForKernel 同款）
 static constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
 // stepK 截断上限（mmv3 basic 消费口径：kL1 = baseK × min(stepKa, stepKb, 4)）
@@ -74,24 +73,6 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
                     return ge::GRAPH_FAILED);
     allGatherMatmulTilingDataV2_ = context_->GetTilingData<AllGatherMatmulTilingDataV2>();
     return ge::GRAPH_SUCCESS;
-}
-
-void AllGatherMatmulTilingV2::SetApaceImplSwitch()
-{
-    // APACE 使能开关：初期默认 false（B2 拍板：上板验证通过后切默认）；预留 env 覆盖
-    usingApaceImplEnabled_ = false;
-    const char *envEnable = getenv(APACE_IMPL_ENABLE_ENV);
-    if ((envEnable != nullptr) && (strncmp(envEnable, "1", 2) == 0)) {
-        usingApaceImplEnabled_ = true;
-    }
-    // 条件式自动分发（a2a 式，非全局开关）：仅非量化 dtype 且 rankDim ≤ APACE_IMPL_MAX_RANK_DIM(64)
-    // 可走 APACE 分支；量化路径 v1/v2 均不走 APACE（范围隔离），v1 fallback 完整兜底
-    usingApaceImpl_ = usingApaceImplEnabled_ && inputIsBf16Fp16_ &&
-                      (static_cast<uint64_t>(args_.rankDim) <= APACE_IMPL_MAX_RANK_DIM);
-    OP_LOGI(opName_,
-            "APACE impl switch: enabled=%d, inputIsBf16Fp16=%d, rankDim=%u, usingApaceImpl=%d.",
-            static_cast<int>(usingApaceImplEnabled_), static_cast<int>(inputIsBf16Fp16_), args_.rankDim,
-            static_cast<int>(usingApaceImpl_));
 }
 
 void AllGatherMatmulTilingV2::FillApaceMmTile(const Mc2MatMulV3TilingData &localTiling)
@@ -187,7 +168,6 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
-    SetApaceImplSwitch();
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
     // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
@@ -197,10 +177,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
                       allGatherMatmulTilingDataV2_->dataType);
-    // APACE 分支：cutRes 与 mc2InitTiling/mc2CcTiling 为两分支共享输入，在其上映射 apace tiling 结构
-    if (usingApaceImpl_) {
-        MC2_CHECK_LOG_RET(opName_, DoApaceTiling());
-    }
+    // 非量化路径：cutRes 与 mc2InitTiling/mc2CcTiling 映射 apace tiling 结构（R13 起恒 APACE）
+    MC2_CHECK_LOG_RET(opName_, DoApaceTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -235,67 +213,47 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
-    if (usingApaceImpl_) {
-        // APACE 分支：输出 hcommAllGatherMatmulTilingData（a2a PostTiling 条件输出范式）
+    // 非量化路径（R13 起唯一路径）：输出 hcommAllGatherMatmulTilingData（a2a PostTiling 输出范式）
 #if MC2_DFX_ENABLE
-        hcommTilingDataSelf_.dumpInfo.workspaceLayout = workspaceLayout_;
+    hcommTilingDataSelf_.dumpInfo.workspaceLayout = workspaceLayout_;
 #endif
-        auto *outTilingData = context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
-        OP_TILING_CHECK((outTilingData == nullptr),
-                        OP_LOGE(opName_, "Fail to get hcomm tiling data from context"), return ge::GRAPH_FAILED);
-        size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-        OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingDataSelf_)),
-                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
-                                tilingBufCap, sizeof(hcommTilingDataSelf_)),
-                        return ge::GRAPH_FAILED);
-        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingDataSelf_, sizeof(hcommTilingDataSelf_));
-        if (ret != EOK) {
-            OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+    auto *outTilingData = context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
+    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                    return ge::GRAPH_FAILED);
+    size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
+    OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingDataSelf_)),
+                    OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.", tilingBufCap,
+                            sizeof(hcommTilingDataSelf_)),
+                    return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingDataSelf_, sizeof(hcommTilingDataSelf_));
+    if (ret != EOK) {
+        OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+        return ge::GRAPH_FAILED;
+    }
+    // SetDataSize 取 max（注册容量按最大结构申请；补零至注册容量，V2-B6 方向核对 + a2a capacity CHECK 双兜底）
+    const size_t registeredMaxTilingSize = sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2);
+    const size_t apaceTilingSize = sizeof(Apace::hcommAllGatherMatmulTilingData);
+    const size_t finalSize = (registeredMaxTilingSize > apaceTilingSize) ? registeredMaxTilingSize : apaceTilingSize;
+    OP_TILING_CHECK((finalSize % sizeof(uint64_t) != 0),
+                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", finalSize), return ge::GRAPH_FAILED);
+    // 容量防御 CHECK（a2a capacity CHECK 范式）：补齐 tilingBufCap∈[sizeof(hcomm), finalSize)
+    // 区间的防御缺口——SetDataSize 声称 finalSize 而实际容量不足时框架侧读取越界，显式拒绝。
+    // 正常配置（注册容量按最大结构申请，finalSize=1848 ≤ cap）不触发。
+    OP_TILING_CHECK(
+        (tilingBufCap < finalSize),
+        OP_LOGE(opName_, "TilingBuffer capacity %zu is smaller than final tiling size %zu.", tilingBufCap, finalSize),
+        return ge::GRAPH_FAILED);
+    if ((tilingBufCap >= finalSize) && (finalSize > apaceTilingSize)) {
+        errno_t zeroRet = memset_s(reinterpret_cast<uint8_t *>(outTilingData) + apaceTilingSize,
+                                   tilingBufCap - apaceTilingSize, 0, finalSize - apaceTilingSize);
+        if (zeroRet != EOK) {
+            OP_LOGE(opName_, "PostTiling: memset_s hcomm tiling padding failed, ret=%d.", zeroRet);
             return ge::GRAPH_FAILED;
         }
-        // SetDataSize 取 max（注册容量按最大结构申请；补零至注册容量，V2-B6 方向核对 + a2a capacity CHECK 双兜底）
-        const size_t registeredMaxTilingSize = sizeof(Mc2Tiling::AllGatherMatmulTilingDataV2);
-        const size_t apaceTilingSize = sizeof(Apace::hcommAllGatherMatmulTilingData);
-        const size_t finalSize = (registeredMaxTilingSize > apaceTilingSize) ? registeredMaxTilingSize : apaceTilingSize;
-        OP_TILING_CHECK((finalSize % sizeof(uint64_t) != 0),
-                        OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", finalSize),
-                        return ge::GRAPH_FAILED);
-        // 容量防御 CHECK（a2a capacity CHECK 范式）：补齐 tilingBufCap∈[sizeof(hcomm), finalSize)
-        // 区间的防御缺口——SetDataSize 声称 finalSize 而实际容量不足时框架侧读取越界，显式拒绝。
-        // 正常配置（注册容量按最大结构申请，finalSize=1848 ≤ cap）不触发。
-        OP_TILING_CHECK((tilingBufCap < finalSize),
-                        OP_LOGE(opName_, "TilingBuffer capacity %zu is smaller than final tiling size %zu.",
-                                tilingBufCap, finalSize),
-                        return ge::GRAPH_FAILED);
-        if ((tilingBufCap >= finalSize) && (finalSize > apaceTilingSize)) {
-            errno_t zeroRet = memset_s(reinterpret_cast<uint8_t *>(outTilingData) + apaceTilingSize,
-                                       tilingBufCap - apaceTilingSize, 0, finalSize - apaceTilingSize);
-            if (zeroRet != EOK) {
-                OP_LOGE(opName_, "PostTiling: memset_s hcomm tiling padding failed, ret=%d.", zeroRet);
-                return ge::GRAPH_FAILED;
-            }
-        }
-        context_->GetRawTilingData()->SetDataSize(finalSize);
-        OP_LOGI(opName_,
-                "Final apace hcomm tiling data size=%zu (v2=%zu, apace=%zu), context capacity size=%zu.", finalSize,
-                registeredMaxTilingSize, apaceTilingSize, tilingBufCap);
-        context_->SetBlockDim(args_.aicCoreNum);
-        // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
-        context_->SetScheduleMode(1);
-        return ge::GRAPH_SUCCESS;
     }
-
-#if MC2_DFX_ENABLE
-    allGatherMatmulTilingDataV2_->dumpInfo.workspaceLayout = workspaceLayout_;
-#endif
-    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
-            context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
-
-    OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", sizeof(AllGatherMatmulTilingDataV2)),
-                    return ge::GRAPH_FAILED);
-    PrintAllTilingData();
+    context_->GetRawTilingData()->SetDataSize(finalSize);
+    OP_LOGI(opName_, "Final apace hcomm tiling data size=%zu (v2=%zu, apace=%zu), context capacity size=%zu.",
+            finalSize, registeredMaxTilingSize, apaceTilingSize, tilingBufCap);
     context_->SetBlockDim(args_.aicCoreNum);
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
     context_->SetScheduleMode(1);
@@ -440,18 +398,15 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 
 ge::graphStatus AllGatherMatmulTilingV2::GetWorkspaceSize()
 {
-    if (usingApaceImpl_) {
-        // APACE 分支：workspace = libApi + gatherLen（storageA_ 在 DAV_3510 下 = gatherLen；
-        // 不消费 v1 的 biasLen 预留——非量化 FP16/BF16 无 bias 扩展区需求）
-        size_t *workspaces = context_->GetWorkspaceSizes(1);
-        OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
-        workspaceSize_ = libApiWorkSpaceSize_ + storageA_;
-        workspaces[0] = workspaceSize_;
-        OP_LOGD(opName_, "[APACE] workspaces[0] size=%zu, libApi=%u, gatherLen(storageA)=%u.", workspaces[0],
-                libApiWorkSpaceSize_, storageA_);
-        return ge::GRAPH_SUCCESS;
-    }
-    return AllGatherMatmulTilingBase::GetWorkspaceSize();
+    // 非量化路径（R13 起唯一路径）：workspace = libApi + gatherLen（storageA_ 在 DAV_3510 下 = gatherLen；
+    // 不消费 v1 的 biasLen 预留——非量化 FP16/BF16 无 bias 扩展区需求）
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
+    workspaceSize_ = libApiWorkSpaceSize_ + storageA_;
+    workspaces[0] = workspaceSize_;
+    OP_LOGD(opName_, "[APACE] workspaces[0] size=%zu, libApi=%u, gatherLen(storageA)=%u.", workspaces[0],
+            libApiWorkSpaceSize_, storageA_);
+    return ge::GRAPH_SUCCESS;
 }
 
 uint64_t AllGatherMatmulTilingV2::GetTilingKey() const
@@ -465,13 +420,11 @@ uint64_t AllGatherMatmulTilingV2::GetTilingKey() const
             commMode = Mc2Comm::COMM_MODE_CCU;
         }
     }
-    // USING_APACE_IMPL 位取 usingApaceImpl_（末尾追加占最高位，既有 6 维旧编码值不变——V2-B1 冻结句）
+    // tiling key 6 维（R13：USING_APACE_IMPL 维度删除，非量化恒 APACE）——非量化 key 回落旧编码值
     const uint64_t tilingKey = GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE,
-                                                  SCALE_TYPE_NOT_IS_MX, commMode, usingApaceImpl_);
-    OP_LOGD(opName_,
-            "AllGatherMatmulV2(apace switch), inputIsBf16Fp16_, args_.isBTrans, outputType, commMode, "
-            "usingApaceImpl: [%d,%d,%u,%u,%d]",
-            inputIsBf16Fp16_, args_.isBTrans, outputType, commMode, static_cast<int>(usingApaceImpl_));
+                                                  SCALE_TYPE_NOT_IS_MX, commMode);
+    OP_LOGD(opName_, "AllGatherMatmulV2(apace), inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%u]",
+            inputIsBf16Fp16_, args_.isBTrans, outputType, commMode);
     OP_LOGD(opName_, "tilingKey=%lu", tilingKey);
     return tilingKey;
 }

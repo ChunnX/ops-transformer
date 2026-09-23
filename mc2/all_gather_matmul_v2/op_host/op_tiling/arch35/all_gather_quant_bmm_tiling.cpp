@@ -667,9 +667,9 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     if (npuArch_ != Ops::Base::DAV_3510) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     }
-    // USING_APACE_IMPL 恒 false：量化路径不走 APACE 分支（key 旧值不变）
+    // tiling key 6 维（R13：USING_APACE_IMPL 维度删除；量化路径 key 旧值不变）
     const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType, commMode, false);
+        GET_TPL_TILING_KEY(inputIsBf16Fp16_, args_.isBTrans, outputType, quanMmMode, scaleType, commMode);
     OP_LOGD(opName_,
             "AllGatherMatmulV2, inputIsBf16Fp16_, outputType, "
             "args_.isBTrans, quanMmMode, scaleType, commMode: [%d,%u,%d,%u,%u,%u]",

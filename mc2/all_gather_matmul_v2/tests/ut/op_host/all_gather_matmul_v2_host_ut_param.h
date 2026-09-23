@@ -1,8 +1,8 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * You should refer to the License for details. You may not use this file except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
@@ -85,10 +85,6 @@ struct AllGatherMatmulV2TilingUtParam : public AllGatherMatmulV2HostUtParamBase 
     uint64_t ubsize;
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
-    // 2.1 v2 §5.4/§7.2 T-A1 使能开关注入列：1 = APACE 分支（UT 侧注入
-    // ASCEND_MC2_AGMV2_APACE_IMPL=1 置 on——env 名对齐 3.1 W2 定稿实现）；0 / 缺列 = v1 分支
-    // （B2 冻结：初期默认 v1 路径；arch22 tiling csv 无该列 → 默认 0，兼容不破坏）。
-    int using_apace_impl = 0;
 
     explicit AllGatherMatmulV2TilingUtParam(const csv_map &csvMap)
         : AllGatherMatmulV2HostUtParamBase(csvMap)
@@ -115,9 +111,6 @@ struct AllGatherMatmulV2TilingUtParam : public AllGatherMatmulV2HostUtParamBase 
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
         }
-        // T-A1：注入列缺省 0（stoi("") 会抛异常，须先判空——arch22 csv 无该列兼容）
-        const std::string usingApace = ReadMap(csvMap, "using_apace_impl");
-        this->using_apace_impl = usingApace.empty() ? 0 : stoi(usingApace);
     }
 };
 } // namespace all_gather_matmul_v2_ut

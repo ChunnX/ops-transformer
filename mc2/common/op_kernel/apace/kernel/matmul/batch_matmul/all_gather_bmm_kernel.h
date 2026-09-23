@@ -226,9 +226,6 @@ private:
 template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
 __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, TransB>::Init(const Params &params)
 {
-    if ASCEND_IS_AIV {
-        return;
-    }
     aGmAddr_ = reinterpret_cast<__gm__ AType *>(params.aGM);
     bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.bGM);
     cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.cGM);
@@ -257,11 +254,9 @@ template <typename AType, typename BType, typename CType, typename CommPolicy, b
 __aicore__ inline void AllGatherBmmKernel<AType, BType, CType, CommPolicy, TransB>::Run(
     const Params &params, Mc2Kernel::OpStateDump &opStateDump)
 {
-    // MIX_AIC_1_2 入口核型：AIV 空转（通信由 HCCL server 执行，计算为 AIC-only）
-    if ASCEND_IS_AIV {
-        return;
-    }
-
+    // AIC_ONLY 入口核型（R13，SEL 表逐组合供给）：无 AIV block（通信由 HCCL server 执行，计算为
+    // AIC-only）。P10 教训：若将来切回 MIX 核型，AIV block 必须注册 HCCL 生命周期（见 hcomm impl
+    // Init 的 P10 契约注释）——AIV 早退不注册 → Wait 挂起 507014。
     Init(params);
 
     const auto &mmT = *params.mmTile;
