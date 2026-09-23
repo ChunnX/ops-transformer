@@ -43,7 +43,21 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False, False, False],
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
         [False, False, True, True, True, True, True, True, True, True, True, True],
     )
     def FlashAttn(
@@ -75,8 +89,10 @@ if _TORCHAIR_AVAILABLE:
         result = q.new_empty(q.size())
         return result
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.flash_attn.default)
-    def convert_flash_attn(
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.flash_attn_exp.default
+    )
+    def convert_flash_attn_exp(
         q: Tensor,
         k: Tensor,
         v: Tensor,

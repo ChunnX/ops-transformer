@@ -103,7 +103,7 @@
 调用flash_attn接口之前，请先调用前置接口flash_attn_metadata，完成flash_attn负载均衡的计算。
 
 ```python
-cann_ops_transformer.flash_attn_metadata(
+cann_ops_transformer.flash_attn_exp_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -122,7 +122,7 @@ cann_ops_transformer.flash_attn_metadata(
 ```
 
 ```python
-cann_ops_transformer.flash_attn(
+cann_ops_transformer.flash_attn_exp(
     q,
     k,
     v,
@@ -661,7 +661,7 @@ cann_ops_transformer.flash_attn(
   rel_h = torch.randn(B, Q_N, S1, H, dtype=dtype, device="npu")
   rel_w = torch.randn(B, Q_N, S1, W, dtype=dtype, device="npu")
 
-  metadata = cann_ops_transformer.ops.flash_attn_metadata(
+  metadata = cann_ops_transformer.ops.flash_attn_exp_metadata(
       Q_N,
       KV_N,
       D,
@@ -674,7 +674,7 @@ cann_ops_transformer.flash_attn(
       mask_mode=0
   )
 
-  attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
+  attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn_exp(
       q, k, v, rel_h, rel_w,
       metadata=metadata,
       softmax_scale=1.0 / (D ** 0.5),
@@ -711,7 +711,7 @@ cann_ops_transformer.flash_attn(
   k = torch.randn(B, KV_N, S2, D, dtype=dtype, device="npu")
   v = torch.randn(B, KV_N, S2, D, dtype=dtype, device="npu")
 
-  attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
+  attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn_exp(
       q, k, v,
       softmax_scale=1.0 / (D ** 0.5),
       layout_q="BNSD",

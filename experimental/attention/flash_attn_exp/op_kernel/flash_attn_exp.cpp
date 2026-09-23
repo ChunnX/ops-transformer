@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn.cpp
+ * \file flash_attn_exp.cpp
  * \brief FlashAttn Kernel 唯一入口；按 tiling key 编译期推导模板参数，仅使用 Dn 模板。
  *        参考 quant_flash_attn.cpp 单层 __global__ 风格。
  */

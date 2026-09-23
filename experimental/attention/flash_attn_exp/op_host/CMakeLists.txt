@@ -23,7 +23,7 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     # ENABLE_EXPERIMENTAL 构建时依赖路径会自动加 experimental/ 前缀，
     # "../attention/common" 映射为仓级 attention/common（kernel 侧代码位于
     # op_kernel 下，经 staged src/common 引用该依赖）
-    set(flash_attn_depends ../attention/common CACHE INTERNAL "Dependencies for flash_attn")
+    set(flash_attn_exp_depends ../attention/common CACHE INTERNAL "Dependencies for flash_attn_exp")
     add_ops_compile_options(
         OP_NAME FlashAttn
         COMPUTE_UNIT Ascend950PR_9599

@@ -32,7 +32,7 @@ test_flash_attn.py  (入口)
 | `backends/base.py` | Backend抽象基类(`is_available`, `compute`, `device`)                                      |
 | `backends/cpu.py`  | CPU Golden —调用`backends/cpu_impl.tforward`做参考计算                                       |
 | `backends/gpu.py`  | GPU —封装`flash_attn`库                                                                      |
-| `backends/npu.py`  | NPU —调用`flash_attn_metadata` + `flash_attn`，含`print_metadata`                        |
+| `backends/npu.py`  | NPU —调用`flash_attn_exp_metadata` + `flash_attn_exp`，含`print_metadata`                 |
 | `data.py`          | `InputSpec`声明式张量生成 + `build_flash_attn_params`参数组构造                             |
 | `case_loader.py`   | 用例加载(`load_case_modules`)、参数规范化(`normalize_params`)、ID解析(`resolve_case_ids`) |
 | `orchestrator.py`  | 编排器—串联数据生成 → 后端计算 → 精度对比                                                    |
@@ -99,7 +99,7 @@ pytests/
 | 依赖                     | 说明                                        |
 | ------------------------ | ------------------------------------------- |
 | `TorchNPU`             | PyTorch NPU扩展                             |
-| `cann_ops_transformer` | 提供`flash_attn`和`flash_attn_metadata` |
+| `cann_ops_transformer` | 提供`flash_attn_exp`和`flash_attn_exp_metadata` |
 
 ### GPU模式(可选)
 

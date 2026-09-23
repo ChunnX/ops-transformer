@@ -50,9 +50,9 @@ struct FaPlatFormInfo {
 
 class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
-    {
-    }
+    explicit FlashAttnTilingImpl(gert::TilingContext *context)
+        : FiaTilingBase(context)
+    {}
     ~FlashAttnTilingImpl() override = default;
 
     // protected:
@@ -62,7 +62,7 @@ public:
 
 private:
     ge::graphStatus SetPlatMemoryInfo();
-    void SplitPolicy();
+    ge::graphStatus SplitPolicy();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
