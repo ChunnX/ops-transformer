@@ -20,7 +20,7 @@
     - $\mathbf{X} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$：激活矩阵，对应入参 `x`。$\text{totalNumTokens}$ 是全局总 token 数，$\text{hidden}$ 是隐藏层维度。
     - $\mathbf{E} \in \mathbb{Z}^{\text{totalNumTokens} \times \text{topK}}$：token 选择的专家编号矩阵，对应入参 `topkIds`。$\text{topK}$ 是每个 token 选择的专家数量。
     - $\mathbf{G} \in \mathbb{R}^{\text{totalNumTokens} \times \text{topK}}$：token 选择的专家的门控权重矩阵，对应入参 `topkWeights`。
-    - $\mathbf{W}_1^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{hidden} \times (2 \text{intermediateHidden})}$：路由 MoE 专家的 Linear1 权重，对应入参 `weight1` 的 MoE 专家部分。
+    - $\mathbf{W}_1^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{hidden} \times N_1}$：路由 MoE 专家的 Linear1 权重，对应入参 `weight1` 的 MoE 专家部分。
     - $\mathbf{W}_2^{\mathrm{moe}} \in \mathbb{R}^{\text{localMoeExpertNum} \times \text{intermediateHidden} \times \text{hidden}}$：路由 MoE 专家的 Linear2 权重，对应入参 `weight2` 的 MoE 专家部分。
     - $\mathbf{W}_1^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{hidden} \times (2 \text{intermediateHidden})}$：共享专家的 Linear1 权重，对应入参 `sharedWeight1`。
     - $\mathbf{W}_2^{\mathrm{shared}} \in \mathbb{R}^{\text{sharedExpertNumPerRank} \times \text{intermediateHidden} \times \text{hidden}}$：共享专家的 Linear2 权重，对应入参 `sharedWeight2`。
@@ -28,6 +28,7 @@
 
     - $\mathbf{Y} \in \mathbb{R}^{\text{totalNumTokens} \times \text{hidden}}$：最终输出矩阵，对应出参 `y`。
   - 约定：
+    - $N_1$ 表示路由专家的 Linear1 输出宽度。`activation="gelu"` 时，$N_1=\text{intermediateHidden}$；门控激活时，$N_1=2\text{intermediateHidden}$。
     - $⋅$ 表示矩阵乘法，$⊙$ 表示逐元素乘法。
     - $\left \lfloor z\right \rceil$ 表示将 $z$ 四舍五入到最近的整数，$\left \lfloor z\right \rfloor$ 表示将 $z$ 向下取整。
     - $|z|$ 表示取绝对值，$\max(z)$ 表示取最大值。
@@ -38,13 +39,21 @@
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
   - <span id="activation-formulas">激活函数公式：</span>
-    - 记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。下文将由 `activation` 和 `activation_params` 共同确定的具体激活计算统称为 Activation。Sigmoid 函数和 SiLU 函数定义为：
+    - 对于门控激活，记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。下文将由 `activation` 和 `activation_params` 共同确定的具体激活计算统称为 Activation。Sigmoid 函数和 SiLU 函数定义为：
       $$
       \sigma(z)=\frac{1}{1+e^{-z}}, \qquad
       \operatorname{SiLU}(z)=z\cdot\sigma(z)=\frac{z}{1+e^{-z}}.
       $$
       记截断值为 $c$；未启用截断（未配置或配置为 $0$）时，数学上取 $c=+\infty$。定义
       $\mathbf{G}_c=\min(\mathbf{G},c)$，$\mathbf{U}_c=\operatorname{clip}(\mathbf{U},-c,c)$。
+    - `gelu`：仅支持<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>的 A8W8-INT、A8W4-INT 场景。记 Linear1 输出为 $\mathbf{H}$，直接逐元素计算：
+
+      $$
+      \mathbf{A}=\operatorname{GELU}(\mathbf{H})
+      =\frac{1}{2}\mathbf{H}\odot\left(1+\operatorname{erf}\left(\frac{\mathbf{H}}{\sqrt{2}}\right)\right).
+      $$
+
+      激活前后的特征维度均为 $\text{intermediateHidden}$，不拆分 gate 和 up 分支。
     - `swiglu`：
       $$
       \mathbf{A}=\operatorname{SwiGLU}(\mathbf{G},\mathbf{U})
@@ -142,7 +151,7 @@
     <summary> A8W8-INT 量化场景</summary>
 
     - **输入**
-        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
+        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times N_1}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
         - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子，对应入参 `weightScales2`。
 
     - **EP Dispatch**
@@ -164,22 +173,22 @@
 
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W8场景下，两个线性层都使用 INT8 输入和 INT8 权重进行矩阵乘，得到 INT32 中间结果并反量化。具体分为三个子步骤。
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），激活函数由 `activation` 指定。在A8W8场景下，两个线性层都使用 INT8 输入和 INT8 权重进行矩阵乘，得到 INT32 中间结果并反量化。具体分为三个子步骤。
 
         **1. Linear1 投影（INT8 矩阵乘 + 反量化）**
 
-        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。计算时执行 INT8 矩阵乘法，得到 INT32 计算结果：
+        Linear1 投影是专家网络的第一层线性变换，输出宽度为 $N_1$。计算时执行 INT8 矩阵乘法，得到 INT32 计算结果：
         $$
-        \mathbf{C}_e^{\text{int32}} = \mathbf{Q}_e \cdot \mathbf{W}_1[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times 2\cdot\text{intermediateHidden}}
+        \mathbf{C}_e^{\text{int32}} = \mathbf{Q}_e \cdot \mathbf{W}_1[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times N_1}
         $$
         然后反量化为预激活值 $\mathbf{H}_e$：
         $$
-        \mathbf{H}_e = \left( \mathbf{C}_e^{\text{int32}} \odot \mathbf{s}^{W1}_e \right) \odot \mathbf{s}^{X}_e \quad \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
+        \mathbf{H}_e = \left( \mathbf{C}_e^{\text{int32}} \odot \mathbf{s}^{W1}_e \right) \odot \mathbf{s}^{X}_e \quad \in \mathbb{R}^{N_e \times N_1}
         $$
 
         **2. 激活**
 
-        将 $\mathbf{H}_e$ 沿列维度拆分为 gate 分支 $\mathbf{G}_e$ 和 up 分支 $\mathbf{U}_e$，根据 `activation` 计算中间激活表示 $\mathbf{A}_e$；各可选激活类型的计算方式参见[激活函数公式](#activation-formulas)。
+        `activation="gelu"` 时，对 $\mathbf{H}_e$ 逐元素计算 GELU；门控激活时，将 $\mathbf{H}_e$ 沿列维度拆分为 gate 分支 $\mathbf{G}_e$ 和 up 分支 $\mathbf{U}_e$ 后计算。两种情况下的激活输出均为 $\mathbf{A}_e \in \mathbb{R}^{N_e \times \text{intermediateHidden}}$，计算方式参见[激活函数公式](#activation-formulas)。
 
         **3. Linear2 投影（量化 + INT8 矩阵乘 + 反量化）**
 
@@ -218,9 +227,9 @@
     <summary> A8W4-INT 量化场景</summary>
 
     - **输入**
-        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
+        - $\mathbf{S}^{W1} \in \mathbb{R}^{\text{moeExpertNum} \times N_1}$：Linear1 权重矩阵的逐通道缩放因子，对应入参 `weightScales1`。
         - $\mathbf{S}^{W2} \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子，对应入参 `weightScales2`。
-        - $\mathbf{B}_1 \in \mathbb{R}^{\text{moeExpertNum} \times (2\times \text{intermediateHidden})}$：Linear1 的偏置矩阵，由 INT4 量化过程离线生成，对应入参 `bias1`。
+        - $\mathbf{B}_1 \in \mathbb{R}^{\text{moeExpertNum} \times N_1}$：Linear1 的偏置矩阵，由 INT4 量化过程离线生成，对应入参 `bias1`。
         - $\mathbf{B}_2 \in \mathbb{R}^{\text{moeExpertNum} \times \text{hidden}}$：Linear2 的偏置矩阵，由 INT4 量化过程离线生成，对应入参 `bias2`。
 
     - **EP Dispatch**
@@ -242,7 +251,7 @@
 
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将 INT8 值拆为高4位和低4位两个有符号 INT4，使得 INT8×INT4 的矩阵乘可分解为两个 INT4×INT4 的矩阵乘，从而利用硬件的 INT4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），激活函数由 `activation` 指定。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将 INT8 值拆为高4位和低4位两个有符号 INT4，使得 INT8×INT4 的矩阵乘可分解为两个 INT4×INT4 的矩阵乘，从而利用硬件的 INT4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
 
         **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
 
@@ -270,7 +279,7 @@
 
         **2. Linear1 投影（INT4 × INT4 矩阵乘 + 反量化）**
 
-        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。
+        Linear1 投影是专家网络的第一层线性变换，输出宽度为 $N_1$。
 
         **(1) 激活重解释为INT4**
 
@@ -298,18 +307,18 @@
 
         **(2) INT4 × INT4 矩阵乘与权重反量化**
 
-        将重解释后的 INT4 激活视图 $\mathbf{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{hidden}}$ 与权重矩阵 $\mathbf{W}_1[e] \in \mathbb{R}^{\text{hidden} \times 2\cdot\text{intermediateHidden}}$ 执行矩阵乘，并应用权重缩放因子 $\mathbf{s}^{W1}_e$ 进行反量化，得到结果：
+        将重解释后的 INT4 激活视图 $\mathbf{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{hidden}}$ 与权重矩阵 $\mathbf{W}_1[e] \in \mathbb{R}^{\text{hidden} \times N_1}$ 执行矩阵乘，并应用权重缩放因子 $\mathbf{s}^{W1}_e$ 进行反量化，得到结果：
 
         $$
         \mathbf{C}_e = \bigl( \mathbf{Q}_e^{\text{int4}} \cdot \mathbf{W}_1[e] \bigr) \odot \mathbf{s}^{W1}_e
-        \;\in\; \mathbb{R}^{2N_e \times 2\cdot\text{intermediateHidden}}
+        \;\in\; \mathbb{R}^{2N_e \times N_1}
         $$
 
         将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于$\mathbf{Q}_e^{\text{high}}$和$\mathbf{Q}_e^{\text{low}}$的计算结果：
 
         $$
-        \mathbf{C}_e^{\text{high}} = \mathbf{C}_e[0::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}, \qquad
-        \mathbf{C}_e^{\text{low}}  = \mathbf{C}_e[1::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
+        \mathbf{C}_e^{\text{high}} = \mathbf{C}_e[0::2, :] \in \mathbb{R}^{N_e \times N_1}, \qquad
+        \mathbf{C}_e^{\text{low}}  = \mathbf{C}_e[1::2, :] \in \mathbb{R}^{N_e \times N_1}
         $$
 
         **(3) 精度补偿与激活反量化**
@@ -317,14 +326,14 @@
         利用偏置 $\mathbf{B}_1[e]$ 和激活缩放因子 $\mathbf{s}^{X}_e$（行向量）分别进行精度补偿和激活反量化，最终预激活值为：
 
         $$
-        \mathbf{H}_e = \Bigl( 16 \cdot \mathbf{C}_e^{\text{high}} + \mathbf{C}_e^{\text{low}} + \mathbf{B}_1[e] \Bigr) \odot \mathbf{s}^{X}_e \quad\in \mathbb{R}^{N_e \times 2\cdot\text{intermediateHidden}}
+        \mathbf{H}_e = \Bigl( 16 \cdot \mathbf{C}_e^{\text{high}} + \mathbf{C}_e^{\text{low}} + \mathbf{B}_1[e] \Bigr) \odot \mathbf{s}^{X}_e \quad\in \mathbb{R}^{N_e \times N_1}
         $$
 
         其中 $\odot \mathbf{s}^{X}_e$ 表示将矩阵的每一行乘以 $\mathbf{s}^{X}_e$ 中对应的标量。
 
         **3. 激活**
 
-        将 $\mathbf{H}_e$ 沿列维度拆分为 gate 分支 $\mathbf{G}_e$ 和 up 分支 $\mathbf{U}_e$，根据 `activation` 计算中间激活表示 $\mathbf{A}_e$；各可选激活类型的计算方式参见[激活函数公式](#activation-formulas)。
+        `activation="gelu"` 时，对 $\mathbf{H}_e$ 逐元素计算 GELU；门控激活时，将 $\mathbf{H}_e$ 沿列维度拆分为 gate 分支 $\mathbf{G}_e$ 和 up 分支 $\mathbf{U}_e$ 后计算。两种情况下的激活输出均为 $\mathbf{A}_e \in \mathbb{R}^{N_e \times \text{intermediateHidden}}$，计算方式参见[激活函数公式](#activation-formulas)。
 
         **4. Linear2 投影（量化 + INT4 × INT4 矩阵乘 + 反量化）**
 
@@ -643,7 +652,7 @@
   <tr>
    <td>weight1</td>
    <td>输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
+   <td>MoE专家网络第一线性层的权重矩阵，用于将输入映射至中间维度，输出供给激活函数。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
    <td>BF16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
@@ -804,14 +813,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。可选值为"swiglu"、"swiglustep"、"swigluoai"和"situglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。可选值为"swiglu"、"swiglustep"、"swigluoai"、"situglu"和"gelu"。各产品支持的取值见约束说明。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"在Atlas A2/A3产品上支持[]、[beta]或[beta, linear_beta]，在Ascend 950产品上支持[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0；A2/A3的situglu使用空列表时，beta默认为1.0且linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。</td>
+   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："gelu"支持[]或[0]，其中0为占位值，不参与激活计算；"swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"在Atlas A2/A3产品上支持[]、[beta]或[beta, linear_beta]，在Ascend 950产品上支持[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0；A2/A3的situglu使用空列表时，beta默认为1.0且linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
@@ -839,7 +848,7 @@
   <tr>
    <td>weight1Interleave</td>
    <td>可选属性</td>
-   <td>weight1交错参数。预留参数，默认值为0。</td>
+   <td>weight1交错参数。预留参数，默认值为0。activation为"gelu"时必须为0。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -901,6 +910,7 @@
 
 - **参数约束**：
   - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
+    - `activation="gelu"`仅支持 Atlas A3 产品的 A8W8-INT、A8W4-INT 场景，第一层权重的逻辑形状为(`hidden`, `intermediateHidden`)，第二层为(`intermediateHidden`, `hidden`)。第一层权重缩放因子和偏置的长度均为`intermediateHidden`。
     - 场景配套矩阵：
 
       | 场景 | x | weight1 | weight2 | weightScales1 | weightScales2 | bias1 | bias2 | y | dispatchQuantMode | dispatchQuantOutDtype |

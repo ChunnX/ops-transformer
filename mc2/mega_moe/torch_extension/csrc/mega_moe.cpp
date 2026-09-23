@@ -566,11 +566,12 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
                     numMaxTokensPerRank);
         TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
                     "moe_expert_num only support [1, 2048] on A2/A3, but got ", moeExpertNum);
-        TORCH_CHECK(numTopk >= 1 && numTopk <= 16, "num_topk only support [1, 16] on A2/A3, but got ", numTopk);
+        const int64_t maxTopK = isA3 ? 25 : 16;
+        TORCH_CHECK(numTopk >= 1 && numTopk <= maxTopK, "num_topk must be in [1, ", maxTopK, "], but got ", numTopk);
         TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
                     "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
 
-        bool isQuantRouting = (dispatchQuantMode == 4);
+        bool isQuantRouting = (dispatchQuantMode == 2);
         // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
         if (maxRecvTokenNum == 0) {
             int64_t expertPerRank = moeExpertNum / epWorldSize;

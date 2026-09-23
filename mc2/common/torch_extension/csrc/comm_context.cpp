@@ -18,9 +18,28 @@
 #include <acl/acl_rt.h>
 #include <limits>
 #include <utility>
+#include <optional>
+#include <type_traits>
 #include "hccl_common.h"
 
 namespace op_api {
+
+// A3 KFC is also built with older HCCL headers that do not declare the A5 RTP protocol.
+template <typename Protocol, typename = void>
+struct UbRtpProtocol {
+    static std::optional<Protocol> Get()
+    {
+        return std::nullopt;
+    }
+};
+
+template <typename Protocol>
+struct UbRtpProtocol<Protocol, std::void_t<decltype(Protocol::COMM_PROTOCOL_UB_RTP)>> {
+    static std::optional<Protocol> Get()
+    {
+        return Protocol::COMM_PROTOCOL_UB_RTP;
+    }
+};
 
 // ======================== Common constants ========================
 
@@ -407,6 +426,11 @@ public:
     bool CheckCrossUbDomainProtocols(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
                                      uint32_t srcRankId)
     {
+        const auto rtpProtocol = UbRtpProtocol<CommProtocol>::Get();
+        if (!rtpProtocol.has_value()) {
+            ASCEND_LOGW("Installed HCCL headers do not support the cross-domain UB RTP protocol");
+            return false;
+        }
         bool hasCrossDomainUbgLink = false;
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
@@ -414,11 +438,11 @@ public:
                 if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
                     continue;
                 }
-                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_RTP)) {
+                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, rtpProtocol.value())) {
                     ASCEND_LOGI("Rank %u does support UBG with cross-domain rank %u in layer %u", srcRankId, dstRank,
                                 layer.layer);
                     hasCrossDomainUbgLink = true;
-                    rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UB_RTP, layer.layer};
+                    rankLinkMap_[dstRank] = {rtpProtocol.value(), layer.layer};
                 }
             }
         }

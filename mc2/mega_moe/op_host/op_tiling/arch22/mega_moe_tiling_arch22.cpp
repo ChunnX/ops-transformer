@@ -57,6 +57,7 @@ constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 13;           // weight1 是�
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 14;           // weight2 是否转置
 constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 15;          // weight1 交错模式
 
+constexpr uint32_t ACTIVATION_CODE_GELU = 5;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_STEP = 3;
@@ -309,7 +310,9 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
     OP_TILING_CHECK(ptr == nullptr, OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation", "null", "not null"),
                     return GRAPH_FAILED);
     std::string activationStr(ptr);
-    if (activationStr == "swiglu") {
+    if (activationStr == "gelu") {
+        activationCode = ACTIVATION_CODE_GELU;
+    } else if (activationStr == "swiglu") {
         activationCode = ACTIVATION_CODE_SWIGLU;
     } else if (activationStr == "situglu") {
         activationCode = ACTIVATION_CODE_SITU;
@@ -318,7 +321,8 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
     } else if (activationStr == "swigluoai") {
         activationCode = ACTIVATION_CODE_SWIGLU_OAI;
     } else {
-        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation", ptr, "one of {swiglu, swiglustep, swigluoai, situglu}");
+        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation", ptr,
+                                  "one of {gelu, swiglu, swiglustep, swigluoai, situglu}");
         return GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -426,6 +430,13 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
         return ge::GRAPH_SUCCESS;
     }
 
+    if (info.activationCode == ACTIVATION_CODE_GELU) {
+        // ListFloat requires nonempty storage in the aclnn wrapper. Zero is a transport placeholder.
+        OP_TILING_CHECK(paramCount != 1U || params->GetData() == nullptr || params->GetData()[0] != 0.0f,
+                        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation_params", "non-default", "[] or [0] for gelu"),
+                        return GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     const float *data = params->GetData();
     OP_TILING_CHECK(data == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get activation_params data."),
                     return GRAPH_FAILED);
@@ -592,6 +603,17 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."), return GRAPH_FAILED);
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
+    if (info.activationCode == ACTIVATION_CODE_GELU) {
+        OP_TILING_CHECK(socVersion != "Ascend910_93" || info.isQuantRouting == 0U || info.weight1Interleave != 0U,
+                        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation", "gelu",
+                                                  "A3 INT8/INT4 weights with weight1_interleave=0"),
+                        return GRAPH_FAILED);
+    }
+    OP_TILING_CHECK(
+        info.moeExpertNum % info.epWorldSize != 0U || info.moeExpertNum / info.epWorldSize != info.expertPerRank,
+        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "moe_expert_num", std::to_string(info.moeExpertNum).c_str(),
+                                  "ep_world_size * local TensorList length"),
+        return GRAPH_FAILED);
 
     // 接收侧轮次预算（route 行粒度）：
     // A3: B = min(chunk_recv_max, max_recv_token_num)，
@@ -607,6 +629,11 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     if (socVersion == "Ascend910_93") {
         uint64_t chunkRecvMax = static_cast<uint64_t>(MOE_PERMUTE_CHUNK) * info.epWorldSize *
                                 static_cast<uint64_t>(std::min(info.topK, info.expertPerRank));
+        // A3 pulls successive receive rounds; zero means an automatic bounded workspace, not truncation.
+        constexpr uint64_t DEFAULT_A3_RECV_ROUND_BUDGET = 8192;
+        if (*maxRecvTokenNumPtr == 0) {
+            info.maxRecvTokenNum = std::min(info.maxRecvTokenNum, DEFAULT_A3_RECV_ROUND_BUDGET);
+        }
         info.recvRoundBudget = std::min(chunkRecvMax, info.maxRecvTokenNum);
         if (info.recvRoundBudget == 0U) {
             info.recvRoundBudget = 1U;
@@ -748,10 +775,11 @@ static ge::graphStatus CheckTopkIdsInput(gert::TilingContext *context, const ger
             (Ops::Base::ToString(topkIdsStorageShape->GetStorageShape()) + ", x.dim0=" + std::to_string(bs)).c_str(),
             "dim0 of topk_ids must equal dim0 of x"),
         return GRAPH_FAILED);
-    OP_TILING_CHECK(topK < MIN_TOPK || topK > MAX_TOPK,
+    const int64_t maxTopK = mc2tiling::GetSocVersion(context) == "Ascend910_93" ? 25 : MAX_TOPK;
+    OP_TILING_CHECK(topK < MIN_TOPK || topK > maxTopK,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         K_OP_NAME, "topk_ids", Ops::Base::ToString(topkIdsStorageShape->GetStorageShape()).c_str(),
-                        "dim1 (topK) must be in [1, 16]"),
+                        ("dim1 (topK) must be in [1, " + std::to_string(maxTopK) + "]").c_str()),
                     return GRAPH_FAILED);
 
     auto topkIdsDesc = context->GetInputDesc(TOPK_IDS_INDEX);
@@ -881,7 +909,17 @@ static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t h
                     return GRAPH_FAILED);
 
     uint32_t w1TensorDims = w1Tensor->GetOriginShape().GetDimNum();
-    uint32_t N = w1Tensor->GetStorageShape().GetDim(w1TensorDims - 1);
+    // Validate the rank before indexing: a scalar tensor has no last dimension.
+    OP_TILING_CHECK(w1TensorDims != TWO_DIMS,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(K_OP_NAME, "weight1[0]", std::to_string(w1TensorDims).c_str(), "2D"),
+                    return GRAPH_FAILED);
+    int64_t weight1Columns = w1Tensor->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(weight1Columns <= 0 || weight1Columns > std::numeric_limits<uint32_t>::max(),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, "weight1[0]",
+                                                          Ops::Base::ToString(w1Tensor->GetStorageShape()).c_str(),
+                                                          "dim1 must be in [1, UINT32_MAX]"),
+                    return GRAPH_FAILED);
+    uint32_t N = static_cast<uint32_t>(weight1Columns);
 
     uint32_t expertPerRank = GetDynamicInputTensorListLen(context, WEIGHT1_INDEX);
     for (uint32_t i = 0; i < expertPerRank; i++) {
@@ -899,6 +937,12 @@ static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t h
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             K_OP_NAME, tensorName.c_str(), Ops::Base::ToString(wTensorI->GetStorageShape()).c_str(),
                             ("dim0 must equal hidden_size (" + std::to_string(hiddenSize) + ")").c_str()),
+                        return GRAPH_FAILED);
+        // GMM1 uses one N and one output stride for every expert, including GELU.
+        OP_TILING_CHECK(wTensorI->GetStorageShape().GetDim(1) != weight1Columns,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, tensorName.c_str(),
+                                                              Ops::Base::ToString(wTensorI->GetStorageShape()).c_str(),
+                                                              "dim1 must equal dim1 of weight1[0]"),
                         return GRAPH_FAILED);
     }
 
@@ -973,7 +1017,7 @@ static ge::graphStatus CheckWeight2Desc(gert::TilingContext *context, ge::DataTy
 
 static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t hiddenSize, uint32_t N,
                                          uint32_t expertPerRank, ge::DataType w1DataType, ge::Format w1Format,
-                                         ge::DataType &outW2DataType)
+                                         ge::DataType &outW2DataType, uint32_t activationCode)
 {
     auto w2Tensor = context->GetDynamicInputTensor(WEIGHT2_INDEX, 0);
     OP_TILING_CHECK(w2Tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "weight2"), return GRAPH_FAILED);
@@ -992,11 +1036,19 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
                         "The tensor list lengths of weight1 and weight2 must be the same."),
                     return GRAPH_FAILED);
 
-    uint32_t n2 = N / 2;
-    OP_TILING_CHECK(n2 % INTERMEDIATE_HIDDEN_ALIGN != 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, "weight2",
-                                                          Ops::Base::ToString(w2Tensor->GetStorageShape()).c_str(),
-                                                          "dim0 (intermediate_hidden) must be aligned to 256"),
+    // A gated FFN needs two equal branches; integer division must not hide an odd N.
+    OP_TILING_CHECK(activationCode != ACTIVATION_CODE_GELU && N % 2 != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, "weight1", std::to_string(N).c_str(),
+                                                          "dim1 must be even for gated activations"),
+                    return GRAPH_FAILED);
+    uint32_t n2 = activationCode == ACTIVATION_CODE_GELU ? N : N / 2;
+    const int64_t intermediateAlign =
+        activationCode == ACTIVATION_CODE_GELU ? HIDDEN_SIZE_ALIGN : INTERMEDIATE_HIDDEN_ALIGN;
+    OP_TILING_CHECK(n2 % intermediateAlign != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        K_OP_NAME, "weight2", Ops::Base::ToString(w2Tensor->GetStorageShape()).c_str(),
+                        (activationCode == ACTIVATION_CODE_GELU ? "dim0 (intermediate_hidden) must be aligned to 512" :
+                                                                  "dim0 (intermediate_hidden) must be aligned to 256")),
                     return GRAPH_FAILED);
 
     OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN,
@@ -1051,6 +1103,14 @@ static ge::graphStatus CheckWeightScaleInput(gert::TilingContext *context, uint3
             sTensorI->GetOriginShape().GetDimNum() != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM(K_OP_NAME, tensorName.c_str(),
                                          std::to_string(sTensorI->GetOriginShape().GetDimNum()).c_str(), "1D"),
+            return GRAPH_FAILED);
+        // Fixpipe reads one packed UINT64 scale per GMM output channel.
+        // In particular, GELU still needs N scales for GMM1, not N/2.
+        OP_TILING_CHECK(
+            sTensorI->GetStorageShape().GetDim(0) != dim1Expected,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                K_OP_NAME, tensorName.c_str(), Ops::Base::ToString(sTensorI->GetStorageShape()).c_str(),
+                (std::string("dim0 must equal ") + dim1Name + " (" + std::to_string(dim1Expected) + ")").c_str()),
             return GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1158,9 +1218,9 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
 
     // ==================== 7. weight2 输入校验 ====================
     ge::DataType w2DataType = ge::DT_UNDEFINED;
-    OP_TILING_CHECK(
-        CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType) != ge::GRAPH_SUCCESS,
-        OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
+    OP_TILING_CHECK(CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType,
+                                      info.activationCode) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
 
     // ==================== 量化权重必须提供 scale 校验 ====================
     // 当 weight1 和 weight2 的类型都为 INT8 或 INT4 时，GMM1/GMM2 需要进行反量化
@@ -1168,9 +1228,7 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
     if (w1DataType == ge::DT_INT8 || w1DataType == ge::DT_INT4) {
         // ==================== 8. weight_scales1 输入校验（可选） ====================
         // weight_scales1：可选输入，weight1/weight2 为 INT8 或 INT4 时需要，GMM1 反量化参数
-        // 支持两种场景：
-        //   1. 传入一个 TensorList，list 包含一个 2 维 tensor，shape 为 (num_experts_per_rank, N)
-        //   2. 传入一个 TensorList，list 包含 num_experts_per_rank 个 tensor，每个 tensor 的 shape 为 (N,)
+        // TensorList 包含 num_experts_per_rank 个 1D tensor，每个 shape 为 (N,)。
         OP_TILING_CHECK(CheckWeightScaleInput(context, WEIGHT_SCALES1_INDEX, "weight_scales1", expertPerRank, N, "N") !=
                             ge::GRAPH_SUCCESS,
                         OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeightScaleInput for weight_scales1 failed."),
@@ -1178,10 +1236,7 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
 
         // ==================== 9. weight_scales2 输入校验（可选） ====================
         // weight_scales2：可选输入，weight1/weight2 为 INT8 或 INT4 时需要，GMM2 反量化参数
-        // 支持两种场景：
-        //   1. 传入一个 TensorList，list 包含一个 2 维 tensor，shape 为 (num_experts_per_rank, hidden_size)
-        //   2. 传入一个 TensorList，list 包含 num_experts_per_rank 个 tensor，
-        //      每个 tensor 的 shape 为 (hidden_size,)
+        // TensorList 包含 num_experts_per_rank 个 1D tensor，每个 shape 为 (hidden_size,)。
         OP_TILING_CHECK(CheckWeightScaleInput(context, WEIGHT_SCALES2_INDEX, "weight_scales2", expertPerRank,
                                               hiddenSize, "hidden_size") != ge::GRAPH_SUCCESS,
                         OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeightScaleInput for weight_scales2 failed."),
@@ -1440,6 +1495,13 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
 
     OP_TILING_CHECK(MegaMoeA2A3CommAlg(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "MegaMoeA2A3 CheckCommAlg Failed"), return ge::GRAPH_FAILED);
+    // W2's input width depends on activation; parse it before cross-shape validation.
+    auto activationAttrs = context->GetAttrs();
+    OP_TILING_CHECK(activationAttrs == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Missing attributes."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckActivationAttr(activationAttrs->GetAttrPointer<char>(ATTR_ACTIVATION_INDEX),
+                                        info.activationCode) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Invalid activation."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MegaMoeA2A3CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "MegaMoeA2A3 CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
@@ -1487,9 +1549,13 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     std::string socVersion = mc2tiling::GetSocVersion(context);
     uint32_t archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
-    uint64_t tilingKey = GET_TPL_TILING_KEY(static_cast<int64_t>(info.isTransposeW1),
-                                            static_cast<int64_t>(info.isTransposeW2), static_cast<int64_t>(quantMode),
-                                            static_cast<int64_t>(quantOutType), static_cast<int64_t>(archCode));
+    // Specialize only SwiGLU on A3. Other gated formulas retain the runtime policy;
+    // specializing Situ independently caused a regression in the EP16 comparison.
+    const bool isSwiglu = archCode == SOC_ASCEND910_93 && info.activationCode == ACTIVATION_CODE_SWIGLU;
+    uint64_t tilingKey =
+        GET_TPL_TILING_KEY(static_cast<int64_t>(info.isTransposeW1), static_cast<int64_t>(info.isTransposeW2),
+                           static_cast<int64_t>(quantMode), static_cast<int64_t>(quantOutType),
+                           static_cast<int64_t>(archCode), info.activationCode == ACTIVATION_CODE_GELU, isSwiglu);
     context->SetTilingKey(tilingKey);
 
     int64_t expertNum = info.expertPerRank * info.worldSize;
@@ -1518,7 +1584,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
 
     uint32_t n2 = info.K;
-    uint32_t k2 = info.N / 2;
+    uint32_t k2 = info.activationCode == ACTIVATION_CODE_GELU ? info.N : info.N / 2;
     uint64_t megeMoeWorkspace = 0;
     if (archCode == SOC_ASCEND910_93) {
         // 接收侧轮次预算 B（route 行）：GMM In/Out/perTokenScale/W4A8 各区从 B 驱动分配，
