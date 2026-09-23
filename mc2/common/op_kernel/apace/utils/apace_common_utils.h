@@ -69,13 +69,14 @@ constexpr uint64_t GetBiasDataSize()
     } while (0)
 
 // CeilDiv host 侧模板: tiling/ST 等宿主函数调用
+// 先除后加形式: (a+b-1)/b 在 a+b-1 超过类型上限时回绕, 本写法对任意值域安全
 template <typename T>
 inline T CeilDiv(T a, T b)
 {
     if (b == 0) {
         return a;
     }
-    return (a + b - 1) / b;
+    return a / b + (a % b != 0 ? 1 : 0);
 }
 
 // CeilDiv 设备侧版本: kernel 内 __aicore__ 函数调用
@@ -87,7 +88,7 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
     if (b == 0) {
         return a;
     }
-    return (a + b - 1) / b;
+    return a / b + (a % b != 0 ? 1U : 0U);
 }
 } // namespace ApaceKernel
 

@@ -212,7 +212,11 @@ private:
     GM_ADDR tailAddrListScale_[MAX_FRAG]{};
     GM_ADDR tailAddrListC_[MAX_FRAG]{};
 
-    GM_ADDR cFragAddrs_[8]{};
+    // rank 上界: 与 tiling 侧 rank_size 上限一致 (同 all_gather_qbmm_mx_kernel.h MAX_RANK_SIZE);
+    // cFragAddrs_/headAddrList*_ 以 fp.rankSize 为索引写入, host 侧校验 rankNum <= 16
+    static constexpr uint32_t MAX_RANK_SIZE = 16U;
+
+    GM_ADDR cFragAddrs_[MAX_RANK_SIZE]{};
     uint32_t curMainRoundIdx_{0xFFFFFFFF};
     bool tailBuilt_{false};
     uint64_t curRoundDataOff_{};

@@ -31,7 +31,12 @@
 #ifndef REDUCE_SUM_REF_H
 #define REDUCE_SUM_REF_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#include "kernel_operator_intf.h"
+#endif
 
 #include "apace/utils/apace_common_utils.h"
 
@@ -123,6 +128,12 @@ public:
             // N 分段循环
             for (uint64_t nStart = 0; nStart < alignedN; nStart += maxSegLen) {
                 uint64_t segLen = (nStart + maxSegLen <= alignedN) ? maxSegLen : (alignedN - nStart);
+                // 尾段钳制: nSize 非 SEG_ALIGN_ELEMS 对齐时, alignedN 补齐部分不参与 GM 读写
+                // (对齐读会越过本行行尾: 末行越过输出缓冲区末端 → GM 越界写; 跨核行边界溢出写
+                // 与邻核正确写出无排序保证 → 数据竞争。参照 mc2/common/op_kernel/reduce_sum.h
+                // 尾块 DataCopyPad 范式, 读写均按实际有效长度搬运)
+                uint64_t validLen = (nStart + segLen <= rsParams_.nSize) ? segLen : (rsParams_.nSize - nStart);
+                bool isTailSeg = (validLen < segLen);
 
                 // 1. 清零 sum (SumType 累加器)
                 Duplicate<SumType>(ubSum[sumElem], static_cast<SumType>(0.0), segLen);
@@ -140,14 +151,31 @@ public:
                     GlobalTensor<IOType> gmData;
                     gmData.SetGlobalBuffer(gmPtr);
 
+                    // 尾段按实际字节数读入 (blockLen=Byte), 补齐区仅 UB 内参与计算、不落 GM
+                    DataCopyExtParams copyInParams;
+                    copyInParams.blockCount = 1;
+                    copyInParams.blockLen = static_cast<uint32_t>(validLen * sizeof(IOType));
+                    copyInParams.srcStride = 0;
+                    copyInParams.dstStride = 0;
+                    copyInParams.rsv = 0;
+                    DataCopyPadExtParams<IOType> copyInPadParams; // 默认不填充, UB 尾部残留值不参与 GM 读写
+
                     if constexpr (IsSameType<IOType, SumType>::value) {
                         // 同型: GM → UB 直入 SumType 输入 slot, 免 Cast
-                        DataCopy(ubSum[inSumElem[pingPongIdx]], gmData, segLen);
+                        if (isTailSeg) {
+                            DataCopyPad(ubSum[inSumElem[pingPongIdx]], gmData, copyInParams, copyInPadParams);
+                        } else {
+                            DataCopy(ubSum[inSumElem[pingPongIdx]], gmData, segLen);
+                        }
                         SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
                         WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
                     } else {
                         // 异型: GM → UB (IOType) → Cast SumType 输入 slot
-                        DataCopy(ubIO[inIOElem[pingPongIdx]], gmData, segLen);
+                        if (isTailSeg) {
+                            DataCopyPad(ubIO[inIOElem[pingPongIdx]], gmData, copyInParams, copyInPadParams);
+                        } else {
+                            DataCopy(ubIO[inIOElem[pingPongIdx]], gmData, segLen);
+                        }
                         SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
                         WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
                         Cast(ubSum[inSumElem[pingPongIdx]], ubIO[inIOElem[pingPongIdx]], RoundMode::CAST_NONE, segLen);
@@ -162,24 +190,38 @@ public:
                     pingPongCount_++;
                 }
 
-                // 3. 输出: SumType → IOType → GM
+                // 3. 输出: SumType → IOType → GM (尾段按实际字节数写出, 防对齐越界)
                 PipeBarrier<PIPE_V>();
                 __gm__ IOType *outPtr = reinterpret_cast<__gm__ IOType *>(
                     rsParams_.outputAddr +
                     (static_cast<uint64_t>(tokenIndex) * rsParams_.nSize + nStart) * sizeof(IOType));
                 GlobalTensor<IOType> gmOut;
                 gmOut.SetGlobalBuffer(outPtr);
+                DataCopyExtParams copyOutParams;
+                copyOutParams.blockCount = 1;
+                copyOutParams.blockLen = static_cast<uint32_t>(validLen * sizeof(IOType));
+                copyOutParams.srcStride = 0;
+                copyOutParams.dstStride = 0;
+                copyOutParams.rsv = 0;
                 if constexpr (IsSameType<IOType, SumType>::value) {
                     // 同型: 累加结果直接 UB → GM
                     SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
                     WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
-                    DataCopy(gmOut, ubSum[sumElem], segLen);
+                    if (isTailSeg) {
+                        DataCopyPad(gmOut, ubSum[sumElem], copyOutParams);
+                    } else {
+                        DataCopy(gmOut, ubSum[sumElem], segLen);
+                    }
                 } else {
                     // 异型: Cast 回 IOType 后 UB → GM
                     Cast(ubIO[outElem], ubSum[sumElem], DOWN_CAST_MODE, segLen);
                     SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
                     WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
-                    DataCopy(gmOut, ubIO[outElem], segLen);
+                    if (isTailSeg) {
+                        DataCopyPad(gmOut, ubIO[outElem], copyOutParams);
+                    } else {
+                        DataCopy(gmOut, ubIO[outElem], segLen);
+                    }
                 }
                 SetFlag<HardEvent::MTE3_V>(FLAG_ID_NUM_ONE);
                 WaitFlag<HardEvent::MTE3_V>(FLAG_ID_NUM_ONE);

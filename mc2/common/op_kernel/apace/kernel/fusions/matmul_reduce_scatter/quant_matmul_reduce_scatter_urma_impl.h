@@ -45,7 +45,12 @@
 
 #pragma once
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#include "kernel_operator_intf.h"
+#endif
 #include "include/tensor_api/tensor.h"
 
 #include "adv_api/hcomm/hcomm.h"
@@ -89,7 +94,8 @@ public:
     using TypeC = CType;
     using TypeScaleA = ::fp8_e8m0_t;
     using TypeScaleB = ::fp8_e8m0_t;
-    static constexpr int32_t SCALE_C0 = 2;
+    static constexpr int32_t SCALE_C0 = 2;         // MX 每组 scale 字节数 (E8M0)
+    static constexpr uint32_t MX_GROUP_SIZE = 64U; // MX 量化组大小 (每组 64 个元素共用 1 个 scale)
 
     // Layout 定义
     using LayoutA =
@@ -157,8 +163,11 @@ private:
     // ---------------- tiling 切换 L1 排空 (三轮评审意见3, 同 mx_quant_matmul_all_to_all) ----------------
     // 不同段/不同 tile 的 matmul tiling 切分不同 (L1Params 变化), 切换前须排空 L1:
     // SetFlag(MTE1_MTE2) 等 MTE1 (L1→L0) 此前的读全部完成, WaitFlag 让切换后新 tiling 的
-    // MTE2 (GM→L1) 写等待其结束, 避免覆盖未消费的 L1 数据。event id 6 与 mmad 流水内部
-    // 使用的 {0..5} (INPUT_BUFFER_0..3 / SCALE_BUFFER_0..1) 不相交。
+    // MTE2 (GM→L1) 写等待其结束, 避免覆盖未消费的 L1 数据。
+    // event id 6 说明: mmad 流水内部 (qmm_mx_block_mmad_fragment.h) 占用 MTE1_MTE2 的
+    // {0..5} (INPUT_BUFFER_0..3 / SCALE_BUFFER_0..1), 本排空用 6 与之不相交; TPipe 队列
+    // 场景官方文档保留 eventID 6/7, 本实现为静态 LocalTensor (无 TPipe 队列), 且兄弟实现
+    // mx_quant_matmul_all_to_all_urma_impl.h 同样使用 id 6 (仓内既有先例)。
     static constexpr uint16_t MTE1_MTE2_EVENT_FLAG = 6;
 
     static __aicore__ inline void DrainL1BeforeTilingSwitch()
@@ -278,8 +287,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     baseParams_.axisN = tilingData->mmTilingData.n;
     baseParams_.axisK = tilingData->mmTilingData.k;
 
-    // scaleARowBytes = CeilDiv(axisK, 64) * 2 (MXFP8 scale: 每组 64 元素, 2 字节)
-    baseParams_.scaleARowBytes = (baseParams_.axisK + 63U) / 64U * 2U;
+    // scaleARowBytes = CeilDiv(axisK, MX_GROUP_SIZE) * SCALE_C0 (MXFP8: 每组 64 元素, 2 字节)
+    baseParams_.scaleARowBytes = (baseParams_.axisK + MX_GROUP_SIZE - 1U) / MX_GROUP_SIZE * SCALE_C0;
 
     // chunkSize = 每个 rank 分到的 M 行数 = m / rankSize
     uint64_t chunkSize = tilingData->commTilingData.splitAxisTileSize * tilingData->commTilingData.splitAxisTileCnt +
@@ -316,7 +325,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     fragParams.mPerRank = baseParams_.chunkM;
     fragParams.k = baseParams_.axisK;
     fragParams.n = baseParams_.axisN;
-    fragParams.scaleKLen = (baseParams_.axisK + 63U) / 64U * 2U;
+    fragParams.scaleKLen = (baseParams_.axisK + MX_GROUP_SIZE - 1U) / MX_GROUP_SIZE * SCALE_C0;
     fragParams.fragScope = isLocal ? ReduceScatterFragImpl::FRAG_SCOPE_LOCAL : ReduceScatterFragImpl::FRAG_SCOPE_REMOTE;
     fragParams.fragCount = 0;
 
@@ -416,6 +425,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     ctx.rowBytes = ctx.nSize * sizeof(CType);
     ctx.rowStride = static_cast<uint64_t>(baseParams_.chunkM) * ctx.nSize;
     ctx.rsCoreNum = tilingData_->mmTilingData.usedCoreNum - baseParams_.rankSize; // 计算核数 (前 rsCoreNum 个)
+    // rsCoreNum 无下溢保护说明: host 侧 (ST main.cpp) 已强校验 usedCoreNum > rankNum,
+    // 本减法恒为正; 若脱离 ST 直调接入, 调用方须保证该不变量 (uint32 下溢回绕会破坏角色模型)
 
     uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
     uint32_t jobIndex = static_cast<uint32_t>(GetBlockNum() - 1 - blockIdx);

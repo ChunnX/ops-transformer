@@ -49,7 +49,6 @@ set(HOST_INCLUDES
 set(KERNEL_OPTS "-xasc" "--npu-arch=dav-3510" "-DASC_DEVKIT_MAJOR=9" "-w" "-O3"
     "-iquote" "${BLAZE_COMMON}/tensor_api/include"
     "-iquote" "${BLAZE_COMMON}/tensor_api")
-set(HOST_OPTS "-std=c++17" "-w" "-O2")
 
 set(COMMON_LIBS dl platform tiling_api ascendcl runtime hccl stdc++ pthread)
 

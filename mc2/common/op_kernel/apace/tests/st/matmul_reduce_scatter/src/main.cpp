@@ -88,6 +88,19 @@ void printUsage(const std::string &programName)
     std::cerr << "Example: " << programName << " 2048 3584 4096 4" << std::endl;
 }
 
+// ---- ST host 侧具名常量 (与 kernel 侧同口径) ----
+// rankNum 范围: 下界 2 (单 rank 无通信语义); 上界与 kernel 侧 cFragAddrs_[MAX_RANK_SIZE]
+// 及 tiling rank_size 上限一致 (同 all_gather_qbmm_mx_kernel.h)
+constexpr int QMRS_MIN_RANK_NUM = 2;
+constexpr int QMRS_MAX_RANK_NUM = 16;
+// MX 量化组大小与 scale 字节数 (与 impl.h MX_GROUP_SIZE/SCALE_C0 同口径)
+constexpr int QMRS_MX_GROUP_SIZE = 64;
+constexpr int QMRS_MX_SCALE_BYTES = 2;
+// Blaze matmul 最小行粒度 (headMSize/tailMSize 16 对齐)
+constexpr int QMRS_MIN_ROW_ALIGN = 16;
+// barrier 槽位字节数 (与 apace barrier_ubmem.h BARRIER_FLAG_SIZE 同口径)
+constexpr uint64_t QMRS_BARRIER_FLAG_BYTES = 32UL;
+
 void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
@@ -125,9 +138,14 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: m must be divisible by rankNum");
     }
 
-    // Scale 对齐约束：CeilDiv(k, 64) 必须为偶数
-    if (CeilDiv(k, 64) % 2 != 0) {
-        throw std::invalid_argument("ERROR: CeilDiv(k, 64) must be an even number");
+    // rankNum 范围校验 (常量见文件头 QMRS_MIN/MAX_RANK_NUM)
+    if (rankNum < QMRS_MIN_RANK_NUM || rankNum > QMRS_MAX_RANK_NUM) {
+        throw std::invalid_argument("ERROR: rankNum must be in [2, 16] (kernel MAX_RANK_SIZE bound)");
+    }
+
+    // Scale 对齐约束：CeilDiv(k, QMRS_MX_GROUP_SIZE) 必须为偶数 (E8M0 每组 2 字节成对)
+    if (CeilDiv(k, QMRS_MX_GROUP_SIZE) % QMRS_MX_SCALE_BYTES != 0) {
+        throw std::invalid_argument("ERROR: CeilDiv(k, QMRS_MX_GROUP_SIZE) must be an even number");
     }
 }
 
@@ -157,7 +175,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     if (headMSize > chunkM || headMSize == 0) {
         headMSize = chunkM;
     }
-    headMSize = (headMSize / 16) * 16;
+    headMSize = (headMSize / QMRS_MIN_ROW_ALIGN) * QMRS_MIN_ROW_ALIGN;
     if (headMSize == 0) {
         headMSize = 16;
     }
@@ -165,7 +183,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     uint32_t headTileCnt = chunkM / headMSize;
     uint32_t tailMSize = chunkM % headMSize;
     // tailMSize 必须 16 对齐 (Blaze matmul 最小行粒度)
-    if (tailMSize > 0 && tailMSize % 16 != 0) {
+    if (tailMSize > 0 && tailMSize % QMRS_MIN_ROW_ALIGN != 0) {
         throw std::invalid_argument("ERROR: tailMSize=" + std::to_string(tailMSize) +
                                     " not 16-aligned. "
                                     "chunkM=" +
@@ -188,8 +206,8 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     // 需 <= hcclBufSize. tiling 阶段 HCCL 建链未完成、实际 hcclBufSize 不可得, 以实测上限 400MB 为界.
     constexpr uint64_t QMRS_WIN_ALIGN = 128;                           // 与 impl.h WIN_DATA_ALIGN 同口径
     constexpr uint64_t QMRS_HCCL_BUF_SIZE_LIMIT = 400UL * 1024 * 1024; // hcclBufSize 实测上限
-    uint64_t winReservedBytes =
-        (2UL * static_cast<uint64_t>(rankNum) * 32UL + QMRS_WIN_ALIGN - 1) / QMRS_WIN_ALIGN * QMRS_WIN_ALIGN;
+    uint64_t winReservedBytes = (2UL * static_cast<uint64_t>(rankNum) * QMRS_BARRIER_FLAG_BYTES + QMRS_WIN_ALIGN - 1) /
+                                QMRS_WIN_ALIGN * QMRS_WIN_ALIGN;
     uint64_t chunkBytes = static_cast<uint64_t>(chunkM) * static_cast<uint64_t>(n) * sizeof(uint16_t);
     uint64_t winRequiredBytes = winReservedBytes + static_cast<uint64_t>(rankNum) * chunkBytes;
     if (winRequiredBytes > QMRS_HCCL_BUF_SIZE_LIMIT) {
@@ -254,6 +272,15 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
         }
     }
 
+    // blockDim/rsCoreNum 下溢防护: rsCoreNum = usedCoreNum - rankSize (kernel 侧 uint32 减法),
+    // usedCoreNum <= rankSize 时回绕为超大值 → 通信/计算角色模型破坏; == 时 rsCoreNum=0 →
+    // 归约核缺失, 输出永不写入。host 侧强校验 (kernel 侧 InitAivRunContext 同源注释)。
+    if (tilingData.mmTilingData.usedCoreNum <= static_cast<uint32_t>(rankNum)) {
+        throw std::invalid_argument(
+            "ERROR: mmTilingData.usedCoreNum=" + std::to_string(tilingData.mmTilingData.usedCoreNum) +
+            " must be greater than rankNum=" + std::to_string(rankNum) + " (rsCoreNum underflow guard)");
+    }
+
     INFO_LOG("[Rank %d] Step 1: aclInit", rankId);
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -305,8 +332,8 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     // B [n, k] fp8 (TransB=true, 列主序), ScaleB [n, ceil(k/64)*2] fp8_e8m0
     std::vector<uint8_t> hostA(m * k, 0);
     std::vector<uint8_t> hostB(n * k, 0); // TransB=true: B 存储为 [n, k] C-order
-    std::vector<uint8_t> hostScaleA(m * CeilDiv(k, 64) * 2, 0);
-    std::vector<uint8_t> hostScaleB(n * CeilDiv(k, 64) * 2, 0);
+    std::vector<uint8_t> hostScaleA(m * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
+    std::vector<uint8_t> hostScaleB(n * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
     // 输出：[chunkM, n] bfloat16 per rank
     std::vector<uint16_t> hostOutput(chunkM * n, 0);
 
@@ -329,10 +356,23 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     }
     std::string inputDir = baseDir + "/input/" + std::to_string(rankId);
     std::string outputDir = baseDir + "/output/" + std::to_string(rankId);
-    ReadFile(inputDir + "/input_a.bin", hostA.data(), sizeA);
-    ReadFile(inputDir + "/input_b.bin", hostB.data(), sizeB);
-    ReadFile(inputDir + "/input_scaleA.bin", hostScaleA.data(), sizeScaleA);
-    ReadFile(inputDir + "/input_scaleB.bin", hostScaleB.data(), sizeScaleB);
+    // 输入加载失败须显式失败: 静默用全零数据继续会输出全零结果, 精度比对失败且无根因线索
+    if (!ReadFile(inputDir + "/input_a.bin", hostA.data(), sizeA)) {
+        ERROR_LOG("ReadFile failed: %s", (inputDir + "/input_a.bin").c_str());
+        return -1;
+    }
+    if (!ReadFile(inputDir + "/input_b.bin", hostB.data(), sizeB)) {
+        ERROR_LOG("ReadFile failed: %s", (inputDir + "/input_b.bin").c_str());
+        return -1;
+    }
+    if (!ReadFile(inputDir + "/input_scaleA.bin", hostScaleA.data(), sizeScaleA)) {
+        ERROR_LOG("ReadFile failed: %s", (inputDir + "/input_scaleA.bin").c_str());
+        return -1;
+    }
+    if (!ReadFile(inputDir + "/input_scaleB.bin", hostScaleB.data(), sizeScaleB)) {
+        ERROR_LOG("ReadFile failed: %s", (inputDir + "/input_scaleB.bin").c_str());
+        return -1;
+    }
 
     GM_ADDR deviceA = nullptr;
     GM_ADDR deviceB = nullptr;
@@ -372,7 +412,10 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     // 只拷回 chunkM * n 的输出（reduceSum 后的 per-rank 结果），precision/perf 模式共用
     ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
 
-    WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+    if (!WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput)) {
+        ERROR_LOG("WriteFile failed: %s", (outputDir + "/npu_out.bin").c_str());
+        return -1;
+    }
 
     constexpr int32_t BENCHMARK_ITERATIONS = 10;
     int32_t iterations = (mode == "perf") ? BENCHMARK_ITERATIONS : 1;
@@ -435,11 +478,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    int status;
+    int status = 0;
     bool all_success = true;
     for (int rankId = 0; rankId < rankNum; ++rankId) {
         pid_t pid = pids[rankId];
-        waitpid(pid, &status, 0);
+        pid_t waitRet = waitpid(pid, &status, 0);
+        if (waitRet == -1) {
+            all_success = false;
+            ERROR_LOG("waitpid failed for PID %d", pid);
+            continue;
+        }
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             all_success = false;
             ERROR_LOG("Worker PID %d failed", pid);
