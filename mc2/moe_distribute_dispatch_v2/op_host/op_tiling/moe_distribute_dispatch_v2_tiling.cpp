@@ -1974,6 +1974,11 @@ static ge::graphStatus FinalizeDispatchTiling(gert::TilingContext *context,
                                               uint32_t localMoeExpertNum)
 {
     tilingData.moeDistributeDispatchV2Info.isMc2Context = isMc2Context;
+    // CCU 控制面字段显式默认关：两字段前身 reserved 从未被任何基线路径写过，凡只走 A3Public 的入口
+    // （V3/弹性）不写即为脏值——而 V3 复用同一 fullmesh kernel，脏值 true 会误入 CCU 分支拿到无效
+    // GetHcclContext。V2 入口的 SetCcuCtrlTiling 在本函数之后按需覆写 true，时序安全
+    tilingData.moeDistributeDispatchV2Info.useCcuCtrl = false;
+    tilingData.moeDistributeDispatchV2Info.useCcuScanGm = false;
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     OP_TILING_CHECK(CheckAndSetPlatformInfo(context, &tilingData, isLayered, nodeName) != ge::GRAPH_SUCCESS,

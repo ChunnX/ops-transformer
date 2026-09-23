@@ -38,6 +38,9 @@ protected:
 class MoeDistributeDispatchV2TilingFuncA5 : public MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context) override;
+    // CCU 控制面统一使能入口（V2/V3 tiling 入口共用：fullmesh_v2+env 开启时配置，否则显式关）；
+    // commAlg/groupEp 由调用方按各自属性布局读取传入（V2/V3 的 attr 索引不同）
+    ge::graphStatus TryEnableCcuCtrl(gert::TilingContext *context, const char *commAlg, const char *groupEp);
     ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context) override;
     bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales,
                              const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
