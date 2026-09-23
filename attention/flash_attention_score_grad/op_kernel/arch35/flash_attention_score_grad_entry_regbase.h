@@ -90,7 +90,6 @@ using namespace AscendC::Reg;
         op.Process(); \
         if (ORIG_DTYPE_QUERY != DT_FLOAT) { \
             op.SyncALLCores(); \
-            op.UnInit(); \
             pipeBase.Destroy(); \
             TPipe pipePost; \
             if constexpr (!IS_NZ_OUT) { \
@@ -110,7 +109,6 @@ using namespace AscendC::Reg;
                 opPost.Process(); \
             } \
         } else { \
-            op.UnInit(); \
             pipeBase.Destroy(); \
         } \
     } while (0)
@@ -169,7 +167,6 @@ using namespace AscendC::Reg;
         op.Process(); \
         if (tilingData->s1s2BNGS1S2BaseParams.sinkOptional) { \
             op.SyncALLCores(); \
-            op.UnInit(); \
             pipeBase.Destroy(); \
             TPipe pipePost; \
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, \
@@ -178,7 +175,6 @@ using namespace AscendC::Reg;
             opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost); \
             opPost.Process(); \
         } else { \
-            op.UnInit(); \
             pipeBase.Destroy(); \
         } \
     } while (0)
