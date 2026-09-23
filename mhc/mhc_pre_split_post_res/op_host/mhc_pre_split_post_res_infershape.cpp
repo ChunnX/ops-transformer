@@ -157,7 +157,7 @@ static ge::graphStatus InferDataType4MhcPreSplitPostRes(gert::InferDataTypeConte
     // h_post/h_res 恒 FP32（kernel 全 FP32 计算后写出，与 x dtype 无关）
     context->SetOutputDataType(OUT_H_POST_INDEX, ge::DT_FLOAT);
     context->SetOutputDataType(OUT_H_RES_INDEX, ge::DT_FLOAT);
-    return ge::graphStatus::GRAPH_SUCCESS;
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_INFERSHAPE(MhcPreSplitPostRes).InferShape(InferShape4MhcPreSplitPostRes).InferDataType(
