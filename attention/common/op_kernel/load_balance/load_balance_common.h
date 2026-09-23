@@ -93,7 +93,8 @@ enum class DataType : uint8_t {
     INT4,
     INT8,
     INT32,
-    FP8_E4M3FN,
+    FP8,
+    HIFP8,
     BUTT
 };
 
@@ -204,7 +205,8 @@ static inline uint32_t GetDataTypeByteSize(DataType type)
         case (DataType::BF16):
             return 2U;
         case (DataType::INT8):
-        case (DataType::FP8_E4M3FN):
+        case (DataType::FP8):
+        case (DataType::HIFP8):
             return 1U;
         default:
             return 2U;

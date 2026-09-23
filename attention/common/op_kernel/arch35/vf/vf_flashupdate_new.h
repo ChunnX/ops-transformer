@@ -31,7 +31,6 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
     RegTensor<float> vreg_input_pre;
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_mul;
@@ -42,16 +41,10 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
     // dstTensor = preTensor * expMaxTensor + curTensor
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize); // [m,8]
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
 
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
@@ -204,7 +197,6 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
                                                const float deScaleV, const float deScaleVPre)
 {
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
     RegTensor<float> vreg_input_pre;
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_mul;
@@ -223,15 +215,9 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
