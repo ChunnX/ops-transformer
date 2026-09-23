@@ -19,12 +19,15 @@
  *   4. idx  = sum_k 1[y > 0.5*(c_k + c_k+1)]                              (AIV, strict greater)
  *   5. prim = c[idx], r = y - prim                                        (AIV)
  *   6. rho = ||r||, gamma = norm * rho, r_unit = r / max(rho, 1e-30)      (AIV)
- *   7. p    = qjl_matrix * r_unit                                         (AIC, fp32 cube)
+ *   7. p    = r_unit @ qjl^T                                              (AIC, fp32 cube;
+ *             the runtime transpose flag of the B operand has to be set)
  *   8. qjl  = 1[p >= 0] bit packed together with the packed idx           (AIV)
  *
- * AIC and AIV run 1:1; the intermediate matrices live in the user workspace and the phases are
- * separated by SyncAll barriers. Everything is computed in fp32; bf16 is produced exactly once,
- * on the store of norm/gamma.
+ * AIC and AIV run 1:1. Both sub cores walk the same call sequence: the matmul framework turns the
+ * AIV call into the KFC client and the AIC call into the serving cube work, so a global SyncAll
+ * barrier must not be inserted between the phases (the cube side has to stay in the serving loop).
+ * The intermediate matrices live in the user workspace. Everything is computed in fp32; bf16 is
+ * produced exactly once, on the store of norm/gamma.
  */
 
 #ifndef KV_CACHE_TURBO_QUANT_IMPL_HPP
@@ -83,8 +86,6 @@ template <uint8_t BITS>
 struct PackCfg {
     static constexpr uint32_t kChunkLanes = (BITS == 1) ? 16U : 8U;
     static constexpr uint32_t kChunkBytes = BITS * kChunkLanes / 8U;
-    static constexpr uint32_t kChunkCount = (KCTQ_D * BITS) / 16U;
-    static constexpr uint32_t kRepStride = (BITS == 1) ? 2U : 1U;
     static constexpr bool kSplitChunk = (BITS == 4);
     static constexpr uint32_t kChunkSlots = 64;
     static constexpr uint32_t kHalfSlots = kChunkSlots / 2;
@@ -126,11 +127,6 @@ public:
                                 static_cast<uint64_t>(td->totalRows));
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma),
                                  static_cast<uint64_t>(td->totalRows));
-        // TEMP DEBUG: float views of the two byte outputs, used to read back intermediate results
-        dbgIdxGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(quantIdx), 96U);
-        dbgQjlGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(quantQjl), 32U);
-        dbgGammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(quantGamma), 4U);
-        dbgNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(quantNorm), 4U);
 
         __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
         wsUNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsU),
@@ -169,10 +165,6 @@ public:
             pipe_.InitBuffer(resBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(primBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(idxBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(valBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(wBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(wHiBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(qjlWBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(workBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(denomBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(scalarBuf_, PackCfg<BITS>::kChunkSlots * sizeof(float));
@@ -181,10 +173,6 @@ public:
             pipe_.InitBuffer(chunkHiBuf_, PackCfg<BITS>::kChunkSlots * sizeof(int32_t));
             pipe_.InitBuffer(bf16Buf_, 32);
             pipe_.InitBuffer(byteBuf_, 64);
-            pipe_.InitBuffer(dbgBuf_, KCTQ_D * sizeof(float)); // TEMP DEBUG
-            pipe_.InitBuffer(dbgStashBuf_, 32);    // TEMP DEBUG
-            pipe_.InitBuffer(scalarStashBuf_, 32); // TEMP DEBUG
-            BuildWeightTables();
         }
     }
 
@@ -196,50 +184,18 @@ public:
         if (g_coreType == AIV) {
             NormalizeRows();
         }
-        // SyncAll<false>(); // TEMP experiment
 
-        // Both sub cores walk the same call sequence: the framework turns the AIV call into the
-        // KFC client and the AIC call into the serving cube work.
         Gemm(wsUSliceGm_, rotGm_, wsYSliceGm_);
-        // SyncAll<false>(); // TEMP experiment
 
         if (g_coreType == AIV) {
             QuantizeRows();
         }
-        // SyncAll<false>(); // TEMP experiment
 
         Gemm(wsRSliceGm_, qjlGm_, wsPSliceGm_);
-        // SyncAll<false>(); // TEMP experiment
 
         if (g_coreType == AIV) {
             QjlRows();
-            // DumpGemmOutput(); // TEMP DEBUG
         }
-    }
-
-    // TEMP DEBUG: snapshot of the GEMM result (all 16 rows) plus the values that QuantizeRows saw.
-    __aicore__ inline void DumpGemmOutput()
-    {
-        LocalTensor<float> dbg = dbgBuf_.Get<float>();
-        for (uint32_t j = 0; j < 16U; ++j) {
-            DataCopyExtParams cpD{1, static_cast<uint32_t>(8U * sizeof(float)), 0, 0, 0};
-            DataCopyPadExtParams<float> padD{false, 0, 0, 0};
-            DataCopyPad(dbg[static_cast<uint64_t>(j) * 8U],
-                        wsYNormGm_[static_cast<uint64_t>(j) * KCTQ_D], cpD, padD);
-            PipeBarrier<PIPE_ALL>();
-        }
-        DataCopyExtParams cpHead{1, static_cast<uint32_t>(96U * sizeof(float)), 0, 0, 0};
-        DataCopyPad(dbgIdxGm_, dbg, cpHead);
-        PipeBarrier<PIPE_ALL>();
-        DataCopyExtParams cpTail{1, static_cast<uint32_t>(32U * sizeof(float)), 0, 0, 0};
-        DataCopyPad(dbgQjlGm_, dbg[96U], cpTail);
-        PipeBarrier<PIPE_ALL>();
-        DataCopyExtParams cpY{1, static_cast<uint32_t>(4U * sizeof(float)), 0, 0, 0};
-        DataCopyPad(dbgGammaGm_, dbgStashBuf_.Get<float>(), cpY);
-        PipeBarrier<PIPE_ALL>();
-        DataCopyExtParams cpS{1, static_cast<uint32_t>(4U * sizeof(float)), 0, 0, 0};
-        DataCopyPad(dbgNormGm_, scalarStashBuf_.Get<float>(), cpS);
-        PipeBarrier<PIPE_ALL>();
     }
 
 private:
@@ -259,27 +215,6 @@ private:
             value *= 2.0f;
         }
         return value;
-    }
-
-    __aicore__ inline void BuildWeightTables()
-    {
-        LocalTensor<float> w = wBuf_.Get<float>();
-        LocalTensor<float> wHi = wHiBuf_.Get<float>();
-        LocalTensor<float> qw = qjlWBuf_.Get<float>();
-        for (uint32_t lane = 0; lane < KCTQ_D; ++lane) {
-            const uint32_t c = lane % PackCfg<BITS>::kChunkLanes;
-            float lo = Pow2(static_cast<uint32_t>(BITS * c));
-            float hi = 0.0f;
-            if constexpr (BITS == 4) {
-                lo = (c < 4) ? Pow2(4U * c) : 0.0f;
-                hi = (c >= 4) ? Pow2(4U * (c - 4U)) : 0.0f;
-            }
-            w.SetValue(lane, lo);
-            wHi.SetValue(lane, hi);
-            qw.SetValue(lane, Pow2(lane % kQjlChunkLanes));
-        }
-        SetFlag<HardEvent::S_V>(EVENT_ID0);
-        WaitFlag<HardEvent::S_V>(EVENT_ID0);
     }
 
     // ---- AIV: steps 1 and 2 ---------------------------------------------------------------------
@@ -391,14 +326,6 @@ private:
             DataCopyPad(sc[24], wsNormGm_[row], cpN, padY);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-            if (row == rowBegin_) { // TEMP DEBUG: y as seen by QuantizeRows (first 4 lanes)
-                SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                LocalTensor<float> dg = dbgStashBuf_.Get<float>();
-                for (uint32_t i = 0; i < 4U; ++i) {
-                    dg.SetValue(i, y.GetValue(i));
-                }
-            }
 
             LocalTensor<float> mask = tmpBuf_.Get<float>();
             LocalTensor<float> idx = idxBuf_.Get<float>();
@@ -437,13 +364,6 @@ private:
 
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            if (row == rowBegin_) { // TEMP DEBUG: rho / norm / gamma / rho^2 of the first row
-                LocalTensor<float> ds = scalarStashBuf_.Get<float>();
-                ds.SetValue(0, sc.GetValue(8));
-                ds.SetValue(1, sc.GetValue(24));
-                ds.SetValue(2, sc.GetValue(40));
-                ds.SetValue(3, sc.GetValue(48));
-            }
             const float rho = sc.GetValue(16);
             SetFlag<HardEvent::S_V>(EVENT_ID0);
             WaitFlag<HardEvent::S_V>(EVENT_ID0);
@@ -503,10 +423,6 @@ private:
         if constexpr (PackCfg<BITS>::kSplitChunk) {
             Cast(lo, chunk, RoundMode::CAST_RINT, CHUNKS);
             Cast(hi, chunk[PackCfg<BITS>::kHalfSlots], RoundMode::CAST_RINT, CHUNKS);
-            PipeBarrier<PIPE_V>();
-            ShiftLeft(hi, hi, static_cast<int32_t>(16), CHUNKS);
-            PipeBarrier<PIPE_V>();
-            Or(lo, lo, hi, CHUNKS);
         } else {
             Cast(lo, chunk, RoundMode::CAST_RINT, CHUNKS);
         }
@@ -514,10 +430,21 @@ private:
         SetFlag<HardEvent::V_S>(EVENT_ID0);
         WaitFlag<HardEvent::V_S>(EVENT_ID0);
 
+        // A 4bit chunk consists of two independent 16bit halves and each half owns its own two
+        // bytes. They are deliberately not merged into one 32bit word: the shift/or merge silently
+        // dropped every lane beyond the first eight chunks on the 910B.
+        constexpr uint32_t LOW_BYTES = PackCfg<BITS>::kSplitChunk ? 2U : CHUNK_BYTES;
         for (uint32_t c = 0; c < CHUNKS; ++c) {
-            const uint32_t word = static_cast<uint32_t>(lo.GetValue(c));
-            for (uint32_t b = 0; b < CHUNK_BYTES; ++b) {
-                out.SetValue(c * CHUNK_BYTES + b, static_cast<uint8_t>((word >> (8U * b)) & 0xFFU));
+            const uint32_t low = static_cast<uint32_t>(lo.GetValue(c));
+            for (uint32_t b = 0; b < LOW_BYTES; ++b) {
+                out.SetValue(c * CHUNK_BYTES + b, static_cast<uint8_t>((low >> (8U * b)) & 0xFFU));
+            }
+            if constexpr (PackCfg<BITS>::kSplitChunk) {
+                const uint32_t high = static_cast<uint32_t>(hi.GetValue(c));
+                for (uint32_t b = 0; b < CHUNK_BYTES - LOW_BYTES; ++b) {
+                    out.SetValue(c * CHUNK_BYTES + LOW_BYTES + b,
+                                 static_cast<uint8_t>((high >> (8U * b)) & 0xFFU));
+                }
             }
         }
         PipeBarrier<PIPE_ALL>();
@@ -588,10 +515,6 @@ private:
     TBuf<TPosition::VECCALC> resBuf_;
     TBuf<TPosition::VECCALC> primBuf_;
     TBuf<TPosition::VECCALC> idxBuf_;
-    TBuf<TPosition::VECCALC> valBuf_;
-    TBuf<TPosition::VECCALC> wBuf_;
-    TBuf<TPosition::VECCALC> wHiBuf_;
-    TBuf<TPosition::VECCALC> qjlWBuf_;
     TBuf<TPosition::VECCALC> workBuf_;
     TBuf<TPosition::VECCALC> denomBuf_;
     TBuf<TPosition::VECCALC> scalarBuf_;
@@ -600,9 +523,6 @@ private:
     TBuf<TPosition::VECCALC> chunkHiBuf_;
     TBuf<TPosition::VECCALC> bf16Buf_;
     TBuf<TPosition::VECCALC> byteBuf_;
-    TBuf<TPosition::VECCALC> dbgBuf_; // TEMP DEBUG
-    TBuf<TPosition::VECCALC> dbgStashBuf_;    // TEMP DEBUG
-    TBuf<TPosition::VECCALC> scalarStashBuf_; // TEMP DEBUG
 
     TBuf<TPosition::VECCALC> cTileBuf_;
     TBuf<TPosition::VECCALC> mmLocalWsBuf_;
@@ -619,10 +539,6 @@ private:
     GlobalTensor<uint8_t> qjlOutGm_;
     GlobalTensor<bfloat16_t> normGm_;
     GlobalTensor<bfloat16_t> gammaGm_;
-    GlobalTensor<float> dbgIdxGm_; // TEMP DEBUG
-    GlobalTensor<float> dbgQjlGm_; // TEMP DEBUG
-    GlobalTensor<float> dbgGammaGm_; // TEMP DEBUG
-    GlobalTensor<float> dbgNormGm_;  // TEMP DEBUG
     GlobalTensor<float> wsUNormGm_;
     GlobalTensor<float> wsYNormGm_;
     GlobalTensor<float> wsRNormGm_;
