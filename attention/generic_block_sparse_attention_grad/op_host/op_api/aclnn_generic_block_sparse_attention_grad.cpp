@@ -71,9 +71,10 @@ int64_t GetHeadNumFromKey(const aclTensor *key, const char *layout)
 aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout,
                      const aclTensor *out, const aclTensor *lse, const aclTensor *sparseBlockIdx,
                      const aclTensor *sparseBlockCount, const aclTensor *metadataOptional,
-                     const aclTensor *attenMaskOptional, const aclIntArray *blockShape, int64_t isPackedGQA,
-                     char *layoutQ, char *layoutKv, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft,
-                     int64_t winRight, const aclTensor *dQuery, const aclTensor *dKey, const aclTensor *dValue)
+                     const aclTensor *attenMaskOptional, const aclIntArray *blockShape, char *layoutQ, char *layoutKv,
+                     int64_t layoutSparsePattern, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft,
+                     int64_t winRight, int64_t residualBlockMode, bool isConsistentTopK, const aclTensor *dQuery,
+                     const aclTensor *dKey, const aclTensor *dValue)
 {
     CHECK_RET(TensorOk(query) && TensorOk(key) && TensorOk(value) && TensorOk(dout) && TensorOk(out) && TensorOk(lse),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -82,7 +83,14 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
     CHECK_RET(TensorOk(dQuery) && TensorOk(dKey) && TensorOk(dValue), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(layoutQ != nullptr && layoutKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(strcmp(layoutQ, layoutKv) == 0, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(isPackedGQA == 1, ACLNN_ERR_PARAM_INVALID);
+    if (layoutSparsePattern != 1 || residualBlockMode != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Only layoutSparsePattern=1 and residualBlockMode=0 are supported, got %ld and %ld.",
+                layoutSparsePattern, residualBlockMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // Both TopK hints use the same per-block sparse-count implementation.
+    (void)isConsistentTopK;
     CHECK_RET(maskType == GSAG_SUPPORTED_MASK_TYPE, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(softmaxPrecision == GSAG_SUPPORTED_SOFTMAX_PRECISION, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(winLeft == -1 && winRight == -1, ACLNN_ERR_PARAM_INVALID);
@@ -116,24 +124,25 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     const aclTensor *lse, const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
     const aclTensor *metadataOptional, const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsQOptional,
     const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclIntArray *blockShape, int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue,
-    int64_t maskType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, aclTensor *dQuery, aclTensor *dKey,
-    aclTensor *dValue, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *blockShape, char *layoutQ, char *layoutKv, int64_t layoutSparsePattern, double scaleValue,
+    int64_t maskType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t residualBlockMode,
+    bool isConsistentTopK, aclTensor *dQuery, aclTensor *dKey, aclTensor *dValue, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    L2_DFX_PHASE_1(
-        aclnnGenericBlockSparseAttentionGrad,
-        DFX_IN(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
-               cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockShape,
-               isPackedGQA, layoutQ, layoutKv, scaleValue, maskType, softmaxPrecision, winLeft, winRight),
-        DFX_OUT(dQuery, dKey, dValue));
+    L2_DFX_PHASE_1(aclnnGenericBlockSparseAttentionGrad,
+                   DFX_IN(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional,
+                          attenMaskOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional,
+                          sequsedKvOptional, blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType,
+                          softmaxPrecision, winLeft, winRight, residualBlockMode, isConsistentTopK),
+                   DFX_OUT(dQuery, dKey, dValue));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = Validate(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional,
-                        attenMaskOptional, blockShape, isPackedGQA, layoutQ, layoutKv, maskType, softmaxPrecision,
-                        winLeft, winRight, dQuery, dKey, dValue);
+                        attenMaskOptional, blockShape, layoutQ, layoutKv, layoutSparsePattern, maskType,
+                        softmaxPrecision, winLeft, winRight, residualBlockMode, isConsistentTopK, dQuery, dKey, dValue);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto queryC = l0op::Contiguous(query, uniqueExecutor.get());
@@ -170,10 +179,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
         CHECK_RET(sequsedKvC != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto outs = l0op::GenericBlockSparseAttentionGrad(queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC,
-                                                      attenC, cuQC, cuKvC, sequsedQC, sequsedKvC, blockShape,
-                                                      isPackedGQA, layoutQ, layoutKv, scaleValue, maskType,
-                                                      softmaxPrecision, winLeft, winRight, uniqueExecutor.get());
+    auto outs = l0op::GenericBlockSparseAttentionGrad(
+        queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC, attenC, cuQC, cuKvC, sequsedQC, sequsedKvC,
+        blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType, softmaxPrecision, winLeft, winRight,
+        residualBlockMode, isConsistentTopK, uniqueExecutor.get());
     CHECK_RET(outs[0] != nullptr && outs[1] != nullptr && outs[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto dqView = l0op::ViewCopy(outs[0], dQuery, uniqueExecutor.get());

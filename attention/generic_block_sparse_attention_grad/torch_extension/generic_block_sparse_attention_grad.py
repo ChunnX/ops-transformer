@@ -52,6 +52,15 @@ def _resolve_mask_mode(mask_mode: Union[str, int, MaskMode, None]) -> int:
         ) from exc
 
 
+def _check_sparse_attributes(layout_sparse_pattern: int, residual_block_mode: int) -> None:
+    if layout_sparse_pattern != 1:
+        raise ValueError(
+            f"layout_sparse_pattern currently only supports 1 (BNKQ), got {layout_sparse_pattern}"
+        )
+    if residual_block_mode != 0:
+        raise ValueError(f"residual_block_mode currently only supports 0, got {residual_block_mode}")
+
+
 def calc_gsag_metadata_size(batch_size: int, num_heads_q: int, num_j: int) -> int:
     """Required metadata int32 length:
     A5 : TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE
@@ -140,19 +149,19 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             "int num_heads_q, int num_heads_kv, int head_dim, int[] block_shape, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "int? max_seqlen_q=None, int? max_seqlen_kv=None, bool is_packed_gqa=True, "
-            'str layout_q="TND", str layout_kv="TND", '
+            "int? max_seqlen_q=None, int? max_seqlen_kv=None, "
+            'str layout_q="TND", str layout_kv="TND", int layout_sparse_pattern=1, '
             "int mask_mode=1, int softmax_precision=0, "
-            "int win_left=-1, int win_right=-1) -> Tensor",
+            "int win_left=-1, int win_right=-1, int residual_block_mode=0, bool is_consistent_top_k=False) -> Tensor",
             "generic_block_sparse_attention_grad("
             "Tensor q, Tensor k, Tensor v, Tensor dout, Tensor attn_out, Tensor softmax_lse, "
             "Tensor sparse_block_idx, Tensor sparse_block_count, int[] block_shape, *, "
             "Tensor? metadata=None, Tensor? attn_mask=None, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "bool is_packed_gqa=True, "
-            'str layout_q="TND", str layout_kv="TND", '
+            'str layout_q="TND", str layout_kv="TND", int layout_sparse_pattern=1, '
             "float softmax_scale=1.0, int mask_mode=1, int softmax_precision=0, "
-            "int win_left=-1, int win_right=-1) -> (Tensor, Tensor, Tensor)",
+            "int win_left=-1, int win_right=-1, int residual_block_mode=0, "
+            "bool is_consistent_top_k=False) -> (Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -171,19 +180,22 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             seqused_kv: Optional[torch.Tensor] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
-            is_packed_gqa: bool = True,
             layout_q: str = "TND",
             layout_kv: str = "TND",
+            layout_sparse_pattern: int = 1,
             mask_mode: int = 1,
             softmax_precision: int = 0,
             win_left: int = -1,
             win_right: int = -1,
+            residual_block_mode: int = 0,
+            is_consistent_top_k: bool = False,
         ) -> torch.Tensor:
+            _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
             del (
+                is_consistent_top_k,
                 sparse_block_count,
                 num_heads_kv,
                 head_dim,
-                is_packed_gqa,
                 layout_q,
                 layout_kv,
                 mask_mode,
@@ -239,16 +251,20 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
-            is_packed_gqa: bool = True,
             layout_q: str = "TND",
             layout_kv: str = "TND",
+            layout_sparse_pattern: int = 1,
             softmax_scale: float = 1.0,
             mask_mode: int = 1,
             softmax_precision: int = 0,
             win_left: int = -1,
             win_right: int = -1,
+            residual_block_mode: int = 0,
+            is_consistent_top_k: bool = False,
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
             del (
+                is_consistent_top_k,
                 dout,
                 attn_out,
                 softmax_lse,
@@ -261,7 +277,6 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
                 cu_seqlens_kv,
                 seqused_q,
                 seqused_kv,
-                is_packed_gqa,
                 layout_q,
                 layout_kv,
                 softmax_scale,
@@ -298,14 +313,17 @@ def generic_block_sparse_attention_grad_metadata(
     seqused_kv: Optional[torch.Tensor] = None,
     max_seqlen_q: Optional[int] = None,
     max_seqlen_kv: Optional[int] = None,
-    is_packed_gqa: bool = True,
     layout_q: str = "TND",
     layout_kv: str = "TND",
+    layout_sparse_pattern: int = 1,
     mask_mode: Union[int, MaskMode, str] = MaskMode.CAUSAL,
     softmax_precision: int = 0,
     win_left: int = -1,
     win_right: int = -1,
+    residual_block_mode: int = 0,
+    is_consistent_top_k: bool = False,
 ) -> torch.Tensor:
+    _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
     if len(block_shape) < 2:
         raise ValueError("block_shape is required and must be [block_x, block_y]")
     max_seqlen_q_i = _resolve_max_seqlen_q(
@@ -336,13 +354,15 @@ def generic_block_sparse_attention_grad_metadata(
         num_heads_kv,
         head_dim,
         block_shape,
-        int(is_packed_gqa),
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         mask_mode_i,
         softmax_precision,
         win_left,
         win_right,
+        residual_block_mode,
+        is_consistent_top_k,
     )
 
 
@@ -364,15 +384,18 @@ def generic_block_sparse_attention_grad(
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    is_packed_gqa: bool = True,
     layout_q: str = "TND",
     layout_kv: str = "TND",
+    layout_sparse_pattern: int = 1,
     softmax_scale: float = 1.0,
     mask_mode: Union[int, MaskMode, str] = MaskMode.CAUSAL,
     softmax_precision: int = 0,
     win_left: int = -1,
     win_right: int = -1,
+    residual_block_mode: int = 0,
+    is_consistent_top_k: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
     if len(block_shape) < 2:
         raise ValueError("block_shape is required and must be [block_x, block_y]")
     mask_mode_i = _resolve_mask_mode(mask_mode)
@@ -393,14 +416,16 @@ def generic_block_sparse_attention_grad(
         seqused_q,
         seqused_kv,
         block_shape,
-        int(is_packed_gqa),
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         softmax_scale,
         mask_mode_i,
         softmax_precision,
         win_left,
         win_right,
+        residual_block_mode,
+        is_consistent_top_k,
     )
 
 
