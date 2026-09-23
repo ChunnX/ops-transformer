@@ -75,19 +75,33 @@ public:
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
     {
         computeOp_.Process(startExpertIdx, expertNum);
-        // AIC 核间同步：确保所有核完成 GMM 计算后才下发通信
+        // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信
         AscendC::SyncAll();
-        if (AscendC::GetBlockIdx() == 0) {
-            CommitAlltoAllV(startExpertIdx, expertNum);
-            WaitAlltoAllV();
+        // 通信由 AICPU/CCU 引擎异步执行，不占用 AIC 核：上一批通信已与本批 GMM 重叠推进。
+        // 此处全核等待其完成（多核 Wait 协议：工作核轮询推进、非工作核跟随），并排空
+        // 参数区 datamove 依赖（Wait 在数据搬移管线上记录依赖，标量侧复用参数数组前
+        // 须 PipeBarrier 排空），随后方可复用参数数组提交本批
+        if (submitted_ > 0U) {
+            hccl_.Wait(a2avHandles_[submitted_ - 1U]);
+            AscendC::PipeBarrier<PIPE_ALL>();
         }
-        AscendC::SyncAll();
+        // 全核提交（Hccl 内部 workingFlag_ 门控：仅 block0 写参数/敲 doorbell，
+        // 各核获得一致 handle）；提交后本核即刻进入下一批 GMM，通信在引擎侧异步执行
+        a2avHandles_[submitted_] = CommitAlltoAllV(startExpertIdx, expertNum);
+        submitted_++;
     }
 
     __aicore__ inline void End()
     {
+        // 末批等待（全核）→ 核间汇聚 → Finalize（须有提交才可调用，零提交时
+        // Finalize 内部 handleId=-1 越界死循环）
+        if (submitted_ > 0U) {
+            hccl_.Wait(a2avHandles_[submitted_ - 1U]);
+        }
         AscendC::SyncAll();
-        hccl_.Finalize();
+        if (submitted_ > 0U) {
+            hccl_.Finalize();
+        }
     }
 
 private:
@@ -100,7 +114,7 @@ private:
         }
     }
 
-    __aicore__ inline void CommitAlltoAllV(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline AscendC::HcclHandle CommitAlltoAllV(uint32_t startExpertIdx, uint32_t expertNum)
     {
         const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
         const uint32_t rankDim = static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
@@ -150,22 +164,19 @@ private:
             }
         }
 
-        alltoAllvHandle_ = hccl_.template AlltoAllV<true>(
-            gmmOutputGM_, commParams_.sendCnt, commParams_.sendOffset, GetHcclDataType(), yGM_, commParams_.recvCnt,
-            commParams_.recvOffset, GetHcclDataType(), static_cast<uint8_t>(1));
+        return hccl_.template AlltoAllV<true>(gmmOutputGM_, commParams_.sendCnt, commParams_.sendOffset,
+                                              GetHcclDataType(), yGM_, commParams_.recvCnt, commParams_.recvOffset,
+                                              GetHcclDataType(), static_cast<uint8_t>(1));
     }
 
-    __aicore__ inline void WaitAlltoAllV()
-    {
-        if (alltoAllvHandle_ >= 0) {
-            hccl_.Wait(alltoAllvHandle_);
-        }
-    }
+    // 分批上限：expertNum=CeilDiv(e,4) 口径下总批数 ≤ 4（e ≤ 32），留余量取 8
+    static constexpr uint32_t MAX_COMM_LOOP = 8U;
 
     HcclType hccl_;
     ComputeOp computeOp_;
     A2avCommParams commParams_;
-    AscendC::HcclHandle alltoAllvHandle_{0};
+    AscendC::HcclHandle a2avHandles_[MAX_COMM_LOOP]{};
+    uint32_t submitted_{0};
     GM_ADDR yGM_{nullptr};
     GM_ADDR gmmOutputGM_{nullptr};
     const TilingDataType *tilingData_{nullptr};

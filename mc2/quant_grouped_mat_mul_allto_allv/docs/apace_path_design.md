@@ -65,10 +65,11 @@ kernel：if constexpr (TILINGKEY_USING_APACE_IMPL) 选路，任务类型全部�
         │     └ ComputeOp.Init(四表)    │   └────────────────────────────┘
         │   for 批 b: Process(b)        │
         │     ├ GMM(b) Blaze            │
-        │     ├ SyncAll                │
-        │     ├ block0: AllToAllV+Wait  │
-        │     └ SyncAll                │
-        │   End: SyncAll+Finalize      │
+        │     ├ SyncAll(写落GM)        │
+        │     ├ 全核Wait(b-1)+排空     │
+        │     └ 全核提交 AllToAllV(b)   │
+        │   (批b通信∥批b+1GMM,引擎执行) │
+        │   End: Wait末批+Finalize     │
         │   共享专家 MM(可选)            │
         └──────────────────────────────┘
 ```
@@ -186,8 +187,9 @@ errorCode 507018，与计算是否执行无关——只要实例化了 Blaze 模
 - `hccl_.InitV2(GetHcclContext<0>(), &hcclA2avTiling.hcclInitTiling)` +
   `SetCcTilingV2(offsetof 链)`——与原通路 `HcclA2avOp::Init` 同源同参（复用原 tiling
   的 HCCL 段），保证通信域/CCU 资源分配行为一致；
-- 通信提交与等待均在 AIC block0（`AlltoAllV<true>` 非阻塞返回 handle → `Wait(handle)`），
-  非工作核经 `SyncAll` 跟随；
+- 通信提交与等待均为**全核调用**（`AlltoAllV<true>` 非阻塞返回 handle；多核 Wait 协议：
+  Hccl 内部 workingFlag_ 门控 block0 写参数/敲 doorbell，工作核轮询推进、非工作核跟随），
+  与 AIC_ONLY 生产先例（allto_all_matmul hcomm 全核提交/全核等待）一致；
 - AIC_ONLY 任务类型下无 AIV 参与，无需核型守卫（见 4.6）。
 
 ### 4.2 批流水与同步协议（通算融合层）
@@ -195,28 +197,30 @@ errorCode 507018，与计算是否执行无关——只要实例化了 Blaze 模
 每批（`expertNum = CeilDiv(e,4)`，与原通路同口径，总批数 ≤ 4）：
 
 ```cpp
-Process(start, num):
-    computeOp_.Process(start, num);        // 全 AIC 核执行本批 Blaze GMM
-    AscendC::SyncAll();                    // ① 闭合本批 sendBuf 多核写依赖
-    if (GetBlockIdx() == 0) {
-        CommitAlltoAllV(start, num);       // ② block0 计算参数并提交（非阻塞）
-        WaitAlltoAllV();                   // ③ block0 等待本批 CCU 完成
+Process(start, num):                          // 全核同构
+    computeOp_.Process(start, num);           // 本批 Blaze GMM
+    AscendC::SyncAll();                       // ① 本批 sendBuf 多核写落 GM
+    if (submitted_ > 0) {                     // ② 全核 Wait 上一批 + PipeBarrier
+        hccl_.Wait(a2avHandles_[submitted_-1]);   // （排空参数区 datamove 依赖）
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
-    AscendC::SyncAll();                    // ④ 全核汇聚（非工作核对齐 block0）
+    a2avHandles_[submitted_] = CommitAlltoAllV(start, num);  // ③ 全核提交（非阻塞）
+    submitted_++;
 End():
+    if (submitted_ > 0) hccl_.Wait(末批);      // ④ 全核等待末批
     AscendC::SyncAll();
-    hccl_.Finalize();                      // 全 AIC 核调用（workingFlag_ 门控）
+    if (submitted_ > 0) hccl_.Finalize();     // 全核调用（workingFlag_ 门控）
 ```
 
 设计说明：
+- **通信不占用 AIC 核**：AllToAllV 提交后由 AICPU/CCU 引擎异步执行，AIC 核即刻进入
+  下一批 GMM——批 b 通信与批 b+1 GMM 重叠推进（in-flight ≤ 2），无串行等待；
 - ① 是**正确性关键**：本批 C 输出由多个 AIC 核经 fixpipe 写出，必须全核到齐
-  （GMM 落 GM）后才能让 CCU 读 sendBuf；
-- ③ 内联等待：本版**正确性优先**，通信与下一批计算不做重叠（后续优化方向：
-  提交批 b 后仅 Wait 批 b-1，保持 in-flight ≤ 2）；
-- `Finalize` 需有提交（handle ≥ 0）才调用——Hccl::Finalize 零提交时内部 handleId=-1
-  越界死循环（历史实测）；本实现每批必有提交（空批也提交零计数通信），恒满足；
-- `SyncAll` 使用默认 `isAIVOnly=true` 形态，AIC 核调用 + AIV 已退出的组合与已验证
-  形态一致（AIC_ONLY 任务类型下的 `SyncAll()` 亦有仓内生产先例）。
+  （GMM 落 GM）后才能让通信引擎读 sendBuf；
+- ② 在提交前等待上一批：通信引擎对参数数组的拷贝经数据搬移管线异步执行，标量侧
+  复用参数数组（`commParams_` 成员）前必须 `Wait` + `PipeBarrier` 排空；
+- `Finalize` 需有提交才调用——Hccl::Finalize 零提交时内部 handleId=-1 越界死循环
+  （历史实测）；本实现每批必有提交（空批也提交零计数通信），恒满足。
 
 ### 4.3 通信参数计算（含伸缩和恒等式）
 
@@ -334,9 +338,7 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 
 ## 6 已知限制与后续方向
 
-1. **通信-计算无重叠**：本版 block0 提交后立即 Wait（批间串行）。优化方向：提交批 b
-   后仅 Wait 批 b-1（in-flight ≤ 2），共享专家 MM 与末批通信重叠；
-2. **无 device 侧日志**：依赖 magic + host 日志 + json 审计三板斧；若后续 CANN 提供
+1. **无 device 侧日志**：依赖 magic + host 日志 + json 审计三板斧；若后续 CANN 提供
    可用 debug-bus/printf 通道可补充；
 4. **通信引擎**：`HcclServerTypeSelector` 支持 CCU/AICPU 两态，真机验证以 CCU 为主，
    AICPU 模式未充分验证。

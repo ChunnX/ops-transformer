@@ -97,9 +97,12 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 
 - Init：`hccl_.InitV2(GetHcclContext<0>, hcclInitTiling)` + `SetCcTilingV2(a2avCcTiling 偏移)`
   （复用原 tiling 的 HCCL 参数），随后初始化计算适配层；
-- Process（每批）：AIV 直接返回；AIC 全核 GMM → `SyncAll`（闭合多核写依赖）→
-  block0 提交非阻塞 `AlltoAllV<true>` 并 `Wait` → `SyncAll`；
-- End：`SyncAll` → `hccl_.Finalize()`（AIC 全核）；
+- Process（每批，全核同构）：GMM → `SyncAll`（本批写落 GM）→ 全核 `Wait` 上一批
+  （+`PipeBarrier` 排空参数区 datamove 依赖）→ 全核提交非阻塞 `AlltoAllV<true>`。
+  通信由 AICPU/CCU 引擎异步执行、不占用 AIC 核：批 b 通信与批 b+1 GMM 重叠推进
+  （in-flight ≤ 2）；提交/等待均全核调用（多核 Wait 协议：Hccl 内部 workingFlag_
+  门控 block0 写参数/敲 doorbell，工作核轮询推进、非工作核跟随）；
+- End：全核 `Wait` 末批 → `SyncAll` → `hccl_.Finalize()`（须有提交）；
 - 通信参数（元素单位，axis=N1）：
   - `sendCnt[r] = Σ_{eIdx∈批} sendCounts[eIdx + r·e] × N1`；
   - `sendOff[r] = 批起点(批前全部 token×N1) + 批内前序 rank 段累计`；
