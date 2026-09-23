@@ -9,7 +9,7 @@
  */
 
 #include "../mixed_quant_sparse_flash_mla_tiling.h"
-#include "../../op_kernel/arch35/mixed_quant_sparse_flash_mla_template_tiling_key.h"
+#include "../../op_kernel/arch35/mixed_quant_sparse_flash_mla_template_tiling_key_arch35.h"
 #include <algorithm>
 
 using namespace ge;

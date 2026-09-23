@@ -21,7 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "mixed_quant_sparse_flash_mla_tq_common.h"
-#include "mixed_quant_sparse_flash_mla_tiling_data.h"
+#include "mixed_quant_sparse_flash_mla_tiling_data_arch22.h"
 #include "mixed_quant_sparse_flash_mla_tq_csa_block_cube.h"
 #include "mixed_quant_sparse_flash_mla_tq_csa_block_vector.h"
 #include "../mixed_quant_sparse_flash_mla_metadata.h"
