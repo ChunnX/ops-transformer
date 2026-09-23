@@ -25,9 +25,9 @@ _op_namespace = torch.ops.cann_ops_transformer
 for _name in dir(ops):
     if _name.startswith("_"):
         continue
-    # Keep the documented Python wrapper for sandwich norm. The wrapper
+    # Keep the documented Python wrapper for MHC norm. The wrapper
     # provides the public argument order and controls the optional output.
-    if _name != "mhc_sandwich_norm_post_preonly" and hasattr(_op_namespace, _name):
+    if _name != "mhc_norm_post_preonly" and hasattr(_op_namespace, _name):
         continue
     globals()[_name] = getattr(ops, _name)
 del _name
