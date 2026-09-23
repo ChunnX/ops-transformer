@@ -174,8 +174,6 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
     aclnnStatus st = aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT,
                                                             gammaT, &workspaceSize, &executor);
     CHECK_RET(st == ACL_SUCCESS, ci.name + " GetWorkspaceSize ret=" + std::to_string(st));
-    std::cout << "[debug] " << ci.name << " workspaceSize=" << workspaceSize
-              << " expect=" << (totalVec * HEAD_DIM * 4) << std::endl;
 
     void *workspace = nullptr;
     if (workspaceSize > 0) {
