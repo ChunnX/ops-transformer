@@ -135,7 +135,14 @@ public:
     static constexpr uint32_t kSliceCvHi = 7U;  // 4bit high halves
     static constexpr uint32_t kSliceCiHi = 8U;
     static constexpr uint32_t kSliceDenom = 9U;
-    static constexpr uint32_t kSliceCount = 10U;
+    // Second copies of every slice that an asynchronous store reads from (residual, packed words and
+    // the spread chunks): batches alternate between the copies so a store only has to be drained
+    // before the same copy is written again, two batches later. See QuantizeRows.
+    static constexpr uint32_t kSliceIdxB = 10U;
+    static constexpr uint32_t kSliceCiB = 11U;
+    static constexpr uint32_t kSliceCiHiB = 12U;
+    static constexpr uint32_t kSliceRowB = 13U; // second copy of x for the normalized vector store
+    static constexpr uint32_t kSliceCount = 14U;
 
     __aicore__ inline KvCacheTurboQuant() = default;
 
@@ -205,7 +212,7 @@ public:
         if (g_coreType == AIV) {
             pipe_.InitBuffer(inQue_, 1, KCTQ_BATCH_ROWS * KCTQ_D * sizeof(bfloat16_t));
             pipe_.InitBuffer(scalarBuf_, 512U * sizeof(float));
-            pipe_.InitBuffer(bf16Buf_, KCTQ_SCALAR_SLOTS * sizeof(bfloat16_t));
+            pipe_.InitBuffer(bf16Buf_, 2U * KCTQ_SCALAR_SLOTS * sizeof(bfloat16_t));
             pipe_.InitBuffer(weightBuf_, KCTQ_BATCH_LANES * sizeof(float));
             pipe_.InitBuffer(weightHiBuf_, KCTQ_BATCH_LANES * sizeof(float));
             pipe_.InitBuffer(qjlWeightBuf_, KCTQ_BATCH_LANES * sizeof(float));
@@ -238,6 +245,12 @@ public:
     __aicore__ inline LocalTensor<float> Slice(uint32_t index) const
     {
         return const_cast<ArenaBuf &>(arenaBuf_).Get<float>()[index * KCTQ_BATCH_LANES];
+    }
+
+    // parity selector for the double buffered store sources (see kSliceIdxB)
+    __aicore__ inline LocalTensor<float> SliceP(uint32_t base, uint32_t baseB, uint32_t parity) const
+    {
+        return Slice((parity == 0U) ? base : baseB);
     }
 
     // Distances between neighbouring levels; the primary value is rebuilt as
@@ -336,14 +349,16 @@ public:
     __aicore__ inline void NormalizeRows()
     {
         LocalTensor<float> sq = scalarBuf_.Get<float>();                  // ||x||^2 at [16*row]
-        LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS]; // ||x|| at [16*row]
         LocalTensor<float> denom = Slice(kSliceDenom);
 
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
+            // same double buffering as QuantizeRows: the store sources alternate between two copies
+            const uint32_t pb = ((row0 - rowBegin_) / KCTQ_BATCH_ROWS) & 1U;
+            LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS * (pb + 1U)];
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
                                            ? KCTQ_BATCH_ROWS
                                            : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
-            LocalTensor<float> x = Slice(kSliceRow);
+            LocalTensor<float> x = SliceP(kSliceRow, kSliceRowB, pb);
             if (validRows > 0U) {
                 LocalTensor<bfloat16_t> xBf = inQue_.AllocTensor<bfloat16_t>();
                 DataCopyExtParams cpIn{1, static_cast<uint32_t>(validRows * KCTQ_D * sizeof(bfloat16_t)),
@@ -387,7 +402,7 @@ public:
             PipeBarrier<PIPE_V>();
             Div(x, x, denom, KCTQ_BATCH_LANES); // x := unit vector
 
-            LocalTensor<bfloat16_t> nb = bf16Buf_.Get<bfloat16_t>();
+            LocalTensor<bfloat16_t> nb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
             Cast(nb, norm, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -401,10 +416,13 @@ public:
             }
             DataCopyExtParams cpU{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsUNormGm_[static_cast<uint64_t>(row0) * KCTQ_D], x, cpU);
-            // UB -> GM copies are asynchronous: without draining them here the next batch would
-            // overwrite the staging buffers while the copies that read them are still in flight.
-            PipeBarrier<PIPE_ALL>();
+            if (pb != 0U) {
+                // odd parity: the copies written by the previous batch are about to be rewritten
+                PipeBarrier<PIPE_ALL>();
+            }
         }
+        // phase end: the last batch's stores have to be visible to the cube before Gemm is called
+        PipeBarrier<PIPE_ALL>();
     }
 
     // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
@@ -452,6 +470,10 @@ public:
         LocalTensor<float> denom = Slice(kSliceDenom);
 
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
+            // Batches alternate between the two copies of the residual slice, so the store issued
+            // by batch k only blocks the batch that rewrites the same copy (k + 2) - which lets the
+            // pipeline drain below run on every other batch instead of on every batch.
+            const uint32_t pb = ((row0 - rowBegin_) / KCTQ_BATCH_ROWS) & 1U;
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
                                            ? KCTQ_BATCH_ROWS
                                            : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
@@ -467,7 +489,7 @@ public:
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             LocalTensor<float> mask = Slice(kSliceTmp);
-            LocalTensor<float> idx = Slice(kSliceIdx);
+            LocalTensor<float> idx = SliceP(kSliceIdx, kSliceIdxB, pb);
             LocalTensor<float> prim = Slice(kSlicePrim);
             Duplicate(idx, 0.0f, KCTQ_BATCH_LANES);
             Duplicate(prim, CodeBook<BITS>::kLevel[0], KCTQ_BATCH_LANES);
@@ -485,9 +507,9 @@ public:
                 Add(idx, idx, mask, KCTQ_BATCH_LANES);
                 Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
             }
-            PackIdx(row0, validRows, idx);
+            PackIdx(row0, validRows, idx, pb);
 
-            LocalTensor<float> res = Slice(kSliceIdx);
+            LocalTensor<float> res = idx;
             LocalTensor<float> work = Slice(kSliceWork);
             Sub(res, y, prim, KCTQ_BATCH_LANES);
             Mul(mask, res, res, KCTQ_BATCH_LANES);
@@ -515,7 +537,7 @@ public:
             PipeBarrier<PIPE_V>();
             Div(res, res, denom, KCTQ_BATCH_LANES); // residual unit vector (0 when residual is 0)
 
-            LocalTensor<bfloat16_t> gb = bf16Buf_.Get<bfloat16_t>();
+            LocalTensor<bfloat16_t> gb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
             Cast(gb, gamma, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -525,18 +547,24 @@ public:
             }
             DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsRNormGm_[base], res, cpR);
-            PipeBarrier<PIPE_ALL>(); // drain the copies before the next batch reuses the slices
+            if (pb != 0U) {
+                // odd parity: the copies written by the previous batch are about to be rewritten
+                PipeBarrier<PIPE_ALL>();
+            }
         }
+        // phase end: the last batch's stores have to be visible to the cube before Gemm is called
+        PipeBarrier<PIPE_ALL>();
     }
 
     // ---- AIV: pack the primary indices ------------------------------------------------------------
-    __aicore__ inline void PackIdx(uint32_t row0, uint32_t validRows, const LocalTensor<float> &idx)
+    __aicore__ inline void PackIdx(uint32_t row0, uint32_t validRows, const LocalTensor<float> &idx,
+                                   uint32_t parity)
     {
         LocalTensor<float> w = weightBuf_.Get<float>();
         LocalTensor<float> wv = Slice(kSliceTmp);
         LocalTensor<float> cv = Slice(kSliceCv);
-        LocalTensor<float> ciF = Slice(kSliceCi);
-        LocalTensor<float> spreadF = Slice(kSliceCiHi);
+        LocalTensor<float> ciF = SliceP(kSliceCi, kSliceCiB, parity);
+        LocalTensor<float> spreadF = SliceP(kSliceCiHi, kSliceCiHiB, parity);
         LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
         LocalTensor<int32_t> spread = spreadF.ReinterpretCast<int32_t>();
 
@@ -549,7 +577,7 @@ public:
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
             LocalTensor<float> cvh = Slice(kSliceCvHi);
             LocalTensor<float> wvh = Slice(kSliceWork);
-            LocalTensor<float> cihF = Slice(kSliceCiHi);
+            LocalTensor<float> cihF = SliceP(kSliceCiHi, kSliceCiHiB, parity);
             FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES);
             if constexpr (BITS == 4) {
                 LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
@@ -593,7 +621,9 @@ public:
                             validRows * kChunksPerRow, kIdxBytesPerRow / kChunksPerRow);
             }
         }
-        PipeBarrier<PIPE_ALL>(); // drain the copy before the next batch reuses the slices
+        // No drain here: the store reads slices that the *next* batch only rewrites after the
+        // end-of-batch drain in QuantizeRows, which is what keeps this copy-issued window overlap
+        // with the residual work of the same batch.
     }
 
     // ---- AIV: step 8 ------------------------------------------------------------------------------
