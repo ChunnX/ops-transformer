@@ -281,8 +281,10 @@ bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *
         // Inconsist cache hDim size with the expected value headSize
         return false;
     }
-    // block_num ≥ Floor(Skv/block_size) ∗ Bkv
-    return (cacheBlkNum >= (this->seqLenKv_ / cacheBlkSize) * this->batchKv_);
+
+    // Total PA slots must meet block_num * block_size ≥ Bkv × Skv
+    // here let block_num ≥ Ceil(Skv / block_size) ∗ Bkv
+    return (cacheBlkNum >= ((this->seqLenKv_ + cacheBlkSize - 1) / cacheBlkSize) * this->batchKv_);
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,
