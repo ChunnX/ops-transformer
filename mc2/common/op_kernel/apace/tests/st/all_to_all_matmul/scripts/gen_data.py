@@ -34,6 +34,8 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     out.numpy().tofile(os.path.join(output_dir, "cpu_output.bin"))
     # 通信后 rank 窗口的期望内容（fp16）：
     #   窗口[r] = concat_s a_local[s][r*m:(r+1)*m, :]，即 a_after_alltoall_list[r]。
+    #   注意：AllToAll PUT 跳过 self（self 贡献由 kernel 直接读 localAGmAddr），
+    #   故窗口内 self 槽位保持 memset 的 0，期望文件需将 self 槽位置 0。
     #   用于单独验证通信：对比 main.cpp dump 的 comm_buffer.bin。
     a_after.tofile(os.path.join(output_dir, "expected_comm.bin"))
 
@@ -85,6 +87,9 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
 
     current_dir = os.getcwd()
     for rank_id in range(rank_num):
+        # 期望窗口：self 槽位（rows [rank_id*m, (rank_id+1)*m)）置 0，与 PUT 跳过 self 的语义一致
+        a_after_expected = a_after_alltoall_list[rank_id].astype(np.float16).copy()
+        a_after_expected[rank_id * m:(rank_id + 1) * m, :] = 0
         write_artifacts(
             current_dir,
             rank_id,
@@ -92,7 +97,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
             b_ori,
             bias,
             out_all_ranks[rank_id],
-            a_after_alltoall_list[rank_id].astype(np.float16),
+            a_after_expected,
         )
 
 
