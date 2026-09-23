@@ -87,7 +87,7 @@ assert len(set(sha_list_a)) == 1  # variant A 必须 deterministic
 
 ## 5. 如何运行
 
-需要 V300 (Ascend 950PR/DT) 硬件 + CANN 9.1+ + `torch_npu` 2.9+。
+需要 V300 (Ascend 950PR&950DT系列产品) 硬件 + CANN 9.1+ + `torch_npu` 2.9+。
 
 ```bash
 cd mc2/matmul_reduce_scatter_v2/tests/bi/

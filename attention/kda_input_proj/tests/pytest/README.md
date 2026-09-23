@@ -19,7 +19,7 @@ pytest/
 - **beta**：FP32 `sigmoid(x @ w_beta)`。
 - **gate / g**：BF16 矩阵乘。
 
-仅支持 Ascend 950PR/950DT。非该器件时用例会 skip。
+仅支持Ascend 950PR&950DT系列产品。非该器件时用例会 skip。
 
 ## 使用方法
 
