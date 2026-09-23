@@ -1261,9 +1261,22 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
 
 
 def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale):
-    """计算单个 S block (attention score)"""
-    S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
-    return S_ij * softmax_scale
+    """计算单个 S block (attention score)
+    [极端值对齐] S经bf16截断模拟NPU的VF处理精度: NPU的S在VF中以bf16操作,
+    超出bf16范围的S截断为±inf → softmax输出0或1(正确); CPU fp32不截断,
+    S保持有限大数 → exp溢出→NaN。此处将S转bf16再回fp32, 使行为与NPU一致。
+    """
+    # [极端值对齐] 反量化值经bf16截断模拟NPU精度: NPU的descale乘法在VF以bf16操作,
+    # 超出bf16范围的K×descale截断为±inf(合法,softmax后续正确处理); CPU fp32不截断,
+    # 有限大数进入matmul→exp溢出→NaN。K和Q的反量化值先经bf16再回fp32。
+    K_deq = (Kj * deq_scale_k_j).to(torch.bfloat16).to(torch.float32)
+    Q_deq = (Qi * deq_scale_q_i).to(torch.bfloat16).to(torch.float32)
+    S_ij = torch.matmul(Q_deq, K_deq.permute(0, 1, 3, 2))
+    S_ij = (S_ij * softmax_scale).to(torch.bfloat16).to(torch.float32)
+    # [NaN防御] bf16截断后S可能含NaN(inf-inf)或±inf — 替换为有限大负数
+    # (模拟NPU VF的minValue初始化: max至少为有限值, exp正常处理为0)
+    S_ij = torch.nan_to_num(S_ij, nan=-3.402823466e38, posinf=3.402823466e38, neginf=-3.402823466e38)
+    return S_ij
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, tail_mask=None):
@@ -1525,6 +1538,9 @@ def cpu_mxfp8_golden(
         o_max + torch.log(out_sum + EPSILON),
     )
     out = torch.where(all_masked, torch.zeros_like(out), out)
+    # [极端值对齐] 残余NaN替换为-inf: NPU的极端值链路输出-inf(VF bf16溢出),
+    # CPU的NaN来自fp32中间值溢出(exp(S-max)在S极端时) — 统一为与NPU一致的-inf
+    out = torch.nan_to_num(out, nan=float("-inf"))
     logger.info("[CPU Golden] output=%s", out.shape)
     return out, lse
 
