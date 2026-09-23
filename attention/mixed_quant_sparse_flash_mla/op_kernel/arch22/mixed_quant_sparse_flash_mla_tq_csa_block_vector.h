@@ -482,7 +482,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInTq4Scale
     DataCopyPad(scalesFp16, tqScaleGm_[info.cmpLoop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_ROWS], copyParams,
                 padParams);
     if (info.actualSingleProcessSInnerSize < TQ4_SCALE_SLOT_ROWS) {
-        Duplicate(scalesFp32, static_cast<T>(1.0), TQ4_SCALE_SLOT_ROWS);
+        Duplicate(scalesFp32, static_cast<T>(1.0), info.actualSingleProcessSInnerSizeAlign);
     }
     SetFlag<HardEvent::MTE2_V>(0);
     WaitFlag<HardEvent::MTE2_V>(0);
