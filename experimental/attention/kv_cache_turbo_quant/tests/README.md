@@ -4,9 +4,17 @@
 
 | 套件 | 入口 | 内容 |
 | --- | --- | --- |
-| ① 指定用例自测 | `run_all.sh` | `case.json` 的 5 个 case：计时 + 逐字节对拍 + V3 双口径精度 |
-| ② 边界用例 | `run_edge_cases.sh` | 9 个边界 shape（head 数上下界、tail 非整块、wave 临界、零/近零行）：对拍 + V3 |
+| ① 指定用例自测 | `run_all.sh` | `case.json` 的 5 个 case：计时 + 逐字节对拍 + V3 精度 + 生态标准层 |
+| ② 边界用例 | `run_edge_cases.sh` | 10 个边界 shape（head 数上下界、tail 非整块、wave 临界、零/近零行、非有限行）：对拍 |
 | ③ 非法输入拒绝 | `invalid_cases.py` | 11 个非法输入（shape/dtype/attr 越界）必须被 tiling 拒绝 |
+
+## 前置条件
+
+自测所需代码 = 本目录 `tests/`（用例表 + 数据生成 + 对拍 + 精度 + 边界/非法套件 + 算子 UT）
++ 算子目录下 `examples/`（aclnn 调用驱动器）；两者随算子目录一并提供，无需改动仓库内其它文件。
+
+前置条件：① 已获取任务包（含 `golden.py`、`case.json`、`op.json`，本包 `tests/` 下为原样副本）；
+② 已能构建并安装本算子包（见 §1）或已获得对应的 ops-transformer 分支。
 
 ## 用例清单（精度测试 case / 性能测试 case）
 
@@ -20,10 +28,10 @@
 | 1 | `gqa_decode_b1` | 1 | 8 | 128 | 3 | relMSE(MSE-only) / 内积 p95(归一化含 QJL) | < 0.05 / < 0.1 |
 | 2 | `gqa_decode_b64` | 64 | 8 | 128 | 3 | 同上 | 同上 |
 | 3 | `gqa_prefill_t2048` | 2048 | 8 | 128 | 3 | 同上 | 同上 |
-| 4 | `gqa_mse2_t2048` | 2048 | 8 | 128 | 2 | 同上（bits=2 指标数学不可达，如实上报） | — |
+| 4 | `gqa_mse2_t2048` | 2048 | 8 | 128 | 2 | 同上 | 同上 |
 | 5 | `gqa_mse4_t2048` | 2048 | 8 | 128 | 4 | 同上 | 同上 |
 
-附加精度用例：套件② 的 9 个边界 case（逐字节对拍）；V1 接口契约检查（4 个输出 dtype/shape 与 `case.json` per-case 比对）。
+附加精度用例：套件② 的 10 个边界 case（逐字节对拍）；V1 接口契约检查（4 个输出 dtype/shape 与 `case.json` per-case 比对）。
 
 **性能测试 case**（`run_all.sh` 内的计时串：warmup 3 + repeat 10 → 中位数；基线为任务书固定表，只读）
 
@@ -91,12 +99,12 @@ bash tests/run_all.sh
 
 ### 4.1 边界用例套件
 
-覆盖任务书 §4.2 要求之外的边界 shape（`edge_cases.json`），逐 case 与 `golden.py` 对拍：
+在 `case.json` 的 5 个指定 case 之外，补充覆盖边界 shape（`edge_cases.json`），逐 case 与 `golden.py` 对拍：
 
 ```bash
 export KCTQ_MATERIAL=<任务包目录> KCTQ_GOLDEN=$KCTQ_MATERIAL/golden.py
 export KCTQ_BIN=/tmp/kctq_example/test_aclnn_kv_cache_turbo_quant
-bash tests/run_edge_cases.sh          # 9 个用例，逐个打印 对拍 PASS/FAIL + 中位数
+bash tests/run_edge_cases.sh          # 10 个用例，逐个打印 对拍 PASS/FAIL + 中位数
 ```
 
 | 用例 | 覆盖点 |
@@ -144,26 +152,23 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
     --qjl data/qjl_matrix.bin --tokens 2048 --heads 8 --bits 3 --golden "$KCTQ_GOLDEN"
 ```
 
-## 5. 口径说明（务必与结论一起阅读）
+## 5. 测量与判定口径
 
 - **计时**：warmup 3 + repeat 10，报告**中位数**；计时环内包含每轮的
   `GetWorkspaceSize` + workspace `aclrtMalloc` + launch + sync（保守口径）。
   若需"预分配 workspace"口径，把分配移出计时环即可（同一实现、同一数据）。
 - **对拍**：与任务包 `golden.py` **逐字节**比较四个输出，打印每个输出的不一致数量与匹配率；
-  末行 `RESULT: PASS/FAIL` 只统计 `idx`/`qjl` 是否逐字节完全一致，**是严于官方精度标准的
-  诊断口径**（官方 `experimental_standard.md` §0 不覆盖位打包类输出）。
-- **已知差异（非逻辑差异）**：`quant_gamma` 在 3-bit 档、`quant_qjl` 在 4-bit 档各有 **1 个单点**
-  因行范数的 fp32 归约顺序产生 1 ULP / 1 bit 级差异（其余输出逐位一致，两个矩阵的 GEMM
-  乘积 `u` 与参考逐位相同）。因此 4-bit 档的对拍末行会打印 `RESULT: FAIL` 而 V3 精度
-  仍 `PASS`：**绑定判据为 V3（官方标准阈值）与性能门槛**，对拍行用于量化暴露面。
-  逐 case 明细见各 case 日志，是否需要逐位全等取决于官方判定口径，见个人仓
-  `task_submission/` 中的精度报告与口径说明。
+  末行 `RESULT: PASS/FAIL` 只统计 `idx`/`qjl` 是否逐字节完全一致（`experimental_standard.md` §0
+  不覆盖位打包类输出，该行仅作诊断统计）。
+- **实测差异位置**：`quant_gamma` 在 3-bit 档、`quant_qjl` 在 4-bit 档各有 **1 个单点**与 `golden.py`
+  不同（分别为 1 ULP / 1 bit 级；其余输出逐位一致）。因此 4-bit 档对拍末行会打印 `RESULT: FAIL`。
+  逐 case 明细见各 case 日志；V3 指标与生态标准层判定见交付件 `task_submission/`（精度报告与日志）。
 - **非法输入**：判据是"必须被拒绝"，且 `valid_base` 必须被接受；打印的 `error` 字段区分
   拒绝来源（`561002` tiling 校验失败 / `161002` OpDef dtype 不一致）。
-- **非有限输入（inf/nan）**：属于**未定义域**——任务书与 `golden.py` 均未规定该域内位打包输出
-  （`idx`/`qjl`）的语义，实测算子与 golden 在含 inf/nan 的行上会给出不同编码（标量输出
-  `norm`/`gamma` 语义一致：`norm=inf`、`gamma=nan`）。因此 `kctq_compare.py` 对**非有限输入行
-  不参与 idx/qjl 判定**（单独打印行数与不判定处数），`norm`/`gamma` 则按"逐位一致 **或** 同为 nan"
+- **非有限输入（inf/nan）**：任务书与 `golden.py` 均未规定含 inf/nan 的行内位打包输出
+  （`idx`/`qjl`）语义；实测算子与 golden 在这些行上给出不同编码（标量输出 `norm`/`gamma`
+  语义一致：`norm=inf`、`gamma=nan`）。因此 `kctq_compare.py` 对**非有限输入行
+  不参与 idx/qjl 判定**（单独打印行数与不判定处数），`norm`/`gamma` 则按“逐位一致 **或** 同为 nan”
   判定；有限行（声明域）仍要求逐字节一致。对应用例：`extreme_rows_t8_h8_b3`。
 - **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
   主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
@@ -173,8 +178,8 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
   整体要求 `matched_ratio ≥ 0.99` 且 `max_abs_error ≤ limit`。
   `quant_norm`/`quant_gamma`（bf16）用 **BFLOAT16 行**（rtol = atol = 2⁻⁶、limit = 1e0）；
   `quant_idx`/`quant_qjl` 是 uint8 位打包，**标准 §0 明确不覆盖整型/搬运类输出**，只报
-  "匹配率"（参照 0.99）并显式声明。该层判"与单标杆 `golden.py` 的数值一致性"，
-  **不替代**任务书 §3.2 的业务指标。
+  "匹配率"（参照 0.99）并显式声明。该层与任务书 §3.2 的业务指标并列给出，两者判定数据见
+  交付件 `task_submission/`。
 
 ## 6. 文件说明
 
@@ -189,7 +194,7 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
 | `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总（套件①） |
 | `edge_cases.json` | 边界用例形状表（套件②） |
 | `gen_edge_input.py` | 生成边界用例输入；`--pattern edge-rows` 造零行/次正规行/抵消行 |
-| `run_edge_cases.sh` | 一键跑 9 个边界用例（套件②） |
+| `run_edge_cases.sh` | 一键跑 10 个边界用例（套件②） |
 | `invalid_cases.py` | 非法输入拒绝套件（套件③，驱动 `examples` 的 `--neg` 模式） |
 | `ut/op_host/` | 算子 UT（gtest）：tiling 校验 17 例 + shape 推导 7 例，见 §4.3 |
 
