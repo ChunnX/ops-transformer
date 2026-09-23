@@ -39,9 +39,10 @@ public:
                                                GlobalTensor<KV_T> cmpKV, GlobalTensor<MM_OUT_T> mm1ResGm);
     __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm,
                                                GlobalTensor<OUT_T> attentionOutGm);
-    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, GlobalTensor<KV_T> kvMergeGm,
+    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
                                                  GlobalTensor<int32_t> oriBlockTableGm,
                                                  GlobalTensor<int32_t> cmpBlockTableGm);
+    __aicore__ inline void InitDsparkKvMerge(GlobalTensor<KV_T> kvMergeGm);
     __aicore__ inline void InitBuffers(TPipe *pipe);
 
     __aicore__ inline void AllocEventID();
@@ -185,16 +186,20 @@ __aicore__ inline void SWACubeBlock<SMLAT>::InitMm2GlobalTensor(GlobalTensor<KV_
 
 template <typename SMLAT>
 __aicore__ inline void SWACubeBlock<SMLAT>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
-                                                                  GlobalTensor<KV_T> kvMergeGm,
                                                                   GlobalTensor<int32_t> oriBlockTableGm,
                                                                   GlobalTensor<int32_t> cmpBlockTableGm)
 {
     this->oriKvGm = oriKvGm;
-    this->kvMergeGm_ = kvMergeGm;
     this->oriBlockTableGm = oriBlockTableGm;
     if constexpr (TEMPLATE_MODE == HCA_TEMPLATE) {
         this->cmpBlockTableGm = cmpBlockTableGm;
     }
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWACubeBlock<SMLAT>::InitDsparkKvMerge(GlobalTensor<KV_T> kvMergeGm)
+{
+    this->kvMergeGm_ = kvMergeGm;
 }
 
 template <typename SMLAT>

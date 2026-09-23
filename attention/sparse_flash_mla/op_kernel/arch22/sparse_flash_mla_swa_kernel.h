@@ -24,7 +24,7 @@
 #include "sparse_flash_mla_common_arch22.h"
 #include "sparse_flash_mla_swa_block_cube.h"
 #include "sparse_flash_mla_swa_block_vector.h"
-#include "sparse_flash_mla_arch22_metadata.h"
+#include "sparse_flash_mla_metadata.h"
 
 namespace SMLAKernel {
 using namespace matmul;
@@ -462,14 +462,17 @@ __aicore__ inline uint32_t SparseFlashMlaSwa<SMLAT>::GetOriSparseActualSeqLen()
     }
     uint64_t qTokenOffset = tempLoopInfo.actualSeqQPrefixSum + tempLoopInfo.s1StartIdx;
     uint64_t topkLenOffset = qTokenOffset * constInfo.kvHeadNum + tempLoopInfo.n2Idx;
-    if (!constInfo.hasOriTopkLength) {
-        return 0;
+    if constexpr (IS_DSPARK) {
+        if (!constInfo.hasOriTopkLength) {
+            return 0;
+        }
+        int32_t topkLen = oriTopkLengthGm.GetValue(topkLenOffset);
+        if (topkLen <= 0) {
+            return 0;
+        }
+        return Min(static_cast<uint32_t>(topkLen), constInfo.oriSparseIndexWidth);
     }
-    int32_t topkLen = oriTopkLengthGm.GetValue(topkLenOffset);
-    if (topkLen <= 0) {
-        return 0;
-    }
-    return Min(static_cast<uint32_t>(topkLen), constInfo.oriSparseIndexWidth);
+    return 0;
 }
 
 template <typename SMLAT>
@@ -525,9 +528,11 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     tilingData = tiling;
 
     InitTilingData();
-    constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
-    if (constInfo.hasOriTopkLength) {
-        oriTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)oriTopkLength);
+    if constexpr (IS_DSPARK) {
+        constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
+        if (constInfo.hasOriTopkLength) {
+            oriTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)oriTopkLength);
+        }
     }
     (void)cmpTopkLength;
     if (KV_LAYOUT_T == SMLA_LAYOUT::TND && LAYOUT_T == SMLA_LAYOUT::TND) {
@@ -610,10 +615,11 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
         if constexpr (IS_DSPARK) {
-            vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm);
+            vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm,
+                                             oriTopkLengthGm);
         }
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, sinksGm,
-                                         softmaxLseGm, oriSparseIndicesGm, oriTopkLengthGm);
+                                         softmaxLseGm);
         vectorBlock.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }
 
@@ -621,7 +627,10 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
         cubeBlock.InitParams(constInfo);
         cubeBlock.InitMm1GlobalTensor(queryGm, oriKvGm, cmpKvGm, mm1ResGm);
         cubeBlock.InitMm2GlobalTensor(vec1ResGm, mm2ResGm, attentionOutGm);
-        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm);
+        cubeBlock.InitPageAttentionInfo(oriKvGm, oriBlockTableGm, cmpBlockTableGm);
+        if constexpr (IS_DSPARK) {
+            cubeBlock.InitDsparkKvMerge(kvMergeGm_);
+        }
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
@@ -699,10 +708,12 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint3
     info.tensorBOffset = tensorBCoreOffset;
     info.tensorCmpBOffset = tensorCmpBCoreOffset;
     info.attenOutOffset = tensorACoreOffset;
-    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
-        info.qTokenOffset = tempLoopInfo.actualSeqQPrefixSum + info.s1Idx;
-    } else {
-        info.qTokenOffset = info.bIdx * constInfo.qSeqSize + info.s1Idx;
+    if constexpr (IS_DSPARK) {
+        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+            info.qTokenOffset = tempLoopInfo.actualSeqQPrefixSum + info.s1Idx;
+        } else {
+            info.qTokenOffset = info.bIdx * constInfo.qSeqSize + info.s1Idx;
+        }
     }
 
     if constexpr (TEMPLATE_MODE == SWA_TEMPLATE) {
