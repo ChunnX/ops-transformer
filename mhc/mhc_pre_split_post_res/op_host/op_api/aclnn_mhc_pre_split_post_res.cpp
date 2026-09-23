@@ -48,8 +48,8 @@ static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const
     return true;
 }
 
-// 强类型重载替代 void* 判空（extern "C" 块内不可用模板），两个调用点各得编译期类型检查
-static bool CheckOutputParameter(const uint64_t *value, const char *name)
+// 强类型判空替代 void* 形参（extern "C" 块内不可用模板/重载，故拆为两个具名函数）
+static bool CheckOutputSize(const uint64_t *value, const char *name)
 {
     if (value == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMhcPreSplitPostResGetWorkspaceSize", name, "nullptr",
@@ -59,7 +59,7 @@ static bool CheckOutputParameter(const uint64_t *value, const char *name)
     return true;
 }
 
-static bool CheckOutputParameter(aclOpExecutor *const *value, const char *name)
+static bool CheckOutputExecutor(aclOpExecutor *const *value, const char *name)
 {
     if (value == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMhcPreSplitPostResGetWorkspaceSize", name, "nullptr",
@@ -187,8 +187,8 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const a
     CHECK_RET(CheckRequiredTensor(bias, "bias", "required input tensor must not be nullptr"), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckRequiredTensor(hPostOut, "hPostOut", "required output tensor must not be nullptr"),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckOutputParameter(workspaceSize, "workspaceSize"), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckOutputParameter(executor, "executor"), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckOutputSize(workspaceSize, "workspaceSize"), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckOutputExecutor(executor, "executor"), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(std::isfinite(normEps) && normEps > 0.0f, ACLNN_ERR_PARAM_INVALID);
     const size_t xRank = x->GetViewShape().GetDimNum();
     CHECK_RET(xRank == DIM_NUM_3 || xRank == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID);
