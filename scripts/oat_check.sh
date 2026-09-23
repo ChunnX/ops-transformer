@@ -82,7 +82,7 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REPO_NAME=$(basename "$REPO_ROOT")
 OAT_REPORT_DIR="${TMPDIR:-/tmp}/oat_reports_$$"
-OAT_RESULT_DIR="$REPO_ROOT/oat_reports"
+OAT_RESULT_DIR="$REPO_ROOT/pre-commit_reports"
 
 # ---------------------------------------------------------------------------
 # 2a. PR-range deduplication (pure git, no CI env vars required)
@@ -362,11 +362,11 @@ if [ -n "$_BATCH_COUNT" ] && [ "$_BATCH_COUNT" -gt 1 ] 2>/dev/null; then
                 cat "$OAT_RESULT_DIR/batch_details.txt"
             fi
             echo "==================================="
-        } > "$OAT_RESULT_DIR/result.txt"
+        } > "$OAT_RESULT_DIR/oat_result.txt"
         echo "[OAT] Found $_BATCH_ISSUES compliance issue(s) across $_BATCH_COUNT batches."
         echo "[OAT] Details (also saved to: $OAT_RESULT_DIR/batch_details.txt):"
         echo "---"
-        cat "$OAT_RESULT_DIR/result.txt"
+        cat "$OAT_RESULT_DIR/oat_result.txt"
         echo "---"
         echo ""
         echo "Fix the issues and recommit, or skip with:"
@@ -391,7 +391,7 @@ fi
 #    Only: Invalid File Type + License Header Invalid (no copyright)
 # ---------------------------------------------------------------------------
 REPORT_FILE="$OAT_REPORT_DIR/PlainReport_${REPO_NAME}.txt"
-RESULT_FILE="$OAT_RESULT_DIR/result.txt"
+RESULT_FILE="$OAT_RESULT_DIR/oat_result.txt"
 
 # Section headers used as stop-boundaries when extracting sections
 _ALL_HEADERS="Invalid File Type Total Count:|License Not Compatible Total Count:|License Header Invalid Total Count:|Copyright Header Invalid Total Count:|No License File Total Count:|No Readme.OpenSource Total Count:|No Readme Total Count:|Import Invalid Total Count:|Redundant License File Total Count:|Third Party Software Info Total Count:"
