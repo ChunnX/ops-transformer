@@ -733,6 +733,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
                     kvOffset++;
                 }
             }
+            InitGlobalMemory(expertTokensGm_, expertNum_ * EXPERT_ID_VALUE_NUM, static_cast<int64_t>(0));
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                          static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
