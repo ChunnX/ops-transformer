@@ -8,7 +8,9 @@
 """CPU algorithm model, not a CANN build or proof of device DMA/atomic ordering."""
 
 from collections import Counter
+from pathlib import Path
 import random
+import re
 import unittest
 
 
@@ -26,20 +28,29 @@ def tile_ranges(bs, cores, topk, metadata_bytes=512):
     return [(begin, min(begin + width, bs)) for begin in range(0, bs, width)]
 
 
-def histogram_page(values, base, bins):
-    """Two b16 registers -> packed b8 data/mask -> BIN0/BIN1 frequency counts."""
+def pack_route_half(values, offset, base, bins, half):
+    """Both RegTensor and MaskReg Pack produce zeros in the unselected destination half."""
+    packed, packed_mask = [0] * 256, [False] * 256
+    for lane in range(128):
+        element = offset + half * 128 + lane
+        # Deliberately poison lanes outside the logical tail; the comparison must mask them out.
+        value = values[element] if element < len(values) else base
+        shifted = (value - base) & 0xFFFF
+        packed[half * 128 + lane] = shifted & 0xFF
+        packed_mask[half * 128 + lane] = element < len(values) and shifted < bins
+    return packed, packed_mask
+
+
+def histogram_page(values, base, bins, merge_halves=True):
+    """Model separate Pack results and explicit OR; merge_halves=False reproduces the old overwrite bug."""
     result = [0] * bins
     for offset in range(0, len(values), 256):
-        packed = [0xFF] * 256
-        packed_mask = [False] * 256
-        for half in (0, 1):
-            for lane in range(128):
-                element = offset + half * 128 + lane
-                # Deliberately poison lanes outside the logical tail.
-                value = values[element] if element < len(values) else base
-                shifted = (value - base) & 0xFFFF
-                packed[half * 128 + lane] = shifted & 0xFF
-                packed_mask[half * 128 + lane] = element < len(values) and shifted < bins
+        low, low_mask = pack_route_half(values, offset, base, bins, 0)
+        high, high_mask = pack_route_half(values, offset, base, bins, 1)
+        packed, packed_mask = high, high_mask
+        if merge_halves:
+            packed = [a | b for a, b in zip(low, high)]
+            packed_mask = [a or b for a, b in zip(low_mask, high_mask)]
         for value, valid in zip(packed, packed_mask):
             if valid:
                 result[value] = (result[value] + 1) & 0xFFFF
@@ -146,6 +157,52 @@ def cached_oracle(routes, cached, world, expert_count, aivs):
 
 
 class DispatchCountHistogramTest(unittest.TestCase):
+    def test_pack_zeroes_other_half_and_merge_keeps_tail(self):
+        for count in (1, 64, 127, 128, 129, 192, 255, 256, 257, 384, 4096):
+            values = [i % 256 for i in range(count)]
+            low, low_mask = pack_route_half(values, 0, 0, 256, 0)
+            high, high_mask = pack_route_half(values, 0, 0, 256, 1)
+            self.assertFalse(any(low[128:]) or any(low_mask[128:]))
+            self.assertFalse(any(high[:128]) or any(high_mask[:128]))
+            self.assertEqual(sum(histogram_page(values, 0, 256)), count)
+        self.assertEqual(sum(histogram_page(list(range(192)), 0, 256, merge_halves=False)), 64)
+        self.assertEqual(sum(histogram_page(list(range(128)), 0, 256, merge_halves=False)), 0)
+
+    def test_source_contract_packs_halves_into_distinct_registers(self):
+        source = (Path(__file__).resolve().parents[3] / "op_kernel/moe_ep_dispatch_base.h").read_text(encoding="utf-8")
+        calls = re.findall(r"PackHistogramPage<Reg::HighLowPart::(?:LOWEST|HIGHEST)>\(\s*(\w+),\s*(\w+)", source)
+        self.assertEqual(len(calls), 2)
+        self.assertNotEqual(calls[0][0], calls[1][0], "data Pack must not overwrite the previous half")
+        self.assertNotEqual(calls[0][1], calls[1][1], "mask Pack must not overwrite the previous half")
+        self.assertIn("Reg::Or<uint8_t>(packed, packedLow, packedHigh, mergeMask);", source)
+        self.assertIn("Reg::Or(packedMask, maskLow, maskHigh, mergeMask);", source)
+        self.assertIn("mergeMask = Reg::CreateMask<uint8_t>();", source)
+
+    def test_logged_384_expert_pattern_reproduces_one_third_loss(self):
+        # Flattened routes in the log start 0,48,96,...,336,1,49,... and cover every expert uniformly.
+        flat = [(i % 8) * 48 + (i // 8) % 48 for i in range(4096 * 6)]
+        for merge in (False, True):
+            ranks, experts = [0] * 8, [0] * 384
+            for first in range(0, len(flat), 32 * 6):
+                routes = flat[first:first + 32 * 6]
+                counts = histogram_page([expert // 48 for expert in routes], 0, 8, merge)
+                ranks = [a + b for a, b in zip(ranks, counts)]
+                for base, bins in ((0, 256), (256, 128)):
+                    counts = histogram_page(routes, base, bins, merge)
+                    for i, count in enumerate(counts):
+                        experts[base + i] += count
+            expected_rank = 3072 if merge else 1024
+            self.assertEqual(ranks, [expected_rank] * 8)
+            step = histogram_page([expert // 48 for expert in flat[:192]], 0, 8, merge)[7]
+            # PrepareTile still sees 24 real hits: a prefix step of 8 overlaps adjacent 24-slot writes.
+            overlap = set(range(24)).intersection(range(step, step + 24))
+            self.assertEqual(len(overlap), 0 if merge else 16)
+            # Eight identical source ranks contribute to the logged receiver's 48 local experts.
+            received = [count * 8 for count in experts[7 * 48:8 * 48]]
+            expected = [512 if merge or 16 <= i < 24 or 40 <= i < 48 else 0 for i in range(48)]
+            self.assertEqual(received, expected)
+            self.assertEqual(sum(received), 24576 if merge else 8192)
+
     def test_histogram_pages_masks_and_tails(self):
         rng = random.Random(73)
         for scope in (2, 8, 64, 127, 128, 129, 255, 256, 257, 512, 1024, 2048):

@@ -44,7 +44,10 @@ source-token 列表排序及 prepare-ready 覆盖关系不需要改变，也不�
 新实现将 rank/expert 两套外围逻辑合并为 `AccumulateSendCounts()`：
 
 - 每次装入两组128个 int16，减当前256-bin页的基址；用无符号范围比较同时排除负数和页外数据。
-- 在寄存器内分别 Pack 数据及其掩码的低/高半区，得到256个 uint8；无效项不能因截断混入 bin255。
+- 低/高半区分别 Pack 到独立的数据寄存器及掩码寄存器，再分别 Or 合并，得到256个 uint8；
+  Pack 会清零目标的另一半，不能对同一目标连续 LOWEST/HIGHEST 当作拼接。
+  该误用已由2026-09-23运行日志暴露并修复，详见 [tile 流水的正确性修复](moe_ep_dispatch_tile_pipeline.md#2026-09-23-直方图-pack-覆盖修复)。
+  无效项仍通过掩码排除，不能因截断混入 bin255。
 - 使用 `Histograms::FREQUENCY`；当前页不超过128个 bin 时只调用 BIN0，其他情况调用 BIN0 和 BIN1。
 - 输出 histogram 扩为32位并累加到原计数向量。循环处理全部页，不限制为8P或256个专家。
 
@@ -89,7 +92,8 @@ atomic 竞争、全核屏障和 K/P/E 分布影响，不能保证所有小 BS �
 
 ## 验证
 
-- `python -B mc2/moe_ep_dispatch/tests/ut/op_kernel/test_dispatch_count_histograms.py -v`：8项CPU算法模型测试通过。
+- `python -B mc2/moe_ep_dispatch/tests/ut/op_kernel/test_dispatch_count_histograms.py -v`：11项CPU算法/源码契约测试通过
+  （初版8项，Pack修复新增3项）。
   覆盖 AIV33/40/48/56/64/80/100、P2/3/8/33/256/1024、K1/6/7/32、cached/uncached、
   小BS空任务、全无效/重复专家/同卡多个专家、128/256边界、尾掩码与UB范围、大BS分块和计数行/slot前缀一致性。
   cached另有独立slot选择oracle，覆盖同rank多有效项及任意混合slot掩码；小BS空任务只指空核片，host禁止BS0。

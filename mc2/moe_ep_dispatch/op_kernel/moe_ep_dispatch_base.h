@@ -65,20 +65,24 @@ __simd_vf__ __aicore__ inline void RouteHistogramsVf(
 {
     constexpr uint32_t lanes = GetVecLen() / sizeof(int16_t);
     uint16_t repeatTimes = (count + 2U * lanes - 1U) / (2U * lanes);
-    Reg::RegTensor<uint8_t> packed;
+    Reg::RegTensor<uint8_t> packedLow, packedHigh, packed;
     Reg::RegTensor<uint16_t> low, high;
     Reg::MaskReg outputMask = Reg::CreateMask<uint16_t>();
-    Reg::MaskReg packedMask = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALLF>();
+    Reg::MaskReg mergeMask = Reg::CreateMask<uint8_t>();
+    Reg::MaskReg maskLow, maskHigh, packedMask;
     Reg::Duplicate(low, 0);
     if constexpr (highBins) {
         Reg::Duplicate(high, 0);
     }
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         Reg::MaskReg tail = Reg::UpdateMask<int16_t>(count);
-        PackHistogramPage<Reg::HighLowPart::LOWEST>(packed, packedMask, src + 2U * lanes * i, base, bins, tail);
+        PackHistogramPage<Reg::HighLowPart::LOWEST>(packedLow, maskLow, src + 2U * lanes * i, base, bins, tail);
         tail = Reg::UpdateMask<int16_t>(count);
-        PackHistogramPage<Reg::HighLowPart::HIGHEST>(packed, packedMask, src + (2U * i + 1U) * lanes,
+        PackHistogramPage<Reg::HighLowPart::HIGHEST>(packedHigh, maskHigh, src + (2U * i + 1U) * lanes,
                                                   base, bins, tail);
+        // Both Pack overloads zero the other half: preserve each result and explicitly merge them.
+        Reg::Or<uint8_t>(packed, packedLow, packedHigh, mergeMask);
+        Reg::Or(packedMask, maskLow, maskHigh, mergeMask);
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
                         Reg::HistogramsType::FREQUENCY>(low, packed, packedMask);
         if constexpr (highBins) {

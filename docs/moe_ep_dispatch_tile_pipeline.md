@@ -113,7 +113,8 @@ CPU模型覆盖tile所有权、cached/uncached计数、跨128行prefix carry、�
 metadata scatter与FP8/weights布局、workspace不重叠、典型单轮WQEBB上界及async源码契约。
 不模拟Reg实际代码生成、DMA/atomic可见性、Hcomm硬件进度或性能；未获远端执行授权，不执行远端/NPU操作。
 
-本地结果：histogram 8项、tile pipeline 8项、async completion 12项，共28项Python测试通过；
+本地结果（包含下面的编译窄化与Pack修复回归）：histogram 11项、tile pipeline 9项、
+async completion 12项，共32项Python测试通过；
 `git diff --check`通过。设备Dispatch/Combine源码中未发现assert、printf、CheckSharedJettyResult、
 `(void)hcomm`或Drain。Dispatch函数长度扫描均不超过50个非空、非注释行。
 当前环境PATH中没有CANN编译器及可用C++编译器，未执行CANN构建和host-only C++测试。
@@ -132,3 +133,42 @@ metadata scatter与FP8/weights布局、workspace不重叠、典型单轮WQEBB上
 
 审查中的搬运单位争议已由主代理查官方具体重载解决：这里调用DataCopyPad，blockLen和GM stride为字节，
 UB stride为32B；不能套用DataCopy参数单位。见[官方DataCopyPad表5](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910beta2/API/ascendcopapi/atlasascendc_api_07_0265.html)。
+
+## 2026-09-23 直方图 Pack 覆盖修复
+
+用户NPU日志暴露了此前静态审查和CPU模型未覆盖的寄存器语义错误。本次附件是P8、BS4096、K6、
+E384（不是此前性能例的E256）；rank7的每src payload count为1024，期望3072；
+48个本地expert中只有16项计数正确，输出metadata仅8192行，期望24576行。
+
+`RouteHistogramsVf` 原先对同一RegTensor和同一MaskReg依次Pack LOWEST/HIGHEST。
+官方 [数据Pack图](https://asc.gitcode.com/api/SIMD-API/basic_api/reg_vector_compute/data_compression/Pack.html)
+和 [掩码Pack图](https://asc.gitcode.com/api/SIMD-API/basic_api/reg_vector_compute/MaskReg_compute/Pack.html)
+明确标明每次Pack会将目标的另一半清零，而不是保留前一次结果。
+主代理实际查看了这两张图，不能仅依据文字“写入高/低半区”推断原位合并语义。
+
+当前32-token tile有192条route，分成128和64两组。第二次Pack覆盖第一次后，只剩64条有效输入，
+即64/192=1/3。按日志头尾展示的均匀route规律构造CPU复现，可同时得到：
+
+- 每src payload 1024而非3072，累计offset为0/1024/.../8192。
+- rank7本地expert仅16..23及40..47为512，其余为0；附件展示的头尾和通过比例与此吻合。
+- PrepareTile仍处理完整的24次peer命中，但下一tile的prefix仅前进8，
+  相邻tile会有16个source-token槽位重叠，解释为什么不仅输出变短，还会有索引重复/缺失。
+
+修复仅在该VF：低/高Pack使用独立RegTensor和MaskReg，再用两个
+[Or重载](https://asc.gitcode.com/api/SIMD-API/basic_api/reg_vector_compute/logical_compute/Or.html)
+配合全uint8 mask显式合并。每256条输入的BIN0/BIN1调用次数不变；
+不修改tile/workspace/通信窗口/Jetty/完成标志/epilogue，不增加printf、assert、Drain或PIPE_ALL。
+
+原CPU模型直接向同一列表的两个半区赋值，错误地隐含了“Pack保留另一半”，所以旧测试没有发现本次缺陷。
+现模型将每次Pack建模为独立的全宽零填充结果，再显式Or；另有旧覆盖路径的负例、
+1/64/127/128/129/192/255/256/257/384/4096尾长与多repeat、分页/无效ID和源码契约测试。
+新增源码契约在修复前失败、修复后通过；这仍不是执行CANN指令或NPU回归。
+
+验收需在原失败用例上确认每src count=3072、48个本地expert均512、总metadata=24576、
+recv_x_idx一一映射，并继续覆盖standalone/continue、cached/uncached与不同K/P/E。
+本轮未执行远端编译或NPU；不能把CPU复现/修复后的32项测试通过表述为设备验收通过。
+
+修复后按本次授权使用`gpt-5.6-sol`完成逻辑、架构、功能覆盖与Clean Code独立复审。
+逻辑复审也实际查看了两张官方Pack图，确认必须同时合并数据和mask；
+架构复审核对了错误prefix导致source-list切片重叠的链路，确认无需改golden或增加Drain。
+Clean Code发现另一份文档仍写初版8项测试，已同步为11项；未留下确定性的静态阻塞项。
