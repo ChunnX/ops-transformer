@@ -39,7 +39,7 @@ struct MoeDistributeDispatchV2Info {
     bool isQuant;                 // whether quant or not
     bool isMc2Context;
     bool hasExpertScales; // has expertScales or not
-    bool reserved1;
+    bool useCcuCtrl;      // A5 only: CCU control plane (count via AlltoAll) for fullmesh_v2, 0 keeps pure MTE path
     uint64_t totalUbSize; // epWorldSize
     uint64_t totalWinSizeEp;
     uint32_t expertTokenNumsType; // expert token nums type, support 0: cumsum mode, 1: count mode
@@ -50,12 +50,19 @@ struct MoeDistributeDispatchV2Info {
     uint32_t scalesTypeSize;
     uint64_t scalesCount;
     uint32_t cumsumTmpMinSize; // cumsum min tmp size, 0 means no cumsum
+    bool useCcuScanGm;         // A5 CCU only: prefix scan direct-GM variant (A/B), 0 keeps UB round-trip version
 };
 
 struct MoeDistributeDispatchV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
     MoeDistributeDispatchV2Info moeDistributeDispatchV2Info;
+    // ===== 方案 A（ccu+env 混合模式）：双槽注入的第二 CCU 段 =====
+    // ccu 入口混合模式下槽 0 不覆写（维持 A3 公共流程写入的 AIV/MTE 配置=数据面 windowsIn 的天然
+    // 来源），CCU 控制面由本段（槽 1）承载；形态同 batch_mat_mul_reduce_scatter_allto_all 先例
+    // （Mc2InitTiling + 双 Mc2CcTiling → kernel GetHcclContext<0>/<1> 各喂一实例）。尾部追加=
+    // 旧内核读不到，天然防新旧错配
+    Mc2CcTiling mc2CcTiling2;
 };
 
 #endif
