@@ -339,7 +339,7 @@ protected:
                      dealRowCountAlign);
         }
     }
-    __aicore__ inline float CalcMinCheckValue()
+    __aicore__ inline void CalcMinCheckValue()
     {
         // 与 FA 侧 UpdateMinCheckValue 保持一致：DN 路径全 mask 行写入的 max 经过了
         // scaleValue 乘法 + ln2 量化；非 DN 路径保持原始 minValue
@@ -348,7 +348,6 @@ protected:
         LocalTensor<float> minCheckUb = fdMinCheckBuf_;
         CalcMinCheckValueVF<useDn>((__ubuf__ float *)minCheckUb.GetPhyAddr(), minValue, constInfo_.scaleValue);
         AscendC::PipeBarrier<PIPE_V>();
-        return minCheckUb.GetValue(0);
     }
 
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
@@ -360,8 +359,11 @@ protected:
 
         LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false, CalcMinCheckValue());
+        // minCheckValue 经 UB 传入 VF（__simd_vf__ 末位运行时标量在 AIV 首次调用会丢失，
+        // 会导致 LSE 在合法的 ln2 量化边界 max=0.0 行误输出 inf）
+        CalcMinCheckValue();
+        ComputeScaleValue_VF_FD_MinUb(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, fdMinCheckBuf_,
+                                      dealRowCount, actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
