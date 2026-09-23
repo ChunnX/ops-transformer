@@ -115,19 +115,19 @@ public:
 
         const uint32_t actKvsTile = actualBlockShape.m();
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
-        // QK 已将 qs pad 到 align128，S 行宽与 qs128 相同（even/odd + SPLIT_CONSEC64）。
-        // align64 仍表示真实 qs 宽度，供 CopyP / PV / rescale 使用。
+        // QK 在 qs=64 时 N=64，S 仍按 128 宽行的前 64 列存放。softmax 继续走 qs128 VF，
+        // 有效列与后 64 列互不影响。qs64 VF 的 P 落点与当前 PV 的 K-outer 不一致。
         const bool sRowIsQs128 = (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE);
 
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
             if (sRowIsQs128) {
-                // qs=128 或 qs=64 pad 到 128：整基块 softmax
+                // qs=128 或短尾 pad 到 128：整基块 softmax
                 Mxfp8VF::SoftmaxWithGroupMaxQs128Kvs128CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                                                               MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                     localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
             } else {
-                // 未 pad 的 qs=64 整基块 softmax（当前路径不应走到）
+                // qs=64：只算 UB 行前 64 列
                 Mxfp8VF::SoftmaxWithGroupMaxQs64Kvs128CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                                                              MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
@@ -135,7 +135,7 @@ public:
             }
 
         } else {
-            // kvs padding 32 multi（温和 B：仍走原 kvs32 VF，不改有效 token 的 softmax）
+            // kvs 不足 128：仍走 kvs32 VF，不改有效 token 的 softmax
             if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
                 if (sRowIsQs128) {
                     Mxfp8VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
@@ -210,13 +210,12 @@ public:
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        // 温和 B：短 kvs 的未写 P 尾组已在 UB 填 0，可以继续满拷 16KB。
+        // 短 kvs 的未写 P 尾组已在 UB 填 0，可以继续满拷 16KB。
         // qs pad 到 128 必须留在条件里，否则 odd 高半面不搬（~50% fulfill）。
         if (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE ||
             tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
-            // qs128 或 qs64-pad-to-128：整基块/尾块都搬满 64 个 TLA 行（LoadP srcStride=8 只读前 kvs）。
+            // K-outer：C0 高平面在 +8064，搬满 64 个 TLA 行（16KB）。
             AscendC::DataCopyParams repeatParams;
-            // qs128 / qs64 都走 K-outer：C0 高平面在 +8064，搬满 64 个 TLA 行（16KB）
             repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize);
             repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
             repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
@@ -228,18 +227,7 @@ public:
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
             AscendC::DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], repeatParams);
         } else if (tileInfo.kvsActBaseTileAlign32 != 0) {
-            // 消去高位 低位中间的间隙搬运
-            // 低位搬运
-            auto pUBTensorTlaTile =
-                GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET),
-                        tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
-            auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
-
-            // DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], {static_cast<uint16_t>(128/ 32 * 8 /
-            // 2), 8, 8, 0}); DataCopy(l1PTensorTla.data()[128 / 32* 8 / 2 * 256], pUBTensorTlaTile.data()[srcOffset +
-            // 16384],
-            //     {static_cast<uint16_t>(128 / 32 * 8 / 2), 8, 8, 0});
-
+            // 低位、高位分开搬，中间间隙不搬。
             AscendC::DataCopyParams repeatParams1;
             repeatParams1.blockCount = static_cast<uint16_t>(
                 tileInfo.kvsActBaseTileAlign32 /

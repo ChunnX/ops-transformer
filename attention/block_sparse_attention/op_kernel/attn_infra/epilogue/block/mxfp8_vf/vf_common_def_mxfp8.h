@@ -213,7 +213,7 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
         StoreAlign(((__ubuf__ uint8_t *&)(pDest)) + (offset), (RegTensor<uint8_t> &)_q0, (pregAll8)); \
     } while (0)
 
-// mxfp4 同构：4 行×64 e4m3 打成 256B 后按 VL128 拆 M（2 行×64 = 128B）
+// 4 行×64 e4m3 打成 256B 后按 VL128 拆 M（2 行×64 = 128B）
 #define BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, offLo, offHi, x0, x1, x2, x3, idx, pregFp32, pregAll8, pregLo, pregHi) \
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \

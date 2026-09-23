@@ -151,7 +151,7 @@ struct CopyL1ToL0AMxFp8QKA5 {
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
                                       uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK, uint32_t s2Align16Full,
-                                      uint32_t scaleK, uint32_t kStart = 0, uint32_t scaleRowStart = 0)
+                                      uint32_t kStart = 0, uint32_t scaleRowStart = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -178,7 +178,6 @@ struct CopyL1ToL0AMxFp8QKA5 {
         loadMxDataParams.srcStride = scaleRowHalf;
         loadMxDataParams.dstStride = scaleRowHalf;
 
-        (void)scaleK;
         AscendC::LoadData(dst, src, scale, loadDataParams, loadMxDataParams);
     }
 };
@@ -189,7 +188,7 @@ struct CopyL1ToL0BMxFp8QKA5 {
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
                                       uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0, uint32_t scaleMAlignL1,
-                                      uint32_t scaleK, uint32_t kStart = 0)
+                                      uint32_t kStart = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;

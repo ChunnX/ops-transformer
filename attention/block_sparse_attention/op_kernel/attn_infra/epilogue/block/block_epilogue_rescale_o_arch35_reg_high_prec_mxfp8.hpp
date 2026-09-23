@@ -153,7 +153,6 @@ public:
     __simd_vf__ inline void ExpandLseToUnalignVF(__ubuf__ float *lseUb, uint32_t row)
     {
         using namespace AscendC::Reg;
-        MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         UnalignReg ureg0;
         UnalignReg ureg1;
         static constexpr uint32_t postUpdateStride = 32 / sizeof(float);
@@ -171,7 +170,6 @@ public:
         }
         StoreUnAlignPost<float, PostLiteral::POST_MODE_UPDATE>(dst, ureg0, postUpdateStride);
         StoreUnAlignPost<float, PostLiteral::POST_MODE_UPDATE>(dst, ureg1, postUpdateStride);
-        (void)pregFull;
     }
 
     __aicore__ inline void ExpandLseToUnalign(__ubuf__ float *lsePtr, uint32_t row)

@@ -107,7 +107,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
 
-        // softmax 在 qs pad 到 128 后写出 128 宽 group-max（even/odd），pscale 必须同宽。
+        // 与 softmax 一致：group-max 仍是 128 宽，pscale 走 qs128。
         const bool sRowIsQs128 = (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE);
         if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
             if (sRowIsQs128) {
@@ -137,8 +137,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
 
-        // copy pscale1 ub to l1
-        // 与 softmax/pscale VF 一致：pad-to-128 后按 128 宽写 L1，不要用 mxfp4 的 align64。
+        // 与 softmax 一致：按 128 宽写 L1。
         bool isQsAlign128 = taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE;
         CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart,
                          secondLoop, isQsAlign128);
@@ -216,14 +215,13 @@ private:
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == tileInfo.kvsFirstTileStartVecCore);
         uint32_t loop = tileInfo.loop;
         uint32_t curS2LoopIdx = tileInfo.curKvsTileLoopIdx;
-        // 对照 mxfp4：单核目前为止第几个 softmax（跨 batch）
+        // 单核目前为止第几个 softmax（跨 batch）
         uint32_t groupMaxEndLoop = (loop >> 1) - (subBlockIdx != 0 && loop % 2 == 0);
-        // kvs128：1 基块 = 1 槽。mxfp4 是 *2+1（2 槽/基块的末槽）；这里末槽就是 groupMaxEndLoop。
+        // kvs128：1 基块 = 1 槽，末槽就是 groupMaxEndLoop。
         uint32_t groupMaxEndIdx = groupMaxEndLoop % GROUP_MAX_SPACE_LEN;
 
-        // 对照 mxfp4：两个 AIV 交替 softmax，每核只处理自己做过的 softmax。
-        // mxfp4 用 isLoopFirst + 偶对齐 + /2 把「2 槽单位」折成 softmax 数；
-        // kvs128 一槽一 softmax，直接 ceil/floor(组内 tile 数 / 2)。
+        // 两个 AIV 交替 softmax，每核只处理自己做过的 softmax。
+        // 一槽一 softmax，直接 ceil/floor(组内 tile 数 / 2)。
         uint16_t tilesInGroup =
             static_cast<uint16_t>((curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP);
         if (tilesInGroup == 0) {

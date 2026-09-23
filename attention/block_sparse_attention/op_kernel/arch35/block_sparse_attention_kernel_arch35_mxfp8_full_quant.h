@@ -89,7 +89,7 @@ public:
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(bsaTilingData);
         // KV(V 数据) 与 V-scale 的 stride 预算（PV 稀疏 gather 用）
-        // V 数据 fp4：sizeof(fp8_e4m3fn_t)=1，元素偏移即字节偏移，行 stride = embed_(D 个 fp4)
+        // V 数据 e4m3：sizeof=1，元素偏移即字节偏移，行 stride = embed_
         // V-scale E8M0：GM [B,N2,S2//64,D,2]，每 64-S2 行 group 占 D*2 字节
         // O / Lse stride & batch offsets（同 BF16，在 while 循环中创建 task 时传入）
         InitLayoutStride();
@@ -156,13 +156,14 @@ public:
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // [QK/PV 共享] kernel 层单一 kvBufId，传引用进两 block ctor（QK 先构造预置 4 路 KV event；
-        //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1，与 QFA cube 同构）
+        //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1）
         uint32_t kvBufId = 0;
         uint64_t softmaxScale = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
         BlockMmadQK blockMmadQK(resource, kvBufId, softmaxScale);
         BlockMmadPV blockMmadPV(resource, kvBufId);
-        BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
 #endif
+        // 两边都构造，AIV 的 if constexpr(AIC) 被丢弃时仍能解析到这个名字。拷贝只在 Cube 函数体内发出。
+        BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
         // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
@@ -201,11 +202,9 @@ public:
         // 后续调用在 while 循环内基于该状态续算，不再从 batch 0 重扫
         BatchOffsetInfo batchOffsetInfo;
         batchOffsetInfo.curTotalTaskNum = firstBatchTaskNum_;
-        // [BSND/TND stride 修复] 头内 per-token/per-group gather stride 因子: BNSD=1(头内连续);
-        //   BSND/TND=kvHeads_/qHeads_(头内 token 隔 N*D)。原 gather layout 烧死 embed_=D(仅 BNSD 对),
-        //   BSND/TND 头内越界 507015(开发者 :236 TODO)。修法=「乘 extent」hack:
-        //   ColumnMajor(rows)/RowMajor(cols)/MxScale(rows) 乘此因子, col/row/group-stride 自动变对,
-        //   extent 超估对 GetTile(按真实 extent 取子块)无害。
+        // BSND/TND 头内 token 间隔 N*D。gather layout 的行/列 extent 乘 kvHeads_/qHeads_，
+        // 列步长、行步长、group 步长才对。BNSD 头内连续，因子为 1。
+        // extent 大于真实长度不影响 GetTile（按真实 extent 取子块）。
         const uint32_t kvHeadMul = (kvFormat == Format::BNSD) ? 1u : kvHeads_;
         const uint32_t qHeadMul = (qFormat == Format::BNSD) ? 1u : qHeads_;
 
@@ -241,7 +240,7 @@ public:
                     GemmCoord actualBlockShapePV{delay12TaskInfo.qsActBaseTile, embed_, delay12TileInfo.kvsActBaseTile};
 
 #ifdef __DAV_CUBE__
-                    // P5：even（含 last even 尾块）先发 V gather；Wait 必须在 if 外面。
+                    // even（含 last even 尾块）先发 V gather；Wait 必须在 if 外面。
                     const bool pvPairOdd = (delay12TileInfo.pvGatheredKvSTileIdx & 1u) != 0u;
                     if (!pvPairOdd) {
                         blockMmadPV.PrefetchV(gmVTensorTla, gVDequantScale, gSparseIdx, delay12TileInfo,
@@ -271,15 +270,8 @@ public:
                 } else {
                     if (delay12TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                        // [BSND root fix] O GM layout: cols=embed_(D, 每 token 元素数) +
-                        // row-stride=oShapeCol(=strideOS_, token-stride)。
-                        //   原 RowMajor(qBaseTile, oShapeCol) 把 cols-extent 与 row-stride 都设成
-                        //   oShapeCol(=strideOS_): BNSD 二者都=D 过; BSND oShapeCol=strideOS_=N*D -> cols 放大 ->
-                        //   epilogue get<1>(shape)=N*D
-                        //   -> copyUbToGmO 每 token 写 N*D 元素(128 真+128 垃圾) -> 输出错乱 1.147%。
-                        //   hand-build 分离: cols=embed_(D, extent 正确)、row-stride=oShapeCol(strideOS_, token-stride
-                        //   正确); isRowMajor(stride<1>=1) 仍成立 -> dispatch 不变; epilogue get<1>(shape)
-                        //   自然=embed_=D, 无需 epilogue 侧特判。
+                        // O GM：cols=embed_（每 token D 个元素），row-stride=oShapeCol（token 步长 strideOS_）。
+                        // BNSD 两者都是 D。BSND/TND 的 strideOS_ 是 N*D，cols 不能再设成 oShapeCol。
                         auto gmOLayoutTla = tla::MakeLayout(tla::MakeShape(qBaseTile_, embed_),
                                                             tla::MakeStride(delay12TaskInfo.oShapeCol, tla::Int<1>{}));
                         auto gmOTensorTla =
@@ -312,12 +304,7 @@ public:
                                                                            delay3TileInfo.tileMaxIdx / 2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 +
                                                                            delay3TileInfo.tileMaxIdx / 2 + 16);
-                        // mxfp4 这里用 KVS_BASE=256，实际是 2*QS（两个 AIV 的 gmax 各 128）。
-                        auto l1GMaxLayoutTla =
-                            tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP8::QS_BASE_SIZE * 2);
-                        auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx],
-                                                               l1GMaxLayoutTla, Arch::PositionUB{});
-                        blockGMaxL1ToUb(l1GMaxTensorTla, delay3TileInfo);
+                        blockGMaxL1ToUb(delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 +
                                                                           delay3TileInfo.tileMaxIdx / 2);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 +
@@ -379,7 +366,7 @@ public:
                                               gSparseIdx[curTaskInfo.gmOffsetSparseIdx], curTaskInfo, curTileInfo,
                                               embed_, kvBaseTile_, blockShapeY_, kvHeadMul, qHeadMul);
                         if (qkPairEven) {
-                            blockMmadQK.ComputeQKMmad256Even(curTaskInfo, curTileInfo, embed_);
+                            blockMmadQK.ComputeQKMmad256Even(curTaskInfo, embed_);
                         }
                     }
 #endif
@@ -387,7 +374,7 @@ public:
                                                                       subBlockIdx * 16);
 #ifdef __DAV_CUBE__
                     if (qkPairEven) {
-                        blockMmadQK.EmitFixpipeQK256Even(curUBSTensorTla, curTaskInfo, curTileInfo, subBlockIdx);
+                        blockMmadQK.EmitFixpipeQK256Even(curUBSTensorTla, curTaskInfo, subBlockIdx);
                     } else {
                         blockMmadQK.ComputeQK(curUBSTensorTla, curTaskInfo, curTileInfo, embed_, subBlockIdx);
                     }
@@ -754,7 +741,7 @@ public:
         info.isFirstKvsTile = (curTaskTileIdx == 0);
         info.isLastKvsTile = (curTaskTileIdx + 1 == taskInfo.taskTileNum);
         info.isLastSecondKvsTile =
-            ((curTaskTileIdx + 2 == taskInfo.taskTileNum) || (taskInfo.taskTileNum == 1)); // pv rowsum刷1，同 mxfp4
+            ((curTaskTileIdx + 2 == taskInfo.taskTileNum) || (taskInfo.taskTileNum == 1)); // pv rowsum 刷 1
 
         info.isUpdatePScale = (info.isLastKvsTile || ((info.curKvsTileLoopIdx + 1) % MXFP8Kernel::TILE_GROUP_N == 0));
         info.isTileGoupFirstTile = (info.curKvsTileLoopIdx % MXFP8Kernel::TILE_GROUP_N == 0);
@@ -763,7 +750,7 @@ public:
         }
         info.kvsFirstTileStartVecCore = kvsFirstTileStartVecCore_;
 
-        if (info.isTileGoupFirstTile && !info.isFirstKvsTile) { // 非第一个 kvs tileGroup，更新 dm id（同 mxfp4）
+        if (info.isTileGoupFirstTile && !info.isFirstKvsTile) { // 非第一个 kvs tileGroup，更新 dm id
             updateScaleIdx_ = (updateScaleIdx_ + 1u) & 3u;
         }
 
@@ -902,8 +889,8 @@ private:
     int64_t strideLseN_ = 0;
     int64_t strideLseS_ = 0;
     // ===== V 数据 / V-scale stride（PV 稀疏 gather 用，operator() 内预算一次）=====
-    // V 数据为 fp4，sizeof(fp8_e4m3fn_t)=1，元素偏移即字节偏移
-    int64_t strideKVData_ = 0;  // TND: 每 token 跨 kvHead 的步长（fp4 元素）
+    // V 数据为 e4m3，sizeof=1，元素偏移即字节偏移
+    int64_t strideKVData_ = 0;  // TND: 每 token 跨 kvHead 的步长（元素）
     int64_t strideKVDataB_ = 0; // BNSD/BSND: V 数据 batch 步长
     int64_t strideKVDataN_ = 0; // BNSD/BSND: V 数据 head 步长
     // V-scale 为 E8M0(1 字节)，GM 布局 [B,N2,S2//64,D,2]；B16 视图下每 64-S2 行 group 占 D 个 B16 = 2D 字节
