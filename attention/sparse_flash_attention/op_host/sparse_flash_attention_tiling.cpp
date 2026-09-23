@@ -2022,9 +2022,11 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(
-        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
-                                              "When return_softmax_lse is true, layout_kv does not support PA_BSND"),
+        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
+            "When return_softmax_lse is true, layout_kv does not support PA_BSND, it is only supported on Ascend "
+            "950PR/Ascend 950DT"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

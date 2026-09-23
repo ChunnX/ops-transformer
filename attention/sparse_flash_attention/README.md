@@ -174,7 +174,7 @@
     <tr>
       <td>return_softmax_lse</td>
       <td>可选属性</td>
-      <td>用于表示是否返回softmax_max和softmax_sum。True表示返回，False表示不返回，默认值为False。该参数仅在训练且layout_kv不为PA_BSND场景支持。</td>
+      <td>用于表示是否返回softmax_max和softmax_sum。True表示返回，False表示不返回，默认值为False。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -216,11 +216,13 @@
   - Q_N支持1~128。
   - sparse_block_size仅支持1。
   - 仅在layout_key为PA_BSND时，key、value和key_rope支持0轴非连续。
+  - return_softmax_lse为True时，支持layout_kv为PA_BSND。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - Q_N支持1/2/4/8/16/32/64/128。
   - 参数sparse_block_size支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
   - 不支持sinks。
   - key、value和key_rope不支持非连续。
+  - return_softmax_lse为True时，layout_kv不支持PA_BSND。
 
 ## 调用示例
 
