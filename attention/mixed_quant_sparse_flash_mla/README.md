@@ -5,11 +5,11 @@
 | 产品                                                         |  是否支持 |
 | :----------------------------------------------------------  | :------: |
 |<term>Ascend 950PR&950DT系列产品</term>                        |     √    |
-|<term>Atlas A3系列产品</term>                                  |     √    |
-|<term>Atlas A2系列产品</term>                                  |     √    |
-|<term>Atlas 200I/500 A2推理产品</term>                          |     ×    |
-|<term>Atlas推理系列产品</term>                                 |     ×    |
-|<term>Atlas训练系列产品</term>                                 |     ×    |
+|<term>Atlas A3系列产品</term>        |     √    |
+|<term>Atlas A2系列产品</term>        |     √    |
+|<term>Atlas 200I/500 A2推理产品</term>                        |     ×    |
+|<term>Atlas推理系列产品</term>                                |     ×    |
+|<term>Atlas训练系列产品</term>                                |     ×    |
 
 ## 功能说明
 
@@ -61,21 +61,21 @@
       <td>q</td>
       <td>输入</td>
       <td>表示对应公式中的Q。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
-      <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
+      <td>表示对应公式中K和V的一部分，为原始不经压缩的KV，Key和Value共享同一份数据。数据类型和存储布局详见quant_mode描述。</td>
+      <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
-      <td>FLOAT8_E4M3FN、UINT8</td>
+      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。数据类型和存储布局详见quant_mode描述。</td>
+      <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -184,9 +184,9 @@
       <td>ND</td>
     </tr>
     <tr>
-      <td>quant_mode</td>
+      <td id="quant_mode">quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成；量化模式3表示融合TQ4反量化的TurboQuant模式。量化模式1和2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。</td>
+      <td>表示量化模式，支持1、2、3，Q不量化。<ul><li>quant_mode=1：q使用BFLOAT16，ori_kv和cmp_kv的nope采用per-token-group量化，groupSize=64。每个token依次由rope（64个BFLOAT16）、nope（448个FLOAT8_E4M3FN）、scale（7个BFLOAT16）、pad（18字节）拼接，kv_d=608。</li><li>quant_mode=2：q使用BFLOAT16，ori_kv和cmp_kv的nope采用per-token-group量化，groupSize=64。每个token包含nope（448个FLOAT8_E4M3FN）、rope（64个BFLOAT16）、scale（7个FLOAT8_E8M0）、pad（1字节），kv_d=584；仅支持layout_kv为PA_BBND，块内按block_size*(nope+rope)+block_size*(scale+pad)组织。</li><li>quant_mode=1或quant_mode=2时，ori_kv和cmp_kv支持使用UINT8或FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变；各字段的实际类型如上所述。</li><li>quant_mode=3：表示融合TQ4反量化的TurboQuant路径，仅支持CSA场景。q使用FLOAT16或BFLOAT16；ori_kv保持非量化，数据类型与q一致，kv_d=512；cmp_kv使用UINT8存储TQ4数据，每个token的512维数据编码为256字节的4位码本索引，再拼接2字节FLOAT16逐token scale，共258字节，kv_d=258。两路KV均使用PA_BBND布局，shape分别为(block_num, block_size, 1, 512)和(block_num, block_size, 1, 258)。码本与TurboQuant量化端约定一致，不新增外部码本或scale参数。</li></ul></td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -271,7 +271,7 @@
       <td>attn_out</td>
       <td>输出</td>
       <td>表示对应公式中的输出O。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -284,18 +284,44 @@
   </tbody>
 </table>
 
+## A2/A3 TurboQuant 补充说明
+
+- Atlas A2、Atlas A3 支持 TurboQuant TQ4；A5 仍使用原有quant_mode=1和quant_mode=2。
+- 复用原有接口和量化模式参数，设置quant_mode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quant_mode=3下生效。
+- 主算子只支持 CSA 路径。DeepSeek V4 框架当前仅对 C4 压缩 KV 启用此能力。
+- KV数据类型、存储布局及码本约定详见quant_mode描述。
+- 相对512维 BF16 的1024字节，单个被量化 token 的有效载荷减少约74.8%（约3.97倍压缩）。整个 KV cache 的收益需另外计入未量化部分、物理页步长和对齐开销，不能直接按此倍率估算。
+
+quant_mode=3的参数约束如下；以下字段均为原有参数，不增加新的位置参数。
+
+| 参数 | A2/A3 quant_mode=3约束 |
+| --- | --- |
+| `quant_mode` | 3 |
+| `q`、`attn_out` | FLOAT16 或 BFLOAT16，类型和 shape 一致；TND 布局，shape `(q_t, q_n, 512)`；`q_n` 为4到128的4的倍数，`q_t` 允许为0 |
+| `ori_kv` | 必传；数据类型、布局和shape详见quant_mode描述 |
+| `cmp_kv` | 必传；数据类型、布局和shape详见quant_mode描述 |
+| `layout_q`、`layout_kv` | 分别为 TND、PA_BBND；两路 KV 的 block_size 均为16到1024的16的倍数，0轴 stride 必须覆盖一个完整物理块 |
+| `cmp_sparse_indices` | 必传 INT32，shape `(q_t, 1, 512)` 或 `(q_t, 1, 1024)`；无效位置填 -1 |
+| `ori_block_table`、`cmp_block_table`、`cu_seqlens_q`、`seqused_ori_kv` | 均必传，沿用原有 INT32 类型和参数含义 |
+| `ori_sparse_indices`、`ori_topk_length`、`cmp_topk_length`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_q`、`seqused_cmp_kv`、`cmp_residual_kv` | 不支持传入，保留原有可选参数位置 |
+| `ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`、`ori_win_right` | 分别为4、3、非负值、0 |
+| `cmp_ratio`、`rope_head_dim`、`topk_value_mode` | 分别支持4或128、64、1；算子的压缩倍率支持范围不代表框架会量化全部压缩 KV |
+| `metadata` | 必传，由前置 Metadata 接口以相同quant_mode=3及相同输入属性生成，INT32、shape `(1024,)` |
+
+Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的布局、dtype 和空查询特例不会放宽 A5 quant_mode=1和quant_mode=2的校验条件。
+
 ## 约束说明
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1/2`，q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN；quant_mode为1和2时kv_d分别为608和584，quant_mode为2时layout_kv仅支持PA_BBND。
+- <term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1`或`quant_mode=2`，数据类型和KV存储布局详见quant_mode描述。
 <!-- end id1 -->
 
 <!-- npu="A3" id2 -->
-- <term>Atlas A3系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
+- <term>Atlas A3系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，数据类型和KV存储布局详见quant_mode描述。
 <!-- end id2 -->
 
 <!-- npu="910b" id3 -->
-- <term>Atlas A2系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，q、ori_kv和attn_out支持FLOAT16、BFLOAT16且数据类型一致，ori_kv的尾维为512，cmp_kv仅支持UINT8且尾维为258。
+- <term>Atlas A2系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，数据类型和KV存储布局详见quant_mode描述。
 <!-- end id3 -->
 
 - 该接口支持推理场景下使用。
