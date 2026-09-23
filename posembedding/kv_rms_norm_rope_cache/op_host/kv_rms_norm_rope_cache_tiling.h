@@ -290,10 +290,10 @@ protected:
                           int64_t headSize);
     bool CheckVCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                           int64_t headSize);
-    virtual bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
-        int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char *cacheName);
+        virtual bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
+                                 int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char *cacheName);
     virtual bool CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize, size_t cacheIndex,
-        const char *cacheName);
+                                   const char *cacheName);
 
     bool CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead, int64_t headSize);
     bool CheckVCacheValidPA(const gert::TilingContext *context, int64_t numHead, int64_t headSize);
@@ -319,15 +319,16 @@ protected:
     ge::graphStatus PostTiling() override;
 
 protected:
-    void DoOpTilingPaBlkNz();
-    bool CheckQuantTermShape(const gert::TilingContext* context, size_t inputIdx, int64_t headSize, bool& hasShape);
+        void DoOpTilingPaBlkNz();
+    bool CheckQuantTermShape(const gert::TilingContext *context, size_t inputIdx, int64_t headSize, bool &hasShape);
     bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                          int64_t headSize, size_t cacheIndex, const char *cacheName) override;
-    ge::graphStatus ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize,
-        const char *cacheName, int8_t& quantType);
+    ge::graphStatus ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize, const char *cacheName,
+                                       int8_t &quantType);
     ge::graphStatus ResolveQuantComponents();
     bool validateQuantCrossTermShapes();
     bool validateCacheDatatypes();
+
 private:
     int64_t hDimKCache{0};
     int64_t hDimVCache{0};

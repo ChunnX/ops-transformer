@@ -47,8 +47,8 @@ constexpr uint64_t TLING_KEY_1010 = 1010;
 constexpr uint64_t TLING_KEY_1001 = 1001;
 constexpr uint64_t TLING_KEY_1011 = 1011;
 
-bool KvRmsNormRopeCacheTilingDs::CheckQuantTermShape(const gert::TilingContext* context, size_t inputIdx,
-    int64_t headSize, bool& hasShape)
+bool KvRmsNormRopeCacheTilingDs::CheckQuantTermShape(const gert::TilingContext *context, size_t inputIdx,
+                                                     int64_t headSize, bool &hasShape)
 {
     bool isValid = true;
     auto termShape = context->GetOptionalInputShape(inputIdx);
@@ -62,16 +62,16 @@ bool KvRmsNormRopeCacheTilingDs::CheckQuantTermShape(const gert::TilingContext* 
             } else {
                 const int64_t dimFor2D = (methodMode_ == 0) ? DIM_ONE : tilingData_.get_numHead();
                 isValid = (termShape->GetStorageShape().GetDim(0) == dimFor2D) &&
-                (termShape->GetStorageShape().GetDim(1) == headSize);
+                          (termShape->GetStorageShape().GetDim(1) == headSize);
             }
         }
     }
     return isValid;
 }
 
-bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize,
-    int64_t numHead, int64_t cacheLen, int64_t headSize,
-    size_t cacheIndex, const char *cacheName)
+bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
+                                                 int64_t cacheLen, int64_t headSize, size_t cacheIndex,
+                                                 const char *cacheName)
 {
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
     int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
@@ -80,28 +80,24 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
     int64_t cacheD = std::get<SHAPE_IDX_D>(cacheShapeTuple);
     // Batch and headnum of cache Must be consist with input kv
     if (cacheB != batchSize) {
-        OP_LOGE(context->GetNodeName(),
-        "In CacheMode::Norm, inconsist B dimension %ld of %s with kv %ld.",
-        cacheB, cacheName, batchSize);
+        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, inconsist B dimension %ld of %s with kv %ld.", cacheB,
+                cacheName, batchSize);
         return false;
     }
     if (cacheN != numHead) {
-        OP_LOGE(context->GetNodeName(),
-        "In CacheMode::Norm, inconsist N dimension %ld of %s with kv %ld.",
-        cacheN, cacheName, numHead);
+        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, inconsist N dimension %ld of %s with kv %ld.", cacheN,
+                cacheName, numHead);
         return false;
     }
     if (cacheD != headSize) {
-        OP_LOGE(context->GetNodeName(),
-        "In CacheMode::Norm, inconsist D dimension %ld of %s with kv %ld.", cacheD, cacheName,
-        headSize);
+        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, inconsist D dimension %ld of %s with kv %ld.", cacheD,
+                cacheName, headSize);
         return false;
     }
     if (cacheS < cacheLen) {
         // 'cacheLen' here is seqlen of the input kv
-        OP_LOGE(context->GetNodeName(),
-        "In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.",
-        cacheS, cacheName, cacheLen);
+        OP_LOGE(context->GetNodeName(), "In CacheMode::Norm, Scache %ld of %s is smaller than kv %ld.", cacheS,
+                cacheName, cacheLen);
         return false;
     }
 
@@ -109,22 +105,20 @@ bool KvRmsNormRopeCacheTilingDs::CheckCacheValid(const gert::TilingContext *cont
 }
 
 ge::graphStatus KvRmsNormRopeCacheTilingDs::ResolveQuantConfig(size_t scaleIdx, size_t offsetIdx, int64_t headSize,
-    const char *cacheName, int8_t& quantType)
+                                                               const char *cacheName, int8_t &quantType)
 {
     bool hasQuantScale = false;
-    OP_CHECK_IF(
-            !CheckQuantTermShape(context_, scaleIdx, headSize, hasQuantScale),
-            OP_LOGE(context_->GetNodeName(), "Invalid quant scale shape for %s.", cacheName),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckQuantTermShape(context_, scaleIdx, headSize, hasQuantScale),
+                OP_LOGE(context_->GetNodeName(), "Invalid quant scale shape for %s.", cacheName),
+                return ge::GRAPH_FAILED);
     quantType = hasQuantScale ? STATIC_QUANT_SYM : STATIC_QUANT_NONE;
 
     if (quantType == STATIC_QUANT_SYM) {
         // try to validate quant offset if available
         bool hasQuantOffset = false;
-        OP_CHECK_IF(
-                !CheckQuantTermShape(context_, offsetIdx, headSize, hasQuantOffset),
-                OP_LOGE(context_->GetNodeName(), "Invalid quant offset shape for %s.", cacheName),
-                return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckQuantTermShape(context_, offsetIdx, headSize, hasQuantOffset),
+                    OP_LOGE(context_->GetNodeName(), "Invalid quant offset shape for %s.", cacheName),
+                    return ge::GRAPH_FAILED);
         quantType = hasQuantOffset ? STATIC_QUANT_ASYM : STATIC_QUANT_SYM;
     }
     return ge::GRAPH_SUCCESS;
@@ -160,12 +154,11 @@ bool KvRmsNormRopeCacheTilingDs::validateQuantCrossTermShapes()
     auto offset2Shape = context_->GetOptionalInputShape(C_KV_OFFSET_IDX);
     bool isValid = true;
     if ((scale1Shape != nullptr) && (scale2Shape != nullptr)) {
-        isValid = isValid &&
-        (scale1Shape->GetStorageShape().GetDimNum() == scale2Shape->GetStorageShape().GetDimNum());
+        isValid = isValid && (scale1Shape->GetStorageShape().GetDimNum() == scale2Shape->GetStorageShape().GetDimNum());
     }
     if ((offset1Shape != nullptr) && (offset2Shape != nullptr)) {
         isValid = isValid &&
-        (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
+                  (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
     }
     return isValid;
 }
@@ -196,7 +189,7 @@ bool KvRmsNormRopeCacheTilingDs::validateCacheDatatypes()
     if (vQuantType > STATIC_QUANT_NONE) {
         isValid = isValid && (vcacheDtype == ge::DT_INT8);
     } else {
-        if (methodMode_ == 0){
+        if (methodMode_ == 0) {
             isValid = isValid && (vcacheDtype == kvDtype_);
         } else {
             isValid = isValid && (vcacheDtype == vDtype_);
@@ -241,8 +234,8 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     int64_t seqLength = std::get<SHAPE_IDX_S>(kvShapeTuple);
 
     if (methodMode_ == 0) {
-        hDimKCache = ROPE_LENGTH;       // k_cache hDim
-        hDimVCache = RMS_NORM_LENGTH;   // ckv_cache hDim
+        hDimKCache = ROPE_LENGTH;     // k_cache hDim
+        hDimVCache = RMS_NORM_LENGTH; // ckv_cache hDim
     } else if (methodMode_ == 1) {
         hDimKCache = RMS_NORM_LENGTH;
         hDimVCache = V_LENGTH;
@@ -252,22 +245,16 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     }
 
     // Validate cache shapes
-    if (currentCacheMode_ == CacheMode::Norm) {
-        OP_CHECK_IF(
-            !CheckKCacheValid(context_, batchSize, numHead, seqLength, hDimKCache),
-            OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            !CheckVCacheValid(context_, batchSize, numHead, seqLength, hDimVCache),
-            OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
+        if (currentCacheMode_ == CacheMode::Norm) {
+        OP_CHECK_IF(!CheckKCacheValid(context_, batchSize, numHead, seqLength, hDimKCache),
+                    OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckVCacheValid(context_, batchSize, numHead, seqLength, hDimVCache),
+                    OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(
-            !CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"),
-            OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            !CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"),
-            OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckCacheValidPA(context_, hDimKCache, K_CACHE_INDEX, "k_cache"),
+                    OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckCacheValidPA(context_, hDimVCache, V_CACHE_INDEX, "v_cache"),
+                    OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     }
 
     tilingData_.set_batchSize(batchSize);
@@ -286,58 +273,56 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     }
     // Extract quant types for k_cache and v_cache
     OP_CHECK_IF(!validateQuantCrossTermShapes(),
-            OP_LOGE(context_->GetNodeName(), "Mismatched dimNums between quant terms of caches!"),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Mismatched dimNums between quant terms of caches!"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((ResolveQuantComponents() == ge::GRAPH_FAILED),
-            OP_LOGE(context_->GetNodeName(), "Invalid cache quant inputs configuration, check shapes!"),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Invalid cache quant inputs configuration, check shapes!"),
+                return ge::GRAPH_FAILED);
 
     // validate datatype combination of caches according to component quant mode
     OP_CHECK_IF(!validateCacheDatatypes(),
-            OP_LOGE(context_->GetNodeName(), "Invalid cache datatypes for current quant configurations!"),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Invalid cache datatypes for current quant configurations!"),
+                return ge::GRAPH_FAILED);
 
     if ((dk_ != ROPE_LENGTH)) {
         auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
         std::string reasonMsg = "The D-dimension of input cos must be equal to " + std::to_string(ROPE_LENGTH) +
-            ", where D is the last axis of cos";
+                                ", where D is the last axis of cos";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos", ToString(cosShape).c_str(),
-            reasonMsg.c_str());
+                                              reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((dv_ != RMS_NORM_LENGTH)) {
         auto gammaShape = context_->GetInputShape(GAMMA_INDEX)->GetStorageShape();
         std::string reasonMsg = "The 0th axis of input gamma must be equal to " + std::to_string(RMS_NORM_LENGTH);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gamma", ToString(gammaShape).c_str(),
-            reasonMsg.c_str());
+                                              reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
-    if(methodMode_ == 0){
-        OP_CHECK_IF(
-            (currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
-            OP_LOGE(context_->GetNodeName(), "CacheMode::Norm do not support quant!"), return ge::GRAPH_FAILED);
+        if (methodMode_ == 0) {
+        OP_CHECK_IF((currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
+                    OP_LOGE(context_->GetNodeName(), "CacheMode::Norm do not support quant!"), return ge::GRAPH_FAILED);
 
         if ((kv_ != D_LENGTH)) {
             auto kvShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
             std::string reasonMsg = "The D-dimension of input kv must be equal to " + std::to_string(D_LENGTH) +
-                ", where D is the last axis of kv";
+                                    ", where D is the last axis of kv";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv", ToString(kvShape).c_str(),
-                reasonMsg.c_str());
+                                                  reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
         if ((vlen_ != V_LENGTH)) {
             auto vShape = context_->GetOptionalInputShape(V_IDX)->GetStorageShape();
             std::string reasonMsg = "The D-dimension of input v must be equal to " + std::to_string(V_LENGTH) +
-                ", where D is the last axis of v";
+                                    ", where D is the last axis of v";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "v", ToString(vShape).c_str(),
-                reasonMsg.c_str());
+                                                  reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
-        OP_CHECK_IF(
-            (quantMode_ != NON_QUANT_MODE && quantMode_ != QUANT_MODE),
-            OP_LOGE(context_->GetNodeName(), "Only Support QUANT or NON_QUANT."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((quantMode_ != NON_QUANT_MODE && quantMode_ != QUANT_MODE),
+                    OP_LOGE(context_->GetNodeName(), "Only Support QUANT or NON_QUANT."), return ge::GRAPH_FAILED);
     }
 
     if (currentCacheMode_ == CacheMode::PA && quantMode_ != NON_QUANT_MODE) {
@@ -390,7 +375,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
         int64_t numBlocks = (bns + blockFactor - 1) / blockFactor;
         tilingData_.set_blockFactor(blockFactor);
         tilingData_.set_numBlocks(numBlocks);
-        
+
         int64_t maxUbFactor = (methodMode_ == 1) ? 32 : 16;
         constexpr static int64_t needUbSize = static_cast<int64_t>(170) * static_cast<int64_t>(1024);
         if (static_cast<int64_t>(ubSize_) >= static_cast<int64_t>(needUbSize)) {
@@ -406,10 +391,9 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             tilingData_.set_numBlocks(batchSize);
             tilingData_.set_rowsPerBlock(1);
         }
-        // Check numBlocks <= MAX_BLOCK_DIM
-        OP_CHECK_IF(
-            tilingData_.get_numBlocks() > MAX_BLOCK_DIM,
-            OP_LOGE(context_->GetNodeName(), "numBlocks must be smaller than 65535."), return ge::GRAPH_FAILED);
+                // Check numBlocks <= MAX_BLOCK_DIM
+        OP_CHECK_IF(tilingData_.get_numBlocks() > MAX_BLOCK_DIM,
+                    OP_LOGE(context_->GetNodeName(), "numBlocks must be smaller than 65535."), return ge::GRAPH_FAILED);
     }
 
     if (methodMode_ == 1) {
@@ -437,25 +421,25 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             }
         }
     } else {
-            if (IsB1SD(context_)) {
-                if (!isPagedAttention_ && quantMode_ == NON_QUANT_MODE) {
-                    tilingData_.set_isOutputKv(0);
-                }
-                if (isPagedAttention_) {
-                    tilingKey_ = TLING_KEY_3001;
-                } else {
-                    tilingKey_ = TLING_KEY_3000;
-                }
-            } else {
-                if (isPagedAttention_) {
-                    tilingKey_ = TLING_KEY_2000;
-                } else {
-                    tilingKey_ = TLING_KEY_1000;
-                }
-                if (isMTP_) {
-                    tilingKey_ += 1;
-                }
+        if (IsB1SD(context_)) {
+            if (!isPagedAttention_ && quantMode_ == NON_QUANT_MODE) {
+                tilingData_.set_isOutputKv(0);
             }
+            if (isPagedAttention_) {
+                tilingKey_ = TLING_KEY_3001;
+            } else {
+                tilingKey_ = TLING_KEY_3000;
+            }
+        } else {
+            if (isPagedAttention_) {
+                tilingKey_ = TLING_KEY_2000;
+            } else {
+                tilingKey_ = TLING_KEY_1000;
+            }
+            if (isMTP_) {
+                tilingKey_ += 1;
+            }
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -464,7 +448,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(tilingData_.get_numBlocks());
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = DEFAULT_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
