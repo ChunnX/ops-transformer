@@ -557,9 +557,14 @@ private:
         // 按 TND token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
+        // Tensor Cast has no per-instruction SatMode, so use the global NO_SAT prepared by the MX kernel entry.
+        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            FaVectorApi::CAST_USE_GLOBAL_SAT_MODE);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, static_cast<int64_t>(runInfo.actVecMSize) * dTemplateAlign64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
+        AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+            FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
