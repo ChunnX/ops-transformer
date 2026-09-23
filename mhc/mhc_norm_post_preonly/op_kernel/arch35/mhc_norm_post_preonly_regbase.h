@@ -172,6 +172,38 @@ __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTenso
     }
 }
 
+// R6收尾在一个VF内完成低精度量化、恢复和平方，同时保留R7需要的低精度缓存。
+template <typename T>
+__aicore__ inline void QuantizeB16AndSquare(const LocalTensor<T> &cache, const LocalTensor<float> &square,
+                                            const LocalTensor<float> &src, uint32_t count)
+{
+    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
+    __local_mem__ T *cacheAddr = (__local_mem__ T *)cache.GetPhyAddr();
+    __local_mem__ float *squareAddr = (__local_mem__ float *)square.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> srcReg, restoredReg, squareReg;
+        RegTensor<T> cacheReg;
+        MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + offset);
+            if constexpr (IsSameT<T, bfloat16_t>::value) {
+                Cast<T, float, CAST_FP32_TO_B16_RINT>(cacheReg, srcReg, mask);
+            } else {
+                Cast<T, float, CAST_FP32_TO_B16_NONE>(cacheReg, srcReg, mask);
+            }
+            DataCopy<T, StoreDist::DIST_PACK_B32>(cacheAddr + offset, cacheReg, mask);
+            Cast<float, T, CAST_B16_TO_FP32>(restoredReg, cacheReg, mask);
+            AscendC::Reg::Mul(squareReg, restoredReg, restoredReg, mask);
+            DataCopy(squareAddr + offset, squareReg, mask);
+        }
+    }
+}
+
 // 在一个VF内量化相邻两路FP32数据，保持BF16和FP16各自原有舍入模式。
 template <typename T>
 __aicore__ inline void CastFp32PairToB16(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
