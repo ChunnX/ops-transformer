@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """Compare a kernel dump with torch_npu golden.py. Any mismatch is a failure."""
 
 import sys
@@ -38,7 +48,9 @@ def check_case(dump: Path, name: str, bits: int) -> int:
     qjl = np.fromfile(case_dir / "qjl.bin", dtype=np.uint8)
     norm = np.fromfile(case_dir / "norm.bin", dtype=np.uint16)
     gamma = np.fromfile(case_dir / "gamma.bin", dtype=np.uint16)
-    g_idx, g_qjl, g_norm, g_gamma = golden.calc_expect_func(x, rotation, qjl_matrix, bits_of(case_dir, bits))
+    g_idx, g_qjl, g_norm, g_gamma = golden.calc_expect_func(
+        x, rotation, qjl_matrix, bits_of(case_dir, bits)
+    )
     misses = {
         "idx": int((idx != np.asarray(g_idx).reshape(-1)).sum()),
         "qjl": int((qjl != np.asarray(g_qjl).reshape(-1)).sum()),

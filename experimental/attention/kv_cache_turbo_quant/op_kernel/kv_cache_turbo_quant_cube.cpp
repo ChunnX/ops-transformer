@@ -39,8 +39,8 @@ public:
             dst[i] = src[i];
         }
         aGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(a), static_cast<uint32_t>(tiling.M) * tiling.Ka);
-        const uint32_t bCount = TransB ? static_cast<uint32_t>(tiling.N) * tiling.Kb
-                                       : static_cast<uint32_t>(tiling.Kb) * tiling.N;
+        const uint32_t bCount =
+            TransB ? static_cast<uint32_t>(tiling.N) * tiling.Kb : static_cast<uint32_t>(tiling.Kb) * tiling.N;
         bGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(b), bCount);
         cGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(c), static_cast<uint32_t>(tiling.M) * tiling.N);
     }
@@ -71,7 +71,8 @@ public:
     }
 };
 
-extern "C" __global__ __aicore__ void mm_fp32_transb(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR workspace, GM_ADDR tilingGm)
+extern "C" __global__ __aicore__ void mm_fp32_transb(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR workspace,
+                                                     GM_ADDR tilingGm)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     TPipe pipe;

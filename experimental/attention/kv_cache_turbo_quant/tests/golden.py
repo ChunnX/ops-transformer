@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """Torch NPU golden for KvCacheTurboQuant."""
 
 import numpy as np
@@ -8,12 +18,34 @@ from ml_dtypes import bfloat16
 
 CENTROIDS = {
     2: [-0.1335033178, -0.04002048075, 0.04002048075, 0.1335033178],
-    3: [-0.19020693, -0.1187859178, -0.06682205945, -0.02166347019,
-        0.02166347019, 0.06682205945, 0.1187859178, 0.19020693],
-    4: [-0.2414890379, -0.1828317791, -0.1429702938, -0.1109927073,
-        -0.08325428516, -0.05802082643, -0.03428063914, -0.01134236995,
-        0.01134236995, 0.03428063914, 0.05802082643, 0.08325428516,
-        0.1109927073, 0.1429702938, 0.1828317791, 0.2414890379],
+    3: [
+        -0.19020693,
+        -0.1187859178,
+        -0.06682205945,
+        -0.02166347019,
+        0.02166347019,
+        0.06682205945,
+        0.1187859178,
+        0.19020693,
+    ],
+    4: [
+        -0.2414890379,
+        -0.1828317791,
+        -0.1429702938,
+        -0.1109927073,
+        -0.08325428516,
+        -0.05802082643,
+        -0.03428063914,
+        -0.01134236995,
+        0.01134236995,
+        0.03428063914,
+        0.05802082643,
+        0.08325428516,
+        0.1109927073,
+        0.1429702938,
+        0.1828317791,
+        0.2414890379,
+    ],
 }
 
 

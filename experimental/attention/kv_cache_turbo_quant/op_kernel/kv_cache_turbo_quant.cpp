@@ -25,11 +25,10 @@ namespace {
 
 constexpr int32_t kDim = 128;
 constexpr int32_t kTile = 64;
-constexpr float kPow2[29] = {1.f,         2.f,         4.f,         8.f,        16.f,       32.f,        64.f,
-                             128.f,       256.f,       512.f,       1024.f,     2048.f,     4096.f,      8192.f,
-                             16384.f,     32768.f,     65536.f,     131072.f,   262144.f,   524288.f,    1048576.f,
-                             2097152.f,   4194304.f,   8388608.f,   16777216.f, 33554432.f, 67108864.f,  134217728.f,
-                             268435456.f};
+constexpr float kPow2[29] = {
+    1.f,       2.f,       4.f,       8.f,       16.f,       32.f,       64.f,       128.f,       256.f,      512.f,
+    1024.f,    2048.f,    4096.f,    8192.f,    16384.f,    32768.f,    65536.f,    131072.f,    262144.f,   524288.f,
+    1048576.f, 2097152.f, 4194304.f, 8388608.f, 16777216.f, 33554432.f, 67108864.f, 134217728.f, 268435456.f};
 
 constexpr float kCent2[4] = {-1.335033178e-01f, -4.002048075e-02f, 4.002048075e-02f, 1.335033178e-01f};
 constexpr float kBnd2[3] = {-8.676189929e-02f, 0.0f, 8.676189929e-02f};
@@ -116,7 +115,7 @@ extern "C" __global__ __aicore__ void kvtq_cast_fp32(GM_ADDR kv, GM_ADDR fp32, u
 }
 
 extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR quantIdx, GM_ADDR residual,
-                                                   uint32_t rowCount, uint32_t mseBits, uint32_t coreNum)
+                                                    uint32_t rowCount, uint32_t mseBits, uint32_t coreNum)
 {
     const uint32_t blockIdx = GetBlockIdx();
     const int32_t bits = static_cast<int32_t>(mseBits);
@@ -187,7 +186,8 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
 
     for (uint32_t base = rowBegin; base < rowEnd; base += static_cast<uint32_t>(kTile)) {
         const uint32_t remain = rowEnd - base;
-        const int32_t nRows = static_cast<int32_t>(remain < static_cast<uint32_t>(kTile) ? remain : static_cast<uint32_t>(kTile));
+        const int32_t nRows =
+            static_cast<int32_t>(remain < static_cast<uint32_t>(kTile) ? remain : static_cast<uint32_t>(kTile));
         const int32_t count = nRows * kDim;
         LoadRows(yGm, y, base, nRows);
         Duplicate(idx, 0.0f, count);
@@ -253,7 +253,7 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
 }
 
 extern "C" __global__ __aicore__ void kvtq_store_bf16(GM_ADDR normFp, GM_ADDR gammaFp, GM_ADDR normBf, GM_ADDR gammaBf,
-                                                     uint32_t rowCount, uint32_t coreNum)
+                                                      uint32_t rowCount, uint32_t coreNum)
 {
     const uint32_t blockIdx = GetBlockIdx();
     if (blockIdx >= coreNum) {
@@ -298,14 +298,16 @@ extern "C" __global__ __aicore__ void kvtq_store_bf16(GM_ADDR normFp, GM_ADDR ga
             bf.SetValue(kChunk + i, Cast(fp.GetValue(kChunk + i)));
         }
         PipeBarrier<PIPE_ALL>();
-        DataCopyPad(normBfGm[base], bf, DataCopyExtParams(1, static_cast<uint32_t>(nRows) * sizeof(bfloat16_t), 0, 0, 0));
+        DataCopyPad(normBfGm[base], bf,
+                    DataCopyExtParams(1, static_cast<uint32_t>(nRows) * sizeof(bfloat16_t), 0, 0, 0));
         DataCopyPad(gammaBfGm[base], bf[kChunk],
                     DataCopyExtParams(1, static_cast<uint32_t>(nRows) * sizeof(bfloat16_t), 0, 0, 0));
         PipeBarrier<PIPE_ALL>();
     }
 }
 
-extern "C" __global__ __aicore__ void kvtq_sign(GM_ADDR projected, GM_ADDR quantQjl, uint32_t rowCount, uint32_t coreNum)
+extern "C" __global__ __aicore__ void kvtq_sign(GM_ADDR projected, GM_ADDR quantQjl, uint32_t rowCount,
+                                                uint32_t coreNum)
 {
     const uint32_t blockIdx = GetBlockIdx();
     if (blockIdx >= coreNum) {
@@ -333,7 +335,8 @@ extern "C" __global__ __aicore__ void kvtq_sign(GM_ADDR projected, GM_ADDR quant
 
     for (uint32_t base = rowBegin; base < rowEnd; base += static_cast<uint32_t>(kTile)) {
         const uint32_t remain = rowEnd - base;
-        const int32_t nRows = static_cast<int32_t>(remain < static_cast<uint32_t>(kTile) ? remain : static_cast<uint32_t>(kTile));
+        const int32_t nRows =
+            static_cast<int32_t>(remain < static_cast<uint32_t>(kTile) ? remain : static_cast<uint32_t>(kTile));
         const int32_t count = nRows * kDim;
         LoadRows(pGm, p, base, nRows);
         Compares(mask, p, 0.0f, CMPMODE::GE, count);
@@ -342,4 +345,21 @@ extern "C" __global__ __aicore__ void kvtq_sign(GM_ADDR projected, GM_ADDR quant
         DataCopyPad(qjlGm[base * kQjlBytes], mask, params);
         PipeBarrier<PIPE_ALL>();
     }
+}
+
+// Registered package entry. The measured encode path launches kvtq_* and mm_fp32_transb from the host.
+extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kv_vectors, GM_ADDR rotation_matrix,
+                                                           GM_ADDR qjl_matrix, GM_ADDR quant_idx, GM_ADDR quant_qjl,
+                                                           GM_ADDR quant_norm, GM_ADDR quant_gamma, GM_ADDR workspace,
+                                                           GM_ADDR tiling)
+{
+    (void)kv_vectors;
+    (void)rotation_matrix;
+    (void)qjl_matrix;
+    (void)quant_idx;
+    (void)quant_qjl;
+    (void)quant_norm;
+    (void)quant_gamma;
+    (void)workspace;
+    (void)tiling;
 }

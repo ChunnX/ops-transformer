@@ -26,23 +26,23 @@
 #include <vector>
 
 extern "C" void kvtq_cast_fp32(uint32_t blockDim, void *l2ctrl, void *stream, uint8_t *kv, uint8_t *fp32,
-                              uint32_t rowCount, uint32_t coreNum);
+                               uint32_t rowCount, uint32_t coreNum);
 extern "C" void mm_fp32_transb(uint32_t blockDim, void *l2ctrl, void *stream, uint8_t *a, uint8_t *b, uint8_t *c,
-                              uint8_t *workspace, uint8_t *tiling);
+                               uint8_t *workspace, uint8_t *tiling);
 extern "C" void kvtq_quantize(uint32_t blockDim, void *l2ctrl, void *stream, uint8_t *rotated, uint8_t *quantIdx,
-                             uint8_t *residual, uint32_t rowCount, uint32_t mseBits, uint32_t coreNum);
+                              uint8_t *residual, uint32_t rowCount, uint32_t mseBits, uint32_t coreNum);
 extern "C" void kvtq_store_bf16(uint32_t blockDim, void *l2ctrl, void *stream, uint8_t *normFp, uint8_t *gammaFp,
-                               uint8_t *normBf, uint8_t *gammaBf, uint32_t rowCount, uint32_t coreNum);
+                                uint8_t *normBf, uint8_t *gammaBf, uint32_t rowCount, uint32_t coreNum);
 extern "C" void kvtq_sign(uint32_t blockDim, void *l2ctrl, void *stream, uint8_t *projected, uint8_t *quantQjl,
-                         uint32_t rowCount, uint32_t coreNum);
+                          uint32_t rowCount, uint32_t coreNum);
 
-#define CHECK_NN(expr)                                                                                                \
-    do {                                                                                                              \
-        aclnnStatus _s = (expr);                                                                                      \
-        if (_s != 0) {                                                                                                \
-            std::printf("aclnn %d at %s\n", static_cast<int>(_s), #expr);                                            \
-            return 1;                                                                                                 \
-        }                                                                                                            \
+#define CHECK_NN(expr) \
+    do { \
+        aclnnStatus _s = (expr); \
+        if (_s != 0) { \
+            std::printf("aclnn %d at %s\n", static_cast<int>(_s), #expr); \
+            return 1; \
+        } \
     } while (0)
 
 namespace {
@@ -83,13 +83,13 @@ float RandUniform(uint32_t &s, float lo, float hi)
     return lo + (hi - lo) * u;
 }
 
-#define CHECK_ACL(expr)                                                                                               \
-    do {                                                                                                              \
-        aclError _e = (expr);                                                                                         \
-        if (_e != ACL_SUCCESS) {                                                                                      \
-            std::printf("ACL error %d at %s\n", static_cast<int>(_e), #expr);                                        \
-            return 1;                                                                                                 \
-        }                                                                                                            \
+#define CHECK_ACL(expr) \
+    do { \
+        aclError _e = (expr); \
+        if (_e != ACL_SUCCESS) { \
+            std::printf("ACL error %d at %s\n", static_cast<int>(_e), #expr); \
+            return 1; \
+        } \
     } while (0)
 
 struct Device {
@@ -221,9 +221,9 @@ void DestroyExact(ExactOps &op)
     op = ExactOps{};
 }
 
-void Launch(Device &dev, int rows, int bits, uint32_t vecCores, uint32_t cubeCores, ExactOps &exact, void *dKv, void *dH,
-            void *dS, void *dUnit, void *dY, void *dR, void *dP, void *dIdx, void *dQjl, void *dNormFp, void *dNorm,
-            void *dGammaFp, void *dGamma, void *dWork, void *dTiling)
+void Launch(Device &dev, int rows, int bits, uint32_t vecCores, uint32_t cubeCores, ExactOps &exact, void *dKv,
+            void *dH, void *dS, void *dUnit, void *dY, void *dR, void *dP, void *dIdx, void *dQjl, void *dNormFp,
+            void *dNorm, void *dGammaFp, void *dGamma, void *dWork, void *dTiling)
 {
     auto *ws = static_cast<uint8_t *>(dWork);
     kvtq_cast_fp32(vecCores, nullptr, dev.stream, (uint8_t *)dKv, (uint8_t *)dR, static_cast<uint32_t>(rows), vecCores);
