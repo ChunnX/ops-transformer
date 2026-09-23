@@ -609,7 +609,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
 
             // ---- softmax 单趟化：per-slice 折叠累计到 foldOut（band 末统一写出）----
             // partSum 槽布局（行主序）[aivIdx*KTILES + tileIdx][128 行][foldG 组]；partMax 槽：[槽][行]
-            if (foldW == 16) {
+            // 仅 post 模式折叠（非 post 无消费方；且单行 slice 走 AR 尾路径 repA=rc*4/8=0 会触发
+            // repeat=0 的 VEC 异常——base0 S=256 单行 chunk 实锤）
+            if (foldW == 16 && constInfo.usePostBlockShape) {
                 LocalTensor<T> groupTmp = reduceSharedTemp.ReinterpretCast<T>();
                 // 无效组清零（本 slice 行区）：GM 槽行宽恒 32，收尾仅消费有效组列
                 AscendC::Duplicate(foldOut[sl.localRowStart * 32], float(0.0f), 32 * sl.rowCount);
