@@ -567,7 +567,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
     RunParamStr runParam;
     runParam.firstFdDataWorkspaceIdx =
         metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
-    int64_t multiCoreInnerIdx = 1;
+    int64_t qsmlaMultiCoreInnerIdx = 1;
     int64_t s2SplitIdxCounter = 0;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
@@ -658,7 +658,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 }
                 if (qsmlaNotLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 4];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, qsmlaMultiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
                     if (qsmlaNotLastThreeLoop) {
@@ -708,7 +708,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx;
+            ++qsmlaMultiCoreInnerIdx;
         }
         gS1StartIdx = 0;
     }

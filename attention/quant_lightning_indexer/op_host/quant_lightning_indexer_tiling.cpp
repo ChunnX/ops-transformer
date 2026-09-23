@@ -24,40 +24,40 @@ using std::string;
 namespace optiling {
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
-    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
-    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
+    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
     {ge::DT_INT8, "DT_INT8"},                     // int8 type
-    {ge::DT_INT16, "DT_INT16"},                   // int16 type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
     {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
-    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
-    {ge::DT_INT64, "DT_INT64"},                   // int64 type
+    {ge::DT_INT16, "DT_INT16"},                   // int16 type
     {ge::DT_INT32, "DT_INT32"},                   // uint32 type
+    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
     {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
-    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_INT64, "DT_INT64"},                   // int64 type
     {ge::DT_BOOL, "DT_BOOL"},                     // bool type
-    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
     {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
-    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
+    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
     {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
-    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
-    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
+    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
     {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
-    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
+    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
+    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
     {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
     {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
-    {ge::DT_STRING, "DT_STRING"},                 // string type
     {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
+    {ge::DT_STRING, "DT_STRING"},                 // string type
     {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
-    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
+    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
     {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
 };
 
@@ -825,6 +825,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     act_seq_k [BatchSize]
     act_seq_q [BatchSize],
     out [T,N2,topk]
+    QuantLightningIndexer 输入输出shape约束:
     ----------------------
     BSND:
     query [BatchSize,S1,N1,D],
@@ -836,7 +837,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     out [BatchSize,S1,N2,topk]
     */
     uint32_t qliQueryWeightsN1Dim = 1;
-    uint32_t outN2Dim = 1;
+    uint32_t qliOutN2Dim = 1;
 
     if (qLayout_ == DataLayout::TND) {
         // -----------------------check BatchSize-------------------
@@ -946,7 +947,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                             " respectively, they must be same"),
                     return ge::GRAPH_FAILED);
         qliQueryWeightsN1Dim = DIM_IDX_TWO;
-        outN2Dim = DIM_IDX_TWO;
+        qliOutN2Dim = DIM_IDX_TWO;
         tSize_ = bSize_ * s1Size_;
     }
     // -----------------------check N1-------------------
@@ -970,7 +971,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                                                "Query, key shape last dim must be same"),
         return ge::GRAPH_FAILED);
     // -----------------------check N2-------------------
-    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliOutN2Dim) != n2Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "key and sparse_indices",
                     Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
@@ -979,7 +980,7 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                 return ge::GRAPH_FAILED);
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF(
-        (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
+        (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliOutN2Dim + 1) != *opParamInfo_.sparseCount),
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "sparse_indices and sparse_count",
                                                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()) +
                                                    " and " + std::to_string(*opParamInfo_.sparseCount),

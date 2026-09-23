@@ -538,50 +538,50 @@ template <typename QSFAT>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach()
 {
     // 计算总的基本块
-    uint32_t totalBaseNum = 0;
-    uint32_t s1GBaseSize = constInfo.gSize;
-    uint32_t actBatchS2 = 1;
-    uint32_t coreNum = GetBlockNum();
-    uint32_t actBatchS1 = 1;
-    uint32_t currCoreIdx = aiCoreIdx;
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
-        uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-        if (actBatchS1 < constInfo.qSeqSize) {
+    uint32_t qsfaTotalBaseNum = 0;
+    uint32_t qsfaS1GBaseSize = constInfo.gSize;
+    uint32_t qsfaActBatchS2 = 1;
+    uint32_t qsfaCoreNum = GetBlockNum();
+    uint32_t qsfaActBatchS1 = 1;
+    uint32_t qsfaCurrCoreIdx = aiCoreIdx;
+    for (uint32_t qsfaBIdx = 0; qsfaBIdx < constInfo.batchSize; qsfaBIdx++) {
+        uint32_t qsfaActBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBIdx);
+        if (qsfaActBatchS1 < constInfo.qSeqSize) {
             constInfo.needInit = true;
         }
-        totalBaseNum += actBatchS1 * actBatchS2;
+        qsfaTotalBaseNum += qsfaActBatchS1 * qsfaActBatchS2;
     }
-    uint32_t avgBaseNum = 1;
-    if (totalBaseNum > coreNum) {
-        avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+    uint32_t qsfaAvgBaseNum = 1;
+    if (qsfaTotalBaseNum > qsfaCoreNum) {
+        qsfaAvgBaseNum = (qsfaTotalBaseNum + qsfaCoreNum - 1) / qsfaCoreNum;
     } else {
-        usedCoreNum = totalBaseNum;
+        usedCoreNum = qsfaTotalBaseNum;
     }
     if (aiCoreIdx >= usedCoreNum) {
         return;
     }
     // 计算当前核的基本块
-    uint32_t accumBaseNum = 0; // 当前累积的基本块数
-    uint32_t targetBaseNum = 0;
-    uint32_t lastValidBIdx = 0;
-    uint32_t lastValidactBatchS1 = 0;
-    bool setStart = false;
-    targetBaseNum = (currCoreIdx + 1) * avgBaseNum; // 计算当前的目标权重
-    uint32_t targetStartBaseNum = targetBaseNum - avgBaseNum;
-    for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kvHeadNum; bN2Idx++) {
-        uint32_t bIdx = bN2Idx / constInfo.kvHeadNum;
-        actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-        for (uint32_t s1GIdx = 0; s1GIdx < actBatchS1; s1GIdx++) {
-            accumBaseNum += 1;
-            if (!setStart && accumBaseNum >= targetStartBaseNum) {
-                constInfo.bN2Start = bN2Idx;
-                constInfo.gS1Start = s1GIdx;
-                setStart = true;
+    uint32_t qsfaAccumBaseNum = 0; // 当前累积的基本块数
+    uint32_t qsfaTargetBaseNum = 0;
+    uint32_t qsfaLastValidBIdx = 0;
+    uint32_t qsfaLastValidactBatchS1 = 0;
+    bool qsfaSetStart = false;
+    qsfaTargetBaseNum = (qsfaCurrCoreIdx + 1) * qsfaAvgBaseNum; // 计算当前的目标权重
+    uint32_t qsfaTargetStartBaseNum = qsfaTargetBaseNum - qsfaAvgBaseNum;
+    for (uint32_t qsfaBN2Idx = 0; qsfaBN2Idx < constInfo.batchSize * constInfo.kvHeadNum; qsfaBN2Idx++) {
+        uint32_t qsfaBIdx = qsfaBN2Idx / constInfo.kvHeadNum;
+        qsfaActBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBIdx);
+        for (uint32_t qsfaS1GIdx = 0; qsfaS1GIdx < qsfaActBatchS1; qsfaS1GIdx++) {
+            qsfaAccumBaseNum += 1;
+            if (!qsfaSetStart && qsfaAccumBaseNum >= qsfaTargetStartBaseNum) {
+                constInfo.bN2Start = qsfaBN2Idx;
+                constInfo.gS1Start = qsfaS1GIdx;
+                qsfaSetStart = true;
             }
-            if (accumBaseNum >= targetBaseNum) {
+            if (qsfaAccumBaseNum >= qsfaTargetBaseNum) {
                 // 更新当前核的End分核信息
-                constInfo.bN2End = bN2Idx;
-                constInfo.gS1End = s1GIdx;
+                constInfo.bN2End = qsfaBN2Idx;
+                constInfo.gS1End = qsfaS1GIdx;
                 constInfo.coreStartKVSplitPos = 0;
                 constInfo.s2End = 0;
                 if (aiCoreIdx != 0) {
@@ -590,19 +590,19 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach
                 return;
             }
         }
-        if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
-            lastValidactBatchS1 = actBatchS1;
-            lastValidBIdx = bIdx;
+        if ((qsfaActBatchS1 > 0) && (qsfaActBatchS2 > 0)) {
+            qsfaLastValidactBatchS1 = qsfaActBatchS1;
+            qsfaLastValidBIdx = qsfaBIdx;
         }
     }
-    if (!setStart) {
-        constInfo.bN2Start = lastValidBIdx;
-        constInfo.gS1Start = lastValidactBatchS1 - 1;
+    if (!qsfaSetStart) {
+        constInfo.bN2Start = qsfaLastValidBIdx;
+        constInfo.gS1Start = qsfaLastValidactBatchS1 - 1;
     }
-    if (accumBaseNum < targetBaseNum) {
+    if (qsfaAccumBaseNum < qsfaTargetBaseNum) {
         // 更新最后一个核的End分核信息
-        constInfo.bN2End = lastValidBIdx;
-        constInfo.gS1End = lastValidactBatchS1 - 1;
+        constInfo.bN2End = qsfaLastValidBIdx;
+        constInfo.gS1End = qsfaLastValidactBatchS1 - 1;
         constInfo.s2End = 0;
         constInfo.coreStartKVSplitPos = 0;
         if (aiCoreIdx != 0) {
