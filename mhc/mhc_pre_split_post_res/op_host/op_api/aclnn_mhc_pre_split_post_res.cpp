@@ -48,8 +48,18 @@ static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const
     return true;
 }
 
-template <typename T>
-static bool CheckOutputParameter(const T *value, const char *name)
+// 强类型重载替代 void* 判空（extern "C" 块内不可用模板），两个调用点各得编译期类型检查
+static bool CheckOutputParameter(const uint64_t *value, const char *name)
+{
+    if (value == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMhcPreSplitPostResGetWorkspaceSize", name, "nullptr",
+                                              "output parameter must not be nullptr");
+        return false;
+    }
+    return true;
+}
+
+static bool CheckOutputParameter(aclOpExecutor *const *value, const char *name)
 {
     if (value == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMhcPreSplitPostResGetWorkspaceSize", name, "nullptr",
