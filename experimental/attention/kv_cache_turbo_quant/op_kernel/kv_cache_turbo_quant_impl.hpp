@@ -149,6 +149,13 @@ public:
         wsPSliceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsP) + rowOffset,
                                     static_cast<uint64_t>(rowsToCompute_) * KCTQ_D);
 
+        // The matmul framework runs on both sub cores (KFC handshake), so both of them need the
+        // system workspace and the C tile staging buffer.
+        SetSysWorkspace(workspace);
+        pipe_.InitBuffer(cTileBuf_,
+                         static_cast<uint64_t>(td->cubeTiling.baseM) * KCTQ_D * sizeof(float));
+        pipe_.InitBuffer(mmLocalWsBuf_, KCTQ_MM_LOCAL_WS_BYTES);
+
         if (g_coreType == AIV) {
             pipe_.InitBuffer(inQue_, 1, KCTQ_D * sizeof(bfloat16_t));
             pipe_.InitBuffer(xBuf_, KCTQ_D * sizeof(float));
@@ -170,39 +177,31 @@ public:
             pipe_.InitBuffer(bf16Buf_, 32);
             pipe_.InitBuffer(byteBuf_, 64);
             BuildWeightTables();
-        } else {
-            SetSysWorkspace(workspace);
-            pipe_.InitBuffer(cTileBuf_,
-                             static_cast<uint64_t>(td->cubeTiling.baseM) * KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(mmLocalWsBuf_, KCTQ_MM_LOCAL_WS_BYTES);
         }
     }
 
     __aicore__ inline void Process()
     {
-        if (g_coreType == AIC) {
-            REGIST_MATMUL_OBJ(&pipe_, GetSysWorkSpacePtr(), mm_, &td_->cubeTiling);
-            mm_.SetLocalWorkspace(mmLocalWsBuf_.Get<uint8_t>());
-        }
+        REGIST_MATMUL_OBJ(&pipe_, GetSysWorkSpacePtr(), mm_, &td_->cubeTiling);
+        mm_.SetLocalWorkspace(mmLocalWsBuf_.Get<uint8_t>());
+
         if (g_coreType == AIV) {
             NormalizeRows();
         }
-        SyncAll<false>();
+        // SyncAll<false>(); // TEMP experiment
 
-        if (g_coreType == AIC) {
-            Gemm(wsUSliceGm_, rotGm_, wsYSliceGm_);
-        }
-        SyncAll<false>();
+        // Both sub cores walk the same call sequence: the framework turns the AIV call into the
+        // KFC client and the AIC call into the serving cube work.
+        Gemm(wsUSliceGm_, rotGm_, wsYSliceGm_);
+        // SyncAll<false>(); // TEMP experiment
 
         if (g_coreType == AIV) {
             QuantizeRows();
         }
-        SyncAll<false>();
+        // SyncAll<false>(); // TEMP experiment
 
-        if (g_coreType == AIC) {
-            Gemm(wsRSliceGm_, qjlGm_, wsPSliceGm_);
-        }
-        SyncAll<false>();
+        Gemm(wsRSliceGm_, qjlGm_, wsPSliceGm_);
+        // SyncAll<false>(); // TEMP experiment
 
         if (g_coreType == AIV) {
             QjlRows();
