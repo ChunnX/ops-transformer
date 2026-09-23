@@ -46,7 +46,14 @@ static const FitBalanceCalibration CALIBRATION = {
     {
         /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
         {
-            {4, 5.841842, 8.590666, 0.0}, // 950 AllGather 标卡 4P: R²=1.0000; c 待标定暂填 0(§4.37 阶段1)
+            // 2026-09-23 CommBench 实测标定(runner/calib_kbc.py, AG/aicpu/int8/rank4):
+            //   k: turn=1 尺寸扫描 8-96MB/rank 线性拟合 k_tool=26.5894us/MB(R2=1.00000),
+            //      引擎口径 x=rankDim*S → k=26.5894/4=6.647350
+            //   b: 固定 chunk 扫轮数 T(N)=N(k*chunk+b)+c, chunk 1/4MB 一致(b=32.27/33.17,
+            //      取中位 33.17); 16MB 大块带宽略亚线性致其拟合值偏离(b=66,c=-146),弃用
+            //   c: 同拟合截距, chunk 1/4MB 值 34.42/20.58, 取中位 20.58
+            // 旧占位值(5.841842, 8.590666, 0)系 CCU 时代混含截距, 已按 §4.37 阶段2 激活真实数据。
+            {4, 6.647350, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测(CommBench)
             // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
         },
         // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
