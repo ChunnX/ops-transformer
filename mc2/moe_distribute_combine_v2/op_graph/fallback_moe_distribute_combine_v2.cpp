@@ -19,43 +19,6 @@ using namespace gert;
 const char *MoeDistributeCombineV2Info = "MoeDistributeCombineV2Fallback";
 
 namespace {
-constexpr size_t EXPAND_X_INDEX = 0;
-constexpr size_t EXPERT_IDS_INDEX = 1;
-constexpr size_t ASSIST_INFO_FOR_COMBINE_INDEX = 2;
-constexpr size_t EP_SEND_COUNTS_INDEX = 3;
-constexpr size_t EXPERT_SCALES_INDEX = 4;
-constexpr size_t TP_SEND_COUNTS_INDEX = 5;
-constexpr size_t X_ACTIVE_MASK_INDEX = 6;
-constexpr size_t ACTIVATION_SCALE_INDEX = 7;
-constexpr size_t WEIGHT_SCALE_INDEX = 8;
-constexpr size_t GROUP_LIST_INDEX = 9;
-constexpr size_t SHARED_EXPERT_X_INDEX = 10;
-constexpr size_t ELASTIC_INFO_INDEX = 11;
-constexpr size_t ORI_X_INDEX = 12;
-constexpr size_t CONST_EXPERT_ALPHA_1_INDEX = 13;
-constexpr size_t CONST_EXPERT_ALPHA_2_INDEX = 14;
-constexpr size_t CONST_EXPERT_V_INDEX = 15;
-constexpr size_t OUTPUT_X_INDEX = 0;
-
-constexpr size_t ATTR_GROUP_EP_INDEX = 0;
-constexpr size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr size_t ATTR_EP_RANK_ID_INDEX = 2;
-constexpr size_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
-constexpr size_t ATTR_GROUP_TP_INDEX = 4;
-constexpr size_t ATTR_TP_WORLD_SIZE_INDEX = 5;
-constexpr size_t ATTR_TP_RANK_ID_INDEX = 6;
-constexpr size_t ATTR_EXPERT_SHARD_TYPE_INDEX = 7;
-constexpr size_t ATTR_SHARED_EXPERT_NUM_INDEX = 8;
-constexpr size_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 9;
-constexpr size_t ATTR_GLOBAL_BS_INDEX = 10;
-constexpr size_t ATTR_OUT_DTYPE_INDEX = 11;
-constexpr size_t ATTR_COMM_QUANT_MODE_INDEX = 12;
-constexpr size_t ATTR_GROUP_LIST_TYPE_INDEX = 13;
-constexpr size_t ATTR_COMM_ALG_INDEX = 14;
-constexpr size_t ATTR_ZERO_EXPERT_NUM_INDEX = 15;
-constexpr size_t ATTR_COPY_EXPERT_NUM_INDEX = 16;
-constexpr size_t ATTR_CONST_EXPERT_NUM_INDEX = 17;
-
 struct CombineV2Params {
     const gert::Tensor *expand_x = nullptr;
     const gert::Tensor *expert_ids = nullptr;
@@ -112,23 +75,23 @@ static bool CheckParamNotNull(const void *param, const char *name)
 
 static ge::graphStatus FetchInputs(OpExecuteContext *ctx, CombineV2Params &p)
 {
-    p.expand_x = ctx->GetInputTensor(EXPAND_X_INDEX);
-    p.expert_ids = ctx->GetInputTensor(EXPERT_IDS_INDEX);
-    p.assist_info_for_combine = ctx->GetInputTensor(ASSIST_INFO_FOR_COMBINE_INDEX);
-    p.ep_send_counts = ctx->GetInputTensor(EP_SEND_COUNTS_INDEX);
-    p.expert_scales = ctx->GetInputTensor(EXPERT_SCALES_INDEX);
-    p.tp_send_counts = ctx->GetOptionalInputTensor(TP_SEND_COUNTS_INDEX);
-    p.x_active_mask = ctx->GetOptionalInputTensor(X_ACTIVE_MASK_INDEX);
-    p.activation_scale = ctx->GetOptionalInputTensor(ACTIVATION_SCALE_INDEX);
-    p.weight_scale = ctx->GetOptionalInputTensor(WEIGHT_SCALE_INDEX);
-    p.group_list = ctx->GetOptionalInputTensor(GROUP_LIST_INDEX);
-    p.shared_expert_x = ctx->GetOptionalInputTensor(SHARED_EXPERT_X_INDEX);
-    p.elastic_info = ctx->GetOptionalInputTensor(ELASTIC_INFO_INDEX);
-    p.ori_x = ctx->GetOptionalInputTensor(ORI_X_INDEX);
-    p.const_expert_alpha_1 = ctx->GetOptionalInputTensor(CONST_EXPERT_ALPHA_1_INDEX);
-    p.const_expert_alpha_2 = ctx->GetOptionalInputTensor(CONST_EXPERT_ALPHA_2_INDEX);
-    p.const_expert_v = ctx->GetOptionalInputTensor(CONST_EXPERT_V_INDEX);
-    p.x = ctx->GetOutputTensor(OUTPUT_X_INDEX);
+    p.expand_x = ctx->GetInputTensor(static_cast<size_t>(0));
+    p.expert_ids = ctx->GetInputTensor(static_cast<size_t>(1));
+    p.assist_info_for_combine = ctx->GetInputTensor(static_cast<size_t>(2));
+    p.ep_send_counts = ctx->GetInputTensor(static_cast<size_t>(3));
+    p.expert_scales = ctx->GetInputTensor(static_cast<size_t>(4));
+    p.tp_send_counts = ctx->GetOptionalInputTensor(static_cast<size_t>(5));
+    p.x_active_mask = ctx->GetOptionalInputTensor(static_cast<size_t>(6));
+    p.activation_scale = ctx->GetOptionalInputTensor(static_cast<size_t>(7));
+    p.weight_scale = ctx->GetOptionalInputTensor(static_cast<size_t>(8));
+    p.group_list = ctx->GetOptionalInputTensor(static_cast<size_t>(9));
+    p.shared_expert_x = ctx->GetOptionalInputTensor(static_cast<size_t>(10));
+    p.elastic_info = ctx->GetOptionalInputTensor(static_cast<size_t>(11));
+    p.ori_x = ctx->GetOptionalInputTensor(static_cast<size_t>(12));
+    p.const_expert_alpha_1 = ctx->GetOptionalInputTensor(static_cast<size_t>(13));
+    p.const_expert_alpha_2 = ctx->GetOptionalInputTensor(static_cast<size_t>(14));
+    p.const_expert_v = ctx->GetOptionalInputTensor(static_cast<size_t>(15));
+    p.x = ctx->GetOutputTensor(static_cast<size_t>(0));
 
     MC2_CHECK_PARAM_NOT_NULL(p.expand_x, "expand_x");
     MC2_CHECK_PARAM_NOT_NULL(p.expert_ids, "expert_ids");
@@ -145,24 +108,24 @@ static ge::graphStatus FetchAttrs(OpExecuteContext *ctx, CombineV2Params &p)
     const auto attrs = ctx->GetAttrs();
     MC2_CHECK_PARAM_NOT_NULL(attrs, "attrs");
 
-    p.group_ep = attrs->GetStr(ATTR_GROUP_EP_INDEX);
-    p.ep_word_size = attrs->GetInt(ATTR_EP_WORLD_SIZE_INDEX);
-    p.ep_rank_id = attrs->GetInt(ATTR_EP_RANK_ID_INDEX);
-    p.moe_expert_num = attrs->GetInt(ATTR_MOE_EXPERT_NUM_INDEX);
-    p.group_tp = attrs->GetStr(ATTR_GROUP_TP_INDEX);
-    p.tp_word_size = attrs->GetInt(ATTR_TP_WORLD_SIZE_INDEX);
-    p.tp_rank_id = attrs->GetInt(ATTR_TP_RANK_ID_INDEX);
-    p.expert_shard_type = attrs->GetInt(ATTR_EXPERT_SHARD_TYPE_INDEX);
-    p.shared_expert_num = attrs->GetInt(ATTR_SHARED_EXPERT_NUM_INDEX);
-    p.shared_expert_rank_num = attrs->GetInt(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
-    p.global_bs_ptr = attrs->GetInt(ATTR_GLOBAL_BS_INDEX);
-    p.out_dtype_ptr = attrs->GetInt(ATTR_OUT_DTYPE_INDEX);
-    p.comm_quant_mode_ptr = attrs->GetInt(ATTR_COMM_QUANT_MODE_INDEX);
-    p.group_list_type_ptr = attrs->GetInt(ATTR_GROUP_LIST_TYPE_INDEX);
-    p.comm_alg_ptr = attrs->GetInt(ATTR_COMM_ALG_INDEX);
-    p.zero_expert_num = attrs->GetInt(ATTR_ZERO_EXPERT_NUM_INDEX);
-    p.copy_expert_num = attrs->GetInt(ATTR_COPY_EXPERT_NUM_INDEX);
-    p.const_expert_num = attrs->GetInt(ATTR_CONST_EXPERT_NUM_INDEX);
+    p.group_ep = attrs->GetStr(static_cast<size_t>(0));
+    p.ep_word_size = attrs->GetInt(static_cast<size_t>(1));
+    p.ep_rank_id = attrs->GetInt(static_cast<size_t>(2));
+    p.moe_expert_num = attrs->GetInt(static_cast<size_t>(3));
+    p.group_tp = attrs->GetStr(static_cast<size_t>(4));
+    p.tp_word_size = attrs->GetInt(static_cast<size_t>(5));
+    p.tp_rank_id = attrs->GetInt(static_cast<size_t>(6));
+    p.expert_shard_type = attrs->GetInt(static_cast<size_t>(7));
+    p.shared_expert_num = attrs->GetInt(static_cast<size_t>(8));
+    p.shared_expert_rank_num = attrs->GetInt(static_cast<size_t>(9));
+    p.global_bs_ptr = attrs->GetInt(static_cast<size_t>(10));
+    p.out_dtype_ptr = attrs->GetInt(static_cast<size_t>(11));
+    p.comm_quant_mode_ptr = attrs->GetInt(static_cast<size_t>(12));
+    p.group_list_type_ptr = attrs->GetInt(static_cast<size_t>(13));
+    p.comm_alg_ptr = attrs->GetInt(static_cast<size_t>(14));
+    p.zero_expert_num = attrs->GetInt(static_cast<size_t>(15));
+    p.copy_expert_num = attrs->GetInt(static_cast<size_t>(16));
+    p.const_expert_num = attrs->GetInt(static_cast<size_t>(17));
 
     MC2_CHECK_PARAM_NOT_NULL(p.group_ep, "group_ep");
     MC2_CHECK_PARAM_NOT_NULL(p.ep_word_size, "ep_word_size");
