@@ -120,7 +120,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::PostTiling()
     tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
     tilingData_->ropeGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
 
-    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A));
+    // 部分积行数 = 改写后的 b_ (= B*N*S, 已含 nQ_, 且 nK_==nQ_ 时两者等值)。
+    // kernel 侧 apt.cpp 同样按 tilingData.ropeGradParams.b 计算 wsQ/wsK 偏移, 两者必须一致。
+    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A), b_);
     tilingData_->dCosFlag = dCosFlag_;
     tilingData_->layout = static_cast<uint32_t>(layout_);
     return ge::GRAPH_SUCCESS;

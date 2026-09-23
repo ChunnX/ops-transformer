@@ -777,7 +777,8 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(uint32_t dxTilingKey)
+ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(uint32_t dxTilingKey,
+                                                                              int64_t userWsRowNum)
 {
     GEN_REDUCE_TILING_KEY(tilingKey_, key_, dxTilingKey, dCosFlag_);
     OP_LOGI(context_->GetNodeName(),
@@ -787,19 +788,46 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
     context_->SetBlockDim(std::max(usedCoreNum_, reduceBlockNum));
     OP_LOGD(context_->GetNodeName(), "reduceBlockNum :%ld, usedCoreNum_ = %ld.\n", reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
+
     auto workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
+
     auto partialTypeSize = (dCosFlag_ == DCOS_FLAG_ON && IsBroadcastPartialFloatTemplate(dxTilingKey)) ?
                                PARTIAL_TYPE_SIZE :
                                ge::GetSizeByDataType(dtype_);
-    auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
+    // 用户 workspace = 两份部分积(grad_cos_partial / grad_sin_partial), 每份 userWsRowNum 行。
+    // userWsRowNum 由模板传入而非在此展开 b_*s_*max(nQ_,nK_): A 模板的 MergeDim 已把 b_
+    // 改写为 B*N*S, 且 kernel 侧 apt.cpp 也按改写后的 tilingData.ropeGradParams.b 计算
+    // wsQ/wsK 偏移, 两者必须一致, 详见 apply_rotary_pos_emb_grad_tiling.h
+    auto usrWorkSpaceSize = userWsRowNum * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
+
     if (dCosFlag_ == DCOS_FLAG_ON) {
         context_->SetScheduleMode(SCHEDULE_MODE_BATCH); // batch mode, all cores start simultaneously
         if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
             constexpr int64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
-            workspaces[0] = workspaces[0] + SYS_WORKSPACE_SIZE;
+            usrWorkSpaceSize += SYS_WORKSPACE_SIZE;
         }
+        if (IsBroadcastPartialFloatTemplate(dxTilingKey)) {
+            // BAB/AB: 基值已由 opbase 写入。
+            // 依据: DoOpTiling() -> TilingReduce() -> Tiling4ReduceOp() -> ReduceOpTiling::DoTiling()
+            //       -> DoReduceTiling() -> CalcUserWorkSpace(), 其末行即
+            //       workspaces[0] = WORKSPACE_SIZE(16MB) + workSpaceSize_;
+            //       (实现在 libops_base.so, 见 CANN pkg_inc/op_common/atvoss/reduce/reduce_tiling.h)
+            // 用户 workspace 接在这块之后, 故必须累加。
+            workspaces[0] += usrWorkSpaceSize;
+        } else {
+            // A 模板: 该路径下没有任何前置写入者 —— 已知 A 的 DoOpTiling() 未调用 TilingReduce(),
+            // 而 CalcUserWorkSpace() 是 workspaces[0] 在本代码范围内唯一的写入来源, 故它不会执行。
+            // 至于此处容器的初值: 实测部分环境下为未初始化内存(见 960 上不加判别即报错、重出包后
+            // 恢复的现象), 故不能写成 workspaces[0] += ...: 累加会带上该随机值 —— 大则白申请
+            // 巨量显存, 回绕则实际开小, kernel 阶段 2/3 写 wsQ/wsK 时越界。
+            workspaces[0] = usrWorkSpaceSize;
+        }
+    } else {
+        // 无 grad_cos/grad_sin: 同样没有前置写入者, 直接赋值
+        workspaces[0] = usrWorkSpaceSize;
     }
-    workspaces[0] = workspaces[0] + usrWorkSpaceSize;
+
     OP_LOGD(context_->GetNodeName(), "workspaces[0] :%ld, usrWorkSpaceSize = %ld.\n", workspaces[0], usrWorkSpaceSize);
     return ge::GRAPH_SUCCESS;
 }

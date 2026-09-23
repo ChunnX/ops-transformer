@@ -141,7 +141,16 @@ protected:
     ge::graphStatus GetInputParam(Ops::Base::ReduceOpInputParam &opInput, uint32_t inputIdx, uint32_t axesIdx);
     ge::graphStatus InitTilingData();
     ge::graphStatus TilingReduce();
-    ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey);
+
+    // 保存 tilingKey/blockDim, 并按 userWsRowNum 申请用户 workspace。
+    //
+    // userWsRowNum 由各模板自行传入 —— "每份部分积的行数": kernel 侧构造 wsQ/wsK 时按此值
+    // 分两段使用(apt.cpp), 故它必须与模板实际采用的迭代空间一致:
+    //   BAB/AB: b_ * s_ * max(nQ_, nK_)  (未改写 shape)
+    //   A     : b_                       (MergeDim 已把 b_ 改写为 B*N*S, nQ_=nK_=s_=1)
+    // 之所以不在此处直接展开: A 模板在另一个文件里改写了 b_, 若这里按原始语义展开,
+    // nQ != nK 时申请量会小于 kernel 实际用量, 写 wsK 时越界。
+    ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey, int64_t userWsRowNum);
 
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;

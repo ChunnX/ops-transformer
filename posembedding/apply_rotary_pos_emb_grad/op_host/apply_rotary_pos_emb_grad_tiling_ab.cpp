@@ -196,7 +196,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::PostTiling()
 
     tilingData_->dCosFlag = dCosFlag_;
     tilingData_->layout = static_cast<uint32_t>(layout_);
-    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB));
+    // 部分积行数: AB 未改写 b_/s_/nQ_/nK_ (ropeGradParams 写的就是原始 shape),
+    // kernel 侧 apt.cpp 按 tilingData.ropeGradParams.b/s 构造两份部分积 workspace。
+    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB), b_ * s_ * std::max(nQ_, nK_));
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
 }
