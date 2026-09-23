@@ -75,8 +75,10 @@ const static int64_t MAX_URMA_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
-// DataCopy/DataCopyPad blockCount is limited to 4095 on arch35.  The actual
-// tile size is further reduced by the joint UB budget check below.
+/*
+ * arch35 上 DataCopy/DataCopyPad 的 blockCount 上限为 4095。
+ * 实际 tile 大小还会由下方的 UB 总预算检查进一步收缩。
+ */
 constexpr uint32_t PRE_QUANT_MAX_DMA_BLOCK_COUNT = 4095U;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 constexpr float DEFAULT_SWIGLU_OAI_ALPHA = 1.702f;
@@ -1456,9 +1458,10 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
                                                    bool isSharedQuantIndependent, uint32_t topkValidIndexCoreNum)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
-    // SendAndQuantBuffInit clears the larger of the ordinary flag region and
-    // the prefetch GMM1 tile-status region.  Keep the UB reset budget in sync
-    // with that device-side max; otherwise the route ring can overlap reset UB.
+    /*
+     * SendAndQuantBuffInit 会清零普通 flag 区域和预取 GMM1 tile 状态区域中较大的一块。
+     * Host 侧的 UB reset 预算必须与 device 侧的最大值保持一致，否则 route ring 可能与 reset UB 重叠。
+     */
     if (tilingData->topkWeightsPrefetch == 1U) {
         uint64_t statusSlots = static_cast<uint64_t>(tilingData->moeExpertPerRank) *
                                static_cast<uint64_t>(tilingData->maxTilesPerExpert) + 1U;
@@ -1488,7 +1491,7 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     if (tilingData->preQuantTileTokens != 0U) {
         // 预量化不申请动态量化的 mxTemp/xOut/xIn；两个 stage 按阶段复用。
-        return resetTensorBytes + 2U * tilingData->preQuantStageBytes + sendCountAccumulatorBytes;
+        return resetTensorBytes + DOUBLE_BUFFER * tilingData->preQuantStageBytes + sendCountAccumulatorBytes;
     }
 
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -1504,23 +1507,14 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 static uint32_t CalcPreQuantStageBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
                                        uint32_t tileTokens, ge::DataType topKWeightsDataType)
 {
-    uint64_t dataRowBytes = ops::CeilAlign(
-        static_cast<uint64_t>(tilingData->h) / activationElementsPerByte, static_cast<uint64_t>(ALIGN_32));
-    uint64_t scaleCount = ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32));
-    uint64_t scaleRowBytes = ops::CeilAlign(scaleCount, static_cast<uint64_t>(ALIGN_32));
-    uint64_t stageBytes = std::max(dataRowBytes, scaleRowBytes) * tileTokens;
-
-    if (tilingData->topkWeightsPrefetch == 1) {
+    // 保存完整的 dispatch 记录，使 MTE3 能一次写出整个 tile。
+    uint64_t stageBytes = static_cast<uint64_t>(CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte)) *
+                          tileTokens;
+    if (tilingData->topkWeightsPrefetch == 1 && topKWeightsDataType == ge::DT_BF16) {
         uint64_t weightSrcRowBytes = ops::CeilAlign(
             static_cast<uint64_t>(tilingData->topK) * ge::GetSizeByDataType(topKWeightsDataType),
             static_cast<uint64_t>(ALIGN_32));
-        uint64_t weightDstRowBytes = ops::CeilAlign(
-            static_cast<uint64_t>(tilingData->topK) * sizeof(float), static_cast<uint64_t>(ALIGN_32));
-        uint64_t weightBytes = tileTokens * weightDstRowBytes;
-        if (topKWeightsDataType == ge::DT_BF16) {
-            weightBytes = tileTokens * (weightSrcRowBytes + weightDstRowBytes);
-        }
-        stageBytes = std::max(stageBytes, weightBytes);
+        stageBytes += weightSrcRowBytes * tileTokens;
     }
     return static_cast<uint32_t>(ops::CeilAlign(stageBytes, static_cast<uint64_t>(ALIGN_512)));
 }
@@ -1563,15 +1557,18 @@ static bool SetPreQuantTileConfig(MegaMoeTilingData *tilingData, bool isPreQuant
     // PrepareLocalTokens 按 blockAivNum 个 AIV 分工，stage 不需要为 route 上界之外的 token 预留空间。
     uint32_t maxTokensPerAiv =
         ops::CeilDiv(tilingData->bs, std::max(tilingData->blockAivNum, 1U));
-    // 用单 token stage 给候选搜索一个安全上界，避免在大 batch 上逐个扫描明显不可能的 B。
-    uint32_t oneTokenStageBytes =
-        CalcPreQuantStageBytes(tilingData, activationElementsPerByte, 1U, topKWeightsDataType);
-    uint32_t maxTokensByStage = oneTokenStageBytes == 0U ? 0U : availableUbBytes / (2U * oneTokenStageBytes);
-    uint32_t maxTileTokens = std::min(
-        std::min(maxTokensPerAiv, PRE_QUANT_MAX_DMA_BLOCK_COUNT), std::max(maxTokensByStage, 1U));
-    maxTileTokens = std::max(maxTileTokens, 1U);
+    // 先按单 token 的 scale 宽度对齐 512B 计算 B，再按完整 record 的 UB 占用向下收缩。
+    uint32_t scaleRowBytes = static_cast<uint32_t>(ops::CeilAlign(
+        ops::CeilDiv(static_cast<uint64_t>(tilingData->h), static_cast<uint64_t>(ALIGN_32)),
+        static_cast<uint64_t>(ALIGN_32)));
+    // 仅以单个 token 的 scale 行宽作为 B 的性能基准。
+    uint32_t scaleBasedTokens = std::max(
+        1U, static_cast<uint32_t>(ops::CeilDiv(static_cast<uint64_t>(ALIGN_512), static_cast<uint64_t>(scaleRowBytes))));
+    uint32_t candidate = std::min(std::min(scaleBasedTokens, maxTokensPerAiv), PRE_QUANT_MAX_DMA_BLOCK_COUNT);
+    candidate = std::max(candidate, 1U);
 
-    for (uint32_t candidate = maxTileTokens; candidate > 0U; --candidate) {
+    // 仅当完整的 token/scale/weight tile 无法放入 UB 时才缩小 B。
+    for (; candidate > 0U; --candidate) {
         tilingData->preQuantTileTokens = candidate;
         tilingData->preQuantStageBytes =
             CalcPreQuantStageBytes(tilingData, activationElementsPerByte, candidate, topKWeightsDataType);

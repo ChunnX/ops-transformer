@@ -424,42 +424,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
-    // Pre-quantized input already matches the dispatch format. Reuse two stage
-    // slots for x, scale, and optional top-k weight transfers instead of
-    // allocating the dynamic-quantization scratch layout.
+    /*
+     * 预量化输入已符合 dispatch 格式，使用两个 stage 槽位搬运 x、scale 和可选的 topk weight，
+     * 不再分配动态量化 scratch 布局。
+    */
     if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
-        uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
-         // Host tiling normally supplies the stage budget; keep a conservative
-         // fallback for legacy tiling data.
-        // 新版 host tiling 一定会写入非零预算。旧 tiling 数据或异常输入下仍按一个 token
-        // 计算真实最小 stage，不能用固定 512B 兜底，否则 H=8K 时会与 route ring 重叠。
-        if (stageBytes == 0U) {
-            uint32_t dataBytes = Ops::Base::CeilAlign(
-                k_ / MoeQuantConfig::A_ELEMS_PER_BYTE, static_cast<uint32_t>(ALIGN_32));
-            uint32_t scaleBytes = Ops::Base::CeilAlign(
-                Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32)), static_cast<uint32_t>(ALIGN_32));
-            stageBytes = dataBytes > scaleBytes ? dataBytes : scaleBytes;
-            if constexpr (TopkWeightsPrefetch) {
-                uint32_t weightSrcBytes = Ops::Base::CeilAlign(
-                    params_.tilingData->topK * static_cast<uint32_t>(sizeof(TopkWeightsType)),
-                    static_cast<uint32_t>(ALIGN_32));
-                uint32_t weightDstBytes = Ops::Base::CeilAlign(
-                    params_.tilingData->topK * static_cast<uint32_t>(sizeof(float)),
-                    static_cast<uint32_t>(ALIGN_32));
-                uint32_t weightBytes = weightDstBytes;
-                if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-                    weightBytes = weightSrcBytes + weightDstBytes;
-                }
-                stageBytes = stageBytes > weightBytes ? stageBytes : weightBytes;
-            }
-            stageBytes = Ops::Base::CeilAlign(stageBytes, static_cast<uint32_t>(ALIGN_512));
-        }
+        const uint32_t stageBytes = params_.tilingData->preQuantStageBytes;
         quantScratch_.preQuantStage0 = LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr, stageBytes);
         quantScratch_.preQuantStage1 =
             LocalTensor<uint8_t>(TPosition::VECCALC, mxTempTensorAddr + stageBytes, stageBytes);
         sharedQuantScratch_.preQuantStage0 = quantScratch_.preQuantStage0;
         sharedQuantScratch_.preQuantStage1 = quantScratch_.preQuantStage1;
-        return mxTempTensorAddr + 2U * stageBytes;
+        return mxTempTensorAddr + DOUBLE_BUFFER * stageBytes;
     }
 
     uint32_t mxTempTensorSize = 2 * 1024;
