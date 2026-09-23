@@ -71,6 +71,17 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitCommAndScalar(GM_ADDR mc2Context, GM_ADDR expandXOut, TPipe *pipe,
+                                             const MoeDistributeDispatchV2TilingData *tilingData,
+                                             uint64_t runtimeWinSize);
+    __aicore__ inline void InitWinStateAndElastic(GM_ADDR elasticInfo, GM_ADDR performanceInfo);
+    __aicore__ inline void InitBasicParam(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                          GM_ADDR dynamicScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR expandIdxOut,
+                                          GM_ADDR sendCountsOut, GM_ADDR expandXOut, GM_ADDR workspaceGM,
+                                          const MoeDistributeDispatchV2TilingData *tilingData);
+    __aicore__ inline void InitStatusBuffer();
+    __aicore__ inline void InitDataBuffer(GM_ADDR expertScales, GM_ADDR expandScalesOut);
+    __aicore__ inline void InitQuantBuffer();
     __aicore__ inline void ProcessToken(GlobalTensor<XOutType> &outTokenGT, uint32_t tokenIndex, uint32_t topKIndex,
                                         DataCopyPadParams &padParams, DataCopyParams &scaleInParams,
                                         uint32_t expertIndex, bool writeExpertScale);
@@ -304,11 +315,9 @@ private:
 };
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init(
-    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
-    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
-    GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2TilingData *tilingData, uint64_t runtimeWinSize)
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitCommAndScalar(
+    GM_ADDR mc2Context, GM_ADDR expandXOut, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData,
+    uint64_t runtimeWinSize)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -351,7 +360,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         copyInAxisH_ = Ceil(axisH_, FP4_ELEMS_PER_BYTE);
     }
 #endif
+}
 
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitWinStateAndElastic(
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo)
+{
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     statusDataSpaceGm_ = ctx_.GetStatusDataSpaceGm();
@@ -381,7 +395,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     if (epRankId_ < sharedExpertRankNum_) {
         isShareExpertRankFlag_ = true;
     }
+}
 
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitBasicParam(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR dynamicScalesOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR expandIdxOut, GM_ADDR sendCountsOut, GM_ADDR expandXOut, GM_ADDR workspaceGM,
+    const MoeDistributeDispatchV2TilingData *tilingData)
+{
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
     sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
     if (sharedExpertNum_ > 0) {
@@ -446,7 +467,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     } else {
         startStatusIndex_ += remainderRankNum_;
     }
+}
 
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitStatusBuffer()
+{
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     uint32_t statusBufCntAlign = Ceil(Ceil(totalExpertNum_, aivNum_), 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
@@ -479,7 +504,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     OOMCheckAddrRange<XOutType>((__gm__ XOutType *)(winDouble.GetPhyAddr()), totalWinSizeEp_);
 #endif
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+}
 
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitDataBuffer(GM_ADDR expertScales,
+                                                                                           GM_ADDR expandScalesOut)
+{
     expertIdsCnt_ = axisBS_ * axisK_;
     uint32_t hFp32Size = axisH_ * sizeof(float);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
@@ -520,7 +550,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         tpipe_->InitBuffer(expertScalesBuf_, expertIdsBufSize);
         totalUsedUB_ += expertIdsBufSize;
     }
+}
 
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::InitQuantBuffer()
+{
     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
         totalUsedUB_ += maxSize_;
@@ -558,6 +592,22 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     scaleOutParams_ = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U, 0U};
 
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init(
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
+    GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
+    const MoeDistributeDispatchV2TilingData *tilingData, uint64_t runtimeWinSize)
+{
+    InitCommAndScalar(mc2Context, expandXOut, pipe, tilingData, runtimeWinSize);
+    InitWinStateAndElastic(elasticInfo, performanceInfo);
+    InitBasicParam(x, expertIds, scales, xActiveMask, dynamicScalesOut, expertTokenNumsOut, expandIdxOut, sendCountsOut,
+                   expandXOut, workspaceGM, tilingData);
+    InitStatusBuffer();
+    InitDataBuffer(expertScales, expandScalesOut);
+    InitQuantBuffer();
 }
 
 template <TemplateDispatchV2TypeClass>
