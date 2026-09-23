@@ -22,7 +22,7 @@ ST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${ST_DIR}/build"
 KERNEL_TIMEOUT=${KERNEL_TIMEOUT:-600}  # 默认600秒(10分钟)，可用环境变量 KERNEL_TIMEOUT 覆盖
 
-SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0
+SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; MATMUL_ONLY=0
 CSV_FILE="${SCRIPT_DIR}/cases.csv"
 
 # ---- 解析参数 ----
@@ -34,6 +34,7 @@ while [ $# -gt 0 ]; do
         --verify-only) VERIFY_ONLY=1; shift ;;
         --cli)         CLI_MODE=1; shift ;;
         --csv)         CSV_FILE="$2"; shift 2 ;;
+        --matmul-only) MATMUL_ONLY=1; shift ;;
         -h|--help)
             sed -n '1,20p' "$0"; exit 0 ;;
         *)
@@ -122,7 +123,7 @@ run_single() {
             sleep 1
 
             set +e
-            KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM "$LOCAL_MATMUL" "$HEAD_M_SIZE" 2>&1)
+            KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s env MATMUL_ONLY=$MATMUL_ONLY "$EXE_PATH" $M $K $N $RANK_NUM "$LOCAL_MATMUL" "$HEAD_M_SIZE" 2>&1)
             KERNEL_RC=$?
             set -e
             echo "${KERNEL_OUT}"
@@ -164,6 +165,10 @@ run_single() {
     # ---- 4. 精度比对 + 通信窗口比对 ----
     echo "[4/4] Verify..."
     python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" || return 1
+    if [ "$MATMUL_ONLY" -eq 1 ]; then
+        echo "[4/4] Skip comm verify (MATMUL_ONLY: window is host-prefilled, not real communication)"
+        return 0
+    fi
     echo "[4/4] Verify comm window..."
     python3 scripts/verify_comm.py "$M" "$K" "$RANK_NUM" "./output"
     return $?

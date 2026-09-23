@@ -225,6 +225,22 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
 
+    // ---- MATMUL_ONLY：跳过通信，host 预填通信窗口，隔离验证矩阵计算 ----
+    const char *matmulOnlyEnv = getenv("MATMUL_ONLY");
+    if (matmulOnlyEnv != nullptr && std::string(matmulOnlyEnv) == "1") {
+        size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
+        std::vector<uint16_t> hostComm(m * k, 0);
+        if (!ReadFile(inputDir + "/expected_comm.bin", hostComm.data(), commPayload)) {
+            ERROR_LOG("rank %d failed to read expected_comm.bin for MATMUL_ONLY", rankId);
+            return -1;
+        }
+        uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
+        ACL_CHECK(aclrtMemcpy(reinterpret_cast<void *>(winAddr), commPayload, hostComm.data(), commPayload,
+                              ACL_MEMCPY_HOST_TO_DEVICE));
+        tilingData.testMode = 2;
+        INFO_LOG("rank %d MATMUL_ONLY mode: prefilled comm window, skip PUT", rankId);
+    }
+
     AllToAllMmKernel_Udma<<<tilingData.tileMmTilingData.usedCoreNum, nullptr, stream>>>(
         devContext, deviceA, deviceB, deviceOutput, deviceBias, tilingData);
 
