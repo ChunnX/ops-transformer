@@ -29,6 +29,7 @@
 #include "get_tensor_addr.hpp"
 #include "hccl_shmem.hpp"
 #include "layout3d.hpp"
+#include "per_token_v2_route_utils.hpp"
 
 #define NO_POST_PROCESS
 
@@ -165,20 +166,14 @@ public:
 
     CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
     {
-        if (params.useUbRouteCache) {
-            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
-            return params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx);
-        }
-        return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+        return ::Catlass::Epilogue::Block::detail::GetLenRankInExpert(params, tokenPerExpert, tokenPerExpertLayout,
+                                                                      dstEpIdx, groupIdx);
     }
 
     CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
                                               AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
     {
-        if (params.useUbRouteCache) {
-            return params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
-        }
-        return preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+        return ::Catlass::Epilogue::Block::detail::GetDstExpertOffset(params, preSumBeforeRank, dstEpIdx, groupIdx);
     }
 
     CATLASS_DEVICE
@@ -272,25 +267,17 @@ public:
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
             int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
             int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
-            int32_t stRankInExpert = preSumRankInExpert;
-            int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
-            preSumRankInExpert += lenRankInExpert;
-            if (stRankInExpert >= edTile) {
+            auto routeRange =
+                ::Catlass::Epilogue::Block::detail::GetRouteRange(lenRankInExpert, stTile, edTile, preSumRankInExpert);
+            if (routeRange.action == ::Catlass::Epilogue::Block::detail::RouteAction::STOP) {
                 break;
-            } else if (edRankInExpert <= stTile) {
+            }
+            if (routeRange.action == ::Catlass::Epilogue::Block::detail::RouteAction::SKIP) {
                 continue;
             }
-            int32_t stData = max(stRankInExpert, stTile);
-            int32_t edData = min(edRankInExpert, edTile);
-            uint32_t lenData = edData - stData;
-            if (lenData <= 0) {
-                continue;
-            }
-
-            uint32_t dstOffsetInExpert = 0;
-            if (stTile > stRankInExpert) {
-                dstOffsetInExpert = stTile - stRankInExpert;
-            }
+            int32_t stData = routeRange.stData;
+            uint32_t lenData = routeRange.lenData;
+            uint32_t dstOffsetInExpert = routeRange.dstOffsetInExpert;
             AscendC::GlobalTensor<ElementD> gmRemotePeer;
             __gm__ void *dstPeermemPtr = params.shmem(params.offsetD, dstEpIdx);
             gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD *>(dstPeermemPtr));

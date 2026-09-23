@@ -486,28 +486,10 @@ static ge::graphStatus CheckWeight1InterleaveAttr(gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus CheckExpertAndBufferAttrs(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                                 const int64_t *moeExpertNumPtr, const int64_t *epWorldSizePtr,
+                                                 const int64_t *cclBufferSizePtr, const int64_t *maxRecvTokenNumPtr)
 {
-    auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get operator attributes."),
-                    return ge::GRAPH_FAILED);
-
-    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
-    auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_RECV_TOKEN_NUM_INDEX);
-    auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DISPATCH_QUANT_MODE_INDEX);
-    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_DISPATCH_QUANT_OUT_TYPE_INDEX);
-    auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMBINE_QUANT_MODE_INDEX);
-    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
-    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX);
-    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_ACTIVATION_INDEX));
-    auto activationParamsPtr = attrs->GetListFloat(ATTR_ACTIVATION_PARAMS_INDEX);
-    auto activationOutDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_OUT_DTYPE_INDEX);
-    auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
-    auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
-    auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
-
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckMoeExpertNumAttr failed."), return GRAPH_FAILED);
@@ -534,7 +516,14 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_LOGD(K_INNER_DEBUG, "maxRecvTokenNum auto-calculated to %u (bs=%u * ep=%u * min(topK=%u, expertPerRank=%u))",
                 info.maxRecvTokenNum, info.M, info.epWorldSize, info.topK, info.expertPerRank);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+static ge::graphStatus CheckRoutingQuantAttrs(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                              const int64_t *dispatchQuantModePtr,
+                                              const int64_t *dispatchQuantOutDtypePtr,
+                                              const int64_t *combineQuantModePtr, const int64_t *numMaxTokensPerRankPtr)
+{
     // 5-6. dispatch_quant_mode && dispatch_quant_out_dtype
     OP_TILING_CHECK(
         CheckDispatchQuantAttrs(context, dispatchQuantModePtr, dispatchQuantOutDtypePtr) != ge::GRAPH_SUCCESS,
@@ -551,9 +540,12 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckNumMaxTokensPerRankAttr(context, numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."), return GRAPH_FAILED);
     info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
+    return ge::GRAPH_SUCCESS;
+}
 
-    // Rank mask is an A3-only capability.
-    std::string socVersion = mc2tiling::GetSocVersion(context);
+static ge::graphStatus CheckRankMaskAttr(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                         const std::string &socVersion)
+{
     auto maskBuffer = context->GetOptionalInputTensor(MASK_BUFFER_INDEX);
     OP_TILING_CHECK(socVersion != "Ascend910_93" && maskBuffer != nullptr,
                     OP_LOGE(K_INNER_DEBUG, "mask_buffer is supported on A3 only."), return GRAPH_FAILED);
@@ -568,6 +560,16 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_TILING_CHECK(maskDesc->GetDataType() != ge::DT_INT32,
                         OP_LOGE(K_INNER_DEBUG, "mask_buffer dtype must be int32."), return GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationAndWeightAttrs(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                                     const char *activationPtr,
+                                                     const gert::TypedContinuousVector<float> *activationParamsPtr,
+                                                     const int64_t *activationOutDtypePtr,
+                                                     const bool *transposeWeight1Ptr, const bool *transposeWeight2Ptr,
+                                                     const int64_t *weight1InterleavePtr)
+{
     // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr, info.activationCode) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckActivationAttr failed."), return GRAPH_FAILED);
@@ -592,7 +594,11 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_TILING_CHECK(CheckWeight1InterleaveAttr(context, weight1InterleavePtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."), return GRAPH_FAILED);
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
+    return ge::GRAPH_SUCCESS;
+}
 
+static void SetRecvRoundBudget(MegaMoeA2A3TilingData &info, const std::string &socVersion)
+{
     // 接收侧轮次预算（route 行粒度）：
     // A3: B = min(chunk_recv_max, max_recv_token_num)，
     //     chunk_recv_max = PERMUTE_CHUNK * EP * min(topK, expertPerRank)；
@@ -627,9 +633,10 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_LOGD(K_INNER_DEBUG, "A2 maxRecvTokenNum=%llu recvRoundBudget=%llu",
                 static_cast<uint64_t>(info.maxRecvTokenNum), static_cast<uint64_t>(info.recvRoundBudget));
     }
+}
 
-    info.worldSize = info.epWorldSize;
-
+static void LogAttrTiling(const MegaMoeA2A3TilingData &info)
+{
     OP_LOGD(K_INNER_DEBUG, "moeExpertNum=%u", info.moeExpertNum);
     OP_LOGD(K_INNER_DEBUG, "epWorldSize=%u", info.epWorldSize);
     OP_LOGD(K_INNER_DEBUG, "cclBufferSize=%u", info.cclBufferSize);
@@ -647,6 +654,57 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);
     OP_LOGD(K_INNER_DEBUG, "weight1Interleave=%u", info.weight1Interleave);
     OP_LOGD(K_INNER_DEBUG, "worldSize=%u", info.worldSize);
+}
+
+static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+{
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get operator attributes."),
+                    return ge::GRAPH_FAILED);
+
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_RECV_TOKEN_NUM_INDEX);
+    auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DISPATCH_QUANT_MODE_INDEX);
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_DISPATCH_QUANT_OUT_TYPE_INDEX);
+    auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMBINE_QUANT_MODE_INDEX);
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX);
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_ACTIVATION_INDEX));
+    auto activationParamsPtr = attrs->GetListFloat(ATTR_ACTIVATION_PARAMS_INDEX);
+    auto activationOutDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_OUT_DTYPE_INDEX);
+    auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
+    auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
+    auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
+
+    if (CheckExpertAndBufferAttrs(context, info, moeExpertNumPtr, epWorldSizePtr, cclBufferSizePtr,
+                                  maxRecvTokenNumPtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckRoutingQuantAttrs(context, info, dispatchQuantModePtr, dispatchQuantOutDtypePtr, combineQuantModePtr,
+                               numMaxTokensPerRankPtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // Rank mask is an A3-only capability.
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    if (CheckRankMaskAttr(context, info, socVersion) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckActivationAndWeightAttrs(context, info, activationPtr, activationParamsPtr, activationOutDtypePtr,
+                                      transposeWeight1Ptr, transposeWeight2Ptr,
+                                      weight1InterleavePtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    SetRecvRoundBudget(info, socVersion);
+
+    info.worldSize = info.epWorldSize;
+
+    LogAttrTiling(info);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1106,62 +1164,9 @@ static ge::graphStatus CheckBiasInput(gert::TilingContext *context, uint32_t inp
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus CheckWeightScalesForType(gert::TilingContext *context, ge::DataType w1DataType,
+                                                uint32_t expertPerRank, uint32_t N, int64_t hiddenSize)
 {
-    // ==================== 1. 输入张量非空校验 ====================
-    const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
-    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
-    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(TOPK_IDS_INDEX);
-    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "context"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "x"), return GRAPH_FAILED);
-    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "topk_ids"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "topk_weights"),
-                    return GRAPH_FAILED);
-
-    // ==================== 2. context 输入校验 ====================
-    OP_TILING_CHECK(CheckContextInput(context, contextStorageShape) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckContextInput failed."), return GRAPH_FAILED);
-
-    // ==================== 3. x 输入校验 ====================
-    int64_t bs = 0;
-    int64_t hiddenSize = 0;
-    OP_TILING_CHECK(CheckXInput(context, xStorageShape, bs, hiddenSize) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckXInput failed."), return GRAPH_FAILED);
-
-    // ==================== 4. topk_ids 输入校验 ====================
-    int64_t topK = 0;
-    OP_TILING_CHECK(CheckTopkIdsInput(context, topkIdsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckTopkIdsInput failed."), return GRAPH_FAILED);
-
-    // ==================== 5. topk_weights 输入校验 ====================
-    OP_TILING_CHECK(CheckTopkWeightsInput(context, topkWeightsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckTopkWeightsInput failed."), return GRAPH_FAILED);
-
-    // ==================== 6. weight1 输入校验 ====================
-    uint32_t N = 0;
-    uint32_t expertPerRank = 0;
-    ge::DataType w1DataType = ge::DT_UNDEFINED;
-    ge::Format w1Format = ge::FORMAT_RESERVED;
-    OP_TILING_CHECK(CheckWeight1Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight1Input failed."), return GRAPH_FAILED);
-
-    info.isQuantRouting = (w1DataType == ge::DT_FLOAT16 || w1DataType == ge::DT_BF16) ? 0U : 1U;
-    info.isW4A8 = (w1DataType == ge::DT_INT32 || w1DataType == ge::DT_INT4) ? 1U : 0U;
-
-    // expertPerRank 范围校验
-    OP_TILING_CHECK(expertPerRank < MIN_EXPERT_PER_RANK || expertPerRank > MAX_EXPERT_PER_RANK,
-                    OP_LOGE_FOR_INVALID_TENSORNUM(K_OP_NAME, "weight1", expertPerRank, "in [1, 128]"),
-                    return GRAPH_FAILED);
-
-    // ==================== 7. weight2 输入校验 ====================
-    ge::DataType w2DataType = ge::DT_UNDEFINED;
-    OP_TILING_CHECK(
-        CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType) != ge::GRAPH_SUCCESS,
-        OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
-
     // ==================== 量化权重必须提供 scale 校验 ====================
     // 当 weight1 和 weight2 的类型都为 INT8 或 INT4 时，GMM1/GMM2 需要进行反量化
     // 此时 weight_scales1/weight_scales2 必须存在
@@ -1202,7 +1207,12 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
                             "weight scales are supported only when weight1/weight2 is INT8 or INT4"),
                         return GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+static ge::graphStatus CheckBiasForType(gert::TilingContext *context, ge::DataType w1DataType, uint32_t expertPerRank,
+                                        uint32_t N, int64_t hiddenSize)
+{
     if (w1DataType == ge::DT_INT4) {
         // ==================== 10. bias1 输入校验 ====================
         // 当 weight1 和 weight2 数据类型都为 INT4 时，bias1 必须存在
@@ -1226,6 +1236,91 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_OP_NAME, "bias1/bias2", "present",
                                                               "bias is supported only when weight1/weight2 is INT4"),
                         return GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckRoutingInputShapes(gert::TilingContext *context, int64_t &bs, int64_t &hiddenSize,
+                                               int64_t &topK)
+{
+    // ==================== 1. 输入张量非空校验 ====================
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
+    const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
+    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(TOPK_IDS_INDEX);
+    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
+    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "context"),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "x"), return GRAPH_FAILED);
+    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "topk_ids"),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "topk_weights"),
+                    return GRAPH_FAILED);
+
+    // ==================== 2. context 输入校验 ====================
+    OP_TILING_CHECK(CheckContextInput(context, contextStorageShape) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckContextInput failed."), return GRAPH_FAILED);
+
+    // ==================== 3. x 输入校验 ====================
+    OP_TILING_CHECK(CheckXInput(context, xStorageShape, bs, hiddenSize) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckXInput failed."), return GRAPH_FAILED);
+
+    // ==================== 4. topk_ids 输入校验 ====================
+    OP_TILING_CHECK(CheckTopkIdsInput(context, topkIdsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckTopkIdsInput failed."), return GRAPH_FAILED);
+
+    // ==================== 5. topk_weights 输入校验 ====================
+    OP_TILING_CHECK(CheckTopkWeightsInput(context, topkWeightsStorageShape, bs, topK) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckTopkWeightsInput failed."), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckWeightInputShapes(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                              int64_t hiddenSize, uint32_t &N, uint32_t &expertPerRank,
+                                              ge::DataType &w1DataType)
+{
+    // ==================== 6. weight1 输入校验 ====================
+    ge::Format w1Format = ge::FORMAT_RESERVED;
+    OP_TILING_CHECK(CheckWeight1Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight1Input failed."), return GRAPH_FAILED);
+
+    info.isQuantRouting = (w1DataType == ge::DT_FLOAT16 || w1DataType == ge::DT_BF16) ? 0U : 1U;
+    info.isW4A8 = (w1DataType == ge::DT_INT32 || w1DataType == ge::DT_INT4) ? 1U : 0U;
+
+    // expertPerRank 范围校验
+    OP_TILING_CHECK(expertPerRank < MIN_EXPERT_PER_RANK || expertPerRank > MAX_EXPERT_PER_RANK,
+                    OP_LOGE_FOR_INVALID_TENSORNUM(K_OP_NAME, "weight1", expertPerRank, "in [1, 128]"),
+                    return GRAPH_FAILED);
+
+    // ==================== 7. weight2 输入校验 ====================
+    ge::DataType w2DataType = ge::DT_UNDEFINED;
+    OP_TILING_CHECK(
+        CheckWeight2Input(context, hiddenSize, N, expertPerRank, w1DataType, w1Format, w2DataType) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "CheckWeight2Input failed."), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+{
+    int64_t bs = 0;
+    int64_t hiddenSize = 0;
+    int64_t topK = 0;
+    if (CheckRoutingInputShapes(context, bs, hiddenSize, topK) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t N = 0;
+    uint32_t expertPerRank = 0;
+    ge::DataType w1DataType = ge::DT_UNDEFINED;
+    if (CheckWeightInputShapes(context, info, hiddenSize, N, expertPerRank, w1DataType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckWeightScalesForType(context, w1DataType, expertPerRank, N, hiddenSize) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckBiasForType(context, w1DataType, expertPerRank, N, hiddenSize) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     // ==================== 12. x_active_mask 输入校验（可选） ====================
@@ -1424,20 +1519,8 @@ static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context
     return CheckExpertTokenNumsOutput(context, info);
 }
 
-static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
+static ge::graphStatus CheckAndSetCommonTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
 {
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    auto ret = context->SetScheduleMode(batch_mode);
-
-    // 1. tilingData
-    MegaMoeTilingDataQuant *tilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get tiling data."),
-                    return ge::GRAPH_FAILED);
-    OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData.");
-    MegaMoeA2A3TilingData &info = tilingData->common;
-    OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData info.");
-
     OP_TILING_CHECK(MegaMoeA2A3CommAlg(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "MegaMoeA2A3 CheckCommAlg Failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MegaMoeA2A3CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
@@ -1455,15 +1538,12 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(MegaMoeA2A3CheckHcclBuffSize(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "MegaMoeA2A3 CheckHcclBuffSize Failed"),
                     return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-    // 2. set blockDim
-    uint32_t blockDim = 1U;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    auto aicNum = ascendcPlatform.GetCoreNumAic();
-    auto aivNum = ascendcPlatform.GetCoreNumAiv();
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    context->SetBlockDim(blockDim);
-
+static ge::graphStatus SetMegaMoeTilingKey(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                           uint32_t &archCode)
+{
     // 3. set tiling key
     uint32_t quantMode = info.isQuantRouting != 0U ? MEGA_MOE_QUANT_MODE_PER_TOKEN : MEGA_MOE_QUANT_MODE_NO_QUANT;
     uint32_t quantOutType = MEGA_MOE_QUANT_OUT_TYPE_UNDEFINED;
@@ -1485,16 +1565,77 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     }
     // archCode 在910B时为0, 910_93时为1
     std::string socVersion = mc2tiling::GetSocVersion(context);
-    uint32_t archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
+    archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(static_cast<int64_t>(info.isTransposeW1),
                                             static_cast<int64_t>(info.isTransposeW2), static_cast<int64_t>(quantMode),
                                             static_cast<int64_t>(quantOutType), static_cast<int64_t>(archCode));
     context->SetTilingKey(tilingKey);
+    return ge::GRAPH_SUCCESS;
+}
 
-    int64_t expertNum = info.expertPerRank * info.worldSize;
-    size_t initRoutingWorkspace = 0;
+static void SetA3WorkspaceSize(const MegaMoeA2A3TilingData &info, uint32_t n2, uint32_t k2, uint64_t &megeMoeWorkspace)
+{
+    // 接收侧轮次预算 B（route 行）：GMM In/Out/perTokenScale/W4A8 各区从 B 驱动分配，
+    // 超出 B 的接收行由 kernel 侧接收端轮次切分串行复用 workspace
+    const uint64_t recvBudget = info.recvRoundBudget;
+    // prologue 每核计数区（尺寸必须与 kernel 侧 PERMUTE_MAX_CORES=128 一致，避免后续区域偏移错位）
+    int64_t alignedExpertNum = (info.expertPerRank * info.worldSize + 7) / 8 * 8;
+    int64_t permuteCountsSize = 128 * alignedExpertNum * sizeof(int32_t);
+    int64_t numChunks = (info.M + MOE_PERMUTE_CHUNK - 1) / MOE_PERMUTE_CHUNK;
+    megeMoeWorkspace =
+        permuteCountsSize +                               // prologue 每核计数区
+        MOE_PERMUTE_CHUNK * info.topK * sizeof(int32_t) + // expandedRowIdx（单 chunk，逐 chunk 复用）
+        numChunks * // cumsum（按 chunk 数分配，不复用，规避 AIC 跨 chunk cache 陈旧读）
+            info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) +
+        // 接收侧轮表区：每 (chunk, round) 独立一份 [cumsumMM_r | tokenPerExpert_r | preSumBeforeRank_r]，
+        // 各 EP*expertPerRank int32（cumsumMM_r 与 GetCumsumForMMAIV 输出同紧凑布局）
+        numChunks * info.recvRoundsMax * 3UL * info.worldSize * info.expertPerRank * sizeof(int32_t) +
+        recvBudget * std::max(info.N, n2) * sizeof(int16_t) +                          // GMM1&2 Out
+        recvBudget * std::max(info.K, k2) * sizeof(int16_t) +                          // GMM1&2 input
+        (info.worldSize * (info.expertPerRank + 16 - 1) / 16 * 16 * sizeof(int32_t)) + // SumBeforeRank
+        info.worldSize * sizeof(int32_t) * 16;                                         // sync
+    if (info.isQuantRouting == 1U) {
+        megeMoeWorkspace += recvBudget * sizeof(float) * 2; // perTokenScale GMM1&2
+    }
+    if (info.isW4A8) {
+        // when W4A8 matrix_A need int8->int4, M->2*M
+        megeMoeWorkspace += recvBudget * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
+    }
+}
 
+static void SetA2WorkspaceSize(const MegaMoeA2A3TilingData &info, uint32_t n2, uint32_t k2, uint64_t &megeMoeWorkspace)
+{
+    // A2 发送侧 chunk：逐 PERMUTE_CHUNK token 一条完整 dispatch/GMM/combine 流水，逐 chunk 复用。
+    // 接收行按 chunk 本地化（rowStart 基于单 chunk cumsum），winIn A/D 区容量仍由 max_recv_token_num
+    // 保护（单 chunk 接收行数 <= 总接收行数）；B = max_recv_token_num 驱动 workspace GMM 缓冲。
+    // cumsum 按 chunk 独立多份（不复用，规避 AIC/AIV 跨 chunk cache 陈旧读）。
+    uint64_t swigluSize = info.isQuantRouting ? 1UL : 2UL;
+    uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
+    const int64_t numChunks = (info.M + MOE_PERMUTE_CHUNK - 1) / MOE_PERMUTE_CHUNK;
+    const int64_t alignedExpertNum =
+        ops::CeilAlign(static_cast<int64_t>(info.expertPerRank) * info.worldSize, static_cast<int64_t>(8));
+    const uint64_t recvBudget = info.recvRoundBudget;
+    megeMoeWorkspace =
+        PERMUTE_MAX_CORES * alignedExpertNum * sizeof(int32_t) + // prologue 每核计数区（独立）
+        ops::CeilAlign(std::min<int64_t>(info.M, MOE_PERMUTE_CHUNK), static_cast<int64_t>(256)) * info.topK *
+            sizeof(int32_t) + // expandedRowIdx（单 chunk，逐 chunk 复用）
+        numChunks * paddedExpertNumAligned * info.worldSize * sizeof(int32_t) + // cumsum（按 chunk 独立，不复用）
+        paddedExpertNumAligned * 2UL * sizeof(int32_t) +                        // SumBeforeRank ForDispatch/ForCombine
+        recvBudget * std::max(info.N, n2) * sizeof(int16_t) +                   // GMM1&2 Out
+        recvBudget * std::max(info.K, k2) * swigluSize +                        // swiglu out
+        info.worldSize * sizeof(int32_t) * 16UL;                                // sync
+    if (info.isQuantRouting) {
+        megeMoeWorkspace += recvBudget * sizeof(float) * 2UL; // perTokenScale GMM1&2
+    }
+    if (info.isW4A8) {
+        megeMoeWorkspace += recvBudget * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
+    }
+}
+
+static ge::graphStatus StoreMegaMoeCommonTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info,
+                                                MegaMoeTilingDataQuant *tilingData)
+{
     if (info.isQuantRouting != 0U) {
         MegaMoeTilingDataQuant *quantTilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
         OP_TILING_CHECK(tilingData == nullptr,
@@ -1507,6 +1648,46 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                         OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get non-quant tiling data."),
                         return ge::GRAPH_FAILED);
         nonQuantTilingData->common = info;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
+{
+    // 涉及SyncAll，设置batch mode模式，所有核同时启动
+    uint32_t batch_mode = 1U;
+    auto ret = context->SetScheduleMode(batch_mode);
+
+    // 1. tilingData
+    MegaMoeTilingDataQuant *tilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get tiling data."),
+                    return ge::GRAPH_FAILED);
+    OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData.");
+    MegaMoeA2A3TilingData &info = tilingData->common;
+    OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData info.");
+
+    if (CheckAndSetCommonTiling(context, info) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 2. set blockDim
+    uint32_t blockDim = 1U;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    auto aicNum = ascendcPlatform.GetCoreNumAic();
+    auto aivNum = ascendcPlatform.GetCoreNumAiv();
+    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    context->SetBlockDim(blockDim);
+
+    uint32_t archCode;
+    if (SetMegaMoeTilingKey(context, info, archCode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    int64_t expertNum = info.expertPerRank * info.worldSize;
+    size_t initRoutingWorkspace = 0;
+
+    if (StoreMegaMoeCommonTiling(context, info, tilingData) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     Mc2Tiling::MoePermutePrologueTilingBase permuteTilingBase;
     permuteTilingBase.DoTiling(info.M, info.topK, expertNum);
@@ -1521,58 +1702,9 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     uint32_t k2 = info.N / 2;
     uint64_t megeMoeWorkspace = 0;
     if (archCode == SOC_ASCEND910_93) {
-        // 接收侧轮次预算 B（route 行）：GMM In/Out/perTokenScale/W4A8 各区从 B 驱动分配，
-        // 超出 B 的接收行由 kernel 侧接收端轮次切分串行复用 workspace
-        const uint64_t recvBudget = info.recvRoundBudget;
-        // prologue 每核计数区（尺寸必须与 kernel 侧 PERMUTE_MAX_CORES=128 一致，避免后续区域偏移错位）
-        int64_t alignedExpertNum = (info.expertPerRank * info.worldSize + 7) / 8 * 8;
-        int64_t permuteCountsSize = 128 * alignedExpertNum * sizeof(int32_t);
-        int64_t numChunks = (info.M + MOE_PERMUTE_CHUNK - 1) / MOE_PERMUTE_CHUNK;
-        megeMoeWorkspace =
-            permuteCountsSize +                               // prologue 每核计数区
-            MOE_PERMUTE_CHUNK * info.topK * sizeof(int32_t) + // expandedRowIdx（单 chunk，逐 chunk 复用）
-            numChunks * // cumsum（按 chunk 数分配，不复用，规避 AIC 跨 chunk cache 陈旧读）
-                info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) +
-            // 接收侧轮表区：每 (chunk, round) 独立一份 [cumsumMM_r | tokenPerExpert_r | preSumBeforeRank_r]，
-            // 各 EP*expertPerRank int32（cumsumMM_r 与 GetCumsumForMMAIV 输出同紧凑布局）
-            numChunks * info.recvRoundsMax * 3UL * info.worldSize * info.expertPerRank * sizeof(int32_t) +
-            recvBudget * std::max(info.N, n2) * sizeof(int16_t) +                          // GMM1&2 Out
-            recvBudget * std::max(info.K, k2) * sizeof(int16_t) +                          // GMM1&2 input
-            (info.worldSize * (info.expertPerRank + 16 - 1) / 16 * 16 * sizeof(int32_t)) + // SumBeforeRank
-            info.worldSize * sizeof(int32_t) * 16;                                         // sync
-        if (info.isQuantRouting == 1U) {
-            megeMoeWorkspace += recvBudget * sizeof(float) * 2; // perTokenScale GMM1&2
-        }
-        if (info.isW4A8) {
-            // when W4A8 matrix_A need int8->int4, M->2*M
-            megeMoeWorkspace += recvBudget * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
-        }
+        SetA3WorkspaceSize(info, n2, k2, megeMoeWorkspace);
     } else if (archCode == SOC_ASCEND910B) {
-        // A2 发送侧 chunk：逐 PERMUTE_CHUNK token 一条完整 dispatch/GMM/combine 流水，逐 chunk 复用。
-        // 接收行按 chunk 本地化（rowStart 基于单 chunk cumsum），winIn A/D 区容量仍由 max_recv_token_num
-        // 保护（单 chunk 接收行数 <= 总接收行数）；B = max_recv_token_num 驱动 workspace GMM 缓冲。
-        // cumsum 按 chunk 独立多份（不复用，规避 AIC/AIV 跨 chunk cache 陈旧读）。
-        uint64_t swigluSize = info.isQuantRouting ? 1UL : 2UL;
-        uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
-        const int64_t numChunks = (info.M + MOE_PERMUTE_CHUNK - 1) / MOE_PERMUTE_CHUNK;
-        const int64_t alignedExpertNum =
-            ops::CeilAlign(static_cast<int64_t>(info.expertPerRank) * info.worldSize, static_cast<int64_t>(8));
-        const uint64_t recvBudget = info.recvRoundBudget;
-        megeMoeWorkspace =
-            PERMUTE_MAX_CORES * alignedExpertNum * sizeof(int32_t) + // prologue 每核计数区（独立）
-            ops::CeilAlign(std::min<int64_t>(info.M, MOE_PERMUTE_CHUNK), static_cast<int64_t>(256)) * info.topK *
-                sizeof(int32_t) + // expandedRowIdx（单 chunk，逐 chunk 复用）
-            numChunks * paddedExpertNumAligned * info.worldSize * sizeof(int32_t) + // cumsum（按 chunk 独立，不复用）
-            paddedExpertNumAligned * 2UL * sizeof(int32_t) +      // SumBeforeRank ForDispatch/ForCombine
-            recvBudget * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
-            recvBudget * std::max(info.K, k2) * swigluSize +      // swiglu out
-            info.worldSize * sizeof(int32_t) * 16UL;              // sync
-        if (info.isQuantRouting) {
-            megeMoeWorkspace += recvBudget * sizeof(float) * 2UL; // perTokenScale GMM1&2
-        }
-        if (info.isW4A8) {
-            megeMoeWorkspace += recvBudget * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
-        }
+        SetA2WorkspaceSize(info, n2, k2, megeMoeWorkspace);
     }
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);

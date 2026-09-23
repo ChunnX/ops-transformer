@@ -31,10 +31,16 @@ public:
     __aicore__ inline void Process();
 
 protected:
+    __aicore__ inline void LoadTilingData(const MoeTokenUnpermuteTilingData *__restrict tiling_data);
+    __aicore__ inline void InitLocalBuffers(const MoeTokenUnpermuteTilingData *__restrict tiling_data, GM_ADDR probs,
+                                            int64_t blockOffset, int64_t blockLength);
+    __aicore__ inline int64_t CoreElementOffset(int64_t elementsPerToken) const;
     __aicore__ inline void CalMultiOutToken(const int64_t out_offset, const int64_t out_tokens_number);
     __aicore__ inline void CalSingleOutToken(const int64_t start_token, const int64_t out_token_idx);
     __aicore__ inline void CalPartOutToken(const int64_t start_token, const int64_t h_index, const int64_t h_length,
                                            const int64_t out_token_index);
+    template <bool FIRST>
+    __aicore__ inline void AccumulateValidToken(T2 tokenIndex, int64_t probIndex, int64_t hIndex, int64_t hLength);
     __aicore__ inline void CopyTokenIn(const T2 in_token_index, const int64_t h_index, const int64_t h_length);
     __aicore__ inline void CalFirstToken(const float prob_value, const int64_t h_length);
     __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
@@ -89,63 +95,51 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
         return;
     }
     ASSERT(blockNum != 0 && "block dim can not be zero!");
-    // row_input
+    LoadTilingData(tiling_data);
+
+    int64_t block_length = this->tokens_core_length * this->top_k;
+
+    int64_t block_offset = CoreElementOffset(this->top_k);
+
+    this->tokensGM.SetGlobalBuffer((__gm__ T1 *)permuted_tokens);
+    this->indicesGM.SetGlobalBuffer((__gm__ T2 *)sorted_indices + block_offset, block_length);
+
+    int64_t out_block_offset = CoreElementOffset(this->hidden_size);
+
+    this->outGM.SetGlobalBuffer((__gm__ T1 *)unpermuted_tokens + out_block_offset,
+                                this->tokens_core_length * this->hidden_size);
+
+    InitLocalBuffers(tiling_data, probs, block_offset, block_length);
+};
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::LoadTilingData(
+    const MoeTokenUnpermuteTilingData *__restrict tiling_data)
+{
     this->hidden_size = tiling_data->hidden_size;
     this->top_k = tiling_data->top_k;
     this->num_out_tokens = tiling_data->num_out_tokens;
-    // hidden_tiling
     this->hidden_splited_length = tiling_data->hidden_splited_length;
     this->hidden_splited_num = tiling_data->hidden_splited_num;
     this->hidden_splited_remain = tiling_data->hidden_splited_remain;
-    // token_tiling
     this->tokens_core_length = tiling_data->tokens_core_length;
     this->tokens_core_remain = tiling_data->tokens_core_remain;
     this->tokens_splited_length = tiling_data->tokens_splited_length;
     this->tokens_splited_num = tiling_data->tokens_splited_num;
     this->tokens_splited_remain = tiling_data->tokens_splited_remain;
 
-    // Handle the tail block for token_by_core
     if (this->tokens_core_remain > 0 && blockIdx < this->tokens_core_remain) {
         this->tokens_core_length += 1;
         this->tokens_splited_remain += 1;
     }
+}
 
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::InitLocalBuffers(
+    const MoeTokenUnpermuteTilingData *__restrict tiling_data, GM_ADDR probs, int64_t blockOffset, int64_t blockLength)
+{
     int64_t hidden_splited_length_align512 = (this->hidden_splited_length + ALIGN_512 - 1) & ~(ALIGN_512 - 1);
-
-    int64_t block_length = this->tokens_core_length * this->top_k;
     int64_t block_splited_length = this->tokens_splited_length * this->top_k;
-
-    int64_t block_offset;
-    if (this->tokens_core_remain > 0) {
-        if (blockIdx < this->tokens_core_remain) {
-            block_offset = block_length * blockIdx;
-        } else {
-            block_offset = (block_length + this->top_k) * this->tokens_core_remain +
-                           block_length * (blockIdx - this->tokens_core_remain);
-        }
-    } else {
-        block_offset = block_length * blockIdx;
-    }
-
-    this->tokensGM.SetGlobalBuffer((__gm__ T1 *)permuted_tokens);
-    this->indicesGM.SetGlobalBuffer((__gm__ T2 *)sorted_indices + block_offset, block_length);
-
-    int64_t out_block_offset;
-    if (this->tokens_core_remain > 0) {
-        if (blockIdx < this->tokens_core_remain) {
-            out_block_offset = this->tokens_core_length * blockIdx * hidden_size;
-        } else {
-            out_block_offset = (this->tokens_core_length + 1) * this->tokens_core_remain +
-                               this->tokens_core_length * (blockIdx - this->tokens_core_remain);
-            out_block_offset *= this->hidden_size;
-        }
-    } else {
-        out_block_offset = this->tokens_core_length * blockIdx * hidden_size;
-    }
-
-    this->outGM.SetGlobalBuffer((__gm__ T1 *)unpermuted_tokens + out_block_offset,
-                                this->tokens_core_length * this->hidden_size);
-
     this->pipe.InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
     this->pipe.InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
     this->pipe.InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
@@ -158,14 +152,24 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     }
 
     if constexpr (PROBS) {
-        this->probsGM.SetGlobalBuffer((__gm__ T3 *)probs + block_offset, block_length);
+        this->probsGM.SetGlobalBuffer((__gm__ T3 *)probs + blockOffset, blockLength);
         this->pipe.InitBuffer(probs_inque, 1, block_splited_length * (sizeof(T3)));
         if constexpr (!IsSameType<T3, float>::value) {
             this->pipe.InitBuffer(temp_buffer2, block_splited_length * sizeof(float));
             this->probs_tensor = this->temp_buffer2.template Get<float>();
         }
     }
-};
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline int64_t KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CoreElementOffset(int64_t elementsPerToken) const
+{
+    const int64_t blockLength = tokens_core_length * elementsPerToken;
+    if (tokens_core_remain > 0 && blockIdx >= tokens_core_remain) {
+        return (blockLength + elementsPerToken) * tokens_core_remain + blockLength * (blockIdx - tokens_core_remain);
+    }
+    return blockLength * blockIdx;
+}
 
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Process()
@@ -249,14 +253,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
     // 非法 topk_ids 条目写 -1，必须补下界，否则 -1 < num_out_tokens 误判有效，
     // CopyTokenIn 负偏移越界读且垃圾值污染输出行
     if (cal_token_idx >= 0 && cal_token_idx < this->num_out_tokens) {
-        float probsValue = 0;
-        if constexpr (PROBS) {
-            probsValue = this->probs_tensor.GetValue(start_token);
-        }
-
-        CopyTokenIn(cal_token_idx, h_index, h_length);
-        PipeBarrier<PIPE_V>();
-        CalFirstToken(probsValue, h_length);
+        AccumulateValidToken<true>(cal_token_idx, start_token, h_index, h_length);
     } else {
         PipeBarrier<PIPE_V>();
         Duplicate(this->token_tensor0, static_cast<float>(0), h_length);
@@ -267,19 +264,32 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
         cal_token_idx = this->indicesLocal.GetValue(token_index);
         // 与首 token 一致：-1 等无效哨兵必须跳过，否则负偏移越界读
         if (cal_token_idx >= 0 && cal_token_idx < this->num_out_tokens) {
-            float probsValue = 0;
-            if constexpr (PROBS) {
-                probsValue = this->probs_tensor.GetValue(token_index);
-            }
-
-            CopyTokenIn(cal_token_idx, h_index, h_length);
-            PipeBarrier<PIPE_V>();
-            CalToken(probsValue, h_length);
+            AccumulateValidToken<false>(cal_token_idx, token_index, h_index, h_length);
         }
     }
 
     // Write out the computed result
     CopyOut(out_token_index, h_index, h_length);
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+template <bool FIRST>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::AccumulateValidToken(T2 tokenIndex,
+                                                                                        int64_t probIndex,
+                                                                                        int64_t hIndex, int64_t hLength)
+{
+    float probsValue = 0;
+    if constexpr (PROBS) {
+        probsValue = this->probs_tensor.GetValue(probIndex);
+    }
+
+    CopyTokenIn(tokenIndex, hIndex, hLength);
+    PipeBarrier<PIPE_V>();
+    if constexpr (FIRST) {
+        CalFirstToken(probsValue, hLength);
+    } else {
+        CalToken(probsValue, hLength);
+    }
 }
 
 template <typename T1, typename T2, typename T3, bool PROBS>

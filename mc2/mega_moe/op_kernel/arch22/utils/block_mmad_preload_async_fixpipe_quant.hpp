@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A3_HPP
-#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A3_HPP
+#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXPIPE_QUANT_HPP
+#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXPIPE_QUANT_HPP
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
@@ -22,28 +22,61 @@
 #include "catlass/gemm_coord.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/helper.hpp"
+#include "copy_l0c_to_gm_custom.hpp"
 #include "dispatch_policy_custom.hpp"
 
 namespace Catlass::Gemm::Block {
 
-template <AscendC::HardEvent event>
-__aicore__ inline void SyncFlagFunc(int32_t eventID)
-{
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
-}
+namespace detail {
 
-template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_, class L1TileShape_, class L0TileShape_,
-          class AType_, class BType_, class CType_, class BiasType_, class TileCopy_, class TileMmad_>
-struct BlockMmad<MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
-                                                     ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                 L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_> {
+// A2 performs per-channel dequantization directly from the L1 scale tensor.
+// A3 first copies that tensor into the FixPipe buffer. Keeping the resource
+// holder in a specialized empty base avoids adding FixPipe state to A2 objects.
+template <bool NEED_L1_TO_FP_, class ArchTag_, class AType_, class BType_, class CType_>
+struct FixpipeScaleHandler;
+
+template <class ArchTag_, class AType_, class BType_, class CType_>
+struct FixpipeScaleHandler<false, ArchTag_, AType_, BType_, CType_> {
+    CATLASS_DEVICE
+    void Init(Arch::Resource<ArchTag_> &, uint32_t) {}
+
+    template <class LayoutScale_>
+    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const &, LayoutScale_ const &)
+    {}
+};
+
+template <class ArchTag_, class AType_, class BType_, class CType_>
+struct FixpipeScaleHandler<true, ArchTag_, AType_, BType_, CType_> {
+    using CopyL1ToFP = typename Gemm::Tile::QuantTileCopy<ArchTag_, AType_, BType_, CType_, void,
+                                                          Gemm::Tile::ScaleGranularity::PER_CHANNEL>::CopyL1ToFP;
+
+    CATLASS_DEVICE
+    void Init(Arch::Resource<ArchTag_> &resource, uint32_t fpAddrStart)
+    {
+        fixpipeBuf = resource.fpBuf.template GetBufferByByte<uint64_t>(fpAddrStart);
+    }
+
+    template <class LayoutScale_>
+    CATLASS_DEVICE void Copy(AscendC::LocalTensor<uint64_t> const &l1Scale, LayoutScale_ const &layoutScale)
+    {
+        copyL1ToFP(fixpipeBuf, l1Scale, layoutScale, layoutScale);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
+        AscendC::PipeBarrier<PIPE_FIX>();
+    }
+
+    AscendC::LocalTensor<uint64_t> fixpipeBuf;
+    CopyL1ToFP copyL1ToFP;
+};
+
+template <class DispatchPolicy_, bool NEED_L1_TO_FP_, class L1TileShape_, class L0TileShape_, class AType_,
+          class BType_, class CType_, class BiasType_, class TileCopy_, class TileMmad_>
+struct BlockMmadPreloadAsyncFixpipeImpl
+    : private FixpipeScaleHandler<NEED_L1_TO_FP_, typename DispatchPolicy_::ArchTag, AType_, BType_, CType_> {
 public:
     // Type Aliases
-    using DispatchPolicy = MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                               L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>;
+    using DispatchPolicy = DispatchPolicy_;
     using ArchTag = typename DispatchPolicy::ArchTag;
+    using FixpipeScale = FixpipeScaleHandler<NEED_L1_TO_FP_, ArchTag, AType_, BType_, CType_>;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
     using ElementA = typename AType_::Element;
@@ -56,18 +89,18 @@ public:
     using CopyGmToL1A = typename TileCopy_::CopyGmToL1A;
     using CopyGmToL1B = typename TileCopy_::CopyGmToL1B;
     using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout>>;
-    using CopyL1ToFP =
-        typename Gemm::Tile::QuantTileCopy<ArchTag, AType_, BType_, CType_, void,
-                                           Catlass::Gemm::Tile::ScaleGranularity::PER_CHANNEL>::CopyL1ToFP;
     using CopyL1ToL0A = typename TileCopy_::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy_::CopyL1ToL0B;
 
     using ElementAccumulator =
         typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
-    using CopyL0CToGm = typename std::conditional<
-        std::is_same_v<ElementA, int8_t>,
-        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType_, Gemm::Tile::ScaleGranularity::PER_CHANNEL>,
-        typename TileCopy_::CopyL0CToGm>::type;
+    using CopyL0CToGm =
+        std::conditional_t<std::is_same_v<ElementA, int8_t>,
+                           std::conditional_t<NEED_L1_TO_FP_,
+                                              Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType_,
+                                                                      Gemm::Tile::ScaleGranularity::PER_CHANNEL>,
+                                              Gemm::Tile::CopyL0CToGmPerChannel<ElementAccumulator, ElementC>>,
+                           typename TileCopy_::CopyL0CToGm>;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutBInL1 = typename CopyL1ToL0B::LayoutSrc;
     using LayoutAInL0 = typename CopyL1ToL0A::LayoutDst;
@@ -116,14 +149,14 @@ public:
     static constexpr auto L1B_LAYOUT = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
 
     CATLASS_DEVICE
-    BlockMmad(Arch::Resource<ArchTag> &resource, __gm__ int32_t *flagPtr = nullptr, int32_t expertPerRank = 0,
-              uint32_t l1BufAddrStart = 0, uint32_t FpAddrStart = 0)
+    BlockMmadPreloadAsyncFixpipeImpl(Arch::Resource<ArchTag> &resource, __gm__ int32_t *flagPtr = nullptr,
+                                     int32_t expertPerRank = 0, uint32_t l1BufAddrStart = 0, uint32_t fpAddrStart = 0)
     {
         syncGroupIdx = 0;
         ptrSoftFlagBase_ = flagPtr;
         expertPerRank_ = expertPerRank;
         InitL1(resource, l1BufAddrStart);
-        InitFpBuf(resource, FpAddrStart);
+        FixpipeScale::Init(resource, fpAddrStart);
         InitL0A(resource);
         InitL0B(resource);
         InitL0C(resource);
@@ -137,7 +170,7 @@ public:
     uint32_t l1EndOffset_ = 0U;
 
     CATLASS_DEVICE
-    ~BlockMmad()
+    ~BlockMmadPreloadAsyncFixpipeImpl()
     {
         SynchronizeBlock();
         for (uint32_t i = 0; i < L1_STAGES; ++i) {
@@ -320,13 +353,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void InitFpBuf(Arch::Resource<ArchTag> &resource, uint32_t FpAddrStart)
-    {
-        uint32_t FpOffset = FpAddrStart;
-        fixpipeBuf = resource.fpBuf.template GetBufferByByte<uint64_t>(FpOffset);
-    }
-
-    CATLASS_DEVICE
     void InitL0A(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < L0A_STAGES; ++i) {
@@ -452,9 +478,7 @@ private:
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_FIX>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_FIX>(0);
 
-                copyL1ToFP(fixpipeBuf, l1STensor, layoutTileS, layoutTileS);
-                AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
-                AscendC::PipeBarrier<PIPE_FIX>();
+                FixpipeScale::Copy(l1STensor, layoutTileS);
             }
             if constexpr (!ENABLE_UNIT_FLAG) {
                 AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventList[l0CListId]);
@@ -473,6 +497,10 @@ private:
                 }
             }
             l0CListId = (l0CListId + 1 < L0C_STAGES) ? (l0CListId + 1) : 0;
+            if constexpr (!NEED_L1_TO_FP_ && std::is_same_v<ElementA, int8_t>) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
+            }
+
 #ifdef __TILE_SYNC__
             if (params.flag > 0) {
                 int32_t flagId = params.flag + params.syncLoopIdx / 8;
@@ -483,8 +511,6 @@ private:
 #endif
         }
     }
-
-    AscendC::LocalTensor<uint64_t> fixpipeBuf;
 
     AscendC::LocalTensor<ElementA> l1ATensorList[L1_STAGES];
     AscendC::LocalTensor<ElementB> l1BTensorList[L1_STAGES];
@@ -503,8 +529,8 @@ private:
     int32_t l0BEventList[L0B_STAGES];
     uint32_t l0BListId{0};
 
-    AscendC::LocalTensor<ElementAccumulator> l0CTensorList[L0C_STAGES_];
-    int32_t l0CEventList[L0C_STAGES_];
+    AscendC::LocalTensor<ElementAccumulator> l0CTensorList[L0C_STAGES];
+    int32_t l0CEventList[L0C_STAGES];
     uint32_t l0CListId{0};
 
     L1TileMmadParams l1TileMmadParamsList[PRELOAD_STAGES];
@@ -518,12 +544,51 @@ private:
     CopyL1ToL0A copyL1ToL0A;
     CopyL1ToL0B copyL1ToL0B;
     CopyL0CToGm copyL0CToGm;
-    CopyL1ToFP copyL1ToFP;
 
     __gm__ int32_t *ptrSoftFlagBase_ = nullptr;
     int32_t expertPerRank_;
 };
 
+} // namespace detail
+
+template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_, class L1TileShape_, class L0TileShape_,
+          class AType_, class BType_, class CType_, class BiasType_, class TileCopy_, class TileMmad_>
+struct BlockMmad<MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                                ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+                 L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_>
+    : public detail::BlockMmadPreloadAsyncFixpipeImpl<
+          MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                         ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+          false, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_> {
+    using Base = detail::BlockMmadPreloadAsyncFixpipeImpl<
+        MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                       ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+        false, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_>;
+
+public:
+    using Base::Base;
+};
+
+template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_, class L1TileShape_, class L0TileShape_,
+          class AType_, class BType_, class CType_, class BiasType_, class TileCopy_, class TileMmad_>
+struct BlockMmad<MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                                     ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+                 L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_>
+    : public detail::BlockMmadPreloadAsyncFixpipeImpl<
+          MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                              ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+          true, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_> {
+    using Base = detail::BlockMmadPreloadAsyncFixpipeImpl<
+        MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                            ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+        true, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_>;
+
+public:
+    using Base::Base;
+};
+
 } // namespace Catlass::Gemm::Block
 
-#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A3_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXPIPE_QUANT_HPP
