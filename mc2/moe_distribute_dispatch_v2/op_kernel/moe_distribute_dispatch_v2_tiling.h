@@ -39,7 +39,7 @@ struct MoeDistributeDispatchV2Info {
     bool isQuant;                 // whether quant or not
     bool isMc2Context;
     bool hasExpertScales; // has expertScales or not
-    bool reserved1;
+    bool useCcuCtrl;      // A5 only: CCU control plane (count via AlltoAll) for fullmesh_v2, 0 keeps pure MTE path
     uint64_t totalUbSize; // epWorldSize
     uint64_t totalWinSizeEp;
     uint32_t expertTokenNumsType; // expert token nums type, support 0: cumsum mode, 1: count mode
