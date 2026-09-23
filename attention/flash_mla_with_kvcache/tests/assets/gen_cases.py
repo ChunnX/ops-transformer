@@ -8,7 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Generate 50 supported-range TTK cases (or the 16-case --suite smoke)."""
+"""Generate supported-range TTK cases (or the 16-case --suite smoke).
+
+Cases call the installed torch.ops.cann_ops_transformer API directly;
+pass --plugin <assets directory> without adding assets to PYTHONPATH.
+
+Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
+The generator always emits dynamic metadata slots.
+"""
 
 import argparse
 import ast
@@ -61,6 +68,7 @@ def coverage_row(
     omit_max=(),
     nc_axes=(),
     page_order="sequential",
+    num_blocks=None,
     scale=576**-0.5,
     num_heads_q=96,
 ):
@@ -71,7 +79,8 @@ def coverage_row(
     assert all(q <= kv for q, kv in zip(q_lengths, kv_lengths))
     batch = len(q_lengths)
     counts = [(length + 127) // 128 for length in kv_lengths]
-    pages = sum(counts)
+    pages = sum(counts) if num_blocks is None else num_blocks
+    assert pages > 0
     kshape = (pages, 128, 1, 576) if layout == "PA_BBND" else (pages, 1, 36, 128, 16)
     assert num_heads_q in (64, 96)
     shapes = (
@@ -82,7 +91,7 @@ def coverage_row(
         (batch + 1,),
         None if no_seqused else (batch,),
         (2048, 2048) if mask else None,
-        (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
+        (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
     )
     dtypes = (
         dtype,
@@ -137,9 +146,12 @@ def coverage_row(
     row["remark"] = name
     if nc_axes:
         assert set(nc_axes) <= ({0} if layout == "PA_BBND" else {0, 1})
-        strides = [contiguous_stride(s) if s is not None else None for s in shapes]
-        offsets = [0 if s is not None else None for s in shapes]
-        storage = list(shapes)
+        strides = [
+            contiguous_stride(s) if s is not None and -1 not in s else None
+            for s in shapes
+        ]
+        offsets = [0 if s is not None and -1 not in s else None for s in shapes]
+        storage = [s if s is None or -1 not in s else None for s in shapes]
         kv_stride = list(strides[1])
         for axis in nc_axes:
             kv_stride[axis] *= 2
@@ -259,7 +271,24 @@ def coverage_cases():
     ]
     for name, dtype, kv, q, options in specials:
         rows.append(coverage_row(name, dtype, kv, q, **options))
-    assert len(rows) == 50 and len({r["testcase_name"] for r in rows}) == 50
+    # Five logical pages share three physical pages across batches, or two
+    # physical pages both within a sequence and across batches.
+    for name, dtype, layout, pages in (
+        ("shared_pages_bbnd", "float16", "PA_BBND", 3),
+        ("shared_pages_nz", "bfloat16", "PA_NZ", 2),
+    ):
+        rows.append(
+            coverage_row(
+                name,
+                dtype,
+                [257, 129],
+                [3, 1],
+                layout=layout,
+                mask=3,
+                num_blocks=pages,
+            )
+        )
+    assert len(rows) == 52 and len({r["testcase_name"] for r in rows}) == 52
     # Bound input storage independently of host golden intermediates/workspace.
     for row in rows:
         shapes = ast.literal_eval(
@@ -296,7 +325,7 @@ def cases():
             (3,) if layout_q == "TND" else None,
             (2,),
             (2048, 2048) if mask == 3 else None,
-            (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
+            (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
         )
         dtypes = (
             dtype,

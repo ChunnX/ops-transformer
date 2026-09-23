@@ -40,11 +40,122 @@ class FlashAttnComparator:
             value = value.numpy()
         return np.asarray(value).astype(np.float32)
 
+    @staticmethod
+    def print_log(message, output_index):
+        """Print diagnostics directly, including when used outside TTK."""
+        for line in message.splitlines():
+            print(f"[INFO] [Output {output_index}] {line}", flush=True)
+
+    @staticmethod
+    def table_header():
+        header = (
+            f"{'Loop':>8}  "
+            f"{'ExpectOut':>14}  {'RealOut':>14}  {'FpDiff':>14}  {'RateDiff':>14}"
+        )
+        return header, "-" * len(header)
+
+    @staticmethod
+    def format_point(index, expected, actual, absolute, relative):
+        return (
+            f"{index:08d}  "
+            f"{expected:14.7f}  {actual:14.7f}  {absolute:14.7e}  {relative:14.7e}"
+        )
+
     @classmethod
-    def compare_output(cls, npu_out, golden_out):
+    def display_pass_output(cls, npu, golden, precision, output_index):
+        """Print successful comparisons with bounded first/last value samples."""
+        header, separator = cls.table_header()
+        lines = [
+            f"PASS: precision={precision:.6g}%, shape={npu.shape}, elements={npu.size}",
+            separator,
+            header,
+            separator,
+        ]
+        indices = (
+            list(range(npu.size))
+            if npu.size <= 21
+            else [*range(10), *range(npu.size - 10, npu.size)]
+        )
+        actual, expected = npu.reshape(-1), golden.reshape(-1)
+        for position, index in enumerate(indices):
+            if npu.size > 21 and position == 10:
+                lines.append("...")
+            a, e = float(actual[index]), float(expected[index])
+            absolute = abs(a - e)
+            relative = absolute / (
+                max(abs(a), abs(e), cls.RELATIVE_FLOOR) + cls.RELATIVE_EPSILON
+            )
+            lines.append(cls.format_point(index, e, a, absolute, relative))
+        lines.append(separator)
+        cls.print_log("\n".join(lines), output_index)
+
+    @classmethod
+    def display_error_output(cls, npu, golden, diff_idx, output_index):
+        """Print bounded failure points independently of TTK logging."""
+        if not diff_idx.size:
+            return ""
+        actual = npu.reshape(-1)[diff_idx].astype(np.float64)
+        expected = golden.reshape(-1)[diff_idx].astype(np.float64)
+        with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+            absolute = np.abs(actual - expected)
+            denominator = np.maximum(
+                np.maximum(np.abs(actual), np.abs(expected)), cls.RELATIVE_FLOOR
+            )
+            relative = absolute / (denominator + cls.RELATIVE_EPSILON)
+
+        def point(position):
+            flat_index = int(diff_idx[position])
+            return cls.format_point(
+                flat_index,
+                expected[position],
+                actual[position],
+                absolute[position],
+                relative[position],
+            )
+
+        header, separator = cls.table_header()
+        lines = [
+            f"Error Line: {diff_idx.size} mismatches (ranks 1-9 and 91-99 shown)",
+            separator,
+            header,
+            separator,
+        ]
+        lines.extend(point(i) for i in range(min(9, diff_idx.size)))
+        if diff_idx.size > 9:
+            lines.append("...")
+        lines.extend(point(i) for i in range(90, min(99, diff_idx.size)))
+        if diff_idx.size > 99:
+            lines.append("...")
+        # Non-finite mismatches cannot be ranked by a numeric relative error.
+        nonfinite = np.flatnonzero(~np.isfinite(relative))
+        if nonfinite.size:
+            lines.extend(
+                [
+                    separator,
+                    "Non-finite error points (up to 3 shown):",
+                    header,
+                    separator,
+                ]
+            )
+            lines.extend(point(int(i)) for i in nonfinite[:3])
+        finite = np.flatnonzero(np.isfinite(relative))
+        if finite.size:
+            maximum = np.max(relative[finite])
+            worst = finite[relative[finite] == maximum][:3]
+            lines.extend([separator, "Max-RE line (up to 3 shown):", header, separator])
+            lines.extend(point(int(i)) for i in worst)
+        lines.append(separator)
+        cls.print_log("\n".join(lines), output_index)
+
+    @classmethod
+    def compare_output(cls, npu_out, golden_out, output_index=0):
         if golden_out is None:
+            cls.print_log(
+                "SUPPRESSED: golden output is None; comparison skipped", output_index
+            )
             return {"pass": True, "precision": "SUPPRESSED"}
         if npu_out is None:
+            cls.print_log("NPU output is None", output_index)
             return {
                 "pass": False,
                 "precision": "NO_OUTPUT",
@@ -57,12 +168,17 @@ class FlashAttnComparator:
         npu = cls.as_float32(npu_out)
         golden = cls.as_float32(golden_out)
         if npu.shape != golden.shape:
+            cls.print_log(
+                f"output shape mismatch: npu={npu.shape}, golden={golden.shape}",
+                output_index,
+            )
             return {
                 "pass": False,
                 "precision": "shape_mismatch",
                 "error_info": f"output shape mismatch: npu={npu.shape}, golden={golden.shape}",
             }
         if golden.size == 0:
+            cls.display_pass_output(npu, golden, 100.0, output_index)
             return {"pass": True, "precision": 100.0}
 
         npu_flat = npu.reshape(-1)
@@ -86,12 +202,16 @@ class FlashAttnComparator:
         )
         precision = (golden_flat.size - diff_idx.size) / golden_flat.size * 100
         error_info = None
+        if passed:
+            cls.display_pass_output(npu, golden, precision, output_index)
         if not passed:
             error_info = (
                 f"FlashAttn precision failed: mismatches={diff_idx.size}, "
                 f"fail_ratio={fail_ratio:.6g}, "
                 f"max_relative_error={max_relative_error:.6g}"
             )
+            cls.print_log(error_info, output_index)
+            cls.display_error_output(npu, golden, diff_idx, output_index)
         return {
             "pass": passed,
             "precision": precision,
@@ -121,6 +241,8 @@ def compare(*outputs):
         }
     half = len(outputs) // 2
     return [
-        COMPARATOR.compare_output(npu_out, golden_out)
-        for npu_out, golden_out in zip(outputs[:half], outputs[half:])
+        COMPARATOR.compare_output(npu_out, golden_out, index)
+        for index, (npu_out, golden_out) in enumerate(
+            zip(outputs[:half], outputs[half:])
+        )
     ]
