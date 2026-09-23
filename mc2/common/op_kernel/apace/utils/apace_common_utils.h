@@ -16,9 +16,6 @@
 #pragma once
 #include <cstdio>
 #include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -27,7 +24,30 @@ namespace mm {
 enum class DataType {
     DT_FLOAT4_E2M1,
     DT_FLOAT8_E4M3FN,
+    DT_FLOAT8_E5M2,
 };
+
+// Bias element dtype for the SWAT tiling L1 budget; width mapping mirrors the
+// ops-nn v4 SWAT solver's GetBiasDataSize (fp32 = 4B, fp16/bf16 = 2B).
+enum class BiasDataType {
+    DT_FLOAT,
+    DT_FLOAT16,
+    DT_BFLOAT16,
+};
+
+template <BiasDataType biasDtype>
+constexpr uint64_t GetBiasDataSize()
+{
+    // apace_common_utils.h is included ahead of apace_constant.h, so keep the
+    // named widths local instead of pulling in that dependency.
+    constexpr uint64_t FP32_BYTES = 4UL;
+    constexpr uint64_t FP16_BYTES = 2UL;
+    if constexpr (biasDtype == BiasDataType::DT_FLOAT) {
+        return FP32_BYTES;
+    } else {
+        return FP16_BYTES;
+    }
+}
 } // namespace mm
 
 #define ERROR_LOG(fmt, args...) fprintf(stdout, "[ERROR]  " fmt "\n", ##args)
@@ -72,7 +92,8 @@ template <mm::DataType dataType, typename T>
 constexpr T GetShapeWithDataType(T size)
 {
     if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
-        return size << 1UL;
+        constexpr T shift = static_cast<T>(1);
+        return size << shift;
     } else {
         return size;
     }
@@ -82,8 +103,19 @@ template <mm::DataType dataType, typename T>
 constexpr T GetSizeWithDataType(T shape)
 {
     if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
-        return (shape + 1) >> 1UL;
+        constexpr T shift = static_cast<T>(1);
+        return (shape + static_cast<T>(1)) >> shift;
     } else {
         return shape;
     }
 }
+
+// 量化数据类型位宽（bit）
+constexpr uint64_t MXFP4_BITS = 4UL;
+constexpr uint64_t MXFP8_BITS = 8UL;
+
+// win 区 buffer 复用深度决策常量
+// HCCL_BUFFSIZE 默认 200MB，框架层翻倍分配为 400MB
+constexpr uint64_t WIN_REUSE_BUDGET_CAP = 400UL * 1024UL * 1024UL;
+constexpr uint64_t WIN_REUSE_DEPTH_CAP = 128UL; // flag 同步安全上限（FLAG_ID_MODULO=11，64/11≈6 轮复用）
+constexpr uint64_t WIN_REUSE_DEPTH_MIN = 2UL;

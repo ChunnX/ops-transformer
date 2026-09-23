@@ -184,6 +184,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     auto &baseParams = mxTilingData_.baseParams;
     baseParams.bSize = info.bSize;
     baseParams.t1Size = info.qTokenNum;
+    baseParams.qSeqSize = info.qSeqSize;
     baseParams.n2Size = info.n2Size;
     baseParams.gSize = info.gSize;
     baseParams.dSize = dSize;

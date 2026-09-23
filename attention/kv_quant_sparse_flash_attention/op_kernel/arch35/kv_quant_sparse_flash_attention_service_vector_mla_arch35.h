@@ -21,16 +21,8 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "lib/matmul_intf.h"
-#if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
-#include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
-#else
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
-#endif
-#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
-#include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#else
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#endif
+#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -190,6 +182,7 @@ private:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    TEventID initOutputEventId;
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
@@ -309,7 +302,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
 
     keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
     keyOffset1 = GetkeyOffset(token1Idx, runInfo, constInfo);
-
     if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
         return 0;
     }
@@ -823,7 +815,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (constInfo.aivIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
             GlobalTensor<OUTPUT_T> attentionOutEodGm = this->attentionOutGm[constInfo.aivIdx * singleCoreSize];
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             AscendC::Fill<OUTPUT_T>(attentionOutEodGm, singleInitOutputSize, static_cast<OUTPUT_T>(0));
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 #if KVQSFA_VERSION >= 2
@@ -841,9 +835,13 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
             if (constInfo.aivIdx * singleCoreLseSize < totalLseSize && singleInitLseSize > 0) {
                 GlobalTensor<float> softmaxSumEodGm = this->softmaxSumGm[constInfo.aivIdx * singleCoreLseSize];
                 GlobalTensor<float> softmaxMaxEodGm = this->softmaxMaxGm[constInfo.aivIdx * singleCoreLseSize];
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 AscendC::Fill<float>(softmaxSumEodGm, singleInitLseSize, static_cast<float>(0.0));
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 AscendC::Fill<float>(softmaxMaxEodGm, singleInitLseSize,
                                      static_cast<float>(-std::numeric_limits<float>::infinity()));
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             }
         }
     }
@@ -894,7 +892,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
         this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
         this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
         if (constInfo.needInit == 1) {
+            initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
@@ -922,7 +923,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         if (constInfo.needInit == 1) {
+            initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
@@ -951,7 +955,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
 #if KVQSFA_VERSION >= 2
-    tPipe->InitBuffer(lseBuf, 512); // lse的最大容量
+    tPipe->InitBuffer(lseBuf, 512); // 512：lse的最大容量
     lseUb = this->lseBuf.template Get<float>();
     mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
@@ -1311,6 +1315,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTe
         ((validS2 + alignNum - 1) / alignNum * alignNum) * sizeof(int64_t) / bytesPerBlock + appendSentinelBlock;
     dataCopyParams.srcGap = 0U;
     dataCopyParams.dstGap = 0U;
+    // 2：每个位置对应key和value两个地址
     DataCopy(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
 }
 
@@ -1374,7 +1379,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetKVPhyAddr(uint32_t h
     }
     this->kvPhyAddrGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + v0TotalOffset));
 
-    const uint32_t kvStride = static_cast<uint32_t>(constInfo.blockSize * constInfo.dSizeVInput);
+    const uint32_t kvStride = (constInfo.keyStride0 != 0) ?
+                                  constInfo.keyStride0 :
+                                  static_cast<uint32_t>(constInfo.blockSize * constInfo.dSizeVInput);
 
     TBuf<> blkTableBuf;
     TBuf<> sparseIdxBuf;

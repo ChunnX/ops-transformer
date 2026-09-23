@@ -23,13 +23,8 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "ffn_to_attention_tiling.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace FFNToAttentionImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
@@ -51,6 +46,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline uint32_t GetCoreSendTokenCount();
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset);
     TPipe *tpipe_{nullptr};
@@ -174,21 +170,28 @@ __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadToken
 }
 
 template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline uint32_t FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetCoreSendTokenCount()
+{
+    uint32_t calStartTokenId = 0;
+    uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
+    uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
+    if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
+        sendTokenNum += 1;
+        calStartTokenId += aivId_;
+    } else {
+        calStartTokenId += remainderRankNum;
+    }
+    if (calStartTokenId >= actualTokenNum_) {
+        sendTokenNum = 0;
+    }
+    return sendTokenNum;
+}
+
+template <TemplateFFNToAttentionTypeClass>
 __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        uint32_t calStartTokenId = 0;
-        uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
-        uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
-        if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
-            sendTokenNum += 1;
-            calStartTokenId += aivId_;
-        } else {
-            calStartTokenId += remainderRankNum;
-        }
-        if (calStartTokenId >= actualTokenNum_) {
-            sendTokenNum = 0;
-        }
+        uint32_t sendTokenNum = GetCoreSendTokenCount();
         GM_ADDR curRankWinAddr;
         GlobalTensor<xType> tokenDataGMTensor;
         GlobalTensor<int32_t> tokenInfoTableGMTensor;

@@ -1,18 +1,19 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mx_quant_matmul_allto_all_tiling_base.cpp
  * \brief
  */
 #include "common/utils/op_mc2.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_comm_algo_table.h"
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
@@ -96,19 +97,19 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckMxTensorFormat(const gert:
 {
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
-    auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
-    OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
+    auto x1ScaleTensorInfo = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
+    OP_TILING_CHECK((x1ScaleTensorInfo == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
                     return ge::GRAPH_FAILED);
-    ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
-    OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1Scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
+    ge::Format x1ScaleTensorFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorInfo->GetStorageFormat()));
+    OP_TILING_CHECK(x1ScaleTensorFmt != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1Scale", Ops::Base::ToString(x1ScaleTensorFmt).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
-    auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
+    auto x2ScaleTensorInfo = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x2ScaleTensorInfo == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
                     return ge::GRAPH_FAILED);
-    ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
-    OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2Scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
+    ge::Format x2ScaleTensorFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorInfo->GetStorageFormat()));
+    OP_TILING_CHECK(x2ScaleTensorFmt != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2Scale", Ops::Base::ToString(x2ScaleTensorFmt).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -125,7 +126,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
                                                                   const OpAttrIndexSchema &indexSchema)
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "attrs"), return ge::GRAPH_FAILED);
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "transpose_x2"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!(*isTransX2), OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2", "false", "true"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -623,9 +626,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                             static_cast<int32_t>(contextInfo.args_.geCType)),
                     return ge::GRAPH_FAILED;);
-    Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
-        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
-                                         Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
     // 获取commMode
     uint8_t engineType = 0;
@@ -633,6 +633,12 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
                                                         engineType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
+        opName_, contextInfo.group, engineType, inferredInfo.tileM, contextInfo.args_.nValue,
+        contextInfo.args_.outputDtypeSize, contextInfo.args_.rankDim);
+
+    Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
+        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL, algoName);
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
@@ -998,8 +1004,7 @@ CutResult MxQuantMatmulAllToAllTilingBase::GetTilingResult()
     }
 
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
-    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
-                                 QuantMode::MX_QUANT, commMode);
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, npuArch_, QuantMode::MX_QUANT, commMode);
 }
 
 /**
@@ -1013,6 +1018,6 @@ MxQuantMatmulAllToAllTilingBase::MxQuantMatmulAllToAllTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, MxQuantMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 2);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
 
 } // namespace MC2Tiling

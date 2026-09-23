@@ -289,7 +289,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>MLA rope部分：Query位置编码的输出。</td>
             <td>
-            -
+            可选项。queryRopeOptional和keyRopeOptional必须同时传入或同时为空指针。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>MLA rope部分：Key位置编码的输出。</td>
             <td>
-            -
+            可选项。queryRopeOptional和keyRopeOptional必须同时传入或同时为空指针。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -683,7 +683,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>K</td>
-            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
+            <td>1024、2048、2051、3072、4096、5120、6144、7168、8192</td>
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>

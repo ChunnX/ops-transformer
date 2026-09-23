@@ -16,9 +16,17 @@
 #define LIGHTNING_INDEXER_VECTOR1_H
 
 #include "kernel_operator.h"
-#include "common/lightning_indexer_vector1_base.h"
+#include "../../../../lightning_indexer_v2/op_kernel/arch35/common/vf/lightning_indexer_v2_vector1_base.h"
 
 namespace vector1 {
+using liV2Vector1::BroadcastLane;
+using liV2Vector1::DuplicateZero;
+using liV2Vector1::FloatSortConstCtx;
+using liV2Vector1::FloatSortTraits;
+using liV2Vector1::FloatToSortableKey;
+using liV2Vector1::FloatX2ToSortableKey;
+using liV2Vector1::InitFloatSortConstCtx;
+using liV2Vector1::WeightedAccum;
 
 template <typename T>
 struct UIntSortTraits;
@@ -38,8 +46,8 @@ struct UIntSortConstCtx {
     using UInt = typename Traits::UInt;
     AscendC::Reg::RegTensor<UInt> zeros;
     AscendC::Reg::RegTensor<UInt> allOne;
-    AscendC::Reg::RegTensor<UInt> signMask;
     AscendC::Reg::RegTensor<UInt> nan;
+    AscendC::Reg::RegTensor<UInt> signMask;
 };
 
 template <typename FloatT>
@@ -48,8 +56,8 @@ __simd_callee__ inline void InitUIntSortConstCtx(UIntSortConstCtx<FloatT> &ctx, 
     using Traits = UIntSortTraits<FloatT>;
     AscendC::Reg::Duplicate(ctx.zeros, Traits::ZERO, maskAll);
     AscendC::Reg::Duplicate(ctx.allOne, Traits::ALL_ONE, maskAll);
-    AscendC::Reg::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
     AscendC::Reg::Duplicate(ctx.nan, Traits::NAN_MASK, maskAll);
+    AscendC::Reg::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
 }
 
 template <typename FloatT>
@@ -60,8 +68,8 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::Reg::RegTensor<FloatT> &o
     using Traits = UIntSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
 
-    AscendC::Reg::RegTensor<UInt> regTemp;
     AscendC::Reg::RegTensor<UInt> regMask;
+    AscendC::Reg::RegTensor<UInt> regTemp;
     AscendC::Reg::MaskReg regSelectZero;
     AscendC::Reg::MaskReg regSelectSign;
 
@@ -160,12 +168,6 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<half> &out_, con
                                                                                maskAllB16);
         }
     }
-}
-
-__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, __local_mem__ float *src,
-                                          uint16_t laneIdx)
-{
-    AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(dst, src + laneIdx);
 }
 
 template <typename W_T>

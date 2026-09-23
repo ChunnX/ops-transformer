@@ -20,17 +20,40 @@ namespace op_api {
 const int64_t DIM_ONE = 1;
 const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
+const int64_t DIM_FOUR = 4;
+const int64_t DIM_FIVE = 5;
 const int64_t MAX_DIM_SIZE = 8;
+
+namespace {
+void CheckLayoutDims(const at::Tensor &tensor, const char *name, const std::string &layout)
+{
+    // Layout validity is checked by tiling; only check rank here to prevent out-of-range shape access.
+    int64_t expected = 0;
+    if (layout == "TND") {
+        expected = DIM_THREE;
+    } else if (layout == "BSND" || layout == "BNSD" || layout == "PA_BBND" || layout == "PA_BNBD") {
+        expected = DIM_FOUR;
+    } else if (layout == "PA_NZ") {
+        expected = DIM_FIVE;
+    }
+    if (expected == 0) {
+        return;
+    }
+    TORCH_CHECK(tensor.dim() == expected, name, " with layout ", layout, " expects ", expected, " dims, but got ",
+                tensor.dim(), " dims ", tensor.sizes());
+}
+} // namespace
 
 at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
                              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-                             int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize,
-                             int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode, int64_t winLeft,
-                             int64_t winRight, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                             const at::Tensor &output)
+                             int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t headDimV,
+                             int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode,
+                             int64_t winLeft, int64_t winRight, std::string layoutQ, std::string layoutKv,
+                             std::string layoutOut, bool isGradEnabled, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnFlashAttnMetadata, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, output);
+              numHeadsQ, numHeadsKv, headDim, headDimV, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut,
+              isGradEnabled, output);
     return output;
 }
 
@@ -43,6 +66,10 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, string layoutQ, string layoutKv, string layoutOut,
     int64_t returnSoftmaxLse)
 {
+    CheckLayoutDims(q, "q", layoutQ);
+    CheckLayoutDims(k, "k", layoutKv);
+    CheckLayoutDims(v, "v", layoutKv);
+
     int64_t tSize = 0;
     int64_t nSize = 0;
     int64_t dSize = 0;
@@ -65,6 +92,19 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
         sSize = q.size(2);
         dSize = q.size(3);
     }
+    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）。
+    int64_t dSizeV = dSize;
+    if ((layoutKv == "BSND" || layoutKv == "BNSD") && v.dim() == DIM_FOUR) {
+        dSizeV = v.size(DIM_THREE);
+    } else if (layoutKv == "TND" && v.dim() == DIM_THREE) {
+        dSizeV = v.size(DIM_TWO);
+    } else if ((layoutKv == "PA_BBND" || layoutKv == "PA_BNBD") && v.dim() == DIM_FOUR) {
+        // PA_BBND (Bn,Bs,N2,D) / PA_BNBD (Bn,N2,Bs,D) 的 D 维在 index 3
+        dSizeV = v.size(DIM_THREE);
+    } else if (layoutKv == "PA_NZ" && v.dim() == DIM_FIVE) {
+        // PA_NZ (Bn,N2,D/16,block_size,16) 的 D = dim2 * dim4
+        dSizeV = v.size(DIM_TWO) * v.size(DIM_FOUR);
+    }
     if (returnSoftmaxLse) {
         if (q.dim() == DIM_THREE) {
             softmaxOutSize = {nSize, tSize};
@@ -77,11 +117,11 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     at::Tensor softmaxLse = at::empty(softmaxOutSize, q.options().dtype(at::kFloat));
 
     if (layoutOut == "TND") {
-        attentionOutSize = {tSize, nSize, dSize};
+        attentionOutSize = {tSize, nSize, dSizeV};
     } else if (layoutOut == "BNSD") {
-        attentionOutSize = {bSize, nSize, sSize, dSize};
+        attentionOutSize = {bSize, nSize, sSize, dSizeV};
     } else {
-        attentionOutSize = {bSize, sSize, nSize, dSize};
+        attentionOutSize = {bSize, sSize, nSize, dSizeV};
     }
     at::Tensor attentionOutput = at::empty(attentionOutSize, q.options().dtype(q.dtype()));
 

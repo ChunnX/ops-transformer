@@ -22,15 +22,9 @@
 #endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_combine_v2_tiling.h"
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
-#include "../../moe_distribute_dispatch_v2/check_winsize.h"
-#include "../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
-#else
 #include "../../../common/op_kernel/moe_distribute_base.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
-#endif
 
 namespace MoeDistributeCombineV2Impl {
 constexpr uint8_t BUFFER_NUM = 2;                      // 多buf
@@ -275,6 +269,7 @@ private:
 
 private:
     __aicore__ inline void CommunInit(const MoeDistributeCombineV2TilingData *tilingData, GM_ADDR workspaceGM);
+    __aicore__ inline void InitTokenOffsetTable(GM_ADDR workspaceGM);
     __aicore__ inline void SplitCoreByToken(const uint32_t totalSendCnt);
     __aicore__ inline void SplitCoreByServer();
     // 偏移量计算相关函数
@@ -496,6 +491,12 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Com
             reinterpret_cast<uint64_t>(winOutTotalBytes_ + winInTotalBytes_ + GetWinAddrByRankId(rankIdServerInner));
     }
     // 4. token offset 表
+    InitTokenOffsetTable(workspaceGM);
+}
+
+template <CombineV2HostTypeClass>
+__aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTokenOffsetTable(GM_ADDR workspaceGM)
+{
     const uint32_t rowBytes = serverRankSize_ * sizeof(uint32_t);
     rowStrideBytes_ = RoundUp<uint32_t>(rowBytes, 64); // 64B cacheline
     rowStrideElems_ = rowStrideBytes_ / sizeof(uint32_t);

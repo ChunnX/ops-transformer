@@ -107,7 +107,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
             AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
                 FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
         }
-        // MX 当前支持 TND + PA BNBD，D256 的 S2 logical tile 为 256，其余为 512。
+        // MX 支持 TND/BSND/BNSD + PA BNBD；D256 的 S2 logical tile 为 256，其余为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 ||
                       Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ||
                       Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256,
@@ -131,7 +131,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
         QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                    S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                    RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+                     S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                     RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     }
 }

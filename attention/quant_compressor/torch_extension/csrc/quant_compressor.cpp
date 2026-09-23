@@ -23,6 +23,9 @@ const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 const int64_t VALUE_0 = 0;
 const int64_t VALUE_1 = 1;
+const int64_t VALUE_2 = 2;
+const int64_t CMP_RATIO_MIN = 2;
+const int64_t CMP_RATIO_MAX = 128;
 
 inline TensorWrapper make_wrapper(const at::Tensor &tensor, aclDataType tensorAcltype)
 {
@@ -41,7 +44,7 @@ std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
 
     std::vector<int64_t> contiguousStride(ndim, 1);
     for (int64_t i = ndim - 2; i >= 0; i--) {
-        contiguousStride[i] = contiguousStride[i + 1] * sizes[i + 1];
+        contiguousStride[i] = contiguousStride[i + 1] * std::max(sizes[i + 1], int64_t(1));
     }
 
     for (int64_t i = 0; i < ndim; i++) {
@@ -62,6 +65,7 @@ at::Tensor ConstructQuantCompressorOutputTensor(const at::Tensor &x, const at::T
     TORCH_CHECK(wkv.defined(), "Check wkv != nullptr failed");
     auto wkvDim = wkv.dim();
     TORCH_CHECK(wkvDim == DIM_TWO, "wkv dim num[", wkvDim, "] should be 2");
+    TORCH_CHECK(wkv.size(0) > VALUE_0, "wkv dim 0 should be greater than 0");
 
     auto D = wkv.size(0) / coff;
     if (xDim == DIM_THREE) {
@@ -87,10 +91,16 @@ at::Tensor QuantCompressor(const at::Tensor &x, const at::Tensor &wkv, const at:
                            int64_t coff, int64_t cacheMode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
+    TORCH_CHECK(x.scalar_type() == at::kByte, "x dtype should be uint8 (carrier for hifloat8), got ", x.scalar_type());
+    TORCH_CHECK(wkv.scalar_type() == at::kByte, "wkv dtype should be uint8 (carrier for hifloat8), got ",
+                wkv.scalar_type());
+    TORCH_CHECK(wgate.scalar_type() == at::kByte, "wgate dtype should be uint8 (carrier for hifloat8), got ",
+                wgate.scalar_type());
     auto xDim = x.dim();
     TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
 
-    TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
+    TORCH_CHECK(cmpRatio >= CMP_RATIO_MIN && cmpRatio <= CMP_RATIO_MAX, "cmp_ratio should be in [2, 128], got ",
+                cmpRatio);
     TORCH_CHECK(coff > VALUE_0, "coff should be greater than 0");
 
     at::Tensor cmpKv = ConstructQuantCompressorOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
@@ -124,14 +134,23 @@ at::Tensor QuantCompressorMeta(const at::Tensor &x, const at::Tensor &wkv, const
                                const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
+    TORCH_CHECK(x.scalar_type() == at::kByte, "x dtype should be uint8 (carrier for hifloat8), got ", x.scalar_type());
+    TORCH_CHECK(wkv.scalar_type() == at::kByte, "wkv dtype should be uint8 (carrier for hifloat8), got ",
+                wkv.scalar_type());
+    TORCH_CHECK(wgate.scalar_type() == at::kByte, "wgate dtype should be uint8 (carrier for hifloat8), got ",
+                wgate.scalar_type());
     auto xDim = x.dim();
     TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
 
-    TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
+    TORCH_CHECK(cmpRatio >= CMP_RATIO_MIN && cmpRatio <= CMP_RATIO_MAX, "cmp_ratio should be in [2, 128], got ",
+                cmpRatio);
     TORCH_CHECK(coff > VALUE_0, "coff should be greater than 0");
 
     return ConstructQuantCompressorOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("quant_compressor", &QuantCompressor, "quant_compressor"); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("quant_compressor", &QuantCompressor, "quant_compressor");
+}
 } // namespace op_api

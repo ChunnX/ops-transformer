@@ -3785,7 +3785,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommAlgEmptyPcieEnvHierarchy)
         setenv("HCCL_INTRA_ROCE_ENABLE", origRoce.c_str(), 1);
     }
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffFullmeshWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -4664,7 +4663,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadPerformanceInfoShapeFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2SmallHcclBuffHierarchyWarn)
 {
     struct MoeDistributeDispatchV2CompileInfo {};
@@ -5040,7 +5038,6 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2BadKZeroFailed)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
-
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2GlobalBsNonZeroSuccess)
 {
     struct MoeDistributeDispatchV2CompileInfo {};

@@ -49,8 +49,9 @@ public:
     static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
-                  "MX cube currently only supports TND query and PA_BNBD KV");
+    static_assert((LAYOUT == QBSALayout::TND || LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) &&
+                      KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
+                  "MX cube currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
                   (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
                   "MX cube requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
@@ -204,12 +205,12 @@ private:
                 qBuf.Wait<HardEvent::MTE1_MTE2>();
                 LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
                 CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
-                                       constInfo.n2GD);
+                                       constInfo.queryRowStride);
 
                 LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
                 MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
                                               constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
-                                              constInfo.qScaleN1D);
+                                              constInfo.queryScaleRowStride);
                 qBuf.Set<HardEvent::MTE2_MTE1>();
             } else {
                 qBuf = l1QBuffers_.GetPre();

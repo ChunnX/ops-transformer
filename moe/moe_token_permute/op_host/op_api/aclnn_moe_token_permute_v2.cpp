@@ -312,7 +312,7 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(const aclTensor *tokens, cons
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND950) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Fallback(tokens, indices, permuteTokensOut, sortedIndicesOut,
                                                                 expandedScaleOut) == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);

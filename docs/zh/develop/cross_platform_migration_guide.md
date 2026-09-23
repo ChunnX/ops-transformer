@@ -23,28 +23,34 @@
 <table>
   <tr>
     <th colspan="2" style="width: 25%;">规格项</th>
-    <th style="width:37.5%;">Atlas A2</th>
-    <th style="width:37.5%;">Ascend 950</th>
+    <th style="width:37.5%;">Atlas A2（以 Ascend910B2 为例）</th>
+    <th style="width:37.5%;">Ascend 950（以 Ascend950PR Server 档为例）</th>
   </tr>
   <tr>
     <td rowspan="4">AICore</td>
-    <td>核数</td>
+    <td>Cube核数</td>
     <td>24</td>
     <td>32</td>
   </tr>
   <tr>
-    <td>频率</td>
+    <td>Vector核数</td>
+    <td>48</td>
+    <td>64</td>
+  </tr>
+  <tr>
+    <td>频率(GHz)</td>
     <td>1.8</td>
     <td>1.65</td>
   </tr>
   <tr>
     <td>Cube算力规格</td>
-    <td>353T/376T @BF16,FP16</td>
-    <td>426T@BF16,FP16 757T@FP8,HIFP8,MXFP8,INT8 1514T@MXFP4</td>
+    <td>353T @BF16,FP16</td>
+    <td>432T @BF16,FP16；865T @FP8,HiF8,MXFP8；1730T @MXFP4</td>
   </tr>
   <tr>
+    <td>Vector</td>
     <td>Vector算力规格(FP16)</td>
-    <td>23.5T</td>
+    <td>22T</td>
     <td>54T</td>
   </tr>
   <tr>
@@ -59,6 +65,13 @@
     <td>1.6TB/s</td>
   </tr>
 </table>
+
+> 注：
+>
+> - 总算力 = Cube + Vector：910B2 BF16/FP16 约376T（353T+22T）；Ascend950PR Server档 486T（432T+54T），详见《昇腾950 NPU架构白皮书》表3-1。
+> - Ascend950PR PCIE档：Cube 28核/Vector 56核、Memory 112GB @ 1.4TB/s、Cube BF16 378T、FP8族 756T、MXFP4 1513T、Vector 47T；Ascend950DT：Cube 36/32/28核三档、Memory 144/96GB @ 4TB/s，详见白皮书表3-1。
+> - INT8/TF32算力在白皮书表3-1中单独列出，此处未展开；本表算力均为纯Cube口径。
+> - 上表为典型SKU示例；算子代码中核数与Buffer容量应通过 `PlatformAscendC` 接口（`GetCoreNumAic`/`GetCoreNumAiv`/`GetCoreMemSize`）运行时获取，避免硬编码。
 
 ## 二、硬件能力变更引入适配点
 
@@ -95,8 +108,8 @@
     <td>原依赖Membase的访存pattern、对齐方式、寄存器数量假设等需要重新审查；模板/tiling可能需要更新到Regbase版本</td>
   </tr>
   <tr>
-    <td>Cube不再支持int4_t</td>
-    <td>所有使用int4_t的算子需要切换到支持的数据类型（如int8），并更新量化解算逻辑</td>
+    <td>Cube MMAD不再支持INT4矩阵计算（int4b_t及打包类型int4x2_t仍为合法内置类型，可用于Vector计算与权重存储）</td>
+    <td>依赖Cube MMAD计算INT4的算子需要切换到支持的数据类型（如int8），并更新量化解算逻辑</td>
   </tr>
   <tr>
     <td>不支持4:2稀疏矩阵计算</td>
@@ -104,8 +117,8 @@
   </tr>
   <tr>
     <td rowspan="1">存储单元</td>
-    <td>Local Buffer内存改进：Cube L0C 256KB、Vector UB 256KB</td>
-    <td>更大L0C/UB允许增大基本块与双缓冲容量，减少切K/切块轮次；需重新评估L1/L0/UB配比与tile尺寸</td>
+    <td>Local Buffer内存改进：Cube L0C扩至256KB（A2为128KB）；UB每AIV物理256KB、用户可用248KB（A2为192KB）</td>
+    <td>更大L0C/UB允许增大基本块与双缓冲容量，减少切K/切块轮次；需重新评估L1/L0/UB配比与tile尺寸，UB等Buffer容量tiling一律以 <code>GetCoreMemSize</code> 返回值为准</td>
   </tr>
   <tr>
     <td rowspan="2">其他</td>
@@ -209,18 +222,20 @@ Ascend 950系列引入了Regbase编程范式，相比传统的Membase（Vector A
 
 **特点**
 
-- 使用`AscendC::MicroAPI`命名空间下的底层API
+- 使用`AscendC::Reg`命名空间下的底层API
 - 直接操作寄存器`RegTensor<T>`而非显式管理UB缓冲队列
 - 通过`MaskReg`实现灵活的元素级掩码控制
 
+> 注：`MicroAPI` 为 `Reg` 的历史别名（CANN 头文件中定义 `namespace MicroAPI = Reg;`，仅在部分新架构生效）。新代码统一使用 `AscendC::Reg` 命名空间，本仓已全量完成 MicroAPI→Reg 整改。
+
 **与Membase编程模型对比**
 
-| 特性 | Membase（传统Vector API） | Regbase（MicroAPI） |
+| 特性 | Membase（传统Vector API） | Regbase（Reg） |
 |------|---------------------------|---------------------|
 | 数据载体 | `LocalTensor<T>` + Queue机制 | `RegTensor<T>`寄存器 |
 | 内存管理 | 显式Alloc/EnQue/DeQue/Free | 寄存器自动分配 |
 | 掩码控制 | 函数参数控制 | `MaskReg`寄存器控制 |
-| 数据搬运 | `DataCopy`/`DataCopyPad` | `MicroAPI::DataCopy` + 分发模式 |
+| 数据搬运 | `DataCopy`/`DataCopyPad` | `Reg::DataCopy` + 分发模式 |
 
 **代码示例**
 
@@ -228,26 +243,26 @@ Ascend 950系列引入了Regbase编程范式，相比传统的Membase（Vector A
 __simd_vf__ __aicore__ void GenIndexBuf(ubuf int32_t* helpAddr, int32_t colFactor)
 {
     // 声明寄存器张量
-    AscendC::MicroAPI::RegTensor<int32_t> v0;
-    AscendC::MicroAPI::RegTensor<int32_t> v1;
-    AscendC::MicroAPI::RegTensor<int32_t> vd1;
-    AscendC::MicroAPI::RegTensor<int32_t> vd2;
-    AscendC::MicroAPI::RegTensor<int32_t> vd3;
+    AscendC::Reg::RegTensor<int32_t> v0;
+    AscendC::Reg::RegTensor<int32_t> v1;
+    AscendC::Reg::RegTensor<int32_t> vd1;
+    AscendC::Reg::RegTensor<int32_t> vd2;
+    AscendC::Reg::RegTensor<int32_t> vd3;
 
     // 创建全量掩码
-    AscendC::MicroAPI::MaskReg preg =
-        AscendC::MicroAPI::CreateMask<int32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg =
+        AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
 
     // 标量复制到寄存器
-    AscendC::MicroAPI::Duplicate(v1, colFactor, preg);
+    AscendC::Reg::Duplicate(v1, colFactor, preg);
     // 生成序列 [0, 1, 2, ...]
-    AscendC::MicroAPI::Arange(v0, 0);
+    AscendC::Reg::Arange(v0, 0);
     // 向量运算
-    AscendC::MicroAPI::Div(vd1, v0, v1, preg);
-    AscendC::MicroAPI::Mul(vd2, vd1, v1, preg);
-    AscendC::MicroAPI::Sub(vd3, v0, vd2, preg);
+    AscendC::Reg::Div(vd1, v0, v1, preg);
+    AscendC::Reg::Mul(vd2, vd1, v1, preg);
+    AscendC::Reg::Sub(vd3, v0, vd2, preg);
     // 寄存器数据写回UB
-    AscendC::MicroAPI::DataCopy(helpAddr, vd3, preg);
+    AscendC::Reg::DataCopy(helpAddr, vd3, preg);
 }
 ```
 
@@ -255,19 +270,19 @@ __simd_vf__ __aicore__ void GenIndexBuf(ubuf int32_t* helpAddr, int32_t colFacto
 // 动态掩码：处理尾部不完整数据
 __simd_vf__ __aicore__ void GatherProcess(ubuf int8_t* curXAddr, ubuf int8_t* curYAddr, uint16_t repeatTimes, uint16_t computeSize)
 {
-    MicroAPI::RegTensor<int8_t> vregTemp;
-    MicroAPI::MaskReg preg;
+    Reg::RegTensor<int8_t> vregTemp;
+    Reg::MaskReg preg;
     // sreg为剩余待处理元素（普通unit32_t标量计数）
     unit32_t sreg = static_cast<unit32_t>(repeatimes)*computeSize;
 
     for (uint16_t r = 0; r < repeatTimes; r++) {
         // 根据剩余元素数更新掩码
-        preg = MicroAPI::UpdateMask<int8_t>(sreg);
+        preg = Reg::UpdateMask<int8_t>(sreg);
         // 创建地址偏移寄存器
-        MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<int8_t>(r, computeSize);
-        MicroAPI::DataCopy(vregTemp, curXAddr, offset);
+        Reg::AddrReg offset = Reg::CreateAddrReg<int8_t>(r, computeSize);
+        Reg::DataCopy(vregTemp, curXAddr, offset);
         // 带掩码的数据存储
-        MicroAPI::DataCopy(curYAddr, vregTemp, offset, preg);
+        Reg::DataCopy(curYAddr, vregTemp, offset, preg);
     }
 }
 ```
@@ -276,16 +291,16 @@ __simd_vf__ __aicore__ void GatherProcess(ubuf int8_t* curXAddr, ubuf int8_t* cu
 // 数据聚合
 __VEC_SCOPE__
 {
-    MicroAPI::RegTensor<uint32_t> indicesReg;
-    MicroAPI::RegTensor<int32_t> vd0;
+    Reg::RegTensor<uint32_t> indicesReg;
+    Reg::RegTensor<int32_t> vd0;
 
     for (uint16_t indices = 0; indices < indicesLoopNum; indices++) {
         // 加载索引（E2B分发模式：将标量广播到向量）
-        MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_E2B_B32>(indicesReg, indicesAddr);
+        Reg::DataCopy<uint32_t, Reg::LoadDist::DIST_E2B_B32>(indicesReg, indicesAddr);
         // 根据索引进行Gather数据聚合
-        MicroAPI::DataCopyGather(vd0, curXAddr, indicesReg, preg);
+        Reg::DataCopyGather(vd0, curXAddr, indicesReg, preg);
         // 数据块拷贝输出
-        MicroAPI::DataCopy<int32_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+        Reg::DataCopy<int32_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
             curYAddr, vd0, blockStride, preg);
     }
 }

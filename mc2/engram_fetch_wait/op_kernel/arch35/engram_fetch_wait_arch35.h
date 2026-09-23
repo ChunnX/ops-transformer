@@ -34,11 +34,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_wait_tiling_data.h"
-#if __has_include("../../engram_fetch/engram_fetch_utils.h")
-#include "../../engram_fetch/engram_fetch_utils.h"
-#else
 #include "../../../engram_fetch/op_kernel/engram_fetch_utils.h"
-#endif
 #include "adv_api/hccl/hccl.h"
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
@@ -94,16 +90,15 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
     if ASCEND_IS_AIV {
         AscendC::LocalTensor<uint8_t> batchTensor = hcommBatchBuf_.Get<uint8_t>();
         uint32_t totalBlocks = AscendC::GetBlockNum();
-        uint32_t maxCh =
-            (channelsPerRank_ < Mc2Kernel::MAX_CHANNELS_PER_RANK) ? channelsPerRank_ : Mc2Kernel::MAX_CHANNELS_PER_RANK;
         if (totalBlocks >= numRanks_) {
-            auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_);
-            if (coreAssign.assignedRank != rankId_ && coreAssign.idxInRankGroup < maxCh) {
+            auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_, rankId_, channelsPerRank_);
+            if (coreAssign.assignedRank != rankId_) {
                 uint32_t globalChannelIdx = coreAssign.assignedRank * channelsPerRank_ + coreAssign.idxInRankGroup;
                 auto batchHandle = hcomm_.MakeBatchHandle(ctxPtr_->hcommHandle[globalChannelIdx], batchTensor,
                                                           Mc2Kernel::ENGRAM_BATCH_BUFFER_BYTES, nullptr);
                 int32_t ret = hcomm_.Drain(batchHandle);
-                ascendc_assert(ret == 0, "Urma batch drain failed, ret=%d, globalChannelIdx=%u", ret, globalChannelIdx);
+                ascendc_assert(ret == 0, "Urma batch drain failed, ret=%d, globalChannelIdx=%u\n", ret,
+                               globalChannelIdx);
             }
         } else {
             uint32_t startRank = (aivId_ < numRanks_) ? aivId_ : rankId_;
@@ -113,7 +108,7 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
                     auto batchHandle = hcomm_.MakeBatchHandle(ctxPtr_->hcommHandle[globalChannelIdx], batchTensor,
                                                               Mc2Kernel::ENGRAM_BATCH_BUFFER_BYTES, nullptr);
                     int32_t ret = hcomm_.Drain(batchHandle);
-                    ascendc_assert(ret == 0, "Urma batch drain failed, ret=%d, globalChannelIdx=%u", ret,
+                    ascendc_assert(ret == 0, "Urma batch drain failed, ret=%d, globalChannelIdx=%u\n", ret,
                                    globalChannelIdx);
                 }
             }

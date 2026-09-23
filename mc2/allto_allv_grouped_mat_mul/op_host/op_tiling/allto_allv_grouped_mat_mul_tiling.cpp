@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "allto_allv_grouped_mat_mul_tiling.h"
+#include "allto_allv_grouped_mat_mul_tiling_host.h"
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
@@ -100,7 +100,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext *co
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     std::vector<int64_t> validEpWorldSizeValues;
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         validEpWorldSizeValues = {2, 4, 8, 16, 32, 64, 128, 256};
     } else {
         validEpWorldSizeValues = {8, 16, 32, 64, 128};
@@ -652,7 +652,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
     const size_t maxLength = 7UL;
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
@@ -663,10 +663,13 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        if (strncmp(commModeStr, "aiv", maxLength) == 0) {
+            commMode = Mc2Comm::COMM_MODE_AIV;
+        } else if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else {
-            OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
+            OP_LOGD(context->GetNodeName(), "Currently, commMode only supports 'aiv' or legacy 'ai_cpu', but got %s.",
+                    commModeStr);
             return ge::GRAPH_FAILED;
         }
     }
@@ -706,6 +709,8 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext *con
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
+    } else if (commMode == Mc2Comm::COMM_MODE_AIV) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_MTE);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
                     OP_LOGE(context_->GetNodeName(), "HCCL init tiling config failed, expected success."),
@@ -780,14 +785,8 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext *context)
 uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;
-    auto platformInfo = context_->GetPlatformInfo();
-    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
