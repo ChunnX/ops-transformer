@@ -49,17 +49,19 @@ using namespace AscendC;
 using namespace matmul;
 
 constexpr uint32_t KCTQ_D = optiling::KCTQ_HEAD_DIM;
-// Local workspace of the matmul framework. The C type is L0C->UB (KFC client), so this has to hold
-// the C staging tile (baseM x baseN fp32 = 64KB for the 128 x 128 tiling) plus the framework's own
-// buffers; 64KB is what the current tiling actually needs (verified against the golden reference).
-constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 64U * 1024U;
+// Local workspace of the matmul framework. Its C delivery goes straight from L0C into the operand
+// output (no UB staging), so nothing of the framework needs UB here. Measured on 910B3 with CANN
+// 9.1.0: 8KB and 64KB behave identically (same results, same timing), i.e. the reservation is not
+// used by this version; the buffer only stays in place because the interface asks for one.
+constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 8U * 1024U;
 
 // Vector cores per cube core. The kernel is declared as MIX_AIC_1_2, so one AIC is served by two
 // AIVs and both of them are KFC clients of that AIC. Measured with a hardware probe on 910B3
 // (CANN 9.1.0): the launch is blockDim AICs plus 2 * blockDim AIVs, an AIV sees its *global* index
 // in GetBlockIdx() (0 .. 2 * usedCoreNum - 1) and GetSubBlockIdx() only repeats GetBlockIdx() % 2,
-// so one AIV owns rowsPerCore / 2 rows and the AIC that serves it is GetBlockIdx() / 2.
-constexpr uint32_t KCTQ_AIV_PER_AIC = 2U;
+// so one AIV owns rowsPerCore / KCTQ_AIV_PER_AIC rows and the AIC that serves it is
+// GetBlockIdx() / KCTQ_AIV_PER_AIC.
+constexpr uint32_t KCTQ_AIV_PER_AIC = optiling::KCTQ_AIV_PER_AIC;
 
 // Rows per pipeline iteration. The AIV staging buffers are sized for this many rows, and the
 // arena below is shared with the matmul C tile, which is dead while the vector stages run.
@@ -161,6 +163,9 @@ public:
         const uint32_t rowEnd = rowBegin_ + rowsPerAiv_;
         rowEnd_ = (rowEnd > td->totalRows) ? td->totalRows : rowEnd;
         rowsToCompute_ = rowsPerAiv_; // padded rows feed the GEMM tile but are never stored
+        wsRowBase_ = coreIdx_ * td->aivRowStride; // baseM aligned row base of this AIV
+        wsOff_ = wsRowBase_ - rowBegin_;
+        wsRows_ = td->usedCoreNum * KCTQ_AIV_PER_AIC * td->aivRowStride;
 
         kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors),
                               static_cast<uint64_t>(td->totalRows) * KCTQ_D);
@@ -179,17 +184,17 @@ public:
 
         __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
         wsUNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsU),
-                                   static_cast<uint64_t>(td->alignedRows) * KCTQ_D);
+                                   static_cast<uint64_t>(wsRows_) * KCTQ_D);
         wsYNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsY),
-                                   static_cast<uint64_t>(td->alignedRows) * KCTQ_D);
+                                   static_cast<uint64_t>(wsRows_) * KCTQ_D);
         wsRNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsR),
-                                   static_cast<uint64_t>(td->alignedRows) * KCTQ_D);
+                                   static_cast<uint64_t>(wsRows_) * KCTQ_D);
         wsPNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsP),
-                                   static_cast<uint64_t>(td->alignedRows) * KCTQ_D);
+                                   static_cast<uint64_t>(wsRows_) * KCTQ_D);
         wsNormGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsNorm),
-                                  static_cast<uint64_t>(td->alignedRows));
+                                  static_cast<uint64_t>(wsRows_));
 
-        const uint64_t rowOffset = static_cast<uint64_t>(rowBegin_) * KCTQ_D;
+        const uint64_t rowOffset = static_cast<uint64_t>(wsRowBase_) * KCTQ_D;
         wsUSliceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsU) + rowOffset,
                                     static_cast<uint64_t>(rowsToCompute_) * KCTQ_D);
         wsYSliceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(user + td->wsY) + rowOffset,
@@ -248,6 +253,13 @@ public:
     __aicore__ inline LocalTensor<float> Slice(uint32_t index) const
     {
         return const_cast<ArenaBuf &>(arenaBuf_).Get<float>()[index];
+    }
+
+    // Workspace row index of a pipeline row: the AIV rows are baseM aligned in the workspace, so
+    // the row base of this AIV is not the row it starts at (see aivRowStride in the tiling).
+    __aicore__ inline uint32_t WsRow(uint32_t row) const
+    {
+        return row + wsOff_;
     }
 
     // parity selector for the double buffered store sources (see kSliceIdxB)
@@ -478,10 +490,10 @@ public:
                 DataCopyPad(normGm_[row0], nb, cpNorm);
                 // fp32 norms for the quantize stage: 4 bytes out of every other 32B block
                 DataCopyExtParams cpNormF{static_cast<uint16_t>(KCTQ_BATCH_ROWS), 4U, 1U, 0, 0};
-                DataCopyPad(wsNormGm_[row0], norm, cpNormF);
+                DataCopyPad(wsNormGm_[WsRow(row0)], norm, cpNormF);
             }
             DataCopyExtParams cpU{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
-            DataCopyPad(wsUNormGm_[static_cast<uint64_t>(row0) * KCTQ_D], x, cpU);
+            DataCopyPad(wsUNormGm_[static_cast<uint64_t>(WsRow(row0)) * KCTQ_D], x, cpU);
             if (pb != 0U) {
                 // odd parity: the copies written by the previous batch are about to be rewritten
                 PipeBarrier<PIPE_ALL>();
@@ -493,9 +505,11 @@ public:
 
     // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
     // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
-    // The received C tile is written back to the workspace; the vector stage of the same rows then
-    // reads it from GM. Interleaving the vector work into this loop was measured to be much slower
-    // (~2x on the t2048 case), so the two sides stay in their own phases.
+    // The cube writes every C tile straight into the workspace (enSequentialWrite = true, so the
+    // address handed over is used as is): no UB staging and no client side copy, which keeps the
+    // tile pipeline on the cube and off the vector core. The workspace rows of one AIV are baseM
+    // aligned (see tiling), so the full baseM rows written for the last, partial tile can never
+    // run into the next AIV's rows.
     __aicore__ inline void Gemm(const GlobalTensor<float> &aGm, const GlobalTensor<float> &bGm,
                                 const GlobalTensor<float> &cGm)
     {
@@ -507,29 +521,22 @@ public:
         // does not switch it on.
         mm_.SetTensorB(bGm, true);
 
+        const uint32_t baseM = static_cast<uint32_t>(td_->cubeTiling.baseM);
         uint32_t done = 0;
-        while (true) {
-            const bool more = mm_.template Iterate<true>();
-            if (!more) {
+        // The framework would serve ceil(rowsPerCore / baseM) tiles per phase, but this AIV only
+        // owns half of the rows of that core: stop as soon as its own rows are delivered instead
+        // of running the remaining iterations as empty round trips.
+        while (done < rowsToCompute_) {
+            if (!mm_.template Iterate<true>()) {
                 break;
             }
-            LocalTensor<float> cLocal = arenaBuf_.Get<float>();
-            mm_.template GetTensorC<true>(cLocal, false, true);
-            // The framework signals the arrival of the C tile on the vector pipe, so the scalar/MTE3
-            // consumers of cLocal have to be ordered behind it explicitly.
-            PipeBarrier<PIPE_ALL>();
             uint32_t rows = rowsToCompute_ - done;
-            if (rows > static_cast<uint32_t>(td_->cubeTiling.baseM)) {
-                rows = static_cast<uint32_t>(td_->cubeTiling.baseM);
+            if (rows > baseM) {
+                rows = baseM;
             }
-            if (g_coreType == AIV) {
-                DataCopyExtParams cpOut{1, static_cast<uint32_t>(rows * KCTQ_D * sizeof(float)), 0, 0, 0};
-                DataCopyPad(cGm[static_cast<uint64_t>(done) * KCTQ_D], cLocal, cpOut);
-            }
+            mm_.template GetTensorC<true>(cGm[static_cast<uint64_t>(done) * KCTQ_D], 0, true);
             done += rows;
         }
-        // No per tile full barrier: the copy above and the next tile's C delivery are both MTE3
-        // traffic and therefore drain in issue order (verified against the golden reference).
         mm_.End();
         PipeBarrier<PIPE_ALL>();
     }
@@ -551,14 +558,14 @@ public:
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
                                            ? KCTQ_BATCH_ROWS
                                            : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
-            const uint64_t base = static_cast<uint64_t>(row0) * KCTQ_D;
+            const uint64_t base = static_cast<uint64_t>(WsRow(row0)) * KCTQ_D;
             LocalTensor<float> y = Slice(kSliceRow);
             DataCopyExtParams cpY{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padY{false, 0, 0, 0};
             DataCopyPad(y, wsYNormGm_[base], cpY, padY);
             // the fp32 norms written by NormalizeRows, spread back onto 32B block boundaries
             DataCopyExtParams cpN{static_cast<uint16_t>(KCTQ_BATCH_ROWS), 4U, 0, 1U, 0};
-            DataCopyPad(norm, wsNormGm_[row0], cpN, padY);
+            DataCopyPad(norm, wsNormGm_[WsRow(row0)], cpN, padY);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
@@ -723,7 +730,7 @@ public:
             LocalTensor<float> p = Slice(kSliceRow);
             DataCopyExtParams cpP{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padP{false, 0, 0, 0};
-            DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(row0) * KCTQ_D], cpP, padP);
+            DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(WsRow(row0)) * KCTQ_D], cpP, padP);
             // The GM -> UB copy is asynchronous: without draining it here the vector ops below
             // would read the previous batch (or the stale buffer content for the first one).
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -797,6 +804,9 @@ private:
     uint32_t rowBegin_ = 0;
     uint32_t rowEnd_ = 0;
     uint32_t rowsToCompute_ = 0;
+    uint32_t wsRowBase_ = 0; // baseM aligned workspace row base of this AIV
+    uint32_t wsOff_ = 0;     // wsRowBase_ - rowBegin_
+    uint32_t wsRows_ = 0;    // rows reserved in the workspace in total
     float div_[KCTQ_BATCH_ROWS] = {0.0f}; // per row divisors handed between scalar and vector ops
 };
 

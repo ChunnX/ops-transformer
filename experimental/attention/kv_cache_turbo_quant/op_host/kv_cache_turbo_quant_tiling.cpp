@@ -116,9 +116,14 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     cubeTiling.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT, true);
     cubeTiling.SetCType(TPosition::LCM, CubeFormat::ND, DataType::DT_FLOAT);
     cubeTiling.SetBias(false);
-    cubeTiling.SetShape(static_cast<int32_t>(rowsPerCore), static_cast<int32_t>(KCTQ_HEAD_DIM),
+    // The single core GEMM of the tiling is one *vector* core (an AIV owns rowsPerCore / 2 rows and
+    // is the KFC client of its own cube server instance), so the M shape is the AIV's row count:
+    // that makes the framework end its M loop on the AIV's last row and hands the partial last tile
+    // over as the tail (32 rows on the t2048 case) instead of a whole baseM block.
+    const uint32_t rowsPerAiv = rowsPerCore / KCTQ_AIV_PER_AIC;
+    cubeTiling.SetShape(static_cast<int32_t>(rowsPerAiv), static_cast<int32_t>(KCTQ_HEAD_DIM),
                         static_cast<int32_t>(KCTQ_HEAD_DIM));
-    cubeTiling.SetOrgShape(static_cast<int32_t>(rowsPerCore), static_cast<int32_t>(KCTQ_HEAD_DIM),
+    cubeTiling.SetOrgShape(static_cast<int32_t>(rowsPerAiv), static_cast<int32_t>(KCTQ_HEAD_DIM),
                            static_cast<int32_t>(KCTQ_HEAD_DIM));
     cubeTiling.SetBufferSpace(-1, -1, -1);
     cubeTiling.SetDim(1);
@@ -131,10 +136,15 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     td->set_rowsPerCore(rowsPerCore);
     td->set_alignedRows(alignedRows);
     td->set_headDim(KCTQ_HEAD_DIM);
+    // The framework applies its M tail to the AIV's last tile, so an AIV slice only needs its own
+    // rows: the workspace keeps the plain rowsPerCore / KCTQ_AIV_PER_AIC rows per AIV.
+    const uint32_t aivRowStride = rowsPerAiv;
+    td->set_aivRowStride(aivRowStride);
+    const uint32_t wsRows = usedCoreNum * KCTQ_AIV_PER_AIC * aivRowStride;
     td->set_idxBytesPerRow(KCTQ_HEAD_DIM * static_cast<uint32_t>(mseBits) / 8U);
     td->set_qjlBytesPerRow(KCTQ_HEAD_DIM / 8U);
 
-    const uint64_t rowBytes = static_cast<uint64_t>(alignedRows) * KCTQ_HEAD_DIM * sizeof(float);
+    const uint64_t rowBytes = static_cast<uint64_t>(wsRows) * KCTQ_HEAD_DIM * sizeof(float);
     uint64_t offset = 0;
     td->set_wsU(offset);
     offset += rowBytes;
@@ -146,7 +156,7 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
     offset += rowBytes;
     const uint64_t wsNorm = CeilAlignU64(offset, WS_ALIGN);
     td->set_wsNorm(wsNorm);
-    offset = wsNorm + static_cast<uint64_t>(alignedRows) * sizeof(float);
+    offset = wsNorm + static_cast<uint64_t>(wsRows) * sizeof(float);
     td->set_wsBytes(CeilAlignU64(offset, WS_ALIGN));
 
     context->SetBlockDim(usedCoreNum);
