@@ -102,7 +102,10 @@ template <uint8_t BITS>
 struct PackCfg {
     static constexpr uint32_t kChunkLanes = (BITS == 1) ? 16U : 8U;
     static constexpr uint32_t kChunkBytes = BITS * kChunkLanes / 8U;
-    static constexpr bool kSplitChunk = (BITS == 4);
+    // 2bit and 4bit chunks are wider than one 16bit half, so they are folded as two halves which
+    // are recombined in the integer domain. 2bit halves are a byte each, 4bit halves a halfword.
+    static constexpr bool kSplitChunk = (BITS == 2) || (BITS == 4);
+    static constexpr uint32_t kMergeShift = (BITS == 4) ? 16U : 8U;
 };
 
 template <uint8_t BITS>
@@ -263,9 +266,9 @@ public:
         for (uint32_t i = 0; i < kGroup; ++i) {
             wq.SetValue(i, Pow2(i)); // qjl packs 8 sign bits into one byte
             if constexpr (PackCfg<BITS>::kSplitChunk) {
-                // 4bit: low half covers lanes 0..3, high half covers lanes 4..7
-                w.SetValue(i, (i < 4U) ? Pow2(4U * i) : 0.0f);
-                wh.SetValue(i, (i >= 4U) ? Pow2(4U * (i - 4U)) : 0.0f);
+                // low half covers lanes 0..3, high half covers lanes 4..7
+                w.SetValue(i, (i < 4U) ? Pow2(static_cast<uint32_t>(BITS) * i) : 0.0f);
+                wh.SetValue(i, (i >= 4U) ? Pow2(static_cast<uint32_t>(BITS) * (i - 4U)) : 0.0f);
             } else {
                 w.SetValue(i, Pow2(static_cast<uint32_t>(BITS) * i));
                 wh.SetValue(i, 0.0f);
@@ -530,22 +533,36 @@ public:
 
         FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
-            // A 4bit chunk needs 32 bits, which fp32 cannot hold exactly, so the two 16bit halves
-            // are folded separately and recombined in the integer domain. The 32bit words are
-            // already the little endian output bytes, so the batch leaves in one contiguous copy.
+            // A 2bit/4bit chunk is wider than one 16bit half, so the two halves are folded
+            // separately and recombined in the integer domain. Either way the recombined words
+            // carry exactly the little endian output bytes, so the batch leaves in one contiguous
+            // copy (2 bytes per chunk for 2bit, 4 bytes per chunk for 4bit).
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
             LocalTensor<float> cvh = Slice(kSliceCvHi);
             LocalTensor<float> wvh = Slice(kSliceWork);
             LocalTensor<float> cihF = Slice(kSliceCiHi);
-            LocalTensor<int32_t> cih = cihF.ReinterpretCast<int32_t>();
             FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES);
-            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
-            Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
-            PipeBarrier<PIPE_V>();
-            ShiftLeft(cih, cih, 16, KCTQ_BATCH_LANES);
-            PipeBarrier<PIPE_V>();
-            Add(ci, ci, cih, KCTQ_BATCH_LANES);
-            PipeBarrier<PIPE_V>();
+            if constexpr (BITS == 4) {
+                LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
+                LocalTensor<int32_t> cih = cihF.ReinterpretCast<int32_t>();
+                Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+                Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                ShiftLeft(cih, cih, 16, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                Add(ci, ci, cih, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+            } else {
+                LocalTensor<int16_t> ci = ciF.ReinterpretCast<int16_t>();
+                LocalTensor<int16_t> cih = cihF.ReinterpretCast<int16_t>();
+                Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+                Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                ShiftLeft(cih, cih, static_cast<int16_t>(8), KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+                Add(ci, ci, cih, KCTQ_BATCH_LANES);
+                PipeBarrier<PIPE_V>();
+            }
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             if (validRows > 0U) {
@@ -553,8 +570,6 @@ public:
                 DataCopyExtParams cp{1, validRows * kIdxBytesPerRow, 0, 0, 0};
                 DataCopyPad(idxGm_[static_cast<uint64_t>(row0) * kIdxBytesPerRow], bytes, cp);
             }
-        } else if constexpr (BITS == 4) {
-            // unreachable: 4bit is handled by the split chunk branch above
         } else {
             // 1bit / 2bit / 3bit: the chunk width is not a power of two (or the value would not fit
             // a signed 16bit word), so the words cannot be narrowed to a packed element type;
