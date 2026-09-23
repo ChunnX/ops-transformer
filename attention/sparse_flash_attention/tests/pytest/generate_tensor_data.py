@@ -19,7 +19,6 @@ import json
 import math
 import struct
 import torch
-import tensorflow as tf
 import copy
 
 
@@ -27,13 +26,14 @@ INVALID_VALUE = -1
 
 
 def get_np_dtype(type_str):
+    # bf16使用torch dtype(numpy原生不支持bfloat16), 其数据生成与转换全部由torch函数完成
     type_dict = {
         "fp32": np.float32,
         "float32": np.float32,
         "fp16": np.float16,
         "float16": np.float16,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
         "int32": np.int32,
         "int8": np.int8,
         "uint8": np.uint8,
@@ -55,6 +55,8 @@ SHAPE_KEY_TO_INDEX = {
 
 def _np_to_torch(np_array, gen_dtype):
     """将 numpy array 转为 torch tensor，处理 bf16 等特殊类型。"""
+    if isinstance(np_array, torch.Tensor):
+        return np_array
     torch_dtype_map = {
         "fp32": torch.float32,
         "float32": torch.float32,
@@ -112,6 +114,18 @@ def gen_tensor_data(params, key):
 
 
 def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw="fp32"):
+    if isinstance(dtype_input, torch.dtype):
+        # bf16等numpy不支持的类型, 由torch生成
+        if input_range[0] == "null":
+            return torch.tensor([], dtype=dtype_input)
+        if input_range[0] == "default":
+            return None
+        specialValue = {"nan": float("nan"), "inf": float("inf"), "-inf": float("-inf")}
+        return torch.full(
+            tuple(shape_input),
+            specialValue.get(input_range[0], input_range[0]),
+            dtype=dtype_input,
+        )
     input_i_data = None
     if input_range[0] == "null":
         input_i_data = np.array([], dtype=dtype_input)
@@ -138,6 +152,42 @@ def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw="f
 
 
 def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index):
+    if isinstance(dtype, torch.dtype):
+        # bf16等numpy不支持的类型, 由torch生成
+        if not isinstance(range_input, list):
+            return INVALID_VALUE
+        min_value, max_value = range_input
+        if min_value == "-inf" and max_value == "inf":
+            min_value = torch.finfo(dtype).min
+            max_value = torch.finfo(dtype).max
+            if data_shape == []:
+                return gen_uniform_data(data_shape, -1, 1, dtype, -1)
+            shape_len = reduce(operator.mul, data_shape)
+            if shape_len == 0:
+                return gen_uniform_data(data_shape, 0, 4, dtype, -1)
+            input_data = (
+                torch.empty(tuple(data_shape), dtype=torch.float32).uniform_(-1.0, 1.0)
+                * float(max_value)
+            ).to(dtype)
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            inf_index = np.unravel_index(
+                np.random.choice(shape_len, num_change), data_shape
+            )
+            input_data[inf_index] = float(min_value)
+            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+            inf_index = np.unravel_index(
+                np.random.choice(shape_len, num_change), data_shape
+            )
+            input_data[inf_index] = float(max_value)
+            return input_data
+        if min_value == "default":
+            return None
+        if min_value == "null":
+            return torch.tensor([], dtype=dtype)
+        specialValue = {"nan": float("nan"), "inf": float("inf"), "-inf": float("-inf")}
+        if min_value in specialValue:
+            return torch.full(tuple(data_shape), specialValue[min_value], dtype=dtype)
+        return gen_uniform_data(data_shape, min_value, max_value, dtype, -1)
     fuzz_value_type = ""
     try:
         if isinstance(range_input, dict):
@@ -222,6 +272,15 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
 
 
 def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
+    if isinstance(dtype, torch.dtype):
+        # bf16等numpy不支持的类型, 由torch生成
+        if min_value == 0 and max_value == 0:
+            return torch.zeros(tuple(data_shape), dtype=dtype)
+        return (
+            torch.empty(tuple(data_shape), dtype=torch.float32)
+            .uniform_(float(min_value), float(max_value))
+            .to(dtype)
+        )
     if min_value == 0 and max_value == 0:
         return np.zeros(data_shape, dtype=dtype)
     if hash_seed > 0:
