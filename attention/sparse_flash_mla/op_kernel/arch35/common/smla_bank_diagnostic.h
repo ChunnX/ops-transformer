@@ -13,6 +13,7 @@
 
 #include "kernel_operator.h"
 #include "smla_experiment_config.h"
+#include "smla_pipe_ablation.h"
 #include "../../../../common/op_kernel/matmul.h"
 #include "../../../../common/op_kernel/CopyInL1.h"
 #include "../../../../common/op_kernel/FixpipeOut.h"
@@ -236,6 +237,9 @@ public:
     __aicore__ static bool Run(GM_ADDR query, GM_ADDR kv, GM_ADDR writeSource,
                                GM_ADDR metadata, GM_ADDR output, GM_ADDR lse)
     {
+        if (SparseL1PipeAblation<Q>::Run(query, kv, writeSource, metadata, output, lse)) {
+            return true;
+        }
         if (metadata == nullptr) {
             return false;
         }
