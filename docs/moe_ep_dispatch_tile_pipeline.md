@@ -3,11 +3,11 @@
 ## 已实施范围
 
 实施早退出方案 A/B/C：全 AIV 计数并准备独立 metadata；tile 独占计数、共享前缀和 expert partial 归并；
-剩余计算核按 tile 准备索引/本地 metadata，32发送核边等待 tile 边提交。不是仅把 ready 通知提前。
+剩余计算核按 tile 准备索引/本地 metadata，32发送核边等待 tile 边构造WQE，跨tile累计batch。不是仅把 ready 通知提前。
 
 保留32 Jetty、SQ4096/CQ64、原注册窗口与远端 slot/metadata格式、cached语义、多SGE、最终sender-peer完成flag。
 Dispatch/Combine仍为异步提交，payload等待在epilogue；没有新增Drain、设备assert、printf或返回值检查。
-Combine与两个epilogue没有因本轮tile方案新增改动。GetRecvCount和可选host actualA仍在Dispatch内，D方案未做。
+两个epilogue没有新增改动；Combine只同步调整下述batch提交策略。GetRecvCount和可选host actualA仍在Dispatch内，D方案未做。
 
 ## 执行顺序与核角色
 
@@ -15,7 +15,7 @@ Combine与两个epilogue没有因本轮tile方案新增改动。GetRecvCount和�
 全AIV：初始化tile ready → SyncAll
 全AIV：独占tile计数/去重 + 复用TopK准备注册stash + 每核expert partial → SyncAll
 全AIV可分工：tile rank前缀 + expert partial归并 → SyncAll
-  ├─32发送核：Communication(count) → 逐tile等待/读prefix[t:t+2]/提交payload → 每peer末flag → 返回
+  ├─32发送核：Communication(count) → 逐tile等待/读prefix[t:t+2]/累计payload WQE → 每peer末flag → 提交尾批 → 返回
   └─其余核：逐tile准备索引/slot → 本地metadata搬运 → 发布tile ready
               └─最后一核完成GetRecvCount → 返回
 epilogue：原协议等待全部完成flag → 重排/归约
@@ -84,9 +84,29 @@ tile ID确定BS范围/owner，peer列确定目标rank，两个prefix确定源索
 sender只在ready后读取这两行；索引预取也严格限制在该范围，没有保留对未就绪列表的二分查找。
 相邻peer的索引仍使用原双缓冲，切peer后立即GetHandleRef并构造对应WQE。
 
-每tile末强制提交尾批，避免等待下一个tile时把已经可发的数据留在UB。
-所有本sender的tile提交后，才对每peer发送一次原有最终完成flag，包含无tile sender和零payload peer。
+tile末不再强制提交，batch可跨tile和peer累计。所有本sender的payload WQE构造后，
+才对每peer追加一次原有最终完成flag，包含无tile sender和零payload peer，最后提交尾批。
+未满batch允许与末尾flag同批提交；WQE顺序和flag的`odr=6, fence=1`不变。
 flag不按tile增加；epilogue仍等待原 `[srcRank][senderJetty]` 矩阵，不改远端完成协议。
+
+### 2026-09-23 Dispatch/Combine 完整容量提交
+
+用户反馈continue中Dispatch由约80us增至约200us且波动，要求优先凑大batch、减少提交。
+本次只调整提交粒度，不同时修改计数、prefix、tile选择或epilogue算法，以便单独验证效果：
+
+- 两者删除首批32 WQEBB阈值及`firstBatchCommitted_`状态；首批与后续批次均使用现有UB容量。
+- Dispatch容量仍为512 WQEBB：满批立即提交，下一条WQE放不下时先提交已有批次，末尾提交剩余payload/flag。
+- Combine容量仍为256 WQEBB：下一条WQE放不下时提交，末尾提交剩余payload/flag；切换peer不提交。
+  保留更换物理Jetty handle时的flush，避免不同SQ混用batch；当前每sender固定拥有一个Jetty。
+- Dispatch的count通知仍及时提交，不与payload攒批混合，避免推迟跨卡计数就绪。
+- 保留源GM生命周期、tile ready、容量预留、本地DMA事件和接收flag协议；不新增Drain/CQE/设备检查。
+
+512/256是单批UB容量，不是SQ深度；SQ4096/CQ64和32 Jetty配置均不变。
+更大batch减少固定提交开销，但可能推迟首批发出，不能仅凭CPU模型承诺恢复80us或任何加速比。
+本次新增CPU/源码契约覆盖首批满容量、跨tile/peer累积、混合SGE边界不拆WQE及空尾批不提交；
+Combine C++模型同步改为完整容量批次。需要分别复测standalone/continue正确性及D&C各阶段/Total耗时。
+本次本地histogram 11项、tile pipeline 9项、async completion 16项，共36项Python回归通过；
+`git diff --check`通过。PATH中没有CANN或C++编译器，未执行CANN构建、C++模型或NPU回归。
 
 ## 性能收益与限制
 
@@ -113,7 +133,7 @@ CPU模型覆盖tile所有权、cached/uncached计数、跨128行prefix carry、�
 metadata scatter与FP8/weights布局、workspace不重叠、典型单轮WQEBB上界及async源码契约。
 不模拟Reg实际代码生成、DMA/atomic可见性、Hcomm硬件进度或性能；未获远端执行授权，不执行远端/NPU操作。
 
-本地结果（包含下面的编译窄化与Pack修复回归）：histogram 11项、tile pipeline 9项、
+Pack修复阶段的本地结果（不含后续完整容量提交回归）：histogram 11项、tile pipeline 9项、
 async completion 12项，共32项Python测试通过；
 `git diff --check`通过。设备Dispatch/Combine源码中未发现assert、printf、CheckSharedJettyResult、
 `(void)hcomm`或Drain。Dispatch函数长度扫描均不超过50个非空、非注释行。

@@ -14,7 +14,6 @@ import unittest
 
 MC2 = Path(__file__).resolve().parents[2]
 SENDERS = 32
-FIRST_BATCH_WQEBB = 32
 
 
 def read_kernel(op):
@@ -41,15 +40,12 @@ class AsyncBatch:
         self.submitted = []
         self.batch_sizes = []
 
-    def limit(self):
-        return self.capacity if self.batch_sizes else FIRST_BATCH_WQEBB
-
     def append(self, event, wqebb):
-        if self.pending_wqebb + wqebb > self.limit():
+        if self.pending_wqebb + wqebb > self.capacity:
             self.commit()
         self.pending.append(event)
         self.pending_wqebb += wqebb
-        if self.commit_on_full and self.pending_wqebb >= self.limit():
+        if self.commit_on_full and self.pending_wqebb >= self.capacity:
             self.commit()
 
     def commit(self):
@@ -68,16 +64,60 @@ class AsyncCompletionTest(unittest.TestCase):
             self.assertNotIn("WaitIncomingCompletion", source)
             self.assertNotIn("HCOMM_DRAIN_BATCH_WQEBB", source)
             self.assertEqual(re.findall(r"\.cqe\s*=\s*(\d+)", source), ["0", "0"])
-            self.assertIn("HCOMM_FIRST_BATCH_WQEBB = 32U", source)
+            self.assertNotIn("HCOMM_FIRST_BATCH_WQEBB", source)
+            self.assertNotIn("firstBatchCommitted_", source)
 
-    def test_tail_commits_and_first_batch_reset_are_retained(self):
+    def test_tail_commits_are_retained_without_tile_flushes(self):
         cases = (("moe_ep_dispatch", "WriteToRemoteWindow", "SendTokenPipeline();", "CommitBatch(true);"),
                  ("moe_ep_combine", "SendPhaseFromMetadata", "SendMetadataPipeline();", "FlushPreparedWrites();"))
         for op, name, send, flush in cases:
             body = function_body(read_kernel(op), name)
-            self.assertLess(body.index("firstBatchCommitted_ = false;"), body.index(send))
             self.assertLess(body.index(send), body.index(flush))
             self.assertLess(body.index(flush), body.rindex("DataCacheCleanAndInvalid"))
+            self.assertEqual(body.count(flush), 1)
+        body = function_body(read_kernel("moe_ep_dispatch"), "WriteToRemoteWindow")
+        self.assertRegex(body, r"SendTokenPipeline\(\);\s*\}\s*PublishSendCompletions\(\);\s*CommitBatch\(true\);")
+
+    def test_capacity_checks_remain_at_wqe_append(self):
+        source = read_kernel("moe_ep_dispatch")
+        reserve = function_body(source, "ReserveBatchSpace")
+        self.assertIn("limit = hcommBatchBufferBytes_ / HCOMM_WQE_BYTES;", reserve)
+        self.assertIn("pendingWqebb_ + wqebbCount > limit", reserve)
+        self.assertIn("CommitBatch(true);", reserve)
+        commit = function_body(source, "CommitBatch")
+        self.assertIn("limit = hcommBatchBufferBytes_ / HCOMM_WQE_BYTES;", commit)
+        self.assertIn("force || pendingWqebb_ >= limit", commit)
+        for name, update in (("WritePayload", "pendingWqebb_ += wqebbCount;"),
+                             ("SendCompletion", "pendingWqebb_ += flagWqebb;")):
+            body = function_body(source, name)
+            self.assertLess(body.index("ReserveBatchSpace("), body.index("hcomm_.WriteNbi<"))
+            self.assertLess(body.index("hcomm_.WriteNbi<"), body.index(update))
+            self.assertLess(body.index(update), body.index("CommitBatch(false);"))
+        source = read_kernel("moe_ep_combine")
+        reserve = function_body(source, "ReservePreparedWrites")
+        self.assertIn("preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY", reserve)
+        self.assertIn("FlushPreparedWrites(true);", reserve)
+        for name, update in (("PrepareWrite", "++preparedWriteCount_;"),
+                             ("PrepareMultiSgeWrite", "preparedWriteCount_ += wqebbCount;")):
+            body = function_body(source, name)
+            self.assertLess(body.index("ReservePreparedWrites("), body.index("hcomm_.WriteNbi<"))
+            self.assertLess(body.index("hcomm_.WriteNbi<"), body.index(update))
+
+    def test_model_capacities_match_production_buffers(self):
+        source = read_kernel("moe_ep_dispatch")
+        constants = (("HCOMM_BATCH_CAPACITY", 128), ("SGE_PER_SQE", 12),
+                     ("HCOMM_SQE_BYTES", 48), ("HCOMM_SGE_BYTES", 16), ("HCOMM_WQE_BYTES", 64))
+        for name, value in constants:
+            self.assertRegex(source, rf"\b{name}\s*=\s*{value}U?;")
+        init = function_body(source, "CommBufferInit")
+        self.assertIn("hcommWriteWqeCnt = Ceil(HCOMM_SQE_BYTES + SGE_PER_SQE * HCOMM_SGE_BYTES, HCOMM_WQE_BYTES);",
+                      init)
+        self.assertIn("hcommBatchBufferBytes_ = HCOMM_BATCH_CAPACITY * hcommWriteWqeCnt * HCOMM_WQE_BYTES;", init)
+        self.assertEqual(128 * ((48 + 12 * 16 + 63) // 64), 512)
+        source = read_kernel("moe_ep_combine")
+        self.assertRegex(source, r"\bHCOMM_BATCH_CAPACITY\s*=\s*256U?;")
+        self.assertRegex(source, r"\bHCOMM_PLAIN_WRITE_WQE_BYTES\s*=\s*64U?;")
+        self.assertIn("HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;", source)
 
     def test_payload_flags_remain_ordered(self):
         for op, payload, flag in (("moe_ep_dispatch", "DATA_CFG", "NOTIFY_CFG"),
@@ -134,17 +174,51 @@ class AsyncCompletionTest(unittest.TestCase):
         path = MC2 / "moe_ep_dispatch/op_host/op_tiling/moe_ep_dispatch_tiling.cpp"
         self.assertIn("(xDim0 <= 0) || (xDim0 > numMaxTokensPerRank)", path.read_text(encoding="utf-8"))
 
-    def test_small_first_batch_then_full_batches(self):
+    def test_full_capacity_from_first_batch(self):
         # Dispatch commits an exactly full batch immediately; Combine flushes on the next reserve or at the tail.
         for capacity, on_full in ((512, True), (256, False)):
             batch = AsyncBatch(capacity, on_full)
             for token in range(2000):
                 batch.append((1, token), 4)
             batch.commit()
-            self.assertEqual(batch.batch_sizes[0], FIRST_BATCH_WQEBB)
-            self.assertIn(capacity, batch.batch_sizes[1:])
-            self.assertTrue(all(size <= capacity for size in batch.batch_sizes))
+            self.assertEqual(batch.batch_sizes[0], capacity)
+            self.assertTrue(all(size == capacity for size in batch.batch_sizes[:-1]))
+            self.assertTrue(0 < batch.batch_sizes[-1] <= capacity)
             self.assertEqual(len(batch.submitted), 2000)
+
+    def test_small_tiles_and_peers_share_one_batch(self):
+        for capacity, on_full in ((512, True), (256, False)):
+            batch, expected = AsyncBatch(capacity, on_full), []
+            for tile in range(4):
+                for peer in (1, 2, 3):
+                    event = (peer, tile)
+                    batch.append(event, 4)
+                    expected.append(event)
+                # Waiting for another local tile does not itself submit a partial batch.
+                self.assertEqual(batch.batch_sizes, [])
+            for peer in (1, 2, 3):
+                event = (peer, "flag")
+                batch.append(event, 1)
+                expected.append(event)
+            batch.commit()
+            self.assertEqual(batch.batch_sizes, [51])
+            self.assertEqual(batch.submitted, expected)
+
+    def test_wqe_not_split_at_capacity_and_empty_tail_not_submitted(self):
+        for capacity, on_full in ((512, True), (256, False)):
+            batch = AsyncBatch(capacity, on_full)
+            batch.commit()
+            self.assertEqual(batch.batch_sizes, [])
+            for token in range(capacity - 1):
+                batch.append((1, token), 1)
+            batch.append((2, "multi_sge"), 4)
+            self.assertEqual(batch.batch_sizes, [capacity - 1])
+            self.assertEqual(batch.pending_wqebb, 4)
+            batch.append((2, "flag"), 1)
+            batch.commit()
+            batch.commit()
+            self.assertEqual(batch.batch_sizes, [capacity - 1, 5])
+            self.assertEqual(batch.submitted[-2:], [(2, "multi_sge"), (2, "flag")])
 
     def test_mixed_sge_peer_order_empty_slices_and_tail(self):
         for capacity, on_full in ((512, True), (256, False)):
@@ -165,8 +239,7 @@ class AsyncCompletionTest(unittest.TestCase):
                     self.assertEqual(batch.submitted, expected)
                     self.assertEqual(batch.pending, [])
                     if batch.batch_sizes:
-                        self.assertLessEqual(batch.batch_sizes[0], FIRST_BATCH_WQEBB)
-                        self.assertTrue(all(size <= capacity for size in batch.batch_sizes))
+                        self.assertTrue(all(0 < size <= capacity for size in batch.batch_sizes))
 
     def test_submission_does_not_imply_incoming_completion(self):
         batch = AsyncBatch(512, True)

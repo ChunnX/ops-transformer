@@ -81,8 +81,6 @@ constexpr uint32_t SOURCE_INDEX_BUFFER_BYTES = MAX_BATCH_SIZE / 2U;
 constexpr uint32_t SOURCE_INDEX_CHUNK_TOKENS =
     SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t) / SLOT_NUM_PER_SQE * SLOT_NUM_PER_SQE;
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // UB capacity in full 12-SGE requests
-// Start DMA after eight full 12-SGE requests; subsequent batches use the existing UB capacity.
-constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
 constexpr uint32_t HCOMM_SGE_BYTES = 16U;
 constexpr uint32_t HCOMM_SQE_BYTES = 48U;
 constexpr uint32_t HCOMM_WQE_BYTES = 64U;
@@ -242,7 +240,6 @@ private:
     uint32_t prepareCoreId_{0};
     uint32_t hcommBatchBufferBytes_{0};
     uint32_t pendingWqebb_{0};
-    bool firstBatchCommitted_{false};
     uint32_t tokenSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -1088,12 +1085,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
     payloadBatch_ = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(GetOwnedJettyHandle()),
                                           hcommBatchTensor_, hcommBatchBufferBytes_);
     pendingWqebb_ = 0U;
-    firstBatchCommitted_ = false;
+    // Tile boundaries do not end a batch; ready tiles have immutable source metadata and indices.
     for (uint32_t tile = aivId_; tile < tileCount_; tile += sendCoreCount_) {
         LoadTileDescriptor(tile);
         SendTokenPipeline();
-        // Do not leave this ready tile's tail buffered while waiting for its next producer.
-        CommitBatch(true);
     }
     PublishSendCompletions();
     CommitBatch(true);
@@ -1219,7 +1214,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenPi
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatchSpace(uint32_t wqebbCount)
 {
-    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    uint32_t limit = hcommBatchBufferBytes_ / HCOMM_WQE_BYTES;
     if (pendingWqebb_ + wqebbCount > limit) {
         CommitBatch(true);
     }
@@ -1228,11 +1223,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatc
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommitBatch(bool force)
 {
-    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    uint32_t limit = hcommBatchBufferBytes_ / HCOMM_WQE_BYTES;
     if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= limit)) {
         hcomm_.BatchCommit(payloadBatch_);
         pendingWqebb_ = 0U;
-        firstBatchCommitted_ = true;
     }
 }
 

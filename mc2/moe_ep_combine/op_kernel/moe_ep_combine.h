@@ -63,8 +63,6 @@ static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
-// Kick off network reads early, then amortize subsequent doorbells with the original full batch.
-static constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
@@ -177,7 +175,6 @@ private:
     GM_ADDR activeRemoteWindow_{nullptr};
     uint32_t preparedWriteCount_{0};
     bool activeBatchInitialized_{false};
-    bool firstBatchCommitted_{false};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -267,7 +264,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     if (preparedWriteCount_ != 0) {
         hcomm_.BatchCommit(activeBatchHandle_);
         preparedWriteCount_ = 0;
-        firstBatchCommitted_ = true;
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -304,8 +300,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPrepared
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReservePreparedWrites(uint32_t wqebbCount)
 {
-    uint32_t limit = firstBatchCommitted_ ? HCOMM_BATCH_CAPACITY : HCOMM_FIRST_BATCH_WQEBB;
-    if (preparedWriteCount_ + wqebbCount > limit) {
+    if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
 }
@@ -514,7 +509,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseFrom
     activeJettyHandle_ = 0U;
     preparedWriteCount_ = 0U;
     activeBatchInitialized_ = false;
-    firstBatchCommitted_ = false;
 
     // Prefetch across peer boundaries too; typical peer slices fit in a single metadata chunk.
     SendMetadataPipeline();

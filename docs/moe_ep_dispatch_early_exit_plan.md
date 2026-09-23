@@ -3,6 +3,8 @@
 > 本文保留异步恢复与 A/B/C 设计过程。A/B/C 已在后续工作树中实施，当前流程、workspace和验证结果见
 > [Dispatch tile 流水实现](moe_ep_dispatch_tile_pipeline.md)。下面“尚未实施”等措辞描述当时的计划阶段，
 > 不用于判断当前代码；D 接收计数并行化仍未实施。
+> 2026-09-23后续batch调整已取消下面记录的首批32 WQEBB策略和逐tile尾批提交，
+> Dispatch/Combine首批也使用512/256 WQEBB原容量；以链接文档中的完整容量提交说明为准。
 
 ## 本轮已落地的边界
 
@@ -11,7 +13,7 @@
 
 - Dispatch count、payload、flag 和 Combine payload、flag 全部恢复 `cqe=0`。
 - 删除 sender 中逐批 Drain、末尾入站完成轮询及其辅助函数。
-- 恢复首批32 WQEBB提前启动；后续 Dispatch 使用原512 WQEBB批容量，Combine使用原256 WQEBB批容量。
+- 当时恢复首批32 WQEBB提前启动（后续已取消，见页首）；后续批次 Dispatch 使用原512 WQEBB批容量，Combine使用原256 WQEBB批容量。
 - 保留尾批强制提交、payload/flag 的 `odr=5/6, fence=1` 顺序和本地 DMA 同步。
 - 两个 epilogue 原有等待、清标志和消费前屏障保持不动；没有把 Drain 调用机械搬进 epilogue。
   `cqe=0` 的完成判据是原有接收窗口完成标志，而不是 CQE。

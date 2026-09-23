@@ -124,7 +124,7 @@ void CheckMaskPredicate()
     }
 }
 
-void CheckFirstBatch()
+void CheckFullBatches()
 {
     for (uint32_t payloadWqebb : {1U, 2U}) {
         for (uint32_t requests : {0U, 1U, 15U, 16U, 17U, 32U, 128U, 129U, 4096U}) {
@@ -133,8 +133,7 @@ void CheckFirstBatch()
                 uint32_t pending = 0U;
                 uint32_t total = 0U;
                 auto append = [&](uint32_t count) {
-                    uint32_t limit = batches.empty() ? 32U : 256U;
-                    if (pending + count > limit) { batches.push_back(pending); pending = 0U; }
+                    if (pending + count > 256U) { batches.push_back(pending); pending = 0U; }
                     pending += count;
                     total += count;
                 };
@@ -144,7 +143,10 @@ void CheckFirstBatch()
                 }
                 append(1U); // final completion, including the empty-peer case
                 if (pending != 0U) { batches.push_back(pending); }
-                assert(batches.front() > 0U && batches.front() <= 32U);
+                assert(batches.front() > 0U && batches.front() <= 256U);
+                for (std::size_t i = 0U; i + 1U < batches.size(); ++i) {
+                    assert(batches[i] >= 255U); // Only a two-WQEBB request can leave one unused block.
+                }
                 uint32_t committed = 0U;
                 for (uint32_t batch : batches) {
                     assert(batch > 0U && batch <= 256U && batch < 4096U);
@@ -179,6 +181,6 @@ int main()
         }
     }
     CheckMaskPredicate();
-    CheckFirstBatch();
-    std::cout << "PASS: " << cases << " Combine schedules, ping-pong events, completion order, mask, first batch\n";
+    CheckFullBatches();
+    std::cout << "PASS: " << cases << " Combine schedules, ping-pong events, completion order, mask, full batches\n";
 }

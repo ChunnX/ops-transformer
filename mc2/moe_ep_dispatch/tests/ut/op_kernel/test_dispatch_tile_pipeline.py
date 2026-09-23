@@ -138,12 +138,12 @@ class DispatchTilePipelineTest(unittest.TestCase):
                 self.check_pipeline(bs, cores, peers, experts, topk, rng, cached=True)
         self.check_pipeline(4096, 56, 8, 256, 6, rng, cached=True)
 
-    def test_first_tile_can_send_before_other_tiles_ready(self):
+    def test_first_tile_can_build_wqes_before_other_tiles_ready(self):
         tiles = tile_ranges(4096, 56, 6)
         self.assertEqual(len(tiles), 128)
         ready = {0}
         self.assertIn(0, ready)
-        self.assertNotIn(32, ready)  # Same sender's next tile is not a prerequisite for submitting tile 0.
+        self.assertNotIn(32, ready)  # Constructing tile 0 WQEs needs no later tile; submission depends on capacity.
         self.assertLess(len(ready), len(tiles))
 
     def test_metadata_scatter_fp8_weights_and_scratch_bounds(self):
