@@ -115,10 +115,9 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 
 ### 3.4 kernel 入口
 
-- `#if MX_QUANT_MODE` 编译期分支：
-  `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY)`；block0 写部署自检 magic
-  `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→ 按批 `hcommImpl.Process` → `End` →
-  共享专家 `Process(0,1)`；
+- `#if MX_QUANT_MODE` 编译期分支（`if ASCEND_IS_AIC` 守卫，AIV 空退）：
+  block0 写部署自检 magic `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→
+  按批 `hcommImpl.Process` → `End` → 共享专家 `Process(0,1)`；
 - `#else`：原通路逐字保持（`KERNEL_TASK_TYPE_DEFAULT(MIX_AIC_1_2)`、
   `GmmA2avScheduler.Process()`）。
 
@@ -147,9 +146,9 @@ apace 通路默认编译，无构建/运行开关；`MX_QUANT_MODE` 为实例编
 | 时机 | 方法 | 证据 |
 |---|---|---|
 | 运行时（host plog） | 过滤关键字 `ApaceMXPath`（MX tiling 类 GetTilingKey 打印，INFO 级） | MX 量化实例选中 → 该 dtype 实例二进制固定为 apace 分支（编译期保证），日志同时给出 tilingKey/e/ep/A/N1/H1 等关键参数 |
-| 构建产物 | `grep -l '"AIC_ONLY"' build/binary/ascend950/bin/quant_grouped_mat_mul_allto_allv/*.json` | 命中的为 MX 实例（kernelList 任务类型 AIC_ONLY）；TT 实例应仍为 `MIX_AIC`（taskRation 1:2），数量与 dtype 组合数一致 |
+| 构建产物 | 全部实例 json kernelList 均为 `MIX_AIC`（taskRation 1:2，与原通路一致，非区分项）；MX 实例（gmm_x_scale=float8_e8m0 的 10 个）以 .o 尺寸/符号差异确认 apace 分支已编入（与 TT 实例对比） |
 | 卡死现场 | 读 y 前 4 字节 | `0xA5A5A5A5` = apace 分支已执行（magic 由 block0 首先写入，通信成功后被 recv 数据覆盖；卡死残留即为部署/通路证据） |
-| 性能侧证 | msprof 任务类型 | MX 用例 kernel 仅调度 AIC 核；TT 用例行为与基线一致 |
+| 性能侧证 | msprof | MX 用例 apace 计算与通信均在 AIC 核（AIV 空转）；TT 用例行为与基线一致 |
 
 （原 5.2 代码索引顺延为 5.3）
 

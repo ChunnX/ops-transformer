@@ -118,6 +118,9 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
                                                const GmmTilingDataType *gmmTilingData, MC2_TILING_TYPE *gmmArrayAddrIn,
                                                TPipe *tPipe, bool isA2avGmmFlag)
 {
+    if ASCEND_IS_AIV {
+        return;
+    }
     (void)gmmArrayAddrIn;
     (void)isA2avGmmFlag;
     xGM_ = xGM;
@@ -184,6 +187,9 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
                                             aTrans, bTrans, isLocal, isA2avGmm>::Process(uint32_t startExpertIdx,
                                                                                          uint32_t expertNum)
 {
+    if ASCEND_IS_AIV {
+        return;
+    }
     if constexpr (!isLocal) {
         uint64_t expertTokenNum = 0U;
         for (uint32_t e = 0U; e < expertNum; e++) {
@@ -204,7 +210,11 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
           CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
 __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType, wFormat,
                                             aTrans, bTrans, isLocal, isA2avGmm>::End()
-{}
+{
+    if ASCEND_IS_AIV {
+        return;
+    }
+}
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
           CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
