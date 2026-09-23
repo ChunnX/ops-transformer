@@ -17,13 +17,15 @@
 apace 库 `GroupedMatmulMxKernel`（Blaze 栈），并将 AllToAllV 通信改在 **AIC 核内**经
 `Hccl` 提交，二者同核融合执行。TT 量化场景完全保持原通路。
 
-### 1.2 选路机制：编译期实例级分支
+### 1.2 选路机制：tiling key 选路 + AIC_ONLY 任务类型
 
 ```
 构建（无任何开关，全部通路默认编译）
-  └─ 实例 = dtype 组合（14 个：MX 10 个 + TT 4 个）
-      ├─ gmm_x_scale == float8_e8m0  → #if MX_QUANT_MODE 命中 → apace 融合通路
-      └─ gmm_x_scale == float32      → #else                 → 原通路（逐字保持上游）
+  └─ TPL 第 5 参数 TILINGKEY_USING_APACE_IMPL（DECL 末位，原 4 参编码值不变）
+      ├─ USING=0 组合（key 0~15）  → KERNEL_TYPE_SEL(MIX_AIC_1_2) → 原通路
+      └─ USING=1 组合（key 16~31） → KERNEL_TYPE_SEL(AIC_ONLY)    → apace 融合通路
+运行时：MX tiling 类编码 USING=1（MX 量化恒走 apace）；TT tiling 类 4 参调用截断为 USING=0
+kernel：if constexpr (TILINGKEY_USING_APACE_IMPL) 选路，任务类型全部由 SEL 按组合声明
 ```
 
 判别宏（`mc2/allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/a2av_gmm_utils.h`）：
@@ -49,13 +51,13 @@ apace 库 `GroupedMatmulMxKernel`（Blaze 栈），并将 AllToAllV 通信改在
 ### 1.3 总体执行流
 
 ```
-                    ┌──────────────────────────────────────────────┐
-                    │ kernel: quant_grouped_mat_mul_allto_allv      │
-                    │ 任务类型 MIX_AIC_1_2（KERNEL_TASK_TYPE_DEFAULT）│
-                    └───────────────┬──────────────────────────────┘
-              #if MX_QUANT_MODE     │            #else（TT 实例）
+                    ┌───────────────────────────────────────────────┐
+                    │ kernel: quant_grouped_mat_mul_allto_allv       │
+                    │ 任务类型由 tiling key KERNEL_TYPE_SEL 按组合声明  │
+                    └───────────────┬───────────────────────────────┘
+      if constexpr (USING=1)        │        USING=0 / TT 实例（原通路）
         ┌──────────────────────────┴───┐   ┌─────┴──────────────────────┐
-        │ apace 融合通路（AIC 执行）      │   │ 原通路（上游逐字保持）        │
+        │ apace 融合通路（AIC_ONLY）     │   │ 原通路（上游逐字保持）        │
         │  AIC:                        │   │  AIC: QuantGroupedMatmul    │
         │   magic 自检(block0)          │   │  AIV: HcclA2avOp 通信        │
         │   HcommImpl.Init             │   │  调度: GmmA2avScheduler      │
@@ -68,7 +70,6 @@ apace 库 `GroupedMatmulMxKernel`（Blaze 栈），并将 AllToAllV 通信改在
         │     └ SyncAll                │
         │   End: SyncAll+Finalize      │
         │   共享专家 MM(可选)            │
-        │  AIV: 空转退出（守卫必需）      │
         └──────────────────────────────┘
 ```
 
@@ -145,9 +146,9 @@ Process(startExpertIdx, expertNum)                     [AIV 守卫提前返回]
 
 | 维度 | 原通路（TT 实例 / 改造前 MX 实例） | apace 通路（MX 实例） |
 |---|---|---|
-| 选路 | 单一二进制内运行时调度 | **编译期实例级分支**（E8M0 scale 判别） |
-| 任务类型 | MIX_AIC_1_2 | MIX_AIC_1_2（相同） |
-| 核型分工 | AIC 计算 + **AIV 通信** | **AIC 计算 + AIC 通信，AIV 空转**（守卫必需） |
+| 选路 | 单一二进制内运行时调度 | **tiling key 选路**（USING=1 组合；E8M0 判别仅作 TT 实例组合裁剪） |
+| 任务类型 | MIX_AIC_1_2（KERNEL_TYPE_SEL 声明） | **AIC_ONLY**（KERNEL_TYPE_SEL 声明，无 AIV） |
+| 核型分工 | AIC 计算 + **AIV 通信** | **AIC 计算 + AIC 通信**（AIC_ONLY 任务类型，无 AIV） |
 | GMM 引擎 | `QuantGroupedMatmul` → `Mc2GmmASWKernel`（UBMEM） | `QuantGroupedMatmulMx` → Blaze `GroupedMatmulMxKernel` |
 | GMM 调用粒度 | 每批一次（groupNum=批内 expert 数） | 每批一次，groupNum=**expertNum×ep**（group 按 (expert,rank) 展开） |
 | group 寻址 | groupList(token 数) + **ptrTable**（GetTensorAddr 双重间接） | groupList(LENGTH) + **三张偏移表**（cTable/bTable/scaleBTable），A/scaleA 走公式 |
@@ -187,9 +188,7 @@ errorCode 507018，与计算是否执行无关——只要实例化了 Blaze 模
   的 HCCL 段），保证通信域/CCU 资源分配行为一致；
 - 通信提交与等待均在 AIC block0（`AlltoAllV<true>` 非阻塞返回 handle → `Wait(handle)`），
   非工作核经 `SyncAll` 跟随；
-- 代价：AIV 核空转。但任务类型为 MIX_AIC_1_2（见 4.6），AIV 必须以
-  `if ASCEND_IS_AIV` 空退，误入 Blaze/Hccl 调用会死锁（cube 指令跑 vector 核 /
-  Hccl workingFlag_ 核型假设错乱 / SyncAll 域错乱）。
+- AIC_ONLY 任务类型下无 AIV 参与，无需核型守卫（见 4.6）。
 
 ### 4.2 批流水与同步协议（通算融合层）
 
@@ -294,18 +293,20 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 `SetBlockDim(aicCoreNum)`（基类 PostTiling，全核启动）：Blaze 调度器满核分配 block，
 闲置核空跑 Run 循环并正常参与 SyncAll。
 
-### 4.6 任务类型与核型守卫（实证结论）
+### 4.6 任务类型：TPL KERNEL_TYPE_SEL 按组合声明（AIC_ONLY）
 
-`KERNEL_TASK_TYPE_DEFAULT` 为**编译单元级机制**：在 `#if MX_QUANT_MODE` 分支内声明
-`KERNEL_TYPE_AIC_ONLY` 不生效——本地构建 14 实例 json 审计实证全部为
-`MIX_AIC, taskRation 1:2`（10 个 MX 实例亦然）。因此：
-
-- kernel 以 MIX_AIC_1_2 启动，AIV 子核**会**进入 kernel；
-- apace 分支必须 `if ASCEND_IS_AIC` 守卫 + `if ASCEND_IS_AIV` 空退；
-- fusion 层 Init/Process/End 保留 AIV 守卫（防御性：即使入口守卫被误删，
-  接口层亦不执行）；
-- 实例级任务类型（真 AIC_ONLY）需 tiling key TPL `KERNEL_TYPE_SEL` 机制（如
-  `allto_all_matmul` 的做法），本方案未采用——需重新引入 apace tiling key 设施。
+- `KERNEL_TASK_TYPE_DEFAULT` 为**编译单元级机制**，无法按 tiling key 组合区分任务
+  类型（本地构建 14 实例 json 审计实证：`#if` 分支内声明 AIC_ONLY 不生效，全部实例
+  仍为 MIX_AIC 1:2）；
+- apace 组合的任务类型改由 tiling key SEL 首参 `ASCENDC_TPL_KERNEL_TYPE_SEL
+  (ASCENDC_TPL_AIC_ONLY)` 声明（与仓内 allto_all_matmul 的 USING_APACE_IMPL 组合
+  同款机制），原通路组合声明 `MIX_AIC_1_2`；kernel 入口不再使用
+  KERNEL_TASK_TYPE_DEFAULT；
+- AIC_ONLY 下无 AIV 参与：kernel 入口与 fusion 实现均无核型守卫
+  （allto_all_matmul 的 apace hcomm 实现同款零守卫形态）；
+- USING 为 DECL 末位参数：原 4 参 GET_TPL_TILING_KEY 调用（TT 类/基类）经
+  FastEncodeTilingKeyDirect 的 min(decl, args) 截断编码为 USING=0，tiling key 值
+  与上游完全一致；MX tiling 类 5 参调用编码 USING=1（新增 bit 位）。
 
 ### 4.7 调试与可观测性
 
@@ -324,7 +325,7 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 |---|---|---|
 | D1 | 编译期实例选路（E8M0 scale + defined 守卫），弃用 tiling key 选路 | tiling key 方案要求全实例编译 apace 分支，dtype 宏无守卫判别在真实实例上误判为否 → 空实现 + MC2 标记 → 通信任务等握手超时（历次全 stage 卡死根因） |
 | D2 | 通信在 AIC 核内（弃用 AIV KFC 通路） | Blaze 与 AIV 侧 KFC 同实例共存 → AIV 通信任务参数校验失败（与是否执行计算无关） |
-| D3 | MIX_AIC_1_2 + 核型守卫（弃用实例级 AIC_ONLY） | `KERNEL_TASK_TYPE_DEFAULT` 编译单元级，#if 分支声明不生效（14 实例 json 实证）；无守卫时 AIV 执行 Blaze/Hccl → 卡死（本次修复的根因） |
+| D3 | apace 组合 AIC_ONLY（TPL KERNEL_TYPE_SEL 按组合声明） | `KERNEL_TASK_TYPE_DEFAULT` 编译单元级无法按组合区分（14 实例 json 实证）；TPL SEL 为仓内已验证机制（allto_all_matmul 同款），无需核型守卫 |
 | D4 | 复用原 `QuantGmmA2avTilingData` 与原 MM tiling 字段 | 接口与模板签名对齐 `QuantGroupedMatmul`，原算子目录侵入最小（tiling_common 零修改） |
 | D5 | kAL1/kBL1/scaleKAL1 = 0 兜底 baseK | 正确性优先；自定义 L1 窗口组合未经真机验证（历史上 stage=4 Blaze 挂死的嫌疑组合） |
 | D6 | 基址从固定基址绝对推导 | 相对累加在多批场景重复计入历史批偏移（实现期自查发现） |
@@ -335,10 +336,7 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 
 1. **通信-计算无重叠**：本版 block0 提交后立即 Wait（批间串行）。优化方向：提交批 b
    后仅 Wait 批 b-1（in-flight ≤ 2），共享专家 MM 与末批通信重叠；
-2. **AIV 空转**：MIX 任务型下 AIV 核不参与工作。若需真 AIC_ONLY（省 AIV 资源），
-   需引入 tiling key TPL `KERNEL_TYPE_SEL` 设施（参考 `allto_all_matmul` 的
-   USING_APACE_IMPL 组合声明），属后续独立改造；
-3. **无 device 侧日志**：依赖 magic + host 日志 + json 审计三板斧；若后续 CANN 提供
+2. **无 device 侧日志**：依赖 magic + host 日志 + json 审计三板斧；若后续 CANN 提供
    可用 debug-bus/printf 通道可补充；
 4. **通信引擎**：`HcclServerTypeSelector` 支持 CCU/AICPU 两态，真机验证以 CCU 为主，
    AICPU 模式未充分验证。

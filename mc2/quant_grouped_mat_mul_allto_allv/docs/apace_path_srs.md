@@ -42,12 +42,13 @@ aclnn 接口、输入校验、infershape、tiling 注册体系均不变。
 
 ## 2 总体描述
 
-### 2.1 选路机制（两层）
+### 2.1 选路机制（tiling key 选路）
 
 | 层 | 开关 | 说明 |
 |---|---|---|
-| 编译期-实例 | `MX_QUANT_MODE`（a2av_gmm_utils.h：`defined(ORIG_DTYPE_GMM_X_SCALE) && ORIG_DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0`） | 以 **scale dtype 判别 MX 实例**；带 `defined()` 守卫，宏缺失时安全判否 |
-| 运行期 | 无 | tiling key / tiling 类 / 环境变量均不参与；MX 实例固定走 apace，TT 实例固定走原通路 |
+| 运行期-tiling key | `TILINGKEY_USING_APACE_IMPL`（TPL 第 5 参数，DECL 末位，原 4 参编码值不变） | MX tiling 类编码 USING=1（MX 量化恒走 apace）；TT tiling 类 4 参调用截断为 USING=0；kernel 以 `if constexpr (TILINGKEY_USING_APACE_IMPL)` 选路 |
+| 编译期-实例 | `MX_QUANT_MODE`（E8M0 scale 判别，defined() 守卫） | 仅作 TT 实例的组合裁剪：TT 实例的 USING=1 组合为空实现占位（不会被 tiling 选中） |
+| 任务类型 | TPL `ASCENDC_TPL_KERNEL_TYPE_SEL` | USING=0 组合 → `MIX_AIC_1_2`（原通路）；USING=1 组合 → **`AIC_ONLY`**（无 AIV 参与，无需核型守卫）；不再使用 `KERNEL_TASK_TYPE_DEFAULT` |
 
 **设计约束**：
 - 实例级分支必须编译期可判：tiling key 方案要求全部 dtype 实例编译 apace 分支，依赖
@@ -115,9 +116,9 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 
 ### 3.4 kernel 入口
 
-- `#if MX_QUANT_MODE` 编译期分支（`if ASCEND_IS_AIC` 守卫，AIV 空退）：
-  block0 写部署自检 magic `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→
-  按批 `hcommImpl.Process` → `End` → 共享专家 `Process(0,1)`；
+- `if constexpr (TILINGKEY_USING_APACE_IMPL)` 分支（内层 `#if MX_QUANT_MODE` 裁剪
+  TT 实例占位组合）：block0 写部署自检 magic `y[0]=0xA5A5A5A5`（成功后被 recv
+  数据覆盖）→ 按批 `hcommImpl.Process` → `End` → 共享专家 `Process(0,1)`；
 - `#else`：原通路逐字保持（`KERNEL_TASK_TYPE_DEFAULT(MIX_AIC_1_2)`、
   `GmmA2avScheduler.Process()`）。
 
@@ -146,9 +147,9 @@ apace 通路默认编译，无构建/运行开关；`MX_QUANT_MODE` 为实例编
 | 时机 | 方法 | 证据 |
 |---|---|---|
 | 运行时（host plog） | 过滤关键字 `ApaceMXPath`（MX tiling 类 GetTilingKey 打印，INFO 级） | MX 量化实例选中 → 该 dtype 实例二进制固定为 apace 分支（编译期保证），日志同时给出 tilingKey/e/ep/A/N1/H1 等关键参数 |
-| 构建产物 | 全部实例 json kernelList 均为 `MIX_AIC`（taskRation 1:2，与原通路一致，非区分项）；MX 实例（gmm_x_scale=float8_e8m0 的 10 个）以 .o 尺寸/符号差异确认 apace 分支已编入（与 TT 实例对比） |
+| 构建产物 | json kernelList 应含两组组合：USING=0（key 0~15，`MIX_AIC` 1:2）与 USING=1（key 16~31，`AIC_ONLY`）；MX tiling 类下发 USING=1 key → 运行时选中 AIC_ONLY kernel |
 | 卡死现场 | 读 y 前 4 字节 | `0xA5A5A5A5` = apace 分支已执行（magic 由 block0 首先写入，通信成功后被 recv 数据覆盖；卡死残留即为部署/通路证据） |
-| 性能侧证 | msprof | MX 用例 apace 计算与通信均在 AIC 核（AIV 空转）；TT 用例行为与基线一致 |
+| 性能侧证 | msprof | MX 用例 kernel 为 AIC_ONLY 任务类型（无 AIV）；TT 用例行为与基线一致 |
 
 （原 5.2 代码索引顺延为 5.3）
 

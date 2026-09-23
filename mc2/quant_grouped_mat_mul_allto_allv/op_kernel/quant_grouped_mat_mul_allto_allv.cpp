@@ -18,13 +18,13 @@
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
-// apace hcomm 融合通路（默认编译）：
-// MX(FP4/FP8) 量化实例（gmmXScale 为 E8M0，经 a2av_gmm_utils.h 的 MX_QUANT_MODE 判别）：
-// GMM 计算切换 apace GroupedMatmulMxKernel，AllToAllV 通信在 AIC 核内经 Hccl 提交
-// （Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致 AIV 通信任务参数校验失败）。
-// 任务类型为 MIX_AIC_1_2（KERNEL_TASK_TYPE_DEFAULT 为编译单元级机制，按实例 #if 分支
-// 声明 AIC_ONLY 经构建产物 json 验证不生效），故 AIV 核会进入 kernel——apace 分支必须
-// 以 if ASCEND_IS_AIC 守卫，AIV 空转退出；TT 量化实例保持原通路（实例级编译期分支）。
+// apace hcomm 融合通路（MX 量化场景，tiling key 选路）：
+// MX tiling 类编码 TILINGKEY_USING_APACE_IMPL=1，GMM 计算切换 apace GroupedMatmulMxKernel，
+// AllToAllV 通信在 AIC 核内经 Hccl 提交（Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致
+// AIV 通信任务参数校验失败）。该组合经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明
+// AIC_ONLY 任务类型（无 AIV 参与，无需核型守卫）；TT 量化实例由 TT tiling 类编码 USING=0，
+// 走原通路（MIX_AIC_1_2，AIC 计算 + AIV 通信）。任务类型全部由 TPL SEL 按组合声明，
+// 不再使用 KERNEL_TASK_TYPE_DEFAULT（编译单元级机制，无法按组合区分）。
 #include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
 
 using namespace AscendC;
@@ -40,14 +40,13 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
 };
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, bool TILINGKEY_MATMUL_TRANS,
-          int TILINGKEY_COMM_MODE>
+          int TILINGKEY_COMM_MODE, bool TILINGKEY_USING_APACE_IMPL>
 __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
     GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
     GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM,
     GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspaceGM == nullptr) {
         return;
     }
@@ -73,20 +72,19 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
+    if constexpr (TILINGKEY_USING_APACE_IMPL) {
 #if MX_QUANT_MODE
-    // MX(FP4/FP8) 量化路径：GMM 计算切换 apace 模板 GroupedMatmulMxKernel，
-    // 通信采用 AIC 核内 AlltoAllV（Hccl），规避 Blaze 与 AIV 通信引擎的共存问题。
-    // 任务类型为 MIX_AIC_1_2（KERNEL_TASK_TYPE_DEFAULT 为编译单元级机制，
-    // 按实例 #if 分支声明 AIC_ONLY 经构建产物 json 验证不生效），AIV 核会进入
-    // kernel，apace 分支必须以 if ASCEND_IS_AIC 守卫、AIV 空转退出
-    using SharedGmmExpertOpType =
-        Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-                                    DTYPE_MM_X_SCALE, DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true,
-                                    false>;
-    using HcommImpl = Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-                                                   DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
-                                                   TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
-    if ASCEND_IS_AIC {
+        // MX(FP4/FP8) 量化路径（AIC_ONLY 任务类型由 tiling key KERNEL_TYPE_SEL 声明，
+        // 无 AIV 参与，无需核型守卫）：GMM 计算切换 apace 模板 GroupedMatmulMxKernel，
+        // 通信采用 AIC 核内 AllToAllV（Hccl），规避 Blaze 与 AIV 通信引擎的共存问题
+        using SharedGmmExpertOpType =
+            Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                        DTYPE_MM_X_SCALE, DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true,
+                                        false>;
+        using HcommImpl =
+            Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                         DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
+                                         TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
         // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
         // （通信成功后该值被 recv 数据覆盖，不影响结果）
         if (AscendC::GetBlockIdx() == 0) {
@@ -113,11 +111,15 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                 sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
             shareComputeOp.Process(0, 1);
         }
-    }
-    if ASCEND_IS_AIV {
-        // 通信与计算均在 AIC 核内完成，AIV 空转（误入 Blaze/Hccl 调用会死锁）
-    }
 #else
+        // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
+        // TILINGKEY_USING_APACE_IMPL=0，该组合不会被选中，空实现仅占位
+#endif
+        return;
+    }
+
+    // 原通路（TT 量化实例走此路径；MIX_AIC_1_2 任务类型由 KERNEL_TYPE_SEL 声明，
+    // AIC 计算 + AIV 通信，历史行为不变）
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;
     constexpr bool USE_SEND_COUNTS = true;
     constexpr bool IS_SHARED_EXPERT = true;
@@ -156,5 +158,4 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                         sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
     gmmA2avScheduler.Process();
-#endif
 }
