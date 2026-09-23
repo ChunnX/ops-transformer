@@ -384,12 +384,8 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
         return ge::GRAPH_SUCCESS;
     }
 
-    int64_t batchSize = tilingData_.get_batchSize();
-    int64_t seqLen = tilingData_.get_seqLength();
-    int64_t numHead = tilingData_.get_numHead();
-
     if (IsB1SD(context_)) {
-        int64_t bns = batchSize * numHead * seqLen;
+        int64_t bns = batchSize * numHead * seqLength;
         int64_t blockFactor = (bns + coreNum_ - 1) / coreNum_;
         int64_t numBlocks = (bns + blockFactor - 1) / blockFactor;
         tilingData_.set_blockFactor(blockFactor);

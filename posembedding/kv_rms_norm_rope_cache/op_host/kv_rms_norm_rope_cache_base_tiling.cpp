@@ -460,8 +460,11 @@ bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
 
 ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."),
-                return ge::GRAPH_FAILED);
+    if (context_ == nullptr)
+    {
+        // CANNOT OP_LOGE on nullptr context_
+        return ge::GRAPH_FAILED;
+    }
     isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     // GetQuantMode and validate quant terms
     quantMode_ = GetQuantMode(context_);
