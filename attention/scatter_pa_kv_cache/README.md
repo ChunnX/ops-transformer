@@ -235,7 +235,7 @@
       * 当cacheMode为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX（对应场景一）。
       * k_head_size和v_head_size的32字节对齐约束如下：
         * 场景七：必须满足`(k_head_size * sizeof(dtypeKey)) % 32 == 0`与`(v_head_size * sizeof(dtypeValue)) % 32 == 0`。
-        * 场景四、五：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>必须满足上述32字节对齐约束。
+        * 场景四、五：<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>必须满足上述32字节对齐约束。
       * num_head必须小于4095（对应场景七）。
   * 输入值域限制：
       * slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性。
