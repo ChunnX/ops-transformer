@@ -106,7 +106,6 @@ public:
 
         uint64_t nonSplitAxisBytes = tilingData_->nonSplitAxisSize * sizeof(Dtype);
         uint64_t currentTileByteSize = currentTileSize * nonSplitAxisBytes;
-        uint64_t slotBytes = udmaCtx_->rankSize * tileMaxByteSize_;
         if (targetRankCnt_ > 0) {
             const uint32_t targetRankStart = targetRankStart_;
             const uint32_t targetRankCnt = targetRankCnt_;
