@@ -19,12 +19,23 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/apace/core/aiv_comm/collective_comm_context.h"
 #include "quant_reduce_scatter_context.h"
 #include "quant_reduce_scatter_tiling_data.h"
 
 namespace QuantMTECommImpl {
 
 using namespace AscendC;
+
+// host 侧 CommChannelBuilderManager 创建并经 HcclEngineCtxCopy 下发的通道上下文，
+// 布局为 { CommUbmemContext dataCtx; CommUbmemContext barrierCtx; }（apace 公共头仅提供
+// 子结构，组合布局与 host 侧 comm_channel_builder_manager.cpp 的 UbmemCommContext 保持一致）。
+// dataCtx.commBufferAddrs 为各 rank 的 HCCL 内置 buffer 地址，UB_MEM 协议下可直通 GM 读写。
+struct ChannelCommContext {
+    Apace::AivComm::CommUbmemContext dataCtx;
+    Apace::AivComm::CommUbmemContext barrierCtx;
+};
+
 // 后缀_BYTES 表示单位为字节大小B, _NUM 表示单位为个
 constexpr static uint32_t UB_ALIGN_BYTES = 32U;    // UB按32B对齐
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;        // float格式下32B对齐需要 32/4 =8个
@@ -45,6 +56,7 @@ class MTECommunication {
 public:
     __aicore__ inline MTECommunication(){};
     __aicore__ inline void InitHcclContext(GM_ADDR context, uint64_t hcclBufferSize);
+    __aicore__ inline void InitHcclContextFromChannel(GM_ADDR context, uint64_t hcclBufferSize);
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize,
                                         uint64_t dataSpaceGmSize);
@@ -119,6 +131,22 @@ __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext(GM_ADDR c
     for (int i = 0; i < rankDimHccl_; i++) {
         windowsIn_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
         windowsOut_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i] + hcclBufferSize / 2;
+    }
+}
+
+// 解析 CommChannelBuilderManager(apace CommChannelBuilder) 创建的 UBMEM 通道上下文。
+// 单机部署约束：仅支持所有 rank 同属一个通信域的场景，此时 dataCtx.rankSize 即本机全部 rank，
+// 各 rank 的 HCCL 内置 buffer 地址（UB_MEM 协议）可直通 GM 访问；跨机场景地址不可直通，本算子不支持。
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::InitHcclContextFromChannel(GM_ADDR context,
+                                                                                  uint64_t hcclBufferSize)
+{
+    __gm__ ChannelCommContext *channelContext = (__gm__ ChannelCommContext *)context;
+    rankIdHccl_ = channelContext->dataCtx.rankId;
+    rankDimHccl_ = channelContext->dataCtx.rankSize;
+    for (uint32_t i = 0; i < rankDimHccl_; i++) {
+        windowsIn_[i] = (GM_ADDR)channelContext->dataCtx.commBufferAddrs[i];
+        windowsOut_[i] = (GM_ADDR)channelContext->dataCtx.commBufferAddrs[i] + hcclBufferSize / 2;
     }
 }
 
