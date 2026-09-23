@@ -734,6 +734,66 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_kc_vc_dim0_mismatch)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_compress_alibi_head_not_align_32)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    // bf16 head=13 -> 26B, not 32B-aligned
+    gert::TilingContextPara tilingContextPara(
+        "ScatterPaKvCache",
+        {
+            {{{256, 1, 13}, {256, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{256, 1, 1, 13}, {256, 1, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{256, 1, 13}, {256, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{256, 1, 1, 13}, {256, 1, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{256, 1, 1, 13}, {256, 1, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{256, 1, 1, 13}, {256, 1, 1, 13}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Alibi")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_compress_rope_head_not_align_32)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    // bf16 head=8 -> 16B, not 32B-aligned
+    gert::TilingContextPara tilingContextPara(
+        "ScatterPaKvCache",
+        {
+            {{{16, 2, 8}, {16, 2, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{20, 1, 1, 8}, {20, 1, 1, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 2, 8}, {16, 2, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{20, 1, 1, 8}, {20, 1, 1, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{20, 1, 1, 8}, {20, 1, 1, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{20, 1, 1, 8}, {20, 1, 1, 8}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Rope")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
 TEST_F(ScatterPaKvCacheTilingTest, tiling_error_compress_kc_dim2_not_1)
 {
     optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
