@@ -556,32 +556,27 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute
             }
         }
     } else if (constInfo.sparseBlockCount > 0 && info.cmpS2IdLimit > 0) {
-        uint32_t rowBase = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-        for (uint32_t row = 0; row < dealRowCount; ++row) {
-            uint32_t mPos = rowBase + row;
-            uint32_t qRel = mPos / constInfo.gSize;
-            uint64_t topkRow = info.topKBaseOffset + static_cast<uint64_t>(qRel) * constInfo.sparseBlockCount;
-            int32_t probeCount = static_cast<int32_t>(constInfo.sparseBlockCount);
-            if (info.cmpS2IdLimit < probeCount) {
-                probeCount = info.cmpS2IdLimit;
+        // TurboQuant tiles one query's gSize heads together, so every row in this block shares one top-k row.
+        uint64_t topkRow = info.topKBaseOffset;
+        int32_t probeCount = static_cast<int32_t>(constInfo.sparseBlockCount);
+        if (info.cmpS2IdLimit < probeCount) {
+            probeCount = info.cmpS2IdLimit;
+        }
+        int32_t validCount = probeCount;
+        int32_t probeTopk = probeCount > 0 ? topkGm_.GetValue(topkRow + probeCount - 1) : -1;
+        if (probeTopk < 0) {
+            validCount = 0;
+            while (validCount < probeCount && topkGm_.GetValue(topkRow + static_cast<uint32_t>(validCount)) >= 0) {
+                ++validCount;
             }
-            int32_t validCount = probeCount;
-            int32_t probeTopk = probeCount > 0 ? topkGm_.GetValue(topkRow + probeCount - 1) : -1;
-            if (probeTopk < 0) {
-                validCount = 0;
-                while (validCount < probeCount && topkGm_.GetValue(topkRow + static_cast<uint32_t>(validCount)) >= 0) {
-                    ++validCount;
-                }
-            }
-            int32_t tileStart = static_cast<int32_t>(info.relativeS2Idx * constInfo.s2BaseSize);
-            int32_t maskStart = validCount - tileStart;
-            if (maskStart < 0) {
-                maskStart = 0;
-            }
-            if (maskStart < static_cast<int32_t>(info.actualSingleProcessSInnerSize)) {
-                SetInfInBlk(mmResUb[row * columnCount], 1, columnCount, maskStart,
-                            static_cast<int64_t>(columnCount) - 1);
-            }
+        }
+        int32_t tileStart = static_cast<int32_t>(info.relativeS2Idx * constInfo.s2BaseSize);
+        int32_t maskStart = validCount - tileStart;
+        if (maskStart < 0) {
+            maskStart = 0;
+        }
+        if (maskStart < static_cast<int32_t>(info.actualSingleProcessSInnerSize)) {
+            SetInfInBlk(mmResUb, dealRowCount, columnCount, maskStart, static_cast<int64_t>(columnCount) - 1);
         }
     }
 }
