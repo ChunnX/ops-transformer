@@ -17,8 +17,8 @@
 #ifndef OPS_OP_HOST_KV_CACHE_TURBO_QUANT_TILING_H_
 #define OPS_OP_HOST_KV_CACHE_TURBO_QUANT_TILING_H_
 
-#include "register/tilingdata_base.h"
-#include "kernel_tiling/kernel_tiling.h"
+#include <register/tilingdata_base.h>
+#include <tiling/tiling_api.h>
 
 namespace optiling {
 
