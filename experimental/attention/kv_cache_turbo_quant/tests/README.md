@@ -1,6 +1,6 @@
 # KvCacheTurboQuant 自测说明
 
-验收人按下面步骤可以复现精度和性能结果。环境为 CANN 9.1.0，Atlas A2（ascend910b）或 Atlas A3（ascend910_93）。本机实测卡为 Ascend910_93，Vector/Cube 指令集为 `dav-c220`。
+验收人按下面步骤可以复现精度和性能结果。环境为 CANN 9.1.0，Atlas A2（ascend910b）或 Atlas A3（ascend910_93）。本次验收实测卡为 Atlas 800T A2、Ascend 910B4（aic=20，aiv=40），Vector/Cube 指令集为 `dav-c220`。
 
 ## 用例
 
@@ -52,3 +52,5 @@ KVTQ_BUILD_ONLY=1 bash examples/build.sh /tmp/kv_cache_turbo_quant_test
 ```bash
 ASCEND_RT_VISIBLE_DEVICES=0 bash examples/build.sh
 ```
+
+进程内逻辑设备号是 0。`npu-smi` 打印的物理编号不要写进 `ASCEND_RT_VISIBLE_DEVICES`。golden 依赖 torch_npu，且 `torch.npu.matmul.allow_hf32` 保持 False。默认解释器是 `/usr/local/python3.12.13/bin/python3`；若换解释器，先 `export PYTHON=/path/to/python3`。

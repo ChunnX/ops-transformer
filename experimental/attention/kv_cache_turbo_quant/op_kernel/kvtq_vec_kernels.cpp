@@ -13,7 +13,9 @@
  * head_dim = qjl_dim = 128, mse_bits in {2, 3, 4}.
  *
  * cast:     BF16 kv -> FP32. The host then matches torch with aclnn vector_norm and div.
- * quantize: Lloyd-Max indices and the raw residual y - y_hat
+ * quantize: Lloyd-Max indices and the raw residual y - y_hat.
+ *           The index is a binary search over the same strict-greater midpoints.
+ *           y_hat is gathered from the centroid table, not a sum of code gaps.
  * store:    FP32 norm and gamma -> BF16, round-to-nearest-even
  * sign:     1-bit QJL pack from an already projected residual
  */
@@ -70,6 +72,50 @@ __aicore__ inline void StoreRows(const GlobalTensor<float> &dst, const LocalTens
     PipeBarrier<PIPE_ALL>();
     for (int32_t i = 0; i < nRows; ++i) {
         DataCopy(dst[(row0 + static_cast<uint32_t>(i)) * kDim], src[i * kDim], kDim);
+    }
+    PipeBarrier<PIPE_ALL>();
+}
+
+// idx floats are exact integers. Gather offsets on dav-c220 are bytes.
+__aicore__ inline void IndexToByteOffset(const LocalTensor<float> &index, const LocalTensor<int32_t> &offI,
+                                         int32_t count)
+{
+    Cast(offI, index, RoundMode::CAST_RINT, count);
+    PipeBarrier<PIPE_V>();
+    ShiftLeft(offI, offI, static_cast<int32_t>(2), count);
+    PipeBarrier<PIPE_V>();
+}
+
+// Same bytes as shifting the group word out one byte at a time. A raw UB walk avoids
+// the per-element scalar-pipe drain inside GetValue/SetValue.
+__aicore__ inline void PackGroupBytes(const LocalTensor<int32_t> &wordsI, const LocalTensor<int32_t> &wordsHiI,
+                                      const LocalTensor<uint8_t> &packed, int32_t nWords, int32_t bits)
+{
+    PipeBarrier<PIPE_ALL>();
+    __ubuf__ int32_t *lo = reinterpret_cast<__ubuf__ int32_t *>(wordsI.GetPhyAddr());
+    __ubuf__ int32_t *hi = reinterpret_cast<__ubuf__ int32_t *>(wordsHiI.GetPhyAddr());
+    __ubuf__ uint8_t *out = reinterpret_cast<__ubuf__ uint8_t *>(packed.GetPhyAddr());
+    if (bits == 4) {
+        for (int32_t w = 0; w < nWords; ++w) {
+            const uint32_t word = static_cast<uint32_t>(lo[w]) + (static_cast<uint32_t>(hi[w]) << 16);
+            out[w * 4] = static_cast<uint8_t>(word);
+            out[w * 4 + 1] = static_cast<uint8_t>(word >> 8);
+            out[w * 4 + 2] = static_cast<uint8_t>(word >> 16);
+            out[w * 4 + 3] = static_cast<uint8_t>(word >> 24);
+        }
+    } else if (bits == 3) {
+        for (int32_t w = 0; w < nWords; ++w) {
+            const uint32_t word = static_cast<uint32_t>(lo[w]);
+            out[w * 3] = static_cast<uint8_t>(word);
+            out[w * 3 + 1] = static_cast<uint8_t>(word >> 8);
+            out[w * 3 + 2] = static_cast<uint8_t>(word >> 16);
+        }
+    } else {
+        for (int32_t w = 0; w < nWords; ++w) {
+            const uint32_t word = static_cast<uint32_t>(lo[w]);
+            out[w * 2] = static_cast<uint8_t>(word);
+            out[w * 2 + 1] = static_cast<uint8_t>(word >> 8);
+        }
     }
     PipeBarrier<PIPE_ALL>();
 }
@@ -143,7 +189,7 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
 
     TPipe pipe;
     TBuf<TPosition::VECCALC> yBuf, idxBuf, yhatBuf, tmpBuf, oneBuf, wordBuf, wordHiBuf, iBuf, iHiBuf, maskBuf, packBuf,
-        wLoBuf, wHiBuf;
+        wLoBuf, wHiBuf, tableBuf;
     pipe.InitBuffer(yBuf, kTile * kDim * sizeof(float));
     pipe.InitBuffer(idxBuf, kTile * kDim * sizeof(float));
     pipe.InitBuffer(yhatBuf, kTile * kDim * sizeof(float));
@@ -157,6 +203,7 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
     pipe.InitBuffer(packBuf, kTile * 64 + 32);
     pipe.InitBuffer(wLoBuf, kDim * sizeof(float));
     pipe.InitBuffer(wHiBuf, kDim * sizeof(float));
+    pipe.InitBuffer(tableBuf, 32 * sizeof(float));
 
     LocalTensor<float> y = yBuf.Get<float>();
     LocalTensor<float> idx = idxBuf.Get<float>();
@@ -171,6 +218,14 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
     LocalTensor<uint8_t> packed = packBuf.Get<uint8_t>();
     LocalTensor<float> wLo = wLoBuf.Get<float>();
     LocalTensor<float> wHi = wHiBuf.Get<float>();
+    LocalTensor<float> table = tableBuf.Get<float>();
+    LocalTensor<int32_t> offI = ones.ReinterpretCast<int32_t>();
+    LocalTensor<uint32_t> offU = ones.ReinterpretCast<uint32_t>();
+    const int32_t nLevel = nBnd + 1;
+    for (int32_t i = 0; i < 16; ++i) {
+        table.SetValue(i, i < nLevel ? cent[i] : 0.0f);
+        table.SetValue(16 + i, i < nBnd ? bnd[i] : 0.0f);
+    }
 
     for (int32_t i = 0; i < kDim; ++i) {
         const int32_t lane = i & 7;
@@ -191,27 +246,36 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
         const int32_t count = nRows * kDim;
         LoadRows(yGm, y, base, nRows);
         Duplicate(idx, 0.0f, count);
-        Duplicate(ones, 1.0f, count);
         PipeBarrier<PIPE_V>();
-        for (int32_t b = 0; b < nBnd; ++b) {
-            Compares(mask, y, bnd[b], CMPMODE::GT, count);
-            Select(tmp, mask, ones, 0.0f, SELMODE::VSEL_TENSOR_SCALAR_MODE, static_cast<uint32_t>(count));
+        // idx = count of strict-greater midpoints. Binary search visits the same
+        // boundaries as (y > bnd).sum, so a value that lands on a midpoint stays
+        // in the lower code.
+        for (int32_t bit = bits - 1; bit >= 0; --bit) {
+            const int32_t stepI = 1 << bit;
+            const float step = static_cast<float>(stepI);
+            set_mask_norm();
+            if (bit == bits - 1) {
+                Compares(mask, y, bnd[stepI - 1], CMPMODE::GT, count);
+            } else {
+                Adds(tmp, idx, static_cast<float>(stepI - 1), count);
+                PipeBarrier<PIPE_V>();
+                IndexToByteOffset(tmp, offI, count);
+                Gather(tmp, table, offU, 16u * sizeof(float), static_cast<uint32_t>(count));
+                PipeBarrier<PIPE_V>();
+                Compare(mask, y, tmp, CMPMODE::GT, static_cast<uint32_t>(count));
+            }
+            PipeBarrier<PIPE_V>();
+            Duplicate(yhat, step, count);
+            PipeBarrier<PIPE_V>();
+            Select(tmp, mask, yhat, 0.0f, SELMODE::VSEL_TENSOR_SCALAR_MODE, static_cast<uint32_t>(count));
+            PipeBarrier<PIPE_V>();
             Add(idx, idx, tmp, count);
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
         // Table lookup, not a sum of centroid gaps. The summed gaps differ from the
         // table by a few ulps and can flip a QJL sign that sits on zero.
-        Duplicate(yhat, cent[0], count);
-        const int32_t nLevel = nBnd + 1;
-        for (int32_t level = 1; level < nLevel; ++level) {
-            Compares(mask, idx, static_cast<float>(level), CMPMODE::EQ, count);
-            Duplicate(tmp, cent[level], count);
-            Select(ones, mask, tmp, yhat, SELMODE::VSEL_TENSOR_TENSOR_MODE, static_cast<uint32_t>(count));
-            PipeBarrier<PIPE_V>();
-            Adds(yhat, ones, 0.0f, count);
-            PipeBarrier<PIPE_V>();
-        }
-        Duplicate(ones, 1.0f, count);
+        IndexToByteOffset(idx, offI, count);
+        Gather(yhat, table, offU, 0u, static_cast<uint32_t>(count));
         PipeBarrier<PIPE_V>();
 
         set_mask_norm();
@@ -232,17 +296,7 @@ extern "C" __global__ __aicore__ void kvtq_quantize(GM_ADDR rotated, GM_ADDR qua
             PipeBarrier<PIPE_V>();
             Cast(wordsHiI, wordsHi, RoundMode::CAST_RINT, nCast);
         }
-        PipeBarrier<PIPE_ALL>();
-        for (int32_t w = 0; w < nWords; ++w) {
-            uint32_t word = static_cast<uint32_t>(wordsI.GetValue(w));
-            if (bits == 4) {
-                word += static_cast<uint32_t>(wordsHiI.GetValue(w)) << 16;
-            }
-            for (int32_t b = 0; b < bits; ++b) {
-                packed.SetValue(w * bits + b, static_cast<uint8_t>((word >> (8 * b)) & 0xffu));
-            }
-        }
-        PipeBarrier<PIPE_ALL>();
+        PackGroupBytes(wordsI, wordsHiI, packed, nWords, bits);
         DataCopyExtParams idxParams(1, static_cast<uint32_t>(nRows * idxBytes), 0, 0, 0);
         DataCopyPad(idxGm[base * static_cast<uint32_t>(idxBytes)], packed, idxParams);
         PipeBarrier<PIPE_ALL>();

@@ -138,7 +138,7 @@ begin = blockIdx * base + (blockIdx < rem ? blockIdx : rem)
 
 `kvtq_cast_fp32`：BF16 转 FP32。单位向量不在这个 kernel 里做。`aclnnLinalgVectorNorm` 和 `aclnnDiv` 与 `torch.linalg.vector_norm` 走同一条实现，范数和除法逐位一致。Cube GEMM 在同一输入上和 torch matmul 逐位一致，因此旋转后的坐标和 QJL 投影不会在 Lloyd-Max 边界或 0 附近差出一个码字。
 
-`kvtq_quantize`：tile 为 64 行。码字累加用比较掩码加 1。重构值按码字从质心表取值，不用边界间距累加，避免几个 ULP 的差在 0 附近翻转 QJL 符号。打包把码字乘以 `2^(lane*bits)` 的常量表，再 `BlockReduceSum`。2-bit 和 3-bit 的组内整数不超过 2^24-1，FP32 可以精确表示。4-bit 拆成低 4 通道和高 4 通道，高半字左移 16 位后相加。`float` 到 `int32` 使用 `CAST_RINT`。残差 `y - y_hat` 原样写出，再由同一套 vector_norm 和 div 得到残差单位向量。`gamma = x_norm * r_norm` 用 `aclnnMul`。BF16 写出用标量 ties-to-even，和 numpy bfloat16 一致。
+`kvtq_quantize`：tile 为 64 行。码字是各中点上的严格大于次数，用二分查找访问同一组边界，落在边界上的值仍归入左侧码字。重构值用 `Gather` 按码字下标读取质心表，不用边界间距累加，避免几个 ULP 的差在 0 附近翻转 QJL 符号。打包把码字乘以 `2^(lane*bits)` 的常量表，再 `BlockReduceSum`。2-bit 和 3-bit 的组内整数不超过 2^24-1，FP32 可以精确表示。4-bit 拆成低 4 通道和高 4 通道，高半字左移 16 位后相加。`float` 到 `int32` 使用 `CAST_RINT`。字节按低位在前从组字里取出。残差 `y - y_hat` 原样写出，再由同一套 vector_norm 和 div 得到残差单位向量。`gamma = x_norm * r_norm` 用 `aclnnMul`。BF16 写出用标量 ties-to-even，和 numpy bfloat16 一致。
 
 `kvtq_sign`：`Compares` 的 `GE 0` 掩码按字节排布就是 LSB-first 的 1-bit QJL，直接 `DataCopyPad` 写出。
 
@@ -154,7 +154,7 @@ Cube `mm_fp32_transb`：`KERNEL_TYPE_AIC_ONLY`，编译宏 `ASCENDC_CUBE_ONLY`�
 | Atlas A3 训练/推理（ascend910_93） | √ |
 | Atlas 800I/800T A2 | √ |
 
-实测平台是 Ascend910_93：24 个 Cube 核、48 个 Vector 核、UB 192KB。A2/A3 的 C220 核使用同一套 `dav-c220-vec` / `dav-c220-cube` 二进制。
+本次验收实测平台是 Atlas 800T A2、Ascend 910B4：20 个 Cube 核、40 个 Vector 核、UB 192KB。A2/A3 的 C220 核使用同一套 `dav-c220-vec` / `dav-c220-cube` 二进制。
 
 ## 算子约束限制
 
@@ -174,7 +174,7 @@ Cube `mm_fp32_transb`：`KERNEL_TYPE_AIC_ONLY`，编译宏 `ASCENDC_CUBE_ONLY`�
 | 编码一致性 | 五个性能 case，以及 `num_kv_heads` 为 4 和 32 的两个边界 case，idx、qjl、norm、gamma 与 `tests/golden.py`（torch_npu matmul + numpy bf16 round-to-nearest-even）失配均为 0 | case.json 阈值 idx/qjl atol 约 1e-5，norm/gamma 为 0 |
 | 重构相对 MSE | 256 行、3-bit、Hadamard：均值 0.0255，最大 0.0482，均小于 0.05 | 任务书 3.2 |
 | 内积相对误差 | `\|cos\| > 0.2` 的 2048 个样本，95 分位 0.0398，小于 0.1 | 任务书 3.2 |
-| 性能 | 五档平均耗时 44.226 / 71.142 / 326.896 / 277.311 / 415.695 us，相对 eager 基线约 33.7×、21.8×、11.8×、13.0×、12.7×，均不低于 10× | 任务书 3.3 |
+| 性能 | 五档平均耗时 38.592 / 78.311 / 301.793 / 291.120 / 316.779 us，相对 eager 基线约 38.7×、19.8×、12.8×、12.4×、16.7×，均不低于 10× | 任务书 3.3 |
 | 内存 | 不涉及 | 任务书 3.4 |
 
 复现方式见 `tests/README.md`。`bash examples/build.sh` 退出码为 0 且打印 `PASSED`。
@@ -183,7 +183,7 @@ Cube `mm_fp32_transb`：`KERNEL_TYPE_AIC_ONLY`，编译宏 `ASCENDC_CUBE_ONLY`�
 
 - 个人仓：https://gitcode.com/Wilbert_666/kv_cache_turbo_quant ，分支 `main`，算子目录 `kv_cache_turbo_quant/`。已邀请 `Ascend-CANN` 作为开发者。自测报告在该仓 `task_submission/`。
 - 本设计文档 PR：https://gitcode.com/cann/cann-ops-competitions/merge_requests/1821
-- 算子源码 PR：https://gitcode.com/cann/ops-transformer/merge_requests/12860 ，目录 `experimental/attention/kv_cache_turbo_quant`
+- 算子源码 PR：https://gitcode.com/cann/ops-transformer/merge_requests/12860 ，目录 `experimental/attention/kv_cache_turbo_quant`。
 
 ## 兼容性分析
 
