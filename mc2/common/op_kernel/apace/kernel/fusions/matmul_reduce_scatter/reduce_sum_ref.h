@@ -76,10 +76,11 @@ public:
 
     // Init 外部传参: 归纳全部一次性输入, 生命周期内不变
     struct RsParams {
-        GM_ADDR recvWindowAddr{0};   // 通信窗口: 远端 rank PUT 过来的各份部分和
-        GM_ADDR selfPartialAddr{0};  // 本卡 workspace: 本 rank matmul 输出的部分和
-        GM_ADDR outputAddr{0};       // 归约结果输出地址
-        uint64_t rankDim{0};         // 参与归约的 rank 总数
+        GM_ADDR recvWindowAddr{0};  // 通信窗口: 远端 rank PUT 过来的各份部分和
+        GM_ADDR selfPartialAddr{0}; // 本卡 workspace: 本 rank matmul 输出的部分和
+        GM_ADDR outputAddr{0};      // 归约结果输出地址
+        uint64_t rankDim{0};        // 参与归约的 rank 总数 (前置条件: ≤ COMM_MAX_RS_RANK=64,
+                             //  超出时 ExecuteReduceSum 直接返回; ST 装配层已校验 rankNum ∈ [2,16])
         uint64_t rankId{0};          // 本 rank 编号
         uint64_t aivNum{0};          // 参与归约计算的 AIV 核数
         uint64_t rowStride{0};       // 相邻 rank 部分和的行间距 (元素数)
@@ -100,6 +101,12 @@ public:
     // 逐行同步 reduce_sum: tileM 行均分到 aivNum 个核, 每行按 N 分段累加 rankDim 份输入
     __aicore__ inline void ExecuteReduceSum(uint64_t tileM)
     {
+        // rankDim 上界防护: inIOElem/inSumElem 为定长 [COMM_MAX_RS_RANK] 栈数组,
+        // rankDim 超出时越界写 (SEC-1.2); 调用方不变量 rankNum ≤ 16, 此处防御性兜底
+        if (rsParams_.rankDim > COMM_MAX_RS_RANK) {
+            return;
+        }
+
         // 行长按 32B 对齐后的元素数 (保证各分段 DataCopy/Cast 对齐)
         uint64_t alignedN = ApaceKernel::CeilDiv(rsParams_.nSize, SEG_ALIGN_ELEMS) * SEG_ALIGN_ELEMS;
 

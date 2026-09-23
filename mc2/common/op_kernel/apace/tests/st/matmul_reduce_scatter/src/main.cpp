@@ -75,6 +75,9 @@ __aicore__ inline void ReduceSumDtypeCompileCheck()
     reduceSumFloat.ExecuteReduceSum(0);
 }
 
+// headMSize 命令行缺省值 (P1-b tile 策略旋钮默认值)
+constexpr int QMRS_DEFAULT_HEAD_M_SIZE = 512;
+
 void printUsage(const std::string &programName)
 {
     std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
@@ -84,7 +87,7 @@ void printUsage(const std::string &programName)
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
-    std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
+    std::cerr << "  headMSize: optional, long block M size (default " << QMRS_DEFAULT_HEAD_M_SIZE << ")" << std::endl;
     std::cerr << "Example: " << programName << " 2048 3584 4096 4" << std::endl;
 }
 
@@ -110,6 +113,8 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
     if (argc < 5) {
         throw std::invalid_argument("ERROR: Lacks Arguments");
     }
+    // stoi 超范围抛 std::out_of_range (与 invalid_argument 无继承关系), 两者均须捕获,
+    // 否则异常逃逸导致 terminate 而非优雅报错
     try {
         m = std::stoi(argv[1]);
         k = std::stoi(argv[2]);
@@ -117,6 +122,8 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         rankNum = std::stoi(argv[4]);
     } catch (const std::invalid_argument &) {
         throw std::invalid_argument("ERROR: m k n rankNum must be Integer");
+    } catch (const std::out_of_range &) {
+        throw std::invalid_argument("ERROR: m k n rankNum exceeds int range");
     }
 
     mode = (argc >= 6) ? std::string(argv[5]) : std::string("precision");
@@ -124,7 +131,7 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: mode must be 'precision' or 'perf'");
     }
 
-    headMSize = (argc >= 7) ? std::stoi(argv[6]) : 512;
+    headMSize = (argc >= 7) ? std::stoi(argv[6]) : QMRS_DEFAULT_HEAD_M_SIZE;
     if (headMSize <= 0) {
         throw std::invalid_argument("ERROR: headMSize must be positive");
     }
@@ -177,7 +184,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     }
     headMSize = (headMSize / QMRS_MIN_ROW_ALIGN) * QMRS_MIN_ROW_ALIGN;
     if (headMSize == 0) {
-        headMSize = 16;
+        headMSize = QMRS_MIN_ROW_ALIGN;
     }
 
     uint32_t headTileCnt = chunkM / headMSize;
@@ -330,12 +337,13 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
 
     // 输入数据：A [m, k] fp8, ScaleA [m, ceil(k/64)*2] fp8_e8m0
     // B [n, k] fp8 (TransB=true, 列主序), ScaleB [n, ceil(k/64)*2] fp8_e8m0
-    std::vector<uint8_t> hostA(m * k, 0);
-    std::vector<uint8_t> hostB(n * k, 0); // TransB=true: B 存储为 [n, k] C-order
-    std::vector<uint8_t> hostScaleA(m * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
-    std::vector<uint8_t> hostScaleB(n * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
+    // size_t 先行提升防 int32×int32 有符号溢出 (m*k/n*k 可超 INT_MAX → UB/回绕)
+    std::vector<uint8_t> hostA(static_cast<size_t>(m) * k, 0);
+    std::vector<uint8_t> hostB(static_cast<size_t>(n) * k, 0); // TransB=true: B 存储为 [n, k] C-order
+    std::vector<uint8_t> hostScaleA(static_cast<size_t>(m) * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
+    std::vector<uint8_t> hostScaleB(static_cast<size_t>(n) * CeilDiv(k, QMRS_MX_GROUP_SIZE) * QMRS_MX_SCALE_BYTES, 0);
     // 输出：[chunkM, n] bfloat16 per rank
-    std::vector<uint16_t> hostOutput(chunkM * n, 0);
+    std::vector<uint16_t> hostOutput(static_cast<size_t>(chunkM) * n, 0);
 
     auto sizeA = static_cast<size_t>(1) * hostA.size() * sizeof(uint8_t);
     auto sizeB = static_cast<size_t>(1) * hostB.size() * sizeof(uint8_t);
@@ -381,17 +389,43 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     GM_ADDR deviceOutput = nullptr;
     GM_ADDR deviceWorkspace = nullptr;
 
-    ACL_CHECK(aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
+    // 显存申请失败必须退出: ACL_CHECK 仅打印不返回, nullptr 传入 memcpy/kernel 会触发
+    // 设备侧非法访问 (SEC-4.1); 失败路径释放已申请资源
+    auto mallocOrCleanup = [&](GM_ADDR *ptr, size_t size, const char *name) -> bool {
+        if (aclrtMalloc((void **)ptr, size, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_SUCCESS) {
+            std::cerr << "aclrtMalloc failed: " << name << " (" << size << " bytes)" << std::endl;
+            if (deviceA != nullptr)
+                aclrtFree(deviceA);
+            if (deviceB != nullptr)
+                aclrtFree(deviceB);
+            if (deviceScaleA != nullptr)
+                aclrtFree(deviceScaleA);
+            if (deviceScaleB != nullptr)
+                aclrtFree(deviceScaleB);
+            if (deviceOutput != nullptr)
+                aclrtFree(deviceOutput);
+            if (deviceWorkspace != nullptr)
+                aclrtFree(deviceWorkspace);
+            return false;
+        }
+        return true;
+    };
+    if (!mallocOrCleanup(&deviceA, sizeA, "deviceA") || !mallocOrCleanup(&deviceB, sizeB, "deviceB") ||
+        !mallocOrCleanup(&deviceScaleA, sizeScaleA, "deviceScaleA") ||
+        !mallocOrCleanup(&deviceScaleB, sizeScaleB, "deviceScaleB")) {
+        return -1;
+    }
     // cGm: 最终输出 [chunkM, n] bfloat16
     size_t sizeC = static_cast<size_t>(chunkM) * n * sizeof(uint16_t);
-    ACL_CHECK(aclrtMalloc((void **)&deviceOutput, sizeC, ACL_MEM_MALLOC_HUGE_ONLY));
+    if (!mallocOrCleanup(&deviceOutput, sizeC, "deviceOutput")) {
+        return -1;
+    }
     // workspace: AIC 写入 C_i 的缓冲区, 大小 = m * n * sizeof(bfloat16)
     // PUT 模式下 localAddr = workspace, AIV 从此处推送到其他 rank win 区
     size_t sizeWorkspace = static_cast<size_t>(m) * n * sizeof(uint16_t);
-    ACL_CHECK(aclrtMalloc((void **)&deviceWorkspace, sizeWorkspace, ACL_MEM_MALLOC_HUGE_ONLY));
+    if (!mallocOrCleanup(&deviceWorkspace, sizeWorkspace, "deviceWorkspace")) {
+        return -1;
+    }
     INFO_LOG("[Rank %d] workspace size=%zu bytes (m=%d, n=%d)", rankId, sizeWorkspace, m, n);
 
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
@@ -455,6 +489,10 @@ int main(int argc, char *argv[])
         parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
+        printUsage(argv[0]);
+        return -1;
+    } catch (const std::out_of_range &e) {
+        std::cerr << "ERROR: argument exceeds int range: " << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }

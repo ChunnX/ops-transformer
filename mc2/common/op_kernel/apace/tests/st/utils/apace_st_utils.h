@@ -41,7 +41,7 @@
 #define ACL_CHECK(status) \
     do { \
         aclError error = status; \
-        if (error != ACL_ERROR_NONE) { \
+        if (error != ACL_SUCCESS) { \
             std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << error << std::endl; \
         } \
     } while (0)
@@ -49,7 +49,7 @@
 // ACL错误检查宏
 #define ACL_CHECK_WITH_RET(cond, log_func, return_expr) \
     do { \
-        if ((cond) != ACL_ERROR_NONE) { \
+        if ((cond) != ACL_SUCCESS) { \
             log_func; \
             return_expr; \
         } \

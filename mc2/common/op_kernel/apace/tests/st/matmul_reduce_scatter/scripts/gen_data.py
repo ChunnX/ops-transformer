@@ -56,6 +56,8 @@ def gen_golden_data_quant_matmul_reduce_scatter(m, k, n, rank_num):
       n: 矩阵 B 的列数
       rank_num: rank 数量
     """
+    if rank_num <= 0:
+        raise ValueError(f"rank_num must be positive, got {rank_num}")
     if m % rank_num != 0:
         raise ValueError(f"m={m} must be divisible by rank_num={rank_num}")
 

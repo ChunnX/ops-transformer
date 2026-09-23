@@ -134,6 +134,8 @@ if __name__ == "__main__":
 
     m, n, rank_num, base_dir = args.m, args.n, args.rank_num, args.base_dir
 
+    if rank_num <= 0:
+        raise ValueError(f"rank_num must be positive, got {rank_num}")
     if m % rank_num != 0:
         print(f"Error: m={m} is not divisible by rank_num={rank_num}")
         sys.exit(1)
