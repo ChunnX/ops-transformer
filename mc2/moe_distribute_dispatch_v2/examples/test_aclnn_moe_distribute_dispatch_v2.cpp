@@ -52,7 +52,7 @@ const uint32_t EP_WORLD_SIZE = 2;
 const uint32_t DEV_NUM = EP_WORLD_SIZE;
 
 const bool IS_TEST_A2 = false;
-const bool IS_TEST_A3A5 = true;
+const bool IS_TEST_A3 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
 const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2;
 
@@ -97,7 +97,7 @@ void FreeDeviceAddr(void *deviceAddr)
     }
 }
 
-int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
+int launchOneThreadDispatchV2AndCombineV2_A3(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
@@ -657,7 +657,7 @@ int run_example_on_A2()
     return 0;
 }
 
-int run_example_on_A3A5()
+int run_example_on_A3()
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -698,7 +698,7 @@ int run_example_on_A3A5()
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
         threads[rankId].reset(new (std::nothrow)
-                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A3A5, std::ref(args[rankId])));
+                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A3, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
@@ -722,9 +722,9 @@ int main(int argc, char *argv[])
     if (IS_TEST_A2) {
         LOG_PRINT("Example on <Atlas A2> will be executed!\n");
         run_example_on_A2();
-    } else if (IS_TEST_A3A5) {
-        LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-        run_example_on_A3A5();
+    } else if (IS_TEST_A3) {
+        LOG_PRINT("Example on <Atlas A3> will be executed!\n");
+        run_example_on_A3();
     }
 
     return 0;
