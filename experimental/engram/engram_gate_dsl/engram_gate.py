@@ -650,37 +650,122 @@ class EngramGateKernel:
                 mem_copy(self.key_a, gm_key[first_token, hc_idx, None])
                 mem_copy(self.weight_ub, gm_weight[hc_idx, None])
                 mem_copy(self.value_a, gm_value[first_token, None])
-                for pair_idx in range(pairs):
-                    row0 = first_row + pair_idx * pair_stride
+                n_groups = pairs // 3
+                for group_idx in range(n_groups):
+                    base = first_row + group_idx * 3 * pair_stride
+                    row0 = base
                     row1 = row0 + block_num
                     row2 = row0 + pair_stride
                     token0 = row0 // self.hc_mult
                     token1 = row1 // self.hc_mult
                     token2 = row2 // self.hc_mult
-                    phase = pair_idx % 3
-                    if phase == 0:
-                        if row1 < rows:
-                            mem_copy(self.value_b, gm_value[token1, None])
-                            mem_copy(self.x_b, gm_x[token1, hc_idx, None])
-                            mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    if row1 < rows:
+                        mem_copy(self.value_b, gm_value[token1, None])
+                        mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                        mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    mem_copy(self.value_c, gm_value[token2, None])
+                    mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                    mem_copy(self.key_c, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    row0 = base + pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_a, gm_value[token1, None])
+                        mem_copy(self.x_a, gm_x[token1, hc_idx, None])
+                        mem_copy(self.key_a, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_c
+                    self.key_ub = self.key_c
+                    self.value_ub = self.value_c
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    mem_copy(self.value_b, gm_value[token2, None])
+                    mem_copy(self.x_b, gm_x[token2, hc_idx, None])
+                    mem_copy(self.key_b, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
                         self.x_ub = self.x_a
                         self.key_ub = self.key_a
                         self.value_ub = self.value_a
-                        self.out_ub = self.out_a
+                        self.out_ub = self.out_b
                         self._compute(epsilon, clamp_value)
-                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_c, gm_value[token2, None])
-                            mem_copy(self.x_c, gm_x[token2, hc_idx, None])
-                            mem_copy(self.key_c, gm_key[token2, hc_idx, None])
-                        if row1 < rows:
-                            self.x_ub = self.x_b
-                            self.key_ub = self.key_b
-                            self.value_ub = self.value_b
-                            self.out_ub = self.out_b
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                    elif phase == 1:
+                        mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    row0 = base + 2 * pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_c, gm_value[token1, None])
+                        mem_copy(self.x_c, gm_x[token1, hc_idx, None])
+                        mem_copy(self.key_c, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_b
+                    self.key_ub = self.key_b
+                    self.value_ub = self.value_b
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    if row2 < rows:
+                        mem_copy(self.value_a, gm_value[token2, None])
+                        mem_copy(self.x_a, gm_x[token2, hc_idx, None])
+                        mem_copy(self.key_a, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
+                        self.x_ub = self.x_c
+                        self.key_ub = self.key_c
+                        self.value_ub = self.value_c
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                rem = pairs - 3 * n_groups
+                if rem >= 1:
+                    base = first_row + n_groups * 3 * pair_stride
+                    row0 = base
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_b, gm_value[token1, None])
+                        mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                        mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    if row1 < rows:
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    if rem >= 2:
+                        row0 = base + pair_stride
+                        row1 = row0 + block_num
+                        token0 = row0 // self.hc_mult
+                        token1 = row1 // self.hc_mult
+                        mem_copy(self.value_c, gm_value[token2, None])
+                        mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                        mem_copy(self.key_c, gm_key[token2, hc_idx, None])
                         if row1 < rows:
                             mem_copy(self.value_a, gm_value[token1, None])
                             mem_copy(self.x_a, gm_x[token1, hc_idx, None])
@@ -691,36 +776,10 @@ class EngramGateKernel:
                         self.out_ub = self.out_a
                         self._compute(epsilon, clamp_value)
                         mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_b, gm_value[token2, None])
-                            mem_copy(self.x_b, gm_x[token2, hc_idx, None])
-                            mem_copy(self.key_b, gm_key[token2, hc_idx, None])
                         if row1 < rows:
                             self.x_ub = self.x_a
                             self.key_ub = self.key_a
                             self.value_ub = self.value_a
-                            self.out_ub = self.out_b
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                    else:
-                        if row1 < rows:
-                            mem_copy(self.value_c, gm_value[token1, None])
-                            mem_copy(self.x_c, gm_x[token1, hc_idx, None])
-                            mem_copy(self.key_c, gm_key[token1, hc_idx, None])
-                        self.x_ub = self.x_b
-                        self.key_ub = self.key_b
-                        self.value_ub = self.value_b
-                        self.out_ub = self.out_a
-                        self._compute(epsilon, clamp_value)
-                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_a, gm_value[token2, None])
-                            mem_copy(self.x_a, gm_x[token2, hc_idx, None])
-                            mem_copy(self.key_a, gm_key[token2, hc_idx, None])
-                        if row1 < rows:
-                            self.x_ub = self.x_c
-                            self.key_ub = self.key_c
-                            self.value_ub = self.value_c
                             self.out_ub = self.out_b
                             self._compute(epsilon, clamp_value)
                             mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
@@ -735,55 +794,194 @@ class EngramGateKernel:
                     mem_copy(self.key_a, gm_key[first_token, hc_idx, None])
                     mem_copy(self.weight_ub, gm_weight[hc_idx, None])
                     mem_copy(self.value_a, gm_value[first_token, None])
-                for pair_idx in range(pairs):
-                    row0 = first_row + pair_idx * pair_stride
+                n_groups = pairs // 3
+                for group_idx in range(n_groups):
+                    base = first_row + group_idx * 3 * pair_stride
+                    row0 = base
                     row1 = row0 + block_num
                     row2 = row0 + pair_stride
                     token0 = row0 // self.hc_mult
                     token1 = row1 // self.hc_mult
                     token2 = row2 // self.hc_mult
-                    phase = pair_idx % 3
-                    if phase == 0:
-                        if row1 < rows:
-                            masked1 = gm_mask[token1]
-                            if masked1:
-                                mem_copy(self.x_b, gm_x[token1, hc_idx, None])
-                            else:
-                                mem_copy(self.value_b, gm_value[token1, None])
-                                mem_copy(self.x_b, gm_x[token1, hc_idx, None])
-                                mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                        else:
+                            mem_copy(self.value_b, gm_value[token1, None])
+                            mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                            mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    else:
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    masked2 = gm_mask[token2]
+                    if masked2:
+                        mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                    else:
+                        mem_copy(self.value_c, gm_value[token2, None])
+                        mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                        mem_copy(self.key_c, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                        else:
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    row0 = base + pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_a, gm_x[token1, hc_idx, None])
+                        else:
+                            mem_copy(self.value_a, gm_value[token1, None])
+                            mem_copy(self.x_a, gm_x[token1, hc_idx, None])
+                            mem_copy(self.key_a, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_c
+                    self.key_ub = self.key_c
+                    self.value_ub = self.value_c
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    else:
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    masked2 = gm_mask[token2]
+                    if masked2:
+                        mem_copy(self.x_b, gm_x[token2, hc_idx, None])
+                    else:
+                        mem_copy(self.value_b, gm_value[token2, None])
+                        mem_copy(self.x_b, gm_x[token2, hc_idx, None])
+                        mem_copy(self.key_b, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
                         self.x_ub = self.x_a
                         self.key_ub = self.key_a
                         self.value_ub = self.value_a
-                        self.out_ub = self.out_a
-                        masked0 = gm_mask[token0]
-                        if masked0:
+                        self.out_ub = self.out_b
+                        if masked1b:
                             mem_copy(self.out_ub, self.x_ub)
-                            mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
                         else:
                             self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_c, gm_x[token2, hc_idx, None])
-                            else:
-                                mem_copy(self.value_c, gm_value[token2, None])
-                                mem_copy(self.x_c, gm_x[token2, hc_idx, None])
-                                mem_copy(self.key_c, gm_key[token2, hc_idx, None])
-                        if row1 < rows:
-                            masked1b = gm_mask[token1]
-                            self.x_ub = self.x_b
-                            self.key_ub = self.key_b
-                            self.value_ub = self.value_b
-                            self.out_ub = self.out_b
-                            if masked1b:
-                                mem_copy(self.out_ub, self.x_ub)
-                                mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                            else:
-                                self._compute(epsilon, clamp_value)
-                                mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                    elif phase == 1:
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    row0 = base + 2 * pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_c, gm_x[token1, hc_idx, None])
+                        else:
+                            mem_copy(self.value_c, gm_value[token1, None])
+                            mem_copy(self.x_c, gm_x[token1, hc_idx, None])
+                            mem_copy(self.key_c, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_b
+                    self.key_ub = self.key_b
+                    self.value_ub = self.value_b
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    else:
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    if row2 < rows:
+                        masked2 = gm_mask[token2]
+                        if masked2:
+                            mem_copy(self.x_a, gm_x[token2, hc_idx, None])
+                        else:
+                            mem_copy(self.value_a, gm_value[token2, None])
+                            mem_copy(self.x_a, gm_x[token2, hc_idx, None])
+                            mem_copy(self.key_a, gm_key[token2, hc_idx, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_c
+                        self.key_ub = self.key_c
+                        self.value_ub = self.value_c
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                        else:
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                rem = pairs - 3 * n_groups
+                if rem >= 1:
+                    base = first_row + n_groups * 3 * pair_stride
+                    row0 = base
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                        else:
+                            mem_copy(self.value_b, gm_value[token1, None])
+                            mem_copy(self.x_b, gm_x[token1, hc_idx, None])
+                            mem_copy(self.key_b, gm_key[token1, hc_idx, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    else:
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                        else:
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
+                    if rem >= 2:
+                        row0 = base + pair_stride
+                        row1 = row0 + block_num
+                        token0 = row0 // self.hc_mult
+                        token1 = row1 // self.hc_mult
+                        masked2 = gm_mask[token2]
+                        if masked2:
+                            mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                        else:
+                            mem_copy(self.value_c, gm_value[token2, None])
+                            mem_copy(self.x_c, gm_x[token2, hc_idx, None])
+                            mem_copy(self.key_c, gm_key[token2, hc_idx, None])
                         if row1 < rows:
                             masked1 = gm_mask[token1]
                             if masked1:
@@ -803,59 +1001,11 @@ class EngramGateKernel:
                         else:
                             self._compute(epsilon, clamp_value)
                             mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_b, gm_x[token2, hc_idx, None])
-                            else:
-                                mem_copy(self.value_b, gm_value[token2, None])
-                                mem_copy(self.x_b, gm_x[token2, hc_idx, None])
-                                mem_copy(self.key_b, gm_key[token2, hc_idx, None])
                         if row1 < rows:
                             masked1b = gm_mask[token1]
                             self.x_ub = self.x_a
                             self.key_ub = self.key_a
                             self.value_ub = self.value_a
-                            self.out_ub = self.out_b
-                            if masked1b:
-                                mem_copy(self.out_ub, self.x_ub)
-                                mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                            else:
-                                self._compute(epsilon, clamp_value)
-                                mem_copy(gm_out[token1, hc_idx, None], self.out_ub)
-                    else:
-                        if row1 < rows:
-                            masked1 = gm_mask[token1]
-                            if masked1:
-                                mem_copy(self.x_c, gm_x[token1, hc_idx, None])
-                            else:
-                                mem_copy(self.value_c, gm_value[token1, None])
-                                mem_copy(self.x_c, gm_x[token1, hc_idx, None])
-                                mem_copy(self.key_c, gm_key[token1, hc_idx, None])
-                        self.x_ub = self.x_b
-                        self.key_ub = self.key_b
-                        self.value_ub = self.value_b
-                        self.out_ub = self.out_a
-                        masked0 = gm_mask[token0]
-                        if masked0:
-                            mem_copy(self.out_ub, self.x_ub)
-                            mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        else:
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token0, hc_idx, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_a, gm_x[token2, hc_idx, None])
-                            else:
-                                mem_copy(self.value_a, gm_value[token2, None])
-                                mem_copy(self.x_a, gm_x[token2, hc_idx, None])
-                                mem_copy(self.key_a, gm_key[token2, hc_idx, None])
-                        if row1 < rows:
-                            masked1b = gm_mask[token1]
-                            self.x_ub = self.x_c
-                            self.key_ub = self.key_c
-                            self.value_ub = self.value_c
                             self.out_ub = self.out_b
                             if masked1b:
                                 mem_copy(self.out_ub, self.x_ub)
@@ -874,8 +1024,10 @@ class EngramGateKernel:
                 mem_copy(self.key_a, gm_key[first_token, first_hc, None])
                 mem_copy(self.weight_ub, gm_weight[first_hc, None])
                 mem_copy(self.value_a, gm_value[first_token, None])
-                for pair_idx in range(pairs):
-                    row0 = first_row + pair_idx * pair_stride
+                n_groups = pairs // 3
+                for group_idx in range(n_groups):
+                    base = first_row + group_idx * 3 * pair_stride
+                    row0 = base
                     row1 = row0 + block_num
                     row2 = row0 + pair_stride
                     token0 = row0 // self.hc_mult
@@ -884,32 +1036,132 @@ class EngramGateKernel:
                     hc0 = row0 - token0 * self.hc_mult
                     hc1 = row1 - token1 * self.hc_mult
                     hc2 = row2 - token2 * self.hc_mult
-                    phase = pair_idx % 3
-                    if phase == 0:
-                        if row1 < rows:
-                            mem_copy(self.value_b, gm_value[token1, None])
-                            mem_copy(self.x_b, gm_x[token1, hc1, None])
-                            mem_copy(self.key_b, gm_key[token1, hc1, None])
-                        mem_copy(self.weight_ub, gm_weight[hc0, None])
+                    if row1 < rows:
+                        mem_copy(self.value_b, gm_value[token1, None])
+                        mem_copy(self.x_b, gm_x[token1, hc1, None])
+                        mem_copy(self.key_b, gm_key[token1, hc1, None])
+                    mem_copy(self.weight_ub, gm_weight[hc0, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    mem_copy(self.value_c, gm_value[token2, None])
+                    mem_copy(self.x_c, gm_x[token2, hc2, None])
+                    mem_copy(self.key_c, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        mem_copy(self.weight_ub, gm_weight[hc1, None])
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    row0 = base + pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_a, gm_value[token1, None])
+                        mem_copy(self.x_a, gm_x[token1, hc1, None])
+                        mem_copy(self.key_a, gm_key[token1, hc1, None])
+                    mem_copy(self.weight_ub, gm_weight[hc0, None])
+                    self.x_ub = self.x_c
+                    self.key_ub = self.key_c
+                    self.value_ub = self.value_c
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    mem_copy(self.value_b, gm_value[token2, None])
+                    mem_copy(self.x_b, gm_x[token2, hc2, None])
+                    mem_copy(self.key_b, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        mem_copy(self.weight_ub, gm_weight[hc1, None])
                         self.x_ub = self.x_a
                         self.key_ub = self.key_a
                         self.value_ub = self.value_a
-                        self.out_ub = self.out_a
+                        self.out_ub = self.out_b
                         self._compute(epsilon, clamp_value)
-                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_c, gm_value[token2, None])
-                            mem_copy(self.x_c, gm_x[token2, hc2, None])
-                            mem_copy(self.key_c, gm_key[token2, hc2, None])
-                        if row1 < rows:
-                            mem_copy(self.weight_ub, gm_weight[hc1, None])
-                            self.x_ub = self.x_b
-                            self.key_ub = self.key_b
-                            self.value_ub = self.value_b
-                            self.out_ub = self.out_b
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                    elif phase == 1:
+                        mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    row0 = base + 2 * pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_c, gm_value[token1, None])
+                        mem_copy(self.x_c, gm_x[token1, hc1, None])
+                        mem_copy(self.key_c, gm_key[token1, hc1, None])
+                    mem_copy(self.weight_ub, gm_weight[hc0, None])
+                    self.x_ub = self.x_b
+                    self.key_ub = self.key_b
+                    self.value_ub = self.value_b
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    if row2 < rows:
+                        mem_copy(self.value_a, gm_value[token2, None])
+                        mem_copy(self.x_a, gm_x[token2, hc2, None])
+                        mem_copy(self.key_a, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        mem_copy(self.weight_ub, gm_weight[hc1, None])
+                        self.x_ub = self.x_c
+                        self.key_ub = self.key_c
+                        self.value_ub = self.value_c
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                rem = pairs - 3 * n_groups
+                if rem >= 1:
+                    base = first_row + n_groups * 3 * pair_stride
+                    row0 = base
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        mem_copy(self.value_b, gm_value[token1, None])
+                        mem_copy(self.x_b, gm_x[token1, hc1, None])
+                        mem_copy(self.key_b, gm_key[token1, hc1, None])
+                    mem_copy(self.weight_ub, gm_weight[hc0, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    self._compute(epsilon, clamp_value)
+                    mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    if row1 < rows:
+                        mem_copy(self.weight_ub, gm_weight[hc1, None])
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    if rem >= 2:
+                        row0 = base + pair_stride
+                        row1 = row0 + block_num
+                        token0 = row0 // self.hc_mult
+                        token1 = row1 // self.hc_mult
+                        hc0 = row0 - token0 * self.hc_mult
+                        hc1 = row1 - token1 * self.hc_mult
+                        mem_copy(self.value_c, gm_value[token2, None])
+                        mem_copy(self.x_c, gm_x[token2, hc2, None])
+                        mem_copy(self.key_c, gm_key[token2, hc2, None])
                         if row1 < rows:
                             mem_copy(self.value_a, gm_value[token1, None])
                             mem_copy(self.x_a, gm_x[token1, hc1, None])
@@ -921,39 +1173,11 @@ class EngramGateKernel:
                         self.out_ub = self.out_a
                         self._compute(epsilon, clamp_value)
                         mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_b, gm_value[token2, None])
-                            mem_copy(self.x_b, gm_x[token2, hc2, None])
-                            mem_copy(self.key_b, gm_key[token2, hc2, None])
                         if row1 < rows:
                             mem_copy(self.weight_ub, gm_weight[hc1, None])
                             self.x_ub = self.x_a
                             self.key_ub = self.key_a
                             self.value_ub = self.value_a
-                            self.out_ub = self.out_b
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                    else:
-                        if row1 < rows:
-                            mem_copy(self.value_c, gm_value[token1, None])
-                            mem_copy(self.x_c, gm_x[token1, hc1, None])
-                            mem_copy(self.key_c, gm_key[token1, hc1, None])
-                        mem_copy(self.weight_ub, gm_weight[hc0, None])
-                        self.x_ub = self.x_b
-                        self.key_ub = self.key_b
-                        self.value_ub = self.value_b
-                        self.out_ub = self.out_a
-                        self._compute(epsilon, clamp_value)
-                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            mem_copy(self.value_a, gm_value[token2, None])
-                            mem_copy(self.x_a, gm_x[token2, hc2, None])
-                            mem_copy(self.key_a, gm_key[token2, hc2, None])
-                        if row1 < rows:
-                            mem_copy(self.weight_ub, gm_weight[hc1, None])
-                            self.x_ub = self.x_c
-                            self.key_ub = self.key_c
-                            self.value_ub = self.value_c
                             self.out_ub = self.out_b
                             self._compute(epsilon, clamp_value)
                             mem_copy(gm_out[token1, hc1, None], self.out_ub)
@@ -966,8 +1190,10 @@ class EngramGateKernel:
                     mem_copy(self.key_a, gm_key[first_token, first_hc, None])
                     mem_copy(self.weight_ub, gm_weight[first_hc, None])
                     mem_copy(self.value_a, gm_value[first_token, None])
-                for pair_idx in range(pairs):
-                    row0 = first_row + pair_idx * pair_stride
+                n_groups = pairs // 3
+                for group_idx in range(n_groups):
+                    base = first_row + group_idx * 3 * pair_stride
+                    row0 = base
                     row1 = row0 + block_num
                     row2 = row0 + pair_stride
                     token0 = row0 // self.hc_mult
@@ -976,50 +1202,204 @@ class EngramGateKernel:
                     hc0 = row0 - token0 * self.hc_mult
                     hc1 = row1 - token1 * self.hc_mult
                     hc2 = row2 - token2 * self.hc_mult
-                    phase = pair_idx % 3
-                    if phase == 0:
-                        if row1 < rows:
-                            masked1 = gm_mask[token1]
-                            if masked1:
-                                mem_copy(self.x_b, gm_x[token1, hc1, None])
-                            else:
-                                mem_copy(self.value_b, gm_value[token1, None])
-                                mem_copy(self.x_b, gm_x[token1, hc1, None])
-                                mem_copy(self.key_b, gm_key[token1, hc1, None])
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_b, gm_x[token1, hc1, None])
+                        else:
+                            mem_copy(self.value_b, gm_value[token1, None])
+                            mem_copy(self.x_b, gm_x[token1, hc1, None])
+                            mem_copy(self.key_b, gm_key[token1, hc1, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    else:
+                        mem_copy(self.weight_ub, gm_weight[hc0, None])
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    masked2 = gm_mask[token2]
+                    if masked2:
+                        mem_copy(self.x_c, gm_x[token2, hc2, None])
+                    else:
+                        mem_copy(self.value_c, gm_value[token2, None])
+                        mem_copy(self.x_c, gm_x[token2, hc2, None])
+                        mem_copy(self.key_c, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                        else:
+                            mem_copy(self.weight_ub, gm_weight[hc1, None])
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    row0 = base + pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_a, gm_x[token1, hc1, None])
+                        else:
+                            mem_copy(self.value_a, gm_value[token1, None])
+                            mem_copy(self.x_a, gm_x[token1, hc1, None])
+                            mem_copy(self.key_a, gm_key[token1, hc1, None])
+                    self.x_ub = self.x_c
+                    self.key_ub = self.key_c
+                    self.value_ub = self.value_c
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    else:
+                        mem_copy(self.weight_ub, gm_weight[hc0, None])
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    masked2 = gm_mask[token2]
+                    if masked2:
+                        mem_copy(self.x_b, gm_x[token2, hc2, None])
+                    else:
+                        mem_copy(self.value_b, gm_value[token2, None])
+                        mem_copy(self.x_b, gm_x[token2, hc2, None])
+                        mem_copy(self.key_b, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
                         self.x_ub = self.x_a
                         self.key_ub = self.key_a
                         self.value_ub = self.value_a
-                        self.out_ub = self.out_a
-                        masked0 = gm_mask[token0]
-                        if masked0:
+                        self.out_ub = self.out_b
+                        if masked1b:
                             mem_copy(self.out_ub, self.x_ub)
-                            mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
                         else:
-                            mem_copy(self.weight_ub, gm_weight[hc0, None])
+                            mem_copy(self.weight_ub, gm_weight[hc1, None])
                             self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_c, gm_x[token2, hc2, None])
-                            else:
-                                mem_copy(self.value_c, gm_value[token2, None])
-                                mem_copy(self.x_c, gm_x[token2, hc2, None])
-                                mem_copy(self.key_c, gm_key[token2, hc2, None])
-                        if row1 < rows:
-                            masked1b = gm_mask[token1]
-                            self.x_ub = self.x_b
-                            self.key_ub = self.key_b
-                            self.value_ub = self.value_b
-                            self.out_ub = self.out_b
-                            if masked1b:
-                                mem_copy(self.out_ub, self.x_ub)
-                                mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                            else:
-                                mem_copy(self.weight_ub, gm_weight[hc1, None])
-                                self._compute(epsilon, clamp_value)
-                                mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                    elif phase == 1:
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    row0 = base + 2 * pair_stride
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_c, gm_x[token1, hc1, None])
+                        else:
+                            mem_copy(self.value_c, gm_value[token1, None])
+                            mem_copy(self.x_c, gm_x[token1, hc1, None])
+                            mem_copy(self.key_c, gm_key[token1, hc1, None])
+                    self.x_ub = self.x_b
+                    self.key_ub = self.key_b
+                    self.value_ub = self.value_b
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    else:
+                        mem_copy(self.weight_ub, gm_weight[hc0, None])
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    if row2 < rows:
+                        masked2 = gm_mask[token2]
+                        if masked2:
+                            mem_copy(self.x_a, gm_x[token2, hc2, None])
+                        else:
+                            mem_copy(self.value_a, gm_value[token2, None])
+                            mem_copy(self.x_a, gm_x[token2, hc2, None])
+                            mem_copy(self.key_a, gm_key[token2, hc2, None])
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_c
+                        self.key_ub = self.key_c
+                        self.value_ub = self.value_c
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                        else:
+                            mem_copy(self.weight_ub, gm_weight[hc1, None])
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                rem = pairs - 3 * n_groups
+                if rem >= 1:
+                    base = first_row + n_groups * 3 * pair_stride
+                    row0 = base
+                    row1 = row0 + block_num
+                    row2 = row0 + pair_stride
+                    token0 = row0 // self.hc_mult
+                    token1 = row1 // self.hc_mult
+                    token2 = row2 // self.hc_mult
+                    hc0 = row0 - token0 * self.hc_mult
+                    hc1 = row1 - token1 * self.hc_mult
+                    hc2 = row2 - token2 * self.hc_mult
+                    if row1 < rows:
+                        masked1 = gm_mask[token1]
+                        if masked1:
+                            mem_copy(self.x_b, gm_x[token1, hc1, None])
+                        else:
+                            mem_copy(self.value_b, gm_value[token1, None])
+                            mem_copy(self.x_b, gm_x[token1, hc1, None])
+                            mem_copy(self.key_b, gm_key[token1, hc1, None])
+                    self.x_ub = self.x_a
+                    self.key_ub = self.key_a
+                    self.value_ub = self.value_a
+                    self.out_ub = self.out_a
+                    masked0 = gm_mask[token0]
+                    if masked0:
+                        mem_copy(self.out_ub, self.x_ub)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    else:
+                        mem_copy(self.weight_ub, gm_weight[hc0, None])
+                        self._compute(epsilon, clamp_value)
+                        mem_copy(gm_out[token0, hc0, None], self.out_ub)
+                    if row1 < rows:
+                        masked1b = gm_mask[token1]
+                        self.x_ub = self.x_b
+                        self.key_ub = self.key_b
+                        self.value_ub = self.value_b
+                        self.out_ub = self.out_b
+                        if masked1b:
+                            mem_copy(self.out_ub, self.x_ub)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                        else:
+                            mem_copy(self.weight_ub, gm_weight[hc1, None])
+                            self._compute(epsilon, clamp_value)
+                            mem_copy(gm_out[token1, hc1, None], self.out_ub)
+                    if rem >= 2:
+                        row0 = base + pair_stride
+                        row1 = row0 + block_num
+                        token0 = row0 // self.hc_mult
+                        token1 = row1 // self.hc_mult
+                        hc0 = row0 - token0 * self.hc_mult
+                        hc1 = row1 - token1 * self.hc_mult
+                        masked2 = gm_mask[token2]
+                        if masked2:
+                            mem_copy(self.x_c, gm_x[token2, hc2, None])
+                        else:
+                            mem_copy(self.value_c, gm_value[token2, None])
+                            mem_copy(self.x_c, gm_x[token2, hc2, None])
+                            mem_copy(self.key_c, gm_key[token2, hc2, None])
                         if row1 < rows:
                             masked1 = gm_mask[token1]
                             if masked1:
@@ -1040,14 +1420,6 @@ class EngramGateKernel:
                             mem_copy(self.weight_ub, gm_weight[hc0, None])
                             self._compute(epsilon, clamp_value)
                             mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_b, gm_x[token2, hc2, None])
-                            else:
-                                mem_copy(self.value_b, gm_value[token2, None])
-                                mem_copy(self.x_b, gm_x[token2, hc2, None])
-                                mem_copy(self.key_b, gm_key[token2, hc2, None])
                         if row1 < rows:
                             masked1b = gm_mask[token1]
                             self.x_ub = self.x_a
@@ -1061,50 +1433,6 @@ class EngramGateKernel:
                                 mem_copy(self.weight_ub, gm_weight[hc1, None])
                                 self._compute(epsilon, clamp_value)
                                 mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                    else:
-                        if row1 < rows:
-                            masked1 = gm_mask[token1]
-                            if masked1:
-                                mem_copy(self.x_c, gm_x[token1, hc1, None])
-                            else:
-                                mem_copy(self.value_c, gm_value[token1, None])
-                                mem_copy(self.x_c, gm_x[token1, hc1, None])
-                                mem_copy(self.key_c, gm_key[token1, hc1, None])
-                        self.x_ub = self.x_b
-                        self.key_ub = self.key_b
-                        self.value_ub = self.value_b
-                        self.out_ub = self.out_a
-                        masked0 = gm_mask[token0]
-                        if masked0:
-                            mem_copy(self.out_ub, self.x_ub)
-                            mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        else:
-                            mem_copy(self.weight_ub, gm_weight[hc0, None])
-                            self._compute(epsilon, clamp_value)
-                            mem_copy(gm_out[token0, hc0, None], self.out_ub)
-                        if row2 < rows:
-                            masked2 = gm_mask[token2]
-                            if masked2:
-                                mem_copy(self.x_a, gm_x[token2, hc2, None])
-                            else:
-                                mem_copy(self.value_a, gm_value[token2, None])
-                                mem_copy(self.x_a, gm_x[token2, hc2, None])
-                                mem_copy(self.key_a, gm_key[token2, hc2, None])
-                        if row1 < rows:
-                            masked1b = gm_mask[token1]
-                            self.x_ub = self.x_c
-                            self.key_ub = self.key_c
-                            self.value_ub = self.value_c
-                            self.out_ub = self.out_b
-                            if masked1b:
-                                mem_copy(self.out_ub, self.x_ub)
-                                mem_copy(gm_out[token1, hc1, None], self.out_ub)
-                            else:
-                                mem_copy(self.weight_ub, gm_weight[hc1, None])
-                                self._compute(epsilon, clamp_value)
-                                mem_copy(gm_out[token1, hc1, None], self.out_ub)
-
-
 class EngramGate:
     """Host-side CANNBotDSL launcher for one static Engram shape."""
 
