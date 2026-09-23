@@ -56,7 +56,7 @@ PackConstructorInitializers: Never
 
 # pointer aligment
 DerivePointerAlignment: false
-PointerAlignment: Right
+PointerAlignment: Left
 
 # single line layout
 AllowShortBlocksOnASingleLine: false
