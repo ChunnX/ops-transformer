@@ -661,7 +661,7 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 - qInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - kvInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - 当前query、key、value的InputLayout必须保持一致。
-- 输入query、key、value的数据类型必须一致。非量化只支持FLOAT16和BFLOAT16；quantMode=1/2/3/4 的 dtype 以各节为准。quantMode=4 的 query/key/value 为 FLOAT8_E4M3FN，scale 为 FLOAT8_E8M0。
+- 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
 - blockShapeOptional如果传入，则必须包含两个元素[blockShapeX, blockShapeY]，且值必须大于0。blockShapeX/blockShapeY在不同产品上的倍数约束如下：
   <!-- npu="950" id7 -->
