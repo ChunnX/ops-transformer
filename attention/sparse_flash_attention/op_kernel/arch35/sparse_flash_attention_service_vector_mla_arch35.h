@@ -247,13 +247,13 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     padParams.leftPadding = 0;
     padParams.rightPadding = combineDimAlign - combineDim;
     padParams.paddingValue = 0;
+    // 512: Key特征维度
     DataCopyPad(kvInUb[startRow * dVTemplateTypeInput], keyGm[keyOffset * 512], intriParams,
-                padParams); // 512: Key特征维度; dVTemplateTypeInput: 局部Buffer行跨度
+                padParams); // dVTemplateTypeInput: 局部Buffer行跨度
     if constexpr (HAS_ROPE) {
         intriParams.blockLen = constInfo.sparseBlockSize * 64 * sizeof(KV_T);
         intriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B; // 512: 模型特征维度(dSize)
-        // 576: 局部Buffer行跨度（Leading Dimension）; 512: Key特征维度（dSize）;
-        // 64：RoPE索引数据每Token/块的行跨度（Stride）
+        // 576: 局部Buffer行跨度 512: Key特征维度 64：RoPE索引数据每Token/块的行跨度（Stride）
         DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams, padParams);
     }
 }
