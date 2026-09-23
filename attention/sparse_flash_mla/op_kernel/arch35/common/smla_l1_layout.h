@@ -24,6 +24,12 @@
 #endif
 static_assert(SMLA_L1_SYNC_MODE <= 2, "Unsupported sparse KV synchronization");
 
+// 0 original AB ping-pong; 1 single A scratch control; 2 single A + two resident Q quarters.
+#ifndef SMLA_L0A_MODE
+#define SMLA_L0A_MODE 0
+#endif
+static_assert(SMLA_L0A_MODE <= 2, "Unsupported sparse L0A policy");
+
 namespace SMLAKernel {
 template <uint32_t Mode>
 struct SparseKvL1Layout {

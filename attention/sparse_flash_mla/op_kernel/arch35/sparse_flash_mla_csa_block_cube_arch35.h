@@ -70,6 +70,7 @@ public:
         DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
     static constexpr bool UNIFIED_KV_READY = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE >= 1;
     static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
+    static constexpr uint32_t L0A_POLICY = SPLIT_SPARSE_KV_L1 ? SMLA_L0A_MODE : 0;
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -152,6 +153,7 @@ private:
     RingBuffer<Q_T> l0A;
     LocalTensor<Q_T> l0ResidentP;
     LocalTensor<Q_T> l0ResidentQ;
+    LocalTensor<Q_T> l0ResidentQSecond;
     StaticBuffer<Q_T> l0BBufs[2];
     RingBuffer<Q_T> l0B;
     StaticBuffer<T> l0CBufs[2];
@@ -175,6 +177,15 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
         static_assert(4 * L0A_ELEM_PER_BUF * sizeof(Q_T) <= 64 * 1024);
         l0ResidentP = LocalTensor<Q_T>(TPosition::A2, 2 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
         l0ResidentQ = LocalTensor<Q_T>(TPosition::A2, 3 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
+        if constexpr (L0A_POLICY != 0) {
+            // [Q1 16KiB][scratch 16KiB][P 16KiB][Q0 16KiB].
+            // A single AB event serializes MTE1 loads with the preceding Mmad.
+            // Event1 keeps its initialization credit and is drained unchanged.
+            l0ResidentQSecond = LocalTensor<Q_T>(TPosition::A2, 0, L0A_ELEM_PER_BUF);
+            l0ABufs[0].tensor = LocalTensor<Q_T>(
+                TPosition::A2, L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
+            l0A = RingBuffer<Q_T>(l0ABufs, 1);
+        }
         SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
         if constexpr (DIRECT_SPARSE_KV_L1) {
             for (uint32_t slot = 0; slot < 3; ++slot) {
@@ -544,10 +555,17 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
         {}, {}, l0ResidentQ, runInfo.s2LoopCount == 0);
     // Explicit K128 calls keep the resident-tile selection out of the K loop.
     smlaParam.isOutKFisrt = false;
-    MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
-        GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
-        l0A, l0B, smlaCBuf.tensor, smlaParam);
+    if constexpr (L0A_POLICY == 2) {
+        MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
+            l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
+            GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
+            l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentQSecond, runInfo.s2LoopCount == 0);
+    } else {
+        MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+            l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
+            GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
+            l0A, l0B, smlaCBuf.tensor, smlaParam);
+    }
 
     smlaCurL1QBufId = (smlaCurL1QBufId + 1) % l1QBufNum;
     if (unlikely(runInfo.s2LoopCount == 0)) {
