@@ -13,6 +13,7 @@
  * \brief engram_fetch_wait算子kernel入口
  */
 
+// mc2 operator kernel entry
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
