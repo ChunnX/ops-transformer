@@ -12,8 +12,8 @@
 #define MHC_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -47,8 +47,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -83,22 +82,19 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
-            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-                const uint32_t laneHead = n - headBegin;
-                LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
-                LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
-                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                if (n + 1U < headBegin + 2U) {
-                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                }
-                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
-                PipeBarrier<PIPE_V>();
-                if (n + 2U < headBegin + 2U) {
-                    FenceVToMte2();
-                }
-            }
+            // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
+            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff], x2Cache[headBegin * D_ + tOff],
+                                                         gammaEven, invRmsMid, tD);
+            PipeBarrier<PIPE_V>();
+
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
+                x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
+            PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
