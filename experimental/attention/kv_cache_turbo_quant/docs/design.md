@@ -183,7 +183,7 @@ Cube `mm_fp32_transb`：`KERNEL_TYPE_AIC_ONLY`，编译宏 `ASCENDC_CUBE_ONLY`�
 
 - 个人仓：https://gitcode.com/Wilbert_666/kv_cache_turbo_quant ，分支 `main`，算子目录 `kv_cache_turbo_quant/`。已邀请 `Ascend-CANN` 作为开发者。自测报告在该仓 `task_submission/`。
 - 本设计文档 PR：https://gitcode.com/cann/cann-ops-competitions/merge_requests/1821
-- 代码合入目录：`experimental/attention/kv_cache_turbo_quant`，目标仓库 https://gitcode.com/cann/ops-transformer
+- 算子源码 PR：https://gitcode.com/cann/ops-transformer/merge_requests/12860 ，目录 `experimental/attention/kv_cache_turbo_quant`
 
 ## 兼容性分析
 

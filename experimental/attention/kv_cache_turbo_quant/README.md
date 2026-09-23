@@ -61,4 +61,4 @@ Ascend 910B 与 910_93 均在算子定义里注册。核函数使用 `dav-c220-v
 - 个人仓：https://gitcode.com/Wilbert_666/kv_cache_turbo_quant ，分支 `main`，算子目录 `kv_cache_turbo_quant/`。已邀请 `Ascend-CANN` 作为开发者。
 - 自测报告：个人仓 `task_submission/`。复现步骤见 [tests/README.md](./tests/README.md)。
 - 设计文档 PR：https://gitcode.com/cann/cann-ops-competitions/merge_requests/1821
-- 本目录即合入位置：`experimental/attention/kv_cache_turbo_quant`，仓库 https://gitcode.com/cann/ops-transformer
+- 算子源码 PR：https://gitcode.com/cann/ops-transformer/merge_requests/12860 ，目录 `experimental/attention/kv_cache_turbo_quant`。
