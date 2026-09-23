@@ -663,8 +663,8 @@ __aicore__ inline void CalcAIVSoftmaxLseOffset(RunParamStr<isInfer> &runParam,
                                             runParam.n2oIdx * constInfo.gSize;
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
                 // BNSD merges rows in [G, S] order and copies LSE rows contiguously.
-                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
-                                            runParam.sOuterOffset;
+                runParam.softmaxLseOffset =
+                    softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
             } else {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                                             runParam.sOuterOffset / constInfo.gSize;
