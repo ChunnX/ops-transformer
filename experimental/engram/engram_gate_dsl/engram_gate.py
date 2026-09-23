@@ -20,50 +20,13 @@ from cannbotdsl.lang.kernel import kernel
 from cannbotdsl.lang.control_flow import range as dsl_range
 from cannbotdsl.lang.vf import vf
 from cannbotdsl.ops import reg as rr
-from cannbotdsl.ops.arch import get_block_idx, get_block_num, get_vf_len
+from cannbotdsl.ops.arch import get_block_idx, get_block_num
 from cannbotdsl.ops.memcpy import mem_copy
-from cannbotdsl.ops.scalar import vec_store_bypass
 
 __all__ = ["EngramGate", "EngramGateKernel", "engram_gate"]
 
 
-_VL_LANES_CACHE: dict = {}
-
-
-@kernel
-class _VlProbeKernel:
-    @jit
-    def _emit(self, gm_out: Tensor):
-        vec_store_bypass(gm_out.ptr((0,)), get_vf_len())
-
-    def __call__(self, gm_out: Tensor):
-        self._emit(gm_out)
-
-
-class _VlProbe:
-    @jit
-    def run(self, gm_out):
-        _VlProbeKernel()[1](gm_out)
-
-
-def _device_vl_lanes(device) -> int:
-    index = device.index
-    if index is None:
-        index = torch.npu.current_device()
-    lanes = _VL_LANES_CACHE.get(index)
-    if lanes is None:
-        out = torch.zeros(1, dtype=torch.int64, device=torch.device("npu", index))
-        _VlProbe().run(out)
-        torch.npu.synchronize()
-        width = int(out.item())
-        if width <= 0 or width % 4 != 0:
-            raise RuntimeError(
-                f"npu device {index} reported vector register width {width}; "
-                "pass vl explicitly to EngramGate"
-            )
-        lanes = width * 8 // 32
-        _VL_LANES_CACHE[index] = lanes
-    return lanes
+VL = 64  # fp32 lanes in one 256-byte raw vector register
 _VECTOR_CORE_COUNTS: dict = {}
 
 
@@ -89,18 +52,15 @@ def _device_vector_core_count(device) -> int:
 class EngramGateKernel:
     """One vector task per ``(token, hc)`` row."""
 
-    def __init__(self, total_tokens: int, hc_mult: int, dim: int, vl: int):
+    def __init__(self, total_tokens: int, hc_mult: int, dim: int):
         from cannbotdsl.ops.info import get_mem_size
 
         self.total_tokens = int(total_tokens)
         self.hc_mult = int(hc_mult)
         self.dim = int(dim)
-        self.vl = int(vl)
-        if self.vl <= 0:
-            raise ValueError("vl must be a positive integer")
-        self.num_full = self.dim // self.vl
-        self.tail = self.dim - self.num_full * self.vl
-        self.w = self.dim + (self.vl - self.tail) % self.vl
+        self.num_full = self.dim // VL
+        self.tail = self.dim - self.num_full * VL
+        self.w = self.dim + (VL - self.tail) % VL
 
         ub_capacity = get_mem_size("ub")
         if self.w * 30 <= ub_capacity:
@@ -124,10 +84,10 @@ class EngramGateKernel:
             self.out_ub = self.out_a
         else:
             budget = ub_capacity - 8192
-            max_chunk = budget // 12 // self.vl * self.vl
-            if max_chunk < self.vl:
+            max_chunk = budget // 12 // VL * VL
+            if max_chunk < VL:
                 raise RuntimeError(
-                    f"EngramGateKernel needs at least one {self.vl}-element chunk "
+                    f"EngramGateKernel needs at least one {VL}-element chunk "
                     f"(12 B/elem) but runtime reports {ub_capacity} B UB"
                 )
             self.chunked = True
@@ -135,16 +95,16 @@ class EngramGateKernel:
             self.num_chunks = (self.w + self.chunk - 1) // self.chunk
             self.last_len = self.w - (self.num_chunks - 1) * self.chunk
             self.last_gm_len = self.dim - (self.num_chunks - 1) * self.chunk
-            self.last_full = self.last_gm_len // self.vl
+            self.last_full = self.last_gm_len // VL
             self.x_ch = Buffer(MemLoc.UB, (self.chunk,), dtypes.bfloat16)
             self.key_ch = Buffer(MemLoc.UB, (self.chunk,), dtypes.bfloat16)
             self.value_ch = Buffer(MemLoc.UB, (self.chunk,), dtypes.bfloat16)
             self.weight_ch = Buffer(MemLoc.UB, (self.chunk,), dtypes.float32)
             self.out_ch = Buffer(MemLoc.UB, (self.chunk,), dtypes.bfloat16)
-            self.acc_x2 = Buffer(MemLoc.UB, (self.vl,), dtypes.float32)
-            self.acc_k2 = Buffer(MemLoc.UB, (self.vl,), dtypes.float32)
-            self.acc_dot = Buffer(MemLoc.UB, (self.vl,), dtypes.float32)
-            self.gate_buf = Buffer(MemLoc.UB, (self.vl,), dtypes.float32)
+            self.acc_x2 = Buffer(MemLoc.UB, (VL,), dtypes.float32)
+            self.acc_k2 = Buffer(MemLoc.UB, (VL,), dtypes.float32)
+            self.acc_dot = Buffer(MemLoc.UB, (VL,), dtypes.float32)
+            self.gate_buf = Buffer(MemLoc.UB, (VL,), dtypes.float32)
 
     @jit
     def _compute(self, epsilon: dtypes.float32, clamp_value: dtypes.float32):
@@ -157,7 +117,7 @@ class EngramGateKernel:
             dot_acc = rr.vdups(0.0, dtypes.float32, mask=full)
 
             for segment in range(self.num_full):
-                offset = segment * self.vl
+                offset = segment * VL
                 x = rr.vcast(
                     rr.vload_unpack(
                         self.x_ub, offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -196,7 +156,7 @@ class EngramGateKernel:
 
             if const_expr(self.tail != 0):
                 preg = rr.update_mask(self.tail, elem_bits=32)[0]
-                tail_offset = self.num_full * self.vl
+                tail_offset = self.num_full * VL
                 x_t = rr.vcast(
                     rr.vload_unpack(
                         self.x_ub, tail_offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -279,7 +239,7 @@ class EngramGateKernel:
             gate = rr.vdup(gate, mask=full)
 
             for segment in range(self.num_full):
-                offset = segment * self.vl
+                offset = segment * VL
                 x = rr.vload(self.x_fp32_ub, offset)
                 value = rr.vcast(
                     rr.vload_unpack(
@@ -298,7 +258,7 @@ class EngramGateKernel:
                 )
             if const_expr(self.tail != 0):
                 preg = rr.update_mask(self.tail, elem_bits=32)[0]
-                tail_offset = self.num_full * self.vl
+                tail_offset = self.num_full * VL
                 x_t = rr.vload(self.x_fp32_ub, tail_offset)
                 value_t = rr.vcast(
                     rr.vload_unpack(
@@ -334,8 +294,8 @@ class EngramGateKernel:
             x_acc = rr.vdups(0.0, dtypes.float32, mask=full)
             k_acc = rr.vdups(0.0, dtypes.float32, mask=full)
             d_acc = rr.vdups(0.0, dtypes.float32, mask=full)
-            for segment in range(self.chunk // self.vl):
-                offset = segment * self.vl
+            for segment in range(self.chunk // VL):
+                offset = segment * VL
                 x = rr.vcast(
                     rr.vload_unpack(
                         self.x_ch, offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -383,7 +343,7 @@ class EngramGateKernel:
             k_acc = rr.vdups(0.0, dtypes.float32, mask=full)
             d_acc = rr.vdups(0.0, dtypes.float32, mask=full)
             for segment in range(self.last_full):
-                offset = segment * self.vl
+                offset = segment * VL
                 x = rr.vcast(
                     rr.vload_unpack(
                         self.x_ch, offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -410,7 +370,7 @@ class EngramGateKernel:
                 preg = rr.update_mask(self.tail, elem_bits=32)[0]
                 x_t = rr.vcast(
                     rr.vload_unpack(
-                        self.x_ch, self.last_full * self.vl,
+                        self.x_ch, self.last_full * VL,
                         unpack_mode=rr.UnpackMode.B16_TO_B32,
                     ),
                     dtypes.float32,
@@ -418,13 +378,13 @@ class EngramGateKernel:
                 )
                 key_t = rr.vcast(
                     rr.vload_unpack(
-                        self.key_ch, self.last_full * self.vl,
+                        self.key_ch, self.last_full * VL,
                         unpack_mode=rr.UnpackMode.B16_TO_B32,
                     ),
                     dtypes.float32,
                     mask=preg,
                 )
-                weight_t = rr.vload(self.weight_ch, self.last_full * self.vl)
+                weight_t = rr.vload(self.weight_ch, self.last_full * VL)
                 x_sum_t = rr.vreduce_sum(rr.vmul(x_t, x_t, mask=preg), mask=preg)
                 k_sum_t = rr.vreduce_sum(rr.vmul(key_t, key_t, mask=preg), mask=preg)
                 d_sum_t = rr.vreduce_sum(
@@ -519,8 +479,8 @@ class EngramGateKernel:
         with vf(mode="raw"):
             full = rr.full_mask()
             gate = rr.vload(self.gate_buf, 0)
-            for segment in range(self.chunk // self.vl):
-                offset = segment * self.vl
+            for segment in range(self.chunk // VL):
+                offset = segment * VL
                 x = rr.vcast(
                     rr.vload_unpack(
                         self.x_ch, offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -551,7 +511,7 @@ class EngramGateKernel:
             full = rr.full_mask()
             gate = rr.vload(self.gate_buf, 0)
             for segment in range(self.last_full):
-                offset = segment * self.vl
+                offset = segment * VL
                 x = rr.vcast(
                     rr.vload_unpack(
                         self.x_ch, offset, unpack_mode=rr.UnpackMode.B16_TO_B32
@@ -578,7 +538,7 @@ class EngramGateKernel:
                 preg = rr.update_mask(self.tail, elem_bits=32)[0]
                 x_t = rr.vcast(
                     rr.vload_unpack(
-                        self.x_ch, self.last_full * self.vl,
+                        self.x_ch, self.last_full * VL,
                         unpack_mode=rr.UnpackMode.B16_TO_B32,
                     ),
                     dtypes.float32,
@@ -586,7 +546,7 @@ class EngramGateKernel:
                 )
                 value_t = rr.vcast(
                     rr.vload_unpack(
-                        self.value_ch, self.last_full * self.vl,
+                        self.value_ch, self.last_full * VL,
                         unpack_mode=rr.UnpackMode.B16_TO_B32,
                     ),
                     dtypes.float32,
@@ -595,7 +555,7 @@ class EngramGateKernel:
                 out_t = rr.vadd(x_t, rr.vmul(gate, value_t, mask=preg), mask=preg)
                 rr.vstore_pack(
                     self.out_ch,
-                    self.last_full * self.vl,
+                    self.last_full * VL,
                     rr.vcast(out_t, dtypes.bfloat16, mask=preg),
                     preg,
                     pack_mode=rr.PackMode.B32_TO_B16,
@@ -1501,7 +1461,6 @@ class EngramGate:
         dim: int = 5120,
         hc_mult: int = 4,
         max_blocks: int = 0,
-        vl: int = 0,
     ):
         self.dim = int(dim)
         self.hc_mult = int(hc_mult)
@@ -1513,13 +1472,6 @@ class EngramGate:
                 "(e.g. from engram_gate, which queries it automatically)"
             )
         self.max_blocks = int(max_blocks)
-        if vl <= 0:
-            raise ValueError(
-                "vl is required: pass the device vector register width in "
-                "fp32 lanes (e.g. from engram_gate, which queries it "
-                "automatically)"
-            )
-        self.vl = int(vl)
 
     @jit
     def run(
@@ -1556,7 +1508,7 @@ class EngramGate:
             raise ValueError(f"mask must have shape [{total_tokens}] to match x")
         rows = total_tokens * self.hc_mult
         block_num = min(self.max_blocks, rows)
-        op = EngramGateKernel(total_tokens, self.hc_mult, self.dim, self.vl)
+        op = EngramGateKernel(total_tokens, self.hc_mult, self.dim)
         if mask is not None:
             op[block_num](
                 gm_x,
@@ -1661,11 +1613,10 @@ def engram_gate(
         out3 = out.flatten(0, -3)
         mask1 = image_mask.flatten() if image_mask is not None else None
     max_blocks = _device_vector_core_count(x.device)
-    vl = _device_vl_lanes(x.device)
     if mask1 is not None:
-        EngramGate(eps, clamp_value, dim, hc_mult, max_blocks, vl).run(
+        EngramGate(eps, clamp_value, dim, hc_mult, max_blocks).run(
             x3, key3, value2, weight, out3, mask=mask1
         )
         return out
-    EngramGate(eps, clamp_value, dim, hc_mult, max_blocks, vl).run(x3, key3, value2, weight, out3)
+    EngramGate(eps, clamp_value, dim, hc_mult, max_blocks).run(x3, key3, value2, weight, out3)
     return out

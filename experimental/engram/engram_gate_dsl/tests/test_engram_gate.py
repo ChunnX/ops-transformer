@@ -6,6 +6,9 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+import pytest
+import torch
+
 import os
 import sys
 
@@ -49,11 +52,9 @@ def test_engram_gate_compile_default_shape():
 
     if torch.npu.is_available():
         max_blocks = torch.npu.get_device_properties(0).vector_core_num
-        vl = _module._device_vl_lanes(torch.device("npu:0"))
     else:
         max_blocks = 8
-        vl = 64
-    EngramGate(eps=1e-6, clamp_value=1e-6, max_blocks=max_blocks, vl=vl).run.compile(
+    EngramGate(eps=1e-6, clamp_value=1e-6, max_blocks=max_blocks).run.compile(
         cannbotdsl.TensorSpec((2, 4, 5120), cannbotdsl.dtypes.bfloat16),
         cannbotdsl.TensorSpec((2, 4, 5120), cannbotdsl.dtypes.bfloat16),
         cannbotdsl.TensorSpec((2, 5120), cannbotdsl.dtypes.bfloat16),
@@ -287,12 +288,3 @@ def test_engram_gate_forced_block_count_precision(t, hc, dim, forced_blocks):
         actual_cpu.float(), expected.float(), atol=2e-2, rtol=2e-2
     ), f"max absolute error: {max_error}"
     assert torch.equal(actual_cpu[image_mask], x[image_mask])
-
-
-@pytest.mark.npu
-def test_device_vl_lanes_probe():
-    pytest.importorskip("torch_npu")
-
-    lanes = _module._device_vl_lanes(torch.device("npu:0"))
-    assert lanes > 0 and lanes & (lanes - 1) == 0
-    assert _module._device_vl_lanes(torch.device("npu:0")) == lanes
