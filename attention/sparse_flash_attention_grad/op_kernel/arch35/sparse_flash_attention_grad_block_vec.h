@@ -56,6 +56,9 @@ private:
                                            bool useUbTopk, uint64_t topkGmOffset, int64_t blkCount,
                                            FagConstInfo &constInfo, int64_t rowCount, ScatterRowCursor &cursor,
                                            event_t eventIDVToMTE3, const FagRunInfo &runInfo);
+    __aicore__ inline void CopyGatherRows(int64_t blockId, int64_t rowInBlock, uint32_t rows,
+                                          LocalTensor<INPUT_TYPE> keyUb, LocalTensor<INPUT_TYPE> ropeUb,
+                                          FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void GatherKVSingleRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                              FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void GatherKVMultiRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
@@ -318,6 +321,44 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GetTopkIdx(const LocalTens
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyGatherRows(int64_t blockId, int64_t rowInBlock, uint32_t rows,
+                                                                  LocalTensor<INPUT_TYPE> keyUb,
+                                                                  LocalTensor<INPUT_TYPE> ropeUb,
+                                                                  FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    const int64_t dSize = constInfo.commonConstInfo.dSize;
+    const int64_t dRope = constInfo.dRopeSize;
+    if (blockId == -1) {
+        event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        event_t vToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+        SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+        Duplicate(keyUb.template ReinterpretCast<int32_t>(), int32_t(0),
+                  rows * dSize * sizeof(INPUT_TYPE) / sizeof(int32_t));
+        if constexpr (IS_ROPE) {
+            Duplicate(ropeUb.template ReinterpretCast<int32_t>(), int32_t(0),
+                      rows * dRope * sizeof(INPUT_TYPE) / sizeof(int32_t));
+        }
+        SetFlag<HardEvent::V_MTE2>(vToMte2);
+        WaitFlag<HardEvent::V_MTE2>(vToMte2);
+        return;
+    }
+    int64_t keyOffset = blockId * constInfo.selectedBlockSize + rowInBlock;
+    intriParamsKey.blockCount = 1;
+    intriParamsKey.blockLen = rows * dSize * sizeof(INPUT_TYPE);
+    intriParamsKey.srcStride = 0;
+    DataCopyPad(keyUb, keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset * constInfo.n2Size * dSize], intriParamsKey,
+                padParams);
+    if constexpr (IS_ROPE) {
+        intriParamsRope.blockCount = 1;
+        intriParamsRope.blockLen = rows * dRope * sizeof(INPUT_TYPE);
+        intriParamsRope.srcStride = 0;
+        DataCopyPad(ropeUb, keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset * constInfo.n2Size * dRope],
+                    intriParamsRope, padParams);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                                             FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
@@ -336,7 +377,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
 {
     const int64_t blockSize = constInfo.selectedBlockSize;
     const int64_t dSize = constInfo.commonConstInfo.dSize;
-    const int64_t dRope = constInfo.dRopeSize;
     const int64_t dTotal = constInfo.dTotalSize;
     uint64_t gmOffset = runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) +
                         runInfo.n2Index * constInfo.selectedBlockCount + runInfo.blkCntOffset;
@@ -371,7 +411,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
     }
 
     for (uint32_t i = blkBegin; i < blkEnd; i++) {
-        int64_t keyOffset = GetTopkIdx(topkUb, useUbTopk, gmOffset, i, runInfo) * blockSize;
+        int64_t blockId = GetTopkIdx(topkUb, useUbTopk, gmOffset, i, runInfo);
         // tile 里只有最后一个 block 可能被因果对角线截断，越界的行既不搬也不进 mm 的 N 维
         bool isTailBlk = runInfo.isLastBasicBlock && (i + 1 == static_cast<uint32_t>(runInfo.actualSelCntOffset));
         int64_t rowsInBlk = isTailBlk ? runInfo.lastBlockSize : blockSize;
@@ -383,21 +423,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
             AscendC::TEventID mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Ping : mte3WaitMte2Pong;
 
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
-            // 块内连续的 chunkRows 行在 GM 上也连续（host 已强制 n2 == 1），一次搬完
-            intriParamsKey.blockCount = 1;
-            intriParamsKey.blockLen = chunkRows * dSize * sizeof(INPUT_TYPE);
-            intriParamsKey.srcStride = 0;
-            DataCopyPad(gatherTensor,
-                        keyGm[runInfo.keyOffsetWithRopeForMm12 + (keyOffset + r) * constInfo.n2Size * dSize],
-                        intriParamsKey, padParams);
-            if constexpr (IS_ROPE) {
-                intriParamsRope.blockCount = 1;
-                intriParamsRope.blockLen = chunkRows * dRope * sizeof(INPUT_TYPE);
-                intriParamsRope.srcStride = 0;
-                DataCopyPad(gatherRopeTensor,
-                            keyRopeGm[runInfo.commonRunInfo.kRopeOffset + (keyOffset + r) * constInfo.n2Size * dRope],
-                            intriParamsRope, padParams);
-            }
+            CopyGatherRows(blockId, r, chunkRows, gatherTensor, gatherRopeTensor, constInfo, runInfo);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
             WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
 
@@ -458,10 +484,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVSingleRow(
     }
 
     for (i = curBlk; i < curBlk + curActualSelCntOffset / 2 * 2; i += 2) {
-        int64_t keyOffset1 =
-            (useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i)) * constInfo.selectedBlockSize;
-        int64_t keyOffset2 = (useUbTopk ? topkUb.GetValue(i + 1) : topkIndicesGm.GetValue(gmOffset + i + 1)) *
-                             constInfo.selectedBlockSize;
+        int64_t keyOffset1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i);
+        int64_t keyOffset2 = useUbTopk ? topkUb.GetValue(i + 1) : topkIndicesGm.GetValue(gmOffset + i + 1);
 
         uint32_t s2OrgStride = keyOffset2 - keyOffset1 - constInfo.selectedBlockSize;
         intriParamsKey.blockCount = 2;
@@ -471,47 +495,53 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVSingleRow(
         mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Ping : mte3WaitMte2Pong;
 
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
-        // CopyIn
-        intriParamsKey.srcStride =
-            s2OrgStride * constInfo.n2Size * constInfo.commonConstInfo.dSize * sizeof(INPUT_TYPE);
         LocalTensor<INPUT_TYPE> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
-
-        if (keyOffset2 <= keyOffset1) {
-            intriParamsKey.blockCount = 1;
-            DataCopyPad(gatherTensor,
-                        keyGm[runInfo.keyOffsetWithRopeForMm12 +
-                              keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
-                        intriParamsKey, padParams);
-            DataCopyPad(gatherTensor[constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize],
-                        keyGm[runInfo.keyOffsetWithRopeForMm12 +
-                              keyOffset2 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
-                        intriParamsKey, padParams);
-        } else {
-            DataCopyPad(gatherTensor,
-                        keyGm[runInfo.keyOffsetWithRopeForMm12 +
-                              keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
-                        intriParamsKey, padParams);
-        }
-
-        intriParamsRope.srcStride = s2OrgStride * constInfo.n2Size * constInfo.dRopeSize * sizeof(INPUT_TYPE);
         LocalTensor<INPUT_TYPE> &gatherRopeTensor = mergePingPong ? gatherRopeTensorPing : gatherRopeTensorPong;
+        if (keyOffset1 == -1 || keyOffset2 == -1) {
+            CopyGatherRows(keyOffset1, 0, 1, gatherTensor, gatherRopeTensor, constInfo, runInfo);
+            CopyGatherRows(keyOffset2, 0, 1, gatherTensor[constInfo.commonConstInfo.dSize],
+                           gatherRopeTensor[constInfo.dRopeSize], constInfo, runInfo);
+        } else {
+            // CopyIn
+            intriParamsKey.srcStride =
+                s2OrgStride * constInfo.n2Size * constInfo.commonConstInfo.dSize * sizeof(INPUT_TYPE);
 
-        if constexpr (IS_ROPE) {
             if (keyOffset2 <= keyOffset1) {
-                intriParamsRope.blockCount = 1;
-                DataCopyPad(
-                    gatherRopeTensor,
-                    keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
-                    intriParamsRope, padParams);
-                DataCopyPad(
-                    gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
-                    keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
-                    intriParamsRope, padParams);
+                intriParamsKey.blockCount = 1;
+                DataCopyPad(gatherTensor,
+                            keyGm[runInfo.keyOffsetWithRopeForMm12 +
+                                  keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
+                            intriParamsKey, padParams);
+                DataCopyPad(gatherTensor[constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize],
+                            keyGm[runInfo.keyOffsetWithRopeForMm12 +
+                                  keyOffset2 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
+                            intriParamsKey, padParams);
             } else {
-                DataCopyPad(
-                    gatherRopeTensor,
-                    keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
-                    intriParamsRope, padParams);
+                DataCopyPad(gatherTensor,
+                            keyGm[runInfo.keyOffsetWithRopeForMm12 +
+                                  keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
+                            intriParamsKey, padParams);
+            }
+
+            intriParamsRope.srcStride = s2OrgStride * constInfo.n2Size * constInfo.dRopeSize * sizeof(INPUT_TYPE);
+
+            if constexpr (IS_ROPE) {
+                if (keyOffset2 <= keyOffset1) {
+                    intriParamsRope.blockCount = 1;
+                    DataCopyPad(gatherRopeTensor,
+                                keyRopeGm[runInfo.commonRunInfo.kRopeOffset +
+                                          keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
+                                intriParamsRope, padParams);
+                    DataCopyPad(gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
+                                keyRopeGm[runInfo.commonRunInfo.kRopeOffset +
+                                          keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
+                                intriParamsRope, padParams);
+                } else {
+                    DataCopyPad(gatherRopeTensor,
+                                keyRopeGm[runInfo.commonRunInfo.kRopeOffset +
+                                          keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
+                                intriParamsRope, padParams);
+                }
             }
         }
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
@@ -527,8 +557,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVSingleRow(
         mergePingPong = 1 - mergePingPong;
     }
     if (i < curActualSelCntEnd) {
-        int64_t keyOffset1 =
-            (useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i)) * constInfo.selectedBlockSize;
+        int64_t keyOffset1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i);
 
         mte2WaitMte3EventId = mergePingPong ? mte2WaitMte3Ping : mte2WaitMte3Pong;
         mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Ping : mte3WaitMte2Pong;
@@ -541,16 +570,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVSingleRow(
         LocalTensor<INPUT_TYPE> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
         LocalTensor<INPUT_TYPE> &gatherRopeTensor = mergePingPong ? gatherRopeTensorPing : gatherRopeTensorPong;
 
-        DataCopyPad(
-            gatherTensor,
-            keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
-            intriParamsKey, padParams);
-        if constexpr (IS_ROPE) {
-            DataCopyPad(
-                gatherRopeTensor,
-                keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
-                intriParamsRope, padParams);
-        }
+        CopyGatherRows(keyOffset1, 0, 1, gatherTensor, gatherRopeTensor, constInfo, runInfo);
 
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
