@@ -109,16 +109,18 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 
 ### 3.3 Tiling 侧
 
-- 不新增 tiling 类/tiling key；`SetGmmA2avWorkspaceInfo` 在 MX 量化模式下为
-  `wsGmmComputeWorkspaceSize` 扩容 B/scaleB 偏移表（`e×ep×8B×2`），TT 模式不变。
+- 不新增 tiling 类/tiling key，不改公共 tiling_common；`MxQuantGroupedMatmulAllToAllvTiling`
+  覆写 `SetGmmA2avWorkspaceInfo()`（基类虚函数），在 apace 构建开启时为
+  `wsGmmComputeWorkspaceSize` 扩容 B/scaleB 偏移表（`e×ep×8B×2`，`#ifdef` 门控），
+  构建未开启时与公共口径一致；TT 类不受影响。
 
 ### 3.4 kernel 入口
 
 - `#if defined(ENABLE_APACE_QUANT_GMM_A2AV) && MX_QUANT_MODE` 编译期分支：
-  - AIC：block0 写部署自检 magic `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→
-    按批 `hcommImpl.Process` → `End` → 共享专家 `Process(0,1)`；
-  - AIV：空分支；
-- `#else`：原通路逐字保持（含 `KERNEL_TASK_TYPE_DEFAULT(MIX_AIC_1_2)`、
+  `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY)`；block0 写部署自检 magic
+  `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→ 按批 `hcommImpl.Process` → `End` →
+  共享专家 `Process(0,1)`；
+- `#else`：原通路逐字保持（`KERNEL_TASK_TYPE_DEFAULT(MIX_AIC_1_2)`、
   `GmmA2avScheduler.Process()`）。
 
 ## 4 验收标准
@@ -151,7 +153,7 @@ ENABLE_APACE_QUANT_GMM_A2AV=1 bash build.sh --opkernel --soc=ascend950 \
 | 计算适配层 | `mc2/common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_impl.h` |
 | 通算融合层 | 同目录 `quant_grouped_matmul_all_to_all_v_hcomm_impl.h` |
 | kernel 入口 | `mc2/quant_grouped_mat_mul_allto_allv/op_kernel/quant_grouped_mat_mul_allto_allv.cpp` |
-| tiling 扩容 | `mc2/quant_grouped_mat_mul_allto_allv/op_host/op_tiling/quant_grouped_mat_mul_allto_allv_tiling_common.cpp`（SetGmmA2avWorkspaceInfo） |
+| tiling 扩容（MX 类覆写） | `mc2/quant_grouped_mat_mul_allto_allv/op_host/op_tiling/arch35/mx_quant_grouped_mat_mul_allto_allv_tiling.{h,cpp}`（SetGmmA2avWorkspaceInfo 覆写） |
 | Blaze GMM 引擎 | `mc2/common/op_kernel/apace/kernel/matmul/grouped_matmul/grouped_matmul_mx_kernel.h` |
 
 ### 5.3 历史方案废弃说明

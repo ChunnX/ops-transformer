@@ -679,6 +679,39 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
+{
+    constexpr uint64_t alignAddrLen = 512;
+    constexpr uint64_t tensorListSize = 512;
+    auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
+    inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
+    localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
+    // MX 量化路径 workspace：apace 构建开启时，GroupedMatmulMxKernel 的 group 序
+    // (expertIdx * ep + rankIdx) 与 expert 序不一致，B/ScaleB 无法走 kernel 默认公式，
+    // 需在公共布局（groupList + cGroupOffsetTable + ptrTable + scale repeat）基础上
+    // 追加 B/scaleB 偏移表；构建未开启时保持公共口径（kernel 走原通路，不使用该表）
+    uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
+    uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
+    uint64_t mxOffsetTableSize = 0;
+#ifdef ENABLE_APACE_QUANT_GMM_A2AV
+    mxOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t) * 2;
+#endif
+    uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t gmmComputeWsSize =
+        groupListSize + cGroupOffsetTableSize + mxOffsetTableSize + tensorListSize + ttScaleRepeatSize;
+    localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
+    uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
+    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
+        mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
+
+    workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
+                     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
+                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
+
+    return ge::GRAPH_SUCCESS;
+}
+
 uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;

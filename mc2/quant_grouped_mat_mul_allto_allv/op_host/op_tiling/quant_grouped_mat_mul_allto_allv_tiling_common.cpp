@@ -860,19 +860,11 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
     // GmmComputeOp workspace 内部布局:
     //   [groupList (ep * epWorldSize * 8B)] [cGroupOffsetTable (ep * epWorldSize * 8B)]
-    //   [bGroupOffsetTable + scaleBGroupOffsetTable (ep * epWorldSize * 8B * 2)]  // MX 模式
     //   [ptrTable (tensorListSize=512)] [TT scale repeat (sizeof(float) * ep * 2)]
     uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
     uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
-    // MX(FP4/FP8) 路径 GroupedMatmulMxKernel 需要 B/ScaleB 的 group 偏移表（rank 展开 group 数
-    // 与 expert 数不一致，无法走公式），按量化模式扩容；TT 路径不使用
-    uint64_t mxOffsetTableSize = 0;
-    if (localParams_.gmmXQuantMode == QUANT_MODE_MX) {
-        mxOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t) * 2;
-    }
     uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
-    uint64_t gmmComputeWsSize =
-        groupListSize + cGroupOffsetTableSize + mxOffsetTableSize + tensorListSize + ttScaleRepeatSize;
+    uint64_t gmmComputeWsSize = groupListSize + cGroupOffsetTableSize + tensorListSize + ttScaleRepeatSize;
     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
     uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;

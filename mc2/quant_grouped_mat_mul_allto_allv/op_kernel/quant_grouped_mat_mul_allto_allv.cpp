@@ -19,10 +19,11 @@
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
 // apace hcomm 融合通路（默认关闭）：构建时环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1 开启。
-// MX(FP4/FP8) 量化实例（gmmXScale 为 E8M0，经 a2av_gmm_utils.h 的 MX_QUANT_MODE 判别）
-// 的 GMM 计算切换 apace GroupedMatmulMxKernel，AlltoAllV 通信在 AIC 核内经 Hccl 提交，
-// AIV 不参与（Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致 AIV 通信任务参数校验失败）；
-// TT 量化实例与未开启构建开关时保持原通路（编译期分支，实例互不影响）。
+// MX(FP4/FP8) 量化实例（gmmXScale 为 E8M0，经 a2av_gmm_utils.h 的 MX_QUANT_MODE 判别）以
+// AIC_ONLY 任务类型部署（无 AIV 参与）：GMM 计算切换 apace GroupedMatmulMxKernel，
+// AlltoAllV 通信在 AIC 核内经 Hccl 提交（Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致
+// AIV 通信任务参数校验失败）；TT 量化实例与未开启构建开关时保持原通路
+// （MIX_AIC_1_2，编译期分支，实例互不影响）。
 #ifdef ENABLE_APACE_QUANT_GMM_A2AV
 #include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
 #endif
@@ -47,7 +48,14 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM,
     GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+#if defined(ENABLE_APACE_QUANT_GMM_A2AV) && MX_QUANT_MODE
+    // MX(FP4/FP8) 量化路径（AIC_ONLY 任务类型，无 AIV 参与）：
+    // GMM 计算切换 apace 模板 GroupedMatmulMxKernel，通信采用 AIC 核内 AlltoAllV（Hccl），
+    // 规避 Blaze 与 AIV 通信引擎的共存问题
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     if (workspaceGM == nullptr) {
         return;
     }
@@ -73,7 +81,6 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-
 #if defined(ENABLE_APACE_QUANT_GMM_A2AV) && MX_QUANT_MODE
     // MX(FP4/FP8) 量化路径：GMM 计算切换 apace 模板 GroupedMatmulMxKernel，
     // 通信采用 AIC 核内 AlltoAllV（Hccl），规避 Blaze 与 AIV 通信引擎的共存问题
@@ -84,36 +91,31 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     using HcommImpl = Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X,
                                                    DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
                                                    TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
-    if ASCEND_IS_AIC {
-        // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
-        // （通信成功后该值被 recv 数据覆盖，不影响结果）
-        if (AscendC::GetBlockIdx() == 0) {
-            *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
-        }
-        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
-                                           gmmArrayAddr_, tilingGM);
-        HcommImpl hcommImpl;
-        hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM,
-                       tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
-        const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
-        const uint32_t expertNum = tilingData_->taskTilingInfo.expertNum;
-        for (uint32_t start = 0; start < e; start += expertNum) {
-            const uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
-            hcommImpl.Process(start, actualExpertNum);
-        }
-        hcommImpl.End();
-        // 共享专家（独立输出，不走通信）
-        if constexpr (TILINGKEY_COMPUTE_MATMUL) {
-            GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
-                                               mmArrayAddr_, tilingGM);
-            SharedGmmExpertOpType shareComputeOp;
-            shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-            shareComputeOp.Process(0, 1);
-        }
+    // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
+    // （通信成功后该值被 recv 数据覆盖，不影响结果）
+    if (AscendC::GetBlockIdx() == 0) {
+        *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
     }
-    if ASCEND_IS_AIV {
-        // 通信在 AIC 核内完成，AIV 不参与
+    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                       gmmArrayAddr_, tilingGM);
+    HcommImpl hcommImpl;
+    hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM, tilingData_,
+                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+    const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+    const uint32_t expertNum = tilingData_->taskTilingInfo.expertNum;
+    for (uint32_t start = 0; start < e; start += expertNum) {
+        const uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+        hcommImpl.Process(start, actualExpertNum);
+    }
+    hcommImpl.End();
+    // 共享专家（独立输出，不走通信）
+    if constexpr (TILINGKEY_COMPUTE_MATMUL) {
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
+                                           mmArrayAddr_, tilingGM);
+        SharedGmmExpertOpType shareComputeOp;
+        shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                            sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+        shareComputeOp.Process(0, 1);
     }
 #else
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;

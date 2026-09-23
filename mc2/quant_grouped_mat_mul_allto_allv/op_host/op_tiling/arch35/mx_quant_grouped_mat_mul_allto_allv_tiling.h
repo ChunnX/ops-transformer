@@ -53,6 +53,7 @@ protected:
     ge::graphStatus CheckParamsRelationGmm() override;
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
+    ge::graphStatus SetGmmA2avWorkspaceInfo() override;
     ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
 
 private:

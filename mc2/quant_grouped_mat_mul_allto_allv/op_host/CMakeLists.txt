@@ -25,9 +25,10 @@ if (BUILD_OPEN_PROJECT)  # custom
 
     # apace hcomm 融合通路构建开关（默认关闭）：构建时导出环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1 开启。
     # 开启后 kernel 侧定义该宏（MX 量化实例的 GMM 计算走 apace GroupedMatmulMxKernel，
-    # AlltoAllV 通信在 AIC 核内经 Hccl 提交）；tiling 侧为 MX 模式扩容 GMM 偏移表 workspace。
+    # AlltoAllV 通信在 AIC 核内经 Hccl 提交）；tiling 侧 MX 类为 B/scaleB 偏移表扩容 workspace。
     set(APACE_GMM_A2AV_KERNEL_OPTS "")
     if("$ENV{ENABLE_APACE_QUANT_GMM_A2AV}" STREQUAL "1")
+        add_compile_definitions(ENABLE_APACE_QUANT_GMM_A2AV=1)
         set(APACE_GMM_A2AV_KERNEL_OPTS -DENABLE_APACE_QUANT_GMM_A2AV=1)
     endif()
 

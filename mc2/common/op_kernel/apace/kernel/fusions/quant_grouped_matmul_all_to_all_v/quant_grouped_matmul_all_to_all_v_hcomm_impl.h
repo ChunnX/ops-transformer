@@ -12,9 +12,10 @@
  * \file quant_grouped_matmul_all_to_all_v_hcomm_impl.h
  * \brief apace 库：QuantGroupedMatMulAlltoAllv MX(FP4/FP8) 路径 AIC 核内通信+计算融合实现。
  *
- * GMM 计算（复用 QuantGroupedMatmulMx / Blaze GroupedMatmulMxKernel）与 AlltoAllV 通信
- * 均在 AIC 核执行，AIV 不参与：Blaze（cube 模板）与 AIV 侧 KFC 通信引擎在同一 kernel
- * 实例中共存时，AIV 通信任务参数校验会失败，故通信改由 AIC 核内 Hccl 提交。
+ * kernel 以 AIC_ONLY 任务类型部署（无 AIV 参与）：GMM 计算（复用 QuantGroupedMatmulMx /
+ * Blaze GroupedMatmulMxKernel）与 AlltoAllV 通信均在 AIC 核执行——Blaze（cube 模板）与
+ * AIV 侧 KFC 通信引擎在同一 kernel 实例中共存时，AIV 通信任务参数校验会失败，
+ * 故通信改由 AIC 核内 Hccl 提交。
  *
  * 工作流（后通信：GMM 计算 → AlltoAllV 发送）：
  *   1. AIC 核：hccl_.InitV2(GetHcclContext<0>(), &hcclInitTiling) + SetCcTilingV2(a2avCcTiling)
@@ -73,9 +74,6 @@ public:
 
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
     {
-        if ASCEND_IS_AIV {
-            return;
-        }
         computeOp_.Process(startExpertIdx, expertNum);
         // AIC 核间同步：确保所有核完成 GMM 计算后才下发通信
         AscendC::SyncAll();
@@ -88,9 +86,6 @@ public:
 
     __aicore__ inline void End()
     {
-        if ASCEND_IS_AIV {
-            return;
-        }
         AscendC::SyncAll();
         hccl_.Finalize();
     }
