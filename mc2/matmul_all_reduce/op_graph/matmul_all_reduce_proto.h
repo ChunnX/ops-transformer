@@ -73,7 +73,7 @@ small.
 * @li The input data type of x1, x2 and bias (if supported) computation must be the same as the output data
 *  type of output computation.
 * @li The x2 matrix can be transposed or not transposed. The x1 matrix cannot be transposed.
-* @li The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support
+* @li The Atlas A2 products support
 1, 2, 4, and 8 cards.
 *
 * - Constraints for WeightQuantMatmulAllreudce:
@@ -98,7 +98,7 @@ input x1 is small.
 * @li In the long sequence scenario, as b/s or m increases, OOM or computation timeout may occur.
 * @li When the format of x2 is FRACTAL_NZ, only two dimensions are supported. CalculateMatmulWeightSizeV2
 *  TransMatmulWeightGetWorkspaceSize/TransMatmulWeight needs to be used to convert the format ND into NZ.
-* @li The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support
+* @li The Atlas A2 products support
 1, 2, 4, and 8 cards.
 *
 * - Constraints for QuantMatmulAllreudce:
@@ -119,7 +119,7 @@ x1 is small.
 * @li The x2 matrix can be transposed or not transposed. The x1 matrix cannot be transposed.
 * @li The Atlas A5 processor newly supports hifloat8, float8_e5m2, float8_e4m3, float4_e2m1,
 *  output supports float32 when input datatype is hifloat8, float8_e5m2, float8_e4m3, float4_e2m1.
-* @li The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support
+* @li The Atlas A2 products support
 1, 2, 4, and 8 cards.
 */
 REG_OP(MatmulAllReduce)

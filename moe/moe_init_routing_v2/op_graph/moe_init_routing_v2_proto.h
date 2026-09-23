@@ -24,10 +24,10 @@ namespace ge {
 * @li x: A 2D Tensor. Represents the input token. shape is (num_rows, H), num_rows is the number of tokens, H is the
 *        length of each token. Type is:BFloat16, Float16 or Float32. Format support ND.
 * @li expert_idx: A 2D Tensor. Represents the id of top k experts for each tokens. shape is (num_row, K),
-*                 it can be (num_row, ) in Ascend 950PR/Ascend 950DT AI Processor.
+*                 it can be (num_row, ) in Ascend 950PR&950DT products.
 *                 When drop_pad_mode is 1, or drop_pad_mode is 0 but expert_tokens_count_or_cumsum_flag is not 0,
 *                 The range of value is [0, expert_num). Other scenario the value of expert_idx cannot be less than
-*                 0. Type is:Int32 or Int64, Int64 only support in Ascend 950PR/Ascend 950DT AI Processor.
+*                 0. Type is:Int32 or Int64, Int64 only support in Ascend 950PR&950DT products.
 *                 Format support ND.
 * @par Outputs:
 * @li expanded_x: A 2D or 3D Tensor. Type is:BFloat16, Float16 or Float32.
