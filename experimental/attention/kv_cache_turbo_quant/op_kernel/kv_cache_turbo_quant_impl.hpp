@@ -168,11 +168,14 @@ public:
             pipe_.InitBuffer(workBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(denomBuf_, KCTQ_D * sizeof(float));
             pipe_.InitBuffer(scalarBuf_, PackCfg<BITS>::kChunkSlots * sizeof(float));
-            pipe_.InitBuffer(chunkBuf_, PackCfg<BITS>::kChunkSlots * sizeof(float));
-            pipe_.InitBuffer(chunkLoBuf_, PackCfg<BITS>::kChunkSlots * sizeof(int32_t));
-            pipe_.InitBuffer(chunkHiBuf_, PackCfg<BITS>::kChunkSlots * sizeof(int32_t));
             pipe_.InitBuffer(bf16Buf_, 32);
-            pipe_.InitBuffer(byteBuf_, 64);
+            pipe_.InitBuffer(weightBuf_, KCTQ_D * sizeof(float));
+            pipe_.InitBuffer(weightHiBuf_, KCTQ_D * sizeof(float));
+            pipe_.InitBuffer(qjlWeightBuf_, KCTQ_D * sizeof(float));
+            pipe_.InitBuffer(redBuf_, KCTQ_D * sizeof(float));
+            pipe_.InitBuffer(redHiBuf_, KCTQ_D * sizeof(float));
+            pipe_.InitBuffer(redIntBuf_, KCTQ_D * sizeof(int32_t));
+            pipe_.InitBuffer(redIntHiBuf_, KCTQ_D * sizeof(int32_t));
         }
     }
 
@@ -182,6 +185,7 @@ public:
         mm_.SetLocalWorkspace(mmLocalWsBuf_.Get<uint8_t>());
 
         if (g_coreType == AIV) {
+            InitWeightTables();
             NormalizeRows();
         }
 
@@ -215,6 +219,59 @@ private:
             value *= 2.0f;
         }
         return value;
+    }
+
+    // Lane weights for the vectorised packing. One reduction block (32B) holds exactly one
+    // packing group, so weighting lane l of a group by 2^(BITS*l) and summing the block with
+    // BlockReduceSum directly yields the packed chunk value. Values stay below 2^24 (2^16 for
+    // the split 4bit halves) and are therefore exact in fp32. The tables are built once per
+    // core, outside the row loop.
+    __aicore__ inline void InitWeightTables()
+    {
+        LocalTensor<float> w = weightBuf_.Get<float>();
+        LocalTensor<float> wh = weightHiBuf_.Get<float>();
+        LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
+        for (uint32_t i = 0; i < KCTQ_D; ++i) {
+            const uint32_t lane = i % PackCfg<BITS>::kChunkLanes;
+            wq.SetValue(i, Pow2(lane)); // qjl packs 8 sign bits into one byte
+            if constexpr (PackCfg<BITS>::kSplitChunk) {
+                // 4bit: low half covers lanes 0..3, high half covers lanes 4..7
+                w.SetValue(i, (lane < 4U) ? Pow2(4U * lane) : 0.0f);
+                wh.SetValue(i, (lane >= 4U) ? Pow2(4U * (lane - 4U)) : 0.0f);
+            } else {
+                w.SetValue(i, Pow2(static_cast<uint32_t>(BITS) * lane));
+                wh.SetValue(i, 0.0f);
+            }
+        }
+        SetFlag<HardEvent::S_V>(EVENT_ID2);
+        WaitFlag<HardEvent::S_V>(EVENT_ID2);
+    }
+
+    // Weighted 8-lane fold of one fp32 vector: dst[c] = sum_l src[8c + l] * 2^(BITS*l).
+    // One repeat is restricted to a single 32B block (mask = 8) and each repeat writes its single
+    // sum one 32B block further (dstRepStride = 1), so chunk c lands at element 8*c. That spread
+    // layout is what the byte-wise store needs: DataCopyPad can only stride in 32B blocks, so the
+    // packed bytes of chunk c have to start on a block boundary.
+    __aicore__ inline void FoldChunks(const LocalTensor<float> &dst, const LocalTensor<float> &scratch,
+                                      const LocalTensor<float> &src, const LocalTensor<float> &weights)
+    {
+        Mul(scratch, src, weights, KCTQ_D);
+        PipeBarrier<PIPE_V>();
+        BlockReduceSum<float>(dst, scratch, KCTQ_D / PackCfg<BITS>::kChunkLanes, 8, 1, 1, 1);
+        PipeBarrier<PIPE_V>();
+    }
+
+    // Store the packed chunks: nBytes are taken from the head of every 32B block of `src`
+    // (one chunk per block) and appended to the row in gm. `gmOffset` selects which byte of the
+    // chunk each store owns (used by the 4bit low/high halve split), and `gmGap` leaves room for
+    // the bytes the other store owns.
+    __aicore__ inline void StoreChunks(const GlobalTensor<uint8_t> &gm, uint64_t gmOffset,
+                                       const LocalTensor<int32_t> &src, uint32_t nChunks,
+                                       uint32_t nBytes, uint32_t gmGap)
+    {
+        LocalTensor<uint8_t> bytes = src.ReinterpretCast<uint8_t>();
+        DataCopyExtParams cp{static_cast<uint16_t>(nChunks), nBytes, 0, gmGap, 0};
+        DataCopyPad(gm[gmOffset], bytes, cp);
     }
 
     // ---- AIV: steps 1 and 2 ---------------------------------------------------------------------
@@ -387,70 +444,40 @@ private:
     // ---- AIV: pack the primary indices ------------------------------------------------------------
     __aicore__ inline void PackIdx(uint32_t row, const LocalTensor<float> &idx)
     {
-        LocalTensor<float> chunk = chunkBuf_.Get<float>();
-        LocalTensor<int32_t> lo = chunkLoBuf_.Get<int32_t>();
-        LocalTensor<int32_t> hi = chunkHiBuf_.Get<int32_t>();
-        LocalTensor<uint8_t> out = byteBuf_.Get<uint8_t>();
-        constexpr uint32_t CHUNK_LANES = PackCfg<BITS>::kChunkLanes;
-        constexpr uint32_t CHUNK_BYTES = PackCfg<BITS>::kChunkBytes;
-        constexpr uint32_t CHUNKS = KCTQ_D / CHUNK_LANES; // one packed word per chunk
-        constexpr uint32_t LOW_LANES = PackCfg<BITS>::kSplitChunk ? 4U : CHUNK_LANES;
+        LocalTensor<float> w = weightBuf_.Get<float>();
+        LocalTensor<float> wv = workBuf_.Get<float>();
+        LocalTensor<float> cv = redBuf_.Get<float>();
+        LocalTensor<int32_t> ci = redIntBuf_.Get<int32_t>();
 
-        // The lanes of one chunk are folded with plain scalar arithmetic: every intermediate value
-        // stays below 2^24 (2^16 for the split 4bit chunks) and is therefore exact in fp32.
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        const float radix = Pow2(BITS);
-        for (uint32_t c = 0; c < CHUNKS; ++c) {
-            float low = 0.0f;
-            float w = 1.0f;
-            for (uint32_t l = 0; l < LOW_LANES; ++l) {
-                low += idx.GetValue(c * CHUNK_LANES + l) * w;
-                w *= radix;
-            }
-            chunk.SetValue(c, low);
-            if constexpr (PackCfg<BITS>::kSplitChunk) {
-                float high = 0.0f;
-                w = 1.0f;
-                for (uint32_t l = LOW_LANES; l < CHUNK_LANES; ++l) {
-                    high += idx.GetValue(c * CHUNK_LANES + l) * w;
-                    w *= radix;
-                }
-                chunk.SetValue(PackCfg<BITS>::kHalfSlots + c, high);
-            }
-        }
-        PipeBarrier<PIPE_ALL>(); // the scalar writes have to land before the vector cast reads them
+        FoldChunks(cv, wv, idx, w);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
-            Cast(lo, chunk, RoundMode::CAST_RINT, CHUNKS);
-            Cast(hi, chunk[PackCfg<BITS>::kHalfSlots], RoundMode::CAST_RINT, CHUNKS);
+            // A 4bit chunk needs 32 bits, which fp32 cannot hold exactly, so the two 16bit halves
+            // are folded separately and recombined in the integer domain. The vector shift/or only
+            // acts correctly when the element count is a multiple of 64, hence the full 128 lane
+            // block is always processed.
+            LocalTensor<float> wh = weightHiBuf_.Get<float>();
+            LocalTensor<float> cvh = redHiBuf_.Get<float>();
+            LocalTensor<float> wvh = resBuf_.Get<float>();
+            LocalTensor<int32_t> cih = redIntHiBuf_.Get<int32_t>();
+            FoldChunks(cvh, wvh, idx, wh);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
+            Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_D);
+            PipeBarrier<PIPE_V>();
+            ShiftLeft(cih, cih, 16, KCTQ_D);
+            PipeBarrier<PIPE_V>();
+            Add(ci, ci, cih, KCTQ_D);
+            PipeBarrier<PIPE_V>();
         } else {
-            Cast(lo, chunk, RoundMode::CAST_RINT, CHUNKS);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-
-        // A 4bit chunk consists of two independent 16bit halves and each half owns its own two
-        // bytes. They are deliberately not merged into one 32bit word: the shift/or merge silently
-        // dropped every lane beyond the first eight chunks on the 910B.
-        constexpr uint32_t LOW_BYTES = PackCfg<BITS>::kSplitChunk ? 2U : CHUNK_BYTES;
-        for (uint32_t c = 0; c < CHUNKS; ++c) {
-            const uint32_t low = static_cast<uint32_t>(lo.GetValue(c));
-            for (uint32_t b = 0; b < LOW_BYTES; ++b) {
-                out.SetValue(c * CHUNK_BYTES + b, static_cast<uint8_t>((low >> (8U * b)) & 0xFFU));
-            }
-            if constexpr (PackCfg<BITS>::kSplitChunk) {
-                const uint32_t high = static_cast<uint32_t>(hi.GetValue(c));
-                for (uint32_t b = 0; b < CHUNK_BYTES - LOW_BYTES; ++b) {
-                    out.SetValue(c * CHUNK_BYTES + LOW_BYTES + b,
-                                 static_cast<uint8_t>((high >> (8U * b)) & 0xFFU));
-                }
-            }
-        }
-        PipeBarrier<PIPE_ALL>();
-        DataCopyExtParams cpIdx{1, kIdxBytesPerRow, 0, 0, 0};
-        DataCopyPad(idxGm_[static_cast<uint64_t>(row) * kIdxBytesPerRow], out, cpIdx);
-        PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses byteBuf_
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        // Every chunk lives at the head of its own 32B block, so one strided store emits exactly
+        // kIdxBytesPerRow packed bytes for the row.
+        StoreChunks(idxGm_, static_cast<uint64_t>(row) * kIdxBytesPerRow, ci,
+                    KCTQ_D / PackCfg<BITS>::kChunkLanes, kIdxBytesPerRow / (KCTQ_D / PackCfg<BITS>::kChunkLanes), 0);
+        PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses the staging buffers
     }
 
     // ---- AIV: step 8 ------------------------------------------------------------------------------
@@ -467,41 +494,26 @@ private:
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             LocalTensor<float> mask = tmpBuf_.Get<float>();
-            LocalTensor<float> chunk = chunkBuf_.Get<float>();
-            LocalTensor<int32_t> lo = chunkLoBuf_.Get<int32_t>();
-            LocalTensor<uint8_t> out = byteBuf_.Get<uint8_t>();
+            LocalTensor<float> wv = workBuf_.Get<float>();
+            LocalTensor<float> cv = redBuf_.Get<float>();
+            LocalTensor<int32_t> ci = redIntBuf_.Get<int32_t>();
+            LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
 
             Muls(mask, p, KCTQ_STEP_SCALE, KCTQ_D);
             Adds(mask, mask, 1.0f, KCTQ_D);
             Maxs(mask, mask, 0.0f, KCTQ_D);
             Mins(mask, mask, 1.0f, KCTQ_D); // 1[p >= 0]
             PipeBarrier<PIPE_V>();
-            // fold the sign bits of every chunk with exact scalar arithmetic (values stay < 2^16)
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            for (uint32_t c = 0; c < kQjlChunkCount; ++c) {
-                float word = 0.0f;
-                float w = 1.0f;
-                for (uint32_t l = 0; l < kQjlChunkLanes; ++l) {
-                    word += mask.GetValue(c * kQjlChunkLanes + l) * w;
-                    w *= 2.0f;
-                }
-                chunk.SetValue(c, word);
-            }
-            PipeBarrier<PIPE_ALL>(); // scalar writes must land before the vector cast reads them
-            Cast(lo, chunk, RoundMode::CAST_RINT, kQjlChunkCount);
+            // The 8 sign bits of every chunk fold into one byte through the same weighted block
+            // reduction the index packer uses, values stay below 2^8 and are exact in fp32.
+            FoldChunks(cv, wv, mask, wq);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
             PipeBarrier<PIPE_V>();
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-
-            for (uint32_t c = 0; c < kQjlChunkCount; ++c) {
-                const uint32_t word = static_cast<uint32_t>(lo.GetValue(c));
-                out.SetValue(c, static_cast<uint8_t>(word & 0xFFU));
-            }
-            PipeBarrier<PIPE_ALL>();
-            DataCopyExtParams cpQjl{1, td_->qjlBytesPerRow, 0, 0, 0};
-            DataCopyPad(qjlOutGm_[static_cast<uint64_t>(row) * td_->qjlBytesPerRow], out, cpQjl);
-            PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses byteBuf_
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            // one packed sign byte per chunk, one chunk per 32B block
+            StoreChunks(qjlOutGm_, static_cast<uint64_t>(row) * td_->qjlBytesPerRow, ci, kQjlChunkCount, 1, 0);
+            PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses the staging buffers
         }
     }
 
@@ -518,11 +530,15 @@ private:
     TBuf<TPosition::VECCALC> workBuf_;
     TBuf<TPosition::VECCALC> denomBuf_;
     TBuf<TPosition::VECCALC> scalarBuf_;
-    TBuf<TPosition::VECCALC> chunkBuf_;
-    TBuf<TPosition::VECCALC> chunkLoBuf_;
-    TBuf<TPosition::VECCALC> chunkHiBuf_;
     TBuf<TPosition::VECCALC> bf16Buf_;
-    TBuf<TPosition::VECCALC> byteBuf_;
+    // vectorised packing: lane weight tables plus the reduction / integer staging buffers
+    TBuf<TPosition::VECCALC> weightBuf_;
+    TBuf<TPosition::VECCALC> weightHiBuf_;
+    TBuf<TPosition::VECCALC> qjlWeightBuf_;
+    TBuf<TPosition::VECCALC> redBuf_;
+    TBuf<TPosition::VECCALC> redHiBuf_;
+    TBuf<TPosition::VECCALC> redIntBuf_;
+    TBuf<TPosition::VECCALC> redIntHiBuf_;
 
     TBuf<TPosition::VECCALC> cTileBuf_;
     TBuf<TPosition::VECCALC> mmLocalWsBuf_;
