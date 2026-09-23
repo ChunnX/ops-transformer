@@ -21,6 +21,8 @@
  * 2. 非量化 mmad(block_mmad_matmul_basic.h) 已支持 splitKIdx 接口：同一输出块 rankSize 次 mmad
  *    在 L0C 上跨调用累加，最后一段单次 fixpipe；LOCAL 模式 splitKNum=1 退化为独立 matmul。
  * 3. 调度器使用非量化 BlockSchedulerMatmulBasic（按下标遍历，尾块静态切分）。
+ * 4. tiling 载荷使用非量化 MatmulTilingData：mL1/nL1/kL1/l1BufferNum/l0cDB 直接映射
+ *    mmad 与调度器参数（量化版的 stepK/nBufferNum/mTailTile/dbL0c 派生关系不再需要）。
  */
 
 #pragma once
@@ -140,7 +142,7 @@ private:
 
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const allToAllMmMatmulTilingData *tilingData);
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData *mmTile, Params &out, MatmulMode matmulMode);
+    __aicore__ inline void SetupParams(const MatmulTilingData *mmTile, Params &out, MatmulMode matmulMode);
 
     __aicore__ inline void RunAllToAll(); // AIV 通信任务
     __aicore__ inline void RunLocalMatmul(); // AIC 本地计算任务
@@ -242,7 +244,7 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::SetupParams(
-    const QuantMatmulTilingData *mmTile, Params &out, MatmulMode matmulMode)
+    const MatmulTilingData *mmTile, Params &out, MatmulMode matmulMode)
 {
     ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
     BlockMmadParams mmadParams;
@@ -263,35 +265,37 @@ __aicore__ inline void AllToAllMmUrmaImpl<AType, BType, CType, TransA, TransB>::
             (tilingData_->localMatmul == 2) ? (baseParams_.rankSize - 1) : baseParams_.rankSize;
     }
 
-    // 基本 mmad 的 L1/L0 分块与缓冲参数
+    // 基本 mmad 的 L1/L0 分块与缓冲参数（非量化 tiling 直接给出 L1 块与缓冲数）
     mmadParams.bGmAddr = baseParams_.bGm;
     mmadParams.biasGmAddr = baseParams_.biasGm;
-    mmadParams.mL1 = mmTile->baseM;
-    mmadParams.nL1 = mmTile->baseN;
-    mmadParams.kL1 = static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK;
+    mmadParams.mL1 = mmTile->mL1;
+    mmadParams.nL1 = mmTile->nL1;
+    mmadParams.kL1 = mmTile->kL1;
     mmadParams.mL0 = mmTile->baseM;
     mmadParams.nL0 = mmTile->baseN;
     mmadParams.kL0 = mmTile->baseK;
-    mmadParams.l1Stages = mmTile->nBufferNum;
-    mmadParams.l0cStages = (mmTile->dbL0c > 1) ? 2 : 1;
+    mmadParams.l1Stages = mmTile->l1BufferNum;
+    mmadParams.l0cStages = (mmTile->l0cDB > 1) ? 2 : 1;
 
     // 调度器参数（非量化 BlockSchedulerMatmulBasic）
-    // mL1/nL1/kL1 = baseM/baseN/kL1；mTailCnt/nTailCnt 直接映射 tiling 的 mTailTile/nTailTile；
-    // 尾部字段（isHf32/l2CacheMode/sliceM/srcNdStride/innerBatch）用 Params 默认值
-    BlockSchedulerParams schedulerParams{mmTile->baseM,
-                                         mmTile->baseN,
-                                         static_cast<uint32_t>(mmTile->stepK) * mmTile->baseK,
+    // mL1/nL1/kL1 直接取 tiling 值（mL1 ≤ baseM，小 shape 时可小于 base 块）；
+    // mTailCnt/nTailCnt 直接映射 tiling 的 mTailCnt/nTailCnt；
+    // 尾部字段（l2CacheMode/sliceM/srcNdStride/innerBatch）用 Params 默认值
+    BlockSchedulerParams schedulerParams{mmTile->mL1,
+                                         mmTile->nL1,
+                                         mmTile->kL1,
                                          mmTile->baseM,
                                          mmTile->baseN,
                                          mmTile->baseK,
-                                         mmTile->mTailTile,
-                                         mmTile->nTailTile,
+                                         mmTile->mTailCnt,
+                                         mmTile->nTailCnt,
                                          mmTile->mBaseTailSplitCnt,
                                          mmTile->nBaseTailSplitCnt,
                                          mmTile->mTailMain,
-                                         mmTile->nTailMain};
+                                         mmTile->nTailMain,
+                                         mmTile->isHf32};
     // 基础 Tiling 参数
-    MMTiling mmTiling{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->dbL0c};
+    MMTiling mmTiling{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->l0cDB};
 
     out = {problemShape, mmadParams, schedulerParams, mmTiling, localParams};
 }

@@ -30,7 +30,7 @@
 #include "apace_st_utils.h"
 #include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/tiling/matmul_tiling_swat.h"
 #include "apace/kernel/matmul/batch_matmul/all_to_all_mm_tiling_data.h"
 #include "apace_a2a_mm_kernel_launcher.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
@@ -112,8 +112,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 
     allToAllMmMatmulTilingData tilingData;
 
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT16, mm::DataType::DT_FLOAT16> tilingEngine;
-    tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileMmTilingData);
+    MatmulTilingSwat tilingEngine;
+    // 非量化 tiling 引擎按数据类型字节宽度推导 baseK（fp16 = 2 字节）
+    tilingEngine.GetTilingData(m, n, ka, sizeof(uint16_t), false, true, tilingData.tileMmTilingData);
 
     // headMSize 直接采用命令行/CSV 指定值（不再由 tiling 重算），保证 cases.csv 的 head_m_size 列生效。
     // 仅约束 headMSize 不超过 m，超限时退化为单尾块。

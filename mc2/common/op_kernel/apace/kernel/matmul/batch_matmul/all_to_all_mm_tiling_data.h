@@ -16,14 +16,14 @@
 #pragma once
 
 #include <cstdint>
-#include "../../../tiling/quant_matmul_tiling_data.h"
+#include "../../../tiling/matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
 
 struct allToAllMmMatmulTilingData {
     CommTilingData commTilingData;
-    // 复用 matmul tiling（非量化场景 scaleKL1 字段不使用）
-    QuantMatmulTilingData tileMmTilingData;
+    // 非量化 matmul tiling（mL1/nL1/kL1/l1BufferNum/l0cDB 等，无 scale 字段）
+    MatmulTilingData tileMmTilingData;
     uint32_t localMatmul{0}; // 0：remote融合；1：DEFERRED_SYNC；2：GM累加（LOCAL + REMOTE）
 };
 

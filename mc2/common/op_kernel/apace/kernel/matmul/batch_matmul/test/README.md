@@ -1,6 +1,6 @@
 # AllToAllMmKernel Kernel UT 测试
 
-对 `../all_to_all_mm_kernel.h`（非量化 all-to-all MatMul，GM 累加版）的 Kernel UT 测试，验证三种调度模式下的矩阵乘、GM 累加（覆盖写 + 原子累加）与 bias 语义的正确性。
+对 `../all_to_all_mm_kernel.h`（非量化 all-to-all MatMul，splitKIdx 版）的 Kernel UT 测试，验证三种调度模式下的矩阵乘、L0C 跨 rank 累加（splitKIdx + 单次 fixpipe）与 bias 语义的正确性。
 
 ## 测试原理
 
@@ -8,9 +8,9 @@
 
 1. **预填通信 buffer**：`remoteAGM` 装入全部 rank 的 A 数据（`rankSize * originalM × K`），`localAGM` 装入 self rank 的 A 段；CommPolicy 用 `NoopCommWaitPolicy`（`WaitTile` 空实现），模拟通信已完成，聚焦 kernel 计算逻辑本身。
 2. **三种模式分别验证**：
-   - 模式1（`localMatmul=0, matmulMode=REMOTE`）：单次 launch，遍历所有 rank，首次覆盖写 + 其余原子累加；
-   - 模式2（`localMatmul=1, matmulMode=DEFERRED_SYNC`）：单次 launch，self 先覆盖写，其余原子累加；
-   - 模式3（`localMatmul=2`）：LOCAL launch（覆盖写 + bias）后 REMOTE launch（跳过 self，原子累加）。
+   - 模式1（`localMatmul=0, matmulMode=REMOTE`）：单次 launch，遍历所有 rank，splitKIdx=0..rankSize-1 在 L0C 累加，末次单次 fixpipe（无 atomic）；
+   - 模式2（`localMatmul=1, matmulMode=DEFERRED_SYNC`）：单次 launch，self 先算驻留 L0C，wait 后其余 rank 累加，末次单次 fixpipe；
+   - 模式3（`localMatmul=2`）：LOCAL launch（覆盖写 + bias，splitKNum=1）后 REMOTE launch（跳过 self，Run 级 atomic 累加）。
 3. **参考实现**：
    ```
    C[m][n] = bias[n] + Σ_{r=0}^{rankSize-1} Σ_{k=0}^{K-1} A[r*originalM+m][k] * B[r*K+k][n]
@@ -54,6 +54,5 @@ source <CANN安装目录>/set_env.sh
 ## 注意事项
 
 - 需在安装了 CANN（含 tikicpulib）且已初始化 `include/tensor_api` 子模块的环境中运行。
-- ICPU 模拟器需支持 `SetAtomicAdd` / `SetAtomicNone` / `PipeBarrier<PIPE_ALL>` 的语义模拟（`block_mmad_matmul_basic_split_k.h` 已在使用同类原语）。若模拟器不支持原子累加，需在真实 NPU 上验证模式1/2/3 的累加路径。
-- 注意：真实设备（dav-3510）编译不支持 `PipeBarrier<PIPE_FIX>`，kernel 内统一使用 `PipeBarrier<PIPE_ALL>`（见 `tests/st/all_to_all_matmul/CHANGELOG_debug.md`）。
+- ICPU 模拟器需支持 `SetAtomicAdd` / `SetAtomicNone` 的语义模拟（`block_mmad_matmul_basic_split_k.h` 已在使用同类原语）。若模拟器不支持原子累加，需在真实 NPU 上验证模式1/2/3 的累加路径。
 - 测试数据确定性生成，无外部 `.bin` 依赖。

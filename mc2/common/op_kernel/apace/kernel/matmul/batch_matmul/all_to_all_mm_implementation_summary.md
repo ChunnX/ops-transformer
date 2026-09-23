@@ -99,12 +99,24 @@ class AllToAllMmKernel;
 - 开头 `if (curBlockIdx >= bs.GetCoreNums()) return;` 保护。
 - 无 `needUpdateTail_`/`UpdateTailTile`（尾块由调度器 Params 静态切分）。
 
-### 3.3 tiling 数据（本目录 `all_to_all_mm_tiling_data.h`）
+### 3.3 tiling（host 引擎 + 数据载荷）
+
+**host tiling 引擎（`apace/tiling/`，自 cann-samples `matmul_recipes` 迁移，2026-09-23）**：
+
+| 文件 | 说明 |
+|---|---|
+| `matmul_tiling_common.h` | `MatmulPlatformInfo`/`MatmulArgs`/`MatmulRunInfo`（与源一致） |
+| `matmul_tiling_data.h` | `MatmulTilingData`（mL1/nL1/kL1/l1BufferNum/l0cDB 等；删 `kernel_tiling.h` include 避免头冲突） |
+| `matmul_tiling_base.h` | `MatmulTilingBase`：平台信息注入 `SetPlatformInfoPtr`（op_host/UT 友好）、`SetCoreLimit`、`SetOptimizeEnable`、日志门控（`ASCEND_GLOBAL_LOG_LEVEL=0`）、复用状态清零 |
+| `matmul_tiling_swat.h` | `MatmulTilingSwat`：负载均衡选块/尾块切分/L1 深度推导；`OptimizeEdgeBasicBlock` 受 `isOpenOptimize_` 门控（默认开，行为与源一致） |
+| `matmul_comm_tiling_base.h` | `MatmulCommTilingBase::GetCommTilingData`：由 `MatmulTilingData` 推导通信切分（op_host 用；无 scale 通道，对照量化版 `comm_tiling_base.h`） |
+
+**数据载荷（本目录 `all_to_all_mm_tiling_data.h`）**：
 
 ```cpp
 struct allToAllMmMatmulTilingData {
-    CommTilingData commTilingData;            // A 通信切分
-    QuantMatmulTilingData tileMmTilingData;   // matmul 分块（scaleKL1 字段不使用）
+    CommTilingData commTilingData;        // A 通信切分
+    MatmulTilingData tileMmTilingData;    // 非量化 matmul tiling（无 scale 字段）
     uint32_t localMatmul{0};
 };
 struct CommContext {
@@ -112,7 +124,8 @@ struct CommContext {
     Apace::AivComm::CommUbmemContext ubmemCtx;
 };
 ```
-- 对照量化版 `allToAllMatmulTilingData`：删 `scaleCommTilingData`、删 `hcommAllToAllMatmulTilingData`。
+- 对照量化版 `allToAllMatmulTilingData`：删 `scaleCommTilingData`、删 `hcommAllToAllMatmulTilingData`；
+  tiling 载荷从 `QuantMatmulTilingData`（方案 A 复用）切换为 `MatmulTilingData`（方案 B）。
 - 不 include `kernel_tiling/kernel_tiling.h`（避免 tikcfw/ops-tensor 头冲突）。
 - `CommContext` host/kernel 共享定义。
 
@@ -127,8 +140,9 @@ class AllToAllMmUrmaImpl;
 - `Run()`：AIV → `RunAllToAll()`（仅 A 通信）；AIC → localMatmul==2 先 `RunLocalMatmul()` 再 `RunMatmul()`。
 - `SetupParams` 按模式设置 `mmadParams.splitKNum`：LOCAL=1 / 模式3-REMOTE=rankSize-1 / 模式1·2=rankSize。
 - `BlockScheduler = BlockSchedulerMatmulBasic<ProblemShape>`。
-- `schedulerParams` 12 字段 + 5 默认：
-  `{baseM, baseN, stepK*baseK, baseM, baseN, baseK, mTailTile, nTailTile, mBaseTailSplitCnt, nBaseTailSplitCnt, mTailMain, nTailMain}`。
+- mmad 与调度器参数**直取非量化 tiling**：`mL1/nL1/kL1/l1BufferNum/l0cDB/mTailCnt/nTailCnt`；
+  `schedulerParams` 13 字段 + 4 默认：
+  `{mL1, nL1, kL1, baseM, baseN, baseK, mTailCnt, nTailCnt, mBaseTailSplitCnt, nBaseTailSplitCnt, mTailMain, nTailMain, isHf32}`。
 - `RunMatmul`：`aGmAddr = selfWinAddr`（通信 buffer）、`localAGmAddr = aGm`。
 
 ### 3.5 ST 测试（`tests/st/all_to_all_matmul/`）
@@ -139,7 +153,7 @@ class AllToAllMmUrmaImpl;
 | `CMakeLists.txt` | target `apace_a2a_mm_st`，dav-3510，含 `asc/impl/...` include（9.3.0 需要）|
 | `run.sh` | 生成数据→编译→多 rank 运行→精度比对；CSV/CLI 模式 |
 | `src/apace_a2a_mm_kernel_launcher.h` | kernel entry：`KERNEL_TYPE_MIX_AIC_1_1`，`AllToAllMmUrmaImpl<half,half,half,false,true>` |
-| `src/main.cpp` | host 主流程：无 scale、无 zero-bias、`localMatmul` CLI 参数、headMSize 用 CLI 值 |
+| `src/main.cpp` | host 主流程：无 scale、`MatmulTilingSwat`（dataTypeSize=2）、`localMatmul` CLI 参数、headMSize 用 CLI 值 |
 | `scripts/gen_data.py` | fp16 无 scale，all-to-all 重排 + bias，golden 用 fp32 累加（已实测与 fp64 参考一致）|
 | `scripts/verify_result.py` | fp16，rtol/atol=1e-2 |
 
@@ -164,21 +178,23 @@ class AllToAllMmUrmaImpl;
    - 按下标 for 循环遍历（`GetBlockNums`/`GetCoreNums`/`GetBlockCoord`），空子片 `continue`。
    - `mTailCnt/nTailCnt` 直接映射 tiling 的 `mTailTile/nTailTile`（语义一致，basic 有 CeilDiv 归一）。
    - K 维度调度器直接返回 `k_`，无需 kernel 覆盖。
+5. **tiling 迁移（方案 B 落地，2026-09-23）**：自 cann-samples `matmul_recipes` 迁移非量化 tiling 四件套
+   （`matmul_tiling_base/common/data/swat.h`）至 `apace/tiling/`，新增 `matmul_comm_tiling_base.h`（无 scale 通道）；
+   payload（`all_to_all_mm_tiling_data.h`）、`urma_impl.h` 的 `SetupParams`、ST `main.cpp` 同步切换到
+   `MatmulTilingData`/`MatmulTilingSwat`。L1 预算不再为 scale 预留空间，`DT_FLOAT16` 不存在的编译错误一并消除。
 
 ---
 
 ## 5. 遗留事项 / 待确认
 
-1. **非量化 tiling**：
-   - 方案 A：沿用 `QuantMatmulTilingSwat<DT_FLOAT16,DT_FLOAT16>`（正确，但 L1 预留 scale 空间，非最优）。
-   - 方案 B：可改 blaze 加 `MatmulTilingBasic`（不含 scale 的 L1 预算）。**未定**。
+1. **非量化 tiling**：已按方案 B 落地（见 §4 第 5 条）——`apace/tiling/matmul_tiling_*` 四件套 +
+   `matmul_comm_tiling_base.h`，payload/urma_impl/ST 已全部切换，L1 预算不再预留 scale 空间。
 2. **工具链版本**：ST 构建需 ASCEND_HOME_PATH 与 bisheng 编译器同版本（曾有 9.3.0/9.1.0 错配），
    改版本需 `rm -rf tests/st/build` 清缓存。
 3. **编译验证**：本环境 `include/tensor_api` 未初始化，无法编译；需在完整 CANN 环境验证
-   （重点：`KERNEL_TYPE_MIX_AIC_1_1` + blaze mmad 的 AIV 路径、`DT_FLOAT16` tiling、真实多 rank 运行）。
-4. **昨天遗留**（CHANGELOG_debug.md 记录的旧 GM 累加尝试）"mmad 可能没执行"问题，
-   在 urma 路径上是否复现需实测。
-5. **`CommContext` 在 3 个 tiling 头重复定义**（脆弱点，可选重构到公共 comm 头）。
+   （重点：`KERNEL_TYPE_MIX_AIC_1_1` + blaze mmad 的 AIV 路径、`MatmulTilingSwat` 真实平台查询路径、
+   真实多 rank 运行）。`DT_FLOAT16` 不存在的问题已随 ST 切换 `MatmulTilingSwat` 消除。
+4. **`CommContext` 在 3 个 tiling 头重复定义**（脆弱点，可选重构到公共 comm 头）。
 
 ---
 
