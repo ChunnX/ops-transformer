@@ -2,7 +2,6 @@
 
 [📄 View source code](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_permute_with_ep_grad)
 
-
 ## Product Support
 
 | Product                                                        | Supported|
@@ -12,7 +11,6 @@
 | <term>Atlas 200I/500 A2 inference products</term>                     |    ×     |
 | <term>Atlas inference products</term>                            |    ×     |
 | <term>Atlas training products</term>                             |    ×     |
-
 
 ## Function
 
@@ -44,7 +42,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithEpGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithEpGrad` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize(
@@ -59,6 +57,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize(
     uint64_t              *workspaceSize,
     aclOpExecutor         **executor)
 ```
+
 ```c++
 aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
     void          *workspace,
@@ -139,7 +138,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
         <td>rangeOptional</td>
         <td>Input</td>
         <td>Valid range of EP slicing. The size is <code>2</code>.</td>
-        <td>If this parameter is left empty, <code>permutedProbsOutputGradOptional</code> and <code>probsGradOut</code> are ignored, and the execution logic is rolled back to <a href="../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad.md">aclnnMoeTokenPermuteGrad</a>.</td>
+        <td>If this parameter is left empty, <code>permutedProbsOutputGradOptional</code> and <code>probsGradOut</code> are ignored, and the execution logic is rolled back to <a href="../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad_en.md">aclnnMoeTokenPermuteGrad</a>.</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -276,9 +275,9 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 - Deterministic computation:
   - `aclnnMoeTokenPermuteWithEpGrad` defaults to deterministic implementation.
 
- - The value of `top_k` is less than or equal to `512`.
- - `paddedMode` cannot be set to `True`.
- - When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](./aclnnMoeTokenPermuteGrad.md).
+  - The value of `top_k` is less than or equal to `512`.
+  - `paddedMode` cannot be set to `True`.
+  - When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad_en.md).
 
 ## Example
 

@@ -11,15 +11,14 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
-- **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. **Different from [aclnnFlashAttentionScoreV2](./aclnnFlashAttentionScoreV2.md), this API supports the calculation of variable-length sequences (S), allowing multiple sequences of unequal lengths to be passed at once. When this API is used, `query`, `key`, and `value` data is passed in the TND format. T indicates the total number, which is the total length of all sequences. Use `actualSeqQLenOptional` and `actualSeqKvLenOptional` to input the cumulative length of each sequence to distinguish different sequences. The attention result of each sequence is calculated separately.**
+- **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. **Different from [aclnnFlashAttentionScoreV2](./aclnnFlashAttentionScoreV2_en.md), this API supports the calculation of variable-length sequences (S), allowing multiple sequences of unequal lengths to be passed at once. When this API is used, `query`, `key`, and `value` data is passed in the TND format. T indicates the total number, which is the total length of all sequences. Use `actualSeqQLenOptional` and `actualSeqKvLenOptional` to input the cumulative length of each sequence to distinguish different sequences. The attention result of each sequence is calculated separately.**
 - Formula:
 
    The forward computation formula for attention is as follows:
 
-   - When **psetype** is set to **1**, the calculation formula is the same as that of [aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md).
+   - When **psetype** is set to **1**, the calculation formula is the same as that of [aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore_en.md).
 
    - When `psetype` is set to other values, the formula is as follows:
 
@@ -27,10 +26,9 @@
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
 
-
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV2` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
@@ -62,6 +60,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   void              *workspace,
@@ -385,7 +384,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
 
 ## aclnnFlashAttentionVarLenScoreV2
 
--   **Parameters**
+- **Parameters**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -421,9 +420,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
     </tbody>
     </table>
 
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
+
 ## Constraints
 
 - Deterministic computing:
@@ -434,9 +434,9 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   - **D**: Head-Dim must satisfy (qD == kD && kD >= vD).
   - `inputLayout` must be consistent.
 - Constraints on the data shape:
-    -   **T**: The value ranges from 1 to 1M.
-    -   **N**: The value ranges from 1 to 256.
-    -   **D**: The value ranges from 1 to 768.
+    - **T**: The value ranges from 1 to 1M.
+    - **N**: The value ranges from 1 to 256.
+    - **D**: The value ranges from 1 to 768.
 - The data format of `query`, `key`, and `value` can only be TND. **T** indicates the data closely arranged on the B and S axes (SeqLenQ and SeqLenKV of each batch). **B (Batch)** indicates the batch size of the input sample, and **S (Seq-Length)** indicates the length of the input sample sequence. **H (Head-Size)** indicates the size of the hidden layer, **N (Head-Num)** indicates the number of heads. **D (Head-Dim)** indicates the minimum unit size of the hidden layer (**D** = **H**/**N**).
 - `realShiftOptional`: If Sq is greater than 1024, Sq and Skv of each batch are of equal length, and it is a lower triangular mask scenario with `sparseMode` being 0, 2, or 3, ALiBi positional encoding compression can be enabled. In this case, only the last 1024 rows of the original PSE need to be input for memory optimization, that is, `alibi_compress = ori_pse[:, :, -1024:, :]`. Specifically:
   - If the parameters of each batch are different, the shape is BNHSkv (H=1024).
@@ -444,12 +444,14 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
   - If `pseType` is 2 or 3, the data type must be FLOAT32, and the supported shapes are [B,N] and [N].
   - If this parameter is not enabled, pass a null pointer to `realShiftOptional` and 1 to `pseType`.
 - Meanings of `pseType` values:
+
     | pseType     | Description                             |      Remarks  |
     | ----------- | --------------------------------- | ----------|
     | 0           | A value is externally passed to `pse`, and multiplication is required before addition.             | - |
-    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [`FlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md).|
+    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [`FlashAttentionUnpaddingScoreGrad`](../../flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGrad_en.md).|
     | 2           | A value is internally passed to `pse`, and multiplication is required before addition.             | - |
     | 3           | A value is internally passed to `pse`, and multiplication and addition are required before square root operation.        | - |
+    
 - When `pseType` is set to 2 or 3, Sq and Skv must be of the same length.
 - The constraints for `sparseMode` are as follows:
   - If the shape values of all `attenMaskOptional` are the same and less than 2048, you are advised to use the default mode to reduce memory usage.

@@ -12,8 +12,8 @@
 
 ## Function
 
--   Description: Applies sigmoid to input `x` during MoE computation, sorts the calculation results by group, and selects the top k experts based on the group sorting result.
--   Formula:
+- Description: Applies sigmoid to input `x` during MoE computation, sorts the calculation results by group, and selects the top k experts based on the group sorting result.
+- Formula:
 
     Computes sigmoid of the input element-wise.
 
@@ -53,10 +53,9 @@
     
     If `enableExpertMapping` is `true`, the physical experts in indices are mapped to logical experts based on the input `mappingNum` and `mappingTable` to obtain the output indices.
 
-
 ## Prototype
 
-Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api). You must first call the `aclnnMoeFusedTopkGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeFusedTopk` API to execute the computation.
+Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api.md). You must first call the `aclnnMoeFusedTopkGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeFusedTopk` API to execute the computation.
 
 - `aclnnMoeFusedTopkGetWorkspaceSize(const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable, uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, bool isNorm, float scale, bool enableExpertMapping, aclTensor* y, aclTensor* indices, uint64_t* workspaceSize, aclOpExecutor** executor)`
 
@@ -87,7 +86,7 @@ Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_ap
 
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  ```
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown.
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input `x` or `addNum` is a null pointer.
                                     2. The output `y` or `indices` is a null pointer.

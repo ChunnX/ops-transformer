@@ -34,7 +34,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFusedInferAttentionScoreV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFusedInferAttentionScoreV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnFusedInferAttentionScoreV2GetWorkspaceSize(

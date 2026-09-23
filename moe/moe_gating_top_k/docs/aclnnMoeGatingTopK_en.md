@@ -69,7 +69,6 @@
   y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
   $$
 
-
   **Step 5: Renormalization and Scaling**
 
   When `normType` is 1, normalization is performed. When `normType` is 0, the `renorm` parameter takes effect. When `renorm` is 1, renorm is performed.
@@ -94,7 +93,7 @@
 
 ## Prototype
 
-Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api). You must first call the `aclnnMoeGatingTopKGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeGatingTopK` API to execute the computation.
+Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api.md). You must first call the `aclnnMoeGatingTopKGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeGatingTopK` API to execute the computation.
 
 ```cpp
 aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
@@ -115,6 +114,7 @@ aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
   uint64_t        *workspaceSize, 
   aclOpExecutor  **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnMoeGatingTopK(
   void          *workspace, 
@@ -125,7 +125,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 ## aclnnMoeGatingTopKGetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
     <col style="width: 146px">
@@ -312,7 +312,7 @@ aclnnStatus aclnnMoeGatingTopK(
     </tbody>
     </table>  
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -353,11 +353,11 @@ aclnnStatus aclnnMoeGatingTopK(
         the value of the input parameter does not meet the requirements.<br>
         </td>
       </tr>
-    </tbody></table>  
+    </table>  
 
 ## aclnnMoeGatingTopK
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
     <col style="width: 173px">
     <col style="width: 112px">
@@ -393,11 +393,12 @@ aclnnStatus aclnnMoeGatingTopK(
     </tbody>
     </table>
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computing:
   - `aclnnMoeGatingTopK` defaults to a deterministic implementation.
 

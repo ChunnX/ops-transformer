@@ -15,13 +15,14 @@
 Synchronizes all ranks in a communication domain. xRef is used only to build tensor dependencies. No operation is performed on xRef in the API.
 
 Compared with the `aclnnDistributeBarrier` API, this API has the following changes:
+
 - Dynamic scale-in support: The operator can run normally without recompilation after faulty ranks are removed after the communication domain is created. Enable this feature by passing the `elasticInfoOptional` parameter.
 - Timeout detection support:
-    -   Enable this feature by passing a `timeOutOptional` parameter greater than 0 microseconds, with a maximum supported value of INT32_MAX. When the internal synchronization wait time of the operator exceeds the given `timeOut`, a timeout exception occurs on the rank that runs the operator.
+    - Enable this feature by passing a `timeOutOptional` parameter greater than 0 microseconds, with a maximum supported value of INT32_MAX. When the internal synchronization wait time of the operator exceeds the given `timeOut`, a timeout exception occurs on the rank that runs the operator.
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnDistributeBarrierV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnDistributeBarrierV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnDistributeBarrierV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnDistributeBarrierV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierV2GetWorkspaceSize(
@@ -92,7 +93,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>elasticInfoOptional</td>
     <td>Input</td>
     <td>Dynamic scale-in information of the EP communication domain.</td>
-    <td>You can pass valid data or a null pointer. If a null pointer is passed, the dynamic scale-in feature is disabled. If valid data is passed, it must be a 1D tensor with shape <code>(4 + 2 * epWorldSize, )</code>. The first four numbers in the tensor indicate whether to scale in, actual rank count after scale-in, rank count used by shared experts after scale-in, and number of MoE experts after scale-in. The fields for the rank count used by shared experts after scale-in and number of MoE experts after scale-in are reserved to align with <a href="../../moe_distribute_dispatch_v2/docs/aclnnMoeDistributeDispatchV3.md">`aclnnMoeDistributeDispatchV3`</a> and <a href="../../moe_distribute_combine_v2/docs/aclnnMoeDistributeCombineV3.md">`aclnnMoeDistributeCombineV3`</a>, and have no practical significance in this Barrier. The remaining "2 * epWorldSize" represents two rank mapping tables. After scale-in, some ranks are removed from the EP communication domain due to exceptions. The mapping relationship of the first table is <code>Table1[epRankId] = localEpRankId or -1</code>. -1 indicates that the rank with epRankId is removed from the communication domain, and localEpRankId represents the rank index in the new EP communication domain. The mapping relationship of the second table is <code>Table2[localEpRankId] = epRankId</code>.</td>
+    <td>You can pass valid data or a null pointer. If a null pointer is passed, the dynamic scale-in feature is disabled. If valid data is passed, it must be a 1D tensor with shape <code>(4 + 2 * epWorldSize, )</code>. The first four numbers in the tensor indicate whether to scale in, actual rank count after scale-in, rank count used by shared experts after scale-in, and number of MoE experts after scale-in. The fields for the rank count used by shared experts after scale-in and number of MoE experts after scale-in are reserved to align with <a href="../../moe_distribute_dispatch_v2/docs/aclnnMoeDistributeDispatchV3_en.md">`aclnnMoeDistributeDispatchV3`</a> and <a href="../../moe_distribute_combine_v2/docs/aclnnMoeDistributeCombineV3_en.md">`aclnnMoeDistributeCombineV3`</a>, and have no practical significance in this Barrier. The remaining "2 * epWorldSize" represents two rank mapping tables. After scale-in, some ranks are removed from the EP communication domain due to exceptions. The mapping relationship of the first table is <code>Table1[epRankId] = localEpRankId or -1</code>. -1 indicates that the rank with epRankId is removed from the communication domain, and localEpRankId represents the rank index in the new EP communication domain. The mapping relationship of the second table is <code>Table2[localEpRankId] = epRankId</code>.</td>
     <td>INT32</td>
     <td>ND</td>
     <td>0-1</td>
@@ -174,7 +175,6 @@ aclnnStatus aclnnDistributeBarrierV2(
     <tr><td align="left">The shape of the input xRef, timeOut, elasticInfo, group, or worldSize does not match.</td></tr>
     </tbody></table>
 
-
 ## aclnnDistributeBarrierV2
 
 - **Parameters**
@@ -213,7 +213,6 @@ aclnnStatus aclnnDistributeBarrierV2(
     </tr>
     </tbody></table>
 
-    
 - **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -232,7 +231,9 @@ aclnnStatus aclnnDistributeBarrierV2(
     - The dynamic scale-in feature cannot be enabled in the tensor parallelism scenario.
 
 - Parameter consistency constraint:
+
   - When `elasticInfoOptional` is enabled, ensure that `aclnnMoeDistributeDispatchV3` and `aclnnMoeDistributeCombineV3` or `aclnnMoeDistributeCombineAddRmsNormV2` also enable this parameter, and their values remain consistent with the corresponding `elasticInfoOptional` parameter.
+
 ## Example
 
 - Prepare files.   
@@ -240,13 +241,15 @@ aclnnStatus aclnnDistributeBarrierV2(
 
   2. Install the CANN package and compile and run barrierDemo.
 
--  Compilation script:
+- Compilation script:
+
     ```bash
     #!/bin/bash
     cann_path="/path/to/cann_env" # Change the path of the CANN package environment.
     g++ "aclnnBarrierDemo.cpp" -o barrierDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                         -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
     ```
+
 - Compilation and execution:
 
     ```bash
@@ -260,6 +263,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     ```
 
 - The example code is as follows:
+
     ```Cpp
     #include <thread>
     #include <iostream>

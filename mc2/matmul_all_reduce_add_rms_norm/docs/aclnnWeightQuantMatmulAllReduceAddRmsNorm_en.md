@@ -36,7 +36,7 @@
   - `aclnnWeightQuantMatmulAllReduceAddRmsNorm`: Output tensor objects `normOut` and `y` need to be created to store the computation result.
   - `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm`: Output tensor `normOut` needs to be created. The results that would have been stored in the output tensor `y` in the original non-inplace scenario are directly written to the memory of the input tensor `residual`.
 
-- Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First call `aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then, call `aclnnWeightQuantMatmulAllReduceAddRmsNorm` to execute the computation.
+- Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First call `aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then, call `aclnnWeightQuantMatmulAllReduceAddRmsNorm` to execute the computation.
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -58,6 +58,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
     void             *workspace,
@@ -302,7 +303,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">

@@ -13,6 +13,7 @@
 | <term>Atlas training products</term>                              |    ×     |
 
 ## Function
+
 - Description: Perform single-channel rotary position encoding computation.
 - Formula:
 
@@ -53,7 +54,6 @@
     $$
     y = x * cos + x\_rotate * sin
     $$
-
     
     (3) Quarter mode (mode equals 2):
 
@@ -105,7 +105,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. You must first call `aclnnRotaryPositionEmbeddingGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbedding` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. You must first call `aclnnRotaryPositionEmbeddingGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbedding` to perform the computation.
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
@@ -117,13 +117,16 @@ aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```c++
 aclnnStatus aclnnRotaryPositionEmbedding(
     void          *workspace,
     uint64_t       workspaceSize,
     aclOpExecutor *executor,
     aclrtStream    stream)
+
 ```
+
 ## aclnnRotaryPositionEmbeddingGetWorkspaceSize
 
 - **Parameters:**
@@ -266,7 +269,6 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   </tbody>
   </table>
 
-
 ## aclnnRotaryPositionEmbedding
 
 - **Parameters:**
@@ -324,8 +326,8 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     - Half mode:
       - B, N < 1000.
       - When `x` is BNSD, `cos` and `sin` support 11SD, B1SD, and BNSD.
-        - When (D/2) % (32/inputDtypeSize) == 0, it must satisfy B * N <= S * 8.
-        - When (D/2) % (32/inputDtypeSize) != 0, it must satisfy B * N * 2 <= (S + coreNum -1) / coreNum or D >= 80.
+        `- When (D/2) % (32/inputDtypeSize) == 0, it must satisfy B * N <= S * 8.`
+        `- When (D/2) % (32/inputDtypeSize) != 0, it must satisfy B * N * 2 <= (S + coreNum -1) / coreNum or D >= 80.`
       - When `x` is BSND, `cos` and `sin` support 1S1D, BS1D, BSND.
       - When `x` is SBND, `cos` and `sin` support S11D, SB1D, SBND.
       - When `x` is TND, `cos` and `sin` support T1D and TND.
@@ -509,6 +511,3 @@ int main() {
     return 0;
 }
 ```
-
-
-

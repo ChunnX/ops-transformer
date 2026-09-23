@@ -32,7 +32,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatMulAlltoAllvGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatMulAlltoAllv` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatMulAlltoAllvGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatMulAlltoAllv` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -226,7 +226,6 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     </tr>
     </tbody></table>
 
-
 ## aclnnGroupedMatMulAlltoAllv
 
 - **Parameters**
@@ -289,9 +288,11 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - <term>Atlas A3 training products/Atlas A3 inference products</term>: The communication volume per device must be greater than or equal to 2 MB.
 
 ## Calling Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
+
     ```Cpp
     #include <thread>
     #include <iostream>

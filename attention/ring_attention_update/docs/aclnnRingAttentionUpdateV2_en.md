@@ -12,7 +12,7 @@
 
 ## Function
 
-- Description: Updates the outputs of two FlashAttention operations based on their different softmax max and sum values. **The difference from the [RingAttentionUpdate](./aclnnRingAttentionUpdate.md) interface is: in the scenario where the input layout is TND, the data layout of the softmax-related inputs in the original `RingAttentionUpdate` interface is BNS8, while the `RingAttentionUpdateV2` interface supports passing a string parameter `inputSoftmaxLayout` to control whether the data layout of the softmax-related inputs is consistent with the attention layout (the TND layout).**
+- Description: Updates the outputs of two FlashAttention operations based on their different softmax max and sum values. **The difference from the [RingAttentionUpdate](./aclnnRingAttentionUpdate_en.md) interface is: in the scenario where the input layout is TND, the data layout of the softmax-related inputs in the original `RingAttentionUpdate` interface is BNS8, while the `RingAttentionUpdateV2` interface supports passing a string parameter `inputSoftmaxLayout` to control whether the data layout of the softmax-related inputs is consistent with the attention layout (the TND layout).**
 - Formula:
 
 $$
@@ -29,7 +29,7 @@ $$
 
 ## Prototype
 
-- Each operator is divided into a [two-phase API](../../../docs/en/context/two_phase_api). It is necessary to first call the `aclnnRingAttentionUpdateV2GetWorkspaceSize` interface to obtain the required workspace size for computation and the executor that includes the operator's computation process, and then call the `aclnnRingAttentionUpdateV2` interface to perform the computation.
+- Each operator is divided into a [two-phase API](../../../docs/en/context/two_phase_api.md). It is necessary to first call the `aclnnRingAttentionUpdateV2GetWorkspaceSize` interface to obtain the required workspace size for computation and the executor that includes the operator's computation process, and then call the `aclnnRingAttentionUpdateV2` interface to perform the computation.
 
 ```cpp
 aclnnStatus aclnnRingAttentionUpdateV2GetWorkspaceSize(

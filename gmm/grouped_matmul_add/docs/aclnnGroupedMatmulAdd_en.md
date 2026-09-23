@@ -23,7 +23,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulAddGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulAdd` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulAddGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulAdd` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(
@@ -37,6 +37,7 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```c++
 aclnnStatus aclnnGroupedMatmulAdd(
     void            *workspace,
@@ -176,7 +177,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
         <th>Return</th>
         <th>Error Code</th>
         <th>Description</th>
-      </tr><thead>
+      </tr></thead>
     <tbody>
       <tr>
         <td>ACLNN_ERR_PARAM_NULLPTR</td>
@@ -199,12 +200,11 @@ aclnnStatus aclnnGroupedMatmulAdd(
     </tbody>
     </table>
 
-
 ## aclnnGroupedMatmulAdd
 
 - **Parameters**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
+  <table style="undefined;table-layout: fixed; width: 1150px"> =
     <col style="width: 150px">
     <col style="width: 100px">
     <col style="width: 900px"> 
@@ -237,7 +237,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
     </tr>
     </tbody></table>
 
--   **Return**
+- **Return**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

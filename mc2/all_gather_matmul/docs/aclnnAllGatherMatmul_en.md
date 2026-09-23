@@ -12,11 +12,10 @@
 
 **Note**: When using this API, ensure that the driver firmware package and CANN package are in the 8.0.RC2 version or later. Otherwise, an error, such as BUS ERROR, will be reported.
 
-
 ## Description
 
--   **API function**: Integrates AllGather communication and MatMul compute.
--   **Formula**:
+- **API function**: Integrates AllGather communication and MatMul compute.
+- **Formula**:
 
     $$
     output=allgather(x1)@x2+bias
@@ -28,7 +27,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnAllGatherMatmulGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAllGatherMatmul` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnAllGatherMatmulGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAllGatherMatmul` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(
@@ -55,7 +54,7 @@ aclnnStatus aclnnAllGatherMatmul(
 
 ## aclnnAllGatherMatmulGetWorkspaceSize
 
--   **Parameters**
+- **Parameters**
     <table style="undefined;table-layout: fixed; width: 1567px" class="_resize_120"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
@@ -191,7 +190,7 @@ aclnnStatus aclnnAllGatherMatmul(
       </tbody>
     </table>
 
--   **Returns**
+- **Returns**
 
     aclnnStatus: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
     
@@ -230,9 +229,9 @@ aclnnStatus aclnnAllGatherMatmul(
 
 ## aclnnAllGatherMatmul
 
--   **Parameters**
+- **Parameters**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -265,7 +264,7 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr>
     </tbody></table>
     
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -289,6 +288,7 @@ aclnnStatus aclnnAllGatherMatmul(
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training products, Atlas A2 inference products</term>, <term>Atlas A3 training products, and Atlas A3 inference products</term>:
+
     ```Cpp
     #include <thread>
     #include <iostream>

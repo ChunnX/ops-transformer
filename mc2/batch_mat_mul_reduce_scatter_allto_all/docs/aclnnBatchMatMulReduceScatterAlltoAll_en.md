@@ -34,7 +34,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnBatchMatMulReduceScatterAlltoAll` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnBatchMatMulReduceScatterAlltoAll` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(
@@ -201,7 +201,6 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
     </tbody>
     </table>
 
-
 ## aclnnBatchMatMulReduceScatterAlltoAll
 
 - **Parameters**
@@ -250,6 +249,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
   - `aclnnBatchMatMulReduceScatterAlltoAll` defaults to a deterministic implementation.
 
 Due to the requirements of collective communication and BatchMatMul computation, the input and output shapes must meet the following mathematical relationship (ep = `epWorldSize` and tp = `tpWorldSize`):
+
 - ReduceScatter by H axis (`yShardType` = 0):
   - `x`: (E/ep, ep*C, M/tp) 
   - `weight`: (E/ep, M/tp, H)
@@ -279,6 +279,7 @@ Due to the requirements of collective communication and BatchMatMul computation,
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
+
 ```Cpp
 #include <thread>
 #include <iostream>

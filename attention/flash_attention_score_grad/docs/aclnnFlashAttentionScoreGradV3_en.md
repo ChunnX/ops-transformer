@@ -13,9 +13,9 @@
 
 ## Description
 
-- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScoreV3`](./aclnnFlashAttentionScoreV3.md). Compared with the [`aclnnFlashAttentionScoreGradV2`](./aclnnFlashAttentionScoreGradV2.md) API, this API has a `sinkInOptional` parameter and `dsinkOut` output.
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScoreV3`](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3_en.md). Compared with the [`aclnnFlashAttentionScoreGradV2`](./aclnnFlashAttentionScoreGradV2_en.md) API, this API has a `sinkInOptional` parameter and `dsinkOut` output.
 
-    - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionScoreGrad`](./aclnnFlashAttentionScoreGrad.md).
+    - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionScoreGrad`](./aclnnFlashAttentionScoreGrad_en.md).
     - When `psetype` is set to other values, multiplication is required before addition.
 
 $$
@@ -70,7 +70,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionScoreGradV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreGradV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionScoreGradV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreGradV3` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
@@ -516,12 +516,14 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 - `innerPrecise`: 0 and 1 are reserved, and 2 indicates that invalid row calculation is enabled. This function is used to prevent precision loss caused by the mask of the entire row during calculation. However, this configuration deteriorates the performance.
   If the operator can determine that invalid rows exist, the invalid row computation is automatically enabled, such as in scenarios where `sparseMode` is set to 3 and Sq is greater than Skv.
 - Meanings of `pseType` values:
+
   | pseType | Meaning| Remarks|
   | ----------- | --------------------------------- | ----------|
   | 0 | A value is externally passed to `pse`, and multiplication is required before addition.| - |
-  | 1 | A value is externally passed to `pse`, and addition is required before multiplication.| The implementation is the same as that of [FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md).|
+  | 1 | A value is externally passed to `pse`, and addition is required before multiplication.| The implementation is the same as that of [FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad_en.md).|
   | 2 | A value is internally passed to `pse`, and multiplication is required before addition.| - |
   | 3 | A value is internally passed to `pse`, and multiplication and addition are required before square root operation.| - |
+  
 - The constraints for `sparseMode` are as follows:
   - If the shape values of all `attenMaskOptional` are the same and less than 2048, you are advised to use the default mode to reduce memory usage.
   - When the value is set to 1, 2, 3, or 5, the user-configured `preTokens` and `nextTokens` do not take effect.

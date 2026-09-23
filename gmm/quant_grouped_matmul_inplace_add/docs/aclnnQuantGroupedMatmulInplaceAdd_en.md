@@ -17,7 +17,7 @@
 
 - API function: In the micro-batch training scenario, micro-batch gradient accumulation is required, and there are a large number of fusion scenarios where GroupedMatMul is followed by InplaceAdd. The QuantGroupedMatmulInplaceAdd operator is introduced to fuse the preceding operators to improve the network performance. Performs group matrix multiplication and addition. The basic function is the combination of matrix multiplication and addition. For example, in the T-C quantization scenario, $y_i[m,n]=(x1_i[m,k_i] \times x2_i[k_i,n]) * scale2_i[n] * scale1_i + y_i[m,n], i=1...g$, where g indicates the number of groups, and $m/k_i/n$ indicates the corresponding dimension.
 
-  Compared with the [aclnnGroupedMatmulV4](./aclnnGroupedMatmulV4.md) API, this API has the following changes:
+  Compared with the [aclnnGroupedMatmulV4](../../grouped_matmul/docs/aclnnGroupedMatmulV4_en.md) API, this API has the following changes:
   - The input and output parameter types are both aclTensor.
   - The InplaceAdd computation is added after the GroupedMatMul computation is complete.
   - Only quantization scenarios (1.MX quantization; 2.T-C quantization) are supported. For details about the quantization modes, see [Quantization Overview](../../../docs/en/context/quant_mode_introduction.md).

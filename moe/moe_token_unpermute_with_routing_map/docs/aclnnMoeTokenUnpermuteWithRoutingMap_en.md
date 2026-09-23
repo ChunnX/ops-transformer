@@ -1,6 +1,5 @@
 # aclnnMoeTokenUnpermuteWithRoutingMap
 
-
 ## Product Support
 
 | Product                                                        | Supported|
@@ -72,7 +71,6 @@
   unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
-
   (3) When `probs` is set to `None` and `padMode` is set to `true`:
 
   $$
@@ -91,7 +89,7 @@
 
 ## Prototype
   
-  Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor covering the operator computation process. Then, `aclnnMoeTokenUnpermuteWithRoutingMap` is called to perform computation.
+  Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor covering the operator computation process. Then, `aclnnMoeTokenUnpermuteWithRoutingMap` is called to perform computation.
   
 * `aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor* routingMapOptional, const aclTensor *probsOptional, bool paddedMode, const aclIntArray *restoreShapeOptional, aclTensor *unpermutedTokens, aclTensor *outIndex, aclTensor *permuteTokenId, aclTensor *permuteProbs, uint64_t *workspaceSize, aclOpExecutor **executor);`
 * `aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)`
@@ -100,15 +98,15 @@
   
   - **Parameters:**
     
-    - `permutedTokens` (aclTensor*, computation input): aclTensor on the device, which indicates input tokens. The value must be a 2D tensor. When `paddedMode` is set to `false`, the shape is (tokens_num * topK_num, hidden_size). When `paddedMode` is set to `true`, the shape is (experts_num * capacity, hidden_size). `capacity` indicates the number of tokens that can be processed by each expert. The data type can be BFLOAT16, FLOAT16, or FLOAT. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `permutedTokens` (aclTensor*, computation input): aclTensor on the device, which indicates input tokens. The value must be a 2D tensor. When `paddedMode` is set to `false`, the shape is (`tokens_num * topK_num, hidden_size`). When `paddedMode` is set to `true`, the shape is (`experts_num * capacity, hidden_size`). `capacity` indicates the number of tokens that can be processed by each expert. The data type can be BFLOAT16, FLOAT16, or FLOAT. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - `sortedIndices` (aclTensor\*, computation input): aclTensor on the device. In drop/pad-less mode, the value must be a 1D shape with size (tokens_num \* topK_num,). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. The index value range is [0, tokens_num \* topK_num – 1]. In drop/pad mode, the value must be a 1D tensor with shape (experts_num \* capacity). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. The index value range is [0, tokens_num – 1]. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - routingMapOptional (aclTensor\*, computation input): aclTensor on the device. This input is optional. If the input `probsOptional` is a null pointer, this input is not required, and a null pointer should be passed. In the formula, `routingMapOptional` indicates whether the token at the corresponding position is processed by the corresponding expert. The value must be a 2D shape with size (tokens_num, experts_num). The data type can be INT8 or BOOL. If the data type is INT8, the value can be `0` or `1`. If the data type is BOOL, the value can be `true` or `false`. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - `probsOptional` (aclTensor\*, computation input): aclTensor on the device. This input is optional. If it is not required, pass a null pointer. In the formula, `probsOptional` indicates the weight of the token at a specified position processed by the corresponding expert in the final result. The shape is the same as that of `routingMapOptional`, the data type is the same as that of `permutedTokens`, and the [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    - `paddedMode` (bool, computation input): input of the Boolean type on the host. This input is optional. The value can be `false` or `true`. The value `true` indicates that `paddedMode` is enabled, and the value `false` indicates that `paddedMode` is disabled. When `paddedMode` is enabled, the shapes of the outputs `outIndex` and `permuteTokenId` are (experts_num * capacity,). When `paddedMode` is disabled, each token is processed by a fixed number of experts (specified by `topK_num`), and the shapes of the outputs `outIndex` and `permuteTokenId` are (tokens_num * topK_num,).
+    - `paddedMode` (bool, computation input): input of the Boolean type on the host. This input is optional. The value can be `false` or `true`. The value `true` indicates that `paddedMode` is enabled, and the value `false` indicates that `paddedMode` is disabled. When `paddedMode` is enabled, the shapes of the outputs `outIndex` and `permuteTokenId` are (`experts_num * capacity,`). When `paddedMode` is disabled, each token is processed by a fixed number of experts (specified by `topK_num`), and the shapes of the outputs `outIndex` and `permuteTokenId` are (tokens_num * topK_num,).
     - `restoreShapeOptional` (aclIntArray*, computation input): aclIntArray on the host. The supported data type is INT64, and the size is `2`. The shape is the same as that `unpermutedTokens`.
     - `unpermutedTokens` (aclTensor*, computation output): aclTensor on the device, that is, `unpermutedTokens` in the formula. It is the forward output result. The value must be a 2D tensor with shape (tokens_num, hidden_size). The data type can be BFLOAT16, FLOAT16, or FLOAT. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    - `outIndex` (aclTensor*, computation output): aclTensor on the device, that is, `outIndex` in the formula. When `paddedMode` is set to `false`, the value must be a 1D shape with size (tokens_num * topK_num,). The index value range is [0, tokens_num * topK_num – 1]. When `paddedMode` is set to `true`, the value must be a 1D tensor with shape (experts_num * capacity,). The index value range is [0, experts_num * capacity – 1]. The data type is INT32, and the [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    - `permuteTokenId` (aclTensor*, computation output): aclTensor on the device, that is, `permuteTokenId` in the formula. When `paddedMode` is set to `false`, the value must be a 1D shape with size (tokens_num * topK_num,). When `paddedMode` is set to `true`, the value must be a 1D tensor with shape (experts_num * capacity,). The index value range is [0, tokens_num – 1]. The data type is INT32, and the [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `outIndex` (aclTensor*, computation output): aclTensor on the device, that is, `outIndex` in the formula. When `paddedMode` is set to `false`, the value must be a 1D shape with size (`tokens_num * topK_num,`). The index value range is [`0, tokens_num * topK_num – 1`]. When `paddedMode` is set to `true`, the value must be a 1D tensor with shape (`experts_num * capacity,`). The index value range is [`0, experts_num * capacity – 1`]. The data type is INT32, and the [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `permuteTokenId` (aclTensor*, computation output): aclTensor on the device, that is, `permuteTokenId` in the formula. When `paddedMode` is set to `false`, the value must be a 1D shape with size (`tokens_num * topK_num,`). When `paddedMode` is set to `true`, the value must be a 1D tensor with shape (`experts_num * capacity,`). The index value range is [0, tokens_num – 1]. The data type is INT32, and the [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - `permuteProbs` (aclTensor *, computation output): aclTensor on the device, that is, `permuteProbs` in the formula, which indicates that permuted `probs` is output. The shape can be 1D. The data type is the same as that of `probsOptional`. The [data format](../../../docs/en/context/data_format.md) must be ND.
     - `workspaceSize` (uint64_t*, output): size of the workspace to be allocated on the device.
     - `executor` (aclOpExecutor**, output): operator executor, containing the operator computation process.
@@ -116,7 +114,7 @@
     
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
     
-    ```
+    ```text
     The first-phase API implements input parameter verification. The following errors may be thrown:
     161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The required input or output tensor is a null pointer.
     161002 (ACLNN_ERR_PARAM_INVALID): 1. The input or output data types are not supported.
@@ -130,15 +128,16 @@
   
   - **Parameters:**
     
-    -   `workspace` (void\*, input): address of the workspace to be allocated on the device.
-    -   `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize`.
-    -   `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
-    -   `stream` (aclrtStream, input): stream for executing the task.
+    - `workspace` (void\*, input): address of the workspace to be allocated on the device.
+    - `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize`.
+    - `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
+    - `stream` (aclrtStream, input): stream for executing the task.
   - **Returns:**
     
       `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
   
 ## Constraints
+
 - Deterministic computation:
   - `aclnnMoeTokenUnpermuteWithRoutingMap` defaults to deterministic implementation.
 - The value of `topkNum` is less than or equal to `512`. When `paddedMode` is set to `false`, the number of 1s or `true` values in each row of `routingMap` is fixed and less than `512`.

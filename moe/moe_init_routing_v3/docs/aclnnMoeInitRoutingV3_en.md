@@ -1,4 +1,4 @@
-# aclnnMoeInitRoutingV3	
+# aclnnMoeInitRoutingV3
 
 ## Product Support
 
@@ -12,7 +12,7 @@
 
 ## Function
 
-- Description: Performs routing computation for MoE based on the computation result of [aclnnMoeGatingTopKSoftmaxV2](./aclnnMoeGatingTopKSoftmaxV2.md). Both non-quantization and dynamic quantization modes are supported. This API has the following function changes based on the V2 API [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md). Select a proper API based on your actual requirements.
+- Description: Performs routing computation for MoE based on the computation result of [aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2_en.md). Both non-quantization and dynamic quantization modes are supported. This API has the following function changes based on the V2 API [aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2_en.md). Select a proper API based on your actual requirements.
 
     1. Added the dynamic quantization function to support the INT8 dynamic quantization output of `expendX`.
 
@@ -24,59 +24,59 @@
 
   1. Sort the input `expertIdx` to obtain the sorted result `sortedExpertIdx` and the corresponding index `sortedRowIdx`.
 
-    $$
-    sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx,rowIdx)
-    $$
+      $$
+      sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx,rowIdx)
+      $$
 
   2. Use `sortedRowIdx` for location mapping to obtain `expandedRowIdxOut`.
 
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+      $$
+      expandedRowIdxOut[sortedRowIdx[i]]=i
+      $$
 
   3. In drop mode, collect statistics on the histogram of each expert in `sortedExpertIdx` to obtain `expertTokensCountOrCumsumOutOptional`.
 
-    $$
-    expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
-    $$
+      $$
+      expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
+      $$
 
   4. Compute the quantization result.
-    - Dynamic quantization:
-        - If `scale` is not specified:
+      - Dynamic quantization:
+          - If `scale` is not specified:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
-            $$
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
 
-        - If `scale` is specified:
-        
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
-            $$
+          - If `scale` is specified:
+          
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
   
   5. Obtain the values of the first *NUM\_ROWS* `sortedRowIdx` values for `quantResult` to obtain `expandedXOut`.
 
-    $$
-    expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
-    $$
+      $$
+      expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
+      $$
 
   6. The number of valid elements specified by `availableIdxNum` in `expandedRowIdxOut` is equal to the number of elements within the range specified by `activeExpertRangeOptional` in `expertIdx`.
     $$
     availableIdxNum = |\{x\in expertIdx| expert\_start \le x<expert\_end \ \}|
     $$
   
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingV3GetWorkspaceSize` is called to obtain the input parameters, the workspace size required for computation, and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingV3GetWorkspaceSize` is called to obtain the input parameters, the workspace size required for computation, and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV3` is called to perform computation.
+
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
   const aclTensor   *x, 
@@ -99,6 +99,7 @@ aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3(
   void          *workspace, 
@@ -109,7 +110,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 ## aclnnMoeInitRoutingV3GetWorkspaceSize
 
--   **Parameters**:
+- **Parameters**:
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 158px">
@@ -379,7 +380,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       The input attribute is not supported.<br>
       </td>
     </tr>
-  </tbody></table>
+  </table>
 
 ## aclnnMoeInitRoutingV3
 

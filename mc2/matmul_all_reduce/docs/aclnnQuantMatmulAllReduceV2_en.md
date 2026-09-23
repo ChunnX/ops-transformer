@@ -14,7 +14,7 @@
 
 ## Description
 
-- **API function**: Extends the functions of the `aclnnQuantMatmulAllReduce` API and supports the per-tensor quantization mode. It supports per-token, per-channel, and per-token [quantization methods ](../../../docs/en/context/quant_mode_introduction.md).
+- **API function**: Extends the functions of the `aclnnQuantMatmulAllReduce` API and supports the per-tensor quantization mode. It supports per-token, per-channel, and per-token [quantization methods](../../../docs/en/context/quant_mode_introduction.md).
 
 - **Formula**:
 
@@ -34,7 +34,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnQuantMatmulAllReduceV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnQuantMatmulAllReduceV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnQuantMatmulAllReduceV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnQuantMatmulAllReduceV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
@@ -52,6 +52,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
     uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV2(
     void          *workspace,
@@ -261,7 +262,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -294,7 +295,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
     </tr>
     </tbody></table>
     
--   **Returns:**
+- **Returns:**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -318,6 +319,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 - <term>Atlas A2 training products and Atlas A2 inference products</term>: supports only one communication domain for MC2 operators within a model.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term>:

@@ -13,7 +13,7 @@
 
 ## Function Description
 
-- Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. Compared with [aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2.md), this API supports multiple query/key inputs, that is, `query`, `queryRope`, `key`, and `keyRope` are used as inputs. In non-multi-input scenarios, use [aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2.md) or other APIs.
+- Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. Compared with [aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2_en.md), this API supports multiple query/key inputs, that is, `query`, `queryRope`, `key`, and `keyRope` are used as inputs. In non-multi-input scenarios, use [aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2_en.md) or other APIs.
 - Formula
 
    The forward computation formula for attention is as follows:
@@ -24,7 +24,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV3` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(

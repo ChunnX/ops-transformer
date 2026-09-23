@@ -14,7 +14,7 @@
 
 - **API function**: FlashAttention operator in the full inference scenario. This API supports the following functions: sparse optimization, `actualSeqLengthsKv` optimization, INT8 quantization, and the `innerPrecise` parameter to select the high-precision or high-performance mode.
 
--   Formula:
+- Formula:
 
     Self-attention constructs an attention model by leveraging the relationships within the input samples. The principle assumes there is an input sample sequence $x$ of length $n$, where each element of $x$ is a $d$-dimensional vector. Each $d$-dimensional vector can be regarded as a token embedding. Such a sequence is transformed by three weight matrices to obtain three $n*d$ matrices.
 
@@ -34,7 +34,7 @@
 
 ## Prototype
 
-The operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnPromptFlashAttentionV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttentionV3` is called to perform computation.
+The operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnPromptFlashAttentionV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttentionV3` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionV3GetWorkspaceSize(
@@ -155,7 +155,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
         <td>Input</td>
         <td>Valid sequence lengths of queries in different batches.</td>
         <td><ul><li>If the sequence lengths are not specified, pass nullptr.</li>
-            <li>For details about the constraints, see <a href="#constraints">Constraints</a>.</li><ul></td>
+            <li>For details about the constraints, see <a href="#constraints">Constraints</a>.</li></ul></td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
@@ -343,8 +343,6 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     </tbody></table>
     </div>
     
-  
-  
 - **Returns**
 
   aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -352,12 +350,12 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   The first-phase API implements input parameter verification. The following errors may be thrown:
   
     <div style="overflow-x: auto;">
-    <table style="undefined;table-layout: fixed; width: 1030px">			<colgroup>
+    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>Return</th>
         <th>Error Code</th>
@@ -393,7 +391,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
       <tr>
         <th>Name</th>
         <th>Input/Output</th>
@@ -424,8 +422,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     </table>
     </div>
 
-
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

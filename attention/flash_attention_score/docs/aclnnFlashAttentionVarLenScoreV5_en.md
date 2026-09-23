@@ -13,7 +13,7 @@
 
 ## Function Description
 
-* Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. This API is adapted to support the sink function of the gpt-oss model. Compared with the [aclnnFlashAttentionVarLenScoreV3](./aclnnFlashAttentionVarLenScoreV3.md) API, this API has an optional `sinkInOptional` parameter and retains the optional `softmaxOutLayout` parameter of the [aclnnFlashAttentionVarLenScoreV4](./aclnnFlashAttentionVarLenScoreV4.md) API.
+* Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. This API is adapted to support the sink function of the gpt-oss model. Compared with the [aclnnFlashAttentionVarLenScoreV3](./aclnnFlashAttentionVarLenScoreV3_en.md) API, this API has an optional `sinkInOptional` parameter and retains the optional `softmaxOutLayout` parameter of the [aclnnFlashAttentionVarLenScoreV4](./aclnnFlashAttentionVarLenScoreV4_en.md) API.
 * Formula
   The forward computation formula for attention is as follows:
 
@@ -37,7 +37,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV5` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV5` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(

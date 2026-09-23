@@ -1,6 +1,5 @@
 # aclnnMoeTokenUnpermuteWithRoutingMapGrad
 
-
 ## Product Support
 
 | Product                                                        | Supported|
@@ -51,7 +50,7 @@
   $$
 
   $$
-  permutedProbs[outIndex[i]] = probsOptional.view(1)[i]
+  permutedProbs[outIndex[i]] = probsOptional.view(1) [i]
   $$
 
   $$
@@ -68,10 +67,10 @@
   2. When `paddedMode` is set to `true`, each expert can process a fixed number of tokens, which is specified by `capacity`. The first dimension of the input `routingMapOptional` is the value specified by `experts_num`, which indicates the number of experts. The 0th dimension of the input `outIndex` is `experts_num` * `capacity`. The value of `capacity` can be computed based on the two dimensions.
   3. When `paddedMode` is set to `false`, each token is processed by a fixed number of experts, which is specified by `topK_num`. The 0th dimension of the input `unpermutedTokensGrad` is specified by `tokens_num`, which indicates the number of tokens. The 0th dimension of the input `outIndex` is the value specified by `tokens_num` * `capacity`. The value of `topK_num` can be computed based on the two dimensions.
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor covering the operator computation process. Then, `aclnnMoeTokenUnpermuteWithRoutingMapGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor covering the operator computation process. Then, `aclnnMoeTokenUnpermuteWithRoutingMapGrad` is called to perform computation.
+
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGradGetWorkspaceSize(
     const aclTensor*   unpermutedTokensGrad,

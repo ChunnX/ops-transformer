@@ -12,11 +12,11 @@
 
 ## Description
 
--  **API function**: Fuses the query and key operators into one to improve the performance of the inference network. Computes the rotary positional encoding and updates the computation result in place.
-   This API has the following function changes based on [`aclnnApplyRotaryPosEmb`](./aclnnApplyRotaryPosEmb.md). Select a proper API based on your actual requirements.
+- **API function**: Fuses the query and key operators into one to improve the performance of the inference network. Computes the rotary positional encoding and updates the computation result in place.
+   This API has the following function changes based on [`aclnnApplyRotaryPosEmb`](./aclnnApplyRotaryPosEmb_en.md). Select a proper API based on your actual requirements.
    
    - The `rotaryMode` parameter is added to control different rotary encoding modes.
--  Formula:
+- Formula:
 
   (1) When `rotaryMode` is `half`:
 
@@ -138,7 +138,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnApplyRotaryPosEmbV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnApplyRotaryPosEmbV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnApplyRotaryPosEmbV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnApplyRotaryPosEmbV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbV2GetWorkspaceSize(
@@ -399,8 +399,8 @@ aclnnStatus aclnnApplyRotaryPosEmbV2(
       - When the input is BFLOAT16, cast is 1, castSize is 4, and DtypeSize is 2.
       - When the input is FLOAT16 or FLOAT32, cast is 0, and castSize = DtypeSize (2 for FLOAT16 and 4 for FLOAT32).
 
-      lastDim indicates the value of head_dim in the last dimension of the input shape. The UB space size to be used is calculated as follows:
-      ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2),
+      lastDim indicates the value of head_dim in the last dimension of the input shape. The UB space size to be used is calculated as follows:`
+      ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`,
       If the value of ub_required exceeds the total UB space of the current AI processor, this fusion operator cannot be used.
 
 ## Example

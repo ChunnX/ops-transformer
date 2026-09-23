@@ -46,7 +46,7 @@ This API supports load balancing and expert pruning. The mapped expert table and
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeUpdateExpertGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeUpdateExpert` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeUpdateExpertGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeUpdateExpert` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(

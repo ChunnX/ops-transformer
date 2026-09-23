@@ -13,11 +13,12 @@
 
 ## Description
 
-- **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. This API is adapted to support the sink function of the gpt-oss model. **Compared with the [`aclnnFlashAttentionScoreV2`](./aclnnFlashAttentionVarLenScoreV2.md) API, this API has an optional `sinkInOptional` parameter.**
+- **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. This API is adapted to support the sink function of the gpt-oss model. **Compared with the [`aclnnFlashAttentionScoreV2`](./aclnnFlashAttentionVarLenScoreV2_en.md) API, this API has an optional `sinkInOptional` parameter.**
+
 * Formula:
   The forward propagation formula for attention is as follows:
   
-     - When `psetype` is set to 1, the calculation formula is the same as that of [`aclnnFlashAttentionScore`](./aclnnFlashAttentionScore.md).
+     - When `psetype` is set to 1, the calculation formula is the same as that of [`aclnnFlashAttentionScore`](./aclnnFlashAttentionScore_en.md).
   
      - When `psetype` is set to other values, the formula is as follows:
   
@@ -41,7 +42,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionScoreV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionScoreV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreV3` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV3GetWorkspaceSize(
@@ -441,12 +442,14 @@ aclnnStatus aclnnFlashAttentionScoreV3(
   - If this parameter is not enabled, pass a null pointer to `realShiftOptional` and 1 to `pseType`.
 - `innerPrecise`: 0 and 1 are reserved, and 2 indicates that invalid row calculation is enabled. This function is used to prevent precision loss caused by the mask of the entire row during calculation. However, this configuration deteriorates the performance. If the operator can determine that invalid rows exist, the invalid row computation is automatically enabled, such as in scenarios where `sparseMode` is set to 3 and Sq is greater than Skv.
 - Meanings of `pseType` values:
+
     | pseType     | Meaning                             |      Remarks  |
     | ----------- | --------------------------------- | ----------|
     | 0           | A value is externally passed to `pse`, and multiplication is required before addition.             | - |
-    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [FlashAttentionScore](./aclnnFlashAttentionScore.md).|
+    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [FlashAttentionScore](./aclnnFlashAttentionScore_en.md).|
     | 2           | A value is internally passed to `pse`, and multiplication is required before addition.             | - |
     | 3           | A value is internally passed to `pse`, and multiplication and addition are required before square root operation.        | - |
+    
 - When `pseType` is set to 2 or 3, Sq and Skv must be of the same length.
 - The constraints for `sparseMode` are as follows:
   - If the shape values of all `attenMaskOptional` are the same and less than 2048, you are advised to use the default mode to reduce memory usage.

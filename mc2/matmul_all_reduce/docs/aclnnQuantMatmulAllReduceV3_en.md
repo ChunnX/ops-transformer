@@ -14,7 +14,7 @@
 
 ## Description
 
-- **API function**: Extends the functions of the `aclnnQuantMatmulAllReduceV2` API and supports low-bit communication: the MatMul computation results undergo AlltoAll communication, ReduceSum computation, AllGather communication, and dequantization in sequence, replacing the original workflow of dequantization and per-token scaling followed by AllReduce communication. It supports per-token, per-channel, and per-token [quantization methods ](../../../docs/en/context/quant_mode_introduction.md).
+- **API function**: Extends the functions of the `aclnnQuantMatmulAllReduceV2` API and supports low-bit communication: the MatMul computation results undergo AlltoAll communication, ReduceSum computation, AllGather communication, and dequantization in sequence, replacing the original workflow of dequantization and per-token scaling followed by AllReduce communication. It supports per-token, per-channel, and per-token [quantization methods](../../../docs/en/context/quant_mode_introduction.md).
 
 - **Formula**:
 
@@ -52,7 +52,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnQuantMatmulAllReduceV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnQuantMatmulAllReduceV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnQuantMatmulAllReduceV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnQuantMatmulAllReduceV3` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
@@ -72,6 +72,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceV3(
     void          *workspace,
@@ -82,7 +83,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 
 ## aclnnQuantMatmulAllReduceV3GetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
@@ -263,7 +264,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         - When the format of `x2` is FRACTAL_NZ, the current version supports only 4D input. `aclnnCalculateMatmulWeightSizeV2` and `aclnnTransMatmulWeight` are used to convert the input data format from ND into NZ. non-contiguous tensor support only the transpose scenario.
         - When the format of `x2` is ND, the current version supports only 2D input.
 
--   **Returns:**
+- **Returns:**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -302,10 +303,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 
 ## aclnnQuantMatmulAllReduceV3
 
--   **Parameters:**
+- **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 168px">
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 128px">
     <col style="width: 854px">
     <thead>
@@ -337,7 +337,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     </tr>
     </tbody></table>
     
--   **Returns:**
+- **Returns:**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -361,9 +361,11 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 - INT8 low-bit communication brings performance benefits only when the system is communication-bounded. You are not advised to enable INT8 low-bit communication when the system is computing-bounded, that is, do not input `commQuantScale1` or `commQuantScale2`.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term>:
+
     ```Cpp
     #include <iostream>
     #include <vector>

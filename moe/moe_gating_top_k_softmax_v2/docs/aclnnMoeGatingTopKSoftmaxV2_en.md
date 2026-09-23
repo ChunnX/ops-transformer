@@ -12,8 +12,8 @@
 
 ## Function
 
--   Description: If `renorm` = 0, performs the Softmax operation on the output of `x` before obtaining the topK value. If `renorm` = 1, performs the Softmax operation on the output of `x` after obtaining the topK value. `yOut` is the topK result of softmax. `expertIdxOut` is the index result of the topK value, that is, the corresponding expert sequence number. If the corresponding row is marked as `true`, the expert sequence number is directly filled with the value of `num_expert` (that is, the size of the last axis of `x`).
--   Formula:
+- Description: If `renorm` = 0, performs the Softmax operation on the output of `x` before obtaining the topK value. If `renorm` = 1, performs the Softmax operation on the output of `x` after obtaining the topK value. `yOut` is the topK result of softmax. `expertIdxOut` is the index result of the topK value, that is, the corresponding expert sequence number. If the corresponding row is marked as `true`, the expert sequence number is directly filled with the value of `num_expert` (that is, the size of the last axis of `x`).
+- Formula:
     1. renorm = 0,
 
         $$
@@ -36,7 +36,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeGatingTopKSoftmaxV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeGatingTopKSoftmaxV2` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize(
@@ -62,7 +62,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 ## aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 187px">
@@ -188,7 +188,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
     </tr>
     </tbody></table>
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -247,7 +247,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 ## aclnnMoeGatingTopKSoftmax
 
--   **Parameters:**
+- **Parameters:**
     <table>
             <thead>
                 <tr><th>Parameter</th><th>Input/Output</th><th>Description</th></tr>

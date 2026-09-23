@@ -1,6 +1,5 @@
 # aclnnFlashAttentionUnpaddingScoreGradV4
 
-
 ## Supported Products
 
 |Product     | Supported|
@@ -12,16 +11,14 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
-- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV4`](./aclnnFlashAttentionVarLenScoreV4.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md) API, this API has the `softmaxInLayout` parameter added.
+- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV4`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4_en.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad_en.md) API, this API has the `softmaxInLayout` parameter added.
   - When the shape and actual data layout of the input `softmaxSumOut` and `softmaxMaxOut` are TND, `softmaxInLayout` must be set to `same_as_input`.
   - When the shape of the input `softmaxSumOut` and `softmaxMaxOut` is TND but the actual data layout is NTD, `softmaxInLayout` must be set to `""`.
   - In the original `FlashAttentionVarLenScore` API, the output format of `softmaxSumOut` and `softmaxMaxOut` is NTD. The `FlashAttentionVarLenScoreV4` API allows the input of the string parameter `softmaxOutLayout` to control whether to output `softmaxSumOut` and `softmaxMaxOut` with both shape and data layout in TND format.
 
-
--   Formula:
+- Formula:
 
     The forward propagation formula for attention is as follows:
 
@@ -57,11 +54,9 @@
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
 
-
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV4` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
@@ -96,6 +91,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   void             *workspace,
@@ -103,7 +99,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize
 
@@ -433,7 +428,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
     </tbody>
   </table>
 
-
 - **Returns**
 
   aclnnStatus: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -522,12 +516,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - **N** of the input `query` can be different from **N** of the `key` or `value`, but they must be proportional. That is, Nq/Nkv must be a non-zero integer and the value of Nq ranges from 1 to 256.
 - The following uses the `inputLayout` TND as an example to describe the constraints on the shape:
 
-    -   **T(B*S)**: The value ranges from 1 to 1M.
-    -   **B**: The value ranges from 1 to 2K. When **prefixOptional** is carried, B supports a maximum of 1K.
-    -   **N**: The value ranges from 1 to 256.
-    -   **S**: The value ranges from 1 to 1M.
-    -   **D**: The value ranges from 1 to 768.
-    -   **KeepProb**: The value range is (0, 1].
+    - **T(B*S)**: The value ranges from 1 to 1M.
+    - **B**: The value ranges from 1 to 2K. When **prefixOptional** is carried, B supports a maximum of 1K.
+    - **N**: The value ranges from 1 to 256.
+    - **S**: The value ranges from 1 to 1M.
+    - **D**: The value ranges from 1 to 768.
+    - **KeepProb**: The value range is (0, 1].
 - The data format of `query`, `key`, and `value` can only be TND. **T** indicates the data closely arranged on the B and S axes (SeqLenQ and SeqLenKV of each batch). **B (Batch)** indicates the batch size of the input sample, and **S (Seq-Length)** indicates the length of the input sample sequence. **H (Head-Size)** indicates the size of the hidden layer, **N (Head-Num)** indicates the number of heads. **D (Head-Dim)** indicates the minimum unit size of the hidden layer (**D** = **H**/**N**).
 - `realShiftOptional`: If Sq is greater than 1024, Sq and Skv of each batch are of equal length, and it is a lower triangular mask scenario with `sparseMode` being 0, 2, or 3, ALiBi positional encoding compression can be enabled. In this case, only the last 1024 rows of the original PSE need to be input for memory optimization, that is, `alibi_compress = ori_pse[:, :, -1024:, :]`. Specifically:
   - If the parameters of each batch are different, the shape is BNHSkv (H=1024).
@@ -548,7 +542,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - Constraints on the `softmaxMax` and `softmaxSum` parameters: The input format is fixed at \[B, N, S, 8\], except TND format, which is \[T, N, 8\]. Note: T = B x S.
 - The value of `headNum` must be the same as the value of **N** in `query`.
 - When the data layout of `softmaxSum` and `softmaxMax` is TND, `softmaxInLayout` must be set to `same_as_input`.
-
 
 ## Example
 

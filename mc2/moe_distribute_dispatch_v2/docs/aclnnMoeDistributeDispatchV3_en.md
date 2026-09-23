@@ -19,15 +19,15 @@
     Compared with the `aclnnMoeDistributeDispatchV2` API, this API has the following changes:
     - Dynamic scale-in support: The operator can run properly without recompilation after faulty ranks are removed from the created communication domain. Enable this feature by passing the `elasticInfoOptional` parameter.
     - Special expert scenarios are supported:
-        -   `zeroExpertNum≠0`: Enabled by setting the `zeroExpertNum` parameter to a value greater than 0.
+        - `zeroExpertNum≠0`: Enabled by setting the `zeroExpertNum` parameter to a value greater than 0.
 
             $$Moe(oriXOptional) = 0$$
 
-        -   `copyExpertNum≠0`: Enabled by setting the `copyExpertNum` parameter to a value greater than 0 and setting a valid value for the `oriXOptional` parameter.
+        - `copyExpertNum≠0`: Enabled by setting the `copyExpertNum` parameter to a value greater than 0 and setting a valid value for the `oriXOptional` parameter.
 
             $$Moe(oriXOptional) = oriXOptional$$
 
-        -   `constExpertNum≠0`: Enabled by setting the `constExpertNum` parameter to a value greater than 0 and setting valid values for the `oriXOptional`, `constExpertAlpha1Optional`, `constExpertAlpha2Optional`, and `constExpertVOptional` parameters.
+        - `constExpertNum≠0`: Enabled by setting the `constExpertNum` parameter to a value greater than 0 and setting valid values for the `oriXOptional`, `constExpertAlpha1Optional`, `constExpertAlpha2Optional`, and `constExpertVOptional` parameters.
 
             $$Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional$$
             
@@ -47,11 +47,9 @@
 > Notes:
 > The `aclnnMoeDistributeCombineV3` and `aclnnMoeDistributeCombineAddRmsNormV2` operators are collectively referred to as **CombineV3 series operators** in subsequent documents.
 
-
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeDispatchV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeDispatchV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV3` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(
@@ -297,7 +295,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>globalBs</td>
     <td>Input</td>
-    <td>Global batch size in the EP domain.</li></td>
+    <td>Global batch size in the EP domain.</td>
     <td><br> <li>If the Bs values of all ranks are the same: globalBs = Bs × epWorldSize or 0; </li> <li>If the Bs values of all ranks are different: globalBs = maxBs × epWorldSize, where maxBs is the maximum Bs value of a single device.</li></td>
     <td>INT64</td>
     <td>-</td>
@@ -347,7 +345,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <tr>
     <td>constExpertNum</td>
     <td>Input</td>
-    <td>Number of constant experts.</td></td>
+    <td>Number of constant experts.</td>
     <td>-</td>
     <td>INT64</td>
     <td>-</td>
@@ -603,10 +601,10 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | Maximum number of tokens that need to be distributed by the current rank. The value range is as follows: <ul><li>When dynamic scale-in is disabled: <ul><li>For shared experts, the value must satisfy `A = Bs × epWorldSize × sharedExpertNum / sharedExpertRankNum`. </li> <li>For MoE experts, when `globalBs` is 0, A ≥ Bs × epWorldSize × min(localExpertNum, K). When globalBs is not 0, A ≥ globalBs × min(localExpertNum, K). </li> </ul> </li> <li> When dynamic scale-in is enabled: <ul><li>When `globalBs` is 0, A ≥ max(Bs × epWorldSize × sharedExpertNum / sharedExpertRankNum, Bs × epWorldSize × min(localExpertNum, K)); </li> <li> When `globalBs` is not 0, A ≥ max(Bs × epWorldSize × sharedExpertNum / sharedExpertRankNum, globalBS × min(localExpertNum, K)); </li> </ul> </li> </ul>|
   | H (hidden size)| Size of the hidden layer. <ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>:The value varies with `commAlg`. For `"fullmesh"`, the value is in the range (0, 7168] and is an integer multiple of 32. For `"hierarchy"` and the driver version 25.0.RC1.1 or later, the value is in the range (0, 10 × 1024] and is an integer multiple of 32.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: [1024, 8192].</li></ul> |
-  | Bs           | Number of tokens output by the current rank. <ul><li><term>Atlas A2 training/inference products:</term> 0 < Bs ≤256.</li><li><term>Atlas A3 training/inference products:</term> 0 < Bs ≤512. When `commAlg` is set to "fullmesh_v2", the value must meet the 0 <Bs ≤256 condition.</li></ul> </li></ul> |
+  | Bs           | Number of tokens output by the current rank. <ul><li><term>Atlas A2 training/inference products:</term> 0 < Bs ≤256.</li><li><term>Atlas A3 training/inference products:</term> 0 < Bs ≤512. When `commAlg` is set to "fullmesh_v2", the value must meet the 0 <Bs ≤256 condition.</li></ul> |
   | topK    | Indicates the number of selected top K experts. The value range is 0 < K ≤16, and `0 < K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum`.<br> <term>Atlas A3 training/inference products:</term> When `commAlg` is set to "fullmesh_v2", the value ranges from 0 < K ≤ 12.|
   | serverNum    | Number of server nodes. Only 2, 4, and 8 are supported.<br>Atlas A2 training products/Atlas A2 inference products: This variable is used only in shapes in this scenario.                                                  |
-  | localExpertNum |  Number of experts in this rank: <ul><li>For shared expert ranks, `localExpertNum` = 1.</li><li>For MoE expert ranks, `localExpertNum` = `moeExpertNum/(epWorldSize-sharedExpertRankNum)`. When `localExpertNum` > 1, TP communication is not supported. </li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: The value must satisfy 0 < localExpertNum × epWorldSize ≤ 2048.|
+  | localExpertNum |  Number of experts in this rank: <li>For shared expert ranks, `localExpertNum` = 1.</li><li>For MoE expert ranks, `localExpertNum` = `moeExpertNum/(epWorldSize-sharedExpertRankNum)`. When `localExpertNum` > 1, TP communication is not supported. </li><term>Atlas A3 training products / Atlas A3 inference products</term>: The value must satisfy 0 < localExpertNum × epWorldSize ≤ 2048.|
 
 - **Environment variables constraints**:
   - **HCCL_BUFFSIZE**:
@@ -648,13 +646,15 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
 
   2. Install the CANN package and compile and run `dispatchDemo`.
 
--  Compilation script:
+- Compilation script:
+
     ```bash
     #!/bin/bash
     cann_path="/path/to/cann_env" # Change the path to the CANN package environment.
     g++ "aclnnDispatchDemo.cpp" -o dispatchDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                         -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
     ```
+
 - Compilation and execution:
 
     ```bash
@@ -668,6 +668,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     ```
 
 - The sample code is as follows:
+
     ```cpp
     #include <thread>
     #include <iostream>

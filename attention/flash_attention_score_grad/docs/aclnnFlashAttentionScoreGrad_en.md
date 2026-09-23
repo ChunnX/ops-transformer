@@ -11,11 +11,11 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
--   API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScore`](./aclnnFlashAttentionScore.md).
--   Formula:
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScore`](../../flash_attention_score/docs/aclnnFlashAttentionScore_en.md).
+
+- Formula:
 
     The forward propagation formula for attention is as follows:
 
@@ -51,9 +51,9 @@
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
 
-
 ## Prototype
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionScoreGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreGrad` is called to perform computation.
+
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionScoreGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScoreGrad` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
@@ -85,6 +85,7 @@ aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGrad(
   void             *workspace, 
@@ -92,7 +93,6 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   aclOpExecutor    *executor, 
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGradGetWorkspaceSize
 
@@ -396,7 +396,6 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionScoreGrad
 
 - **Parameters**
@@ -450,7 +449,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 - The input data types of `query`, `key`, `value`, and `pseShiftOptional` must be the same.
 - The shapes of the input `key` and `value` must be the same. If the **D** values of `query`, `key`, and `value` are the same, the shapes of `query` and `dy` must be the same.
 - **N** of the input `query` or `dy` can be different from **N** of the `key` or `value`, but they must be proportional. That is, Nq/Nkv must be a non-zero integer. The value of Nq ranges from 1 to 256.
--   You need to pay attention to constraints of the data shape. The following takes the `inputLayout` values BSND and BNSD as examples to describe the constraints (H = N\*D in BSH and SBH):
+- You need to pay attention to constraints of the data shape. The following takes the `inputLayout` values BSND and BNSD as examples to describe the constraints (H = N\*D in BSH and SBH):
     - **B**: The value ranges from 1 to 2M. When `prefixOptional` is passed, **B** supports a maximum of 2K.
     - **N**: The value ranges from 1 to 256.
     - **S**: The value ranges from 1 to 1M.
@@ -467,13 +466,12 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   - When the value is set to 0 or 4, ensure that the ranges of `attenMaskOptional`, `preTokens`, and `nextTokens` are consistent.
   - If no specific value is required, you are advised to set it to 0.
   - For details about the sparse modes, see [Sparse Mode Description](../../../docs/en/context/sparse_mode_introduction.md).
--   In some scenarios, if the computation load is too large, the operator execution may time out (AI Core error, errorStr: timeout or trap error). In this case, you are advised to perform axis splitting. Note: The computation load is affected by parameters such as **B**, **S**, **N**, and **D**. Larger values indicate larger computation loads.
--   Constraints on the `softmaxMax` and `softmaxSum` parameters: The input format is fixed at \[B, N, S, 8\], except TND format, which is \[T, N, 8\]. Note: T = B x S.
--   The value of `headNum` must be the same as the value of **N** in `query`.
--   In the band scenario, the values of `preTokens` and `nextTokens` must overlap.
--   If Sq in `pseShiftOptional` is greater than 1024 and the shape value is BNHS or 1NHS, Sq and Skv must have the same length.
--   The `prefixOptional` sparse computing scenario is `sparseMode=5` or `sparseMode=6`. When Sq > Skv, the value range of N of `prefix` is \[0, Skv\]. When Sq ≤ Skv, the value range of N of `prefix` is \[Skv – Sq, Skv\].
-
+- In some scenarios, if the computation load is too large, the operator execution may time out (AI Core error, errorStr: timeout or trap error). In this case, you are advised to perform axis splitting. Note: The computation load is affected by parameters such as **B**, **S**, **N**, and **D**. Larger values indicate larger computation loads.
+- Constraints on the `softmaxMax` and `softmaxSum` parameters: The input format is fixed at \[B, N, S, 8\], except TND format, which is \[T, N, 8\]. Note: T = B x S.
+- The value of `headNum` must be the same as the value of **N** in `query`.
+- In the band scenario, the values of `preTokens` and `nextTokens` must overlap.
+- If Sq in `pseShiftOptional` is greater than 1024 and the shape value is BNHS or 1NHS, Sq and Skv must have the same length.
+- The `prefixOptional` sparse computing scenario is `sparseMode=5` or `sparseMode=6`. When Sq > Skv, the value range of N of `prefix` is \[0, Skv\]. When Sq ≤ Skv, the value range of N of `prefix` is \[Skv – Sq, Skv\].
 
 ## Example
 

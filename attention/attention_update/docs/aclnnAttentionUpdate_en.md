@@ -33,7 +33,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnAttentionUpdateGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAttentionUpdate` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnAttentionUpdateGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAttentionUpdate` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
@@ -105,7 +105,7 @@ aclnnStatus aclnnAttentionUpdate(
       <tr>
         <td>updateType</td>
         <td>Input</td>
-        <td>Whether lseOut is output.</td></td>
+        <td>Whether lseOut is output.</td>
         <td>The value can be 0 (lseOut is not output) or 1 (lseOut is output).</td>
         <td>INT64</td>
         <td>-</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnAttentionUpdate(
     </tbody>
   </table>
   <ul>
-    <term>Atlas A3 training series products and Atlas A3 inference series products</term> support localOut and out of FLOAT32.</li>
+    <term>Atlas A3 training series products and Atlas A3 inference series products</term> support localOut and out of FLOAT32.
   </ul>
 - **Returns**
   

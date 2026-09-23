@@ -10,7 +10,6 @@
 | <term>Atlas inference products</term>                            |    ×     |
 | <term>Atlas training products</term>                             |     ×      |
 
-
 ## Function
 
 - **Description**: This operator is used for permutation computation of MoE. It broadcasts and sorts tokens and optional probs based on indexes (`indices`), and performing slicing based on the range specified by `rangeOptional`.
@@ -47,7 +46,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteWithEpGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithEp` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteWithEpGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithEp` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenPermuteWithEpGetWorkspaceSize(const aclTensor *tokens, const aclTensor *indices, const aclTensor *probsOptional, const aclIntArray *rangeOptional, int64_t numOutTokens, bool paddedMode, const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut, const aclTensor *permuteProbsOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenPermuteWithEp(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -59,7 +58,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
   - `tokens` (aclTensor *, computation input): input tokens in permute, that is, `tokens` in the formula, which is an aclTensor on the device. The 2D shape is supported, and the shape is (num\_tokens, hidden\_size). `num\_tokens` indicates the number of tokens, and `hidden\_size` indicates the length of each token. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) can be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported, but empty tensors are not supported.
   - `indices` (aclTensor \*, computation input): expert indexes corresponding to input tokens, that is, `indices` in the formula, which is an aclTensor on the device. The shape supports 1D or 2D. When `paddedMode` is set to `false`, it indicates the indexes of *topK* processing experts corresponding to each input token. The shape is (num\_tokens, topK\_num) or (num\_tokens). When `paddedMode` is set to `true`, it indicates the token indexes (not supported currently) selected by each expert. The number of elements is less than `16777215`, and the value must be within the range of `0` to `16777215` (excluded), and the value of `topK_num` must be less than or equal to `512`. The supported data types are INT32 and INT64. The [data format](../../../docs/en/context/data_format.md) can be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported, but empty tensors are not supported.
   - `probsOptional` (aclTensor \*, computation input): the expert processing probability of input tokens, that is, `probsOptional` in the formula, which is an aclTensor on the device. Optional computation input, which corresponds to the computation output `permuteProbsOut`. If this parameter is left empty, `permuteProbsOut` is not output. Its shape is the same as that of `indices`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) can be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-  - `rangeOptional` (aclIntArray \*, computation input): valid range of Expert Parallelism (EP) slicing. The size is `2` (an array of two integers). If this parameter is left empty, `probsOptional` and `permuteTokensOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md).
+  - `rangeOptional` (aclIntArray \*, computation input): valid range of Expert Parallelism (EP) slicing. The size is `2` (an array of two integers). If this parameter is left empty, `probsOptional` and `permuteTokensOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermute](../../../moe/moe_token_permute/docs/aclnnMoeTokenPermute_en.md).
   - `numOutTokens` (int64\_t, computation input): number of valid output tokens. This parameter is valid only when `rangeOptional` is left empty. When it is set to `0`, no token is deleted. If this parameter is not set to `0`, the tokens that are sorted by `indices` and the part exceeding the value specified by `numOutTokens` are dropped. If this parameter is set to a negative number, tokens are processed according to the rules for negative slice indexes.
   - `paddedMode` (bool, computation input): If `paddedMode` is set to `true`, `indices` have been padded with the token indexes selected by each expert. In this case, `indices` is not sorted. Currently, `paddedMode` can only be set to `false`.
   - `permuteTokensOut` (aclTensor \*, computation output): tokens that are extended and sorted based on `indices`, that is, `permuteTokensOut` in the formula, which is an aclTensor on the device. The shape supports 2D, and the shape is (rangeOptional[1] – rangeOptional[0], hidden\_size). The data type is the same as that of tokens. The [data format](../../../docs/en/context/data_format.md) is ND.
@@ -70,7 +69,8 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - **Returns:**
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-  ```
+
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
@@ -95,7 +95,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - `indices` requires that the number of elements be less than `16777215`, and the value ranges from `0` to `16777215` (excluded). (The maximum or minimum value of int-32 or int-64 integer is supported. If the value is not within the range, the sorting result is incorrect.)
 - The value of `topK` is less than or equal to `512`.
 - `paddedMode` cannot be set to `True`.
-- When `rangeOptional` is left empty, `probsOptional` and `permuteTokensOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md).
+- When `rangeOptional` is left empty, `probsOptional` and `permuteTokensOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermute](../../../moe/moe_token_permute/docs/aclnnMoeTokenPermute_en.md).
 
 ## Example
 

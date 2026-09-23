@@ -1,6 +1,5 @@
 # aclnnMoeTokenPermute
 
-
 ## Product Support
 
 | Product                                                        | Supported|
@@ -41,7 +40,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermute` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermute` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(const aclTensor *tokens, const aclTensor *indices, int64_t numOutTokens, bool paddedMode, const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenPermute(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -63,11 +62,12 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
   
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  ```
+  ```cpp
   The first-phase API performs input parameter validation. The following errors may be returned:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
   ```
+
 ## aclnnMoeTokenPermute
 
 - **Parameters:**
@@ -87,6 +87,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - `indices` requires that the number of elements be less than `16777215`, and the value ranges from `0` to `16777215` (excluded). (The maximum or minimum value of int-32 or int-64 integer is supported. If the value is not within the range, the sorting result is incorrect.)
 - `paddedMode` cannot be set to `True`.
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `topK` is less than or equal to `512`.
+
 ## Example
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).

@@ -12,8 +12,8 @@
 
 ## Function
 
--   **Description**: Processes and combines the MoE FFN output during MoE computation.
--   **Formula**:
+- **Description**: Processes and combines the MoE FFN output during MoE computation.
+- **Formula**:
 
     $$
     expertid=expertIdx[i,k]
@@ -25,7 +25,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeFinalizeRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeFinalizeRoutingV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeFinalizeRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeFinalizeRoutingV2` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
@@ -52,7 +52,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 
 ## aclnnMoeFinalizeRoutingV2GetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1522px"><colgroup>
     <col style="width: 170px">
@@ -119,7 +119,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <tr>
         <td>biasOptional</td>
         <td>Input</td>
-        <td>Bias in the formula, indicating the bias value.</td></td>
+        <td>Bias in the formula, indicating the bias value.</td>
         <td>-</td>
         <td>Same as expandedX.</td>
         <td>ND</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
       - Only 2 can be passed to `dropPadMode`.
       - The data type of `scalesOptional` can be FLOAT16 or FLOAT32, and it must be the same as that of `expandedX`.
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -238,9 +238,9 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 
 ## aclnnMoeFinalizeRoutingV2
 
--   **Parameters:**
+- **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1179px"> <colgroup>
+    <table style="undefined;table-layout: fixed; width: 1179px"> 
     <col style="width: 169px">
     <col style="width: 130px">
     <col style="width: 880px">
@@ -298,14 +298,15 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 6. If `biasOptional` exists, `expertIdxOptional` must also exist.
 
 7. The values and meanings of `dropPadMode` are as follows:
-     - 0: In the dropless scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](./aclnnMoeInitRouting.md)).
-     - 1: In the drop and pad scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](./aclnnMoeInitRouting.md)).
-     - 2: In the dropless scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md)).
-     - 3: In the drop and pad scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md)).
+     - 0: In the dropless scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md)).
+     - 1: In the drop and pad scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md)).
+     - 2: In the dropless scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2_en.md)).
+     - 3: In the drop and pad scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2_en.md)).
 
 ## Example
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
+
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2.h"

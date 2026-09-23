@@ -36,7 +36,7 @@
   - `aclnnQuantMatmulAllReduceAddRmsNorm`: Two output tensor objects `normOut` and `y` need to be created to store the computation result.
   - `aclnnInplaceQuantMatmulAllReduceAddRmsNorm`: One output tensor `normOut` needs to be created. The results that would have been stored in the output tensor `y` in the non-inplace scenario are directly written to the memory of the input tensor `residual`.
 
-- Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceQuantMatmulAllReduceAddRmsNorm` is called to perform computation.
+- Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceQuantMatmulAllReduceAddRmsNorm` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -55,6 +55,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
     void              *workspace,
@@ -93,7 +94,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
           <td>x1</td>
           <td>Input</td>
           <td>Left matrix of MatMul computation, that is, <code>x1</code> in the formula.</td>
-          <td><ul><li>Empty tensors are supported. </li><li>The data type must be the same as that of <code>x2</code>. </li><li>The current version supports only 2D or 3D inputs.</li></td>
+          <td><li>Empty tensors are supported. </li><li>The data type must be the same as that of <code>x2</code>. </li><li>The current version supports only 2D or 3D inputs.</li></td>
           <td>INT8</td>
           <td>ND</td>
           <td>2-3</td>
@@ -152,7 +153,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>epsilon</td>
           <td>Input</td>
-          <td>Double-precision on the host, used to prevent division-by-zero errors, that is, <code>epsilon<code> in the formula.</td>
+          <td>Double-precision on the host, used to prevent division-by-zero errors, that is, <code>epsilon</code> in the formula.</td>
           <td>The value of <code>epsilon</code> must be within the range (0, 1).</td>
           <td>Double</td>
           <td>-</td>
@@ -273,7 +274,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -306,7 +307,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
     </tr>
     </tbody></table>
     
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -328,6 +329,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 - <term>Atlas A2 training products/Atlas A2 inference products</term>: Only one communication domain for MC2 operators within a model is supported.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```Cpp

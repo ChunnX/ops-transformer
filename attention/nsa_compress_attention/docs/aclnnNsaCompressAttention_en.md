@@ -12,7 +12,7 @@
 
 ## Function
 
-- **Description:** Computes the compressed attention and selected top-k indexes in Native Sparse Attention (NSA). For details, see the paper (https://arxiv.org/pdf/2502.11089).
+- **Description:** Computes the compressed attention and selected top-k indexes in Native Sparse Attention (NSA). For details, see the paper `(https://arxiv.org/pdf/2502.11089)`.
 
 - **Computation formulas:** compression block size: $l$; selection block size: $l'$; and compression stride: $d$
 
@@ -41,6 +41,7 @@ topkIndices = topk(P_{slc'})
 $$
 
 NsaCompressAttention input tensors (`query`, `key`, and `value`) support flexible data layouts interpretable across multiple dimensions. Use `inputLayout` to specify the desired format (only `TND` is supported).
+
 - `B` (`Batch`): input batch size
 - `T`: total length of all input sample sequences
 - `S` (`Seq-Length`): sequence length of input samples
@@ -50,7 +51,7 @@ NsaCompressAttention input tensors (`query`, `key`, and `value`) support flexibl
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNsaCompressAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation flow. Then, `aclnnNsaCompressAttention` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNsaCompressAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation flow. Then, `aclnnNsaCompressAttention` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(

@@ -16,7 +16,7 @@ A fused operator of `GroupedMatmul` and `MoeFinalizeRouting`. It performs a "com
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingWeightNz` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingWeightNz` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(

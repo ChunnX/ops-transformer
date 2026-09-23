@@ -40,10 +40,9 @@
     <blockquote>The data layout of <code>query</code>, <code>key</code>, and <code>value</code> can be interpreted from multiple dimensions. To be specific, <code>B</code> (<code>Batch</code>) indicates the size of an input sample batch, <code>S</code> (<code>Seq-Length</code>) indicates the length of the input sample sequence, <code>H</code> (<code>Head-Size</code>) indicates the size of the hidden layer, <code>N</code> (<code>Head-Num</code>) indicates the number of heads, and <code>D</code> (<code>Head-Dim</code>) indicates the minimum unit size of the hidden layer (<code>D</code> = <code>H</code>/<code>N</code>). <code>T</code> indicates the total length of all input sample sequences.
     <br><code>Q_S</code> indicates <code>S</code> in the shape of <code>query</code>, <code>KV_S</code> indicates <code>S</code> in the shapes of <code>key</code> and <code>value</code>, <code>Q_N</code> indicates <code>num_query_heads</code>, and <code>KV_N</code> indicates <code>num_key_value_heads</code>. <code>P</code> indicates the computation result of Softmax(<span>(QK<sup class="superscript">T</sup>)/<span class="sqrt">d</span></span>).</blockquote>
 
-
 ## Function Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFusedInferAttentionScoreV4GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFusedInferAttentionScoreV4GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV4` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
@@ -166,6 +165,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <li>The shapes of the corresponding tensors of <code>key</code> and <code>value</code> must be the same.</li>
                 <li>In non-contiguous scenarios, <code>batch</code> in the tensor list of <code>key</code> and <code>value</code> must be <code>1</code>. The number of <code>batch</code> elements is equal to <code>B</code> in <code>query</code>. <code>N</code> and <code>D</code> must be the same.</li>
                 <li>Due to the tensor list restrictions, <code>B</code> cannot be greater than <code>256</code> in non-contiguous scenarios.</li>
+            </ul>
             </td>
             <td>FLOAT16, BFLOAT16, INT8, INT4 (INT32) </td>
             <td>ND</td>
@@ -484,7 +484,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>actualSharedPrefixLenOptional</td>
             <td>Optional input</td>
             <td>System prefix parameters of <code>key</code>/<code>value</code>, indicating the valid sequence length of <code>keySharedPrefix</code>/<code>valueSharedPrefix</code>.</td>
-            <td>The valid sequence length in this input parameter must be less than or equal to that in <code>keySharedPrefix</code>/<code>valueSharedPrefix</code>.<td></td>
+            <td>The valid sequence length in this input parameter must be less than or equal to that in <code>keySharedPrefix</code>/<code>valueSharedPrefix</code>.</td>
             <td>INT64</td>
             <td>-</td>
             <td><code>(1)</code></td>
@@ -564,7 +564,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             </td>
             <td>BFLOAT16</td>
             <td>ND</td>
-            <td><code>(Q_N,)</code></a></td>
+            <td><code>(Q_N,)</code></td>
             <td>×</td>
         </tr>
         <tr>
@@ -867,7 +867,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 - **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-
 
 ## Constraints
 
@@ -1402,7 +1401,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                     <td>Per-token-group</td>
                     <td>-</td>
                 </tr>
-            <tbody>
+            </tbody>
         </table>
 
 - <a id="TND"></a>Restrictions on `query`, `key`, and `value` in the `TND`, `TND_NTD`, and `NTD_TND` scenarios
@@ -1783,7 +1782,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                             <li><code>B</code> = <code>1</code>, <code>Q_N</code> = <code>20</code>, <code>Q_S</code> = <code>2097152</code>, <code>D</code> = <code>256</code>, <code>KV_N</code> = <code>1</code>, <code>KV_S</code> = <code>2097152</code>;</li>
                             <li><code>B</code> = <code>1</code>, <code>Q_N</code> = <code>2</code>, <code>Q_S</code> = <code>20971520</code>, <code>D</code> = <code>256</code>, <code>KV_N</code> = <code>2</code>, <code>KV_S</code> = <code>20971520</code>;</li>
                             <li><code>B</code> = <code>20</code>, <code>Q_N</code> = <code>1</code>, <code>Q_S</code> = <code>2097152</code>, <code>D</code> = <code>256</code>, <code>KV_N</code> = <code>1</code>, <code>KV_S</code> = <code>2097152</code>;</li>
-                            <li><code>B</code> = <code>1</code>, <code>Q_N</code> = <code>10</code>, <code>Q_S</code> = <code>2097152</code>, <code>D</code> = <code>512</code>, <code>KV_N</code> = <code>1</code>, <code>KV_S</code> = <code>2097152</code>.</li></li>
+                            <li><code>B</code> = <code>1</code>, <code>Q_N</code> = <code>10</code>, <code>Q_S</code> = <code>2097152</code>, <code>D</code> = <code>512</code>, <code>KV_N</code> = <code>1</code>, <code>KV_S</code> = <code>2097152</code>.</li>
                             </ol>
                         </li>
                         <li><code>D</code>:
@@ -1808,9 +1807,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                     <td><code>actualSeqLengthsKv</code></td>
                     <td>
                     <ul>
-                        <li>When <code>inputLayout</code> of <code>key</code>/<code>value</code> is <code>TND</code> or <code>NTD_TND</code>, see <a href="#TND">Restrictions on <code>query</code>, <code>key</code>, and <code>value</code> in the <code>TND</code>, <code>TND_NTD</code>, and <code>NTD_TND</code> scenarios</a>.</li>
-                        <ul>
-                    </ul>
+                        <li>When <code>inputLayout</code> of <code>key</code>/<code>value</code> is <code>TND</code> or <code>NTD_TND</code>, see <a href="#TND">Restrictions on <code>query</code>, <code>key</code>, and <code>value</code> in the <code>TND</code>, <code>TND_NTD</code>, and <code>NTD_TND</code> scenarios</a>.</li></ul>
                     </td>
                 </tr>
                 <tr>

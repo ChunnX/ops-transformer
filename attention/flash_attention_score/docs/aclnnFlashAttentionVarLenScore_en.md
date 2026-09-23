@@ -11,10 +11,9 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
--   **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. **Different from [aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md), this API supports the calculation of variable-length sequences (S), allowing multiple sequences of unequal lengths to be passed at once. When this API is used, `query`, `key`, and `value` data is passed in the TND format. T indicates the total number, which is the total length of all sequences. Use `actualSeqQLenOptional` and `actualSeqKvLenOptional` to input the cumulative length of each sequence to distinguish different sequences. The attention result of each sequence is calculated separately.**
+- **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. **Different from [aclnnFlashAttentionScore](./aclnnFlashAttentionScore_en.md), this API supports the calculation of variable-length sequences (S), allowing multiple sequences of unequal lengths to be passed at once. When this API is used, `query`, `key`, and `value` data is passed in the TND format. T indicates the total number, which is the total length of all sequences. Use `actualSeqQLenOptional` and `actualSeqKvLenOptional` to input the cumulative length of each sequence to distinguish different sequences. The attention result of each sequence is calculated separately.**
 - Formula:
 
     The forward computation formula for attention is as follows:
@@ -23,10 +22,9 @@
     attention\_out=Dropout(Softmax(Mask(scale*(pse+query*key^T),atten\_mask)),keep\_prob)*value
     $$
 
-
-
 ## Prototype
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnFlashAttentionVarLenScoreGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScore` is called to perform computation.
+
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnFlashAttentionVarLenScoreGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScore` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
@@ -55,6 +53,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScore(
   void             *workspace,
@@ -62,7 +61,6 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionVarLenScoreGetWorkspaceSize
 
@@ -346,10 +344,9 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionVarLenScore
 
--   **Parameters**
+- **Parameters**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -385,8 +382,7 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
     </tbody>
     </table>
 
-
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -426,8 +422,6 @@ aclnnStatus aclnnFlashAttentionVarLenScore(
 - The **attenMaskOptional** input does not support padding. That is, **attenMaskOptional** cannot contain a row that contains all 1s.
 - The **actualSeqQLenOptional** input supports the S length of 0 in a batch. In this case, the **realShiftOptional** input is not supported. If the actual S length is \[2,2,0,2,2\], the value of **actualSeqQLenOptional** is \[2,4,4,6,8\]. The length of `actualSeqQLenOptional` ranges from 1 to 2K. When `prefixOptional` is present, its maximum length is 1K.
 `[0]` - `actualSeqKvLenOptional[0]` + `qStartIdxOptional` - `kvStartIdxOptional` == 0 (experimental feature)
-
-
 
 ## Example
 

@@ -36,7 +36,7 @@
   - `aclnnWeightQuantMatmulAllReduceAddRmsNorm`: Two output tensor objects `normOut` and `y` need to be created to store the computation result.
   - `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm`: One output tensor `normOut` needs to be created. The results that would have been stored in the output tensor `y` in the original non-inplace scenario are directly written to the memory of the input tensor `residual`.
 
-- Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm` is called to perform computation.
+- Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -57,6 +57,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
     void              *workspace,
@@ -164,7 +165,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
         <tr>
           <td>epsilon</td>
           <td>Input</td>
-          <td>Double-precision on the host, used to prevent division-by-zero errors, that is, <code>epsilon<code> in the formula.</td>
+          <td>Double-precision on the host, used to prevent division-by-zero errors, that is, <code>epsilon</code> in the formula.</td>
           <td>The value of <code>epsilon</code> must be within the range (0, 1).</td>
           <td>double</td>
           <td>-</td>
@@ -264,7 +265,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
       </tbody>
     </table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -302,7 +303,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
 
 - **Parameters:**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1150px">
   <col style="width: 168px">
   <col style="width: 128px">
   <col style="width: 854px">
@@ -335,7 +336,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
     </tr>
     </tbody></table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -357,6 +358,7 @@ aclnnStatus aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm(
 - <term>Atlas A2 training products/Atlas A2 inference products</term>: Only one communication domain for MC2 operators within a model is supported.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```Cpp

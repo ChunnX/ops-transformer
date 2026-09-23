@@ -17,7 +17,7 @@
 - Description: When there is TP domain communication, ReduceScatterV communication is performed first, followed by AllToAllV communication, and finally the received data is combined (multiplied by the weight and then summed). When there is no TP domain communication, AllToAllV communication is performed, and then the received data is combined (multiplied by the weight and then summed).
 
     Compared with the `aclnnMoeDistributeCombine` API, this API has the following changes:
-    - Inputs more detailed token information to assist `aclnnMoeDistributeCombineV2` in performing efficient all-rank synchronization. Therefore, the `expandIdx` input parameter (shape (Bs * K,)) in the original API is replaced by the `assistInfoForCombine` parameter (shape (A * 128,)).
+    - Inputs more detailed token information to assist `aclnnMoeDistributeCombineV2` in performing efficient all-rank synchronization. Therefore, the `expandIdx` input parameter (`shape (Bs * K,`)) in the original API is replaced by the `assistInfoForCombine` parameter (shape (A * 128,)).
     - Adds the `sharedExpertXOptional` input parameter. When `sharedExpertNum` is set to 0, users can provide tokens computed by shared experts.
     - Adds the `commAlg` parameter to replace the `HCCL_INTRA_PCIE_ENABLE` and `HCCL_INTRA_ROCE_ENABLE` environment variables.
 
@@ -35,7 +35,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeCombineV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeCombineV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineV2GetWorkspaceSize(
@@ -412,7 +412,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     - <term>Atlas A2 training products / Atlas A2 inference products</term>:
     
         - Shared experts are not supported.
-        - The shape of `epSendCounts` is (moeExpertNum + 2 * globalBs * K * serverNum, ), where K indicates the number of top K experts, moeExpertNum indicates the number of tokens received from each rank in the EP communication domain, and 2 * globalBs * K * serverNum indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the shape is calculated as follows: Bs * epWorldSize.
+        - The shape of `epSendCounts` is (`moeExpertNum + 2 * globalBs * K * serverNum,`), where K indicates the number of top K experts, moeExpertNum indicates the number of tokens received from each rank in the EP communication domain, and `2 * globalBs * K * serverNum` indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the shape is calculated as follows: Bs * epWorldSize.
         - Currently, TP domain communication is not supported.
         - `xActiveMaskOptional` depends on the `commAlg` value: For `"fullmesh"`, it requires a 1D tensor with shape (Bs, ), where `true` must precede `false` (for example, {true, false, true} is invalid); for `"hierarchy"`, it is currently not supported and a null pointer should be passed.
         - `exapndScalesOptional` must be a 1D tensor with shape (A, ).
@@ -430,7 +430,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
     - <term>Atlas A3 training products / Atlas A3 inference products</term>:
 
-        - The shape of `epSendCounts` is (epWorldSize * max(tpWorldSize, 1) * localExpertNum, ).
+        - The shape of `epSendCounts` is `(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)`.
         - When there is TP domain communication, `tpSendCountsOptional` is a 1D tensor with shape (tpWorldSize, ).
         - `xActiveMaskOptional` must be a 1D tensor with shape (BS, ) or a 2D tensor with shape (BS, K). If it is a 1D tensor, `true` must be placed before `false`. If it is a 2D tensor and the K values corresponding to tokens are all `false`, the tokens do not participate in communication.
         - `exapndScalesOptional` is a reserved parameter, which is not supported in the current version. Pass a null pointer.
@@ -543,8 +543,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 5. The shape format is described as follows:
     - **A**: Maximum number of tokens to be distributed by the current rank. The value range is as follows:
-      - For shared experts, A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum.
-      - For MoE experts, when `globalBs` is 0, A >= Bs * epWorldSize * min(localExpertNum, K). When `globalBs` is not 0, A >= globalBs * min(localExpertNum, K).
+      - For shared experts, A = `Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum`.
+      - For MoE experts, when `globalBs` is 0, A >= `Bs * epWorldSize * min(localExpertNum, K)`. When `globalBs` is not 0, A >= globalBs * min(localExpertNum, K).
     - **H**: Hidden layer size.
       - <term>Atlas A2 training products / Atlas A2 inference products</term>: The value depends on `commAlg`. `"fullmesh"` must be in the range (0, 7168] and be an integer multiple of 32. If `"hierarchy"` is used and the driver version is 25.0.RC1.1 or later, the value must be in the range (0, 10*1024] and be an integer multiple of 32.
       - <term>Atlas A3 training products / Atlas A3 inference products</term>: The value range is [1024, 8192].
@@ -562,11 +562,11 @@ aclnnStatus aclnnMoeDistributeCombineV2(
    Before calling this API, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
    - <term>Atlas A2 training products / Atlas A2 inference products</term>:
      - If `commAlg` is set to `""` or `nullptr`, select `"fullmesh"` or `"hierarchy"` formula based on the HCCL environment variable.
-     - If `commAlg` is set to `"fullmesh"`, the value requirement is (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)).
-     - If `commAlg` is set to `"hierarchy"`, the value requirement is (≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB), where (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24) is not required.
+     - If `commAlg` is set to `"fullmesh"`, the value requirement is (`≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)`).
+     - If `commAlg` is set to `"hierarchy"`, the value requirement is (`≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)`) + 4MB + 100MB), where (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24) is not required.
    - <term>Atlas A3 training products / Atlas A3 inference products</term>:
-     - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H))) (`localExpertNum` indicates the number of experts assigned to the current rank when using MoE; `Align512(x) = ((x + 512 - 1) / 512) * 512`; `Align32(x) = ((x + 32 - 1) / 32) * 32`).
-     - Within a TP communication domain: The value must satisfy >=A * (H * 2 + 128) * 2.
+     - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (`≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 44) + (K + sharedExpertNum) * maxBs * Align512(2 * H))`) (`localExpertNum` indicates the number of experts assigned to the current rank when using MoE; `Align512(x) = ((x + 512 - 1) / 512) * 512`; `Align32(x) = ((x + 32 - 1) / 32) * 32`).
+     - Within a TP communication domain: The value must satisfy >=`A * (H * 2 + 128) * 2`.
 
 7. **HCCL_INTRA_PCIE_ENABLE and HCCL_INTRA_ROCE_ENABLE:**
    <term>Atlas A2 training products / Atlas A2 inference products</term>: This environment variable is not recommended. You are advised to set `commAlg` to `"hierarchy"`.
@@ -592,7 +592,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         
         2. Copy the project to the two servers and configure the **rank_table_m2.json** file based on the device IP address. Ensure that the **rank_table_m2.json** files on the two servers are the same.
         
-        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/invocation/quick_op_invocation.md).
+        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/zh/invocation/quick_op_invocation.md).
 
     - About rankTable:
     

@@ -10,7 +10,6 @@
 | <term>Atlas inference products</term>                             |    ×     |
 | <term>Atlas training products</term>                              |    ×     |
 
-
 **Note:** When using this API, ensure that the driver firmware package and CANN package are in the 8.0.RC2 version or later. Otherwise, an error, such as BUS ERROR, will be reported.
 
 ## Function
@@ -25,7 +24,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First call `aclnnWeightQuantMatmulAllReduceGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then, call `aclnnWeightQuantMatmulAllReduce` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First call `aclnnWeightQuantMatmulAllReduceGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then, call `aclnnWeightQuantMatmulAllReduce` to perform the computation.
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
@@ -44,6 +43,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduce(
     void             *workspace,
@@ -181,7 +181,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>antiquantGroupSize</td>
           <td>Input</td>
           <td>Group size input for dequantization calculation of x2 in per-group pseudo-quantization mode.</td>
-          <td>When pergroup is not supported, pass in 0; when supported, the value range is [32, min(k-1, INT_MAX)], and it must be a multiple of 32; the range of k is consistent with the mm interface<a href="./aclnnMatmulAllReduce.md"</a>.</td>
+          <td>When pergroup is not supported, pass in 0; when supported, the value range is [32, min(k-1, INT_MAX)], and it must be a multiple of 32; the range of k is consistent with the mm interface<a href="./aclnnMatmulAllReduce.md".</td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -310,7 +310,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     </tr>
     </tbody></table>
     
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

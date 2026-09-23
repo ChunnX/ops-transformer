@@ -12,9 +12,9 @@
 
 ## Function
 
-- **Description**: Performs routing computation for MoE based on the computation result of [aclnnMoeGatingTopKSoftmaxV2](./aclnnMoeGatingTopKSoftmaxV2.md).
+- **Description**: Performs routing computation for MoE based on the computation result of [aclnnMoeGatingTopKSoftmaxV2](../../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2_en.md).
 
-  This API has the following function changes based on [aclnnMoeInitRoutingQuant](./aclnnMoeInitRoutingQuant.md). Select a proper API based on your actual requirements.
+  This API has the following function changes based on [aclnnMoeInitRoutingQuant](../../../moe/moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant_en.md). Select a proper API based on your actual requirements.
 
   - Added the drop mode. In this mode, the output is processed based on `expertCapacity`. If the output exceeds the value of `expertCapacity`, the exceeded part is not processed. If the output falls short of the value of `expertCapacity`, 0s are padded.
   - Added the optional output `expertTokensCountOrCumsumOutOptional` in dropless mode and the optional output `expertTokensBeforeCapacityOutOptional` in drop mode.
@@ -25,55 +25,55 @@
 
   1. Sort the input `expertIdx` to obtain the sorted result `sortedExpertIdx` and the corresponding index `sortedRowIdx`.
 
-    $$
-    sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx)
-    $$
+      $$
+      sortedExpertIdx, sortedRowIdx=keyValueSort(expertIdx)
+      $$
 
   2. Use `sortedRowIdx` for location mapping to obtain `expandedRowIdxOut`.
 
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+      $$
+      expandedRowIdxOut[sortedRowIdx[i]]=i
+      $$
 
   3. In dropless mode, collect statistics on the histogram of each expert in `sortedExpertIdx` and perform Cumsum to obtain `expertTokensCountOrCumsumOutOptional`.
 
-    $$
-    expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
-    $$
+      $$
+      expertTokensCountOrCumsumOutOptional[i]=Cumsum(Histogram(sortedExpertIdx))
+      $$
 
   4. In drop mode, collect statistics on the histogram of each expert in `sortedExpertIdx` to obtain `expertTokensBeforeCapacityOutOptional`.
 
-    $$
-    expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
-    $$
+      $$
+      expertTokensBeforeCapacityOutOptional[i]=Histogram(sortedExpertIdx)
+      $$
 
   5. Obtain the quantization result.
-    - Static quantization:
+      - Static quantization:
 
-        $$
-        quantResult = round((x * scaleOptional) + offsetOptional)
-        $$
+          $$
+          quantResult = round((x * scaleOptional) + offsetOptional)
+          $$
 
-    - Dynamic quantization:
-        - If `scale` is not specified:
+      - Dynamic quantization:
+          - If `scale` is not specified:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
-            $$
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
 
-        - If `scale` is specified:
+          - If `scale` is specified:
 
-            $$
-            dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
-            $$
+              $$
+              dynamicQuantScaleOutOptional = row\_max(abs(x * scaleOptional)) / 127
+              $$
 
-            $$
-            quantResult = round(x / dynamicQuantScaleOutOptional)
-            $$
+              $$
+              quantResult = round(x / dynamicQuantScaleOutOptional)
+              $$
             
   6. Obtain the values of the first *NUM\_ROWS* `sortedRowIdx` values for `quantResult` to obtain `expandedXOut`.
 
@@ -83,46 +83,47 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingQuantV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingQuantV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingQuantV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingQuantV2` is called to perform computation.
 
 * `aclnnStatus aclnnMoeInitRoutingQuantV2GetWorkspaceSize(const aclTensor *x, const aclTensor *expertIdx, const aclTensor *scaleOptional, const aclTensor *offsetOptional, int64_t activeNum, int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag, bool expertTokensBeforeCapacityFlag, int64_t quantMode, const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut, const aclTensor *expertTokensCountOrCumsumOutOptional, const aclTensor *expertTokensBeforeCapacityOutOptional, const aclTensor *dynamicQuantScaleOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeInitRoutingQuantV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 
 ## aclnnMoeInitRoutingQuantV2GetWorkspaceSize
 
--   **Parameters**:
-    -   `x` (aclTensor\*, computation input): MoE input, that is, token feature input. It must be a 2D tensor with shape [NUM\_ROWS, H], where `H` indicates the length of each token. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](..common/non_contiguous_tensors.md) are supported.
-    -   `expertIdx` (aclTensor\*, computation input): *K* experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmaxV2](aclnnMoeGatingTopKSoftmaxV2.md). The value must be 2D shape [NUM\_ROWS, K]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported. In drop/pad scenarios or when `expertTokensCountOrCumsumOutOptional` needs to be output in drop/pad-less scenarios, the value range must be [0, expertNum – 1]. In other scenarios, the value must be greater than or equal to `0`.
-    -   `scaleOptional` (aclTensor\*, computation input): used to compute the quantization result. This parameter is optional, but mandatory in static quantization scenarios. The value is a 1D shape [1,]. In dynamic quantization scenarios, if this parameter is not set, `scale` is not used during computation. If this parameter is set, the value must be a 2D tensor with shape [expertNum, H] or [1, H]. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    -   `offsetOptional` (aclTensor\*, computation input): calculates the offset of the quantization result. This parameter is optional, but mandatory in static quantization scenarios. The value is a 1D shape [1,]. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    -   `activeNum` (int64\_t, computation input): indicates whether the active scenario is involved. This attribute is valid only when `dropPadMode` is set to `0`. The value must be greater than or equal to `0`. The value `0` indicates the dropless scenario. A value greater than `0` indicates the active scenario, which restricts the total number of tokens processed by all experts.
-    -   `expertCapacity` (int64\_t, computation input): number of tokens that can be processed by each expert. The value is greater than or equal to 0. In the drop/pad scenario, the value range is \(0, NUM\_ROWS\]. In this case, experts drop the tokens that exceed the capacity threshold. If the capacity threshold is not reached, pad all-zero tokens. In other scenarios, this attribute value is not concerned.
-    -   `expertNum` (int64\_t, computation input): number of experts. The value is greater than or equal to `0`. In the drop/pad scenario or when the value of `expertTokensCountOrCumsumFlag` is greater than `0` and the output `expertTokensCountOrCumsumOutOptional` is required, the value of `expertNum` must be greater than `0`.
-    -   `dropPadMode` (int64\_t, computation input): indicates whether the scenario is in drop/pad mode. The values are `0` or `1`.
+- **Parameters**:
+    - `x` (aclTensor\*, computation input): MoE input, that is, token feature input. It must be a 2D tensor with shape [NUM\_ROWS, H], where `H` indicates the length of each token. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `expertIdx` (aclTensor\*, computation input): *K* experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmaxV2](../../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2_en.md). The value must be 2D shape [NUM\_ROWS, K]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported. In drop/pad scenarios or when `expertTokensCountOrCumsumOutOptional` needs to be output in drop/pad-less scenarios, the value range must be [0, expertNum – 1]. In other scenarios, the value must be greater than or equal to `0`.
+    - `scaleOptional` (aclTensor\*, computation input): used to compute the quantization result. This parameter is optional, but mandatory in static quantization scenarios. The value is a 1D shape [1,]. In dynamic quantization scenarios, if this parameter is not set, `scale` is not used during computation. If this parameter is set, the value must be a 2D tensor with shape [expertNum, H] or [1, H]. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `offsetOptional` (aclTensor\*, computation input): calculates the offset of the quantization result. This parameter is optional, but mandatory in static quantization scenarios. The value is a 1D shape [1,]. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `activeNum` (int64\_t, computation input): indicates whether the active scenario is involved. This attribute is valid only when `dropPadMode` is set to `0`. The value must be greater than or equal to `0`. The value `0` indicates the dropless scenario. A value greater than `0` indicates the active scenario, which restricts the total number of tokens processed by all experts.
+    - `expertCapacity` (int64\_t, computation input): number of tokens that can be processed by each expert. The value is greater than or equal to 0. In the drop/pad scenario, the value range is \(0, NUM\_ROWS\]. In this case, experts drop the tokens that exceed the capacity threshold. If the capacity threshold is not reached, pad all-zero tokens. In other scenarios, this attribute value is not concerned.
+    - `expertNum` (int64\_t, computation input): number of experts. The value is greater than or equal to `0`. In the drop/pad scenario or when the value of `expertTokensCountOrCumsumFlag` is greater than `0` and the output `expertTokensCountOrCumsumOutOptional` is required, the value of `expertNum` must be greater than `0`.
+    - `dropPadMode` (int64\_t, computation input): indicates whether the scenario is in drop/pad mode. The values are `0` or `1`.
         - `0`: drop/pad-less scenario where `expertCapacity` is not verified.
         - `1`: drop/pad scenario where `expertNum` and `expertCapacity` need to be verified. The corresponding measure will be taken when the number of tokens that can be processed by each expert exceeds or falls short of the `expertCapacity` value.
-    -   `expertTokensCountOrCumsumFlag` (int64\_t, computation input): The value can be `0`, `1`, or `2`.
+    - `expertTokensCountOrCumsumFlag` (int64\_t, computation input): The value can be `0`, `1`, or `2`.
         - `0`: `expertTokensCountOrCumsumOutOptional` is not output.
         - `1`: The output value is the cumulative number of tokens processed by each expert.
         - `2`: The output value is the number of tokens processed by each expert.
-    -   `expertTokensBeforeCapacityFlag` (bool, computation input): The value can be `false` or `true`.
+    - `expertTokensBeforeCapacityFlag` (bool, computation input): The value can be `false` or `true`.
         - `false`: `expertTokensBeforeCapacityOutOptional` is not output.
         - `true`: The output value is the number of tokens processed by each expert before the drop operation.
-    -   `quantMode` (int64\_t, computation input): The values are `0` or `1`.
+    - `quantMode` (int64\_t, computation input): The values are `0` or `1`.
         - `0`: static quantization scenario.
         - `1`: dynamic quantization scenario.
-    -   `expandedXOut` (aclTensor\*, computation output): feature expanded based on `expertIdx`. In the dropless/active scenario, it must be a 2D tensor. In the dropless scenario, the shape is [NUM\_ROWS \* K, H]. In the active scenario, the shape is [min\(activeNum, NUM\_ROWS \* K\), H]. In the drop/pad scenario, the value must be a 3D tensor with shape [expertNum, expertCapacity, H]. The data type is INT8. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `expandedRowIdxOut` (aclTensor\*, computation output): index mapping between `expandedXOut` and `x`. The value must be a 1D tensor with shape [NUM\_ROWS\*K, ]. The data type is INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `expertTokensCountOrCumsumOutOptional` (aclTensor\*, computation output): outputs the statistics and cumulative value of the number of tokens processed by each expert. This output is optional. The `expertTokensCountOrCumsumFlag` parameter determines whether to output the value. The value is output only in drop/pad-less scenarios and must be a 1D tensor with shape [expertNum, ]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `expertTokensBeforeCapacityOutOptional` (aclTensor\*, computation output): outputs the statistics on the number of tokens processed by each expert before the drop operation. This output is optional. The `expertTokensBeforeCapacityFlag` parameter determines whether to output the value. The value is output only in drop/pad scenarios and must be a 1D tensor with shape [expertNum, ]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `dynamicQuantScaleOutOptional` (aclTensor\*, computation output): outputs the intermediate value during dynamic quantization. This output is optional. The value is output only in dynamic quantization scenarios, and must be a 1D tensor. The shape is the product of all dimensions except the last dimension of `expandedXOut`. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `workspaceSize` (uint64\_t\*, output): size of the workspace to be allocated on the device.
-    -   `executor` (aclOpExecutor\*\*, output): operator executor, containing the operator computation process.
+    - `expandedXOut` (aclTensor\*, computation output): feature expanded based on `expertIdx`. In the dropless/active scenario, it must be a 2D tensor. In the dropless scenario, the shape is [NUM\_ROWS \* K, H]. In the active scenario, the shape is [min\(activeNum, NUM\_ROWS \* K\), H]. In the drop/pad scenario, the value must be a 3D tensor with shape [expertNum, expertCapacity, H]. The data type is INT8. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `expandedRowIdxOut` (aclTensor\*, computation output): index mapping between `expandedXOut` and `x`. The value must be a 1D tensor with shape [NUM\_ROWS\*K, ]. The data type is INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `expertTokensCountOrCumsumOutOptional` (aclTensor\*, computation output): outputs the statistics and cumulative value of the number of tokens processed by each expert. This output is optional. The `expertTokensCountOrCumsumFlag` parameter determines whether to output the value. The value is output only in drop/pad-less scenarios and must be a 1D tensor with shape [expertNum, ]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `expertTokensBeforeCapacityOutOptional` (aclTensor\*, computation output): outputs the statistics on the number of tokens processed by each expert before the drop operation. This output is optional. The `expertTokensBeforeCapacityFlag` parameter determines whether to output the value. The value is output only in drop/pad scenarios and must be a 1D tensor with shape [expertNum, ]. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `dynamicQuantScaleOutOptional` (aclTensor\*, computation output): outputs the intermediate value during dynamic quantization. This output is optional. The value is output only in dynamic quantization scenarios, and must be a 1D tensor. The shape is the product of all dimensions except the last dimension of `expandedXOut`. The data type can be FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `workspaceSize` (uint64\_t\*, output): size of the workspace to be allocated on the device.
+    - `executor` (aclOpExecutor\*\*, output): operator executor, containing the operator computation process.
 
--   **Returns**
+- **Returns**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-    ```
+
+    ```cpp
     The first-phase API implements input parameter verification. The following errors may be thrown:
     161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The computation input or required computation output is a null pointer.
     161002 (ACLNN_ERR_PARAM_INVALID): 1. The data types and formats of the required computation input and output are not supported.
@@ -136,13 +137,13 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 ## aclnnMoeInitRoutingQuantV2
 
--   **Parameters:**
-    -   `workspace` (void\*, input): address of the workspace to be allocated on the device.
-    -   `workspaceSize` (uint64_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeInitRoutingQuantV2GetWorkspaceSize`.
-    -   `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
-    -   `stream` (aclrtStream, input): stream for executing the task.
+- **Parameters:**
+    - `workspace` (void\*, input): address of the workspace to be allocated on the device.
+    - `workspaceSize` (uint64_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeInitRoutingQuantV2GetWorkspaceSize`.
+    - `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
+    - `stream` (aclrtStream, input): stream for executing the task.
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

@@ -22,7 +22,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNsaCompressWithCacheGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaCompressWithCache` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNsaCompressWithCacheGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaCompressWithCache` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnNsaCompressWithCacheGetWorkspaceSize(
@@ -256,7 +256,7 @@ aclnnStatus aclnnNsaCompressWithCache(
   <col style="width: 144px">
   <col style="width: 671px">
   </colgroup>
-    <table><thead>
+    <thead>
     <tr>
       <th>Return</th>
       <th>Error Code</th>

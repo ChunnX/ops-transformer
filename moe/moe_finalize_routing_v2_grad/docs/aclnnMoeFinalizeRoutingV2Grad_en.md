@@ -64,34 +64,35 @@
 
 ## Prototype
 
-Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api). You must first call the `aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeFinalizeRoutingV2Grad` API to execute the computation.
+Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_api.md). You must first call the `aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize` API to obtain the required workspace size and the executor that contains the operator computation flow, and then call the `aclnnMoeFinalizeRoutingV2Grad` API to execute the computation.
 
 * `aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(const aclTensor *gradY, const aclTensor *expandedRowIdx, const aclTensor *expandedXOptional, const aclTensor *scalesOptional, const aclTensor *expertIdxOptional, const aclTensor *biasOptional, int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity, const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeFinalizeRoutingV2Grad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 
 ## aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize
 
--   **Parameters:**
-    -   `gradY` (aclTensor*, computation input): `aclTensor` on the device, derivative of the forward output y of `MoeFinalizeRoutingV2`. It must be a 2D tensor with shape (R, H). The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
-    -   `expandedRowIdx` (aclTensor*, computation input): `aclTensor` on the device, indicating the token index sorted by expert sequence. It must be a 1D tensor with shape (R × K). When `scalesOptional` is set to a null pointer, `K` must be 1. When `dropPadMode` is 0, the value range is [0, R * K – 1] and no duplicate index is allowed. When `dropPadMode` is 1, the value range is [–1, expertNum * expertCapacity – 1] and no duplicate index except –1 is allowed. The data type is INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
-    -   `expandedXOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the features extended based on `expertIdx`. When `scalesOptional` is not a null pointer, this parameter cannot be a null pointer either. When `dropPadMode` is 0, it must be a 2D tensor. When `activeNum` is greater than 0 and less than R × K, the shape is (activeNum, H). Otherwise, the shape is (R × K, H). When `dropPadMode` is 1, it must be a 3D tensor with shape (expertNum, expertCapacity, H). The data type is the same as that of `gradY`. The supported data types are FLOAT16, BFLOAT16, and FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
-    -   `scalesOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the feature scaling. It must be a 2D tensor with shape (R, K). The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
-      -   <term>Atlas A2 training series products/Atlas A2 inference series products</term> and <term>Atlas A3 training series products/Atlas A3 inference series products</term>: The data type must be the same as that of `gradY`.
-    -   `expertIdxOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the index of an expert that processes a feature. When `biasOptional` is a non-null pointer, the value cannot be a null pointer. It must be a 2D tensor with shape (R, K) and value range [0, E - 1], E ≥ 1, allowing duplicate indices. The data type is the same as that of `expandedRowIdx` and can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. non-contiguous tensor are supported.
-    -   `biasOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the feature bias. It must be a 2D tensor with shape (E, H). The data type is the same as that of `gradY` and can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
-    -   `dropPadMode` (int64_t, computation input): int64 data type, indicating different scenarios. The value can be 0 or 1. 0 indicates the dropless scenario, where `expertNum` and `expertCapacity` are not verified. 1 indicates the drop scenario, where `expertNum` and `expertCapacity` need to be verified. The values exceeding or below `expertCapacity` will be processed accordingly.
-    -   `activeNum` (int64_t, computation input): int64 data type, indicating the maximum number of rows in `gradExpandedXOut`. When `dropPadMode` is 0, this parameter takes effect only when `activeNum` is greater than 0 and less than R × K. When `dropPadMode` is 1, this parameter does not take effect.
-    -   `expertNum` (int64_t, computation input): int64 data type, indicating the number of experts. When `dropPadMode` is 0, this parameter does not take effect. When `dropPadMode` is 1 and `biasOptional` is a non-null pointer, expertNum must be equal to E. When `biasOptional` is a null pointer, `expertNum` must be greater than 0. Otherwise, an error is reported.
-    -   `expertCapacity` (int64_t, computation input): int64 data type, indicating the number of rows that can be processed by each expert. When `dropPadMode` is 0, this parameter does not take effect. When `dropPadMode` is 1, `expertCapacity` must be greater than 0. Otherwise, an error is reported.
-    -   `gradExpandedXOut` (aclTensor*, computation output): `aclTensor` on the device, indicating the derivative of the forward input `expandedX` of `MoeFinalizeRoutingV2`. When `dropPadMode` is 0, it must be a 2D tensor. When `activeNum` is greater than 0 and less than R × K, the shape is (activeNum, H). Otherwise, the shape is (R × K, H). When `dropPadMode` is 1, it must be a 3D tensor. The shape is (expertNum, expertCapacity, H). The data type is the same as that of `gradY`. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous output is not supported.
-    -   `gradScalesOut` (aclTensor*, computation output): `aclTensor` on the device, indicating the derivative of the forward input scales of `MoeFinalizeRoutingV2`. The output is valid only when `scalesOptional` is not a null pointer. The output must be a 2D tensor with shape (R, K). The data type is the same as that of `scalesOptional` and can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is not supported.
-    -   `workspaceSize` (uint64_t*, output): size of the workspace to be allocated on the device.
-    -   `executor` (aclOpExecutor**, output): operator executor, covering the operator computation process.
+- **Parameters:**
+    - `gradY` (aclTensor*, computation input): `aclTensor` on the device, derivative of the forward output y of `MoeFinalizeRoutingV2`. It must be a 2D tensor with shape (R, H). The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
+    - `expandedRowIdx` (aclTensor*, computation input): `aclTensor` on the device, indicating the token index sorted by expert sequence. It must be a 1D tensor with shape (R × K). When `scalesOptional` is set to a null pointer, `K` must be 1. When `dropPadMode` is 0, the value range is [`0, R * K – 1`] and no duplicate index is allowed. When `dropPadMode` is 1, the value range is [`–1, expertNum * expertCapacity – 1`] and no duplicate index except –1 is allowed. The data type is INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
+    - `expandedXOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the features extended based on `expertIdx`. When `scalesOptional` is not a null pointer, this parameter cannot be a null pointer either. When `dropPadMode` is 0, it must be a 2D tensor. When `activeNum` is greater than 0 and less than R × K, the shape is (activeNum, H). Otherwise, the shape is (R × K, H). When `dropPadMode` is 1, it must be a 3D tensor with shape (expertNum, expertCapacity, H). The data type is the same as that of `gradY`. The supported data types are FLOAT16, BFLOAT16, and FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
+    - `scalesOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the feature scaling. It must be a 2D tensor with shape (R, K). The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
+      - <term>Atlas A2 training series products/Atlas A2 inference series products</term> and <term>Atlas A3 training series products/Atlas A3 inference series products</term>: The data type must be the same as that of `gradY`.
+    - `expertIdxOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the index of an expert that processes a feature. When `biasOptional` is a non-null pointer, the value cannot be a null pointer. It must be a 2D tensor with shape (R, K) and value range [0, E - 1], E ≥ 1, allowing duplicate indices. The data type is the same as that of `expandedRowIdx` and can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. non-contiguous tensor are supported.
+    - `biasOptional` (aclTensor*, optional computation input): `aclTensor` on the device, indicating the feature bias. It must be a 2D tensor with shape (E, H). The data type is the same as that of `gradY` and can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is supported.
+    - `dropPadMode` (int64_t, computation input): int64 data type, indicating different scenarios. The value can be 0 or 1. 0 indicates the dropless scenario, where `expertNum` and `expertCapacity` are not verified. 1 indicates the drop scenario, where `expertNum` and `expertCapacity` need to be verified. The values exceeding or below `expertCapacity` will be processed accordingly.
+    - `activeNum` (int64_t, computation input): int64 data type, indicating the maximum number of rows in `gradExpandedXOut`. When `dropPadMode` is 0, this parameter takes effect only when `activeNum` is greater than 0 and less than R × K. When `dropPadMode` is 1, this parameter does not take effect.
+    - `expertNum` (int64_t, computation input): int64 data type, indicating the number of experts. When `dropPadMode` is 0, this parameter does not take effect. When `dropPadMode` is 1 and `biasOptional` is a non-null pointer, expertNum must be equal to E. When `biasOptional` is a null pointer, `expertNum` must be greater than 0. Otherwise, an error is reported.
+    - `expertCapacity` (int64_t, computation input): int64 data type, indicating the number of rows that can be processed by each expert. When `dropPadMode` is 0, this parameter does not take effect. When `dropPadMode` is 1, `expertCapacity` must be greater than 0. Otherwise, an error is reported.
+    - `gradExpandedXOut` (aclTensor*, computation output): `aclTensor` on the device, indicating the derivative of the forward input `expandedX` of `MoeFinalizeRoutingV2`. When `dropPadMode` is 0, it must be a 2D tensor. When `activeNum` is greater than 0 and less than R × K, the shape is (activeNum, H). Otherwise, the shape is (R × K, H). When `dropPadMode` is 1, it must be a 3D tensor. The shape is (expertNum, expertCapacity, H). The data type is the same as that of `gradY`. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous output is not supported.
+    - `gradScalesOut` (aclTensor*, computation output): `aclTensor` on the device, indicating the derivative of the forward input scales of `MoeFinalizeRoutingV2`. The output is valid only when `scalesOptional` is not a null pointer. The output must be a 2D tensor with shape (R, K). The data type is the same as that of `scalesOptional` and can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous input is not supported.
+    - `workspaceSize` (uint64_t*, output): size of the workspace to be allocated on the device.
+    - `executor` (aclOpExecutor**, output): operator executor, covering the operator computation process.
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-    ```
+
+    ```cpp
     The first-phase API implements input parameter verification. The following errors may be thrown.
     161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The required input or output tensor is a null pointer.
     161002 (ACLNN_ERR_PARAM_INVALID): 1. The data type or format of input or output is not supported.
@@ -100,13 +101,13 @@ Each operator consists of [two-phase APIs](../../../docs/en/context/two_phase_ap
 
 ## aclnnMoeFinalizeRoutingV2Grad
 
--   **Parameters:**
-    -   `workspace` (void*, input): address of the workspace to be allocated on the device.
-    -   `workspaceSize` (uint64_t, input): size of the workspace to be allocated on the device, which is obtained by calling `aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize`.
-    -   `executor` (aclOpExecutor*, input): operator executor, covering the operator computation process.
-    -   `stream` (aclrtStream, input): stream for executing the task.
+- **Parameters:**
+    - `workspace` (void*, input): address of the workspace to be allocated on the device.
+    - `workspaceSize` (uint64_t, input): size of the workspace to be allocated on the device, which is obtained by calling `aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize`.
+    - `executor` (aclOpExecutor*, input): operator executor, covering the operator computation process.
+    - `stream` (aclrtStream, input): stream for executing the task.
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

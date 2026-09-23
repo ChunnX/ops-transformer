@@ -12,8 +12,9 @@
 
 ## Function
 
--   **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md), and then quantizes the result.
--   **Formula**:
+- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](../../../moe/moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md), and then quantizes the result.
+
+- **Formula**:
 
 $$
 expandedExpertIdx,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
@@ -29,30 +30,31 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingQuantGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingQuant` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingQuantGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingQuant` is called to perform computation.
 
 * `aclnnStatus aclnnMoeInitRoutingQuantGetWorkspaceSize(const aclTensor *x, const aclTensor *rowIdx, const aclTensor *expertIdx, int64_t activeNum, double scale, double offset, const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut, const aclTensor *expandedExpertIdxOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeInitRoutingQuant(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 
 ## aclnnMoeInitRoutingQuantGetWorkspaceSize
 
--   **Parameters:**
-    -   `x` (aclTensor\*, computation input): input of MoE, that is, token feature input. The input must be a 2D tensor with shape `(NUM_ROWS, H)`. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    -   `rowIdx` (aclTensor\*, computation input): original row position corresponding to each position. The shape must be the same as that of `expertIdx`. The value starts from 0 and increases along dimension 1. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    -   `expertIdx` (aclTensor\*, computation input): `k` experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmax](aclnnMoeGatingTopKSoftmax.md). This tensor must be 2D with shape \(NUM\_ROWS, K\). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-    -   `activeNum` (int64\_t, computation input): maximum number of rows to be processed, which is greater than or equal to 0. Only this many rows in `expandedXOut` are valid.
-    -   `scale` (double, computation input): required for quantization computation. The typical value is $S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$, where $R_{max}$ indicates the maximum floating-point number, $R_{min}$ indicates the minimum floating-point number, $Q_{max}$ indicates the maximum fixed-point number, and $Q_{min}$ indicates the minimum fixed-point number.
-    -   `offset` (double, computation input): required for quantization computation.
-    -   `expandedXOut` (aclTensor\*, compute output): 2D tensor, indicating features extended based on `expertIdx`. The shape is \(min\(NUM\_ROWS, activeNum\) \* k, H\). The data type is INT8. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `expandedRowIdxOut` (aclTensor\*, compute output): mapping between `expandedX` and `x`. It must be a 1D tensor with shape \(NUM\_ROWS\*K, \). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `expandedExpertIdxOut` (aclTensor\*, compute output): sorted expertIdx output. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
-    -   `workspaceSize` (uint64\_t\*, output): size of the workspace to be allocated on the device.
-    -   `executor` (aclOpExecutor\*\*, output): operator executor, containing the operator computation process.
+- **Parameters:**
+    - `x` (aclTensor\*, computation input): input of MoE, that is, token feature input. The input must be a 2D tensor with shape `(NUM_ROWS, H)`. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `rowIdx` (aclTensor\*, computation input): original row position corresponding to each position. The shape must be the same as that of `expertIdx`. The value starts from 0 and increases along dimension 1. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `expertIdx` (aclTensor\*, computation input): `k` experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmax](../../../moe/moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md). This tensor must be 2D with shape \(NUM\_ROWS, K\). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+    - `activeNum` (int64\_t, computation input): maximum number of rows to be processed, which is greater than or equal to 0. Only this many rows in `expandedXOut` are valid.
+    - `scale` (double, computation input): required for quantization computation. The typical value is $S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$, where $R_{max}$ indicates the maximum floating-point number, $R_{min}$ indicates the minimum floating-point number, $Q_{max}$ indicates the maximum fixed-point number, and $Q_{min}$ indicates the minimum fixed-point number.
+    - `offset` (double, computation input): required for quantization computation.
+    - `expandedXOut` (aclTensor\*, compute output): 2D tensor, indicating features extended based on `expertIdx`. The shape is \(min\(NUM\_ROWS, activeNum\) \* k, H\). The data type is INT8. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `expandedRowIdxOut` (aclTensor\*, compute output): mapping between `expandedX` and `x`. It must be a 1D tensor with shape \(NUM\_ROWS\*K, \). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `expandedExpertIdxOut` (aclTensor\*, compute output): sorted expertIdx output. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are not supported.
+    - `workspaceSize` (uint64\_t\*, output): size of the workspace to be allocated on the device.
+    - `executor` (aclOpExecutor\*\*, output): operator executor, containing the operator computation process.
 
--   **Returns**
+- **Returns**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-    ```
+
+    ```cpp
     The first-phase API implements input parameter verification. The following errors may be thrown.
     161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
     161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
@@ -65,13 +67,13 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 ## aclnnMoeInitRoutingQuant
 
--   **Parameters:**
-    -   `workspace` (void*, input): address of the workspace to be allocated on the device.
-    -   `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling `aclnnMoeInitRoutingQuantGetWorkspaceSize`.
-    -   `executor` (aclOpExecutor*, input): operator executor, containing the operator computation process.
-    -   `stream` (aclrtStream, input): stream for executing the task.
+- **Parameters:**
+    - `workspace` (void*, input): address of the workspace to be allocated on the device.
+    - `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling `aclnnMoeInitRoutingQuantGetWorkspaceSize`.
+    - `executor` (aclOpExecutor*, input): operator executor, containing the operator computation process.
+    - `stream` (aclrtStream, input): stream for executing the task.
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

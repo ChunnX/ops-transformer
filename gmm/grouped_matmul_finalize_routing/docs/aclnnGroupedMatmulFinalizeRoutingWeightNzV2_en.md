@@ -13,12 +13,11 @@
 ## Function
 
 A fused operator of `GroupedMatmul` and `MoeFinalizeRouting`. It performs a "combine" operation on the output of the `GroupedMatmul` computation based on specified indices. `w` supports the AI processor-affinity format (NZ).
-Compared with [aclnnGroupedMatmulFinalizeRoutingWeightNz](./aclnnGroupedMatmulFinalizeRoutingWeightNz.md), this API supports the INT4 weight matrix and introduces the input parameters `offsetOptional`, `antiquantScaleOptional`, `antiquantOffsetOptional`, and `tuningConfigOptional`. The first three parameters are reserved and do not take effect currently. Pass a null pointer for them. `tuningConfigOptional` is used for performance tuning. The first value in the array indicates the expected number of tokens to be processed by each expert. Operator tiling is performed based on this expected value to achieve higher performance. Select the appropriate API as required.
-
+Compared with [aclnnGroupedMatmulFinalizeRoutingWeightNz](./aclnnGroupedMatmulFinalizeRoutingWeightNz_en.md), this API supports the INT4 weight matrix and introduces the input parameters `offsetOptional`, `antiquantScaleOptional`, `antiquantOffsetOptional`, and `tuningConfigOptional`. The first three parameters are reserved and do not take effect currently. Pass a null pointer for them. `tuningConfigOptional` is used for performance tuning. The first value in the array indicates the expected number of tokens to be processed by each expert. Operator tiling is performed based on this expected value to achieve higher performance. Select the appropriate API as required.
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingWeightNzV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingWeightNzV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(

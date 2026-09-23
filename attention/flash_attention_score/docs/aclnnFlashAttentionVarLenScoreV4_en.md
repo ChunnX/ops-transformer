@@ -13,7 +13,7 @@
 
 ## Function Description
 
-- Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. The difference from [aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md) lies in the output layout. For TND inputs, the original FlashAttentionVarLenScore uses an NTD softmax output layout. FlashAttentionVarLenScoreV4 includes the `softmaxOutLayout` parameter to allow the softmax output to stay consistent with the input (TND).
+- Uses the FlashAttention algorithm to perform self-attention computation in training scenarios. The difference from [aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore_en.md) lies in the output layout. For TND inputs, the original FlashAttentionVarLenScore uses an NTD softmax output layout. FlashAttentionVarLenScoreV4 includes the `softmaxOutLayout` parameter to allow the softmax output to stay consistent with the input (TND).
 
 - Formula
   
@@ -25,7 +25,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionVarLenScoreV4` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(

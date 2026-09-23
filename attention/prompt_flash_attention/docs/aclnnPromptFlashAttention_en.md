@@ -34,7 +34,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnPromptFlashAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttention` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnPromptFlashAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttention` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionGetWorkspaceSize(
@@ -178,7 +178,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>Input</td>
     <td>Number of preceding tokens to associate in attention computation.</td>
     <td><ul><li>If no specific value is required, <code>2147483647</code> is recommended.</li></ul>
-      	<ul><li>Negative numbers are supported.</li></ul></td>
+        <ul><li>Negative numbers are supported.</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <td>Input</td>
     <td>Number of succeeding tokens to associate in attention computation.</td>
     <td><ul><li>If no specific value is required, <code>0</code> is recommended.</li></ul>
-      	<ul><li>Negative numbers are supported.</li></ul></td>
+        <ul><li>Negative numbers are supported.</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
     <tr>
         <th>Return</th>
         <th>Error Code</th>
@@ -297,7 +297,7 @@ aclnnStatus aclnnPromptFlashAttention(
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
     <tr>
         <th>Name</th>
         <th>Input/Output</th>

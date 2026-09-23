@@ -11,7 +11,6 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
 - **API function**: Uses the FlashAttention algorithm to perform self-attention computation in training scenarios.
@@ -24,10 +23,9 @@
   attention\_out = Dropout(Softmax(Mask(scale*(pse+query*key^T), atten\_mask)), keep\_prob)*value
   $$
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionScoreGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScore` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionScoreGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionScore` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
@@ -54,6 +52,7 @@ aclnnStatus aclnnFlashAttentionScoreGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionScore(
   void              *workspace, 
@@ -61,7 +60,6 @@ aclnnStatus aclnnFlashAttentionScore(
   aclOpExecutor     *executor, 
   const aclrtStream  stream)
 ```
-
 
 ## aclnnFlashAttentionScoreGetWorkspaceSize
 
@@ -327,7 +325,6 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
-
 ## aclnnFlashAttentionScore
 
 - **Parameters**
@@ -366,7 +363,7 @@ aclnnStatus aclnnFlashAttentionScore(
   </tbody>
   </table>
 
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

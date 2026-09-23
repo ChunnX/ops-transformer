@@ -43,14 +43,14 @@
       probsGrad = \sum_{k=0}^{topkNum}(unpermutedTokens_{i,j,k})
       $$
     
-    -  Finally, when the condition rangeOptional[0] ≤ sortedIndices[i] < rangeOptional[1] is met,
+    - Finally, when the condition rangeOptional[0] ≤ sortedIndices[i] < rangeOptional[1] is met,
       
       $$
       permutedTokensGradOut[sortedIndices[i]] = ((unpermutedTokensGrad.unsqueeze(1) * probs.unsqueeze(-1)).reshape(-1, hiddenSize))[i]
       $$
 
   - If `probs` is set to `None`, the formula is as follows, where $i \in {0, 1, 2, ..., num\_tokens – 1}$:
-    -  When the condition rangeOptional[0] ≤ sortedIndices[i] < rangeOptional[1] is met,
+    - When the condition rangeOptional[0] ≤ sortedIndices[i] < rangeOptional[1] is met,
     
     $$
     permutedTokensGradOut[sortedIndices[i]-rangeOptional[0]] = unpermutedOutputGrad[i]
@@ -58,7 +58,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenUnpermuteWithEpGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenUnpermuteWithEpGrad` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices, const aclTensor *permutedTokensOptional, const aclTensor *probsOptional, bool paddedMode, const aclIntArray *restoreShapeOptional, const aclIntArray *rangeOptional, int64_t topkNum, const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -67,23 +67,23 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 - **Parameters:**
   
-  -   `unpermutedTokensGrad` (aclTensor\*, computation input): aclTensor on the device, that is, `unpermutedTokensGrad` in the formula. It indicates the gradient of the forward output `unpermutedTokens`. The value must be a 2D tensor with shape (tokens_num, hidden_size). `tokens_num` indicates the number of tokens, and `hidden_size` indicates the token dimension size. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-  -   `sortedIndices` (aclTensor\*, computation input): aclTensor on the device, that is, `sortedIndices` in the formula. The value must be a 1D shape with size (tokens_num \* topkNum). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. The index value range is [0, tokens_num \* topkNum – 1]. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-  -   `permutedTokensOptional` (aclTensor\*, computation input): aclTensor on the device, that is, `permutedTokensOptional` in the formula. This input is optional. The value must be a 2D tensor with shape (tokens_num \* topkNum, hidden_size), where the value of `topkNum` is less than or equal to `512`. The data type is the same as that of `unpermutedTokensGrad`. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-  -   `probsOptional` (aclTensor\*, computation input): aclTensor on the device, that is, `probsOptional` in the formula. This input is optional. The value must be a 2D shape with size (tokens_num, topkNum). The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. When `probs` is passed, the value of `topkNum` equals the second dimension of `probs`. When `probs` is not passed, the value of `topkNum` is `1`. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
-  -   `paddedMode` (bool, computation input): `paddedMode` in the formula. The value `true` indicates that `paddedMode` is enabled, and the value `false` indicates that `paddedMode` is disabled. For details about `paddedMode`, see the description of the `restoreShapeOptional` parameter. Currently, only `false` is supported.
-  -   `restoreShapeOptional` (aclIntArray*, computation input): `restoreShapeOptional` in the formula. This parameter takes effect only when `paddedMode` is set to `true`. Otherwise, no operation is performed on this parameter. When `paddedMode` is set to `true`, the shape is the same as that of `unpermutedTokens`. Currently, only `nullptr` is supported.
-  -   `rangeOptional` (aclIntArray\*, computation input): `rangeOptional` in the formula, which indicates the valid range of EP slicing. The start position represented by `rangeOptional[0]` must be less than the end position represented by `rangeOptional[1]`. The size is `2`. This parameter does not take effect when it is left empty.
-  -   `topkNum` (int64_t, computation input): `topkNum` in the formula, which indicates the number of experts selected for each token.
-  -   `permutedTokensGradOut` (aclTensor\*, computation output): gradient of the input `permutedTokens`. The value must be a 2D tensor with shape (tokens_num \* topkNum, hidden_size). The data type is the same as that of `permutedTokensOptional`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](..common/data_format.md) must be ND. Non-contiguous output is not supported.
-  -   `probsGradOut` (aclTensor\*, computation output): optional output, which is the gradient of the input `probs`. The value must be a 2D tensor with shape (tokens_num, topkNum). The data type is the same as that of `probsOptional`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](..common/data_format.md) must be ND. Non-contiguous output is not supported.
-  -   `workspaceSize` (uint64\_t \*, output): size of the workspace to be allocated on the device.
-  -   `executor` (aclOpExecutor \*\*, output): operator executor, containing the operator computation process.
+  - `unpermutedTokensGrad` (aclTensor\*, computation input): aclTensor on the device, that is, `unpermutedTokensGrad` in the formula. It indicates the gradient of the forward output `unpermutedTokens`. The value must be a 2D tensor with shape (tokens_num, hidden_size). `tokens_num` indicates the number of tokens, and `hidden_size` indicates the token dimension size. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+  - `sortedIndices` (aclTensor\*, computation input): aclTensor on the device, that is, `sortedIndices` in the formula. The value must be a 1D shape with size (tokens_num \* topkNum). The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. The index value range is [0, tokens_num \* topkNum – 1]. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+  - `permutedTokensOptional` (aclTensor\*, computation input): aclTensor on the device, that is, `permutedTokensOptional` in the formula. This input is optional. The value must be a 2D tensor with shape (tokens_num \* topkNum, hidden_size), where the value of `topkNum` is less than or equal to `512`. The data type is the same as that of `unpermutedTokensGrad`. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+  - `probsOptional` (aclTensor\*, computation input): aclTensor on the device, that is, `probsOptional` in the formula. This input is optional. The value must be a 2D shape with size (tokens_num, topkNum). The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. When `probs` is passed, the value of `topkNum` equals the second dimension of `probs`. When `probs` is not passed, the value of `topkNum` is `1`. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
+  - `paddedMode` (bool, computation input): `paddedMode` in the formula. The value `true` indicates that `paddedMode` is enabled, and the value `false` indicates that `paddedMode` is disabled. For details about `paddedMode`, see the description of the `restoreShapeOptional` parameter. Currently, only `false` is supported.
+  - `restoreShapeOptional` (aclIntArray*, computation input): `restoreShapeOptional` in the formula. This parameter takes effect only when `paddedMode` is set to `true`. Otherwise, no operation is performed on this parameter. When `paddedMode` is set to `true`, the shape is the same as that of `unpermutedTokens`. Currently, only `nullptr` is supported.
+  - `rangeOptional` (aclIntArray\*, computation input): `rangeOptional` in the formula, which indicates the valid range of EP slicing. The start position represented by `rangeOptional[0]` must be less than the end position represented by `rangeOptional[1]`. The size is `2`. This parameter does not take effect when it is left empty.
+  - `topkNum` (int64_t, computation input): `topkNum` in the formula, which indicates the number of experts selected for each token.
+  - `permutedTokensGradOut` (aclTensor\*, computation output): gradient of the input `permutedTokens`. The value must be a 2D tensor with shape (tokens_num \* topkNum, hidden_size). The data type is the same as that of `permutedTokensOptional`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous output is not supported.
+  - `probsGradOut` (aclTensor\*, computation output): optional output, which is the gradient of the input `probs`. The value must be a 2D tensor with shape (tokens_num, topkNum). The data type is the same as that of `probsOptional`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. Non-contiguous output is not supported.
+  - `workspaceSize` (uint64\_t \*, output): size of the workspace to be allocated on the device.
+  - `executor` (aclOpExecutor \*\*, output): operator executor, containing the operator computation process.
 - **Returns:**
   
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
   
-  ```
+  ```text
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The required input or output tensors are null pointers.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
@@ -96,15 +96,16 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 - **Parameters:**
   
-  -   `workspace` (void\*, input): address of the workspace to be allocated on the device.
-  -   `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize`.
-  -   `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
-  -   `stream` (aclrtStream, input): stream for executing the task.
+  - `workspace` (void\*, input): address of the workspace to be allocated on the device.
+  - `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize`.
+  - `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
+  - `stream` (aclrtStream, input): stream for executing the task.
 - **Returns:**
   
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computation:
   - `aclnnMoeTokenUnpermuteWithEpGrad` defaults to deterministic implementation.
 - The value of `topkNum` is less than or equal to `512`.

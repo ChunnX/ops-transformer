@@ -79,7 +79,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnMlaPrologV2WeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPrologV2WeightNz` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnMlaPrologV2WeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPrologV2WeightNz` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
@@ -204,8 +204,8 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   | T            | The fused size of BS.               | Range: 0–1048576. Note: When BS fusion is used, tokenX, ropeSin, and ropeCos are all 2D tensors; cacheIndex is a 1D tensor; queryOut and queryRopeOut are 3D tensors.|
 
 - When transposing is not performed, the dimensions of `weight_dq`, `weight_uq_qr`, and `weight_dkv_kr` are represented as `(k, n)`.
--   Shape restrictions:
-    -   When BS fusion is used for `tokenX`, that is , `(T, He)`
+- Shape restrictions:
+    - When BS fusion is used for `tokenX`, that is , `(T, He)`
         - The shape of `ropeSin` and `ropeCos` is `(T, Dr)`.
         - The shape of `cacheIndex` is `(T)`.
         - The shape of `dequantScaleXOptional` is `(T, 1)`.
@@ -219,7 +219,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
         - The shape of `queryOut` is `(B, S, N, Hckv)`.
         - The shape of `queryRopeOut` is `(B, S, N, Dr)`.
         - In the full quantization scenario, the shape of `dequantScaleQNopeOutOptional` is `(B*S, N, 1)`. In other scenarios, the shape is `(1)`.
-    -   One or more of the B, S, T, and Skv values can be 0. That is, input parameters related to the shape and B, S, T, and Skv values can be empty tensors. Other input parameters do not support empty tensors.
+    - One or more of the B, S, T, and Skv values can be 0. That is, input parameters related to the shape and B, S, T, and Skv values can be empty tensors. Other input parameters do not support empty tensors.
         - If the values of B, S, and T are 0, `queryOut` and `queryRopeOut` output empty tensors, and `kvCacheRef` and `krCacheRef` are not updated.
         - If the value of Skv is 0, `queryOut`, `queryRopeOut`, and `dequantScaleQNopeOutOptional` are calculated normally, and `kvCacheRef` and `krCacheRef` are not updated. That is, an empty tensor is output.
 - The `aclnnMlaPrologV2WeightNz` API supports the following scenarios:
@@ -257,7 +257,6 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
           Input parameters: tokenX is per-token quantized data; weightDq, weightUqQr, and weightDkvKr are per-channel quantized data; all other inputs are non-quantized data.<br>
           Output parameters: All output parameters are non-quantized data.
       </td>
-    </tr>
     </tr>
     <tr>
       <td>kv_cache quantized</td>

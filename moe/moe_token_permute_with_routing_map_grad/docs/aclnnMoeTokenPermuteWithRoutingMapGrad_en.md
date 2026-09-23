@@ -53,7 +53,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithRoutingMapGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithRoutingMapGrad` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(const aclTensor *permutedTokenOutputGrad, const aclTensor *permutedProbsOutputGradOptional, const aclTensor *sortedIndices, const aclTensor *routingMapOptional, int64_t numExperts, int64_t tokensNum, bool dropAndPad, aclTensor *tokensGradOut, aclTensor *probsGradOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)`
@@ -76,7 +76,8 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - **Returns:**
   
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-```
+
+```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
@@ -96,6 +97,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computation:
   - `aclnnMoeTokenPermuteWithRoutingMapGrad` defaults to deterministic implementation.
 - Non-dropPaddedMode scenario: The value of `topK_num` is less than or equal to `512`.

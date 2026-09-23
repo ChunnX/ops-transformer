@@ -12,12 +12,12 @@
 
 ## Function
 
--   Description: Implements grouped matrix multiplication, supporting non-uniform matrix dimension sizes across multiple groups. The basic function is matrix multiplication, for example, $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$, where $g$ indicates the number of groups, and $m_i$, $k_i$, and $n_i$ indicate the corresponding dimension sizes. Both input and output parameters are of the aclTensorList type, with the following functions:
+- Description: Implements grouped matrix multiplication, supporting non-uniform matrix dimension sizes across multiple groups. The basic function is matrix multiplication, for example, $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$, where $g$ indicates the number of groups, and $m_i$, $k_i$, and $n_i$ indicate the corresponding dimension sizes. Both input and output parameters are of the aclTensorList type, with the following functions:
 
     - K-axis grouping: $k_i$ varies across groups, while $m_i$ and $n_i$ remain the same for each group. In this case, $x_i$ and $weight_i$ can be concatenated along the K-axis.
     - M-axis grouping: $k_i$ remains the same for each group. In this case, $weight_i$ and $y_i$ can be concatenated along the N-axis.
 
-    Compared with [GroupedMatmulV3](./aclnnGroupedMatmulV3.md), this API has the following new features:
+    Compared with [GroupedMatmulV3](./aclnnGroupedMatmulV3_en.md), this API has the following new features:
     - The values in `groupListOptional` can be the sizes of groups along the grouping axis.
     - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>:
       - Static quantization (per-tensor and per-channel), BFLOAT16 and FLOAT16 outputs, with or without activation (For details, refer to [quantization methods](../../../docs/en/context/quant_mode_introduction.md). Same below.)
@@ -28,7 +28,7 @@
     - "Single-tensor" means that tensors of all groups in a tensor list are concatenated into one tensor along the axis specified `groupType`.
     - Tensor transpose: If the tensor shape is [M, K], the stride is [1, M], and the data layout is [K, M], then the tensor is a non-contiguous tensor.
 
--   Formula:
+- Formula:
 
     - **Non-quantization scenario:**
 
@@ -88,7 +88,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulV4GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulV4GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulV4` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(
@@ -126,45 +126,45 @@ aclnnStatus aclnnGroupedMatmulV4(
 ## aclnnGroupedMatmulV4GetWorkspaceSize
 
 - **Parameters**
-  -   x (aclTensorList *, computation input): aclTensorList on the device, $x$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the maximum length is 128.
+  - x (aclTensorList *, computation input): aclTensorList on the device, $x$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the maximum length is 128.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16, BFLOAT16, FLOAT32, INT8, or INT4.
       - <term>Atlas inference products</term>: The data type can be FLOAT16.
-  -   weight (aclTensorList *, computation input): aclTensorList on the device, $weight$ in the formula. The maximum length is 128.
+  - weight (aclTensorList *, computation input): aclTensorList on the device, $weight$ in the formula. The maximum length is 128.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16, BFLOAT16, FLOAT32, INT8, or INT4, and the [data format](../../../docs/en/context/data_format.md) can be ND or FRACTAL_NZ.
       - <term>Atlas inference products</term>: The data type can be FLOAT16, and the [data format](../../../docs/en/context/data_format.md) can only be FRACTAL_NZ.
-  -   biasOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, $bias$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`.
+  - biasOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, $bias$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16, FLOAT32, or INT32.
       - <term>Atlas inference products</term>: The data type can be FLOAT16.
-  -   scaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND. Generally, the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
+  - scaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND. Generally, the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be UINT64, BFLOAT16, or FLOAT32.
       - <term>Atlas inference products</term>: This parameter is not supported currently and needs to be passed as a null pointer.
-  -   offsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the offset for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`.
+  - offsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the offset for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT32.
       - <term>Atlas inference products</term>: This parameter is not supported currently and needs to be passed as a null pointer.
-  -   antiquantScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor for fake-quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
+  - antiquantScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor for fake-quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16 or BFLOAT16.
       - <term>Atlas inference products</term>: This parameter is not supported currently and needs to be passed as a null pointer.
-  -   antiquantOffsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the offset for fake-quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
+  - antiquantOffsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the offset for fake-quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND, and the length is the same as that of `weight`. For details about the constraints, see [Constraints](#constraints).
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16 or BFLOAT16.
       - <term>Atlas inference products</term>: This parameter is not supported currently and needs to be passed as a null pointer.
-  -   perTokenScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor (introduced by `x` quantization) for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND. This parameter only supports scenarios where `x`, `weight`, and `out` are all single-tensor (with a TensorList length of 1). For details about the constraints, see [Constraints](#constraints).
+  - perTokenScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the scale factor (introduced by `x` quantization) for quantization parameters. The [data format](../../../docs/en/context/data_format.md) can be ND. This parameter only supports scenarios where `x`, `weight`, and `out` are all single-tensor (with a TensorList length of 1). For details about the constraints, see [Constraints](#constraints).
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT32.
       - <term>Atlas inference products</term>: This parameter is not supported and needs to be passed as a null pointer.
-  -   groupListOptional (aclTensor *, computation input): optional parameter, aclTensor type on the device, indicating the Matmul size distribution along the grouping axis for inputs and outputs. The data type can be INT64, and the [data format](../../../docs/en/context/data_format.md) can be ND. Note that when the length of the TensorList in the output is 1, the last value in `groupListOptional` constrains the valid portion of the output data. Any portion not specified in `groupListOptional` will not be updated.
-  -   activationInputOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the backward input of the activation function. Currently, only `nullptr` is supported.
-  -   activationQuantScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device. Currently, only `nullptr` is supported.
-  -   activationQuantOffsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device. Currently, only `nullptr` is supported.
-  -   splitItem (int64\_t, computation input): integer type, indicating whether tensor splitting is required for the output. `0` or `1` indicates multi-tensor, and `2` or `3` indicates single-tensor.
-  -   groupType (int64\_t, computation input): integer type, indicating the axis to be grouped. For example, if the matrix multiplication is `C[m,n]=A[m,k]xB[k,n]`, `groupType` has the following options: `-1` means no axis grouping, `0` indicates M-axis grouping, `1` indicates N-axis grouping, and `2` indicates K-axis grouping.
+  - groupListOptional (aclTensor *, computation input): optional parameter, aclTensor type on the device, indicating the Matmul size distribution along the grouping axis for inputs and outputs. The data type can be INT64, and the [data format](../../../docs/en/context/data_format.md) can be ND. Note that when the length of the TensorList in the output is 1, the last value in `groupListOptional` constrains the valid portion of the output data. Any portion not specified in `groupListOptional` will not be updated.
+  - activationInputOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device, indicating the backward input of the activation function. Currently, only `nullptr` is supported.
+  - activationQuantScaleOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device. Currently, only `nullptr` is supported.
+  - activationQuantOffsetOptional (aclTensorList *, computation input): optional parameter, aclTensorList on the device. Currently, only `nullptr` is supported.
+  - splitItem (int64\_t, computation input): integer type, indicating whether tensor splitting is required for the output. `0` or `1` indicates multi-tensor, and `2` or `3` indicates single-tensor.
+  - groupType (int64\_t, computation input): integer type, indicating the axis to be grouped. For example, if the matrix multiplication is `C[m,n]=A[m,k]xB[k,n]`, `groupType` has the following options: `-1` means no axis grouping, `0` indicates M-axis grouping, `1` indicates N-axis grouping, and `2` indicates K-axis grouping.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: Currently, N-axis grouping is not supported.
       - <term>Atlas inference products</term>: Currently, only M-axis grouping is supported.
-  -   groupListType (int64\_t, computation input): integer type. The value can be:
-        * 0: Values in `groupListOptional` are the cumulative sum (cumsum) results of the grouping axis sizes.
-        * 1: Values in `groupListOptional` are the sizes of groups along the grouping axis.
-        * 2: The shape of `groupListOptional` is [e, 2], where `e` indicates the group size. The data layout is `[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`, where `groupSize` is the size of each group along the grouping axis.
+  - groupListType (int64\_t, computation input): integer type. The value can be:
+        *0: Values in `groupListOptional` are the cumulative sum (cumsum) results of the grouping axis sizes.
+        *1: Values in `groupListOptional` are the sizes of groups along the grouping axis.
+        *2: The shape of `groupListOptional` is [e, 2], where `e` indicates the group size. The data layout is `[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`, where `groupSize` is the size of each group along the grouping axis.
         * <term>Atlas inference products</term>: The value `2` is not supported.
         * <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value `2` is supported only when the input type of `x` and `weight` is INT8 and `groupType` is set to `0` (M-axis grouping).
-  -   actType (int64\_t, computation input): integer type, indicating the activation function type.
+  - actType (int64\_t, computation input): integer type, indicating the activation function type.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value ranges from 0 to 5, corresponding to the following enumerated values:
           * 0: GMMActType::GMM_ACT_TYPE_NONE
           * 1: GMMActType::GMM_ACT_TYPE_RELU
@@ -173,13 +173,13 @@ aclnnStatus aclnnGroupedMatmulV4(
           * 4: GMMActType::GMM_ACT_TYPE_FAST_GELU
           * 5: GMMActType::GMM_ACT_TYPE_SILU
       - <term>Atlas inference products</term>: Currently, only `0` is supported, indicating `GMMActType::GMM_ACT_TYPE_NONE`.
-  -   out (aclTensorList *, computation output): aclTensorList on the device, $y$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the maximum length is 128.
+  - out (aclTensorList *, computation output): aclTensorList on the device, $y$ in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND, and the maximum length is 128.
       - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type can be FLOAT16, BFLOAT16, INT8, FLOAT32, or INT32.
       - <term>Atlas inference products</term>: The data type can be FLOAT16.
-  -   activationFeatureOutOptional (aclTensorList *, computation output): aclTensorList on the device, the input data of the activation function. Currently, only `nullptr` is supported.
-  -   dynQuantScaleOutOptional (aclTensorList *, computation output): aclTensorList on the device. Currently, only `nullptr` is supported.
-  -   workspaceSize (uint64\_t *, output): size of the workspace to be allocated on the device.
-  -   executor (aclOpExecutor **, output): operator executor, containing the operator computation process.
+  - activationFeatureOutOptional (aclTensorList *, computation output): aclTensorList on the device, the input data of the activation function. Currently, only `nullptr` is supported.
+  - dynQuantScaleOutOptional (aclTensorList *, computation output): aclTensorList on the device. Currently, only `nullptr` is supported.
+  - workspaceSize (uint64\_t *, output): size of the workspace to be allocated on the device.
+  - executor (aclOpExecutor **, output): operator executor, containing the operator computation process.
 
 - **Return**
 
@@ -272,7 +272,7 @@ aclnnStatus aclnnGroupedMatmulV4(
   </tbody>
   </table>
 
--   **Return**
+- **Return**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -297,12 +297,14 @@ aclnnStatus aclnnGroupedMatmulV4(
     - The following input types are supported in fake-quantization scenarios:
       - `x`: FLOAT16; `weight`: INT8 or INT4; `biasOptional`: FLOAT16; `scaleOptional`: null; `offsetOptional`: null; `antiquantScaleOptional`: FLOAT16; `antiquantOffsetOptional`: FLOAT16; `perTokenScaleOptional`: null; `activationInputOptional`: null; `out`: FLOAT16
       - The shapes of the fake-quantization parameters `antiquantScaleOptional` and `antiquantOffsetOptional` must meet the following requirements ($g$ indicates the number of Matmul groups, $G$ indicates the number of quantization groups, and $G_i$ indicates the number of quantization groups of the *i*-th tensor).
+
           | Application Scenario| Sub-scenario| Shape Restriction|
           |:---------:|:-------:| :-------|
           | Fake-quantization (per-channel)| Single-tensor `weight`| $[g, n]$|
           | Fake-quantization (per-channel)| Multi-tensor `weight`| $[n_i]$|
           | Fake-quantization (per-group)| Single-tensor `weight`| $[g, G, n]$|
           | Fake-quantization (per-group)| Multi-tensor `weight`| $[G_i, n_i]$|
+
       - `x`: BFLOAT16; `weight`: INT8 or INT4; `biasOptional`: FLOAT32; `scaleOptional`: null; `offsetOptional`: null; `antiquantScaleOptional`: BFLOAT16; `antiquantOffsetOptional`: BFLOAT16; `perTokenScaleOptional`: null; `activationInputOptional`: null; `out`: BFLOAT16
       - `x`: INT8; `weight`: INT4; `biasOptional`: FLOAT32; `scaleOptional`: UINT64; `antiquantScaleOptional`: null; `antiquantOffsetOptional`: null; `perTokenScaleOptional`: FLOAT32; `activationInputOptional`: null This scenario supports symmetric quantization and asymmetric quantization:
         - Symmetric quantization
@@ -332,6 +334,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     - Supported scenarios for different `groupType` values:
       - In quantization and fake-quantization scenarios, `groupType` can be either `-1` or `0`.
       - "S" stands for single-tensor, and "M" stands for multi-tensor, expressed in the sequence of `x`, `weight`, `y`. For example, "SMS" indicates single-tensor `x`, multi-tensor `weight`, and single-tensor `y`.
+
         | groupType | Supported Scenario| Scenario Restrictions|
         |:---------:|:-------:| :-------|
         | -1 | MMM|(1) `splitItem` can only be set to `0` or `1`.<br>(2) The tensors in `x` must have the same dimensionality, which can be 2D to 6D. The tensors in `weight` must be 2D. The dimensionality of tensors in `y` must match that of `x`.<br>(3) `groupListOptional` must be passed as null.<br>(4) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.<br>(5) `x` cannot be transposed.|
@@ -340,16 +343,19 @@ aclnnStatus aclnnGroupedMatmulV4(
         | 0 | MMS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) Tensors in `x`, `weight`, and `y` must be 2D.<br>(3) The N-axis of each tensor in `weight` must be the same.<br>(4) If `groupListOptional` is passed: when `groupListType` is `0`, the differences of `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`; when `groupListType` is `1`, the `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`, and the maximum length is 128; when `groupListType` is `2`, the values in the second column of `groupListOptional` must be in one-to-one mapping with the first dimension of the tensors in `x`, and the maximum length is 128.<br>(5) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.<br>(6) `x` cannot be transposed.|
         | 2 | SSS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) The tensors in `x` and `weight` must be 2D, and the tensor in `y` must be 3D.<br>(3) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the second dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the second dimension of the tensor in `x`. When `groupListType` is `2`, the sum of the values in the second column must be equal to the second dimension of the tensor in `x`.<br>(4) The first dimension of `groupListOptional` supports a maximum of 1024 groups.<br>(5) `x` must be transposed, and `weight` cannot be transposed.<br>(6) `bias` must be passed as null.|
         | 2 | SMM|(1) `splitItem` can only be set to `0` or `1`.<br>(2) Tensors in `x`, `weight`, and `y` must be 2D.<br>(3) `groupListOptional` must be passed as null.<br>(4) The maximum length of `weight` is 128, meaning a maximum of 128 groups are supported.<br>(5) `x` must be transposed, and `weight` cannot be transposed.<br>(6) The sum of the first dimensions of all tensors in the original `weight` shape should not exceed the first dimension of `x`.<br>(7) `bias` must be passed as null.|
+
     - The size of the last dimension for each tensor in `x` and `weight` should be less than 65536. The last dimension of $x_i$ refers to the K-axis when `x` is not transposed or the M-axis when `x` is transposed. The last dimension of $weight_i$ refers to the N-axis when `weight` is not transposed or the K-axis when `weight` is transposed.
     - Activation function computation is supported only in quantization (per-token) and dequantization scenarios.
 
   - <term>Atlas inference products</term>:
     - The input and output support only the FLOAT16 type. The N-axis size of the output `y` must be a multiple of 16.
+
       | groupType | Supported Scenario| Scenario Restrictions|
       |:---------:|:-------:| :------ |
       | 0 | SSS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) The tensor in `weight` must be 3D, and the tensors in `x` and `y` must be 2D.<br>(3) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the first dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the first dimension of the tensor in `x`.<br>(4) The first dimension of `groupListOptional` supports a maximum of 1024 groups.<br>(5) `weight` can be transposed, but `x` cannot.|
 
 ## Calling Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
   ```c++

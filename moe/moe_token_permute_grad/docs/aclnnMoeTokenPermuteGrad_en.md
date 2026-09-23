@@ -10,10 +10,9 @@
 | <term>Atlas inference products</term>                            |    ×     |
 | <term>Atlas training products</term>                             |    ×     |
 
-
 ## Function
 
-- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md).
+- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](../../../moe/moe_token_permute/docs/aclnnMoeTokenPermute_en.md).
 - **Formula**:
 
   $$
@@ -30,7 +29,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteGradGetWorkspaceSize` is called to obtain the input parameters, the workspace size required for computation, and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteGradGetWorkspaceSize` is called to obtain the input parameters, the workspace size required for computation, and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteGrad` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(const aclTensor *permutedOutputGrad, const aclTensor *sortedIndices, int64_t numTopk, bool paddedMode, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenPermuteGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -39,7 +38,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 - **Parameters:**
   - `permutedOutputGrad` (aclTensor\*, computation input): aclTensor on the device, which is the gradient of the forward output `permutedTokens`. It must be a 2D tensor with shape (tokens_num * topK_num, hidden_size). `tokens_num` indicates the number of tokens, and `topK_num` indicates the value of `numTopk`. The data type can be BFLOAT16, FLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND.
-  - `sortedIndices` (aclTensor\*, computation input): aclTensor on the device, whose shape is (tokens_num * topK_num). The data type can be INT32. The value range is [0, tokens_num * topK_num – 1], and there is no duplicate index. The [data format](../../../docs/en/context/data_format.md) must be ND.
+  - `sortedIndices` (aclTensor\*, computation input): aclTensor on the device, whose shape is (`tokens_num * topK_num`). The data type can be INT32. The value range is [0, tokens_num* topK_num – 1], and there is no duplicate index. The [data format](../../../docs/en/context/data_format.md) must be ND.
   - `numTopk` (int64_t, computation input): number of selected experts.
     - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `numTopk` is less than or equal to `512`.
   - `paddedMode` (bool, computation input): `true` indicates that `paddedMode` is enabled, and `false` indicates that `paddedMode` is disabled. Currently, only `false` is supported.
@@ -50,7 +49,8 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - **Returns:**
 
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-  ```
+
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown.
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input or output tensor is a null pointer.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The data type or format of the input or output is not supported.
@@ -74,6 +74,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
   - `aclnnMoeTokenPermuteGrad` defaults to deterministic implementation.
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The value of `numTopk` is less than or equal to `512`.
+
 ## Example
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).

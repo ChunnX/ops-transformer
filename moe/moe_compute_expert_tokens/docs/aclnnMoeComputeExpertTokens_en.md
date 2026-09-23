@@ -28,7 +28,7 @@ Searches for the location of the last row processed by each expert in binary sea
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeComputeExpertTokensGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeComputeExpertTokens` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeComputeExpertTokensGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeComputeExpertTokens` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeComputeExpertTokensGetWorkspaceSize(
@@ -49,7 +49,7 @@ aclnnStatus aclnnMoeComputeExpertTokens(
 
 ## aclnnMoeComputeExpertTokensGetWorkspaceSize
 
--   **Parameters**
+- **Parameters**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 187px">
@@ -155,7 +155,7 @@ aclnnStatus aclnnMoeComputeExpertTokens(
         <td>The data type of sortedExperts is not supported.</td>
         </tr>
         <tr>
-        <td>The data format of sortedExperts is not supported.<td></td>
+        <td>The data format of sortedExperts is not supported.</td>
         </tr>
         <tr>
         <td> ACLNN_ERR_INNER_TILING_ERROR </td>
@@ -174,8 +174,8 @@ aclnnStatus aclnnMoeComputeExpertTokens(
             </thead>
             <tbody>
                 <tr><td>workspace</td><td>Input</td><td>The memory address of the workspace allocated on the device side.</td></tr>
-                <tr><td>workspaceSize</td><td>Input</td><td>The workspace size allocated on the device side, obtained from the first API aclnnInplaceAddGetWorkspaceSize.</td></tr></td></tr>
-                <tr><td>executor</td><td>Input</td><td>The operator executor, which contains the computation process of the operator.</td></tr> </td></tr>
+                <tr><td>workspaceSize</td><td>Input</td><td>The workspace size allocated on the device side, obtained from the first API aclnnInplaceAddGetWorkspaceSize.</td></tr>
+                <tr><td>executor</td><td>Input</td><td>The operator executor, which contains the computation process of the operator.</td></tr>
                 <tr><td>stream</td><td>Input</td><td>Stream for executing the task. </td></tr>
             </tbody>
     </table>

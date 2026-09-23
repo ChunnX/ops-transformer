@@ -1,6 +1,7 @@
 # aclnnInplaceFfnWorkerScheduler
 
 ## Product Support
+
 |Product            |  Supported |
 |:-------------------------|:----------:|
 |  <term>Atlas A3 training products/Atlas A3 inference products</term>  |     √    |
@@ -19,65 +20,65 @@
 
     2. Scans the information stored in `token_info_buf`. When the communication data is ready, this operator starts data sorting. As shown in the following figure, the information of `layer id`, `session id`, `micro batch id`, and `expert ids` are written to the `layer_id_buf`, `session_id_buf`, `micro_batch_id_buf`, and `expert_ids_buf`, respectively, in the device memory.
 
-    ```mermaid
-    graph TB
-        %% Input buffer
-        A [token_info_buf input]
+      ```mermaid
+      graph TB
+          %% Input buffer
+          A [token_info_buf input]
 
-        %% Session-level structure
-        A --> Session0
-        A --> Session1
+          %% Session-level structure
+          A --> Session0
+          A --> Session1
 
-        %% Internal structure of session 0
-        subgraph Session0[session 0]
-            direction TB
-            S0_M1[micro batch id 0]:::micro
-            S0_L1[layer id 0]:::layer
-            S0_S1[session id 0]:::session0
-            S0_E1[expert ids 0]:::expert
-        end
+          %% Internal structure of session 0
+          subgraph Session0[session 0]
+              direction TB
+              S0_M1[micro batch id 0]:::micro
+              S0_L1[layer id 0]:::layer
+              S0_S1[session id 0]:::session0
+              S0_E1[expert ids 0]:::expert
+          end
 
-        %% Internal structure of session 1
-        subgraph Session1[session 1]
-            direction TB
-            S1_M1[micro batch id 0]:::micro
-            S1_L1[layer id 0]:::layer
-            S1_S1[session id 1]:::session1
-            S1_E1[expert ids 0]:::expert
-        end
+          %% Internal structure of session 1
+          subgraph Session1[session 1]
+              direction TB
+              S1_M1[micro batch id 0]:::micro
+              S1_L1[layer id 0]:::layer
+              S1_S1[session id 1]:::session1
+              S1_E1[expert ids 0]:::expert
+          end
 
-        %% Output buffer index area
-        subgraph Output [Output area]
-            direction TB
-            O1[layer_ids_buf]:::layer
-            O2[session_ids_buf]:::output
-            O3[micro_batch_ids_buf]:::micro
-            O4[expert_ids_buf]:::expert
-        end
+          %% Output buffer index area
+          subgraph Output [Output area]
+              direction TB
+              O1[layer_ids_buf]:::layer
+              O2[session_ids_buf]:::output
+              O3[micro_batch_ids_buf]:::micro
+              O4[expert_ids_buf]:::expert
+          end
 
-        %% Data flow direction
-        S0_L1 -.-> O1
-        S0_S1 -.-> O2
-        S0_M1 -.-> O3
-        S0_E1 -.-> O4
+          %% Data flow direction
+          S0_L1 -.-> O1
+          S0_S1 -.-> O2
+          S0_M1 -.-> O3
+          S0_E1 -.-> O4
 
-        S1_L1 -.-> O1
-        S1_S1 -.-> O2
-        S1_M1 -.-> O3
-        S1_E1 -.-> O4
+          S1_L1 -.-> O1
+          S1_S1 -.-> O2
+          S1_M1 -.-> O3
+          S1_E1 -.-> O4
 
-        classDef layer fill:#c8e6c9
-        classDef session0 fill:#ffcdd2
-        classDef session1 fill:#ffccbc
-        classDef output fill:#e3f2fd
-        classDef micro fill:#e1f5fe
-        classDef expert fill:#bbdefd
-        
-        %% Adding the background color style of the subgraph
-        style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
-        style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
-        style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
-    ```
+          classDef layer fill:#c8e6c9
+          classDef session0 fill:#ffcdd2
+          classDef session1 fill:#ffccbc
+          classDef output fill:#e3f2fd
+          classDef micro fill:#e1f5fe
+          classDef expert fill:#bbdefd
+          
+          %% Adding the background color style of the subgraph
+          style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+          style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
+          style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+      ```
 
     3. Allows data to be used by the FFNWorkerBatching operator after the data is sorted.
 - Formula:
@@ -99,7 +100,8 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceFfnWorkerScheduler` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceFfnWorkerScheduler` is called to perform computation.
+
 ```Cpp
 aclnnStatus aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize(
     aclTensor* scheduleContextRef,
@@ -108,6 +110,7 @@ aclnnStatus aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize(
     uint64_t* workspaceSize,
     aclOpExecutor** executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnInplaceFfnWorkerScheduler(
     void* workspace,

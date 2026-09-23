@@ -13,11 +13,11 @@
 ## Function
 
 A fused operator of `GroupedMatmul` and `MoeFinalizeRouting`. It performs a "combine" operation on the output of the `GroupedMatmul` computation based on specified indices.
-Compared with [aclnnGroupedMatmulFinalizeRoutingV2](./aclnnGroupedMatmulFinalizeRoutingV2.md), this API adds the input parameter `tuningConfigOptional` for performance tuning. The first value in the array indicates the expected number of tokens to be processed by each expert. Operator tiling is performed based on this expected value to achieve higher performance. Select the appropriate API as required.
+Compared with [aclnnGroupedMatmulFinalizeRoutingV2](./aclnnGroupedMatmulFinalizeRoutingV2_en.md), this API adds the input parameter `tuningConfigOptional` for performance tuning. The first value in the array indicates the expected number of tokens to be processed by each expert. Operator tiling is performed based on this expected value to achieve higher performance. Select the appropriate API as required.
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingV3` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
@@ -52,7 +52,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     aclOpExecutor *executor,
     aclrtStream    stream)
 ```
-
 
 ## aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize
 
@@ -384,6 +383,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computation:
   - `aclnnGroupedMatmulFinalizeRoutingV3` defaults to non-deterministic implementation. You can call `aclrtCtxSetSysParamOpt` to enable deterministic computation.
 
@@ -393,12 +393,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
   |------|------|-------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
   | INT8 | INT4 | INT64 | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
+
     - In this scenario, `scaleOptional` represents the result of per-channel and per-group offline fusion.
     - In this scenario, `biasOptional` represents the auxiliary result of offline computation. Its value must be $8 \times w \times scaleOptional$ and is accumulated in the first dimension.
     - This scenario supports symmetric quantization and asymmetric quantization. During symmetric quantization, `offsetOptional` must be null. During asymmetric quantization, `offsetOptional` represents the auxiliary result of offline computation, which is the result of $antiquantOffsetOptional \times scaleOptional$.
     - In this scenario, `antiquantScaleOptional` and `antiquantOffsetOptional` must be null.
 
 ## Calling Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
   ```Cpp

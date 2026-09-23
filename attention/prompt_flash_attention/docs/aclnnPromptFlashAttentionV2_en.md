@@ -12,8 +12,8 @@
 
 ## Description
 
--   **API function**: FlashAttention operator in the full inference scenario. Compared with [aclnnPromptFlashAttention](aclnnPromptFlashAttention.md), this API supports the following new functions: sparse optimization, `actualSeqLengthsKv` optimization, and INT8 quantization.
--   Formula:
+- **API function**: FlashAttention operator in the full inference scenario. Compared with [aclnnPromptFlashAttention](./aclnnPromptFlashAttention.md), this API supports the following new functions: sparse optimization, `actualSeqLengthsKv` optimization, and INT8 quantization.
+- Formula:
 
     Self-attention constructs an attention model by leveraging the relationships within input samples. The principle assumes there is an input sample sequence $x$ of length $n$, where each element of $x$ is a $d$-dimensional vector. Each $d$-dimensional vector can be regarded as a token embedding. Such a sequence is transformed by three weight matrices to obtain three $n*d$ matrices.
 
@@ -31,11 +31,9 @@
 
     The product of $Q$ and $K^T$ represents the attention to the input $x$. To prevent this value from becoming excessively large, it is typically scaled by dividing by the square root of $d$, followed by row-wise softmax normalization. The result is then multiplied by $V$ to produce an $n*d$ matrix.
 
-
-
 ## Prototype
 
-The operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnPromptFlashAttentionV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttentionV2` is called to perform computation.
+The operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnPromptFlashAttentionV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnPromptFlashAttentionV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnPromptFlashAttentionV2GetWorkspaceSize(
@@ -344,7 +342,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
   <col style="width: 130px">
   <col style="width: 650px">
   </colgroup>
-  <table><thead>
+  <thead>
     <tr>
       <th>Return</th>
       <th>Error Code</th>
@@ -380,7 +378,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <col style="width: 130px">
     <col style="width: 650px">
     </colgroup>
-    <table><thead>
+    <thead>
     <tr>
         <th>Name</th>
         <th>Input/Output</th>
@@ -411,7 +409,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     </table>
     </div>
 
--   **Returns**
+- **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

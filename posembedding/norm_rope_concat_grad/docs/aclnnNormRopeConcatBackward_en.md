@@ -59,7 +59,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNormRopeConcatBackwardGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnNormRopeConcatBackward` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNormRopeConcatBackwardGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnNormRopeConcatBackward` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnNormRopeConcatBackwardGetWorkspaceSize(

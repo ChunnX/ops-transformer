@@ -10,7 +10,6 @@
 |<term>Atlas inference accelerator cards</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Function
 
 - Adapts to the `FlashAttention` operator in the incremental (`IncreFlashAttention`) and full (`PromptFlashAttention`) inference scenarios. When `S` of the `Query` matrix is `1`, the `IncreFlashAttention` branch is executed. In other scenarios, the `PromptFlashAttention` branch is executed. Compared with `FusedInferAttentionScoreV2`, this API introduces new parameters: `queryRopeOptional`, `keyRopeOptional`, and `keyRopeAntiquantScaleOptional`.
@@ -33,10 +32,9 @@
 
   The product of $Q$ and $K^T$ represents the attention to the input $x$. To prevent this value from becoming excessively large, it is typically scaled by dividing by the square root of $d$, followed by row-wise softmax normalization. The result is then multiplied by $V$ to produce an $n × d$ matrix.
 
-
 ## Function Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFusedInferAttentionScoreV3GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFusedInferAttentionScoreV3GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnFusedInferAttentionScoreV3` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
@@ -186,7 +184,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>Input</td>
         <td>Valid sequence length of <code>query</code> in different batches.</td>
         <td><ul><li>If the sequence length is not specified, pass <code>nullptr</code>.</li>
-            <li>For details about the constraints, see <a href="#constraints">Constraints</a>.</li><ul></td>
+            <li>For details about the constraints, see <a href="#constraints">Constraints</a>.</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -573,7 +571,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>Input</td>
         <td>Whether to output <code>softmax_lse</code>.</td>
           <td><ul><li>S-axis outer splitting (augmented output) is supported.</li>
-              <li>If no specific value is required, <code>false</code> is recommended.</li></td>
+              <li>If no specific value is required, <code>false</code> is recommended.</li></ul></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -624,7 +622,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
         <td>When <code>softmaxLseFlag</code> is <code>True</code>, the shape must be <code>[B, N, Q_S, 1]</code> in general. When <code>inputLayout</code> is <code>TND</code> or <code>NTD_TND</code>, the shape must be <code>[T, N, 1]</code>.</td>
         <td>-</td>
       </tr>
-      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>Output</td>
@@ -722,7 +719,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     </tr>
   </tbody>
   </table>
-
 
 - **Returns**
 
@@ -997,7 +993,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - When `softmaxLseFlag` is `True`, the shape must be `[B, N, Q_S, 1]` in general. When `inputLayout` is `TND` or `NTD_TND`, the shape must be `[T, N, 1]`.
   - When `softmaxLseFlag` is `False`, if the `softmaxLse` tensor is not `nullptr`, the tensor data is returned directly. If `softmaxLse` is `nullptr`, a tensor of shape `{1}` filled with zeros is returned.
 
-
 - **When `Q_S` is greater than `1`**:
 
   - Restrictions on `query`, `key`, and `value`:
@@ -1081,7 +1076,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
   - Page attention scenario:
 
     - The prerequisite for enabling page attention is that `blockTable` exists and is valid, and `key` and `value` are arranged in a continuous memory based on the indexes in `blockTable`. In this scenario, `inputLayout` of `key` and `value` is invalid. `blockTable` is filled with block IDs. Currently, the validity of block IDs is not verified. You need to ensure the validity of block IDs.
-      -  <term>For Atlas A2 training products/Atlas A2 inference products</term>, the data types of `key` and `value` can be FLOAT16, BFLOAT16, or INT8.
+      - <term>For Atlas A2 training products/Atlas A2 inference products</term>, the data types of `key` and `value` can be FLOAT16, BFLOAT16, or INT8.
     - `BlockSize` is a user-defined parameter. Its value affects the page attention performance. When page attention is enabled, the value of `BlockSize` must be a multiple of `128`, ranging from `128` to `512`. Generally, page attention can improve the throughput but deteriorate the performance.
     - In the page attention scenario, if the input KV cache layout is BnBsH `(BlockNum, BlockSize, H)` and the product of `KV_N` multiplied by `D` exceeds `65535`, an error will be reported due to hardware instruction constraints. This problem can be solved by enabling GQA (decreasing `KV_N`) or adjusting the KV cache layout to BnNBsD `(BlockNum, KV_N, BlockSize, D)`. When `inputLayout` of `query` is `BNSD` or `TND`, the KV cache layout can be BnBsH or BnNBsD. When `inputLayout` of `query` is `BSH` or `BSND`, the KV cache layout can only be BnBsH. The value of `BlockNum` cannot be less than the sum of blocks in each batch calculated based on `actualSeqLengthsKv` and `BlockSize`. The shapes of `key` and `value` must be the same.
     - Page attention fake-quantization scenario
@@ -1165,7 +1160,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - In the page attention scenario, the performance is generally better when the KV cache layout is BnNBsD than when it is BnBsH. Therefore, BnNBsD is recommended.
     - In the page attention scenario, if the input KV cache layout is BnBsH and `numKvHeads` × `headDim` exceeds 64 KB, an error will be reported due to hardware instruction constraints. This problem can be solved by enabling GQA (decreasing `numKvHeads`) or adjusting the KV cache layout to BnNBsD.
     - Page attention does not support the tensor list or left padding:
-        -  <term>For Atlas A2 training products/Atlas A2 inference products</term>, scenarios where `Q` is of type BF16/FP16 and `KV` is of type INT4 (INT32) are not supported.
+        - <term>For Atlas A2 training products/Atlas A2 inference products</term>, scenarios where `Q` is of type BF16/FP16 and `KV` is of type INT4 (INT32) are not supported.
     - In the page attention scenario, `actualSeqLengthsKv` must be passed.
     - In the page attention scenario, `blockTable` must be two-dimensional. The length of the first dimension must be equal to `B`, and the length of the second dimension must be greater than or equal to `maxBlockNumPerSeq` (the maximum number of blocks corresponding to `actualSeqLengthsKv` in each batch).
     - When page attention is enabled, the input `S` must be greater than or equal to `blockTable` second dimension × `BlockSize` in the following scenarios:

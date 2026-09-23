@@ -12,8 +12,8 @@
 
 ## Function
 
--   **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md).
--   **Formula**:
+- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md).
+- **Formula**:
     Flattens the input `expertIdx` with shape [numRows, k] into a row for sorting.
     
     $$
@@ -30,7 +30,8 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRouting` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRouting` is called to perform computation.
+
 ```cpp
 aclnnStatus aclnnMoeInitRoutingGetWorkspaceSize(
     const aclTensor  *x, 
@@ -43,6 +44,7 @@ aclnnStatus aclnnMoeInitRoutingGetWorkspaceSize(
     uint64_t         *workspaceSize, 
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnMoeInitRouting(
     void             *workspace, 
@@ -53,7 +55,7 @@ aclnnStatus aclnnMoeInitRouting(
 
 ## aclnnMoeInitRoutingGetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1543px"><colgroup>
         <col style="width: 200px">
@@ -170,7 +172,7 @@ aclnnStatus aclnnMoeInitRouting(
         </tbody>
         </table>
 
--   **Returns**
+- **Returns**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -220,7 +222,8 @@ aclnnStatus aclnnMoeInitRouting(
     </table>
 
 ## aclnnMoeInitRouting
--   **Parameters:**
+
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1179px">
     <colgroup>
@@ -259,9 +262,10 @@ aclnnStatus aclnnMoeInitRouting(
       </tbody>
     </table>
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
+    
 ## Constraints
 
 - Deterministic computing:

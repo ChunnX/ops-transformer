@@ -22,7 +22,8 @@
   - The size of each token must be less than 148k. For example, for the FP16/BF16 type, `num_heads` × `head_size` (`keyRef`/`valueRef`) is 128 × 576.
 
 - Example:
-  ```
+
+  ```cpp
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
     blockTables_shape: [16, 12]
@@ -36,7 +37,7 @@
 
 ## Function Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGatherPaKvCacheGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGatherPaKvCache` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGatherPaKvCacheGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGatherPaKvCache` is called to perform computation.
 
 - `aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(const aclTensor *keyCache, const aclTensor *valueCache, const aclTensor *blockTables, const aclTensor *seqLens, aclTensor *keyRef, aclTensor *valueRef, const aclTensor *seqOffsetOptional, char* cacheMode, bool isSeqLensCumsum, uint64_t *workspaceSize, aclOpExecutor **executor)`
 - `aclnnStatus aclnnGatherPaKvCache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -71,13 +72,14 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  ```
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input is a null pointer.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input data type is not supported.
                                       2. The input number of dimensions does not match.
                                       3. The input data types are inconsistent.
   ```
+
 ## aclnnGatherPaKvCache
 
 - **Parameters:**
@@ -89,7 +91,6 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
   - `executor` (`aclOpExecutor*`, an input parameter): Operator executor, containing the operator computation process.
 
   - `stream` (`aclrtStream`, an input parameter): Stream for executing the task.
-
 
 - **Returns:**
 

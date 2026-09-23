@@ -27,7 +27,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNsaSelectedAttentionInferGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaSelectedAttentionInfer` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNsaSelectedAttentionInferGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaSelectedAttentionInfer` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionInferGetWorkspaceSize(
@@ -189,7 +189,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Input</td>
           <td>Actual <code>S</code> value of <code>query</code>.</td>
           <td>
-  		If this parameter is not used, pass <code>nullptr</code>.
+      If this parameter is not used, pass <code>nullptr</code>.
           </td>
           <td>INT64</td>
           <td>ND</td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Input</td>
           <td>Number of blocks to be retained.</td>
           <td>
-  		<code>selectBlockCount</code> × <code>selectBlockSize</code> must be less than or equal to <code>MaxKvSeqlen</code>, where <code>MaxKvSeqlen</code> = <code>Max(actualSelKvSeqLenOptional)</code>.
+      <code>selectBlockCount</code> × <code>selectBlockSize</code> must be less than or equal to <code>MaxKvSeqlen</code>, where <code>MaxKvSeqlen</code> = <code>Max(actualSelKvSeqLenOptional)</code>.
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -279,7 +279,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Input</td>
           <td>Block size of paged attention.</td>
           <td>
-  		Used for obtaining data from the KV cache.
+      Used for obtaining data from the KV cache.
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Input</td>
           <td>Reciprocal of the square root of <code>d</code> in the formula, which represents the scaling coefficient.</td>
           <td>
-  		Used as the scalar value of <code>Muls</code> in the computation stream.
+      Used as the scalar value of <code>Muls</code> in the computation stream.
           </td>
           <td>DOUBLE</td>
           <td>-</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Input</td>
           <td>Sparse mode, which controls sparse computation when <code>attenMask</code> is input.</td>
           <td>
-  		This parameter is reserved and not used currently.
+      This parameter is reserved and not used currently.
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>Output</td>
           <td>Attention output in the formula.</td>
           <td>
-  		This parameter is reserved and not used currently.
+      This parameter is reserved and not used currently.
           </td>
           <td>FLOAT16, BFLOAT16</td>
           <td>ND</td>

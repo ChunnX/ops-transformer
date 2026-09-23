@@ -2,7 +2,6 @@
 
 [📄 View source code](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_token_unpermute_with_ep)
 
-
 ## Product Support
 
 | Product                                                        | Supported|
@@ -12,7 +11,6 @@
 | <term>Atlas 200I/500 A2 inference products</term>                     |    ×    |
 | <term>Atlas inference products</term>                            |    ×     |
 | <term>Atlas training products</term>                             |    ×     |
-
 
 ## Function
 
@@ -50,7 +48,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenUnpermuteWithEp` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenUnpermuteWithEp` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
@@ -65,6 +63,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor     **executor)
 ```
+
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEp(
     void          *workspace,
@@ -75,7 +74,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 ## aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 187px">
     <col style="width: 121px">
@@ -145,7 +144,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
         <td>rangeOptional</td>
         <td>Input</td>
         <td>Valid range of EP slicing.</td>
-        <td>The size is 2. If this parameter is left empty, <code>numTopk</code> is ignored, and the execution logic is rolled back to <a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>.</td>
+        <td>The size is 2. If this parameter is left empty, <code>numTopk</code> is ignored, and the execution logic is rolled back to <a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute_en.md">aclnnMoeTokenUnpermute</a>.</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -206,7 +205,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
     </tr>
     </tbody></table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -239,7 +238,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 ## aclnnMoeTokenUnpermuteWithEp
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
         <col style="width: 173px">
         <col style="width: 133px">
@@ -275,10 +274,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
             </tbody>
         </table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-
 
 ## Constraints
 
@@ -287,7 +285,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 - The value of `topK_num` is less than or equal to `512`.
 - `paddedMode` cannot be set to `True`.
-- When `rangeOptional` is left empty, `numTopk` is ignored, and the execution logic is rolled back to [aclnnMoeTokenUnpermute](./aclnnMoeTokenUnpermute.md).
+- When `rangeOptional` is left empty, `numTopk` is ignored, and the execution logic is rolled back to [aclnnMoeTokenUnpermute](../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute_en.md).
 
 ## Example
 

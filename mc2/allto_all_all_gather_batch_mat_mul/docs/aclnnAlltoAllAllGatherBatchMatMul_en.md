@@ -36,7 +36,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAlltoAllAllGatherBatchMatMul` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnAlltoAllAllGatherBatchMatMul` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(
@@ -280,6 +280,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 Due to the requirements of collective communication and BatchMatMul computation, the input and output shapes must meet the following mathematical relationship (ep = `epWorldSize` and tp = `tpWorldSize`):
 
 AllGather by the H axis (`xShardType` = 0):
+
   - `x`: (E, C, H/tp)
   - `weight`: (E/ep, H, M/tp)
   - `biasOptional`: (E/ep, 1, M/tp) for 3D and (E/ep, M/tp) for 2D when the pointer is not null.
@@ -288,6 +289,7 @@ AllGather by the H axis (`xShardType` = 0):
   - `y3OutOptional`: (E/ep, ep\*C, M/tp)
 
 AllGather by the C axis (xShardType = 1):
+
   - `x`: (E, C/tp, H)
   - `weight`: (E/ep, H, M/tp)
   - `biasOptional`: (E/ep, 1, M/tp) for 3D and (E/ep, M/tp) for 2D when the pointer is not null.
@@ -296,6 +298,7 @@ AllGather by the C axis (xShardType = 1):
   - `y3OutOptional`: (E/ep, ep*tp\*C/tp, M/tp)
 
 Data relationship description:
+
   - For example, if `x.size(0)` is equal to E and weight.size(0) is equal to E/ep, it indicates that `x.size(0)` = `ep*weight.size(0)`, where `x.size(0)` is an integer multiple of ep. Other relationships are similar to this.
   - The value range of E is [2, 512], and E is an integer multiple of ep.
   - The value range of H is [1, 65535]. When xShardType is set to 0, H is an integer multiple of tp.
@@ -312,6 +315,7 @@ Data relationship description:
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
+
 ```Cpp
 #include <thread>
 #include <iostream>

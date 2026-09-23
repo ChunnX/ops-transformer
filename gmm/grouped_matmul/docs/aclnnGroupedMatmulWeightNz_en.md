@@ -17,7 +17,7 @@
       - K-axis grouping: $k_i$ varies across groups, while $m_i$ and $n_i$ remain the same for each group. In this case, $x_i$ and $weight_i$ can be concatenated along the K-axis.
       - M-axis grouping: $k_i$ remains the same for each group. In this case, $weight_i$ and $y_i$ can be concatenated along the N-axis.
 
-    **New features compared with [GroupedMatmulV5](./aclnnGroupedMatmulV5.md)**:
+    **New features compared with [GroupedMatmulV5](./aclnnGroupedMatmulV5_en.md)**:
 
       - The input `weight` data supports the AI processor-affinity layout format (FRACTAL_NZ).
       - The `quantGroupSize` parameter is added. It is an integer that indicates the quantization group size in per-group mode. If per-group quantization is not involved, set this parameter to `0`.
@@ -62,7 +62,6 @@
           y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
           $$
        
-
       - **Quantization scenario (MX quantization, without bias or activation layer):**
 
         $$
@@ -87,7 +86,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulWeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulWeightNz` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulWeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatmulWeightNz` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
@@ -484,12 +483,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - The following input types are supported in fake-quantization scenarios:
   
     - The shapes of the fake-quantization parameters `antiquantScaleOptional` and `antiquantOffsetOptional` must meet the following requirements ($g$ indicates the number of Matmul groups, $G$ indicates the number of quantization groups, and $G_i$ indicates the number of quantization groups of the *i*-th tensor).
+
         | Application Scenario| Sub-scenario| Shape Restriction|
         |:---------:|:-------:| :-------|
         | Fake-quantization (per-channel)| Single-tensor `weight`| $[E, N]$|
         | Fake-quantization (per-channel)| Multi-tensor `weight`| $[n_i]$|
         | Fake-quantization (per-group)| Single-tensor `weight`| $[E, G, N]$|
         | Fake-quantization (per-group)| Multi-tensor `weight`| $[G_i, N_i]$|
+
     - `x`: INT8; `weight`: INT4; `biasOptional`: FLOAT32; `scaleOptional`: UINT64; `antiquantScaleOptional`: null; `antiquantOffsetOptional`: null; `perTokenScaleOptional`: FLOAT32; `activationInputOptional`: null This scenario supports symmetric quantization and asymmetric quantization:
 
       - Symmetric quantization
@@ -524,7 +525,9 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | -1 | MMM|(1) `splitItem` can only be set to `0` or `1`.<br>(2) The tensors in `x` must have the same dimensionality, which can be 2D to 6D. The tensors in `weight` must be 2D. The dimensionality of tensors in `y` must match that of `x`.<br>(3) `groupListOptional` must be passed as null.<br>(4) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.<br>(5) `x` cannot be transposed.|
       | 0 | SSS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) The tensor in `weight` must be 3D, and the tensors in `x` and `y` must be 2D.<br>(3) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the first dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the first dimension of the tensor in `x`. When `groupListType` is `2`, the sum of the values in the second column must be equal to the first dimension of the tensor in `x`.<br>(4) The first dimension of `groupListOptional` supports a maximum of 1024 groups.<br>(5) `weight` can be transposed.<br>(6) `x` cannot be transposed.|
       | 0 | SMS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the first dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the first dimension of the tensor in `x` and the maximum length is 128. When `groupListType` is `2`, the sum of the values in the second column must be equal to the first dimension of the tensor in `x` and the maximum length is 128.<br>(3) Tensors in `x`, `weight`, and `y` must be 2D.<br>(4) The N-axis of each tensor in `weight` must be the same.<br>(5) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.<br>(6) `x` cannot be transposed.|
+
       | 0 | MMS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) Tensors in `x`, `weight`, and `y` must be 2D.<br>(3) The N-axis of each tensor in `weight` must be the same.<br>(4) If `groupListOptional` is passed: when `groupListType` is `0`, the differences of `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`; when `groupListType` is `1`, the `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`, and the maximum length is 128; when `groupListType` is `2`, the values in the second column of `groupListOptional` must be in one-to-one mapping with the first dimension of the tensors in `x`, and the maximum length is 128.<br>(5) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.<br>(6) `x` cannot be transposed.|
+      
 </details>
 
 <details>
@@ -533,11 +536,12 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - The input and output support only the FLOAT16 type. The N-axis size of the output `y` must be a multiple of 16.
     
     "S" stands for single-tensor and "M" stands for multi-tensor, expressed in the sequence of `x`, `weight`, `y`. For example, "SMS" indicates single-tensor `x`, multi-tensor `weight`, and single-tensor `y`.
+
     | groupType | Supported Scenario| Scenario Restrictions|
     |:---------:|:-------:| :------ |
     | 0 | SSS|(1) `splitItem` can only be set to `2` or `3`.<br>(2) The tensor in `weight` must be 3D, and the tensors in `x` and `y` must be 2D.<br>(3) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the first dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the first dimension of the tensor in `x`.<br>(4) The first dimension of `groupListOptional` supports a maximum of 1024 groups.<br>(5) `weight` can be transposed, but `x` cannot.|
-</details>
 
+</details>
 
 ## Calling Example
 

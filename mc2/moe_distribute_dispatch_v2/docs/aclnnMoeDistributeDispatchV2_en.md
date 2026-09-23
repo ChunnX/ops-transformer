@@ -35,12 +35,9 @@
 > Notes:
 > The `aclnnMoeDistributeCombineV2` and `aclnnMoeDistributeCombineAddRmsNorm` operators are collectively referred to as **CombineV2 series operators** in subsequent documents.
 
-
-
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeDispatchV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeDispatchV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
@@ -252,7 +249,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>sharedExpertRankNum</td>
     <td>Input</td>
-    <td>Number of shared expert ranks.</td></td>
+    <td>Number of shared expert ranks.</td>
     <td>The current value range is [0, epWorldSize). When it is not 0, it must satisfy epWorldSize % sharedExpertRankNum = 0.</td>
     <td>INT64</td>
     <td>ND</td>
@@ -271,7 +268,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <tr>
     <td>globalBs</td>
     <td>Input</td>
-    <td>Global batch size in the EP domain.</td></td>
+    <td>Global batch size in the EP domain.</td>
     <td>If all ranks have the same `Bs`, globalBs = Bs × epWorldSize or 0. If `Bs` differs across ranks, globalBs = maxBs × epWorldSize, where maxBs is the maximum `Bs` of a single rank.</td>
     <td>INT64</td>
     <td>ND</td>
@@ -428,7 +425,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     The first-phase API implements input parameter verification. The following errors may be thrown.
 
-    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1149px">
     <col style="width: 281px">
     <col style="width: 119px">
     <col style="width: 749px">
@@ -516,7 +513,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 4. The values of `groupEp`, `epWorldSize`, `moeExpertNum`, `groupTp`, `tpWorldSize`, `expertShardType`, `sharedExpertNum`, `sharedExpertRankNum`, `globalBs`, `commAlg`, and `HCCL_BUFFSIZE` used during API calling must be the same for all ranks, at all network layers, and the same as those of `aclnnMoeDistributeDispatchV2`.
 
-6. The shape format is described as follows:
+5. The shape format is described as follows:
     - **A**: Maximum number of tokens that can be received by the current rank. The value range is as follows:
       - For shared experts, A = Bs × epWorldSize × sharedExpertNum / sharedExpertRankNum.
       - For MoE experts, when `globalBs` is 0, A ≥ Bs × epWorldSize × min(localExpertNum, K). When `globalBs` is not 0, A ≥ globalBs × min(localExpertNum, K).
@@ -532,7 +529,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
       - For shared expert ranks, localExpertNum = 1.
       - For MoE expert ranks, localExpertNum = moeExpertNum/(epWorldSize - sharedExpertRankNum). If localExpertNum > 1, TP domain communication is not supported.
     
-7. **quantMode constraints**:
+6. **quantMode constraints**:
     - <term>Atlas A2 training products/Atlas A2 inference products</term>:
         - If `quantMode` is set to 2, it indicates the pertoken dynamic quantization scenario. The data type of `expandX` can be INT8.
             - For `scales`, you can pass a null pointer.
@@ -543,7 +540,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             - If valid data is passed to `scales` and shared expert ranks exist, the shape is (sharedExpertNum + moeExpertNum, H).
             - If valid data is passed to `scales` but no shared expert ranks exist, the shape is (moeExpertNum, H).
 
-8. **HCCL_BUFFSIZE**:
+7. **HCCL_BUFFSIZE**:
 
    Before calling this API, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
     - <term>Atlas A2 training products/Atlas A2 inference products</term>:
@@ -554,17 +551,19 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (≥ 2 × (localExpertNum × maxBs × epWorldSize × Align512(Align32(2 × H) + 64) + (K + sharedExpertNum) × maxBs × Align512(2 × H))) (`localExpertNum` indicates the number of experts assigned to the current rank when using MoE; `Align512(x) = ((x + 512 - 1) / 512) × 512`; `Align32(x) = ((x + 32 - 1) / 32) × 32)`.
         - Within a TP communication domain: The value must satisfy ≥ A × (H × 2 + 128) × 2.
 
-9. **HCCL_INTRA_PCIE_ENABLE and HCCL_INTRA_ROCE_ENABLE:**
+8. **HCCL_INTRA_PCIE_ENABLE and HCCL_INTRA_ROCE_ENABLE:**
    <term>Atlas A2 training products / Atlas A2 inference products</term>: This environment variable is not recommended. You are advised to set `commAlg` to `"hierarchy"`.
 
-10. In the formulas in this document, / denotes integer division.
+9. In the formulas in this document, / denotes integer division.
 
-11. Constraints on the use of the communication domain:
-   - `aclnnMoeDistributeCombineV2` and `aclnnMoeDistributeDispatchV2` in a model support only the same EP communication domain, and no other operators are allowed in the communication domain.
-   - `aclnnMoeDistributeCombineV2` and `aclnnMoeDistributeDispatchV2` in a model support only the same TP communication domain or both do not support a TP communication domain. If a TP communication domain is supported, no other operators are allowed in the communication domain.
-   - <term>Atlas A3 training products / Atlas A3 inference products</term>: Nodes in a communication domain must be in the same SuperPoD. Cross-SuperPoD nodes are not supported.
+10. Constraints on the use of the communication domain:
 
-12. Networking constraints:
+    - `aclnnMoeDistributeCombineV2` and `aclnnMoeDistributeDispatchV2` in a model support only the same EP communication domain, and no other operators are allowed in the communication domain.
+    - `aclnnMoeDistributeCombineV2` and `aclnnMoeDistributeDispatchV2` in a model support only the same TP communication domain or both do not support a TP communication domain. If a TP communication domain is supported, no other operators are allowed in the communication domain.
+    - <term>Atlas A3 training products / Atlas A3 inference products</term>: Nodes in a communication domain must be in the same SuperPoD. Cross-SuperPoD nodes are not supported.
+
+11. Networking constraints:
+
    - <term>Atlas A2 training products / Atlas A2 inference products</term>: In multi-server scenarios, only switch-based networking is supported, and direct point-to-point networking between two servers is not supported.
 
 ## Example
@@ -577,7 +576,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         
         2. Copy the project to the two servers and configure the `rank_table_m2.json` file based on the device IP addresses of the servers. Ensure that the `rank_table_m2.json` files on the two servers are the same.
         
-        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/invocation/quick_op_invocation.md).
+        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/zh/invocation/quick_op_invocation.md).
 
     - About rankTable:
     
@@ -601,9 +600,11 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     
     - Set the number of servers:
         In 2-server 16-rank scenarios, set `MACHINE_NUM` to 2.
+
         ```cpp
         const uint32_t MACHINE_NUM = 2;
         ```
+
         You do not need to set this variable in single-server 16-rank scenarios.
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
@@ -613,6 +614,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training series products/Atlas A2 inference series products</term> and <term>Atlas A3 training series products/Atlas A3 inference series products</term>:
+
     ```Cpp
     #include <thread>
     #include <iostream>

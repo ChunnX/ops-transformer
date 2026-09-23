@@ -56,6 +56,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     void             *workspace,
@@ -283,8 +284,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 168px">
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 128px">
     <col style="width: 854px">
     <thead>

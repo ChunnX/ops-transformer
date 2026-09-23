@@ -63,7 +63,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMlaPreprocessGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPreprocess` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMlaPreprocessGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPreprocess` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMlaPreprocessGetWorkspaceSize(
@@ -239,7 +239,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>beta1</td>
       <td>Input</td>
       <td>The β parameter in the second RmsNorm calculation.</td>
-      <td>The data type must comply with the data type deduction rules of the input. For details, see <a href="../../../docs/en/context/deduction_relationship.md"> deduction relationship </a> and <a href="#Restrictions "> Restrictions </a>.</td>
+      <td>The data type must comply with the data type deduction rules of the input. For details, see <a href="../../../docs/en/context/deduction_relationship.md"> deduction relationship </a> and <a href="##Restrictions "> Restrictions </a>.</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[1536]</td>
@@ -523,7 +523,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>Whether to perform RmsNormQuant or Quant on the input tensor.</td>
       <td><ul>
         <li>false: Only Quant is performed on the input tensor, and RmsNorm</li> is not performed.
-        <li>true: RmsNormQuant is performed on the input tensor.</li><ul>
+        <li>true: RmsNormQuant is performed on the input tensor.</li></ul>
       </td>
       <td>bool</td>
       <td>-</td>
@@ -547,7 +547,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>The shape and dtype vary with cacheMode.
         <ul><li>When cacheMode is 0, the shape is [tokenNum, headNum, 576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 1 or 3, the shape is [tokenNum, headNum, 512], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
-        <li>When cacheMode is 2, the shape is [tokenNum, headNum, 512], the dtype is INT8, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li><ul>
+        <li>When cacheMode is 2, the shape is [tokenNum, headNum, 512], the dtype is INT8, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li></ul>
       </td>
       <td>INT8, FLOAT16, BFLOAT16</td>
       <td>ND</td>
@@ -562,7 +562,7 @@ aclnnStatus aclnnMlaPreprocess(
         <ul><li>When cacheMode is 0, the shape is [blockNum,blockSize,1,576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 1, the shape is [blockNum,blockSize,1,512], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 2, the shape is [blockNum, 16, blockSize, 32], the dtype is INT8, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li>
-        <li>When cacheMode is 3, the shape is [blockNum, 32, blockSize, 16], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li><ul>
+        <li>When cacheMode is 3, the shape is [blockNum, 32, blockSize, 16], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li></ul>
       </td>
       <td>INT8, FLOAT16, BFLOAT16</td>
       <td>ND and NZ</td>
@@ -576,7 +576,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>The shape and dtype vary with cacheMode:
         <ul><li>When cacheMode is 0, no output is generated.</li>
         <li>When cacheMode is 1 or 3, the shape is [tokenNum, headNum, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
-        <li>When cacheMode is 2, the shape is [tokenNum, headNum, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li><ul>
+        <li>When cacheMode is 2, the shape is [tokenNum, headNum, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li></ul>
       </td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
@@ -590,7 +590,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>The shape and dtype vary with cacheMode. 
         <ul><li>When cacheMode is set to 0, no output is generated.</li>
         <li>When cacheMode is 1, the shape is [blockNum, blockSize, 1, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
-        <li>When cacheMode is 2 or 3, the shape is [blockNum, 4, blockSize, 16], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li><ul>
+        <li>When cacheMode is 2 or 3, the shape is [blockNum, 4, blockSize, 16], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li></ul>
       </td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND and NZ</td>

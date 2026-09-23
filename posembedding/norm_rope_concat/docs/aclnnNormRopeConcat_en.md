@@ -18,15 +18,15 @@
     - RoPE supports the Interleave and Half types.
     - Concat can be performed in the sequence dimension with support for specifying different concatenation orders.
 
--   The computation formulas (using `query` (video) and `encoderQuery` (text) as examples) are as follows:
+- The computation formulas (using `query` (video) and `encoderQuery` (text) as examples) are as follows:
 
-	  $$
-    hiddenState_q = \text{LayerNorm}(query, normQueryWeight, normQueryBias, eps) \\
-    hiddenState_{eq} = \text{LayerNorm}(encoderQuery, normEncoderQueryWeight, normEncoderQueryBias, eps) \\
-    concatedHiddenState = \text{Concat}(hiddenState_q, hiddenState_{eq}) \\
-    transposedHiddenState = \text{Transpose}(concatedHiddenState, (0, 2, 1, 3)) \\
-    hiddenState = \text{RoPE}(concatedHiddenState, ropeSin, ropeCos)
-    $$
+      $$
+      hiddenState_q = \text{LayerNorm}(query, normQueryWeight, normQueryBias, eps) \\
+      hiddenState_{eq} = \text{LayerNorm}(encoderQuery, normEncoderQueryWeight, normEncoderQueryBias, eps) \\
+      concatedHiddenState = \text{Concat}(hiddenState_q, hiddenState_{eq}) \\
+      transposedHiddenState = \text{Transpose}(concatedHiddenState, (0, 2, 1, 3)) \\
+      hiddenState = \text{RoPE}(concatedHiddenState, ropeSin, ropeCos)
+      $$
 
 - Note:
     1. The input and output layouts are as follows: The shape of the input `query` is `(B, S, N, D)`, and the shape of the output `hiddenState` is `(B, N, S, D)`.
@@ -55,6 +55,7 @@
 
     3. Concat is performed in the sequence dimension. The concatenation order is specified by `concatOrder`. When `concatOrder=0`, $hiddenState_q$ is before $hiddenState_{eq}$. When `concatOrder=1`, $hiddenState_q$ is after $hiddenState_{eq}$.
     4. RoPE has three modes (specified by `ropeType`):`NONE(0)`, `INTERLEAVE(1)`, and `HALF(2)`. When `ropeType=NONE`, the output is directly generated without transformation. In other cases, see the following:
+        
         ```python
           def image_rotary_emb(hidden_states, rope_sin, rope_cos, mode=1):
               out = torch.empty_like(hidden_states)
@@ -70,6 +71,7 @@
                   out = hidden_states.float() * rope_cos + rotated_x.float()*rope_sin
                   return out.type_as(hidden_states)
         ```
+
     5. The shape of the input `ropeSin` for RoPE is `(seqRope, D)`, where
 
        $$seqRope ≤ min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)$$
@@ -78,7 +80,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNormRopeConcatGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnNormRopeConcat` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNormRopeConcatGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnNormRopeConcat` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnNormRopeConcatGetWorkspaceSize(

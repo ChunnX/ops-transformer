@@ -1,6 +1,5 @@
 # aclnnFlashAttentionUnpaddingScoreGradV3
 
-
 ## Supported Products
 
 |Product     | Supported|
@@ -12,10 +11,9 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
-- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV3`](./aclnnFlashAttentionVarLenScoreV3.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGradV2`](./aclnnFlashAttentionUnpaddingScoreGradV2.md) API, this API has the `queryRope`, `keyRope`, `dqRope`, and `dkRope` parameters.
+- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV3`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3_en.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGradV2`](./aclnnFlashAttentionUnpaddingScoreGradV2_en.md) API, this API has the `queryRope`, `keyRope`, `dqRope`, and `dkRope` parameters.
 
 - Formula:
 
@@ -67,11 +65,9 @@
   dkRope=\frac{((dS)^T*qRope)}{\sqrt{d}}
   $$
 
-
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV3` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV3` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize(
@@ -112,6 +108,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
   void             *workspace,
@@ -119,7 +116,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize
 
@@ -546,7 +542,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 
 ## aclnnFlashAttentionUnpaddingScoreGradV3
 
--   **Parameters**
+- **Parameters**
     <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
     <col style="width: 153px">
     <col style="width: 121px">
@@ -598,10 +594,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 - The values of **D** of `queryRope` and `keyRope` must be the same, must be an integer multiple of 8, and must be less than or equal to the value of **D** of `query` and `key`.
 - **N** of the input `query` or `dy` can be different from **N** of the `key` or `value`, but they must be proportional. That is, Nq/Nkv must be a non-zero integer. The value of Nq ranges from 1 to 256.
 - The following uses the `inputLayout` TND as an example to describe the constraints on the shape:
-    -   **T**: The value ranges from 1 to 1M.
-    -   **N**: The value ranges from 1 to 256.
-    -   **D**: The value ranges from 1 to 768.
-    -   **KeepProb**: The value can be 1.
+    - **T**: The value ranges from 1 to 1M.
+    - **N**: The value ranges from 1 to 256.
+    - **D**: The value ranges from 1 to 768.
+    - **KeepProb**: The value can be 1.
 - The data format of `query`, `key`, and `value` can only be TND. **T** indicates the data closely arranged on the B and S axes (SeqLenQ and SeqLenKV of each batch). **B (Batch)** indicates the batch size of the input sample, and **S (Seq-Length)** indicates the length of the input sample sequence. **H (Head-Size)** indicates the size of the hidden layer, **N (Head-Num)** indicates the number of heads. **D (Head-Dim)** indicates the minimum unit size of the hidden layer (**D** = **H**/**N**).
 - The constraints for `sparseMode` are as follows:
   - If the shape values of all `attenMaskOptional` are the same and less than 2048, you are advised to use the default mode to reduce memory usage.
@@ -621,7 +617,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
 - `pseShiftOptional` must be empty.
 - `dropMaskOptional` must be empty.
 - `attenMaskOptional` cannot be empty.
-
 
 ## Example
 

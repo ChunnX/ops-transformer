@@ -40,7 +40,7 @@
   
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNsaSelectedAttentionGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaSelectedAttentionGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNsaSelectedAttentionGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaSelectedAttentionGrad` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGradGetWorkspaceSize(

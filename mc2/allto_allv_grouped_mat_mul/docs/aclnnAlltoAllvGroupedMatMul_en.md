@@ -31,7 +31,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](./common/two_phase_api.md) calls. First, `aclnnAlltoAllvGroupedMatMulGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnAlltoAllvGroupedMatMul` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnAlltoAllvGroupedMatMulGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnAlltoAllvGroupedMatMul` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(
@@ -241,7 +241,6 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     </tr>
     </tbody></table>
 
-
 ## aclnnAlltoAllvGroupedMatMul
 
 - **Parameters**
@@ -304,9 +303,11 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 - <term>Atlas A3 training products/Atlas A3 inference products</term>: The communication volume per rank must be greater than or equal to 2 MB.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
+
     ```cpp
     #include <thread>
     #include <iostream>

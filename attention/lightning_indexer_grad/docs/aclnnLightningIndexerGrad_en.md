@@ -12,7 +12,6 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Function
 
 - Description: In the training scenario, the inputs `Query`, `Key`, `Weights`, `Dy`, and `Indices` are required to implement `LightningIndexer` backward computation. The backward computation extracts the `TopK` sequence from `Key` based on `Indices` in forward computation to reduce the MatMul computation workload.
@@ -42,7 +41,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnLightningIndexerGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnLightningIndexerGrad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnLightningIndexerGradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnLightningIndexerGrad` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
@@ -285,7 +284,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tbody>
 </table>
 
-
 - **Returns:**
 
 `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -317,7 +315,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tr>
 </tbody>
 </table>
-
 
 ## aclnnLightningIndexerGrad
 
@@ -362,7 +359,6 @@ aclnnStatus aclnnLightningIndexerGrad(
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-
 ## Constraints
 
 - Deterministic computation:
@@ -378,7 +374,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   - `S2` (Seq-LengthK): The value ranges from *topK* to 128K.
   - `D` (Head-Dim): The value is `128`.
   - `TopK`: The value is `2048`.
-
 
 ## Example
 

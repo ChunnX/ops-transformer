@@ -10,10 +10,9 @@
 |<term>Atlas inference accelerator cards</term>|      √     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
-- **API function**: Computes MoeFFN and FFN. This operator is a feed-forward network (FFN) operator when there is no expert group (`expertTokens` being null) and an MoeFFN operator when there is an expert group. Both operators are variants of FFN and use the Mixture-of-Experts (MoE) architecture. MoE is a technology used to train models with trillions of parameters. MoE divides a prediction modeling task into several subtasks, trains an expert model on each subtask, and develops a gating model. The model assigns one or more experts based on the input data, and finally combines the computation results of multiple experts as the prediction result. In the MoE model, the input data is allocated to one or more most relevant experts, and the final result is determined based on the computation results of all involved experts. Compared with the [`FFN`](FFN.md) API, **this API supports inputs of `expertTokens` indices, which are distinguished by `tokensIndexFlag`**.
+- **API function**: Computes MoeFFN and FFN. This operator is a feed-forward network (FFN) operator when there is no expert group (`expertTokens` being null) and an MoeFFN operator when there is an expert group. Both operators are variants of FFN and use the Mixture-of-Experts (MoE) architecture. MoE is a technology used to train models with trillions of parameters. MoE divides a prediction modeling task into several subtasks, trains an expert model on each subtask, and develops a gating model. The model assigns one or more experts based on the input data, and finally combines the computation results of multiple experts as the prediction result. In the MoE model, the input data is allocated to one or more most relevant experts, and the final result is determined based on the computation results of all involved experts. Compared with the [`FFN`](./aclnnFFN.md) API, **this API supports inputs of `expertTokens` indices, which are distinguished by `tokensIndexFlag`**.
 - Formula:
 
   - **Non-quantization scenario:**
@@ -37,10 +36,9 @@
   **Note**:
   Whether FFN has performance benefits in the scenario without experts or in the scenario with a single expert depends on the actual test situation. When the vector time of the small operator corresponding to the FFN structure on the entire network is more than 30 μs and accounts for more than 10% of the FFN structure, try to use this fusion operator. If the actual test performance deteriorates, do not use this function.
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFFNV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFFNV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFFNV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFFNV2` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnFFNV2GetWorkspaceSize(
@@ -73,7 +71,6 @@ aclnnStatus aclnnFFNV2(
   aclOpExecutor* executor, 
   aclrtStream    stream)
 ```
-
 
 ## aclnnFFNV2GetWorkspaceSize
 
@@ -142,7 +139,7 @@ aclnnStatus aclnnFFNV2(
 
     - If `tokensIndexFlag` is set to `true`, `expertTokens` is an index value.
     - If `tokensIndexFlag` is set to `false`, `expertTokens` is the number of tokens of each expert.
-  - `y` (aclTensor\*, compute output): aclTensor on the device, output y in the formula. The [data format](common/data_format.md) can be ND. The output shape is the same as that of `x`.
+  - `y` (aclTensor\*, compute output): aclTensor on the device, output y in the formula. The [data format](../../../docs/en/context/data_format.md) can be ND. The output shape is the same as that of `x`.
       - <term>Atlas A2 training products/Atlas A2 inference products</term>: The data type can be FLOAT16 or BFLOAT16.
       - <term>Atlas inference accelerator cards</term>: The data type can be FLOAT16.
   - workspaceSize (uint64\_t\*, output): size of the workspace to be allocated on the device.
@@ -251,8 +248,6 @@ aclnnStatus aclnnFFNV2(
 - <term>Atlas inference accelerator cards</term>:
   - Only the non-expert scenario is supported.
   - N1 must be equal to K2.
-
-
 
 ## Example
 

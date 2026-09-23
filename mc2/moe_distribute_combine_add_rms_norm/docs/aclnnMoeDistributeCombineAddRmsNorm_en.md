@@ -28,7 +28,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineAddRmsNorm` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineAddRmsNorm` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize(
@@ -440,8 +440,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 4. The shape format is described as follows:
     - **A**: Maximum number of tokens to be distributed by the current rank. The value range is as follows:
-      - For shared experts, A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum.
-      - For MoE experts, when `globalBS` is 0, A >= Bs * epWorldSize * min(localExpertNum, K). When `globalBS` is not 0, A >= globalBS * min(localExpertNum, K).
+      - For shared experts, A = `Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum`.
+      - For MoE experts, when `globalBS` is 0, A >= `Bs * epWorldSize * min(localExpertNum, K)`. When `globalBS` is not 0, A >= globalBS * min(localExpertNum, K).
     - **H**: Hidden layer size, which must be in the range [1024, 8192].
     - **Bs**: Batch sequence size (number of tokens output by the rank), which must be in the range 0 < Bs ≤ 512.
     - **K**: Number of top K experts, which must be in the ranges 0 < K ≤ 16 and 0 < K ≤ moeExpertNum.
@@ -451,7 +451,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 
 5. **HCCL_BUFFSIZE**:
    Before calling this API, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
-    - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ Bs * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)). `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
+    - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy `(1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ Bs * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))`. `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
     - Within a TP communication domain: The value must satisfy \>= (A \* Align512(Align32(h \* 2) + 44) + A \* Align512(h \* 2)) \* 2.
 
 6. Constraints on the use of communication domains:

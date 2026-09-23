@@ -20,7 +20,7 @@ When there is TP domain communication, `ReduceScatterV` communication is perform
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeCombineGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombine` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeCombineGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombine` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineGetWorkspaceSize(
@@ -374,17 +374,17 @@ aclnnStatus aclnnMoeDistributeCombine(
 
     - <term>Atlas A2 training products/Atlas A2 inference products</term>
         - Shared experts are not supported.
-        - The shape of `epSendCounts` is (moeExpertNum + 2 * globalBs * K * serverNum, ), where K indicates the number of top K experts, `moeExpertNum` indicates the number of tokens received from each rank in the EP communication domain, and 2 * globalBs * K * `serverNum` indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the shape is calculated as follows: Bs * epWorldSize.
+        - The shape of `epSendCounts` is (moeExpertNum + `2 * globalBs * K * serverNum,` ), where K indicates the number of top K experts, `moeExpertNum` indicates the number of tokens received from each rank in the EP communication domain, and `2 * globalBs * K * serverNum` indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the shape is calculated as follows: Bs * epWorldSize.
         - Currently, TP domain communication is not supported.
         - `expandScales` must be a 1D tensor with shape `(A, )`.
         - epWorldSize: The value is 16, 32, or 64.
         - `moeExpertNum` must also meet the following condition: moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24.
         - `groupTp` is not supported in the current version. Pass an empty string.
         - The current version does not support `tpWorldSize`, `tpRankId`, `expertShardType`, `sharedExpertNum`, and `sharedExpertRankNum`. Pass 0 for these parameters.
-        - If all ranks have the same batch size, globalBs = Bs * epWorldSize or 0. If batch size differs across ranks, globalBs = maxBs * epWorldSize or 256 * epWorldSize, where maxBs is the maximum batch size of a single rank. You are advised to pass the value as maxBs * epWorldSize.
+        - If all ranks have the same batch size, globalBs = `Bs * epWorldSize or 0`. If batch size differs across ranks, globalBs = `maxBs * epWorldSize` or `256 * epWorldSize`, where maxBs is the maximum batch size of a single rank. You are advised to pass the value as maxBs * epWorldSize.
 
     - <term>Atlas A3 training products/Atlas A3 inference products</term>:
-        - The shape of `epSendCounts` is (epWorldSize * max(tpWorldSize, 1) * localExpertNum, ).
+        - The shape of `epSendCounts` is (`epWorldSize * max(tpWorldSize, 1) * localExpertNum,` ).
         - When there is TP domain communication, `tpSendCounts` is a 1D tensor with shape `(tpWorldSize, )`.
         - `expandScales` is a reserved parameter, which is not supported in the current version. Pass a null pointer.
         - `epWorldSize`: The value is 8, 16, 32, 64, 128, 144, 256, or 288.
@@ -394,7 +394,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         - The value of `expertShardType` must be 0, indicating that shared expert ranks are placed in front of MoE expert ranks.
         - The value range of `sharedExpertNum` is [0, 1]. The value 0 indicates no shared expert, and the value 1 indicates one shared expert. In the current version, only the value 1 is supported.
         - The current value range of `sharedExpertRankNum` is [0, epWorldSize). When it is not 0, it must satisfy epWorldSize % sharedExpertRankNum = 0.
-        - If all ranks have the same `Bs`, globalBs = Bs * epWorldSize or 0. If Bs differs across ranks, globalBs = maxBs * epWorldSize, where maxBs is the maximum `Bs` of a single rank.
+        - If all ranks have the same `Bs`, globalBs = `Bs * epWorldSize or 0`. If Bs differs across ranks, globalBs = maxBs * epWorldSize, where maxBs is the maximum `Bs` of a single rank.
 
 - **Returns**
 
@@ -493,8 +493,8 @@ aclnnStatus aclnnMoeDistributeCombine(
 
 5. The shape format is described as follows:
     - **A**: Maximum number of tokens to be distributed by the current rank. The value range is as follows:
-      - For shared experts, A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum.
-      - For MoE experts, when `globalBs` is 0, A >= Bs * epWorldSize * min(localExpertNum, K). When `globalBs` is not 0, A >= globalBs * min(localExpertNum, K).
+      - For shared experts,`A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum`.
+      - For MoE experts, when `globalBs` is 0, `A >= Bs * epWorldSize * min(localExpertNum, K)`. When `globalBs` is not 0, A >= globalBs * min(localExpertNum, K).
     - **H**: Hidden layer size.
       - <term>Atlas A2 training products/Atlas A2 inference products</term>: The value range is (0, 7168] and the value must be an integer multiple of 32.
       - <term>Atlas A3 training products/Atlas A3 inference products</term>: The value is 7168.
@@ -513,14 +513,14 @@ aclnnStatus aclnnMoeDistributeCombine(
 
    Before calling this API, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
    - <term>Atlas A2 training products/Atlas A2 inference products</term>
-        - The value requirement is (≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)).
+        - The value requirement is (`≥ 2 * (Bs * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)`).
    - <term>Atlas A3 training products/Atlas A3 inference products</term>:
-        - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ Bs * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)). `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
-        - Within a TP communication domain: The value must satisfy >=A * (H * 2 + 128) * 2.
+        - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy (`1024^2 * (HCCL_BUFFSIZE - 2`) / `2 ≥ Bs * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)`). `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
+        - Within a TP communication domain: The value must satisfy >=`A * (H * 2 + 128) * 2`.
 
 7. **HCCL_INTRA_PCIE_ENABLE and HCCL_INTRA_ROCE_ENABLE:**
 
-   <term>Atlas A2 training products/Atlas A2 inference products</term>: Set the environment variables `HCCL_INTRA_PCIE_ENABLE = 1` and `HCCL_INTRA_ROCE_ENABLE = 0` to reduce the amount of cross-machine communication data, which may improve operator performance. In this case, `HCCL_BUFFSIZE` requires (≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB). For the input parameter `moeExpertNum`, only (moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0) is required, and (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24) is not required.
+   <term>Atlas A2 training products/Atlas A2 inference products</term>: Set the environment variables `HCCL_INTRA_PCIE_ENABLE = 1` and `HCCL_INTRA_ROCE_ENABLE = 0` to reduce the amount of cross-machine communication data, which may improve operator performance. In this case, `HCCL_BUFFSIZE` requires (`≥ moeExpertNum * Bs * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)`) + 4MB + 100MB). For the input parameter `moeExpertNum`, only (moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0) is required, and (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24) is not required.
 
 8. In the formulas in this document, / denotes integer division.
 

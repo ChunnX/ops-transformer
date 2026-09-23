@@ -30,8 +30,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnRingAttentionUpdateGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRingAttentionUpdate` is called to perform computation.
-
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnRingAttentionUpdateGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRingAttentionUpdate` is called to perform computation.
 
 - `aclnnStatus aclnnRingAttentionUpdateGetWorkspaceSize(const aclTensor *prevAttnOut, const aclTensor *prevSoftmaxMax, const aclTensor *prevSoftmaxSum, const aclTensor *curAttnOut, const aclTensor *curSoftmaxMax, const aclTensor *curSoftmaxSum, const aclTensor *actualSeqQlenOptional, char *inputLayoutOptional, const aclTensor *attnOutOut, const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 - `aclnnStatus aclnnRingAttentionUpdate(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -57,7 +56,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  ```
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The passed prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum, attnOutOut, softmaxMaxOut, or softmaxSumOut is a null pointer.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The data type of prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum, attnOutOut, softmaxMaxOut, or softmaxSumOut is not supported.

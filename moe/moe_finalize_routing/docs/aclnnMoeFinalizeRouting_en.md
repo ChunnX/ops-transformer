@@ -12,8 +12,8 @@
 
 ## Function
 
--   Processes and combines the MoE FFN output during MoE computation.
--   Formula:
+- Processes and combines the MoE FFN output during MoE computation.
+- Formula:
 
     $$
     expertid=expandedExpertIdx[i,k]
@@ -25,7 +25,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeFinalizeRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeFinalizeRouting` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeFinalizeRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeFinalizeRouting` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeFinalizeRoutingGetWorkspaceSize(
@@ -51,7 +51,7 @@ aclnnStatus aclnnMoeFinalizeRouting(
 
 ## aclnnMoeFinalizeRoutingGetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1546px"><colgroup>
     <col style="width: 179px">
     <col style="width: 122px">
@@ -250,10 +250,9 @@ aclnnStatus aclnnMoeFinalizeRouting(
   </tbody>
   </table>
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-
 
 ## Constraints
 
@@ -263,6 +262,7 @@ aclnnStatus aclnnMoeFinalizeRouting(
 ## Example
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
+
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing.h"

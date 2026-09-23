@@ -16,7 +16,7 @@ Synchronizes all ranks in a communication domain. xRef is used only to build ten
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnDistributeBarrierGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnDistributeBarrier` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnDistributeBarrierGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnDistributeBarrier` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSize(
@@ -92,7 +92,6 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
-    
 - **Returns**
 
     aclnnStatus: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -122,7 +121,6 @@ aclnnStatus aclnnDistributeBarrier(
     <td>The parameter value is not supported.</td>
     </tr>
     </tbody></table>
-
 
 ## aclnnDistributeBarrier
 
@@ -162,7 +160,6 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
-    
 - **Returns**
 
     aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -184,6 +181,7 @@ aclnnStatus aclnnDistributeBarrier(
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A3 training products/Atlas A3 inference products</term>:
+
     ```Cpp
     #include <thread>
     #include <iostream>

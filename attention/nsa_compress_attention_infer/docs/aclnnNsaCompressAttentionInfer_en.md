@@ -30,7 +30,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnNsaCompressAttentionInferGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaCompressAttentionInfer` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnNsaCompressAttentionInferGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnNsaCompressAttentionInfer` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
@@ -141,7 +141,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
         <ul style="list-style-type: circle;">
           <li>The <code>N</code> value of <code>value</code> is equal to the value of <code>numKeyValueHeads</code>.</li>
           <li>The <code>D</code> value (<code>H/numKeyValueHeads</code>) of <code>value</code> is equal to the <code>D</code> value of <code>output</code>.</li>
-  	  <li>The <code>D</code> value of <code>value</code> is less than or equal to <code>128</code>.</li>
+      <li>The <code>D</code> value of <code>value</code> is less than or equal to <code>128</code>.</li>
           <li>The <code>blockSize</code> value of <code>value</code> is equal to the value of <code>pageBlockSize</code>.</li>
           <li>The <code>S</code> value of <code>value</code> is less than or equal to <code>8192</code>.</li>
         </ul>
@@ -436,7 +436,9 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 ## Constraints
 
 - Deterministic computation:
-  - `aclnnNsaCompressAttentionInfer` defaults to a deterministic implementation.
+  - `aclnnNsaCompressAttentionInfer` defaults to a deterministic 
+  implementation.
+
 * `query` supports only TND and BSND inputs. `T` indicates the total length of all input sample sequences (`actualQSeqLenOptional` of all batches), `B` (`batch`) indicates the size of an input sample batch, `S` (`qSeqlen`) indicates the length of the input sample sequence, `N` (`numHeads`) indicates the number of heads, and `D` (`headDimsQK`) indicates the minimum unit size of the hidden layer.
 * The upper limit of `kvSeqlen` before compression can be expressed as follows: `actualSelKvSeqLenCeil` = (`actualCmpKvSeqLenOptional` – 1) × `compressBlockStride` + `compressBlockSize`. The following conditions must be met: `actualSelKvSeqLenCeil/selectBlockSize<=4096` and `selectBlockCount<=actualSelKvSeqLenCeil/selectBlockSize`. If the value of `actualSelKvSeqLenOptional` does not meet the formula `actualCmpKvSeqLenOptional = (actualSelKvSeqLenOptional – compressBlockSize)/compressBlockStride + 1` or the value of `actualCmpKvSeqLenOptional` is different from the `batch` dimension of `blockTableOptional`, the single-token inference scenario is used by default.
 * In the multi-token inference scenario, the `actualQSeqLenOptional` parameter must be passed, and the value of `actualQSeqLenOptional` must be the same as the `batch` dimension of `blockTableOptional`. In addition, the maximum `S` value of `query` is `4`, the value of `actualQSeqLenOptional` for each batch must be less than or equal to that of `actualSelKvSeqLenOptional`. If the value of `actualQSeqLenOptional` is different from the `batch` dimension of `blockTableOptional`, or the value of `actualQSeqLenOptional` is less than 1 or greater than 4, the single-token inference scenario is used by default.

@@ -20,7 +20,7 @@ Quantizes token data (optional). When there is TP domain communication, AllToAll
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeDispatchGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatch` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeDispatchGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatch` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(
@@ -413,13 +413,10 @@ aclnnStatus aclnnMoeDistributeDispatch(
     </tbody>
     </table>
 
-
-
 ## aclnnMoeDistributeDispatch
 
 - **Parameters**
         
-    
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 168px">
     <col style="width: 128px">
@@ -454,7 +451,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <td>Stream for executing the task.</td>
     </tr>
     </tbody>
-</table>
+    </table>
   
 - **Returns**
 
@@ -473,8 +470,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
 - The shape format is described as follows:
     - `A`: Maximum number of tokens that can be received by the current rank. The value range is as follows:
-        - For shared experts, `A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`.
-        - For MoE experts, when `globalBs` is 0, `A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`). When `globalBs` is not 0, `A` >= `globalBs` * min(`localExpertNum`, `K`).
+        - For shared experts, `A` = `BS * epWorldSize * sharedExpertNum` / `sharedExpertRankNum`.
+        - For MoE experts, when `globalBs` is 0, `A` >= `BS * epWorldSize * min`(`localExpertNum`, `K`). When `globalBs` is not 0, `A` >= `globalBs` * min(`localExpertNum`, `K`).
     - `localExpertNum`: Number of experts on the current rank.
         - For shared expert ranks, `localExpertNum` = 1.
         - For MoE expert ranks, `localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`). If `localExpertNum` > 1, TP domain communication is not supported.
@@ -491,8 +488,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `H`: Size of the hidden layer. The value must be in the range (0, 7168] and be an integer multiple of 32.
         - `BS`: Batch sequence size (number of tokens output by the rank), which must be in the range [1, 256].
         - `K`: indicates that top K experts are selected. The value must satisfy 0 < `K` ≤ moeExpertNum and be in the range [1, 16].
-    - `HCCL_BUFFSIZE`: Before calling this operator, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. The environment variable indicates the size of the memory occupied by a single communication domain, in MB. If the environment variable is not set, the default value 200 MB is used. The value must satisfy >= 2 * (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * sizeof(uint16) + 2MB).
-    - `HCCL_INTRA_PCIE_ENABLE` and `HCCL_INTRA_ROCE_ENABLE`: Set the environment variables `HCCL_INTRA_PCIE_ENABLE` to 1 and `HCCL_INTRA_ROCE_ENABLE` to 0 to reduce cross-server communication and improve the operator performance. In this case, `HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * sizeof(dtypeX) + 4 * ((`K` + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB. In addition, for the input parameter `moeExpertNum`, only `moeExpertNum` % `epWorldSize` = 0 is required, and `moeExpertNum` / `epWorldSize` <= 24 is not required. However, the `scales` feature is not supported.
+    - `HCCL_BUFFSIZE`: Before calling this operator, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. The environment variable indicates the size of the memory occupied by a single communication domain, in MB. If the environment variable is not set, the default value 200 MB is used. The value must satisfy `>= 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB)`.
+    - `HCCL_INTRA_PCIE_ENABLE` and `HCCL_INTRA_ROCE_ENABLE`: Set the environment variables `HCCL_INTRA_PCIE_ENABLE` to 1 and `HCCL_INTRA_ROCE_ENABLE` to 0 to reduce cross-server communication and improve the operator performance. In this case, `HCCL_BUFFSIZE >= moeExpertNum * BS * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB`. In addition, for the input parameter `moeExpertNum`, only `moeExpertNum % epWorldSize = 0` is required, and `moeExpertNum / epWorldSize <= 24` is not required. However, the `scales` feature is not supported.
     - `epWorldSize`: The value is 16, 32, or 64.
     - `quantMode` constraints:
         - If `quantMode` is set to 2, it indicates the pertoken dynamic quantization scenario. The data type of `expandX` can be `INT8`.
@@ -507,8 +504,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `BS`: Batch sequence size (number of tokens output by the rank), which must be in the range [1, 512].
         - `K`: indicates that top K experts are selected. The value must satisfy 0 < `K` ≤ moeExpertNum and be in the range [1, 8].
     - `HCCL_BUFFSIZE`: Before calling this operator, check whether the value of the HCCL_BUFFSIZE environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
-        - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy 1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1). `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
-        - Within a TP communication domain: The value must satisfy \>=A * (H * 2 + 128) * 2.
+        - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy `1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)`. `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
+        - Within a TP communication domain: The value must satisfy `>= A * (H * 2 + 128) * 2`.
     - `epWorldSize`: The value is 8, 16, 32, 64, 128, 144, 256, or 288.
     - `quantMode` constraints:
         - If `quantMode` is set to 2, it indicates the pertoken dynamic quantization scenario. The data type of `expandX` can be `INT8`.

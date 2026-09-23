@@ -10,7 +10,6 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
 - **API function**: Computes MoeFFN and FFN. This operator is a feed-forward network (FFN) operator when there is no expert group (`expertTokens` being null) and an MoeFFN operator when there is an expert group. Both operators are variants of FFN and use the Mixture-of-Experts (MoE) architecture. MoE is a technology used to train models with trillions of parameters. MoE divides a prediction modeling task into several subtasks, trains an expert model on each subtask, and develops a gating model. The model assigns one or more experts based on the input data, and finally combines the computation results of multiple experts as the prediction result. In the MoE model, the input data is allocated to one or more most relevant experts, and the final result is determined based on the computation results of all involved experts.
@@ -18,29 +17,28 @@
 
   - **Non-quantization scenario:**
 
-	$$
+  $$
     y=activation(x * W1 + b1) * W2 + b2
-	$$
+  $$
 
   - **Quantization scenario:**
 
-	$$
+  $$
     y=((activation((x * W1 + b1) * deqScale1) * scale + offset) * W2 + b2) * deqScale2
-	$$
+  $$
 
   - **Pseudo-quantization scenario:**
 
-	$$
+  $$
     y=activation(x * ((W1 + antiquantOffset1) * antiquantScale1) + b1) * ((W2 + antiquantOffset2) * antiquantScale2) + b2
-	$$
+  $$
 
 **Note:**
 Whether FFN has performance benefits in the scenario without experts or in the scenario with a single expert depends on the actual test situation. When the vector time of the small operator corresponding to the FFN structure on the entire network is more than 30 μs and accounts for more than 10% of the FFN structure, try to use this fusion operator. If the actual test performance deteriorates, do not use this function.
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnFFNGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFFN` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnFFNGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFFN` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnFFNGetWorkspaceSize(
@@ -72,7 +70,6 @@ aclnnStatus aclnnFFN(
   aclOpExecutor* executor, 
   aclrtStream    stream)
 ```
-
 
 ## aclnnFFNGetWorkspaceSize
 
@@ -133,8 +130,8 @@ aclnnStatus aclnnFFN(
     <tr>
       <td>expertTokens</td>
       <td>Optional input</td>
-      <td>Number of tokens for each expert.</td></td>
-      <td>If the parameter is not empty, the maximum value is 256.</td></td>
+      <td>Number of tokens for each expert.</td>
+      <td>If the parameter is not empty, the maximum value is 256.</td>
       <td>INT64</td>
       <td>ND</td>
       <td>-</td>
@@ -164,7 +161,7 @@ aclnnStatus aclnnFFN(
       <td>scale</td>
       <td>Optional input</td>
       <td>Quantization parameter: quantization scale factor.</td>
-      <td>In per-tensor mode, the input is a 1D vector both with and without experts. The number of input elements is [E] with experts and [1] without experts.<br>In per-channel mode, the input is a 2D vector with experts and a 1D vector without experts. The number of input elements is [E, N1] with experts and [N1] without experts.</td></td>
+      <td>In per-tensor mode, the input is a 1D vector both with and without experts. The number of input elements is [E] with experts and [1] without experts.<br>In per-channel mode, the input is a 2D vector with experts and a 1D vector without experts. The number of input elements is [E, N1] with experts and [N1] without experts.</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -399,8 +396,6 @@ aclnnStatus aclnnFFN(
 - In pseudo-quantization scenarios, under per-group mode, K1 in `antiquantScale1` and `antiquantOffset1` must be exactly divided by G (number of groups), and K2 in `antiquantScale2` and `antiquantOffset2` must be exactly divided by G (number of groups).
 - In pseudo-quantization scenarios, under per-group mode, the data type of `weight` can only be INT4.
 - In the BFLOAT16 non-quantization scenario, `innerPrecise` can only be set to `0`. In the FLOAT16 non-quantization scenario, `innerPrecise` can be set to `0` or `1`. In quantization or fake-quantization scenarios, `innerPrecise` can be set to `0` or `1`, but the setting does not take effect.
-
-
 
 ## Example
 

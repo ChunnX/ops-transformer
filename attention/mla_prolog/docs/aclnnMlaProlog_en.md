@@ -12,8 +12,9 @@
 
 ## Function
 
--  **Interface function**: In inference scenarios, this operator performs the preprocessing computation for Multi-Head Latent Attention. The computation process consists of four paths. First, the input $x$ is multiplied by $W^{DQ}$ for downsampling and RmsNorm, and then split into two paths. In the first path, $W^{UQ}$ and $W^{UK}$ are applied, followed by two upsampling operations to obtain $q^N$. In the second path, $W^{QR}$ is applied and rotary position encoding (ROPE) is used to obtain $q^R$. The third path multiplies input $x$ by $W^{DKV}$ for downsampling and RmsNorm, and the result is stored into the cache to obtain $k^C$. The fourth path multiplies input $x$ by $W^{KR}$, applies rotary position encoding, and then stores the result into another cache to obtain $k^R$.
--  **Formula**:
+- **Interface function**: In inference scenarios, this operator performs the preprocessing computation for Multi-Head Latent Attention. The computation process consists of four paths. First, the input $x$ is multiplied by $W^{DQ}$ for downsampling and RmsNorm, and then split into two paths. In the first path, $W^{UQ}$ and $W^{UK}$ are applied, followed by two upsampling operations to obtain $q^N$. In the second path, $W^{QR}$ is applied and rotary position encoding (ROPE) is used to obtain $q^R$. The third path multiplies input $x$ by $W^{DKV}$ for downsampling and RmsNorm, and the result is stored into the cache to obtain $k^C$. The fourth path multiplies input $x$ by $W^{KR}$, applies rotary position encoding, and then stores the result into another cache to obtain $k^R$.
+
+- **Formula**:
 
     RmsNorm formula
 
@@ -63,7 +64,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnMlaPrologGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaProlog` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnMlaPrologGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaProlog` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMlaPrologGetWorkspaceSize(
@@ -103,11 +104,9 @@ aclnnStatus aclnnMlaProlog(
   aclrtStream    stream)
 ```
 
-
-
 ## aclnnMlaPrologGetWorkspaceSize
 
--  **Parameters**
+- **Parameters**
 
     | Parameter| Input/Output| Description| Usage Description  | Data Type| Data Format  | Dimension (shape)| Non-contiguous tensor|
     |----------------------------|-----------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|------------|---------------------------|-------------------------|
@@ -138,7 +137,7 @@ aclnnStatus aclnnMlaProlog(
     | workspaceSize              | Output     | Size of the workspace required to be allocated on the device.                                 | Used only for output results. No input configuration is required.<br> The data type is uint64_t*.                                                                                | -              | -          | -                         | -                       |
     | executor                   | Output     | Operator executor, containing the operator computation process.                                     |  Used only for output results. No input configuration is required.<br> The data type is aclOpExecutor**.                                                                          | -              | -          | -                         | -                       |
 
--  **Returns**
+- **Returns**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).<br>
     The first-phase API implements input parameter verification. The following errors may be thrown.
@@ -151,6 +150,7 @@ aclnnStatus aclnnMlaProlog(
     | ACLNN_ERR_INNER_TILING_ERROR | 561002  | An exception occurs during tiling. The dtype or shape of the input parameter is incorrect.|
 
 ## aclnnMlaProlog
+
 - **Parameters**
 
   | Name       | Type        | Description                                                               |
@@ -165,9 +165,11 @@ aclnnStatus aclnnMlaProlog(
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computing:
   - `aclnnMlaProlog` defaults to deterministic implementation.
--  Shape field description
+- Shape field description
+
     | Field      | Full Spelling/Description                 | Value Rule and Description                                                                |
     |--------------|--------------------------------|------------------------------------------------------------------------------|
     | B            | Batch (batch size of input samples)     | Value range: 0 to 65536.                                                          |
@@ -182,6 +184,7 @@ aclnnStatus aclnnMlaProlog(
     | BlockNum     | Number of blocks in the PagedAttention scenario.   | The value is rounded up to the nearest integer after the result of B x Skv/BlockSize is calculated. (Skv indicates the sequence length of kv and can be 0.)|
     | BlockSize    | Block size in the PagedAttention scenario | Value range: 16 and 128                                                          |
     | T            | The fused size of BS.               | Range: 0–1048576. Note: When BS fusion is used, tokenX, ropeSin, and ropeCos are all 2D tensors; cacheIndex is a 1D tensor; queryOut and queryRopeOut are 3D tensors.|
+    
 - When transposing is not performed, the dimensions of `weight_dq`, `weight_uq_qr`, and `weight_dkv_kr` are represented as (k, n).
 - The `aclnnMlaProlog` API supports the following scenarios:
   <table style="table-layout: auto;" border="1">

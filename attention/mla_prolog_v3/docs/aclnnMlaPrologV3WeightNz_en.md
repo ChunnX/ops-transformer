@@ -89,7 +89,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnMlaPrologV3WeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPrologV3WeightNz` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnMlaPrologV3WeightNzGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPrologV3WeightNz` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
@@ -233,7 +233,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   | D            | QK without position encoding dimensions           | The value is fixed at 128.                                                            |
   | Dr           | QK positional encoding dimension               | The value is fixed at 64.                                                             |
   | Nkv          | Number of KV heads                 | The value is fixed at 1.                                                              |
-  | BlockNum     | Number of blocks in the PagedAttention scenario.   | 1. When CacheMode is set to "PA_BSND"/"PA_NZ", the value must be greater than or equal to the rounded-up result of (B*S)/BlockSize.<br> 2. When CacheMode is set to "PA_BLK_BSND"/"PA_BLK_NZ", the value must be greater than or equal to the rounded-up result of B *(S/BlockSize) (that is, B * Ceil(S/BlockSize)). <br>Note: In the BS fusion scenario, the S length in each batch can be different. Therefore, the value of BlockNum must be greater than or equal to the sum of the rounded-up results of the S length in each batch divided by BlockSize.|
+  | BlockNum     | Number of blocks in the PagedAttention scenario.   | 1. When CacheMode is set to "PA_BSND"/"PA_NZ", the value must be greater than or equal to the rounded-up result of (B*S)/BlockSize.<br> 2. When CacheMode is set to "PA_BLK_BSND"/"PA_BLK_NZ", the value must be greater than or equal to the rounded-up result of `B * (S/BlockSize)` (that is, `B * Ceil(S/BlockSize)`). <br>Note: In the BS fusion scenario, the S length in each batch can be different. Therefore, the value of BlockNum must be greater than or equal to the sum of the rounded-up results of the S length in each batch divided by BlockSize.|
   | BlockSize    | Block size in the PagedAttention scenario | Value range: a multiple of 16 ranging from 16 to 1024                                             |
   | T            | The fused size of BS.               | Range: not limited. <br>Note: When BS fusion is used, tokenX, ropeSin, and ropeCos are all 2D tensors; cacheIndex is a 1D tensor; queryOut and queryRopeOut are 3D tensors.|
   | Dtile        | Size of dimension D of krCache          | - In the per-tile quantization scenario, the value is fixed to 656.<br> - In other scenarios, the value is fixed to Hckv (512).                                                      |
@@ -607,6 +607,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     </tr>
   </table>
   </div>
+  
 ## Example
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).

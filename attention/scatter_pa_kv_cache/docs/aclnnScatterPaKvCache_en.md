@@ -16,7 +16,8 @@
 
 - Input and output support the following scenarios:
   - Scenario 1:
-    ```
+   
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch, num_head, v_head_size]
     keyCache:[num_blocks, num_head * k_head_size // last_dim_k, block_size, last_dim_k]
@@ -27,7 +28,8 @@
     ```  
     
   - Scenario 2:
-    ```
+    
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -35,11 +37,13 @@
     slotMapping:[batch * seq_len]
     cacheMode:"Norm"
     scatter_mode:"None"/"Nct"
-    ```
+    
+    ```text
     The `k_head_size` and `v_head_size` can be different or the same.
 
   - Scenario 3:
-    ```
+
+    ```text
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -52,7 +56,8 @@
     ```
 
   - Scenario 4:
-    ```
+
+    ```text
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -65,7 +70,8 @@
     ```
 
   - Scenario 5:
-    ```
+
+    ```text
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -79,7 +85,8 @@
     ```
 
     - Scenario 6:
-    ```
+
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -94,7 +101,7 @@
   
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First call `aclnnScatterPaKvCacheGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call `aclnnScatterPaKvCache` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First call `aclnnScatterPaKvCacheGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call `aclnnScatterPaKvCache` to perform the computation.
 
 * `aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(const aclTensor *key, aclTensor *keyCacheRef, const aclTensor *slotMapping, const aclTensor *value, aclTensor *valueCacheRef, const aclTensor *compressLensOptional, const aclTensor *compressSeqOffsetOptional, const aclTensor *seqLensOptional, char *cacheModeOptional, char *scatterModeOptional, const aclIntArray *stridesOptional, const aclIntArray *offsetsOptional, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnScatterPaKvCache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -127,7 +134,7 @@ Each operator has [two-phase API](common/two_phase_api.md) calls. First call `ac
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  ```
+  ```text
   The first-phase API implements input parameter verification. The following errors may be thrown.
   Return 161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The passed key, keyCacheRef, slotMapping, value, valueCacheRef are null pointers.
   Return 161002 (ACLNN_ERR_PARAM_INVALID): 1. The data type of the parameter key or value is not within the supported range.
@@ -150,6 +157,7 @@ Each operator has [two-phase API](common/two_phase_api.md) calls. First call `ac
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic Computation:
     - `aclnnScatterPaKvCache` defaults to deterministic implementation.
 - In addition to key and value, input parameters do not support non-continuity;
@@ -167,6 +175,7 @@ Each operator has [two-phase API](common/two_phase_api.md) calls. First call `ac
 ## Examples
 
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
+
 - <term>Atlas A3 training products/Atlas A3 inference products</term> and <term>Atlas A2 training products/Atlas A2 inference products</term>:
 
    ```c++
@@ -347,4 +356,3 @@ The following example is for reference only. For details, see [Compile and Run S
     return 0;
   }
   ```
-

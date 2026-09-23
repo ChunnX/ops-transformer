@@ -12,8 +12,8 @@
 
 ## Function
 
--   Description: Applies softmax to input `x` during MoE computation to obtain the top-K result. `yOut` is the topK result of softmax. `expertIdxOut` is the index result of the topK value, that is, the corresponding expert sequence number. `rowIdxOut` is the column value result with the same shape as `expertIdxOut`, indicating the original row position corresponding to each position. If a row is marked as `true`, the expert index can be set to the value of `num_expert`, that is, the size of the last axis of `x`.
--   Formula:
+- Description: Applies softmax to input `x` during MoE computation to obtain the top-K result. `yOut` is the topK result of softmax. `expertIdxOut` is the index result of the topK value, that is, the corresponding expert sequence number. `rowIdxOut` is the column value result with the same shape as `expertIdxOut`, indicating the original row position corresponding to each position. If a row is marked as `true`, the expert index can be set to the value of `num_expert`, that is, the size of the last axis of `x`.
+- Formula:
 
     $$
     softmaxOut=softmax(x,axis=-1)
@@ -33,7 +33,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeGatingTopKSoftmaxGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeGatingTopKSoftmax` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeGatingTopKSoftmaxGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeGatingTopKSoftmax` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxGetWorkspaceSize(
@@ -57,7 +57,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
 
 ## aclnnMoeGatingTopKSoftmaxGetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 187px">
@@ -163,7 +163,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
     </tr>
     </tbody></table>
 
--   **Returns**:
+- **Returns**:
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -210,7 +210,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
 
 ## aclnnMoeGatingTopKSoftmax
 
--   **Parameters:**
+- **Parameters:**
     <table>
             <thead>
                 <tr><th>Parameter</th><th>Input/Output</th><th>Description</th></tr>
@@ -228,6 +228,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
 - Deterministic computing:
   - `aclnnMoeGatingTopKSoftmax` defaults to a deterministic implementation.
 

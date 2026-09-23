@@ -10,12 +10,11 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
--   **API function**: Performs RainFusionAttention sparse attention computation with flexible block-level sparsity patterns, achieving efficient sparse attention by using `selectIdx` to designate which key-value blocks are selected for each query block.
+- **API function**: Performs RainFusionAttention sparse attention computation with flexible block-level sparsity patterns, achieving efficient sparse attention by using `selectIdx` to designate which key-value blocks are selected for each query block.
 
--   **Formula**: Sparse block size of $blockShapeX \times blockShapeY$, with sparsity pattern defined by `selectIdx`
+- **Formula**: Sparse block size of $blockShapeX \times blockShapeY$, with sparsity pattern defined by `selectIdx`
 
     $$
     attentionOut = Softmax(scale \cdot query \cdot key^T + atten\_mask) \cdot value
@@ -33,10 +32,10 @@
     - `qInputLayout`: TND and BNSD
     - `kvInputLayout`: TND and BNSD
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnRainFusionAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRainFusionAttention` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnRainFusionAttentionGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRainFusionAttention` is called to perform computation.
+
 ```c++
 aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
   const aclTensor   *query,
@@ -61,6 +60,7 @@ aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnRainFusionAttention(
   void             *workspace,
@@ -337,7 +337,6 @@ aclnnStatus aclnnRainFusionAttention(
   </tbody>
   </table>
 
-
 - **Returns:**
 
   aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -378,7 +377,6 @@ aclnnStatus aclnnRainFusionAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnRainFusionAttention
 
@@ -423,7 +421,6 @@ aclnnStatus aclnnRainFusionAttention(
 
   aclnnStatus status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-
 ## Constraints
 
 - Deterministic computing:
@@ -441,7 +438,6 @@ aclnnStatus aclnnRainFusionAttention(
 - Sparse block indexes must be within the valid range. Fill invalid positions with -1.
 - If headNum of input `query` is N1 and headNum of input `key` and `value` is N2, then `N1 >= N2 && N1% N2 == 0`.
 - Assume G = N1/N2. G must meet the following constraint: `G < 128 && 128 % G == 0`.
-
 
 ## Example
 

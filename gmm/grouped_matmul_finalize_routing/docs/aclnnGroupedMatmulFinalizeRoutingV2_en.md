@@ -13,11 +13,11 @@
 ## Function
 
 A fused operator of `GroupedMatmul` and `MoeFinalizeRouting`. It performs a "combine" operation on the output of the `GroupedMatmul` computation based on specified indices.
-Compared with [aclnnGroupedMatmulFinalizeRouting](./aclnnGroupedMatmulFinalizeRouting.md), this API introduces the input parameter `offset` and supports asymmetric quantization scenarios. Select the appropriate API based on your requirements. The input parameters `antiquantScale` and `antiquantOffset` are added (but not used currently).
+Compared with [aclnnGroupedMatmulFinalizeRouting](./aclnnGroupedMatmulFinalizeRouting_en.md), this API introduces the input parameter `offset` and supports asymmetric quantization scenarios. Select the appropriate API based on your requirements. The input parameters `antiquantScale` and `antiquantOffset` are added (but not used currently).
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRoutingV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
@@ -51,7 +51,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
     aclOpExecutor *executor,
     aclrtStream    stream)
 ```
-
 
 ## aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize
 
@@ -383,6 +382,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(
   |------|------|-------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
   | INT8 | INT4 | INT64 | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
+  
     - In this scenario, `scaleOptional` represents the result of per-channel and per-group offline fusion.
     - In this scenario, `biasOptional` represents the auxiliary result of offline computation. Its value must be $8 \times w \times scaleOptional$ and is accumulated in the first dimension.
     - This scenario supports symmetric quantization and asymmetric quantization. During symmetric quantization, `offsetOptional` must be null. During asymmetric quantization, `offsetOptional` represents the auxiliary result of offline computation, which is the result of $antiquantOffsetOptional \times scaleOptional$.

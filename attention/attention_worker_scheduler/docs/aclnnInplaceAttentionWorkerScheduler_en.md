@@ -1,6 +1,7 @@
 # aclnnInplaceAttentionWorkerScheduler
 
 ## Product Support
+
 |Product            |  Supported |
 |:-------------------------|:----------:|
 |  <term>Atlas A3 training products/Atlas A3 inference products</term>  |     √    |
@@ -12,7 +13,6 @@
 ## Function
 
 - Description: Scans data in Attention when Attention and FFN are deployed separately. This operator receives the output data from the FFNToAttention operator and scans the data step by step to ensure that the data is ready.
-
 
   **It is recommended that this operator be used together with the FFNToAttention and AttentionWorkerCombine operators to form a complete workflow.**
 
@@ -51,7 +51,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceAttentionWorkerScheduler` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnInplaceAttentionWorkerScheduler` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize(
@@ -205,10 +205,13 @@ aclnnStatus aclnnInplaceAttentionWorkerScheduler(
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
 ## Constraints
+
   - By default, `aclnnInplaceAttentionWorkerScheduler` defaults to deterministic implementation . The non-deterministic implementation is not supported, and the deterministic computation configuration does not take effect.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
+
 ```Cpp
 #include <iostream>
 #include <vector>

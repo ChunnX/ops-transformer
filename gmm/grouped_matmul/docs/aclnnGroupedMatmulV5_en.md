@@ -32,7 +32,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor containing the operator computation process. Then, `aclnnGroupedMatmulV5` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor containing the operator computation process. Then, `aclnnGroupedMatmulV5` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
@@ -319,7 +319,6 @@ aclnnStatus aclnnGroupedMatmulV5(
   </tbody>
   </table>
 
-
   - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>:
 
     - The superscript "2" in the "Data Type" column of the table above indicates data types that are not supported by the products.
@@ -422,6 +421,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     |Fake quantization - A16W4|BFLOAT16/FLOAT16|INT4|BFLOAT16/FLOAT16|[Constraints](#constraints-for-a16w4-scenario)|[Formula](#fake-quantization-scenario)|
 
 <a id="formulas"></a>
+
 - Formulas
   <a id="non-quantization-scenario"></a>
 
@@ -604,6 +604,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         | Fake-quantization (per-channel)| Multi-tensor `weight`| $[N_i]$|
         | Fake-quantization (per-group)| Single-tensor `weight`| $[E, G, N]$|
         | Fake-quantization (per-group)| Multi-tensor `weight`| $[G_i, N_i]$|
+
     </details>
 
     <a id="constraints-for-a16w8-scenario"></a>
@@ -631,6 +632,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |:---------:|:-------:| :-------|
         | Fake-quantization (per-channel)| Single-tensor `weight`| $[E, N]$|
         | Fake-quantization (per-channel)| Multi-tensor `weight`| $[N_i]$|
+
     </details>
 
     <a id="constraints-for-a4w4-scenario"></a>
@@ -693,6 +695,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | 0 | M|M|S| 2/3 | (1) `groupListOptional` is optional.<br> (2) If `groupListOptional` is passed: when `groupListType` is `0`, the differences of `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`; when `groupListType` is `1`, the `groupListOptional` values must be in one-to-one mapping with the first dimension of the tensors in `x`; when `groupListType` is `2`, the values in the second column of `groupListOptional` must be in one-to-one mapping with the first dimension of the tensors in `x`.<br> (3) The first dimension of `groupListOptional` supports a maximum of 128 groups.|(1) `x` cannot be transposed.<br> (2) `weight` can be transposed. The transposition status of each tensor within the `weight` tensorList must be consistent.|(1) Tensors in `x`, `weight`, and `y` must be 2D.<br> (2) The N-axis of each tensor in `weight` must be the same.|
       | 2 | S|S|S| 2/3 | (1) `groupListOptional` must be passed.<br> (2) When `groupListType` is `0`, the last value must be less than or equal to the second dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be less than or equal to the second dimension of the tensor in `x`. When `groupListType` is `2`, the sum of the values in the second column must be less than or equal to the second dimension of the tensor in `x`.<br> (3) The first dimension of `groupListOptional` supports a maximum of 1024 groups.| (1) `x` must be transposed.<br> (2) `weight` cannot be transposed.|(1) The tensors in `x` and `weight` must be 2D, and the tensor in `y` must be 3D.<br> (2) `bias` must be passed as null.|
       | 2 | S|M|M| 0/1 | `groupListOptional` must be passed as null.| (1) `x` must be transposed.<br> (2) `weight` cannot be transposed.| (1) Tensors in `x`, `weight`, and `y` must be 2D.<br> (2) The maximum length of `weight` is 128, meaning a maximum of 128 groups are supported.<br> (3) The sum of the first dimensions of all tensors in the original `weight` shape should not exceed the first dimension of `x`.<br> (4) `bias` must be passed as null.|
+
     </details>
 
     <a id="grouplistoptional-configuration-examples"></a>
@@ -750,7 +753,6 @@ aclnnStatus aclnnGroupedMatmulV5(
 <details>
 <summary><term>Atlas inference products</term></summary>
 
-
 - Product specifications
 
   - `groupType`: integer type, indicating the axis to be grouped. Currently, only M-axis grouping is supported.
@@ -766,8 +768,6 @@ aclnnStatus aclnnGroupedMatmulV5(
   | 0 | S|S|S|(1) `splitItem` can only be set to `2` or `3`.<br>(2) The tensor in `weight` must be 3D, and the tensors in `x` and `y` must be 2D.<br>(3) `groupListOptional` must be passed. When `groupListType` is `0`, the last value must be equal to the first dimension of the tensor in `x`. When `groupListType` is `1`, the sum of the values must be equal to the first dimension of the tensor in `x`.<br>(4) The first dimension of `groupListOptional` supports a maximum of 1024 groups.<br>(5) `weight` can be transposed, but `x` cannot.|
 
 </details>
-
-
 
 ## Calling Example
 

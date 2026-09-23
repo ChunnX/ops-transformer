@@ -11,6 +11,7 @@
 | <term>Atlas training products</term>                             |    ×    |
 
 ## Function
+
 - **Description**: This operator is used for permutation computation in MoE. It passes tokens and expert labels as `routingMap` and sorts the tokens and optional `probsOptional` based on routing maps after broadcasting them.
 - **Formula**:
   `tokens\_num` indicates the size of the zeroth dimension of `routingMap`, and `expert\_num` indicates the size of the first dimension of `routingMap`.
@@ -55,7 +56,7 @@
   $$
 
   $$
-  sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
+  sortedIndicesOut = argsort(routingMap.T,dim=-1) [:, :capacity]
   $$
   
   $$
@@ -84,13 +85,13 @@
   permuteProbsOutOptional = probs\_T\_1D.index_select(0, indices_1D)
   $$
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithRoutingMap` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeTokenPermuteWithRoutingMap` is called to perform computation.
 
 * `aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(const aclTensor *tokens, const aclTensor *routingMap, const aclTensor *probsOptional,  int64_t numOutTokens,  bool dropAndPad, aclTensor *permuteTokensOut, aclTensor *permuteProbsOutOptional, aclTensor *sortedIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
+
 ## aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize
 
 - **Parameters:**
@@ -109,8 +110,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
   
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-  
-  ```
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.
@@ -123,10 +123,10 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 - **Parameters:**
   
-  -   `workspace` (void\*, input): address of the workspace to be allocated on the device.
-  -   `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API <code>aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize</code>.
-  -   `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
-  -   `stream` (aclrtStream, input): stream for executing the task.
+  - `workspace` (void\*, input): address of the workspace to be allocated on the device.
+  - `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API <code>aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize</code>.
+  - `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
+  - `stream` (aclrtStream, input): stream for executing the task.
 - **Returns:**
   
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).

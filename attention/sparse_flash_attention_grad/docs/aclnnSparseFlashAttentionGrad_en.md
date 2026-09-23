@@ -10,13 +10,11 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
-
 ## Function
 
--   **Description**: Rearrange the data of size `selectedBlockSize` based on `topkIndices` for key and value, then compute the backward output of attention in the training scenario.
+- **Description**: Rearrange the data of size `selectedBlockSize` based on `topkIndices` for key and value, then compute the backward output of attention in the training scenario.
 
--   **Formula**: Based on the passed `topkIndice`, select `selectedBlockCount` pieces of data of size `selectedBlockSize` from `keyIn` and `value` for reordering. The formula is as follows:
+- **Formula**: Based on the passed `topkIndice`, select `selectedBlockCount` pieces of data of size `selectedBlockSize` from `keyIn` and `value` for reordering. The formula is as follows:
 
   $$
    selectedKey\text{ }=\text{ }Gather \left( key,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
@@ -50,7 +48,6 @@
    d\mathop{{S}}\nolimits_{{t,:}}= \left[ P\mathop{{}}\nolimits_{{t,:}}@ \left( dP\mathop{{}}\nolimits_{{t,:}}-FlashSoftmaxGrad \left( dO,O \left)  \left)  \right] \right. \right. \right. \right.
   $$
 
-
 <div style="padding-left:40px;">
 
    Phase 3: Compute $dQ$ and $dK$:
@@ -65,11 +62,10 @@
    dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
   $$
 
-
-
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First call `aclnnSparseFlashAttentionGradGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call `aclnnSparseFlashAttentionGrad` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First call `aclnnSparseFlashAttentionGradGetWorkspaceSize` to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call `aclnnSparseFlashAttentionGrad` to perform the computation.
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *query, 
@@ -99,6 +95,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
+
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGrad(
     void             *workspace, 
@@ -222,6 +219,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Intermediate output of the attention forward computation.</td>
             <td>
             -
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G), (N2,T1,G)<br>
@@ -235,6 +233,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Intermediate output of the attention forward computation.</td>
             <td>
             -
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G), (N2,T1,G)<br>
@@ -306,7 +305,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Input</td>
             <td>Scaling factor.</td>
             <td>
-            Suggested value: the reciprocal of the square root of d in the formula</li>
+            Suggested value: the reciprocal of the square root of d in the formula
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -343,7 +342,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Sparse mode.</td>
         <td>
               <ul>
-                <li>Represents the sparse mode. For detailed explanations of different sparse modes, please refer to <a href="#constraint-description">Constraint Description</a>.</li>
+                <li>Represents the sparse mode. For detailed explanations of different sparse modes, please refer to <a href="##constraint-description">Constraint Description</a>.</li>
                 <li>Only modes 0 and 3 are supported.</li>
               </ul>
         </td>
@@ -504,7 +503,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tbody>
     </table>
 
-
 ## aclnnSparseFlashAttentionGrad
 
 - **Parameters:**
@@ -547,7 +545,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 - **Returns:**
 
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-
 
 ## Constraints
 
@@ -675,10 +672,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tbody>
     </table>
 
-
 ## Examples
 
-The following uses the <term>Atlas A2 training products/Atlas A2 inference products</term> as an example. For details, see [Compile and Run Sample](common/compilation_running_sample_trans.md).
+The following uses the <term>Atlas A2 training products/Atlas A2 inference products</term> as an example. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```c++
 #include <iostream>

@@ -30,10 +30,9 @@
 
   In the formula, $S_{t-1},S_t \in R^{d_v \times d_k}$, $q_t, k_t \in R^{d_k}$, $v_t \in R^{d_v}$, $\alpha_t \in R$, $\beta_t \in R$, $o \in R^{d_v}$
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnRecurrentGatedDeltaRuleGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRecurrentGatedDeltaRule` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnRecurrentGatedDeltaRuleGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnRecurrentGatedDeltaRule` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
@@ -92,7 +91,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>query</td>
       <td>Input</td>
       <td>q in the formula.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -102,7 +101,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>key</td>
       <td>Input</td>
       <td>k in the formula.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -112,7 +111,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>value</td>
       <td>Input</td>
       <td>v in the formula.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv, Dv)</td>
@@ -122,7 +121,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>beta</td>
       <td>Input</td>
       <td>β in the formula.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -132,7 +131,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>stateRef</td>
       <td>Input and output</td>
       <td>State matrix, that is, S in the formula.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(BlockNum, Nv, Dv, Dk)</td>
@@ -142,7 +141,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>actualSeqLengths</td>
       <td>Input</td>
       <td>Valid sequence lengths of different batches.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -152,7 +151,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>ssmStateIndices</td>
       <td>Input</td>
       <td>Mapping index from the input sequence to the state matrix.</td>
-      <td><ul><li>Empty tensors are not supported. </li><li>state[ssmStateIndices[i]] indicates the state matrix of the i-th token.</li></td>
+      <td><ul><li>Empty tensors are not supported. </li><li>state[ssmStateIndices[i]] indicates the state matrix of the i-th token.</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(T,)</td>
@@ -162,7 +161,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>g</td>
       <td>Input</td>
       <td>Decay coefficient, α in the formula, which is equal to e^g.</td>
-      <td><ul><li>Empty tensors are not supported. </li><li>If nullptr is passed, it represents an all-zero tensor.</li></td>
+      <td><ul><li>Empty tensors are not supported. </li><li>If nullptr is passed, it represents an all-zero tensor.</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -172,7 +171,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>gk</td>
       <td>Input</td>
       <td>Reserved and not supported by the current version.</td>
-      <td><ul><li>Pass nullptr.</li></td>
+      <td><ul><li>Pass nullptr.</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>(T, Nv, Dk)</td>
@@ -182,7 +181,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>numAcceptedTokens</td>
       <td>Input</td>
       <td>Number of accepted tokens per sequence.</td>
-      <td><ul><li>Empty tensors are not supported.</li></td>
+      <td><ul><li>Empty tensors are not supported.</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -261,7 +260,6 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </tbody>
   </table>
 
-
 ## aclnnRecurrentGatedDeltaRule
 
 - **Parameters**
@@ -306,12 +304,11 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-
 ## Constraints
+
 - Deterministic computing:
   - `aclnnRecurrentGatedDeltaRule` defaults to a deterministic implementation.
 - The input shape size must meet the following constraints: $L_i \le 8$, $N_k \le 256$, $N_v \le 256$, $D_k \le 256$, $D_v \le 256$.
-
 
 ## Example
 

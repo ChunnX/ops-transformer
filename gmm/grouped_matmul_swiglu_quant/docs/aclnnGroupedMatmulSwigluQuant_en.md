@@ -36,36 +36,36 @@
 
     - **Computation process**
 
-      - 1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
+      1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
       
-        >Example: Assume that `groupList=[3,4,4,6]`. The counting starts from 0.
-        >
-        >Zero-th right matrix `W[0,:,:]`, corresponding to tokens `x[0:3]` (3-0=3 tokens) at index positions [0,3), corresponding to `x_scale[0:3]`, `w_scale[0]`, `bias[0]`, `offset[0]`, `Q[0:3]`, `Q_scale[0:3]`, and `Q_offset[0:3]`
-        >
-        >First right matrix `W[1,:,:]`, corresponding to token `x[3:4]` (4-3=1 token) at index position [3,4), corresponding to `x_scale[3:4]`, `w_scale[1]`, `bias[1]`, `offset[1]`, `Q[3:4]`, `Q_scale[3:4]`, and `Q_offset[3:4]`
-        >
-        >Second right matrix `W[2,:,:]`, corresponding to token `x[4:4]` (4-4=0 token) at index position [4,4), corresponding to `x_scale[4:4]`, `w_scale[2]`, `bias[2]`, `offset[2]`, `Q[4:4]`, `Q_scale[4:4]`, and `Q_offset[4:4]`
-        >
-        >Third right matrix `W[3,:,:]`, corresponding to tokens `x[4:6]` (6-4=2 tokens) at index positions [4,6), corresponding to `x_scale[4:6]`, `w_scale[3]`, `bias[3]`, `offset[3]`, `Q[4:6]`, `Q_scale[4:6]`, and `Q_offset[4:6]`
-        >
-        >Note: Any portion not specified in `groupList` will not be updated.
-        >Assume `groupList=[12,14,18]` and the shape of `X` is [30,:].
-        >
-        >The shape of the first output `Q` will be [30,:]. The portion `Q[18:,:]` will not be updated or initialized, and the data therein is consistent with the original data when the device memory is allocated.
-        >
-        >Similarly, the second output `Q` has a shape of [30]. The portion `Q_scale[18:]` will not be updated or initialized, and the data therein is consistent with the original data when the device memory is allocated.
-        >
-        >In other words, only `Q[:grouplist[-1],:]` and `Q_scale[:grouplist[-1]]` constitute the valid data portions.
+          >Example: Assume that `groupList=[3,4,4,6]`. The counting starts from 0.
+          >
+          >Zero-th right matrix `W[0,:,:]`, corresponding to tokens `x[0:3]` (3-0=3 tokens) at index positions [0,3), corresponding to `x_scale[0:3]`, `w_scale[0]`, `bias[0]`, `offset[0]`, `Q[0:3]`, `Q_scale[0:3]`, and `Q_offset[0:3]`
+          >
+          >First right matrix `W[1,:,:]`, corresponding to token `x[3:4]` (4-3=1 token) at index position [3,4), corresponding to `x_scale[3:4]`, `w_scale[1]`, `bias[1]`, `offset[1]`, `Q[3:4]`, `Q_scale[3:4]`, and `Q_offset[3:4]`
+          >
+          >Second right matrix `W[2,:,:]`, corresponding to token `x[4:4]` (4-4=0 token) at index position [4,4), corresponding to `x_scale[4:4]`, `w_scale[2]`, `bias[2]`, `offset[2]`, `Q[4:4]`, `Q_scale[4:4]`, and `Q_offset[4:4]`
+          >
+          >Third right matrix `W[3,:,:]`, corresponding to tokens `x[4:6]` (6-4=2 tokens) at index positions [4,6), corresponding to `x_scale[4:6]`, `w_scale[3]`, `bias[3]`, `offset[3]`, `Q[4:6]`, `Q_scale[4:6]`, and `Q_offset[4:6]`
+          >
+          >Note: Any portion not specified in `groupList` will not be updated.
+          >Assume `groupList=[12,14,18]` and the shape of `X` is [30,:].
+          >
+          >The shape of the first output `Q` will be [30,:]. The portion `Q[18:,:]` will not be updated or initialized, and the data therein is consistent with the original data when the device memory is allocated.
+          >
+          >Similarly, the second output `Q` has a shape of [30]. The portion `Q_scale[18:]` will not be updated or initialized, and the data therein is consistent with the original data when the device memory is allocated.
+          >
+          >In other words, only `Q[:grouplist[-1],:]` and `Q_scale[:grouplist[-1]]` constitute the valid data portions.
 
-      - 2. Perform the following computation based on the input parameters determined by grouping:
+      2. Perform the following computation based on the input parameters determined by grouping:
 
-        $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ BroadCast} \odot w\_scale_{i\ BroadCast}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ BroadCast} \odot w\_scale_{i\ BroadCast}$
 
-        $C_{i,act}, gate_{i} = split(C_{i})$
+          $C_{i,act}, gate_{i} = split(C_{i})$
 
-        $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
+          $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
 
-      - 3. Quantize the output.
+      3. Quantize the output.
 
         $Q\_scale_{i} = \frac{max(|S_{i}|)}{127}$
 
@@ -91,56 +91,55 @@
       * $Q∈\mathbb{Z_8}^{M \times N / 2}$: quantized output matrix.
       * $Q\_scale∈\mathbb{R}^{M}$: quantization scale factor.
     - **Computation process**
-      - 1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
-        - The grouping logic is the same as that of A8W8.
-      - 2. Compute the auxiliary matrix (`bias`). (Note that the bias computation is performed offline and provided as an input, rather than being executed within the operator.)
-        - For per-channel quantization ($w\_scale$ is 2D):
+      1. Determine the tokens of the current group based on `groupList[i]`, where $i \in [0,Len(groupList)]$.
+          - The grouping logic is the same as that of A8W8.
+      2. Compute the auxiliary matrix (`bias`). (Note that the bias computation is performed offline and provided as an input, rather than being executed within the operator.)
+          - For per-channel quantization ($w\_scale$ is 2D):
 
-          $bias_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
+            $bias_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
 
-        - For per-group quantization ($w\_scale$ is 3D):
+          - For per-group quantization ($w\_scale$ is 3D):
 
-          $bias_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
+            $bias_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
 
-          Note: $num\_per\_group = K // K\_group\_num$
+            Note: $num\_per\_group = K // K\_group\_num$
 
-      - 3. Perform the following computation based on the input parameters determined by grouping:
+      3. Perform the following computation based on the input parameters determined by grouping:
 
-        - 3.1. Convert the left matrix $\mathbb{Z_8}$ into two $\mathbb{Z_4}$ components that represent the high and low bits.
-          $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor $
-          $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-        - 3.2. Enable per-channel or per-group quantization during matrix multiplication.
-          
-          Per-channel:
-          
-          $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
+          - 3.1. Convert the left matrix $\mathbb{Z_8}$ into two $\mathbb{Z_4}$ components that represent the high and low bits.
+            $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor $
+            $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
+          - 3.2. Enable per-channel or per-group quantization during matrix multiplication.
+            
+            Per-channel:
+            
+            $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
 
-          $C\_low_{i} = (X\_low\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
+            $C\_low_{i} = (X\_low\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
 
-          Per-group:
+            Per-group:
 
-          $C\_high_{i} = \\ Σ_{k=0}^{K-1}((X\_high\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k * num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
+            $C\_high_{i} = \\ Σ_{k=0}^{K-1}((X\_high\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k * num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
 
-          $C\_low_{i} = \\ Σ_{k=0}^{K-1}((X\_low\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k * num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
+            $C\_low_{i} = \\ Σ_{k=0}^{K-1}((X\_low\_4bits_{i}[:, k * num\_per\_group : (k+1) * num\_per\_group] \cdot W_{i}[k * num\_per\_group : (k+1) * num\_per\_group, :]) \odot w\_scale_{i}[k, :] )$
 
-        - 3.3. Restore the matrix multiplication results of the high and low bits into the overall result.
+          - 3.3. Restore the matrix multiplication results of the high and low bits into the overall result.
 
-          $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + bias_{i}) \odot x\_scale_{i}$
+            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + bias_{i}) \odot x\_scale_{i}$
 
-          $C_{i,act}, gate_{i} = split(C_{i})$
+            $C_{i,act}, gate_{i} = split(C_{i})$
 
-          $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
+            $S_{i}=Swish(C_{i,act})\odot gate_{i}$ &nbsp;&nbsp; where $Swish(x)=\frac{x}{1+e^{-x}}$
 
-      - 3. Quantize the output.
+      4. Quantize the output.
 
         $Q\_scale_{i} = \frac{max(|S_{i}|)}{127}$
 
         $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulSwigluQuantGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulSwigluQuant` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulSwigluQuantGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulSwigluQuant` is called to perform computation.
 
 - `aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(const aclTensor *x, const aclTensor *weight, const aclTensor *bias, const aclTensor *offset,  const aclTensor *weightScale, const aclTensor *xScale, const aclTensor *groupList,  aclTensor *output, aclTensor *outputScale, aclTensor *outputOffset, uint64_t *workspaceSize, aclOpExecutor **executor)`
 - `aclnnStatus aclnnGroupedMatmulSwigluQuant(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
@@ -179,7 +178,8 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 - **Return**
   
   `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-  ```
+
+  ```cpp
   The first-phase API implements input parameter validation. The following errors may be thrown:
   161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input x, weight, weightScale, xScale, groupList, output, or outputScale is a null pointer.
   161002 (ACLNN_ERR_PARAM_INVALID): 1. The data dimensions of the input x, weight, weightScale, xScale, groupList, output, or outputScale do not comply with the constraints.
@@ -212,17 +212,17 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 <details>
 <summary>A8W8 scenario</summary>
 
-  - 1. The length of the last axis of `x` cannot be greater than or equal to 65536.
-  - 2. The data format of `weight` must be FRACTAL_NZ.
-  - 3. The length of the N-axis cannot exceed 10240.
+  1. The length of the last axis of `x` cannot be greater than or equal to 65536.
+  2. The data format of `weight` must be FRACTAL_NZ.
+  3. The length of the N-axis cannot exceed 10240.
 
 </details>
 
 <details>
 <summary>A8W4 scenario</summary>
 
-  - 1. The length of the last axis of `x` cannot be greater than or equal to 20000.
-  - 2. The length of the N-axis cannot exceed 10240.
+  1. The length of the last axis of `x` cannot be greater than or equal to 20000.
+  2. The length of the N-axis cannot exceed 10240.
 
 </details>
 

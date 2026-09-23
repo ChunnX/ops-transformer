@@ -66,7 +66,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnDequantRopeQuantKvcacheGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnDequantRopeQuantKvcache` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnDequantRopeQuantKvcacheGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnDequantRopeQuantKvcache` is called to perform computation.
 
 * `aclnnStatus aclnnDequantRopeQuantKvcacheGetWorkspaceSize(const aclTensor *x, const aclTensor *cos, const aclTensor *sin, aclTensor *kCacheRef, aclTensor *vCacheRef, const aclTensor *indices, const aclTensor *scaleK, const aclTensor *scaleV, const aclTensor *offsetKOptional, const aclTensor *offsetVOptional, const aclTensor *weightScaleOptional, const aclTensor *activationScaleOptional, const aclTensor *biasOptional, const aclIntArray *sizeSplits, char *quantModeOptional, char *layoutOptional, bool kvOutput, char *cacheModeOptional, const aclTensor *qOut, const aclTensor *kOut, const aclTensor *vOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnDequantRopeQuantKvcache(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)`
@@ -88,7 +88,7 @@ Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnD
   * `weightScaleOptional` (aclTensor\*, compute input): weightScaleoptional input in the formula, weight scale factor for dequantization. It is an aclTensor on the device, with shape [H] and data type FLOAT. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported. The [data format](../../../docs/en/context/data_format.md) supports ND. The shape supports only 1D.
   * `activationScaleOptional` (aclTensor\*, compute input): activationScaleOptional input in the formula, activation scale factor for dequantization. It is an aclTensor on the device. If x is 3D, the shape is [B*S]. If x is 2D, the shape is [B]. The data type can be FLOAT. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported. The [data format](../../../docs/en/context/data_format.md) supports ND. The shape supports only 1D.
   * `biasOptional` (aclTensor\*, compute input): biasOptional input in the formula, bias for dequantization. It is an aclTensor on the device. The shape is [H], and the data type can be FLOAT, FLOAT16 (HALF), INT32, or BFLOAT16. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported. The [data format](../../../docs/en/context/data_format.md) supports ND. The shape supports only 1D.
-  * `sizeSplits` (aclIntArray \*, compute input): aclIntArray on the host. The data type is int array. The size is 3, and the value is [Nq * D, Nkv * D, Nkv * D]. It indicates the length of the input qkv to be split.
+  * `sizeSplits` (aclIntArray\*, compute input): aclIntArray on the host. The data type is int array. The size is 3, and the value is [`Nq * D, Nkv * D, Nkv * D`]. It indicates the length of the input qkv to be split.
   * `quantModeOptional` (char\*, compute input): expression string on the host. It indicates the supported quantization type. Currently, only `static` is supported.
   * `layoutOptional` (char\*, compute input): expression string on the host. It indicates the supported data format. Currently, only `BSND` is supported.
   * `kvOutput` (bool, compute input): Boolean value of the expression on the host. It indicates whether to output `kOut` and `vOut`.
@@ -102,7 +102,7 @@ Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnD
   
   aclnnStatus: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
   
-  ```
+  ```cpp
   The first-phase API implements input parameter verification. The following errors may be thrown.
     161001 (ACLNN_ERR_PARAM_NULLPTR): 1. The input and output tensors are null pointers.
     161002 (ACLNN_ERR_PARAM_INVALID): 1. The input and output data types are not supported.

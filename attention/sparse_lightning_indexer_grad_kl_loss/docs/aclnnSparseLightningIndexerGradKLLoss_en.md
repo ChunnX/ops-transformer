@@ -14,7 +14,6 @@
 
 - Description: The `SparselightningIndexerGradKlLoss` operator is the backward operator of `LightningIndexer`, additionally integrating the Loss function. The `LightningIndexer` operator filters out the TopK with the highest intrinsic correlation between `QueryToken` and `KeyToken`, storing them in `SparseIndices`, thereby reducing the computational load of attention in long-sequence scenarios and accelerating the inference and training performance of long-sequence networks.
 
-
 - Formula:
    The formula for computing the value used to take the Top-k can be expressed as:
 
@@ -58,14 +57,13 @@
 
    Here, S is the result of the softmax operation on the QK matrix.
 
-
 <!-- - **Description**:
    <blockquote>The data layout format of query, key, and value can be interpreted from multiple dimensions, where B (Batch) represents the batch size of input samples, S (Seq-Length) represents the sequence length of input samples, H (Head-Size) represents the size of the hidden layer, N (Head-Num) represents the number of heads, D (Head-Dim) represents the smallest unit size of the hidden layer, and it satisfies D=H/N. T represents the cumulative sum of the sequence lengths of all input samples in the batch.
    </blockquote> -->
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First call `aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size based on the computation process. Then, call `aclnnSparseLightningIndexerGradKLLoss` to execute the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First call `aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size based on the computation process. Then, call `aclnnSparseLightningIndexerGradKLLoss` to execute the computation.
 
 ```c++
 aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
@@ -277,6 +275,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>-</td>
             <td>-</td>
+        </tr>   
         <tr>
             <td>layout</td>
             <td>Input</td>
@@ -436,7 +435,6 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 - **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-
 
 ## Constraints
 

@@ -12,7 +12,7 @@
 
 ## Function
 
--   **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md) operator as the input and outputs the routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRouting](./aclnnMoeInitRouting.md). Select a proper API based on your actual requirements.
+- **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md) operator as the input and outputs the routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md). Select a proper API based on your actual requirements.
 
     - Added the drop mode. In this mode, the output is based on the number of tokens processed by each expert and equal to the value of·`expertCapacity`. If the output exceeds the value, exceeded tokens are dropped. If the output falls short of the value, 0s are padded.
     - Added the optional output `expertTokensCountOrCumsumOut` in dropless mode. The output is based on the number of cumulative tokens (Cumsum) to be processed by each expert or the number of tokens (Count) to be processed by each expert.
@@ -21,41 +21,42 @@
 
     **Note:**
     Routing computation is a phase in an MoE model. The MoE model consists of a group of expert models and a gating model. During computation, the input data is first used to calculate the *k* experts with the highest weights corresponding to each data element based on the gating network (including the MoeGatingTopKSoftmax operator). Then, the result is input to the MoeInitRouting operator to generate the routing matrix. In subsequent operations, each expert in the model processes the data that it should process based on the routing matrix and generates the corresponding output. The outputs of all experts are weighted and summed up to form the final prediction result.
--   **Formula**:
+- **Formula**:
 
     1. Flatten the input `expertIdx` with shape [numRows, k] or [numRows] into a row for sorting, and obtain `sortedExpertIdx` and the corresponding `sortedRowIdx`, where `numRows` indicates the number of tokens, and *k* indicates the number of experts. When `expertIdx` is 1D, *k* is `1`.
     
-    $$
-    sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
-    $$
+      $$
+      sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
+      $$
 
     2. Use `sortedRowIdx` for location mapping to obtain `expandedRowIdxOut`.
     
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+      $$
+      expandedRowIdxOut[sortedRowIdx[i]]=i
+      $$
     
     3. Sort tokens by expert in the order of `sortedRowIdx`. When `dropPadMode` is set to `1`, the number of tokens to be processed by each expert is the same as the value of `expertCapacity`. The tokens that exceed the value of `expertCapacity` are dropped, and the tokens that fall short of the value are padded with 0s. The `expandedXOut` is obtained as follows:
     
-    $$
-    expandedXOut[i]=x[sortedRowIdx[i]//k]
-    $$
+      $$
+      expandedXOut[i]=x[sortedRowIdx[i]//k]
+      $$
     
     4. Collect statistics on the histogram of each expert in `sortedExpertIdx` and perform Cumsum to obtain `expertTokensCountOrCumsumOut`.
     
-    $$
-    expertTokensCountOrCumsumOut[i]=Cumsum(Histogram(sortedExpertIdx))
-    $$
-    
+      $$
+      expertTokensCountOrCumsumOut[i]=Cumsum(Histogram(sortedExpertIdx))
+      $$
+      
     5. Collect statistics on the histogram of each expert in `sortedExpertIdx` to obtain `expertTokensBeforeCapacityOut`.
     
-    $$
-    expertTokensBeforeCapacityOut[i]=Histogram(sortedExpertIdx)
-    $$
+      $$
+      expertTokensBeforeCapacityOut[i]=Histogram(sortedExpertIdx)
+      $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV2` is called to perform computation.
+
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
     const aclTensor  *x, 
@@ -73,6 +74,7 @@ aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
     uint64_t         *workspaceSize, 
     aclOpExecutor   **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2(
     void             *workspace, 
@@ -83,7 +85,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
 
 ## aclnnMoeInitRoutingV2GetWorkspaceSize
 
--   **Parameters:**
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1562px"><colgroup>
       <col style="width: 265px">
       <col style="width: 120px">
@@ -249,8 +251,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
       </tr>
     </tbody></table>
 
-    -   <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type of input `expertIdx` supports INT32, and the value is a 2D shape [numRows, k].
-    -   <term>Atlas inference products</term>: The data type of input `expertIdx` can be INT32. The value must be a 2D shape with size [numRows, k]. The `dropPadMode` parameter supports only `0`.
+    - <term>Atlas A2 training products/Atlas A2 inference products</term> and <term>Atlas A3 training products/Atlas A3 inference products</term>: The data type of input `expertIdx` supports INT32, and the value is a 2D shape [numRows, k].
+    - <term>Atlas inference products</term>: The data type of input `expertIdx` can be INT32. The value must be a 2D shape with size [numRows, k]. The `dropPadMode` parameter supports only `0`.
 
 - **Returns:**
 
@@ -302,7 +304,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
     </table>
 
 ## aclnnMoeInitRoutingV2
--   **Parameters:**
+
+- **Parameters:**
     <table style="undefined;table-layout: fixed; width: 1179px"> <colgroup>
     <col style="width: 169px">
     <col style="width: 130px">
@@ -336,9 +339,10 @@ aclnnStatus aclnnMoeInitRoutingV2(
         <td>Stream for executing the task.</td>
     </tr>
     </tbody></table>
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
+    
 ## Constraints
 
 - Deterministic computation:

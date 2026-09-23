@@ -1,6 +1,5 @@
 # aclnnApplyRotaryPosEmb
 
-
 ## Supported Products
 
 | Product                                                        | Supported|
@@ -13,8 +12,8 @@
 
 ## Description
 
--  **API function**: Fuses the query and key operators into one to improve the performance of the inference network. Computes the rotary positional encoding and updates the computation result in place.
--  Formula:
+- **API function**: Fuses the query and key operators into one to improve the performance of the inference network. Computes the rotary positional encoding and updates the computation result in place.
+- Formula:
 
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
@@ -50,7 +49,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnApplyRotaryPosEmbGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnApplyRotaryPosEmb` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnApplyRotaryPosEmbGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnApplyRotaryPosEmb` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnApplyRotaryPosEmbGetWorkspaceSize(
@@ -294,7 +293,6 @@ aclnnStatus aclnnApplyRotaryPosEmb(
     lastDim indicates the value of head_dim in the last dimension of the input shape. The UB space size to be used is calculated as follows:
       `ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`,
     If the value of `ub_required` exceeds the total UB space of the current AI processor, this fusion operator cannot be used.
-
 
 ## Example
 

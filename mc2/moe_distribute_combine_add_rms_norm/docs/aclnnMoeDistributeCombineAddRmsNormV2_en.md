@@ -49,7 +49,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineAddRmsNormV2` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineAddRmsNormV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize(
@@ -534,7 +534,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 
 - The shape format is described as follows:
     - **A**: Maximum number of tokens to be distributed by the current rank. The value range is as follows:
-        - When globalBs is 0, A >= BS * epWorldSize * min(localExpertNum, K).
+        - When globalBs is 0, `A >= BS * epWorldSize * min(localExpertNum, K)`.
         - When globalBs is not 0, A >= globalBs * min(localExpertNum, K).
 
     - **H**: Hidden layer size, which must be in the range [1024, 8192].
@@ -546,7 +546,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
   
 - **HCCL_BUFFSIZE**:
     Before calling this API, check whether the value of the `HCCL_BUFFSIZE` environment variable is proper. This environment variable indicates the buffer size occupied by a single communication domain, in MB. If this environment variable is not set, the default value 200 MB is used.
-    - Within an EP communication domain: The value must be greater than or equal to 2 and satisfy 1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1). `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
+    - Within an EP communication domain: The value must be greater than or equal to `2 and satisfy 1024 ^ 2 * (HCCL_BUFFSIZE - 2) / 2 >= BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1)`. `localExpertNum` must be the number of experts assigned to the current rank when using MoE.
     - Within a TP communication domain: The value must satisfy \>= (A \* Align512(Align32(h \* 2) + 44) + A \* Align512(h \* 2)) \* 2.
 
 - Constraints on the use of communication domains:

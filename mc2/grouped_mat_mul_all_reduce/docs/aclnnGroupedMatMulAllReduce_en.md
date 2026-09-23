@@ -30,7 +30,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatMulAllReduceGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatMulAllReduce` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatMulAllReduceGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnGroupedMatMulAllReduce` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAllReduceGetWorkspaceSize(
@@ -217,7 +217,6 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
     </tbody>
     </table>
 
-
 ## aclnnGroupedMatMulAllReduce
 
 - **Parameters**
@@ -278,6 +277,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
   - The size of each dimension for every tensor in `x` and `weight`, after 32-byte alignment, should be less than the maximum value of INT32 (2147483647).
 
 ## Calling Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```Cpp

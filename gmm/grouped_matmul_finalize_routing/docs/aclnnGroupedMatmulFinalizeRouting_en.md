@@ -16,7 +16,7 @@ A fused operator of `GroupedMatmul` and `MoeFinalizeRouting`. It performs a "com
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRouting` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnGroupedMatmulFinalizeRouting` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(
@@ -378,6 +378,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
   | x    | w    | scale | bias    | pertokenScale | groupList | sharedInput | logit   | rowIndex | out     |
   |------|------|-------|---------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
+  
     - In this scenario, `scaleOptional` represents the result of per-channel and per-group offline fusion.
     - In this scenario, `biasOptional` represents the auxiliary result of offline computation. Its value must be $8 \times w \times scaleOptional$ and is accumulated in the first dimension.
 

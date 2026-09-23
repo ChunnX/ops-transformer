@@ -1,6 +1,5 @@
 # aclnnFlashAttentionUnpaddingScoreGradV5
 
-
 ## Supported Products
 
 |Product     | Supported|
@@ -11,7 +10,6 @@
 |<term>Atlas 200I/500 A2 inference products</term>|      ×     |
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
-
 
 ## Description
 
@@ -71,53 +69,53 @@ $$
 dSink = reduce(-P * dP * SimpleSoftmax(sink, x\_max, x\_sum))
 $$
 
-
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. First, `aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV5` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. First, `aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnFlashAttentionUnpaddingScoreGradV5` is called to perform computation.
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
-	const aclTensor *query, 
-	const aclTensor *queryRope, 
-	const aclTensor *keyIn, 
-	const aclTensor *keyInRope, 
-	const aclTensor *value, 
-	const aclTensor *dy, 
-	const aclTensor *pseShiftOptional, 
-	const aclTensor *dropMaskOptional, 
-	const aclTensor *paddingMaskOptional, 
-	const aclTensor *attenMaskOptional, 
-	const aclTensor *softmaxMaxOptional, 
-	const aclTensor *softmaxSumOptional, 
-	const aclTensor *softmaxInOptional, 
-	const aclTensor *attentionInOptional, 
-	const aclTensor *sinkInOptional, 
-	const aclIntArray *prefixOptional, 
-	const aclIntArray *actualSeqQLenOptional, 
-	const aclIntArray *actualSeqKvLenOptional, 
-	const aclIntArray *qStartIdxOptional, 
-	const aclIntArray *kvStartIdxOptional, 
-	double scaleValue, 
-	double keepProb, 
-	int64_t preTokens, 
-	int64_t nextTokens, 
-	int64_t headNum, 
-	char *inputLayout, 
-	int64_t innerPrecise, 
-	int64_t sparseMode, 
-	int64_t pseType, 
-	char *softmaxInLayout, 
-	const aclTensor *dqOut, 
-	const aclTensor *dqRopeOut, 
-	const aclTensor *dkOut, 
-	const aclTensor *dkRopeOut, 
-	const aclTensor *dvOut, 
-	const aclTensor *dpseOut, 
-	const aclTensor *dsinkOut, 
-	uint64_t *workspaceSize, 
-	aclOpExecutor **executor);
+    const aclTensor *query, 
+    const aclTensor *queryRope, 
+    const aclTensor *keyIn, 
+    const aclTensor *keyInRope, 
+    const aclTensor *value, 
+    const aclTensor *dy, 
+    const aclTensor *pseShiftOptional, 
+    const aclTensor *dropMaskOptional, 
+    const aclTensor *paddingMaskOptional, 
+    const aclTensor *attenMaskOptional, 
+    const aclTensor *softmaxMaxOptional, 
+    const aclTensor *softmaxSumOptional, 
+    const aclTensor *softmaxInOptional, 
+    const aclTensor *attentionInOptional, 
+    const aclTensor *sinkInOptional, 
+    const aclIntArray *prefixOptional, 
+    const aclIntArray *actualSeqQLenOptional, 
+    const aclIntArray *actualSeqKvLenOptional, 
+    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *kvStartIdxOptional, 
+    double scaleValue, 
+    double keepProb, 
+    int64_t preTokens, 
+    int64_t nextTokens, 
+    int64_t headNum, 
+    char *inputLayout, 
+    int64_t innerPrecise, 
+    int64_t sparseMode, 
+    int64_t pseType, 
+    char *softmaxInLayout, 
+    const aclTensor *dqOut, 
+    const aclTensor *dqRopeOut, 
+    const aclTensor *dkOut, 
+    const aclTensor *dkRopeOut, 
+    const aclTensor *dvOut, 
+    const aclTensor *dpseOut, 
+    const aclTensor *dsinkOut, 
+    uint64_t *workspaceSize, 
+    aclOpExecutor **executor);
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   void             *workspace,
@@ -125,7 +123,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize
 
@@ -506,7 +503,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
     </tbody>
   </table>
 
-
 - **Returns**
 
   aclnnStatus: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -598,12 +594,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - **N** of the input `query` can be different from **N** of the `key` or `value`, but they must be proportional. That is, Nq/Nkv must be a non-zero integer and the value of Nq ranges from 1 to 256.
 - The following uses the `inputLayout` TND as an example to describe the constraints on the shape:
 
-    -   **T(B*S)**: The value ranges from 1 to 1M.
-    -   **B**: The value ranges from 1 to 2K. When **prefixOptional** is carried, B supports a maximum of 1K.
-    -   **N**: The value ranges from 1 to 256.
-    -   **S**: The value ranges from 1 to 1M.
-    -   **D**: The value ranges from 1 to 768.
-    -   **KeepProb**: The value range is (0, 1].
+    - **T(B*S)**: The value ranges from 1 to 1M.
+    - **B**: The value ranges from 1 to 2K. When **prefixOptional** is carried, B supports a maximum of 1K.
+    - **N**: The value ranges from 1 to 256.
+    - **S**: The value ranges from 1 to 1M.
+    - **D**: The value ranges from 1 to 768.
+    - **KeepProb**: The value range is (0, 1].
 - The data format of `query`, `key`, and `value` can only be TND. **T** indicates the data closely arranged on the B and S axes (SeqLenQ and SeqLenKV of each batch). **B (Batch)** indicates the batch size of the input sample, and **S (Seq-Length)** indicates the length of the input sample sequence. **H (Head-Size)** indicates the size of the hidden layer, **N (Head-Num)** indicates the number of heads. **D (Head-Dim)** indicates the minimum unit size of the hidden layer (**D** = **H**/**N**).
 - `pseShiftOptional`: If Sq is greater than 1024, Sq and Skv of each batch are of equal length, and it is a lower triangular mask scenario with `sparseMode` being 0, 2, or 3, ALiBi positional encoding compression can be enabled. In this case, only the last 1024 rows of the original PSE need to be input for memory optimization, that is, `alibi_compress = ori_pse[:, :, -1024:, :]`. Specifically:
   - If the parameters of each batch are different, the shape is BNHSkv (H=1024).
@@ -611,12 +607,14 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   - If `pseType` is 2 or 3, the data type must be FLOAT32, and the supported shapes are [B,N] and [N].
   - If this parameter is not enabled, pass a null pointer to `pseShiftOptional` and 1 to `pseType`.
 - Meanings of `pseType` values:
+
   | pseType | Description| Remarks|
   | ----------- | --------------------------------- | ----------|
   | 0 | A value is externally passed to `pse`, and multiplication is required before addition.| - |
-  | 1 | A value is externally passed to `pse`, and addition is required before multiplication.| The implementation is the same as that of [FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md).|
+  | 1 | A value is externally passed to `pse`, and addition is required before multiplication.| The implementation is the same as that of [FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad_en.md).|
   | 2 | A value is internally passed to `pse`, and multiplication is required before addition.| - |
   | 3 | A value is internally passed to `pse`, and multiplication and addition are required before square root operation.| - |
+
 - The constraints for `sparseMode` are as follows:
   - If the shape values of all `attenMaskOptional` are the same and less than 2048, you are advised to use the default mode to reduce memory usage.
   - When the value is set to 1, 2, 3, or 5, the user-configured `preTokens` and `nextTokens` do not take effect.
@@ -634,7 +632,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - The value of `headNum` must be the same as the value of **N** in `query`.
 - When the data layout of `softmaxSum` and `softmaxMax` is TND, `softmaxInLayout` must be set to `same_as_input`.
 - `sinkInOptional` has one dimension. The length must be the same as that of `headnum` of `query`.
-
 
 ## Example
 

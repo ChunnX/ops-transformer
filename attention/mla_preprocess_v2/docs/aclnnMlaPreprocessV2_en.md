@@ -11,18 +11,19 @@
 |<term>Atlas training products</term>|      ×     |
 
 ## Function
+
 - **Interface function**: In inference scenarios, this operator performs the preprocessing computation for Multi-Head Latent Attention. The computation process is as follows:
-    -  First, the input $x$ is processed by RmsNormQuant, then multiplied by $W^{DQKV}$ for downsampling, and finally split into path 1 and path 2.
-    -  Path 1 performs RmsNormQuant and then multiplies the result by $W^{UQ}$, and then splits the result into paths 3 and 4.
-    -  Path 3 is multiplied by $W^{uk}$ and then $q^N$ is output.
-    -  Path 4 is rotated and position-encoded, and then $q^R$ is output.
-    -  Path 2 is split into path 5 and path 6.
-    -  Path 5 is passed to the cache after RmsNorm to obtain $k^N$.
-    -  Path 6 undergoes rotary position encoding (ROPE) and then is stored into another cache to obtain $k^R$.
+    - First, the input $x$ is processed by RmsNormQuant, then multiplied by $W^{DQKV}$ for downsampling, and finally split into path 1 and path 2.
+    - Path 1 performs RmsNormQuant and then multiplies the result by $W^{UQ}$, and then splits the result into paths 3 and 4.
+    - Path 3 is multiplied by $W^{uk}$ and then $q^N$ is output.
+    - Path 4 is rotated and position-encoded, and then $q^R$ is output.
+    - Path 2 is split into path 5 and path 6.
+    - Path 5 is passed to the cache after RmsNorm to obtain $k^N$.
+    - Path 6 undergoes rotary position encoding (ROPE) and then is stored into another cache to obtain $k^R$.
 
 - **Computing flowchart**
 
-![MlaPreprocess](../figures/MlaPreprocess_Calculation_Process.png)
+![MlaPreprocess](../../../docs/en/figures/MlaPreprocess_computation_process.png)
 
 - **Formula**:
 
@@ -61,7 +62,8 @@
     $$
 
 ## Prototype
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMlaPreprocessV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPreprocessV2` is called to perform computation.
+
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMlaPreprocessV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPreprocessV2` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMlaPreprocessV2GetWorkspaceSize(
@@ -148,7 +150,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>input</td>
       <td>Input</td>
-      <td>x used to calculate the query and key.</td></td>
+      <td>x used to calculate the query and key.</td>
       <td>-</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
@@ -370,7 +372,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>slotMapping</td>
       <td>Input</td>
-      <td>Index used to store kv_cache and kr_cache.</td></td>
+      <td>Index used to store kv_cache and kr_cache.</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
@@ -522,9 +524,9 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>Input</td>
       <td>Whether to perform RmsNormQuant or Quant on the input tensor.</td>
       <td><ul>
-        <li>false: Only Quant is performed on the input tensor, and RmsNorm</li> is not performed.
+        <li>false: Only Quant is performed on the input tensor, and RmsNorm is not performed.</li>
         <li>true: RmsNormQuant is performed on the input tensor.</li>
-      </td>
+      </ul></td>
       <td>bool</td>
       <td>-</td>
       <td>-</td>
@@ -555,7 +557,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>Output</td>
       <td>Indicates the output tensor of the query, which corresponds to the output after NOPE and matrix multiplication on the right of the computation flow graph.</td>
       <td>The shape and dtype vary with cacheMode.
-        <ul><li>When cacheMode is 0, the shape is [tokenNum, headNum, 576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
+        <ul><li>When cacheMode is 0, the shape is [tokenNum, headNum, 576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li></ul>
         <li>When cacheMode is 1 or 3, the shape is [tokenNum, headNum, 512], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 2, the shape is [tokenNum, headNum, 512], the dtype is INT8, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
       </td>
@@ -567,9 +569,9 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>kvCacheOut</td>
       <td>Output</td>
-      <td>Output of the key after ReshapeAndCache.</td></td>
+      <td>Output of the key after ReshapeAndCache.</td>
       <td>The shape and dtype vary with cacheMode.
-        <ul><li>When cacheMode is 0, the shape is [blockNum,blockSize,1,576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
+        <ul><li>When cacheMode is 0, the shape is [blockNum,blockSize,1,576], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li></ul>
         <li>When cacheMode is 1, the shape is [blockNum,blockSize,1,512], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 2, the shape is [blockNum, 16, blockSize, 32], the dtype is INT8, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li>
         <li>When cacheMode is 3, the shape is [blockNum, 32, blockSize, 16], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li>
@@ -587,6 +589,7 @@ aclnnStatus aclnnMlaPreprocessV2(
         <li>When cacheMode is set to 0, no output is generated.</li>
         <li>When cacheMode is 1 or 3, the shape is [tokenNum, headNum, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
         <li>When cacheMode is 2, the shape is [tokenNum, headNum, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
+      </ul>
       </td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
@@ -600,7 +603,8 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>The shape and dtype vary with cacheMode.<ul>
         <li>When cacheMode is set to 0, no output is generated.</li>
         <li>When cacheMode is 1, the shape is [blockNum, blockSize, 1, 64], the dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is ND.</li>
-        <li>When cacheMode is 2 or 3, the shape is [blockNum, 4, blockSize, 16], dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.
+        <li>When cacheMode is 2 or 3, the shape is [blockNum, 4, blockSize, 16], dtype is the same as that of the input, and the <a href="../../../docs/en/context/data_format.md"> Data Format</a> is NZ.</li>
+      </ul>
       </td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND and NZ</td>
@@ -721,20 +725,20 @@ aclnnStatus aclnnMlaPreprocessV2(
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
-
 ## Constraints
 
 - Deterministic computation:
   - `aclnnMlaPreprocessV2` defaults to a deterministic implementation.
--   Meanings and restrictions of the shape format fields
-    -  `tokenNum`: batch size of input samples. The value ranges from 0 to 256.
-    -  `hiddenSize`: size of the hidden layer. The value ranges from 2048 to 10240 and must be a multiple of 256.
-    -  `headNum`: number of heads. Value range: 16, 32, 64, 128.
-    -  `blockNum`: number of blocks in the `PagedAttention` scenario. The value range is 192.
-    -  `blockSize`: block size in the `PagedAttention` scenario. The value range is 128.
-    -  When the data type of `wdqkv` and `wuq` is bfloat16, the input must also be bfloat16. In addition, `hiddenSize` can only be 6144, and `cacheMode` can only be 0 or 1.
+- Meanings and restrictions of the shape format fields
+    -`tokenNum`: batch size of input samples. The value ranges from 0 to 256.
+    -`hiddenSize`: size of the hidden layer. The value ranges from 2048 to 10240 and must be a multiple of 256.
+    -`headNum`: number of heads. Value range: 16, 32, 64, 128.
+    -`blockNum`: number of blocks in the `PagedAttention` scenario. The value range is 192.
+    -`blockSize`: block size in the `PagedAttention` scenario. The value range is 128.
+    -When the data type of `wdqkv` and `wuq` is bfloat16, the input must also be bfloat16. In addition, `hiddenSize` can only be 6144, and `cacheMode` can only be 0 or 1.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```Cpp

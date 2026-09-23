@@ -33,9 +33,9 @@
 
 - `aclnnMatmulAllReduceAddRmsNorm` and `aclnnInplaceMatmulAllReduceAddRmsNorm` implement the same function in different ways. Select a proper operator based on your requirements.
 
- - `aclnnMatmulAllReduceAddRmsNorm`: Two output tensor objects `normOut` and `y` need to be created to store the computation result.
- - `aclnnInplaceMatmulAllReduceAddRmsNorm`: One output tensor `normOut` needs to be created. The results that would have been stored in the output tensor `y` in the original non-inplace scenario are directly written to the memory of the input tensor `residual`.
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMatmulAllReduceAddRmsNorm` is called to perform computation.
+    - `aclnnMatmulAllReduceAddRmsNorm`: Two output tensor objects `normOut` and `y` need to be created to store the computation result.
+    - `aclnnInplaceMatmulAllReduceAddRmsNorm`: One output tensor `normOut` needs to be created. The results that would have been stored in the output tensor `y` in the original non-inplace scenario are directly written to the memory of the input tensor `residual`.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMatmulAllReduceAddRmsNorm` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -232,7 +232,6 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
       </tbody>
     </table>
 
-
 - **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -274,7 +273,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -332,6 +331,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term>:
+
 ```Cpp
 #include <iostream>
 #include <vector>

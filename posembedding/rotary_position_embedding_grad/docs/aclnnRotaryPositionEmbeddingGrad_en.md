@@ -14,7 +14,7 @@
 
 ## Function
 
-- Description: Perform the backward pass of the single-path rotary position encoding [aclnnRotaryPositionEmbedding](./aclnnRotaryPositionEmbedding.md).
+- Description: Perform the backward pass of the single-path rotary position encoding [aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding_en.md).
 - Formula:
   
     In the forward pass of rotary position encoding, the axis list for broadcasting is `dims`, and the computation formula can be expressed as follows:
@@ -143,7 +143,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First call `aclnnRotaryPositionEmbeddingGradGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbeddingGrad` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First call `aclnnRotaryPositionEmbeddingGradGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbeddingGrad` to perform the computation.
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
@@ -158,6 +158,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
+
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     void          *workspace,

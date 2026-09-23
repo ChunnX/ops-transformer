@@ -16,21 +16,21 @@
 - Formula: 
   1. If smoothScaleOptional is input, then:
   
-  $$
-      x = x\cdot scale_{smooth}
-  $$
+      $$
+          x = x\cdot scale_{smooth}
+      $$
 
   2. If xScaleOptional is not input, dynamic quantization is performed, and the x quantization coefficient needs to be calculated.
   
-  $$
-      scale_{x}=row\_max(abs(x))/max_{quantDataType}
-  $$
+      $$
+          scale_{x}=row\_max(abs(x))/max_{quantDataType}
+      $$
 
   3. Quantization
   
-  $$
-      x_{quantized}=round(x/scale_{x})
-  $$
+      $$
+          x_{quantized}=round(x/scale_{x})
+      $$
 
   4. Grouped matrix multiplication + dequantization
     - 4.1 If the data type of the input $scale_{weight}$ is FLOAT32, then:
@@ -65,7 +65,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnQuantGroupedMatmulDequantGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnQuantGroupedMatmulDequant` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnQuantGroupedMatmulDequantGetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnQuantGroupedMatmulDequant` is called to perform computation.
 
 ```Cpp
 aclnnStatus aclnnQuantGroupedMatmulDequantGetWorkspaceSize(
@@ -91,7 +91,6 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   aclOpExecutor *executor,
   aclrtStream    stream)
 ```
-
 
 ## aclnnQuantGroupedMatmulDequantGetWorkspaceSize
 
@@ -286,7 +285,6 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   </tbody>
   </table>
 
-
 ## aclnnFatreluMul
 
 - **Parameters:**
@@ -326,7 +324,6 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   </tbody>
   </table>
 
-
 - **Returns:**
 
   `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
@@ -340,6 +337,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
 - If the data type of `weightScale` is INT64, the data type of `xScaleOptional` must be FLOAT16 and the value of `xQuantMode` must be `pertensor`. If the data type of `xScaleOptional` is FLOAT16, the data type of `weightScale` must be INT64 and the value of `xQuantMode` must be `pertensor`.
 
 ## Example
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 ```Cpp

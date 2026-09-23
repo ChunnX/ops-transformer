@@ -23,7 +23,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMatmulAllReduceGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMatmulAllReduce` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMatmulAllReduceGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMatmulAllReduce` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
@@ -146,7 +146,7 @@ aclnnStatus aclnnMatmulAllReduce(
           <td>output</td>
           <td>Output</td>
           <td>Result of MatMul computation and AllReduce communication, that is, <code>output</code> in the formula.</td>
-          <td>The number of dimensions of <code>output</code> is the same as that of <code>x1<code>.</td>
+          <td>The number of dimensions of <code>output</code> is the same as that of <code>x1</code>.</td>
           <td>BFLOAT16, FLOAT16</td>
           <td>ND</td>
           <td>2-3</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnMatmulAllReduce(
 
 - **Parameters:**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 1150px">
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
@@ -249,7 +249,7 @@ aclnnStatus aclnnMatmulAllReduce(
     </tr>
     </tbody></table>
     
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -272,6 +272,7 @@ aclnnStatus aclnnMatmulAllReduce(
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
 
 - <term>Atlas A2 training products/Atlas A2 inference products</term>:
+
     ```Cpp
     #include <iostream>
     #include <vector>

@@ -10,11 +10,11 @@
 | <term>Atlas inference products</term>                            |    ×    |
 | <term>Atlas training products</term>                             |    ×    |
 
-
 ## Function
 
--   **Description**: Implements the backward propagation of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md) to complete the weighted summation of tokens.
--   **Formula**:
+- **Description**: Implements the backward propagation of [aclnnMoeInitRoutingV2](../../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2_en.md) to complete the weighted summation of tokens.
+
+- **Formula**:
 
     $$
     gradX_i=\sum_{t=0}^{topK}gradExpandedX[expandedRowIdx[i * topK + t]]
@@ -22,14 +22,14 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeInitRoutingV2GradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV2Grad` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeInitRoutingV2GradGetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeInitRoutingV2Grad` is called to perform computation.
 
 * `aclnnStatus aclnnMoeInitRoutingV2GradGetWorkspaceSize(const aclTensor *gradExpandedX, const aclTensor *expandedRowIdx, int64_t topK, int64_t dropPadMode, int64_t activeNum, const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)`
 * `aclnnStatus aclnnMoeInitRoutingV2Grad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 
 ## aclnnMoeInitRoutingV2GradGetWorkspaceSize
 
--   **Parameters**:
+- **Parameters**:
     - `gradExpandedX` (aclTensor\*, computation input): target tensor after routing. It must be a 2D or 3D tensor. The 2D shape is [B\*S\*K, H] in the dropless scenario or [A, H] in the active scenario. The 3D shape is [E, C, H] in the drop/pad scenario. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - `expandedRowIdx` (aclTensor\*, computation input): tokens are indexed in expert order. It is a 1D tensor with shape [B\*S\*K]. The value range is [-1, E\*C) in the drop/pad scenario and [0, B\*S\*K) in other scenarios. The value is unique except `-1`. The data type can be INT32. The [data format](../../../docs/en/context/data_format.md) must be ND. [non-contiguous tensor](../../../docs/en/context/non_contiguous_tensor.md) are supported.
     - `topK` (int64_t, computation input): an integer on the host. The value must be greater than `0` and exactly divisible by the size of axis 0 of `expandedRowIdx`.
@@ -44,10 +44,11 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
       `B`: batch size; `S`: number of tokens; `H`: hidden size, that is, the length of each token sequence; `K`: `topK`, that is, the number of experts that process tokens.
       `A`: `activeNum` value; `E`: number of experts; `C`: expert capacity, that is, the number of tokens that can be processed by an expert.
 
--   **Returns**
+- **Returns**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
-    ```
+
+    ```cpp
     The first-phase API implements input parameter verification. The following errors may be thrown:
     161001 (ACLNN_ERR_PARAM_NULLPTR): The input or output tensor is a null pointer.
     161002 (ACLNN_ERR_PARAM_INVALID): The data type of input or output is not supported.
@@ -63,13 +64,13 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls.
 
 ## aclnnMoeInitRoutingV2Grad
 
--   **Parameters:**
-    -   `workspace` (void\*, input): address of the workspace to be allocated on the device.
-    -   `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeInitRoutingV2GradGetWorkspaceSize`.
-    -   `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
-    -   `stream` (aclrtStream, input): stream for executing the task.
+- **Parameters:**
+    - `workspace` (void\*, input): address of the workspace to be allocated on the device.
+    - `workspaceSize` (uint64\_t, input): size of the workspace to be allocated on the device, which is obtained by calling the first-phase API `aclnnMoeInitRoutingV2GradGetWorkspaceSize`.
+    - `executor` (aclOpExecutor\*, input): operator executor, containing the operator computation process.
+    - `stream` (aclrtStream, input): stream for executing the task.
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus` status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 

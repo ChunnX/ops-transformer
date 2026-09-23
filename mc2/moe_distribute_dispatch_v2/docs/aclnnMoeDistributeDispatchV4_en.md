@@ -32,10 +32,9 @@
 
   Note: `aclnnMoeDistributeCombineV4` and `aclnnMoeDistributeCombineAddRmsNormV2` operators are collectively referred to as **CombineV4 series operators** in subsequent documents.
 
-
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeDispatchV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeDispatchV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeDispatchV4` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchV4GetWorkspaceSize(
@@ -291,7 +290,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <tr>
     <td>globalBs</td>
     <td>Input</td>
-    <td>Global batch size in the EP domain.</li></td>
+    <td>Global batch size in the EP domain.</td>
     <td><br> <li>If the Bs values of all ranks are the same: globalBs = Bs × epWorldSize or 0; </li> <li>If the Bs values of all ranks are different: globalBs = maxBs × epWorldSize, where maxBs is the maximum Bs value of a single device.</li></td>
     <td>INT64</td>
     <td>-</td>
@@ -341,7 +340,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <tr>
     <td>constExpertNum</td>
     <td>Input</td>
-    <td>Number of constant experts.</td></td>
+    <td>Number of constant experts.</td>
     <td>-</td>
     <td>INT64</td>
     <td>-</td>
@@ -600,7 +599,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
   | Bs           | Number of tokens output by the current rank. <ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>: 0 < Bs ≤ 256.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: 0 < Bs ≤ 512.</li></ul> |
   | topK    | Indicates the number of selected top K experts. The value range is 0 < K ≤16, and `0 < K ≤ moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum`.|
   | serverNum    | Number of server nodes. Only 2, 4, and 8 are supported.<br>Atlas A2 training products/Atlas A2 inference products: This variable is used only in shapes in this scenario.                                                  |
-  | localExpertNum |  Number of experts in this rank: <ul><li>For shared expert ranks, `localExpertNum` = 1.</li><li>For MoE expert ranks, `localExpertNum` = `moeExpertNum/(epWorldSize-sharedExpertRankNum)`. When `localExpertNum` > 1, TP communication is not supported. </li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: The value must satisfy 0 < localExpertNum × epWorldSize ≤ 2048.|
+  | localExpertNum |  Number of experts in this rank: <ul><li>For shared expert ranks, `localExpertNum` = 1.</li><li>For MoE expert ranks, `localExpertNum` = `moeExpertNum/(epWorldSize-sharedExpertRankNum)`. When `localExpertNum` > 1, TP communication is not supported. </li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: The value must satisfy 0 < localExpertNum × epWorldSize ≤ 2048.</li></ul>|
 
 - **Environment variables constraints**:
   - **HCCL_BUFFSIZE**:
@@ -620,7 +619,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 - **Constraints on the use of the communication domains**:
   - `aclnnMoeDistributeCombineV4` and `aclnnMoeDistributeDispatchV4` in a model support only the same EP communication domain, and no other operators are allowed in the communication domain.
   - `aclnnMoeDistributeCombineV4` and `aclnnMoeDistributeDispatchV4` in a model support only the same TP communication domain or both do not support a TP communication domain. If a TP communication domain is supported, no other operators are allowed in the communication domain.
-  -   <term>Atlas A3 training products / Atlas A3 inference products</term>: Nodes in a communication domain must be in the same SuperPoD. Cross-SuperPoD nodes are not supported.
+  - <term>Atlas A3 training products / Atlas A3 inference products</term>: Nodes in a communication domain must be in the same SuperPoD. Cross-SuperPoD nodes are not supported.
 
 - **Networking constraints**:
   - <term>Atlas A2 training products / Atlas A2 inference products</term>: In multi-server scenarios, only switch-based networking is supported, and direct point-to-point networking between two servers is not supported.
@@ -640,13 +639,15 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
   2. Install the CANN package and compile and run `dispatchDemo`.
 
--  Compilation script:
+- Compilation script:
+
     ```bash
     #!/bin/bash
     cann_path="/path/to/cann_env" # Change the path to the CANN package environment.
     g++ "aclnnDispatchDemo.cpp" -o dispatchDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                         -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
     ```
+
 - Compilation and execution:
 
     ```bash
@@ -660,6 +661,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     ```
 
 - The sample code is as follows:
+
     ```cpp
     #include <thread>
     #include <iostream>

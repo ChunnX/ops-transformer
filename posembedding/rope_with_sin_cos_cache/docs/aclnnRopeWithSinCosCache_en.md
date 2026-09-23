@@ -10,7 +10,6 @@
 | <term>Atlas inference products</term>                             |    ×     |
 | <term>Atlas training products</term>                              |    ×     |
 
-
 ## Function
 
 * Description: To improve performance, the inference network passes the sin and cos inputs through a cache to perform the rotary position encoding calculation.
@@ -18,155 +17,155 @@
 
     1. **mrope mode**: The shape of the positions input is [3, numTokens]:
 
-    $$
-    cosSin[i] = cosSinCache[positions[i]]
-    $$
+      $$
+      cosSin[i] = cosSinCache[positions[i]]
+      $$
 
-    $$
-    cos, sin = cosSin.chunk(2, dim=-1)
-    $$
+      $$
+      cos, sin = cosSin.chunk(2, dim=-1)
+      $$
 
-    $$
-    cos0 = cos[0, :, :mropeSection[0]]
-    $$
+      $$
+      cos0 = cos[0, :, :mropeSection[0]]
+      $$
 
-    $$
-    cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
-    $$
+      $$
+      cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+      $$
 
-    $$
-    cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-    $$
+      $$
+      cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+      $$
 
-    $$
-    cos = torch.cat((cos0, cos1, cos2), dim=-1)
-    $$
+      $$
+      cos = torch.cat((cos0, cos1, cos2), dim=-1)
+      $$
 
-    $$
-    sin0 = sin[0, :, :mropeSection[0]]
-    $$
+      $$
+      sin0 = sin[0, :, :mropeSection[0]]
+      $$
 
-    $$
-    sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
-    $$
+      $$
+      sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+      $$
 
-    $$
-    sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-    $$
+      $$
+      sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+      $$
 
-    $$
-    sin= torch.cat((sin0, sin1, sin2), dim=-1)
-    $$
+      $$
+      sin= torch.cat((sin0, sin1, sin2), dim=-1)
+      $$
 
-    $$
-    queryRot = query[..., :rotaryDim]
-    $$
+      $$
+      queryRot = query[..., :rotaryDim]
+      $$
 
-    $$
-    queryPass = query[..., rotaryDim:]
-    $$
+      $$
+      queryPass = query[..., rotaryDim:]
+      $$
 
-    (1) rotate\_half (GPT-NeoX style) computation formula:
+      (1) rotate\_half (GPT-NeoX style) computation formula:
 
-    $$
-    x1, x2 = torch.chunk(queryRot, 2, dim=-1)
-    $$
+      $$
+      x1, x2 = torch.chunk(queryRot, 2, dim=-1)
+      $$
 
-    $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
+      $$
+      o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
+      $$
 
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
-    $$
+      $$
+      o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
+      $$
 
-    $$
-    queryRot = torch.cat((o1, o2), dim=-1)
-    $$
+      $$
+      queryRot = torch.cat((o1, o2), dim=-1)
+      $$
 
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
-    (2) rotate\_interleaved (GPT-J style) computation formula:
+      (2) rotate\_interleaved (GPT-J style) computation formula:
 
-    $$
-    x1 = queryRot[..., ::2]
-    $$
+      $$
+      x1 = queryRot[..., ::2]
+      $$
 
-    $$
-    x2 = queryRot[..., 1::2]
-    $$
+      $$
+      x2 = queryRot[..., 1::2]
+      $$
 
-    $$
-    queryRot = torch.stack((o1, o2), dim=-1)
-    $$
+      $$
+      queryRot = torch.stack((o1, o2), dim=-1)
+      $$
 
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
     2. **Rope mode**: The shape of the positions input is [numTokens]:
 
-    $$
-    cosSin[i] = cosSinCache[positions[i]]
-    $$
+      $$
+      cosSin[i] = cosSinCache[positions[i]]
+      $$
 
-    $$
-    cos, sin = cosSin.chunk(2, dim=-1)
-    $$
+      $$
+      cos, sin = cosSin.chunk(2, dim=-1)
+      $$
 
-    $$
-    queryRot = query[..., :rotaryDim]
-    $$
+      $$
+      queryRot = query[..., :rotaryDim]
+      $$
 
-    $$
-    queryPass = query[..., rotaryDim:]
-    $$
+      $$
+      queryPass = query[..., rotaryDim:]
+      $$
 
-    (1) rotate\_half (GPT-NeoX style) computation formula:
+      (1) rotate\_half (GPT-NeoX style) computation formula:
 
-    $$
-    x1, x2 = torch.chunk(queryRot, 2, dim=-1)
-    $$
+      $$
+      x1, x2 = torch.chunk(queryRot, 2, dim=-1)
+      $$
 
-    $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
+      $$
+      o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
+      $$
 
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
-    $$
+      $$
+      o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
+      $$
 
-    $$
-    queryRot = torch.cat((o1, o2), dim=-1)
-    $$
+      $$
+      queryRot = torch.cat((o1, o2), dim=-1)
+      $$
 
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
-    (2) rotate\_interleaved (GPT-J style) computation formula:
-    
-    $$
-    x1 = query\_rot[..., ::2]
-    $$
+      (2) rotate\_interleaved (GPT-J style) computation formula:
+      
+      $$
+      x1 = query\_rot[..., ::2]
+      $$
 
-    $$
-    x2 = query\_rot[..., 1::2]
-    $$
+      $$
+      x2 = query\_rot[..., 1::2]
+      $$
 
-    $$
-    queryRot = torch.stack((o1, o2), dim=-1)
-    $$
+      $$
+      queryRot = torch.stack((o1, o2), dim=-1)
+      $$
 
-    $$
-    query = torch.cat((queryRot, queryPass), dim=-1)
-    $$
+      $$
+      query = torch.cat((queryRot, queryPass), dim=-1)
+      $$
 
 ## Prototype
 
-Each operator has [two-phase API](common/two_phase_api.md) calls. It is necessary to first call the `aclnnRopeWithSinCosCacheGetWorkspaceSize` interface to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call the `aclnnRopeWithSinCosCache` interface to execute the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md)calls. It is necessary to first call the `aclnnRopeWithSinCosCacheGetWorkspaceSize` interface to obtain the required workspace size for computation and the executor that includes the operator's computation process. Then call the `aclnnRopeWithSinCosCache` interface to execute the computation.
 
 ```c++
 aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSize(
@@ -193,7 +192,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
 
 ## aclnnRopeWithSinCosCacheGetWorkspaceSize
 
--   **Parameters**:
+- **Parameters**:
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
       <col style="width: 170px">
@@ -329,7 +328,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
       </tr>
     </tbody></table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -370,8 +369,8 @@ aclnnStatus aclnnRopeWithSinCosCache(
 
 ## aclnnRopeWithSinCosCache
 
--   **Parameters:**
-    <table style="undefined;table-layout: fixed; width: 1030px"> <colgroup>
+- **Parameters:**
+    <table style="undefined;table-layout: fixed; width: 1030px">
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
@@ -404,7 +403,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
     </tr>
     </tbody></table>
 
--   **Returns:**
+- **Returns:**
 
     `aclnnStatus`: status code. For details, see [aclnn Return Code](../../../docs/en/context/aclnn_return_code.md).
 
@@ -421,7 +420,9 @@ aclnnStatus aclnnRopeWithSinCosCache(
 - `mropeSection` (in mrope mode): the value is limited to [16, 24, 24], and the value of `rotaryDim` is 128.
 
 ## Examples
+
 The following example is for reference only. For details, see [Compile and Run Sample](../../../docs/en/context/compile_and_run_sample.md).
+
 ```Cpp
 #include <iostream>
 #include <vector>

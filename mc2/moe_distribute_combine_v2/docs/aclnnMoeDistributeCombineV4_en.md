@@ -32,7 +32,7 @@ $$
 
 ## Prototype
 
-Each operator has [two-phase API](../../../docs/en/context/two_phase_api) calls. First, `aclnnMoeDistributeCombineV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineV4` is called to perform computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMoeDistributeCombineV4GetWorkspaceSize` is called to obtain the workspace size required for computation and the executor that contains the operator computation process. Then, `aclnnMoeDistributeCombineV4` is called to perform computation.
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineV4GetWorkspaceSize(
@@ -509,7 +509,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     
         - The value of `commAlg` can be `nullptr`, `""`, `"fullmesh"`, or `"hierarchy"`. It is recommended to use `"hierarchy"` with driver version 25.0.RC1.1 or later. When set to `nullptr` or `""`, the communication algorithm is selected based on HCCL environment variables (not recommended). `"fullmesh"` indicates that tokens are directly transmitted through RDMA. `"hierarchy"` indicates a two-stage communication process: intra-server communication followed by inter-server communication, which reduces cross-server traffic.
         - Shared experts are not supported.
-        - The shape of `epSendCounts` is (moeExpertNum + 2 * globalBs * K * serverNum, ), where K indicates the number of top K experts, moeExpertNum indicates the number of tokens received from each rank in the EP communication domain, and 2 * globalBs * K * serverNum indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the value is calculated as follows: Bs * epWorldSize.
+        - The shape of `epSendCounts` is (`moeExpertNum + 2 * globalBs * K * serverNum,` ), where K indicates the number of top K experts, moeExpertNum indicates the number of tokens received from each rank in the EP communication domain, and `2 * globalBs * K * serverNum` indicates the number of tokens and communication area offset that can be combined for the reduce operation before communication across storage servers or within a storage server. If `globalBs` is 0, the value is calculated as follows: Bs * epWorldSize.
         - Currently, TP domain communication is not supported.
         - `xActiveMaskOptional` depends on the `commAlg` value: For `"fullmesh"`, it requires a 1D tensor with shape (Bs, ), where `true` must precede `false` (for example, {true, false, true} is invalid); for `"hierarchy"`, it is currently not supported and a null pointer should be passed.
         - `expandScalesOptional` must be a 1D tensor with shape (A, ).
@@ -536,7 +536,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
     - <term>Atlas A3 training products / Atlas A3 inference products</term>:
         - `commAlg` is not supported in the current version. Pass a null pointer.
-        - The shape of `epSendCounts` is (epWorldSize * max(tpWorldSize, 1) * localExpertNum, ).
+        - The shape of `epSendCounts` is (`epWorldSize * max(tpWorldSize, 1) * localExpertNum,` ).
         - When there is TP domain communication, `tpSendCountsOptional` is a 1D tensor with shape (tpWorldSize, ).
         - `xActiveMaskOptional` must be a 1D tensor with shape (BS, ) or a 2D tensor with shape (BS, K). If it is a 1D tensor, `true` must be placed before `false`. If it is a 2D tensor and the K values corresponding to tokens are all `false`, the tokens do not participate in communication.
         - `expandScalesOptional` is a reserved parameter, which is not supported in the current version. Pass a null pointer.
@@ -551,7 +551,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         - The value of `sharedExpertRankNum` must be in the range [0, epWorldSize). If the value is 0, `sharedExpertNum` is 0 or 1. If the value is not 0, `sharedExpertRankNum % sharedExpertNum` is 0.
         - The value of `commQuantMode` is 0 or 2 (0 indicates no quantization and 2 indicates int8 quantization). The value 2 is supported only when tpWorldSize < 2.
         - `expandScalesOptional` is a reserved parameter, which is not supported in the current version. Pass a null pointer.
-        - You can pass valid data or a null pointer for `elasticInfoOptional`. If a null pointer is passed, the dynamic scale-in feature is disabled. If valid data is passed, it must be a 1D tensor with shape <code>(4 + 2 * epWorldSize, )</code>. The first four numbers in the tensor indicate: whether scale-in is performed, the actual number of ranks after scale-in, the number of ranks used by shared experts after scale-in, and the number of MoE experts after scale-in. The remaining 2 * epWorldSize indicates two rank mapping tables. After scale-in, some ranks on the current device may be removed from the EP communication domain due to failures. The mapping for the first table is<code>Table1[epRankId]=localEpRankId</code> or <code>Table1[epRankId]=-1</code>. Here, `localEpRankId` denotes the rank index in the new EP communication domain, and `-1` indicates that the rank with the corresponding epRankId has been removed from the communication domain. The mapping for the second table is <code>Table2[localEpRankId] = epRankId</code>.
+        - You can pass valid data or a null pointer for `elasticInfoOptional`. If a null pointer is passed, the dynamic scale-in feature is disabled. If valid data is passed, it must be a 1D tensor with shape `(4 + 2 * epWorldSize, )` . The first four numbers in the tensor indicate: whether scale-in is performed, the actual number of ranks after scale-in, the number of ranks used by shared experts after scale-in, and the number of MoE experts after scale-in. The remaining 2 * epWorldSize indicates two rank mapping tables. After scale-in, some ranks on the current device may be removed from the EP communication domain due to failures. The mapping for the first table is<code>Table1[epRankId]=localEpRankId</code> or <code>Table1[epRankId]=-1</code>. Here, `localEpRankId` denotes the rank index in the new EP communication domain, and `-1` indicates that the rank with the corresponding epRankId has been removed from the communication domain. The mapping for the second table is <code>Table2[localEpRankId] = epRankId</code>.
         - You can pass valid data or a null pointer for `constExpertAlpha1Optional`. When `constExpertNum` is not 0, a valid input is required. If valid data is passed, it must be a 2D tensor with shape <code>(constExpertNum, H)</code> and the same data type as expandX.
         - You can pass valid data or a null pointer for `constExpertAlpha2Optional`. When `constExpertNum` is not 0, a valid input is required. If valid data is passed, it must be a 2D tensor with shape <code>(constExpertNum, H)</code> and the same data type as expandX.
         - You can pass valid data or a null pointer for `constExpertVOptional`. When `constExpertNum` is not 0, a valid input is required. If valid data is passed, it must be a 2D tensor with shape <code>(constExpertNum, H)</code> and the same data type as expandX.
@@ -665,12 +665,12 @@ aclnnStatus aclnnMoeDistributeCombineV4(
 
   | Variable        | Definition and Value Range                                                                |
   | :----------- | :----------------------------------------------------------------------------- |
-  | A            | Maximum number of tokens that need to be distributed by the current rank. The value range is as follows:<ul><li>When dynamic scale-in is disabled: <ul><li>For shared experts, the value must satisfy <code>A = Bs * epWorldSize \* sharedExpertNum / sharedExpertRankNum</code>. </li><li>For MoE experts, when `globalBs` is 0, the value must satisfy <code>A >= Bs * epWorldSize * min(localExpertNum, K)</code>. When `globalBs` is not 0, the value must satisfy <code>A >= globalBs * min(localExpertNum, K)</code>. </li></ul></li><li>When dynamic scale-in is enabled: <ul><li>When `globalBs` is 0, the value must satisfy <code>A >= max(Bs * epWorldSize \* sharedExpertNum / sharedExpertRankNum, Bs * epWorldSize * min(localExpertNum, K))</code>.</li><li>When `globalBs` is not 0, the value must satisfy <code>A >= max(Bs * epWorldSize \* sharedExpertNum / sharedExpertRankNum, globalBs * min(localExpertNum, K))</code>.</li></ul></li><ul>
-  | H            |Size of the hidden layer: <ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>:The value varies with `commAlg`. For `"fullmesh"`, the value is in the range (0, 7168] and is an integer multiple of 32. For `"hierarchy"` and the driver version 25.0.RC1.1 or later, the value is in the range (0, 10*1024] and is an integer multiple of 32.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: [1024, 8192].|
-  | Bs           | Number of tokens outputted by the current rank:<ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>: 0 < Bs ≤ 256.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: 0 < Bs ≤ 512.|
+  | A            |Maximum number of tokens that need to be distributed by the current rank. The value range is as follows:<ul><li>When dynamic scale-in is disabled:<ul><li>For shared experts, the value must satisfy `A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum`.</li><li>For MoE experts, when `globalBs` is 0, the value must satisfy `A >= Bs * epWorldSize * min(localExpertNum, K)`. When `globalBs` is not 0, the value must satisfy `A >= globalBs * min(localExpertNum, K)`.</li></ul></li><li>When dynamic scale-in is enabled:<ul><li>When `globalBs` is 0, the value must satisfy `A >= max(Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum, Bs * epWorldSize * min(localExpertNum, K))`.</li><li>When `globalBs` is not 0, the value must satisfy `A >= max(Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum, globalBs * min(localExpertNum, K))`.</li></ul></li></ul>
+  | H            |Size of the hidden layer: <ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>:The value varies with `commAlg`. For `"fullmesh"`, the value is in the range (0, 7168] and is an integer multiple of 32. For `"hierarchy"` and the driver version 25.0.RC1.1 or later, the value is in the range (0, 10*1024] and is an integer multiple of 32.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: [1024, 8192].</li></ul>|
+  | Bs           | Number of tokens outputted by the current rank:<ul><li> <term>Atlas A2 training products / Atlas A2 inference products</term>: 0 < Bs ≤ 256.</li><li><term>Atlas A3 training products / Atlas A3 inference products</term>: 0 < Bs ≤ 512.</li></ul>|
   | K            |Top K experts are selected:<br> 0 < K ≤ 16, and 0 < K ≤ <code>moeExpertNum+zeroExpertNum+copyExpertNum+constExpertNum</code>.|
   | serverNum    | Number of server nodes:<br>Atlas A2 training products / Atlas A2 inference products: This variable is used only in shapes in this scenario. The value is 2, 4, or 8.
-  | localExpertNum | Number of experts in this rank: <ul><li>For shared expert ranks, localExpertNum = 1.</li><li>For MoE expert ranks, localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>. When localExpertNum > 1, TP communication is not supported. </li><li><term>Atlas A3 training products / Atlas A3 inference products</term>:The value must satisfy 0 < localExpertNum * epWorldSize ≤ 2048.|
+  | localExpertNum | Number of experts in this rank: <ul><li>For shared expert ranks, localExpertNum = 1.</li><li>For MoE expert ranks, localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>. When localExpertNum > 1, TP communication is not supported. </li><li><term>Atlas A3 training products / Atlas A3 inference products</term>:The value must satisfy 0 < localExpertNum * epWorldSize ≤ 2048.</li></ul>|
 
 - **Environment variables constraints**:
   - **HCCL_BUFFSIZE**:
@@ -681,8 +681,8 @@ aclnnStatus aclnnMoeDistributeCombineV4(
           - If `commAlg` is set to `"fullmesh"`, the value must satisfy <code>>= 2 \* (Bs \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)</code>.
           - If `commAlg` is set to `"hierarchy"`, the value must satisfy <code>>= moeExpertNum \* Bs \* (H \* sizeof(dtypeX) + 4 \* ((K + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB</code> and does not need to satisfy <code>moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24</code>.
       - <term>Atlas A3 training products / Atlas A3 inference products</term>:
-          - In an EP communication domain, when `commAlg` is `"fullmesh_v1"`, a null character string, or a null pointer, the value must satisfy ≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H)).
-          - In an EP communication domain, when `commAlg` is `"fullmesh_v2"`, the value must satisfy ≥ 2 * (localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H)).
+          - In an EP communication domain, when `commAlg` is `"fullmesh_v1"`, a null character string, or a null pointer, the value must satisfy ≥ 2 * (`localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64`) + (`K + sharedExpertNum) * maxBs * Align512(2 * H`)).
+          - In an EP communication domain, when `commAlg` is `"fullmesh_v2"`, the value must satisfy ≥ 2 * (`localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64`) + `(K + sharedExpertNum) * maxBs * Align512(2 * H)`).
           - Within a TP communication domain: The value must satisfy \>= (A \* Align512(Align32(h \* 2) + 44) + A \* Align512(h \* 2)) \* 2.
           - Where `480Align512(x) = ((x + 480 - 1) / 480) * 512`, `Align512(x) = ((x + 512 - 1) / 512) * 512`, and `Align32(x) = ((x + 32 - 1) / 32) * 32`.
       
@@ -1241,7 +1241,6 @@ aclnnStatus aclnnMoeDistributeCombineV4(
         aclrtResetDevice(args.rankId);
     
         return 0;
-    
     
     int main(int argc, char *argv[])
     {
