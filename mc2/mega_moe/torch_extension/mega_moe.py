@@ -331,6 +331,9 @@ class SymmBuffer:
         dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
+        # combine_comm_mode: combine 通信去重开关，完全由调用方决定。0=关闭；1=强制开启（kernel
+        # 必走 combine 去重路径，不经内部收益裁决）。适用场景见算子资料：topK 大、同卡重复路由多、
+        # 通信主导的形状收益显著；容量不满足（如 hidden > 10240）时 tiling 显式报错而非静默回退。
         combine_comm_mode: int = 0,
         topk_weights_type: int = 0,
     ):
@@ -414,6 +417,12 @@ class SymmBuffer:
                 raise ValueError(
                     "topk_weights_type only supports 0 or 1 on Ascend950, "
                     f"got {self.topk_weights_type!r} (type: {type(self.topk_weights_type).__name__})."
+                )
+            _check_int_type(self.combine_comm_mode, "combine_comm_mode")
+            if self.combine_comm_mode not in (0, 1):
+                raise ValueError(
+                    "combine_comm_mode only supports 0 (off) or 1 (force-enable combine dedup) on Ascend950, "
+                    f"got {self.combine_comm_mode!r} (type: {type(self.combine_comm_mode).__name__})."
                 )
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
