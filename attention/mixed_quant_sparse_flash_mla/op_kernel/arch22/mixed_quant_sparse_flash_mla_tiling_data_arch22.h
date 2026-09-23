@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_tiling_data.h
+ * \file mixed_quant_sparse_flash_mla_tiling_data_arch22.h
  * \brief
  */
 
-#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_H
-#define MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_ARCH22_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_ARCH22_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
@@ -61,4 +61,4 @@ struct MixedQuantSparseFlashMlaTqTilingData {
 };
 } // namespace optiling
 
-#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TILING_DATA_ARCH22_H

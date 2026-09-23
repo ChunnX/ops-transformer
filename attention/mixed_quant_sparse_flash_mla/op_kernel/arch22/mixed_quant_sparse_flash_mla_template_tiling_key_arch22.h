@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_template_tiling_key.h
+ * \file mixed_quant_sparse_flash_mla_template_tiling_key_arch22.h
  * \brief
  */
 
-#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
-#define MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_ARCH22_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_ARCH22_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -59,4 +59,4 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(FLASH_DECODE, 0),
                                      ASCENDC_TPL_BOOL_SEL(IS_VEC_S2PHYADDR, 0),
                                      ASCENDC_TPL_BOOL_SEL(HIGH_PERF, 0), ), );
 
-#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_ARCH22_H
