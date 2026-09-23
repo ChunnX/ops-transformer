@@ -85,7 +85,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 * qInputLayout: "TND" "BNSD" "BSND"
 * kvInputLayout: "TND" "BNSD" "BSND"
 
-- <term>Atlas 训练系列产品</term>、<term>Atlas A3 训练系列产品</term>:
+- <term>Atlas A2训练系列产品</term>、<term>Atlas A3 训练系列产品</term>:
 不支持"BSND"。
 
 ## 参数说明
@@ -354,7 +354,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 </table>
 
 <ul>
-- <term>Atlas训练系列产品</term>、<term>Atlas A3训练系列产品</term>:
+- <term>Atlas A2训练系列产品</term>、<term>Atlas A3训练系列产品</term>:
 不支持FLOAT8_E5M2、FLOAT8_E4M3FN。
 </ul>
 
