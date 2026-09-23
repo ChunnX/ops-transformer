@@ -1038,8 +1038,14 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
 {
     const bool transB = contextInfo.args_.isBTrans;
     const uint64_t rankN = contextInfo.args_.nValue / contextInfo.args_.rankDim;
+    const bool hasBias = contextInfo.args_.isBias;
     if (isMxfp4_) {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
+        // master 的 QuantMatmulTilingSwat 为 3 参模板(biasDtype 无默认值),
+        // 需补齐 biasDtype 并调用 SetPlatformInfoPtr/SetBiasInfo
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
+            tilingSwat;
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(hasBias);
         if (inferredInfo.tileCnt > 0) {
             tilingSwat.GetTilingData(inferredInfo.tileM, rankN, contextInfo.args_.kValue, false, transB,
                                      hcommTilingData_.tileQbmmTilingData);
@@ -1049,7 +1055,11 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
                                      hcommTilingData_.tailQbmmTilingData);
         }
     } else {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                              mm::BiasDataType::DT_FLOAT>
+            tilingSwat;
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(hasBias);
         if (inferredInfo.tileCnt > 0) {
             tilingSwat.GetTilingData(inferredInfo.tileM, rankN, contextInfo.args_.kValue, false, transB,
                                      hcommTilingData_.tileQbmmTilingData);
