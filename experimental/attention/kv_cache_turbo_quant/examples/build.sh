@@ -37,7 +37,7 @@ VEC_O="${OUT}.vec.o"
 CUBE_O="${OUT}.cube.o"
 
 bisheng -xcce --cce-aicore-arch=dav-c220-vec -O2 -std=c++17 "${INC[@]}" \
-    -c "$ROOT/op_kernel/kv_cache_turbo_quant.cpp" -o "$VEC_O"
+    -c "$ROOT/op_kernel/kvtq_vec_kernels.cpp" -o "$VEC_O"
 bisheng -xcce --cce-aicore-arch=dav-c220-cube -DASCENDC_CUBE_ONLY -O2 -std=c++17 "${INC[@]}" \
     -c "$ROOT/op_kernel/kv_cache_turbo_quant_cube.cpp" -o "$CUBE_O"
 g++ -O2 -std=c++17 -I"$CANN/include" -I"$CANN/pkg_inc" -I"$CANN/aarch64-linux/include" \
