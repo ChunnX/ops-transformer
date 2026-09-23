@@ -126,6 +126,7 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     void *sharedExpertXDeviceAddr = nullptr;
 
     void *elasticInfoDeviceAddr = nullptr;
+    void *performanceInfoDeviceAddr = nullptr;
     void *oriXDeviceAddr = nullptr;
     void *constExpertAlpha1DeviceAddr = nullptr;
     void *constExpertAlpha2DeviceAddr = nullptr;
@@ -149,6 +150,7 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     aclTensor *sharedExpertX = nullptr;
 
     aclTensor *elasticInfo = nullptr;
+    aclTensor *performanceInfo = nullptr;
     aclTensor *oriX = nullptr;
     aclTensor *constExpertAlpha1 = nullptr;
     aclTensor *constExpertAlpha2 = nullptr;
@@ -172,6 +174,8 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     std::vector<int64_t> sharedExpertXShape{BS, 1, H};
 
     std::vector<int64_t> elasticInfoShape{4 + EP_WORLD_SIZE * 2};
+    std::vector<int64_t> performanceInfoHostData(EP_WORLD_SIZE, 0); // 启用前需清零，各卡通信耗时累加至此
+    std::vector<int64_t> performanceInfoShape{EP_WORLD_SIZE};
     std::vector<int64_t> oriXShape{BS, H};
     std::vector<int64_t> constExpertAlpha1Shape{constExpertNum, H};
     std::vector<int64_t> constExpertAlpha2Shape{constExpertNum, H};
@@ -273,6 +277,9 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(performanceInfoHostData, performanceInfoShape, &performanceInfoDeviceAddr,
+                          aclDataType::ACL_INT64, &performanceInfo);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t dispatchWorkspaceSize = 0;
     aclOpExecutor *dispatchExecutor = nullptr;
@@ -285,8 +292,7 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     /**************************************** 调用dispatch ********************************************/
     // 调用第一阶段接口
     ret = aclnnMoeDistributeDispatchV4GetWorkspaceSize(
-        x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, elasticInfo,
-        nullptr, // performanceInfoOptional
+        x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, elasticInfo, performanceInfo,
         hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0, 0, expertShardType, sharedExpertNum,
         sharedExpertRankNum, quantMode, globalBS, expertTokenNumsType, nullptr, zeroExpertNum, copyExpertNum,
         constExpertNum, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts, tpRecvCounts, expandScales,
@@ -309,12 +315,22 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] dispatch aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
+    // V4新增特性：performanceInfoOptional开启后，各卡通信耗时累加至该Tensor，此处回读打印dispatch阶段的耗时
+    std::vector<int64_t> dispatchCommTime(EP_WORLD_SIZE, 0);
+    ret = aclrtMemcpy(dispatchCommTime.data(), dispatchCommTime.size() * sizeof(int64_t), performanceInfoDeviceAddr,
+                      dispatchCommTime.size() * sizeof(int64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy performanceInfo failed. ret = %d \n", ret);
+              return ret);
+    LOG_PRINT("[INFO] rank = %d, performanceInfo after dispatch per card: ", args.rankId);
+    for (uint32_t cardId = 0; cardId < EP_WORLD_SIZE; cardId++) {
+        LOG_PRINT("%ld ", static_cast<long>(dispatchCommTime[cardId]));
+    }
+    LOG_PRINT("\n");
     /**************************************** 调用combine ********************************************/
     // 调用第一阶段接口
     ret = aclnnMoeDistributeCombineV4GetWorkspaceSize(
         expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
-        nullptr, // performanceInfoOptional
+        nullptr, nullptr, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo,
         hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0, 0, expertShardType, sharedExpertNum,
         sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupList_type, nullptr, zeroExpertNum, copyExpertNum,
         constExpertNum, xOut, &combineWorkspaceSize, &combineExecutor);
@@ -338,6 +354,17 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     LOG_PRINT("[INFO] device_%d aclnnMoeDistributeDispatchV4 and aclnnMoeDistributeCombineV4                      \
                 execute successfully.\n",
               args.rankId);
+    // dispatch与combine的通信耗时累加至同一performanceInfo，此处打印累加后的总耗时
+    std::vector<int64_t> totalCommTime(EP_WORLD_SIZE, 0);
+    ret = aclrtMemcpy(totalCommTime.data(), totalCommTime.size() * sizeof(int64_t), performanceInfoDeviceAddr,
+                      totalCommTime.size() * sizeof(int64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy performanceInfo failed. ret = %d \n", ret);
+              return ret);
+    LOG_PRINT("[INFO] rank = %d, performanceInfo accumulated after dispatch + combine per card: ", args.rankId);
+    for (uint32_t cardId = 0; cardId < EP_WORLD_SIZE; cardId++) {
+        LOG_PRINT("%ld ", static_cast<long>(totalCommTime[cardId]));
+    }
+    LOG_PRINT("\n");
     // 释放device资源
     if (dispatchWorkspaceSize > 0) {
         aclrtFree(dispatchWorkspaceAddr);
@@ -404,6 +431,9 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     if (xOut != nullptr) {
         aclDestroyTensor(xOut);
     }
+    if (performanceInfo != nullptr) {
+        aclDestroyTensor(performanceInfo);
+    }
     if (xDeviceAddr != nullptr) {
         aclrtFree(xDeviceAddr);
     }
@@ -415,6 +445,9 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     }
     if (expertScalesDeviceAddr != nullptr) {
         aclrtFree(expertScalesDeviceAddr);
+    }
+    if (performanceInfoDeviceAddr != nullptr) {
+        aclrtFree(performanceInfoDeviceAddr);
     }
     if (expandXDeviceAddr != nullptr) {
         aclrtFree(expandXDeviceAddr);
