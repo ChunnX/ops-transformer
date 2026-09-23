@@ -200,25 +200,27 @@ errorCode 507018，与计算是否执行无关——只要实例化了 Blaze 模
 Process(start, num):                          // 全核同构
     computeOp_.Process(start, num);           // 本批 Blaze GMM
     AscendC::SyncAll();                       // ① 本批 sendBuf 多核写落 GM
-    if (submitted_ > 0) {                     // ② 全核 Wait 上一批 + PipeBarrier
-        hccl_.Wait(a2avHandles_[submitted_-1]);   // （排空参数区 datamove 依赖）
-        AscendC::PipeBarrier<PIPE_ALL>();
-    }
-    a2avHandles_[submitted_] = CommitAlltoAllV(start, num);  // ③ 全核提交（非阻塞）
-    submitted_++;
+    a2avHandles_[submitted_] = CommitAlltoAllV(start, num);  // ② 全核直接提交（非阻塞，
+    submitted_++;                             //    无需等待上一批）
+    AscendC::PipeBarrier<PIPE_ALL>();         // ③ 排空本核管线（含参数区拷贝）
 End():
-    if (submitted_ > 0) hccl_.Wait(末批);      // ④ 全核等待末批
+    for (i in 0..submitted_-1)                // ④ 全核按提交顺序等待全部批次
+        hccl_.Wait(a2avHandles_[i]);
     AscendC::SyncAll();
     if (submitted_ > 0) hccl_.Finalize();     // 全核调用（workingFlag_ 门控）
 ```
 
 设计说明：
 - **通信不占用 AIC 核**：AllToAllV 提交后由 AICPU/CCU 引擎异步执行，AIC 核即刻进入
-  下一批 GMM——批 b 通信与批 b+1 GMM 重叠推进（in-flight ≤ 2），无串行等待；
+  下一批 GMM——各批通信在引擎侧排队执行，与后续批次 GMM 重叠推进，无串行等待、
+  无需批间 Wait；
 - ① 是**正确性关键**：本批 C 输出由多个 AIC 核经 fixpipe 写出，必须全核到齐
   （GMM 落 GM）后才能让通信引擎读 sendBuf；
-- ② 在提交前等待上一批：通信引擎对参数数组的拷贝经数据搬移管线异步执行，标量侧
-  复用参数数组（`commParams_` 成员）前必须 `Wait` + `PipeBarrier` 排空；
+- ② 直接提交：各批通信相互独立（sendBuf 批间分区不相交），可全部在途；
+  全核提交下 Hccl 内部 workingFlag_（GetBlockIdx()==0）门控参数写入与 doorbell，
+  非工作核快速返回一致 handle；
+- ③ 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再进入下一批，保证
+  `commParams_` 参数数组被下一批复用时的写入有序（本地管线排空，非通信等待）；
 - `Finalize` 需有提交才调用——Hccl::Finalize 零提交时内部 handleId=-1 越界死循环
   （历史实测）；本实现每批必有提交（空批也提交零计数通信），恒满足。
 
