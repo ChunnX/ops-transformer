@@ -94,12 +94,12 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    // workspace: normalized residual (fp32, head_dim floats) per vector, written in phase 1 and read in phase 2
+    // no GM workspace: both matrices and all intermediates are resident in UB
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    workspaces[0] = static_cast<size_t>(totalVec) * HEAD_DIM * FP32_SIZE;
+    workspaces[0] = 0;
 
     return ge::GRAPH_SUCCESS;
 }

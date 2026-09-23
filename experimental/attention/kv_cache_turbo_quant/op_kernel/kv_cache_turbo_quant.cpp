@@ -19,7 +19,6 @@ extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kv_vectors, G
 {
     GET_TILING_DATA(tilingData, tiling);
     KernelKvCacheTurboQuant op;
-    op.Init(kv_vectors, rotation_matrix, qjl_matrix, quant_idx, quant_qjl, quant_norm, quant_gamma, workspace,
-            &tilingData);
+    op.Init(kv_vectors, rotation_matrix, qjl_matrix, quant_idx, quant_qjl, quant_norm, quant_gamma, &tilingData);
     op.Process();
 }

@@ -26,3 +26,6 @@
 ## 留言板
 
 - 【A2 @ 2026-09-23】A3 同学：拿到本文件请在此登记你的分支名与进展。kernel 里 `ReduceSum` L1 的 `srcRepStride` 语义如与 A3 文档有出入，请留言告知。
+- 【A2 @ 2026-09-23】**坑1**：本机 910B1（CANN 9.2.0-beta.1）上 `PipeBarrier<PIPE_ALL>()` 在 phase 间使用会触发全核 aivec 异常（MTE invalid GM, errcode 0x800000），改用精确的 `SyncPipe<HardEvent::MTE3_MTE2>()` 跨 phase 同步。A3 侧如遇同类错误请优先排查 barrier。
+- 【A2 @ 2026-09-23】**坑2**：GetCoreNumAiv() 在 910B1 返回 48；UB 预算按 192KB 设计（TILE_VEC=32 总占用约 177KB）。
+- 【A2 @ 2026-09-23】**坑3**：本机运行 aclnn 需要 source 完整 toolkit set_env.sh（否则 GetWorkspaceSize 报 361001）；libopapi_math.so 用仓内 build 产物（CANN 9.2 不再随包提供该库）。

@@ -174,6 +174,8 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
     aclnnStatus st = aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT,
                                                             gammaT, &workspaceSize, &executor);
     CHECK_RET(st == ACL_SUCCESS, ci.name + " GetWorkspaceSize ret=" + std::to_string(st));
+    std::cout << "[debug] " << ci.name << " workspaceSize=" << workspaceSize
+              << " expect=" << (totalVec * HEAD_DIM * 4) << std::endl;
 
     void *workspace = nullptr;
     if (workspaceSize > 0) {
@@ -218,6 +220,23 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
         if (gammaOut[i] != gammaGold[i]) {
             ++res.gammaMismatch;
         }
+    }
+
+    // ---- optional dump of outputs for offline comparison ----
+    if (getenv("KVTQ_DUMP") != nullptr) {
+        auto dumpU8 = [&](const char *path, const std::vector<uint8_t> &buf) {
+            std::ofstream ofs(path, std::ios::binary);
+            ofs.write(reinterpret_cast<const char *>(buf.data()), static_cast<std::streamsize>(buf.size()));
+        };
+        auto dumpU16 = [&](const char *path, const std::vector<uint16_t> &buf) {
+            std::ofstream ofs(path, std::ios::binary);
+            ofs.write(reinterpret_cast<const char *>(buf.data()), static_cast<std::streamsize>(buf.size() * 2));
+        };
+        const std::string dd = dataDir + "/" + ci.name + "/dev_";
+        dumpU8((dd + "quant_idx.bin").c_str(), idxOut);
+        dumpU8((dd + "quant_qjl.bin").c_str(), qjlOut);
+        dumpU16((dd + "quant_norm.bin").c_str(), normOut);
+        dumpU16((dd + "quant_gamma.bin").c_str(), gammaOut);
     }
 
     // ---- performance run ----
