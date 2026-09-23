@@ -320,14 +320,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     constInfo.needInit = 0;
     if (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE && constInfo.oriMaskMode != 0) {
-        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-            int64_t s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm,
+        for (uint32_t mqsmlaBIdx = 0; mqsmlaBIdx < constInfo.bSize; mqsmlaBIdx++) {
+            int64_t s2Size = GetSeqLen(mqsmlaBIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm,
                                        cuSeqlensOriKvGm, constInfo.s2Size);
             int64_t s1Size =
-                GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                GetSeqLen(mqsmlaBIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             int64_t expectQs;
             if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-                expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                expectQs = GetSeqLen(mqsmlaBIdx, false, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             } else {
                 expectQs = constInfo.s1Size;
             }
@@ -546,7 +546,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     RunInfo<HIGH_PERF> runInfo[4];
     RunParamStr<HIGH_PERF> runParam;
     runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
-    int64_t multiCoreInnerIdx = 1;
+    int64_t mqsmlaMultiCoreInnerIdx = 1;
     int64_t s2SplitIdxCounter = 0;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
@@ -637,7 +637,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 }
                 if (mqsmlaNotLastThreeLoop) {
                     RunInfo<HIGH_PERF> &runInfo1 = runInfo[taskId % 4];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, mqsmlaMultiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
                     if (mqsmlaNotLastThreeLoop) {
@@ -691,7 +691,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx;
+            ++mqsmlaMultiCoreInnerIdx;
         }
         gS1StartIdx = 0;
     }
