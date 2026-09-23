@@ -316,15 +316,11 @@ struct RelConstInfo {
     uint32_t relWSize;
 };
 
-
 template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              RelConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT>
+    : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo, RelConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_
