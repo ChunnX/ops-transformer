@@ -248,7 +248,6 @@ static bool CheckInputDim0Dim1(const gert::TilingContext *context, const char *n
     const gert::StorageShape *tokenIdsShape = context->GetInputShape(config.tokenIdsIndex);
     const gert::StorageShape *expertOffsetsShape = context->GetInputShape(config.expertOffsetsIndex);
     const gert::StorageShape *actualTokenNumShape = context->GetInputShape(config.actualTokenNumIndex);
-    const gert::StorageShape *attnRankTableShape = context->GetOptionalInputShape(config.attnRankTableIndex);
     // 校验输入x的维度Y和H
     const uint64_t xDim0 = xShape->GetStorageShape().GetDim(INDEX_ZERO);
     const uint64_t xDim1 = xShape->GetStorageShape().GetDim(INDEX_ONE);
