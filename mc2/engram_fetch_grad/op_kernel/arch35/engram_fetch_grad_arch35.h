@@ -690,7 +690,10 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (tempBufSize < entryBatchBytes) {
         tempBufSize = entryBatchBytes;
     }
-    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t) * 2U, UB_ALIGN) * UB_ALIGN;
+    uint32_t coreArrayBytes = Ceil(Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) +
+                                       static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t),
+                                   UB_ALIGN) *
+                              UB_ALIGN;
     if (tempBufSize < coreArrayBytes) {
         tempBufSize = coreArrayBytes;
     }
