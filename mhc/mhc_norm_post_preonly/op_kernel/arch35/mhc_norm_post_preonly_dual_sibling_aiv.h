@@ -12,133 +12,6 @@
 #define MHC_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE, uint32_t TILE_INDEX>
-__aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateR1TilesStatic(float &sumSq0)
-{
-    constexpr uint32_t tOff = TILE_INDEX * D_TILE_MAX;
-    constexpr uint32_t remaining = D_VALUE - tOff;
-    constexpr uint32_t tD = remaining < D_TILE_MAX ? remaining : D_TILE_MAX;
-    sumSq0 += ReduceSumSqFromCache(tOff, tD);
-    if constexpr (tOff + tD < D_VALUE) {
-        AccumulateR1TilesStatic<D_VALUE, TILE_INDEX + 1U>(sumSq0);
-    }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE, uint32_t TILE_INDEX>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessR2TilesStatic(
-    uint32_t token, float invRms0, const float (&postVals)[N_MAX], float (&midSqHalf)[2],
-    float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX])
-{
-    constexpr uint32_t tOff = TILE_INDEX * D_TILE_MAX;
-    constexpr uint32_t remaining = D_VALUE - tOff;
-    constexpr uint32_t tD = remaining < D_TILE_MAX ? remaining : D_TILE_MAX;
-    ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
-    CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
-
-    if constexpr (USE_RMS_MID) {
-        LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * D_TILE_MAX];
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-        const uint32_t h0 = laneId_ * 2U;
-        const uint32_t h1 = h0 + 1U;
-        MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_VALUE + tOff],
-                                               x2Cache[h1 * D_VALUE + tOff], tD);
-        PipeBarrier<PIPE_V>();
-        midSqHalf[laneId_] += ReduceSumPrecise(out, tD);
-    } else {
-        AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
-    }
-    if constexpr (tOff + tD < D_VALUE) {
-        ProcessR2TilesStatic<D_VALUE, TILE_INDEX + 1U>(token, invRms0, postVals, midSqHalf, sumSqHalf, dotHalf);
-    }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE, uint32_t TILE_INDEX>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessR3TilesStatic(
-    uint32_t token, float invRmsMid, float (&sumSqHalf)[2], float (&dotHalf)[2][N_MAX])
-{
-    constexpr uint32_t tOff = TILE_INDEX * D_TILE_MAX;
-    constexpr uint32_t remaining = D_VALUE - tOff;
-    constexpr uint32_t tD = remaining < D_TILE_MAX ? remaining : D_TILE_MAX;
-    const uint32_t headBegin = laneId_ * 2U;
-    LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-    LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-    LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_VALUE + tOff, tD);
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-        const uint32_t laneHead = n - headBegin;
-        LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0U) ? gammaEven : gammaOdd;
-        LocalTensor<float> gammaNext = ((laneHead & 1U) == 0U) ? gammaOdd : gammaEven;
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        if (n + 1U < headBegin + 2U) {
-            LoadGammaInto(gammaNext, gamma2Gm_, (n + 1U) * D_VALUE + tOff, tD);
-        }
-        MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-            x2Cache[n * D_VALUE + tOff], x2Cache[n * D_VALUE + tOff], gammaCurrent, invRmsMid, tD);
-        PipeBarrier<PIPE_V>();
-    }
-    CacheX2TileForLane(token, tOff, tD, true, false);
-    AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
-    if constexpr (tOff + tD < D_VALUE) {
-        ProcessR3TilesStatic<D_VALUE, TILE_INDEX + 1U>(token, invRmsMid, sumSqHalf, dotHalf);
-    }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE, uint32_t TILE_INDEX>
-__aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessR6TilesStatic(float &sumSq1)
-{
-    constexpr uint32_t tOff = TILE_INDEX * D_TILE_MAX;
-    constexpr uint32_t remaining = D_VALUE - tOff;
-    constexpr uint32_t tD = remaining < D_TILE_MAX ? remaining : D_TILE_MAX;
-    LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * D_TILE_MAX];
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-    MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_VALUE, gateBuf, tD);
-    PipeBarrier<PIPE_V>();
-    sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
-    if constexpr (tOff + tD < D_VALUE) {
-        ProcessR6TilesStatic<D_VALUE, TILE_INDEX + 1U>(sumSq1);
-    }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE, uint32_t TILE_INDEX>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessR7TilesStatic(uint32_t token,
-                                                                                           float invRms1)
-{
-    constexpr uint32_t tOff = TILE_INDEX * D_TILE_MAX;
-    constexpr uint32_t remaining = D_VALUE - tOff;
-    constexpr uint32_t tD = remaining < D_TILE_MAX ? remaining : D_TILE_MAX;
-    LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * D_TILE_MAX];
-    LoadHInCacheTile(tOff, tD, hIn);
-    LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
-    if constexpr (D_VALUE > GAMMA1_CACHE_MAX_D) {
-        LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    } else {
-        gamma1 = gamma1[tOff];
-    }
-    ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
-    if constexpr (D_VALUE > GAMMA1_CACHE_MAX_D) {
-        FenceVToMte2();
-    }
-    WriteHInPrimeTile(hIn, (uint64_t)token * D_VALUE + tOff, tD);
-    if constexpr (tOff + tD < D_VALUE) {
-        ProcessR7TilesStatic<D_VALUE, TILE_INDEX + 1U>(token, invRms1);
-    }
-}
-
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-template <uint32_t D_VALUE>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                                         DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
@@ -153,43 +26,35 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
-    if constexpr (D_VALUE == 0U) {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            sumSq0 += ReduceSumSqFromCache(tOff, tD);
-        }
-    } else {
-        AccumulateR1TilesStatic<D_VALUE, 0U>(sumSq0);
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        sumSq0 += ReduceSumSqFromCache(tOff, tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane分别构造自己负责的两个x2 head。
-    if constexpr (D_VALUE == 0U) {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
-            CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
-            if constexpr (USE_RMS_MID) {
-                // 每个lane只归约自己负责的两个head，循环结束后交换半和。
-                LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-                LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-                for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
-                    const uint32_t h0 = half * 2U;
-                    const uint32_t h1 = h0 + 1;
-                    MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                           x2Cache[h1 * D_ + tOff], tD);
-                    PipeBarrier<PIPE_V>();
-                    midSqHalf[half] += ReduceSumPrecise(out, tD);
-                }
-            } else {
-                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+        if constexpr (USE_RMS_MID) {
+            // 每个lane只归约自己负责的两个head，循环结束后交换半和。
+            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
+                const uint32_t h0 = half * 2U;
+                const uint32_t h1 = h0 + 1;
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
+                                                       x2Cache[h1 * D_ + tOff], tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
+        } else {
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
-    } else {
-        ProcessR2TilesStatic<D_VALUE, 0U>(token, invRms0, postVals, midSqHalf, sumSqHalf, dotHalf);
     }
 
     if constexpr (USE_RMS_MID) {
@@ -210,36 +75,32 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         midSqHalf[1U - laneId_] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
-        if constexpr (D_VALUE == 0U) {
-            for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-                const uint32_t tD = GetTileD(tile);
-                const uint32_t tOff = tile * dimTile_;
-                LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-                LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-                LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
-                LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-                // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
-                for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
-                    const uint32_t laneHead = n - headBegin;
-                    LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
-                    LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
-                    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                    if (n + 1U < headBegin + 2U) {
-                        LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
-                    }
-                    MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-                        x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
-                    PipeBarrier<PIPE_V>();
-                    if (n + 2U < headBegin + 2U) {
-                        FenceVToMte2();
-                    }
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
+            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+                const uint32_t laneHead = n - headBegin;
+                LocalTensor<float> gammaCurrent = ((laneHead & 1U) == 0) ? gammaEven : gammaOdd;
+                LocalTensor<float> gammaNext = ((laneHead & 1U) == 0) ? gammaOdd : gammaEven;
+                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+                if (n + 1U < headBegin + 2U) {
+                    LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                CacheX2TileForLane(token, tOff, tD, true, false);
-                AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
+                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                PipeBarrier<PIPE_V>();
+                if (n + 2U < headBegin + 2U) {
+                    FenceVToMte2();
+                }
             }
-        } else {
-            ProcessR3TilesStatic<D_VALUE, 0U>(token, invRmsMid, sumSqHalf, dotHalf);
+            CacheX2TileForLane(token, tOff, tD, true, false);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
     }
 
@@ -297,45 +158,37 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float sumSq1 = 0.0f;
     // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
     StartCacheGamma1();
-    if constexpr (D_VALUE == 0U) {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-            LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-            MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
-            PipeBarrier<PIPE_V>();
-            sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
-        }
-    } else {
-        ProcessR6TilesStatic<D_VALUE, 0U>(sumSq1);
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
+        PipeBarrier<PIPE_V>();
+        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
-    if constexpr (D_VALUE == 0U) {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LoadHInCacheTile(tOff, tD, hIn);
-            LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
-            if (D_ > GAMMA1_CACHE_MAX_D) {
-                LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
-                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-                WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            } else {
-                gamma1 = gamma1[tOff];
-            }
-            ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
-            if (D_ > GAMMA1_CACHE_MAX_D) {
-                FenceVToMte2();
-            }
-            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dimTile_;
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LoadHInCacheTile(tOff, tD, hIn);
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
+            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        } else {
+            gamma1 = gamma1[tOff];
         }
-    } else {
-        ProcessR7TilesStatic<D_VALUE, 0U>(token, invRms1);
+        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        if (D_ > GAMMA1_CACHE_MAX_D) {
+            FenceVToMte2();
+        }
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 

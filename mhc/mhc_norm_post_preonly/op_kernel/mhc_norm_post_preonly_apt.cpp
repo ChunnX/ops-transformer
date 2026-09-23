@@ -29,8 +29,7 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案，
-    // bit3仅选择D=2560的单tile静态实例，避免影响多tile kernel的代码体。
+    // bit0和bit1选择可选语义分支，bit2保留给双sibling AIV执行方案。
     // 枚举四个单AIV键，并把两个可选语义变为编译期常量，
     // 使每个二进制只保留实际需要的执行分支。
     if (TILING_KEY_IS(0)) {
@@ -84,38 +83,6 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
             op.Process();
-        }
-    } else if (TILING_KEY_IS(12)) {
-        KERNEL_TASK_TYPE(12, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.template ProcessStaticD<2560U>();
-        }
-    } else if (TILING_KEY_IS(13)) {
-        KERNEL_TASK_TYPE(13, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.template ProcessStaticD<2560U>();
-        }
-    } else if (TILING_KEY_IS(14)) {
-        KERNEL_TASK_TYPE(14, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.template ProcessStaticD<2560U>();
-        }
-    } else if (TILING_KEY_IS(15)) {
-        KERNEL_TASK_TYPE(15, KERNEL_TYPE_MIX_AIC_1_2);
-        if ASCEND_IS_AIV {
-            KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
-            op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
-                    x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            op.template ProcessStaticD<2560U>();
         }
     }
 }
