@@ -1057,7 +1057,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_tiling_1001B)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 5001, "");
 }
 
-
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv_tilingB)
 {
     optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
@@ -1156,7 +1155,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_d_full_load_is_output_kv
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "");
 }
-
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_bn_match_tiling)
 {
