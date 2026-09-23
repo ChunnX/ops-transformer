@@ -82,7 +82,7 @@ public:
 
     ConstInfoX constInfo_;
 
-    __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData_;
+    const QuantFlashAttnTilingData *tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -140,7 +140,7 @@ public:
                                 __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace, __gm__ uint8_t *metadata, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *sequsedKv, __tiling_data_ptr__ QuantFlashAttnTilingData *tiling,
+                                __gm__ uint8_t *sequsedKv, const QuantFlashAttnTilingData *tiling,
                                 TPipe *tPipe)
     {
         this->pipe_ = tPipe;

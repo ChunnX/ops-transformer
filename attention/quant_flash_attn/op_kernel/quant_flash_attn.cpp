@@ -87,15 +87,16 @@ __aicore__ inline void quant_flash_attn_mxfp8(
 #endif
 
     // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能直接 reinterpret_cast 成 __gm__ 结构体指针解引用（标量段越界→aicore 507011）。
-    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
-    // 动态图零拷贝强转，静态图 convert_from_bytes 拷贝到栈局部对象再取指针。
-    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
+    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
+    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
+    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
+    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
+    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn,
             &tPipe);
     op.Process();
 }
@@ -155,15 +156,16 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
 #endif
 
     // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能直接 reinterpret_cast 成 __gm__ 结构体指针解引用（标量段越界→aicore 507011）。
-    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
-    // 动态图零拷贝强转，静态图 convert_from_bytes 拷贝到栈局部对象再取指针。
-    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
+    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
+    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
+    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
+    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
+    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, cuSeqLensQ, cuSeqLensKv, blockTable, qDescale, kDescale, vDescale, pScale,
-            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData, &tPipe);
+            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn, &tPipe);
     op.Process();
 }
 
@@ -223,15 +225,16 @@ __aicore__ inline void quant_flash_attn_hif8(
 #endif
 
     // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能直接 reinterpret_cast 成 __gm__ 结构体指针解引用（标量段越界→aicore 507011）。
-    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
-    // 动态图零拷贝强转，静态图 convert_from_bytes 拷贝到栈局部对象再取指针。
-    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
+    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
+    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
+    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
+    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
+    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn,
             &tPipe);
     op.Process();
 }
