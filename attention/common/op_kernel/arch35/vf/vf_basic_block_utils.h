@@ -101,6 +101,13 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
     AscendC::RoundMode::CAST_RINT,
 };
 
+constexpr static AscendC::Reg::CastTrait castTraitZeroMerge = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::MERGING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+
 #define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \
     do { \
         Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg); \
