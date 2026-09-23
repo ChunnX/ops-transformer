@@ -10,9 +10,11 @@
 
 """Generate supported-range TTK cases (or the 16-case --suite smoke).
 
+Cases call the installed torch.ops.cann_ops_transformer API directly;
+pass --plugin <assets directory> without adding assets to PYTHONPATH.
+
 Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
-Use --static-metadata for the two-stage --no-prof / --manual-data-dirs flow;
-TTK does not support manual-data preparation with dynamic slots.
+The generator always emits dynamic metadata slots.
 """
 
 import argparse
@@ -378,11 +380,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument("--suite", choices=("smoke", "coverage"), default="coverage")
-    parser.add_argument(
-        "--static-metadata",
-        action="store_true",
-        help="Use an empty metadata placeholder for manual-data bin preparation",
-    )
     args = parser.parse_args()
     requested = args.output or Path(
         f"testcase/flash_mla_with_kvcache_e2e_{args.suite}.csv"
@@ -396,21 +393,7 @@ def main():
             lineterminator="\n",
         )
         writer.writeheader()
-        for row in coverage_cases() if args.suite == "coverage" else cases():
-            if args.static_metadata:
-                shapes = list(ast.literal_eval(row["tensor_view_shapes"]))
-                shapes[7] = (0,)
-                row["tensor_view_shapes"] = repr(tuple(shapes))
-                for field, value in (
-                    ("tensor_storage_shapes", (0,)),
-                    ("tensor_view_strides", (1,)),
-                    ("tensor_view_offsets", 0),
-                ):
-                    if row.get(field):
-                        values = list(ast.literal_eval(row[field]))
-                        values[7] = value
-                        row[field] = repr(tuple(values))
-            writer.writerow(row)
+        writer.writerows(coverage_cases() if args.suite == "coverage" else cases())
 
 
 if __name__ == "__main__":
