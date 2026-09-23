@@ -1235,7 +1235,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 <!-- end id25 -->
 <!-- npu="950" id26 -->
-- <term>Ascend 950DT</term> ：请参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
+- <term>Ascend 950DT</term> ：可直接运行算子 [examples/arch35](../examples/arch35/) 目录下已有的 [test_aclnn_moe_distribute_dispatch_V4.cpp](../examples/arch35/test_aclnn_moe_distribute_dispatch_V4.cpp)；如需自定义场景，可参考[aclnnMoeDistributeDispatchV2](../docs/aclnnMoeDistributeDispatchV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V4接口相较于V3接口新增的场景参数按上述参数说明传值即可。
 
 <!-- end id26 -->
 <!-- npu="A3" id27 -->

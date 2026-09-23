@@ -604,6 +604,8 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
 <!-- npu="950,A3" id9 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
 
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_moe_distribute_combine_add_rms_norm.cpp](../examples/arch35/test_aclnn_moe_distribute_combine_add_rms_norm.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
+
     ```Cpp
     #include <thread>
     #include <iostream>

@@ -792,7 +792,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
         ```
 
-    - 创建A2示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_combine_v2.cpp](../examples/test_aclnn_moe_distribute_combine_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_combine_v2.cpp。
+    - 创建A2示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_combine_v2.cpp](../examples/test_aclnn_moe_distribute_combine_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_combine_v3.cpp。
 
     - 执行算子样例：示例算子执行命令如下，该命令会执行算子[examples](../examples/)目录下所有的示例代码文件。
 
@@ -1222,7 +1222,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
 
 <!-- end id18 -->
 <!-- npu="950" id19 -->
-- <term>Ascend 950DT</term> ：请参考 [aclnnMoeDistributeCombineV2](./aclnnMoeDistributeCombineV2.md) 中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V4 接口相较于 V3 接口新增的场景参数按上述参数说明传值即可。
+- <term>Ascend 950DT</term> ：可直接运行算子 [examples/arch35](../examples/arch35/) 目录下已有的 [test_aclnn_moe_distribute_combine_V3.cpp](../examples/arch35/test_aclnn_moe_distribute_combine_V3.cpp)；如需自定义场景，可参考[aclnnMoeDistributeCombineV2](./aclnnMoeDistributeCombineV2.md)中调用示例的准备部分和示例代码，按照上文的约束说明重新设置涉及的变量，V3接口相较于V2接口新增的场景参数按上述参数说明传值即可。
 
 <!-- end id19 -->
 <!-- npu="A3" id20 -->
