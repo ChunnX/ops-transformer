@@ -551,8 +551,8 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../mc2/moe_distribute_combine_setup/README.md">moe_distribute_combine_setup</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>MoeDistributeCombine的setup阶段，用于初始化通信资源。</td>
   </tr>
@@ -561,8 +561,8 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../mc2/moe_distribute_combine_teardown/README.md">moe_distribute_combine_teardown</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>MoeDistributeCombine的teardown阶段，用于释放通信资源。</td>
   </tr>
@@ -601,8 +601,8 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../mc2/moe_distribute_dispatch_setup/README.md">moe_distribute_dispatch_setup</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>MoeDistributeDispatch的setup阶段，用于初始化通信资源。</td>
   </tr>
@@ -611,8 +611,8 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../mc2/moe_distribute_dispatch_teardown/README.md">moe_distribute_dispatch_teardown</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>MoeDistributeDispatch的teardown阶段，用于释放通信资源。</td>
   </tr>
