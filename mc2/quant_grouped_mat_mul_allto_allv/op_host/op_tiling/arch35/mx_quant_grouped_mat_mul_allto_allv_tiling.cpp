@@ -686,7 +686,7 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode, false);
+                                                  localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
             localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;

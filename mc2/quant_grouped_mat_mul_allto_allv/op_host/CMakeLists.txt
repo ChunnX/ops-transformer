@@ -20,15 +20,14 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(quant_grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
-    set(quant_grouped_mat_mul_allto_allv_apace_depends mc2/common mc2/3rd PARENT_SCOPE)
     file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/impl/c_api
                          ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/include/c_api)
 
-    # apace hcomm 通路构建开关（默认关闭）：构建时导出环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1 开启。
-    # 开启后 kernel 侧与 tiling 侧同步定义该宏（kernel 走 apace 实现，tiling 允许下发 APACE tiling key）。
+    # apace hcomm 融合通路构建开关（默认关闭）：构建时导出环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1 开启。
+    # 开启后 kernel 侧定义该宏（MX 量化实例的 GMM 计算走 apace GroupedMatmulMxKernel，
+    # AlltoAllV 通信在 AIC 核内经 Hccl 提交）；tiling 侧为 MX 模式扩容 GMM 偏移表 workspace。
     set(APACE_GMM_A2AV_KERNEL_OPTS "")
     if("$ENV{ENABLE_APACE_QUANT_GMM_A2AV}" STREQUAL "1")
-        add_compile_definitions(ENABLE_APACE_QUANT_GMM_A2AV=1)
         set(APACE_GMM_A2AV_KERNEL_OPTS -DENABLE_APACE_QUANT_GMM_A2AV=1)
     endif()
 
@@ -54,12 +53,6 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -DAICORE_EXCEPTION_RESTART
         )
     endif()
-
-    # apace tiling 头（apace/tiling/quant_matmul_tiling_swat.h 等）按 op_kernel 根引入
-    target_include_directories(op_host_aclnnInner PRIVATE
-        ${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
-        ${CMAKE_SOURCE_DIR}/mc2
-    )
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE quant_grouped_mat_mul_allto_allv quant_grouped_mat_mul_allto_allv ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
