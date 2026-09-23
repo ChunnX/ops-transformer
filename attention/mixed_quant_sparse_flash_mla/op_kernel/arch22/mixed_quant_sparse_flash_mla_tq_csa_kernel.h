@@ -617,10 +617,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::CalcParams(uin
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
     } else {
-        info.v0S2Start = 0;
-        if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes && s2LoopIdx == 2) { // tail
-            info.v0S2Start = 512;
-        }
+        info.v0S2Start = info.relativeS2Idx * constInfo.s2BaseSize;
         info.v0S2DealSize = 512;
     }
 }
