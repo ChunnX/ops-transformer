@@ -165,7 +165,7 @@
 
 ## 约束说明
 
-- 该算子仅支持Ascend 950 AI Processor。
+- 该算子仅支持Ascend 950PR&950DT products。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - 该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）。其他模式暂不支持。
 - Inplace执行：输入dy和输出共享同一个Tensor，计算结果直接写回输入dy。
