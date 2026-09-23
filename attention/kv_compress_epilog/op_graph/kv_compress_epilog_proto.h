@@ -60,7 +60,7 @@ namespace ge {
  *  - slot_mapping dimensions should equal x dimensions minus 1.
  *  - The last dimension (d) of x must be 64-aligned (d % 64 == 0) and greater than 64.
  *  - For quant_mode==2, quant_group_size must be 16/32/64 and (d-64) divisible by it.
- *  - Ascend950PR/Ascend950DT.
+ *  - Ascend 950PR&950DT products.
  * @endcode
  */
 REG_OP(KvCompressEpilog)
