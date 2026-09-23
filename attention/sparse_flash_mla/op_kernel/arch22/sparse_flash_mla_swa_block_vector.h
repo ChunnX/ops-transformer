@@ -47,12 +47,12 @@ public:
                                       const SparseFlashMlaTilingData *__restrict tilingData);
     __aicore__ inline void InitVec0GlobalTensor(GlobalTensor<KV_T> kvMergeGm, GlobalTensor<KV_T> oriKvGm,
                                                 GlobalTensor<int32_t> oriBlockTableGm,
-                                                GlobalTensor<int32_t> oriSparseIndicesGm);
+                                                GlobalTensor<int32_t> oriSparseIndicesGm,
+                                                GlobalTensor<int32_t> oriTopkLengthGm);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> sinksGm,
-                                                GlobalTensor<T> softmaxLseGm, GlobalTensor<int32_t> oriSparseIndicesGm,
-                                                GlobalTensor<int32_t> oriTopkLengthGm);
+                                                GlobalTensor<T> softmaxLseGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -230,7 +230,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitBuffers(TPipe *pipe)
 
     sinksUb = sinksBuff.Get<SINKS_T>();
     sinksBrcbUb = sinksBrcbBuff.Get<SINKS_T>();
-    kvMergUb_ = inputBuff1.Get<KV_T>();
+    if constexpr (IS_DSPARK) {
+        kvMergUb_ = inputBuff1.Get<KV_T>();
+    }
 }
 
 template <typename SMLAT>
@@ -245,12 +247,14 @@ template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::InitVec0GlobalTensor(GlobalTensor<KV_T> kvMergeGm,
                                                                    GlobalTensor<KV_T> oriKvGm,
                                                                    GlobalTensor<int32_t> oriBlockTableGm,
-                                                                   GlobalTensor<int32_t> oriSparseIndicesGm)
+                                                                   GlobalTensor<int32_t> oriSparseIndicesGm,
+                                                                   GlobalTensor<int32_t> oriTopkLengthGm)
 {
     this->kvMergeGm_ = kvMergeGm;
     this->oriKvGm_ = oriKvGm;
     this->oriBlockTableGm_ = oriBlockTableGm;
     this->oriSparseIndicesGm = oriSparseIndicesGm;
+    this->oriTopkLengthGm = oriTopkLengthGm;
 }
 
 template <typename SMLAT>
@@ -457,8 +461,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInf
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(
     GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> actualSeqLengthsQGm,
-    GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm,
-    GlobalTensor<int32_t> oriSparseIndicesGm, GlobalTensor<int32_t> oriTopkLengthGm)
+    GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -466,8 +469,6 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(
     this->actualSeqLengthsKVGm = actualSeqLengthsKVGm;
     this->sinksGm = sinksGm;
     this->softmaxLseGm = softmaxLseGm;
-    this->oriSparseIndicesGm = oriSparseIndicesGm;
-    this->oriTopkLengthGm = oriTopkLengthGm;
 }
 
 template <typename SMLAT>
