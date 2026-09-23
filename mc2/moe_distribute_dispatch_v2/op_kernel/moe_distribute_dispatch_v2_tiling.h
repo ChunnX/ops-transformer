@@ -39,7 +39,7 @@ struct MoeDistributeDispatchV2Info {
     bool isQuant;                 // whether quant or not
     bool isMc2Context;
     bool hasExpertScales; // has expertScales or not
-    bool reserved1;
+    bool useCcuCtrl;      // A5 only: CCU control plane (count via AlltoAll) for fullmesh_v2, 0 keeps pure MTE path
     uint64_t totalUbSize; // epWorldSize
     uint64_t totalWinSizeEp;
     uint32_t expertTokenNumsType; // expert token nums type, support 0: cumsum mode, 1: count mode
@@ -50,12 +50,20 @@ struct MoeDistributeDispatchV2Info {
     uint32_t scalesTypeSize;
     uint64_t scalesCount;
     uint32_t cumsumTmpMinSize; // cumsum min tmp size, 0 means no cumsum
+    bool useCcuScanGm;         // A5 CCU only: prefix scan direct-GM variant (A/B), 0 keeps UB round-trip version
 };
 
 struct MoeDistributeDispatchV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
     MoeDistributeDispatchV2Info moeDistributeDispatchV2Info;
+    // ===== 方案 A（ccu+env 混合模式）：双槽注入的第二 CCU 段 =====
+    // 槽 0 不覆写（维持公共流程的 AIV/MTE 配置=数据面 windowsIn 来源），CCU 控制面由本段（槽 1）
+    // 承载；形态同 batch_mat_mul_reduce_scatter_allto_all 先例（双 Mc2CcTiling → GetHcclContext<0>/<1>）。
+    // 上卡实证（2026-09-28）：fullmesh_v2 入口（MTE 会话）双槽资源分配通过、kernel 可跑；ccu 入口
+    // （CCU 会话）被 tiling 期 hcclAllocComResourceByTiling 拒（AIV 槽在 CCU 会话下不允许）——
+    // 混合模式主入口因此定为 fullmesh_v2。尾部追加=旧内核读不到，天然防新旧错配
+    Mc2CcTiling mc2CcTiling2;
 };
 
 #endif
