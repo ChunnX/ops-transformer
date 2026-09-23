@@ -142,7 +142,18 @@ bash build.sh --opkernel --soc=ascend950 --ops=quant_grouped_mat_mul_allto_allv 
 apace 通路默认编译，无构建/运行开关；`MX_QUANT_MODE` 为实例编译期自动判别
 （a2av_gmm_utils.h，按 gmmXScale 的 E8M0 dtype，勿手工设置）。
 
-### 5.2 代码索引
+### 5.2 通路命中确认方法
+
+| 时机 | 方法 | 证据 |
+|---|---|---|
+| 运行时（host plog） | 过滤关键字 `ApaceMXPath`（MX tiling 类 GetTilingKey 打印，INFO 级） | MX 量化实例选中 → 该 dtype 实例二进制固定为 apace 分支（编译期保证），日志同时给出 tilingKey/e/ep/A/N1/H1 等关键参数 |
+| 构建产物 | `grep -l '"AIC_ONLY"' build/binary/ascend950/bin/quant_grouped_mat_mul_allto_allv/*.json` | 命中的为 MX 实例（kernelList 任务类型 AIC_ONLY）；TT 实例应仍为 `MIX_AIC`（taskRation 1:2），数量与 dtype 组合数一致 |
+| 卡死现场 | 读 y 前 4 字节 | `0xA5A5A5A5` = apace 分支已执行（magic 由 block0 首先写入，通信成功后被 recv 数据覆盖；卡死残留即为部署/通路证据） |
+| 性能侧证 | msprof 任务类型 | MX 用例 kernel 仅调度 AIC 核；TT 用例行为与基线一致 |
+
+（原 5.2 代码索引顺延为 5.3）
+
+### 5.3 代码索引
 
 | 组件 | 路径 |
 |---|---|

@@ -719,6 +719,13 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
                                                   localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
             localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+    // 通路命中证据：MX 量化实例（E8M0 scale）以 AIC_ONLY 任务类型执行 apace 融合通路
+    // （GMM 走 GroupedMatmulMxKernel，AllToAllV 在 AIC 核内经 Hccl 提交），
+    // 运行后在 host 侧 plog 过滤关键字 "ApaceMXPath" 即可确认
+    OP_LOGI(opName_,
+            "ApaceMXPath selected: tilingKey=%lu, e=%lu, ep=%lu, A=%lu, BSK=%lu, N1=%lu, H1=%lu, hasSharedMm=%d.",
+            tilingKey, localParams_.ep, localParams_.epWorldSize, localParams_.A, localParams_.BsK, localParams_.N1,
+            localParams_.H1, localParams_.hasSharedMm);
     return tilingKey;
 }
 
