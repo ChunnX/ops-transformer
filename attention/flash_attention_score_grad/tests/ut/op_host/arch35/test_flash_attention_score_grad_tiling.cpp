@@ -16,6 +16,7 @@
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 #include "../../../../op_host/arch35/flash_attention_score_grad_tiling_common_regbase.h"
+#include "../../../../op_host/flash_attention_score_grad_soc_version.h"
 
 using namespace std;
 
@@ -73,6 +74,15 @@ protected:
         std::cout << "FlashAttentionScoreGradTiling TearDown" << std::endl;
     }
 };
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950DT_SocVersion)
+{
+    EXPECT_TRUE(optiling::IsAscend950DT("Ascend950DT_9591"));
+    EXPECT_TRUE(optiling::IsAscend950DT("Ascend950DT_95A2"));
+    EXPECT_FALSE(optiling::IsAscend950DT("Ascend950PR_9599"));
+    EXPECT_FALSE(optiling::IsAscend950DT("Ascend950DTX_9591"));
+    EXPECT_FALSE(optiling::IsAscend950DT(""));
+}
 
 static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5CompileInfo()
 {

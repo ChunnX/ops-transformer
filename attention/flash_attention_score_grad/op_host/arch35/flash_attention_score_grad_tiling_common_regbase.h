@@ -499,6 +499,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     int64_t kvStartIdx;
     bool enableSwizzle = false;
     bool isSplitByBlockIdx = false;
+    bool enableNewNonDeterSwizzle = false;
     DeterBandScheduleMode deterBandScheduleMode = DeterBandScheduleMode::DISABLED;
     uint32_t sinkOptional = 0;
     uint64_t sinkSize = 0;
