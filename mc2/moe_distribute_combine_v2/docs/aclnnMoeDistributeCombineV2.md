@@ -677,6 +677,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
 
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_moe_distribute_combine_v2.cpp](../examples/arch35/test_aclnn_moe_distribute_combine_v2.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
+
     本示例支持A2算子运行在卡数为[2, 8]的单机环境中，运行前需要将示例代码中的IS_TEST_A2设置为true，确保执行A2分支。
     同时，用户可以根据需要在示例代码中设置EP_WORLD_SIZE_A2为卡数，并更改launchOneThreadDispatchV2AndCombineV2_A2函数中的moeExpertNum，使得moeExpertNum可以被EP_WORLD_SIZE_A2整除。
 
@@ -697,6 +699,8 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
 
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+
+    Ascend 950DT 可直接运行算子 [examples/arch35](../examples/arch35/) 目录下的 A5 场景版示例 [test_aclnn_moe_distribute_combine_v2.cpp](../examples/arch35/test_aclnn_moe_distribute_combine_v2.cpp)（`--soc=ascend950` 时优先执行 arch35 目录下的示例文件）。
 
 <!-- end id20 -->
 
