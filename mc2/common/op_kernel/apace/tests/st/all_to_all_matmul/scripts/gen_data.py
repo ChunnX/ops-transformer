@@ -18,7 +18,7 @@ import numpy as np
 import torch
 
 
-def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out):
+def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     input_dir = os.path.join(base_dir, "input", str(rank_id))
     output_dir = os.path.join(base_dir, "output", str(rank_id))
     os.makedirs(input_dir, exist_ok=True)
@@ -32,6 +32,10 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out):
     # bias: (N,) float32
     bias.tofile(os.path.join(input_dir, "input_bias.bin"))
     out.numpy().tofile(os.path.join(output_dir, "cpu_output.bin"))
+    # 通信后 rank 窗口的期望内容（fp16）：
+    #   窗口[r] = concat_s a_local[s][r*m:(r+1)*m, :]，即 a_after_alltoall_list[r]。
+    #   用于单独验证通信：对比 main.cpp dump 的 comm_buffer.bin。
+    a_after.tofile(os.path.join(output_dir, "expected_comm.bin"))
 
 
 def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
@@ -88,6 +92,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
             b_ori,
             bias,
             out_all_ranks[rank_id],
+            a_after_alltoall_list[rank_id].astype(np.float16),
         )
 
 

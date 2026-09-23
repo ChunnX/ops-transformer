@@ -234,6 +234,19 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 
     WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
+    // ---- 通信窗口 dump（仅通信验证，不影响 matmul 输出）----
+    // 窗口[r] 布局 = concat_s a_local[s][r*m:(r+1)*m, :]，即 gen_data 的
+    // a_after_alltoall_list[r]，payload 大小 = M_total*Ka*fp16 = m*k*2 字节。
+    // 用于与 expected_comm.bin 比对，单独验证通信正确性。
+    {
+        size_t commPayload = static_cast<size_t>(m) * static_cast<size_t>(k) * sizeof(uint16_t);
+        std::vector<uint16_t> hostComm(m * k, 0);
+        uint64_t winAddr = hostCtx.udmaCtx.commBufferAddrs[rankId];
+        ACL_CHECK(aclrtMemcpy(hostComm.data(), commPayload, reinterpret_cast<void *>(winAddr), commPayload,
+                              ACL_MEMCPY_DEVICE_TO_HOST));
+        WriteFile(outputDir + "/comm_buffer.bin", hostComm.data(), commPayload);
+    }
+
     aclrtFree(deviceA);
     aclrtFree(deviceB);
     aclrtFree(deviceBias);

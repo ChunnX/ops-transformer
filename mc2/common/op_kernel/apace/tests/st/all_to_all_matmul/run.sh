@@ -157,12 +157,15 @@ run_single() {
         for r in $(seq 0 $((RANK_NUM-1))); do
             mkdir -p "output/$r"
             cp "$EXE_DIR/output/$r/npu_out.bin" "output/$r/npu_out.bin" 2>/dev/null || true
+            cp "$EXE_DIR/output/$r/comm_buffer.bin" "output/$r/comm_buffer.bin" 2>/dev/null || true
         done
     fi
 
-    # ---- 4. 精度比对 ----
+    # ---- 4. 精度比对 + 通信窗口比对 ----
     echo "[4/4] Verify..."
-    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output"
+    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" || return 1
+    echo "[4/4] Verify comm window..."
+    python3 scripts/verify_comm.py "$M" "$K" "$RANK_NUM" "./output"
     return $?
 }
 
