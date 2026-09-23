@@ -27,6 +27,7 @@ class CubeOp {
     using T1 = typename SMLAGT::t1;
     static constexpr bool IS_BSND = SMLAGT::is_bsnd;
     static constexpr uint32_t MODE = SMLAGT::mode;
+    static constexpr bool IS_DETER = SMLAGT::is_deter;
 
 public:
     __aicore__ inline CubeOp(){};
@@ -95,6 +96,7 @@ private:
     GlobalTensor<float> dvWorkspaceGm;
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
+    GlobalTensor<float> deterKvWorkspaceGm;
     // workspace
     uint32_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
@@ -105,6 +107,8 @@ private:
     int64_t selectedVWorkspaceLen;
     int64_t mm4ResAddr;
     int64_t mm5ResAddr;
+    int64_t deterKvAddr{0};
+    int64_t deterKvWorkspaceLen{0};
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
@@ -205,6 +209,10 @@ __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_AD
     }
 
     usedCoreNum = tilingData->opInfo.usedCoreNum;
+    if constexpr (IS_DETER) {
+        deterKvWorkspaceLen = tilingData->opInfo.deterKvWorkspaceLen;
+        deterKvAddr = tilingData->postTilingData.deterKvWorkSpaceOffset / sizeof(float);
+    }
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
     pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
     AscendC::SetLoadDataPaddingValue<uint64_t>(0);
@@ -302,6 +310,10 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+
+    if constexpr (IS_DETER) {
+        deterKvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+    }
 
     this->workspace = workspace;
 }
