@@ -314,30 +314,24 @@ stages:
           image: swr.cn-south-1.myhuaweicloud.com/pre_smoke/${{ jobs.JOB_image.outputs.PreSmoke_A900 }}
       PreSmoke_harmony-infer-chs-transformer:
         name: PreSmoke_harmony-infer-chs-transformer
-        if: env.TARGET_BRANCH == 'master'
-        runs-on: [self-hosted, arch=x64, os=ubuntu, type=chs_phone]
-        steps:
-          - name: Checkout
-            identifier: process_checkout
-            uses: checkout
-            with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
-              allow-unsafe-pr-checkout: true
-          - name: 执行 Kirin PreSmoke_harmony-infer-chs-transformer 测试
-            run: bash .gitcode/scripts/kirin_smoke_chs.sh
+        uses: .gitcode/workflows/kirin_pre_smoke_action.yml
+        with:
+          repo_name: 'ops-transformer'
+          device_type: 'chs_phone'
+          rdv_script: 'rdv_kirin9030_gitcode.sh'
+          chip_version: 'Kirin9030'
+          cases_pool: 'transformer_all.json'
+          cases_baseline: 'transformer.json'
       PreSmoke_harmony-infer-cpro-transformer:
         name: PreSmoke_harmony-infer-cpro-transformer
-        if: env.TARGET_BRANCH == 'master'
-        runs-on: [self-hosted, arch=x64, os=ubuntu, type=kirinx90]
-        steps:
-          - name: Checkout
-            identifier: process_checkout
-            uses: checkout
-            with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
-              allow-unsafe-pr-checkout: true
-          - name: 执行 Kirin PreSmoke_harmony-infer-cpro-transformer 测试
-            run: bash .gitcode/scripts/kirin_smoke_cpro.sh
+        uses: .gitcode/workflows/kirin_pre_smoke_action.yml
+        with:
+          repo_name: 'ops-transformer'
+          device_type: 'kirinx90'
+          rdv_script: 'rdv_kirinx90_gitcode.sh'
+          chip_version: 'KirinX90'
+          cases_pool: 'transformer_all.json'
+          cases_baseline: 'transformer.json'
     pre:
     - type: auto
     fail-fast: false
