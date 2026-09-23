@@ -34,7 +34,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_mse3)
         {{{{2048, 8, 128}, {2048, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)}});
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{2048, 8, 48}, {2048, 8, 16}, {2048, 8}, {2048, 8}};
@@ -50,7 +53,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_mse2)
         {{{{64, 8, 128}, {64, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)}});
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{64, 8, 32}, {64, 8, 16}, {64, 8}, {64, 8}};
@@ -66,7 +72,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_mse4)
         {{{{1, 32, 128}, {1, 32, 128}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{64, 128}, {64, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)}});
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{1, 32, 64}, {1, 32, 8}, {1, 32}, {1, 32}};
@@ -82,7 +91,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_reject_head_dim)
         {{{{1, 8, 64}, {1, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{64, 64}, {64, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{64, 64}, {64, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)}});
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
@@ -96,7 +108,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_reject_kv_heads)
         {{{{1, 64, 128}, {1, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)}});
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
@@ -110,7 +125,10 @@ TEST_F(KvCacheTurboQuantInferShapeTest, infershape_reject_qjl_dim)
         {{{{1, 8, 128}, {1, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
          {{{128, 128}, {128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{100, 128}, {100, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, {}}, {{}, {}}, {{}, {}}, {{}, {}}},
+        {{{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
         {{"mse_bits", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)}});
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
