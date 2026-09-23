@@ -123,8 +123,6 @@ public:
 
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(ConstInfo<HIGH_PERF> &constInfo, uint32_t ubBaseAddr);
-    // SyncAll之后才能安全执行sinks拷贝（sinksUb与GetKVPhyAddr行循环输出缓冲区地址范围重叠，
-    // 行循环期间写入会踩坏尚未拷出GM的物理地址）
     __aicore__ inline void InitSinksAfterSync(ConstInfo<HIGH_PERF> &constInfo);
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     // 初始化attentionOutGM
@@ -2278,16 +2276,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
     if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
-
-    // 注意：InitSinksBuffer（UB写入）移至 Process() 的 SyncAll 之后执行（见 InitSinksAfterSync）。
-    // 原因：sinksUb [108544, 109056) 位于 GetKVPhyAddr 行循环输出缓冲区的地址范围内，若在
-    // Init阶段拷贝sinks，先完成行循环的任务写入sinks会与仍在运行行循环任务的存活地址数据
-    // 竞争，导致GM工作区写入垃圾keyOffset，最终引发aicore fault。移到SyncAll之后，
-    // 所有行循环均已结束，该写入绝对安全。
 }
 
-// sinks拷贝会写UB[sinksUb区间]，该区间在GetKVPhyAddr行循环期间存活，
-// 必须在SyncAll（所有任务行循环结束）之后、主循环首次读取sinks之前执行
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinksAfterSync(ConstInfo<HIGH_PERF> &constInfo)
 {

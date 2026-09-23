@@ -497,8 +497,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             SyncAll<false>();
         }
     }
-    // sinks拷贝写入的UB区域（sinksUb）在GetKVPhyAddr行循环期间存活，SyncAll保证
-    // 所有任务的行循环均已结束后再写入，避免踩坏尚未拷出GM的物理地址（aicore fault根因）
     if ASCEND_IS_AIV {
         vecBlock.InitSinksAfterSync(this->constInfo);
     }
