@@ -307,9 +307,12 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(const aclTensor *tokens, cons
         return aclnnInnerMoeTokenPermuteGetWorkspaceSize(tokens, indices, numOutTokens, paddedMode, permuteTokensOut,
                                                          sortedIndicesOut, workspaceSize, executor);
     }
-    CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
+    if (paddedMode) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "paddedMode only supports false currently, but got true.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
-    if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND950) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         CHECK_RET(MoeTokenPermuteV2Check::CheckParamsV2Fallback(tokens, indices, permuteTokensOut, sortedIndicesOut,
                                                                 expandedScaleOut) == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);

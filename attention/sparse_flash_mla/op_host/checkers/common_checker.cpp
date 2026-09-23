@@ -15,8 +15,22 @@
 
 namespace optiling {
 namespace sparse_mla_checker {
+constexpr int64_t TURBO_QUANT_MODE = 3;
+constexpr uint32_t DIM_IDX_TWO = 2;
+constexpr uint32_t DIM_IDX_THREE = 3;
+
 namespace {
-const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
+const char *Op(const CheckContext &context)
+{
+    return context.opName == nullptr ? "SparseMla" : context.opName;
+}
+
+bool IsTurboQuantEmptyTndTensor(const CheckContext &context, const TensorParam &param)
+{
+    return context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE &&
+           context.qLayout == Layout::TND && param.shape != nullptr && param.shape->GetDimNum() > 0 &&
+           param.shape->GetDim(0) == 0;
+}
 } // namespace
 
 ge::graphStatus CommonChecker::CheckQuery(const CheckContext &context) const
@@ -28,11 +42,14 @@ ge::graphStatus CommonChecker::CheckQuery(const CheckContext &context) const
     if (context.variant == OperatorVariant::SPARSE) {
         status = CheckTensorDesc(context, context.q, "q", {ge::DT_FLOAT16, ge::DT_BF16});
     } else if (context.variant == OperatorVariant::MIXED_QUANT) {
-        status = CheckTensorDesc(context, context.q, "q", {ge::DT_BF16});
+        status = context.quantMode == TURBO_QUANT_MODE ?
+                     CheckTensorDesc(context, context.q, "q", {ge::DT_FLOAT16, ge::DT_BF16}) :
+                     CheckTensorDesc(context, context.q, "q", {ge::DT_BF16});
     } else {
         status = CheckTensorDesc(context, context.q, "q", {ge::DT_HIFLOAT8});
     }
-    if (status != ge::GRAPH_SUCCESS || CheckNoEmptyDim(context, context.q, "q") != ge::GRAPH_SUCCESS) {
+    if (status != ge::GRAPH_SUCCESS || (!IsTurboQuantEmptyTndTensor(context, context.q) &&
+                                        CheckNoEmptyDim(context, context.q, "q") != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
     const size_t expectedDimNum = context.qLayout == Layout::BSND ? 4U : 3U;
@@ -48,7 +65,12 @@ ge::graphStatus CommonChecker::CheckKv(const CheckContext &context, const Tensor
     if (context.variant == OperatorVariant::SPARSE) {
         status = CheckTensorDesc(context, kv, name, {ge::DT_FLOAT16, ge::DT_BF16});
     } else if (context.variant == OperatorVariant::MIXED_QUANT) {
-        status = CheckTensorDesc(context, kv, name, {ge::DT_FLOAT8_E4M3FN});
+        if (context.quantMode == TURBO_QUANT_MODE) {
+            status = std::string(name) == "cmp_kv" ? CheckTensorDesc(context, kv, name, {ge::DT_UINT8}) :
+                                                     CheckTensorDesc(context, kv, name, {ge::DT_FLOAT16, ge::DT_BF16});
+        } else {
+            status = CheckTensorDesc(context, kv, name, {ge::DT_FLOAT8_E4M3FN});
+        }
     } else {
         status = CheckTensorDesc(context, kv, name, {ge::DT_HIFLOAT8});
     }
@@ -65,13 +87,15 @@ ge::graphStatus CommonChecker::CheckOutput(const CheckContext &context) const
         return ge::GRAPH_SUCCESS;
     }
     ge::graphStatus status = ge::GRAPH_FAILED;
-    if (context.variant == OperatorVariant::SPARSE) {
+    if (context.variant == OperatorVariant::SPARSE ||
+        (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE)) {
         status = CheckTensorDesc(context, context.attentionOut, "attention_out", {ge::DT_FLOAT16, ge::DT_BF16});
     } else {
         status = CheckTensorDesc(context, context.attentionOut, "attention_out", {ge::DT_BF16});
     }
     if (status != ge::GRAPH_SUCCESS ||
-        CheckNoEmptyDim(context, context.attentionOut, "attention_out") != ge::GRAPH_SUCCESS) {
+        (!IsTurboQuantEmptyTndTensor(context, context.attentionOut) &&
+         CheckNoEmptyDim(context, context.attentionOut, "attention_out") != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
     const size_t expectedDimNum = context.qLayout == Layout::BSND ? 4U : 3U;
@@ -143,18 +167,22 @@ ge::graphStatus CommonChecker::CheckQueryAxes(const CheckContext &context) const
                                                               .c_str(),
                                                           "Batch and sequence dimensions must be greater than 0"),
                     return ge::GRAPH_FAILED);
-        qHeads = GetDim(context.q, 2U);
-        qDim = GetDim(context.q, 3U);
+        qHeads = GetDim(context.q, DIM_IDX_TWO);
+        qDim = GetDim(context.q, DIM_IDX_THREE);
     } else {
-        OP_CHECK_IF(qSeq <= 0, OP_LOGE_FOR_INVALID_SHAPESIZE(Op(context), "q_t", std::to_string(qSeq).c_str(), "> 0"),
+        const bool turboQuant =
+            context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE;
+        OP_CHECK_IF(qSeq < 0 || (!turboQuant && qSeq == 0),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE(Op(context), "q_t", std::to_string(qSeq).c_str(),
+                                                  turboQuant ? ">= 0" : "> 0"),
                     return ge::GRAPH_FAILED);
         qHeads = GetDim(context.q, 1);
-        qDim = GetDim(context.q, 2U);
+        qDim = GetDim(context.q, DIM_IDX_TWO);
     }
-    OP_CHECK_IF(qHeads <= 0 || qHeads > 128U,
+    OP_CHECK_IF(qHeads <= 0 || qHeads > 128, // 128：最大支持的注意力头数
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q_n", std::to_string(qHeads).c_str(), "[1, 128]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qDim != 512U,
+    OP_CHECK_IF(qDim != 512, // 512：每个注意力头的固定维度大小
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q head dimension", std::to_string(qDim).c_str(), "512"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -169,18 +197,23 @@ ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const Te
     int64_t headDim = -1;
     if (context.kvLayout == Layout::TND) {
         numHeads = GetDim(kv, 1);
-        headDim = GetDim(kv, 2U);
+        headDim = GetDim(kv, DIM_IDX_TWO);
     } else {
-        numHeads = GetDim(kv, 2U);
-        headDim = GetDim(kv, 3U);
+        numHeads = GetDim(kv, DIM_IDX_TWO);
+        headDim = GetDim(kv, DIM_IDX_THREE);
     }
     OP_CHECK_IF(numHeads != 1,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " kv_n").c_str(),
                                           std::to_string(numHeads).c_str(), "1"),
                 return ge::GRAPH_FAILED);
-    int64_t expectedDim = 512U;
+    int64_t expectedDim = 512; // 512：预期维度大小
     if (context.variant == OperatorVariant::MIXED_QUANT) {
-        expectedDim = context.quantMode == 1 ? 608U : 584U;
+        if (context.quantMode == TURBO_QUANT_MODE) {
+            // TurboQuant uses 512 dimensions for ori_kv and 258 bytes for packed cmp_kv.
+            expectedDim = std::string(name) == "cmp_kv" ? 258 : 512;
+        } else {
+            expectedDim = context.quantMode == 1 ? 608 : 584; // 608，584：混合量化模式下根据量化模式选择不同维度
+        }
     }
     OP_CHECK_IF(headDim != expectedDim,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " head dimension").c_str(),
@@ -204,7 +237,8 @@ ge::graphStatus CommonChecker::CheckMultiPara(const CheckContext &context) const
         CheckKvAxes(context, context.cmpKv, "cmp_kv") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(context.variant == OperatorVariant::SPARSE &&
+    OP_CHECK_IF((context.variant == OperatorVariant::SPARSE ||
+                 (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE)) &&
                     context.q.desc->GetDataType() != context.attentionOut.desc->GetDataType(),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     Op(context), "q and attention_out",
@@ -213,7 +247,8 @@ ge::graphStatus CommonChecker::CheckMultiPara(const CheckContext &context) const
                         .c_str(),
                     "Q and attention_out dtype must be the same"),
                 return ge::GRAPH_FAILED);
-    if (context.variant == OperatorVariant::SPARSE) {
+    if (context.variant == OperatorVariant::SPARSE ||
+        (context.variant == OperatorVariant::MIXED_QUANT && context.quantMode == TURBO_QUANT_MODE)) {
         OP_CHECK_IF(context.q.desc->GetDataType() != context.oriKv.desc->GetDataType(),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         Op(context), "q and ori_kv",
@@ -222,7 +257,8 @@ ge::graphStatus CommonChecker::CheckMultiPara(const CheckContext &context) const
                             .c_str(),
                         "Q and ori_kv dtype must be the same"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context.cmpKv.present && context.q.desc->GetDataType() != context.cmpKv.desc->GetDataType(),
+        OP_CHECK_IF(context.variant == OperatorVariant::SPARSE && context.cmpKv.present &&
+                        context.q.desc->GetDataType() != context.cmpKv.desc->GetDataType(),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         Op(context), "q and cmp_kv",
                         (std::to_string(static_cast<int32_t>(context.q.desc->GetDataType())) + " and " +

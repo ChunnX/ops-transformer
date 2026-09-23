@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**跟[aclnnFlashAttentionScoreV2](./aclnnFlashAttentionVarLenScoreV2.md)接口的区别是：增加`sinkInOptional`可选输入。**
+- 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**跟[aclnnFlashAttentionScoreV2](./aclnnFlashAttentionScoreV2.md)接口的区别是：增加`sinkInOptional`可选输入。**
 
   <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持sinkInOptional参数。
@@ -351,7 +351,7 @@ aclnnStatus aclnnFlashAttentionScoreV3(
       <tr>
         <td>softmaxOutOut</td>
         <td>输出</td>
-        <td>预留参数，暂未使用。</td>
+        <td>预留参数，暂未使用，接口不写入该输出。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -418,10 +418,10 @@ aclnnStatus aclnnFlashAttentionScoreV3(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据格式不在支持的范围内。</td>
+      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_NULLPTR</td>

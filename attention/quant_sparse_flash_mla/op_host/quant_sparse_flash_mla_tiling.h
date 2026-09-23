@@ -22,10 +22,10 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "log/log.h"
-#include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
 #include "quant_sparse_flash_mla_check.h"
+#include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
 
@@ -68,7 +68,8 @@ REGISTER_TILING_DATA_CLASS(QuantSparseFlashMla, QuantSparseFlashMlaTilingData)
 // ---------------算子Tiling类---------------
 class QuantSparseFlashMlaTiling {
 public:
-    explicit QuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
+    explicit QuantSparseFlashMlaTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoOpTiling(QSMLATilingInfo *tilingInfo);
 
 private:

@@ -467,7 +467,7 @@
         {
           "name": "quant_mode",
           "dtype": "int",
-          "value": 1
+          "value": 0
         },
         {
           "name": "round_scale",
@@ -566,7 +566,7 @@
         {
           "name": "quant_mode",
           "dtype": "int",
-          "value": 1
+          "value": 0
         },
         {
           "name": "round_scale",
@@ -665,7 +665,7 @@
         {
           "name": "quant_mode",
           "dtype": "int",
-          "value": 1
+          "value": 0
         },
         {
           "name": "round_scale",
@@ -764,7 +764,7 @@
         {
           "name": "quant_mode",
           "dtype": "int",
-          "value": 1
+          "value": 0
         },
         {
           "name": "round_scale",

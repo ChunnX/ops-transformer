@@ -27,6 +27,11 @@ const int DIM_4 = 4;
 
 constexpr int64_t MQSMLA_METADATA_SIZE = 1024;
 
+inline TensorWrapper MqsmlaMakeWrapper(const at::Tensor &tensor, aclDataType tensorAcltype)
+{
+    return {tensor, tensorAcltype};
+}
+
 at::Tensor MixedQuantSparseFlashMlaMetadata(
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
@@ -86,12 +91,13 @@ at::Tensor MixedQuantSparseFlashMlaMetadata(
 
 std::tuple<at::Tensor, at::Tensor> ConstructMixedQuantSparseFlashMlaAttenOutTensor(
     const at::Tensor &q, const at::Tensor &oriKv, std::string layoutQStr, std::string layoutKvStr,
-    const uint64_t &ropeHeadDim, bool returnSoftmaxLse)
+    const uint64_t &ropeHeadDim, bool returnSoftmaxLse, int64_t quantMode)
 {
     TORCH_CHECK(layoutQStr == "BSND" || layoutQStr == "TND", "The layout of query only support BSND and TND, but got ",
                 layoutQStr);
     for (auto i = 0; i < q.sizes().size(); i++) {
-        TORCH_CHECK(q.size(i) > 0,
+        const bool turboQuantEmptyQuery = quantMode == 3 && layoutQStr == "TND" && i == DIM_0 && q.size(i) == 0;
+        TORCH_CHECK(q.size(i) > 0 || turboQuantEmptyQuery,
                     "All values within query's shape should be greater "
                     "than 0, but shape[",
                     i, "] is ", q.size(i));
@@ -135,7 +141,7 @@ std::tuple<at::Tensor, at::Tensor> ConstructMixedQuantSparseFlashMlaAttenOutTens
         }
     } else {
         // 不返回时tensor传空
-        softmaxLseSize = {};
+        softmaxLseSize = {0};
     }
     at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
 
@@ -156,10 +162,11 @@ std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
     c10::string_view layoutQ, c10::string_view layoutKv, int64_t topkValueMode, bool returnSoftmaxLse,
     c10::optional<int64_t> keyDtype, c10::optional<int64_t> valueDtype)
 {
-    TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
-
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKvStr = std::string(layoutKv);
+    const bool turboQuantEmptyQuery = quantMode == 3 && layoutQStr == "TND" && q.dim() == DIM_3 && q.size(DIM_0) == 0;
+    TORCH_CHECK(q.numel() > 0 || turboQuantEmptyQuery, "Tensor query is empty.");
+    TORCH_CHECK(oriKv.has_value(), "ori_kv must be provided.");
     const at::Tensor &oriKvVal = *oriKv;
     // convert str
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
@@ -168,15 +175,21 @@ std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
     // construct the atten_out tensor
     std::tuple<at::Tensor, at::Tensor> mixedQuantSparseFlashMlaAttenOut =
         op_api::ConstructMixedQuantSparseFlashMlaAttenOutTensor(q, oriKvVal, layoutQStr, layoutKvStr, ropeHeadDim,
-                                                                returnSoftmaxLse);
+                                                                returnSoftmaxLse, quantMode);
     at::Tensor attenOut = std::get<0>(mixedQuantSparseFlashMlaAttenOut);
     at::Tensor softmaxLse = std::get<1>(mixedQuantSparseFlashMlaAttenOut);
 
-    ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
-              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv,
-              cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, quantMode, ropeHeadDim, softmaxScale,
-              cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, topkValueMode,
-              returnSoftmaxLse, attenOut, softmaxLse);
+    at::Tensor nullTensor;
+    auto oriKvValue = oriKv.has_value() ? oriKv.value() : nullTensor;
+    auto cmpKvValue = cmpKv.has_value() ? cmpKv.value() : nullTensor;
+    const aclDataType tqOriKvType = q.scalar_type() == at::ScalarType::Half ? ACL_FLOAT16 : ACL_BF16;
+    TensorWrapper oriKvWrapper = MqsmlaMakeWrapper(oriKvValue, quantMode == 3 ? tqOriKvType : ACL_FLOAT8_E4M3FN);
+    TensorWrapper cmpKvWrapper = MqsmlaMakeWrapper(cmpKvValue, quantMode == 3 ? ACL_UINT8 : ACL_FLOAT8_E4M3FN);
+    ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q, oriKvWrapper, cmpKvWrapper, oriSparseIndices, cmpSparseIndices,
+              oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv,
+              sequsedCmpKv, cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, quantMode, ropeHeadDim,
+              softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr,
+              topkValueMode, returnSoftmaxLse, attenOut, softmaxLse);
     return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
 }
 

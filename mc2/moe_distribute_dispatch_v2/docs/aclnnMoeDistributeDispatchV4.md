@@ -315,7 +315,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><br> <li> 各卡BS一致时：<code>globalBS = BS * epWorldSize</code> 或0；</li> <li> 各卡BS不一致时：<code>globalBS = maxBS * epWorldSize</code>，其中maxBS为单卡BS最大值。</li></td>
+    <td><br> <li> 各卡BS一致时：<code>globalBS = BS * epWorldSize</code> 或0；</li> <li> 各卡BS不一致时：<code>globalBS = maxBS * epWorldSize</code>，其中maxBS为业务配置的单rank BS容量上限，且不小于任意rank的实际BS；所有rank需传入相同且非0的globalBS。</li></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -494,7 +494,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：</summary>
 
     - dynamicScalesOut仅quantMode取值为2时有输出。
-    - commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    - commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板；"hierarchy": 开启跨超模板，该模板支持各rank BS不一致，仅支持tpWorldSize为1、共享专家为0的场景，且不支持二维mask、特殊专家、performanceInfo场景。可变BS场景需为所有rank配置相同且非0的globalBS容量，并且不传xActiveMaskOptional。
     - xActiveMaskOptional要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expertScalesOptional当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(BS, K)；当commAlg=""、"fullmesh_v1"、"fullmesh_v2"场景时，`传空指针即可。
     - epWorldSize取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
@@ -829,7 +829,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         #define LOG_PRINT(message, ...)         \
             do {                                \
                 printf(message, ##__VA_ARGS__); \
-            } while(0)
+            } while (0)
 
         struct Args {
             uint32_t rankId;
@@ -863,7 +863,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
             std::vector<int64_t> strides(shape.size(), 1);
             for (int64_t i = shape.size() - 2; i >= 0; i--) {
-                strides[i] = shape[i +1] * strides[i + 1];
+                strides[i] = shape[i + 1] * strides[i + 1];
             }
             *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                 shape.data(), shape.size(), *deviceAddr);
@@ -970,7 +970,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
             aclTensor *xOut = nullptr;
 
-            //定义当前场景下各变量维度
+            // 定义当前场景下各变量维度
             std::vector<int64_t> xShape{BS, H};
             std::vector<int64_t> expertIdsShape{BS, K};
             std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
@@ -1075,7 +1075,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             // 调用第一阶段接口
             ret = aclnnMoeDistributeDispatchV4GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), xActiveMask,
                     expertScales, elasticInfo, performanceInfo, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", 0,
-                    0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
+                    0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBS,
                     expertTokenNumsType, commAlg.c_str(), zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, assistInfoForCombine, expertTokenNums, epRecvCounts,
                     tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
@@ -1120,7 +1120,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             ret = aclnnMoeDistributeCombineV4(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineV4Stream);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV4 failed. ret = %d \n", ret);
                 return ret);
-            //（固定写法）同步等待任务执行结束
+            // （固定写法）同步等待任务执行结束
             ret = aclrtSynchronizeStreamWithTimeout(args.combineV4Stream, 10000);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
@@ -1220,10 +1220,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                 args[rankId].dispatchV4Stream = dispatchV4Stream[rankId];
                 args[rankId].combineV4Stream = combineV4Stream[rankId];
                 args[rankId].context = context[rankId];
-                threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadDispatchV4AndCombineV4_A2, std::ref(args[rankId])));
+                threads[rankId].reset(new (std::nothrow) std::thread(&launchOneThreadDispatchV4AndCombineV4_A2, std::ref(args[rankId])));
             }
 
-            for(uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
+            for (uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
                 threads[rankId]->join();
             }
 
@@ -1267,7 +1267,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     #define LOG_PRINT(message, ...)         \
         do {                                \
             printf(message, ##__VA_ARGS__); \
-        } while(0)
+        } while (0)
 
     struct Args {
         uint32_t rankId;
@@ -1301,7 +1301,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
+            strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
             shape.data(), shape.size(), *deviceAddr);
@@ -1393,7 +1393,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
         aclTensor *xOut = nullptr;
 
-        //定义当前场景下各变量维度
+        // 定义当前场景下各变量维度
         std::vector<int64_t> xShape{BS, H};
         std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
@@ -1519,7 +1519,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         ret = aclnnMoeDistributeDispatchV4GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr,
                 expertScales, elasticInfo, nullptr,// performanceInfoOptional
                 hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0,
-                0, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
+                0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
@@ -1564,7 +1564,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         ret = aclnnMoeDistributeCombineV4(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineStream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV4 failed. ret = %d \n", ret);
             return ret);
-        //（固定写法）同步等待任务执行结束
+        // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -1742,10 +1742,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             args[rankId].dispatchStream = dispatchStream[rankId];
             args[rankId].combineStream = combineStream[rankId];
             args[rankId].context = context[rankId];
-            threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessDispatchAndCombine, std::ref(args[rankId])));
+            threads[rankId].reset(new (std::nothrow) std::thread(&LaunchOneProcessDispatchAndCombine, std::ref(args[rankId])));
         }
 
-        for(uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
             threads[rankId]->join();
         }
 

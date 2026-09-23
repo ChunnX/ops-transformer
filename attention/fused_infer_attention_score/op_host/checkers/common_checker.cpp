@@ -30,6 +30,26 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
 
+namespace {
+const char *GetOrdinalSuffix(uint32_t num)
+{
+    uint32_t mod100 = num % 100U;
+    if (mod100 >= 11U && mod100 <= 13U) {
+        return "th";
+    }
+    switch (num % 10U) {
+        case 1U:
+            return "st";
+        case 2U:
+            return "nd";
+        case 3U:
+            return "rd";
+        default:
+            return "th";
+    }
+}
+} // namespace
+
 // 公共校验函数
 ge::graphStatus CommonChecker::CheckInputFormat(const FiaTilingInfo &fiaInfo)
 {
@@ -519,6 +539,21 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
     if (CheckEmptyTensorList(fiaInfo)) {
         return ge::GRAPH_SUCCESS;
     }
+    for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
+        std::string tensorIdx = std::to_string(i + 1) + GetOrdinalSuffix(i + 1);
+        OP_CHECK_IF(fiaInfo.kCache[i]->GetStorageShape().GetDim(0) != 1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        fiaInfo.opName, ("key in the " + tensorIdx + " tensor").c_str(),
+                        std::to_string(fiaInfo.kCache[i]->GetStorageShape().GetDim(0)).c_str(),
+                        "batch of key must be 1 in the tensorlist scenario"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fiaInfo.vCache[i]->GetStorageShape().GetDim(0) != 1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        fiaInfo.opName, ("value in the " + tensorIdx + " tensor").c_str(),
+                        std::to_string(fiaInfo.vCache[i]->GetStorageShape().GetDim(0)).c_str(),
+                        "batch of value must be 1 in the tensorlist scenario"),
+                    return ge::GRAPH_FAILED);
+    }
     if (!CheckNormalTensorList(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
@@ -640,19 +675,20 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                                                                16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA_FP8_TND = {
             1U, 2U, 4U, 6U, 8U, 12U, 16U, 24U, 32U, 48U, 64U, 96U, 128U}; // ifa mlaTND场景g轴支持范围
-        bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.npuArch == NpuArch::DAV_3510);
+        const bool isNonQuant = enableNonQuant_;
+        const bool isArch35NonQuant = isNonQuant && fiaInfo.npuArch == NpuArch::DAV_3510;
         const string inputLayout = fiaInfo.opParamInfo.layOut;
         const bool isMLAFullQuantNewTemplate = (inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN);
-        if (isArch35NonQuant) {
+        if (isNonQuant) {
             if (fiaInfo.gSize < 1U || fiaInfo.gSize > 128U) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     fiaInfo.opName, "axis G", std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
                     "The value of axis G must be in the range of [1, 128] in the Decode MLA scenario");
                 return ge::GRAPH_FAILED;
             }
-            // N1(等于 num_heads) 非 2 的幂次方时，sparse_mode 0 带自定义 mask 不支持
-            if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0 && fiaInfo.sparseMode == SPARSE_MODE_NO_MASK &&
-                fiaInfo.attenMaskFlag) {
+            // 950 上 N1(等于 num_heads) 非 2 的幂次方时，sparse_mode 0 带自定义 mask 不支持
+            if (isArch35NonQuant && (fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0 &&
+                fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
                                                       std::to_string(fiaInfo.n1Size).c_str(),
                                                       "When num_heads is not a power of 2, sparse_mode 0 with "
@@ -1129,10 +1165,10 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
                                                                       16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA_FP8_TND = {
             1U, 2U, 4U, 6U, 8U, 12U, 16U, 24U, 32U, 48U, 64U, 96U, 128U}; // ifa mla场景qN支持范围
-        bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.npuArch == NpuArch::DAV_3510);
+        const bool isNonQuant = enableNonQuant_;
         const string inputLayout = fiaInfo.opParamInfo.layOut;
         const bool isMLAFullQuantNewTemplate = (inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN);
-        if (isArch35NonQuant) {
+        if (isNonQuant) {
             if (fiaInfo.n1Size < 1U || fiaInfo.n1Size > 128U) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     fiaInfo.opName, "num_heads", std::to_string(fiaInfo.n1Size).c_str(),
@@ -1270,7 +1306,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 fiaInfo.opName, "input_layout", inputLayout.c_str(),
                 "The value of input_layout must be in BSH, BSND, "
-                "BNSD, TND ,BNSD_BSND, BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario");
+                "BNSD, TND, BNSD_NBSD, BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
     } else { // prefill mla

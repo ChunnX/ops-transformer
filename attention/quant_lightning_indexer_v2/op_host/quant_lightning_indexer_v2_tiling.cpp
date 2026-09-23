@@ -16,6 +16,7 @@
 #include "quant_lightning_indexer_v2_tiling.h"
 
 #include "../op_kernel/quant_lightning_indexer_v2_template_tiling_key.h"
+#include "quant_lightning_indexer_v2_tiling_info_parser.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -182,7 +183,7 @@ ge::graphStatus QLIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QLIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("LightningIndexerV2", "opName got from TilingContext is nullptr");
+        OP_LOGE("QuantLightningIndexerV2", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -271,7 +272,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.sparseCount = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
-    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
+    opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
     auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
@@ -299,7 +300,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "sparse mode is:%d", *opParamInfo_.sparseMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%lld", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "returnValue is:%s", *opParamInfo_.returnValue ? "true" : "false");
@@ -345,7 +346,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                         ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                     OP_LOGE(opName_,
                             "input attr cmpRatio must > 0 and <= 128 and should be powers of 2,"
-                            " but now cmpRatio is %ld.",
+                            " but now cmpRatio is %lld.",
                             *opParamInfo_.cmpRatio),
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
@@ -794,19 +795,19 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
 ge::graphStatus QLIV2InfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus QLIV2InfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                                      const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize());
+    size = tensor->GetShapeSize();
     if (size <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
             opName_, actualSeqLenName.c_str(), std::to_string(size).c_str(),
@@ -820,9 +821,9 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckN2Size()
 {
     // PA_BBND
     if (kLayout_ == DataLayout::TND) {
-        n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     } else {
-        n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     }
     OP_LOGI(context_->GetNodeName(), "N2 is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
@@ -878,7 +879,7 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
         return ge::GRAPH_SUCCESS;
     } else { // TND
         // cu_seqlens_q shape is [B+1], batch_size = shape[0] - 1
-        uint32_t cuSeqLensQSize = 0;
+        int64_t cuSeqLensQSize = 0;
         if (GetActualSeqLenSize(cuSeqLensQSize, opParamInfo_.cuSeqLensQ.tensor, "input cu_seqlens_q") !=
             ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -892,7 +893,7 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
 
         // Validate key side batch size consistency
         if (kLayout_ == DataLayout::TND) {
-            uint32_t cuSeqLensKSize = 0;
+            int64_t cuSeqLensKSize = 0;
             if (GetActualSeqLenSize(cuSeqLensKSize, opParamInfo_.cuSeqLensK.tensor, "cu_seqlens_k") !=
                 ge::GRAPH_SUCCESS) {
                 return ge::GRAPH_FAILED;
@@ -947,7 +948,7 @@ ge::graphStatus QLIV2InfoParser::GetS1Size()
 
 ge::graphStatus QLIV2InfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(1));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(1);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(
@@ -1379,10 +1380,10 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
 {
     bool keyNonContiguous = false;
     bool scaleNonContiguous = false;
-    // A5 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND或A3: 从0轴开始检查
-    // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
-    // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = (npuArch_ == NpuArch::DAV_3510 && kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
+    // PA_BBND: 0轴允许非连续（分页缓存 stride0，各arch一致），从1轴开始检查
+    // PA_BBND: axis 0 allows non-contiguous (paged cache stride0), check starts from axis 1
+    // 非PA_BBND: 所有轴都必须连续 Non-PA_BBND: check starts from axis 0
+    size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
@@ -1645,8 +1646,14 @@ ge::graphStatus TilingForQuantLightningIndexerV2(gert::TilingContext *context)
     OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
     QLIV2TilingInfo QLIV2Info;
-    QLIV2InfoParser QLIV2InfoParser(context);
-    if (QLIV2InfoParser.ParseAndCheck(QLIV2Info) != ge::GRAPH_SUCCESS) {
+    auto platformInfoPtr = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    const bool useArch35Checker = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
+    QLIV2InfoParser qliV2InfoParser(context);
+    const ge::graphStatus parseStatus =
+        useArch35Checker ? ParseAndCheckQLIV2Arch35(context, QLIV2Info) : qliV2InfoParser.ParseAndCheck(QLIV2Info);
+    if (parseStatus != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     QuantLightningIndexerV2Tiling QLIV2Tiling(context);

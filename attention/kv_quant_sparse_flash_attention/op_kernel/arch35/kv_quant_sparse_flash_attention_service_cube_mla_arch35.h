@@ -24,28 +24,10 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
-
-#if __has_include("../../common/op_kernel/offset_calculator.h")
-#include "../../common/op_kernel/offset_calculator.h"
-#else
-#include "../common/offset_calculator.h"
-#endif
-
-#if __has_include("../../common/op_kernel/matmul.h")
-#include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-#if __has_include("../../common/op_kernel/CopyInL1.h")
-#include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
-#endif
-#if __has_include("../../common/op_kernel/FixpipeOut.h")
-#include "../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../common/FixpipeOut.h"
-#endif
+#include "../../../common/op_kernel/offset_calculator.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/CopyInL1.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -83,6 +65,7 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
                                          __gm__ uint8_t *query);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
+    __aicore__ inline void UninitLocalBuffer();
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -181,6 +164,25 @@ __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
     mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
     mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
     mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::UninitLocalBuffer()
+{
+    if ASCEND_IS_AIC {
+        l1QBuffers.Uninit((*qsfaL1BufferManagerPtr));
+        mmL0ABuffers.Uninit(l0aBufferManager);
+        mmL0BBuffers.Uninit(l0bBufferManager);
+        mmL0CBuffers.Uninit(l0cBufferManager);
+        if constexpr (IS_SPLIT_G) {
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[1]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[2]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
+        }
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -363,6 +365,7 @@ public:
                                          __gm__ uint8_t *query)
     {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo) {}
+    __aicore__ inline void UninitLocalBuffer() {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "../../../op_api/aclnn_moe_distribute_combine_v2.h"
 #include "../../../op_api/moe_distribute_combine_v2_base.h"
@@ -23,7 +23,6 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
-
 
 using namespace op;
 using namespace std;
@@ -70,11 +69,11 @@ aclnnStatus CallBaseGetWorkspaceSize(const char *groupTp, const char *commAlg)
 }
 } // namespace
 
-TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
+TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSizeA5Ccu)
 {
     EXPECT_EXIT(
         {
-            op::SetPlatformNpuArch(NpuArch::DAV_3510);
+            op::SetPlatformNpuArch(Ops::Base::DAV_3510);
             (void)CallBaseGetWorkspaceSize("test_moe_distribute_combine_tp", "ccu");
             std::exit(0);
         },
@@ -137,13 +136,13 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
 
     TensorDesc x = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineV2,
-                        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask,
-                              activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              "test_moe_distribute_combine_ep", epWorldSize, epRankId, moeExpertNum,
-                              "test_moe_distribute_combine_tp", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-                              sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, "test"),
-                        OUTPUT(x));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineV2,
+        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
+              weightScale, groupList, expandScales, sharedExpertX, "test_moe_distribute_combine_ep", epWorldSize,
+              epRankId, moeExpertNum, "test_moe_distribute_combine_tp", tpWorldSize, tpRankId, expertShardType,
+              sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, "test"),
+        OUTPUT(x));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);

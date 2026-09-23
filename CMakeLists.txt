@@ -53,12 +53,12 @@ set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING
 set(ASCEND_MODULE_NAME            "ALL"                           CACHE   STRING   "modules that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;ascend350;mc62;kirinx90;kirin9030;ascend5162a" CACHE STRING "all soc list")
 set(ASCEND_ALL_MODULE_NAME        "mc2;attention;moe;ffn;mhc;posembedding;gmm;mamba" CACHE STRING "all module list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,ascend350:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22,ascend5162a:arch35
+set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 ascend350 mc62 kirinx90 kirin9030 ascend5162a)
+set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch35 arch38 arch22 arch22 arch35)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
@@ -431,6 +431,9 @@ if (BUILD_OPS_RTY_KERNEL)
                 get_filename_component(name_without_ext ${_src} NAME_WE)
 
                 string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+                if (${_op_name} STREQUAL ${name_without_ext})
+                    continue()
+                endif()
                 list(APPEND generate_aclnn_srcs ${base_aclnn_binary_dir}/aclnn_${_op_name}.cpp)
                 list(APPEND generate_aclnn_headers ${base_aclnn_binary_dir}/aclnn_${_op_name}.h)
                 list(APPEND generate_proto_srcs    ${generate_proto_dir}/${_op_name}_proto.cpp)
@@ -453,6 +456,9 @@ if (BUILD_OPS_RTY_KERNEL)
             if (is_match)
                 get_filename_component(name_without_ext ${_src} NAME_WE)
                 string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+                if (${_op_name} STREQUAL ${name_without_ext})
+                    continue()
+                endif()
                 list(APPEND generate_aclnn_inner_srcs ${base_aclnn_binary_dir}/inner/aclnnInner_${_op_name}.cpp)
                 list(APPEND generate_proto_srcs    ${generate_proto_dir}/inner/${_op_name}_proto.cpp)
                 list(APPEND generate_proto_headers ${generate_proto_dir}/inner/${_op_name}_proto.h)
@@ -474,6 +480,9 @@ if (BUILD_OPS_RTY_KERNEL)
             if (is_match)
                 get_filename_component(name_without_ext ${_src} NAME_WE)
                 string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+                if (${_op_name} STREQUAL ${name_without_ext})
+                    continue()
+                endif()
                 list(APPEND generate_exclude_proto_srcs    ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
                 list(APPEND generate_proto_srcs            ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
                 list(APPEND generate_proto_headers         ${generate_proto_dir}/exc/${_op_name}_proto.h)
@@ -675,22 +684,22 @@ if (BUILD_OPS_RTY_KERNEL)
         endif()
 
         install(FILES ${KERNEL_FILES}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch22
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch35
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch38
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 

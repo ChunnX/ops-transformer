@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file allto_allv_quant_grouped_mat_mul_tiling_base.cpp
@@ -174,7 +174,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
     std::string epWorldSizeValueStr = "";
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         epWorldSizeValueList = {2,  4,  8,   16,
                                 32, 64, 128, 256}; // epWorldSize value only support 2, 4, 8, 16, 32, 64, 128, 256
     } else {
@@ -186,11 +186,11 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
         }
         epWorldSizeValueStr += std::to_string(epWorldSizeValueList[i]);
     }
-    OP_TILING_CHECK(std::find(epWorldSizeValueList.begin(), epWorldSizeValueList.end(), epWorldSize_) ==
-                        epWorldSizeValueList.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "epWorldSize", std::to_string(epWorldSize_),
-                                              "[" + epWorldSizeValueStr + "]"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        std::find(epWorldSizeValueList.begin(), epWorldSizeValueList.end(), epWorldSize_) == epWorldSizeValueList.end(),
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "epWorldSize", std::to_string(epWorldSize_),
+                                  "[" + epWorldSizeValueStr + "]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -206,17 +206,17 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckCommCountsRange()
                             (std::to_string(sendCountsSize) + " and " + std::to_string(recvCountsSize)).c_str(),
                             "sendCounts size should equal recvCounts size"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(e_ * epWorldSize_ != sendCountsSize,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCounts",
-                                                  std::to_string(sendCountsSize).c_str(),
-                                                  "sendCounts size should equal e * epWorldSize"),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((e_ * epWorldSize_ <= EXPERT_MIN_VALUE) || (e_ * epWorldSize_ > EXPERT_MAX_VALUE),
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "e * epWorldSize",
-                                                  std::to_string(e_ * epWorldSize_).c_str(),
-                                                  "should be in (" + std::to_string(EXPERT_MIN_VALUE) + ", " +
-                                                      std::to_string(EXPERT_MAX_VALUE) + "]"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            e_ * epWorldSize_ != sendCountsSize,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "sendCounts", std::to_string(sendCountsSize).c_str(),
+                                      "sendCounts size should equal e * epWorldSize"),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (e_ * epWorldSize_ <= EXPERT_MIN_VALUE) || (e_ * epWorldSize_ > EXPERT_MAX_VALUE),
+            OP_LOGE_FOR_INVALID_VALUE(
+                context_->GetNodeName(), "e * epWorldSize", std::to_string(e_ * epWorldSize_).c_str(),
+                "should be in (" + std::to_string(EXPERT_MIN_VALUE) + ", " + std::to_string(EXPERT_MAX_VALUE) + "]"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -347,7 +347,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmXShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmXShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmXShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmXShapeInfo.");
     // check dim = 2
@@ -388,7 +388,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmWeightShapeInfo.");
     // check dim
@@ -423,7 +423,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo() const
 {
     return ge::GRAPH_SUCCESS;
 }
@@ -524,7 +524,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmWeightShapeInfo.");
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX) == nullptr) {
@@ -561,7 +561,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmYShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmYShapeInfo.");
     // check dim
@@ -626,7 +626,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start GetPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
@@ -639,7 +639,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
@@ -669,6 +669,25 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckOptionalMatmulFormats()
+{
+    auto mmXDesc = context_->GetOptionalInputDesc(MM_X_INDEX);
+    if (mmXDesc != nullptr) {
+        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
+                        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmX",
+                                                   Ops::Base::ToString(mmXDesc->GetStorageFormat()), "ND"),
+                        return ge::GRAPH_FAILED);
+    }
+    auto mmWeightDesc = context_->GetOptionalInputDesc(MM_WEIGHT_INDEX);
+    if (mmWeightDesc != nullptr) {
+        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
+                        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmWeight",
+                                                   Ops::Base::ToString(mmWeightDesc->GetStorageFormat()), "ND"),
+                        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckFormat()
 {
     OP_LOGD(context_->GetNodeName(), "start CheckFormat.");
@@ -686,19 +705,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckFormat()
                     OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "gmmWeight",
                                                Ops::Base::ToString(gmmWeightDesc->GetStorageFormat()), "ND"),
                     return ge::GRAPH_FAILED);
-    auto mmXDesc = context_->GetOptionalInputDesc(MM_X_INDEX);
-    if (mmXDesc != nullptr) {
-        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmX",
-                                                   Ops::Base::ToString(mmXDesc->GetStorageFormat()), "ND"),
-                        return ge::GRAPH_FAILED);
-    }
-    auto mmWeightDesc = context_->GetOptionalInputDesc(MM_WEIGHT_INDEX);
-    if (mmWeightDesc != nullptr) {
-        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "mmWeight",
-                                                   Ops::Base::ToString(mmWeightDesc->GetStorageFormat()), "ND"),
-                        return ge::GRAPH_FAILED);
+    if (CheckOptionalMatmulFormats() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     auto gmmYDesc = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX);
     OP_TILING_CHECK(gmmYDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmY"),

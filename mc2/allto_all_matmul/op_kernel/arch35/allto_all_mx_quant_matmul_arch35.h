@@ -16,6 +16,8 @@
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 #define ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 
+#include "../../../common/op_kernel/apace/utils/op_state_dump.h"
+
 namespace Mc2Kernel {
 template <typename T1, typename T2>
 __aicore__ inline T1 CeilDiv(T1 a, T2 b)
@@ -30,7 +32,8 @@ template <typename SchedulerType, typename SchedulerContextType, typename AlltoA
 class AlltoAllMxQuantMatmulArch35 {
 public:
     __aicore__ inline AlltoAllMxQuantMatmulArch35(SchedulerType *pipeLine, uint64_t x1HcclDataType)
-        : pipeLine_(pipeLine), x1HcclDataType_(x1HcclDataType){};
+        : pipeLine_(pipeLine),
+          x1HcclDataType_(x1HcclDataType){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale,
                                 GM_ADDR x2_scale, GM_ADDR workspaceGM, AlltoAllMatmulTilingDataType *tilingData,
                                 AscendC::TPipe *tPipe);
@@ -55,6 +58,7 @@ private:
     uint64_t rankForComm_;
     uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     uint64_t x1HcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
+    Mc2Kernel::OpStateDump opStateDump_;
 
 private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
@@ -100,7 +104,11 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     } else {
         rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
     }
-
+    // 初始化状态打点并接线给 pipeline，使 pipeline 循环内可写 turn
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, mc2Tiling_.aicCoreNum);
+#endif
+    pipeLine_->SetOpStateDump(opStateDump_);
     // 初始化流水线
     pipeLine_->Init();
     // 获取流水线上下文
@@ -133,7 +141,6 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     if (mc2Tiling_.tailCnt > 0) {
         ProcessTail(mc2Tiling_.tailCnt);
     }
-
     // 结束流水线
     pipeLine_->End();
 }
@@ -172,9 +179,8 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-__aicore__ inline void
-AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessTile(
-    uint32_t taskCnt)
+__aicore__ inline void AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType,
+                                                   IsMxFp4>::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     // 复用的变量
@@ -226,9 +232,8 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
-__aicore__ inline void
-AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType, IsMxFp4>::ProcessTail(
-    uint32_t taskCnt)
+__aicore__ inline void AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType,
+                                                   IsMxFp4>::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->alltoAllQuantMatmulTilingInfo;
     uint64_t tailMMultiRankK = static_cast<uint64_t>(mc2Tiling_.tailM) * rankForComm_;

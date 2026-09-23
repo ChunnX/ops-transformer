@@ -6,10 +6,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：x
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：x
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -24,7 +24,7 @@
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
-  - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV2.md)接口，功能差异如下：**：
+  - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV3.md)接口，功能差异如下：**：
     - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
     -增加了sinkOptional可选输入，数据类型支持FLOAT32。
   - **该接口相较于[FlashAttentionVarLenScoreV5](./aclnnFlashAttentionVarLenScoreV5.md)接口，功能差异如下**：
@@ -464,6 +464,16 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>√</td>
       </tr>
       <tr>
+        <td>softmaxOutOut</td>
+        <td>输出</td>
+        <td>预留参数，暂未使用，接口不写入该输出。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attentionOutOut</td>
         <td>输出</td>
         <td>计算公式的最终输出。</td>
@@ -523,7 +533,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>

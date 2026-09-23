@@ -47,9 +47,11 @@ public:
 
     // Constructor
     explicit OneCalcTwoCommBase(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : bmmPerf(args, inputSocVersion), epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
-          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion), tilingC(args)
+                                uint64_t batchSize, SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_93)
+        : bmmPerf(args, Ops::Base::DAV_2201, socVersion_2201),
+          epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, Ops::Base::DAV_2201, socVersion_2201),
+          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, Ops::Base::DAV_2201, socVersion_2201),
+          tilingC(args)
     {
         epDim = inputEpDim;
         tpDim = inputTpDim;
@@ -69,9 +71,7 @@ public:
     // Wrapper function
     void GetTiling();
 
-    virtual ~OneCalcTwoCommBase()
-    {
-    }
+    virtual ~OneCalcTwoCommBase() {}
 };
 
 class OneCalcTwoCommShardHBase {
@@ -90,9 +90,11 @@ public:
 
     // Constructor
     explicit OneCalcTwoCommShardHBase(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                      uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : bmmPerf(args, inputSocVersion), epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
-          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion), tilingC(args)
+                                      uint64_t batchSize, SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_93)
+        : bmmPerf(args, Ops::Base::DAV_2201, socVersion_2201),
+          epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, Ops::Base::DAV_2201, socVersion_2201),
+          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, Ops::Base::DAV_2201, socVersion_2201),
+          tilingC(args)
     {
         epDim = inputEpDim;
         epCommPerf.SetFullMeshCommTimeFactor();
@@ -120,9 +122,7 @@ public:
     // wrapper function
     void GetTiling();
 
-    virtual ~OneCalcTwoCommShardHBase()
-    {
-    }
+    virtual ~OneCalcTwoCommShardHBase() {}
 };
 
 #endif // __ONE_CALC_TWO_COMM_BASE_H__

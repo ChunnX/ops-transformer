@@ -23,14 +23,8 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "ffn_to_attention_tiling.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
-
 
 namespace FFNToAttentionImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
@@ -52,6 +46,7 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline uint32_t GetCoreSendTokenCount();
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset);
     TPipe *tpipe_{nullptr};
@@ -90,11 +85,10 @@ private:
 };
 
 template <TemplateFFNToAttentionTypeClass>
-__aicore__ inline void
-FFNToAttention<TemplateFFNToAttentionTypeFunc>::Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
-                                                     GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                                     GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
-                                                     const FFNToAttentionTilingData *tilingData)
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Init(
+    GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
+    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
+    const FFNToAttentionTilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -148,9 +142,8 @@ __aicore__ inline GM_ADDR FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetWin
 }
 
 template <TemplateFFNToAttentionTypeClass>
-__aicore__ inline void
-FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct,
-                                                                  uint32_t YOffset)
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(
+    ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         sessionIdsGMTensor_[YOffset]);
@@ -177,21 +170,28 @@ FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(ReadTokenMetaD
 }
 
 template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline uint32_t FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetCoreSendTokenCount()
+{
+    uint32_t calStartTokenId = 0;
+    uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
+    uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
+    if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
+        sendTokenNum += 1;
+        calStartTokenId += aivId_;
+    } else {
+        calStartTokenId += remainderRankNum;
+    }
+    if (calStartTokenId >= actualTokenNum_) {
+        sendTokenNum = 0;
+    }
+    return sendTokenNum;
+}
+
+template <TemplateFFNToAttentionTypeClass>
 __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        uint32_t calStartTokenId = 0;
-        uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
-        uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
-        if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
-            sendTokenNum += 1;
-            calStartTokenId += aivId_;
-        } else {
-            calStartTokenId += remainderRankNum;
-        }
-        if (calStartTokenId >= actualTokenNum_) {
-            sendTokenNum = 0;
-        }
+        uint32_t sendTokenNum = GetCoreSendTokenCount();
         GM_ADDR curRankWinAddr;
         GlobalTensor<xType> tokenDataGMTensor;
         GlobalTensor<int32_t> tokenInfoTableGMTensor;

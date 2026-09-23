@@ -445,6 +445,9 @@ if (base_aclnn_srcs)
             get_filename_component(name_without_ext ${_src} NAME_WE)
 
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_srcs ${base_aclnn_binary_dir}/aclnn_${_op_name}.cpp)
             list(APPEND generate_aclnn_headers ${base_aclnn_binary_dir}/aclnn_${_op_name}.h)
 
@@ -475,6 +478,9 @@ if (base_aclnn_inner_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_inner_srcs ${base_aclnn_binary_dir}/inner/aclnnInner_${_op_name}.cpp)
 
             set(filtered_list)
@@ -504,6 +510,9 @@ if (base_aclnn_exclude_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_exclude_proto_srcs    ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_srcs            ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_headers         ${generate_proto_dir}/exc/${_op_name}_proto.h)
@@ -530,7 +539,13 @@ if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_e
             message(STATUS "  - ${_cann_skipped_op}")
         endforeach()
     endif()
-    file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+    # 只有确实被 CANN 版本检查跳过时才写 no_ops.flag；
+    # 纯 AICPU 算子（如 metadata 类）没有 _def.cpp，aclnn 列表为空是正常的，不应被误判为跳过
+    if (_cann_skipped_ops)
+        file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+    else()
+        file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+    endif()
 else()
     file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
 endif()
@@ -978,7 +993,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     # Whitelist: *_depends paths (e.g. mc2/common) whose op_kernel is installed in one place below.
     # Skipped in the per-operator depends loop to avoid duplicate CMake install rules. Add new deps here
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
-    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
+    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common mc2/3rd)
 
     # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
     # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
@@ -1037,7 +1052,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${CATLASS_DIR}/include
+    install(DIRECTORY ${CATLASS_DIR}/include/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/catlass/include
     )
     install(DIRECTORY ${BLAZE}
@@ -1055,9 +1070,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${TENSOR_API}/include/c_api
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
     )
-    # Shared kernel headers for whitelist deps (contents -> ascendc/common).
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1066,7 +1081,7 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
             install(DIRECTORY ${_3rd_op_dir}/op_kernel/
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}/op_kernel
             )
         endif()
     endif()
@@ -1097,11 +1112,11 @@ endforeach(    )
         file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
         filter_copy_files(SELECTED_FILES SELECTED_DIRS)
         install(FILES ${SELECTED_FILES}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
         install(DIRECTORY ${SELECTED_DIRS}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
 
@@ -1113,11 +1128,11 @@ endforeach(    )
             filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
             if (NOT op_depend_dir IN_LIST OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS)
                 install(FILES ${SELECTED_DEPEND_FILES}
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}/op_kernel
                         OPTIONAL
                 )
                 install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}/op_kernel
                         OPTIONAL
                 )
             endif ()

@@ -22,15 +22,9 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/mc2_kernel_utils.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_tiling.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
-#endif
 
 namespace MoeDistributeDispatchImpl {
 constexpr uint8_t BUFFER_NUM = 2;            // 多buf
@@ -45,8 +39,7 @@ constexpr uint32_t GATHER_NUM_PER_TIME = 6;
 constexpr uint64_t WIN_STATE_OFFSET = 512 * 1024;
 constexpr uint64_t STATUS_DATA_OFFSET = 900 * 1024;
 
-
-#define TemplateDispatchTypeClass                                                                                      \
+#define TemplateDispatchTypeClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateDispatchTypeFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -424,10 +417,9 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::CalToken
 }
 
 template <TemplateDispatchTypeClass>
-__aicore__ inline void
-MoeDistributeDispatch<TemplateDispatchTypeFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum,
-                                                             uint32_t &startTokenId, uint32_t &endTokenId,
-                                                             uint32_t &sendTokenNum, bool isFront)
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::SplitToCore(
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum,
+    bool isFront)
 {
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
@@ -705,8 +697,8 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::GetCumSu
 }
 
 template <TemplateDispatchTypeClass>
-__aicore__ inline void
-MoeDistributeDispatch<TemplateDispatchTypeFunc>::CreateZeroTensor(LocalTensor<uint32_t> &outLocal)
+__aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::CreateZeroTensor(
+    LocalTensor<uint32_t> &outLocal)
 {
     TBuf<> outBuf;
     tpipe_->InitBuffer(outBuf, UB_ALIGN);

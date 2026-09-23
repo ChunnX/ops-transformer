@@ -25,6 +25,16 @@ const static int64_t UNPERMUTE_WITH_EP_ARRT_TOPK = 0;
 const static int64_t UNPERMUTE_WITH_EP_ARRT_RANGE = 1;
 const static int64_t RANGE_SIZE = 2;
 
+static inline ge::graphStatus GetTopKAttr(const gert::TilingContext *context, int64_t &topK)
+{
+    auto attrPtr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
+    const int64_t *topKPtr = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    OP_CHECK_NULL_WITH_CONTEXT(context, topKPtr);
+    topK = *topKPtr;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context);
 
 ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context)
@@ -32,7 +42,10 @@ ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context)
     return PermuteWithEpGradTilingCompute(context, -1, true);
 }
 
-static inline int64_t AlignN(const int64_t x, const int64_t N) { return (x + N - 1) & ~(N - 1); }
+static inline int64_t AlignN(const int64_t x, const int64_t N)
+{
+    return (x + N - 1) & ~(N - 1);
+}
 
 static inline int64_t GetLengthByType(const int32_t dtype)
 {
@@ -55,9 +68,15 @@ static inline int64_t GetLengthByType(const int32_t dtype)
     }
 }
 
-static inline int64_t safeMod(const int64_t a, const int64_t b) { return b == 0 ? 0 : a % b; }
+static inline int64_t safeMod(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a % b;
+}
 
-static inline int64_t safeDiv(const int64_t a, const int64_t b) { return b == 0 ? 0 : a / b; }
+static inline int64_t safeDiv(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a / b;
+}
 
 static inline bool isFloatDtype(const int64_t inputDtypeSize)
 {
@@ -92,8 +111,10 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     auto dataTensor0 = context->GetInputTensor(0);
     auto dataTensor1 = context->GetInputTensor(1);
     auto nodeName = context->GetNodeName();
-    const int64_t *tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    int inputTopK = *tmpTopK;
+    int64_t inputTopK = 0;
+    if (GetTopKAttr(context, inputTopK) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape == nullptr || indicesShape == nullptr || dataTensor0 == nullptr || dataTensor1 == nullptr,
@@ -145,8 +166,10 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     param.input.isUnpermute = isUnpermute;
 
     auto attrPtr = context->GetAttrs();
-    const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
-    int inputTopK = *tmpTopK;
+    int64_t inputTopK = 0;
+    if (GetTopKAttr(context, inputTopK) != ge::GRAPH_SUCCESS) {
+        return;
+    }
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
@@ -360,13 +383,22 @@ ge::graphStatus PermuteWithEpGradTilingCompute(gert::TilingContext *context, con
     SetTilingData(context, param);
     DebugPrint(context, param);
 
+    // 框架要求必须无条件分配系统 workspace(库内部原子操作等使用), 否则运行时 kernel 启动缺参会触发 VEC_ERROR
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, workSpaces);
+    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
+    OP_LOGD(context->GetNodeName(), "system workspace size is %zu", workSpaces[0]);
+
     return context->SetTilingKey(param.core.tilingKey);
 }
 
 static ge::graphStatus Tiling4MoeTokenPermuteWithEpGrad(gert::TilingContext *context)
 {
-    const int64_t *top_k = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    int64_t topk = *top_k;
+    int64_t topk = 0;
+    if (GetTopKAttr(context, topk) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return PermuteWithEpGradTilingCompute(context, topk, false);
 }
 

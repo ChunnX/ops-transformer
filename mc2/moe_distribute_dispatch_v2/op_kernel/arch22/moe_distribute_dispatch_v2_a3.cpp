@@ -27,34 +27,45 @@ using namespace Mc2Tiling;
 using namespace AscendC;
 
 template <uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
-__global__ __aicore__ void
-moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
-                           GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-                           GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
-                           GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                                      GM_ADDR expertScales, GM_ADDR elasticInfo,
+                                                      GM_ADDR performanceInfo, GM_ADDR expandXOut,
+                                                      GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
+                                                      GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
+                                                      GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut,
+                                                      GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
     TPipe pipe;
     GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    uint64_t realWinSize = 0;
+    if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (FullMesh != TILINGKEY_ENABLE_HIERARCHY)) {
+        const auto epContext = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam *>(contextGM0);
+        realWinSize = Mc2Kernel::GetWinSize(epContext);
+        const uint64_t minWinSize = tilingData.moeDistributeDispatchV2Info.totalWinSizeEp;
+        assert(realWinSize >= minWinSize,
+               "HCCL_BUFFSIZE_EP is too SMALL, NEEDED_HCCL_BUFFSIZE=%lu Bytes, "
+               "actual CCL_BUFFSIZE=%lu Bytes.\n",
+               minWinSize, realWinSize);
+    }
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-            MoeDistributeDispatchV2FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                            Mc2Kernel::UNQUANT, false>
+            MoeDistributeDispatchV2FullMesh<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT,
+                                            false>
                 op;
             op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                     expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                    workspaceGM, &pipe, &tilingData);
+                    workspaceGM, &pipe, &tilingData, realWinSize);
             op.Process();
             return;
         } else if constexpr (FullMesh == TILINGKEY_NO_FULLMESH) {
-            MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                    Mc2Kernel::UNQUANT, false>
+            MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false>
                 op;
             op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                     expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                    workspaceGM, &pipe, &tilingData);
+                    workspaceGM, &pipe, &tilingData, realWinSize);
             op.Process();
             return;
         } else if constexpr (FullMesh == TILINGKEY_ENABLE_HIERARCHY) {
@@ -74,7 +85,7 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
                     op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
-                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData, realWinSize);
                 op.Process();
                 return;
             } else if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
@@ -83,18 +94,18 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
                     op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
-                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData, realWinSize);
                 op.Process();
                 return;
             }
         } else if constexpr (FullMesh == TILINGKEY_NO_FULLMESH) {
             if constexpr (QuantMode == TILINGKEY_STATIC_QUANT) {
-                MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X,
-                                        Mc2Kernel::STATIC_QUANT, false>
+                MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::STATIC_QUANT,
+                                        false>
                     op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
-                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData, realWinSize);
                 op.Process();
                 return;
             } else if constexpr (QuantMode == TILINGKEY_PERTOKEN_QUANT) {
@@ -103,7 +114,7 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
                     op;
                 op.Init(contextGM0, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
                         expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
-                        epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        epSendCountsOut, workspaceGM, &pipe, &tilingData, realWinSize);
                 op.Process();
                 return;
             }

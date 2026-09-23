@@ -32,10 +32,16 @@
    y_{t,:}=\operatorname{Softmax}(I_{t,:})
    $$
 
-   本算子将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，等价于旧版kernel内部由main attention score经head求和和L1归一化得到的结果。若后续继续计算KL Loss，其形式与旧版保持一致：
+   本算子将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，由main attention score沿head平均得到，不沿上下文做L1归一化。记$Z_{t}$为$p$沿上下文的求和，$t$为L1归一化后的target分布：
 
    $$
-   L(I){=}\sum_tD_{KL}(p_{t,:}||\operatorname{Softmax}(I_{t,:}))
+   Z_{t}=\sum_{j}p_{t,j},\quad t_{t,:}=\frac{p_{t,:}}{Z_{t}}
+   $$
+
+   若后续继续计算KL Loss，对应的loss function为：
+
+   $$
+   L_{t}=Z_{t}\,D_{KL}(t_{t,:}||y_{t,:})=\sum_{j}p_{t,j}(\log t_{t,j}-\log y_{t,j})
    $$
 
    $$
@@ -45,7 +51,7 @@
    通过求导可得Loss的梯度表达式：
 
    $$
-   dI_{t,:}=\operatorname{Softmax}(I_{t,:})-p_{t,:}
+   dI_{t,:}=y_{t,:}\cdot Z_{t}-p_{t,:}
    $$
 
    利用链式法则可以进行w、q和k矩阵的梯度计算：
@@ -343,7 +349,7 @@
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
   - 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持1~8192。
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
 
 - 典型值
@@ -387,3 +393,4 @@
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md) | 通过[aclnnSparseLightningIndexerKLLossGrad](./docs/aclnnSparseLightningIndexerKLLossGrad.md)接口方式调用SparseLightningIndexerKLLossGrad算子。 |
 | pytest调用 | [test_sparse_lightning_indexer_kl_loss_grad](./tests/pytest/test_sparse_lightning_indexer_kl_loss_grad.py) | 通过torch extension接口进行功能和精度验证。 |
+| PyTorch API | - | 通过[sparse_lightning_indexer_kl_loss_grad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/torchapi_sparse_lightning_indexer_kl_loss_grad.md)接口调用sparse_lightning_indexer_kl_loss_grad算子。 |

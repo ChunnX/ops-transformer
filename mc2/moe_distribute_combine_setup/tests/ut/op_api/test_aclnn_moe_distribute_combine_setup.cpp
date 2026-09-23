@@ -52,7 +52,7 @@ class TestAclnnMoeDistributeCombineSetup : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         std::cout << "TestAclnnMoeDistributeCombineSetup SetUp" << std::endl;
     }
     static void TearDownTestCase()
@@ -574,11 +574,11 @@ static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &para
         CreateAclTensorOrNull(quantExpandXOutShape, quantExpandXOutDtype, quantExpandXOutFormat);
     aclTensor *commCmdInfoOut = CreateAclTensorOrNull(commCmdInfoOutShape, commCmdInfoOutDtype, commCmdInfoOutFormat);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineSetup,
-                        INPUT(expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum,
-                              expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
-                              commAlg),
-                        OUTPUT(quantExpandXOut, commCmdInfoOut));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineSetup,
+        INPUT(expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
+              sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg),
+        OUTPUT(quantExpandXOut, commCmdInfoOut));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -651,7 +651,7 @@ TEST_F(TestAclnnMoeDistributeCombineSetup, TestTeardownCalcOutputSizeInvalidDimV
 
 TEST_F(TestAclnnMoeDistributeCombineSetup, TestUnsupportedNpuArch)
 {
-    op::SetPlatformNpuArch(NpuArch::DAV_1001);
+    op::SetPlatformNpuArch(Ops::Base::DAV_1001);
     std::vector<int64_t> expandXShape = {192, 4096};
     aclTensor *expandX = CreateAclTensor(expandXShape, ACL_FLOAT16, ACL_FORMAT_ND);
     std::vector<int64_t> expertIdsShape = {16, 6};
@@ -669,7 +669,7 @@ TEST_F(TestAclnnMoeDistributeCombineSetup, TestUnsupportedNpuArch)
                                                                      0, 32, 0, 0, 0, 0, 0, 2, "", quantExpandX,
                                                                      commCmdInfo, &workspaceSize, &executor);
     EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
-    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 }
 
 TEST_F(TestAclnnMoeDistributeCombineSetup, ExecuteCall)

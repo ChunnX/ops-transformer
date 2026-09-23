@@ -33,7 +33,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(__gm__ uint8_t *query, __gm__ 
 {
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, 9, ...); // 9: None
 
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     // CubBlockType
     using CubBlockNormal = BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType,
                                                           s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType>;
@@ -84,7 +84,7 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
 {
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, 9, ...); // 9: None
 
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     // CubBlockType
     using CubBlockNormal = BaseApi::FANoQuantMlaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType,
                                                           s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType>;
@@ -136,7 +136,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
@@ -172,15 +172,11 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
 
     // VecFdBlockType
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType
@@ -210,7 +206,7 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
                                                     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
@@ -246,15 +242,11 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
 
     // VecFdBlockType
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType
@@ -282,7 +274,7 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     // MLA 全量化: 不合轴, bmm2 写 UB
     constexpr bool useDn = false;
@@ -312,17 +304,13 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
                                              KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
 
-    // VecFdBlockType - MLA 复用 MXFP8/GQA 的 FiaBlockVecFlashDecodeFullQuant
+    // VecFdBlockType - MLA 复用 MXFP8/GQA 的 FiaBlockVecFlashDecode
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType - MLA decode场景开启FD

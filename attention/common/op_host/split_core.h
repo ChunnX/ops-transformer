@@ -72,11 +72,9 @@ struct BaseInfo {
     uint32_t gSize{0U};
     uint32_t s1Size{0U};
     uint32_t s2Size{0U};
-    bool isS1G{true};
     bool isAccumSeqS1{false};
     bool isAccumSeqS2{false};
-    std::vector<int64_t> actualSeqS1Size{};
-    std::vector<int64_t> actualSeqS2Size{};
+    bool isS1G{true};
     uint32_t actualLenQDims{0U};
     uint32_t actualLenKvDims{0U};
     bool attenMaskFlag{false};
@@ -84,6 +82,8 @@ struct BaseInfo {
     int64_t preToken{0};
     int64_t nextToken{0};
     int64_t actualSeqPrefixSize{0};
+    std::vector<int64_t> actualSeqS1Size{};
+    std::vector<int64_t> actualSeqS2Size{};
 };
 
 // 分核功能模块输入：切分属性，预留接口，可作为切分方案的参数入口
@@ -92,7 +92,6 @@ struct SplitParam {
     uint32_t s2BaseSize{1U};
     uint32_t gS1BaseSizeOfFd{8U}; // FD阶段分核，m轴切分基本块大小
 };
-
 
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
@@ -111,11 +110,15 @@ struct FlashDecodeResult {
     std::vector<uint32_t> s2SplitStartIdxOfCore{};
 
     FlashDecodeResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : bN2IdxOfFdHead(coreNum), gS1IdxOfFdHead(coreNum), s2SplitNumOfFdHead(coreNum), gS1SplitNumOfFdHead(coreNum),
-          gS1LastPartSizeOfFdHead(coreNum), gS1IdxEndOfFdHead(coreNum * vecCubeRatio),
-          gS1IdxEndOfFdHeadSplit(coreNum * vecCubeRatio), s2SplitStartIdxOfCore(coreNum)
-    {
-    }
+        : bN2IdxOfFdHead(coreNum),
+          gS1IdxOfFdHead(coreNum),
+          s2SplitNumOfFdHead(coreNum),
+          gS1SplitNumOfFdHead(coreNum),
+          gS1LastPartSizeOfFdHead(coreNum),
+          gS1IdxEndOfFdHead(coreNum * vecCubeRatio),
+          gS1IdxEndOfFdHeadSplit(coreNum * vecCubeRatio),
+          s2SplitStartIdxOfCore(coreNum)
+    {}
 };
 
 // 分核功能模块输出：FA阶段的核间分核信息
@@ -132,9 +135,12 @@ struct SplitResult {
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
 
     SplitResult(uint32_t coreNum, uint32_t ratio)
-        : bN2End(coreNum), vecCubeRatio(ratio), gS1End(coreNum), s2End(coreNum), fdRes(coreNum, ratio) {};
+        : bN2End(coreNum),
+          vecCubeRatio(ratio),
+          gS1End(coreNum),
+          s2End(coreNum),
+          fdRes(coreNum, ratio) {};
 };
-
 
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
@@ -145,9 +151,11 @@ struct SplitInfo {
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
-    {
-    }
+        : s1GBaseNum(batchSize),
+          s2BaseNum(batchSize),
+          s1GTailSize(batchSize),
+          s2TailSize(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
@@ -159,22 +167,25 @@ struct CostInfo {
     int64_t totalCost{0};
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
-    {
-    }
+        : bN2CostOfEachBatch(batchSize),
+          bN2BlockOfEachBatch(batchSize),
+          bN2LastBlockCostOfEachBatch(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：分核过程中，case基本信息的上下文信息，组合以减少接口传参数量
 struct SplitContext {
     const BaseInfo &baseInfo{0U};
     const SplitParam &splitParam{};
-    SplitInfo splitInfo{0U};
     CostInfo costInfo{0U};
+    SplitInfo splitInfo{0U};
 
     explicit SplitContext(const BaseInfo &info, const SplitParam &param)
-        : baseInfo(info), splitParam(param), splitInfo(info.bSize), costInfo(info.bSize)
-    {
-    }
+        : baseInfo(info),
+          splitParam(param),
+          costInfo(info.bSize),
+          splitInfo(info.bSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息
@@ -182,8 +193,8 @@ struct BatchCache {
     uint32_t bIdx{0U};
     uint32_t s1Size{0U};
     uint32_t s2Size{0U};
-    int64_t preTokenLeftUp{0};
     int64_t nextTokenLeftUp{0};
+    int64_t preTokenLeftUp{0};
     BlockCost<int64_t> typeCost{};
 };
 

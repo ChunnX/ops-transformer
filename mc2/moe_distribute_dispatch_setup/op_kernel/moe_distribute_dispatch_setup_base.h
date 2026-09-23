@@ -16,11 +16,7 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_SETUP_BASE_H
 #define MOE_DISTRIBUTE_DISPATCH_SETUP_BASE_H
 
-#if __has_include("../common/mc2_kernel_utils.h")
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -448,11 +444,13 @@ __aicore__ inline uint32_t GetAvailableSpace(const AscendC::LocalTensor<uint8_t>
     return (outSqCi - outSqPi - 1);
 }
 
-__aicore__ inline void
-PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
-           const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-           const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount, uint32_t &outSqPi,
-           uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi, uint32_t &outCqCiLinear)
+__aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                                  const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
+                                  const AscendC::LocalTensor<uint8_t> &sqeTensor,
+                                  const AscendC::LocalTensor<uint8_t> &cqeTensor,
+                                  const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount,
+                                  uint32_t &outSqPi, uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi,
+                                  uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
@@ -487,11 +485,13 @@ PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::Loc
     outSqPi = outSqPiLinear % sqDepth;
 }
 
-__aicore__ inline void
-PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
-                 const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-                 const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount, uint32_t &outSqPi,
-                 uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi, uint32_t &outCqCiLinear)
+__aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                                        const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
+                                        const AscendC::LocalTensor<uint8_t> &sqeTensor,
+                                        const AscendC::LocalTensor<uint8_t> &cqeTensor,
+                                        const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount,
+                                        uint32_t &outSqPi, uint32_t &outSqPiLinear, uint32_t &outSqCi,
+                                        uint32_t &outCqCi, uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
