@@ -592,6 +592,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
         return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();

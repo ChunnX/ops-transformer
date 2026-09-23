@@ -803,7 +803,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
                     OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "compile_info is null"),
                     return ge::GRAPH_FAILED);
         npuArch = compileInfoPtr->npuArch;
-        // CompileInfo has no 950DT flag; unknown / parse-only path keeps the old schedule.
+        socVersion = compileInfoPtr->socVersion;
+        // CompileInfo only has SocVersion::ASCEND950, which is shared by PR and DT. Keep the old schedule.
         fBaseParams.enableNewNonDeterSwizzle = false;
         fBaseParams.coreNum = compileInfoPtr->aivNum;
         fBaseParams.aicNum = compileInfoPtr->aicNum;
@@ -814,10 +815,14 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
         fBaseParams.l2CacheSize = compileInfoPtr->l2CacheSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-        std::string socVersion;
-        (void)platformInfoPtr->GetPlatformRes("version", "SoC_version", socVersion);
-        // Only a confirmed 950DT selects the new non-deterministic schedule; unknown products keep the old schedule.
-        fBaseParams.enableNewNonDeterSwizzle = IsAscend950DT(socVersion);
+        socVersion = ascendcPlatform.GetSocVersion();
+        std::string fullSocVersion;
+        // 950PR stays on the old schedule. Only a full name Ascend950DT_<chip> takes the new one.
+        if (!platformInfoPtr->GetPlatformResWithLock("version", "SoC_version", fullSocVersion)) {
+            fBaseParams.enableNewNonDeterSwizzle = false;
+        } else {
+            fBaseParams.enableNewNonDeterSwizzle = IsAscend950DT(fullSocVersion);
+        }
         npuArch = ascendcPlatform.GetCurNpuArch();
         coreNum = ascendcPlatform.GetCoreNumAiv();
         fBaseParams.coreNum = coreNum;

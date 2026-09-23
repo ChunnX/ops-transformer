@@ -28,10 +28,12 @@
 
 namespace optiling {
 
-inline bool IsAscend950DT(const std::string &socVersion)
+// SocVersion::ASCEND950 and Short_SoC_version "Ascend950" are shared by 950PR and 950DT.
+// The full SoC_version is "Ascend950DT_<chip>" or "Ascend950PR_<chip>".
+inline bool IsAscend950DT(const std::string &fullSocVersion)
 {
     constexpr char ascend950DTPrefix[] = "Ascend950DT_";
-    return socVersion.rfind(ascend950DTPrefix, 0) == 0;
+    return fullSocVersion.rfind(ascend950DTPrefix, 0) == 0;
 }
 
 namespace fag {
