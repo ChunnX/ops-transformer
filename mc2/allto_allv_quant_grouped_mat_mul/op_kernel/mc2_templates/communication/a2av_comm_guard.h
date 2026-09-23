@@ -11,19 +11,27 @@
 #ifndef A2AV_COMM_GUARD_H
 #define A2AV_COMM_GUARD_H
 
-#define A2AV_AIV_ONLY() \
-    if ASCEND_IS_AIC { \
-        return; \
-    } \
-    if ASCEND_IS_AIV { \
-        if (GetBlockIdx() != 0) { \
-            return; \
-        } \
-    }
+namespace MC2KernelTemplate {
 
-#define A2AV_AIV_ALL() \
-    if ASCEND_IS_AIC { \
-        return; \
+__aicore__ inline bool IsA2avAivOnlyEnabled()
+{
+    if ASCEND_IS_AIC {
+        return false;
     }
+    if ASCEND_IS_AIV {
+        return GetBlockIdx() == 0;
+    }
+    return true;
+}
+
+__aicore__ inline bool IsA2avAivAllEnabled()
+{
+    if ASCEND_IS_AIC {
+        return false;
+    }
+    return true;
+}
+
+} // namespace MC2KernelTemplate
 
 #endif // A2AV_COMM_GUARD_H

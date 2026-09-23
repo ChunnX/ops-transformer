@@ -100,7 +100,7 @@ public:
 
 protected:
     ge::graphStatus GetCommonPlatformInfo();
-    ge::graphStatus CheckCommonPlatformInfo();
+    ge::graphStatus CheckCommonPlatformInfo() const;
     ge::graphStatus GetCommonShapeAttrsInfo();
     ge::graphStatus CheckCommonShapeAttrsInfo();
     ge::graphStatus GetShapeInfo();
@@ -162,24 +162,24 @@ private:
     ge::graphStatus GetMmxShapeInfo();
     ge::graphStatus GetMmWeightShapeInfo();
     ge::graphStatus GetGmmYShapeInfo();
-    ge::graphStatus GetMmYShapeInfo();
+    ge::graphStatus GetMmYShapeInfo() const;
     ge::graphStatus GetPermuteOutShapeInfo() const;
     // check
     ge::graphStatus CheckAttrsInfo();
     ge::graphStatus CheckShapeInfo();
     ge::graphStatus CheckGmmXShapeInfo() const;
     ge::graphStatus CheckGmmWeightShapeInfo() const;
-    ge::graphStatus CheckCountsTensorShapeInfo();
+    ge::graphStatus CheckCountsTensorShapeInfo() const;
     ge::graphStatus CheckMmxShapeInfo();
     ge::graphStatus CheckMmWeightShapeInfo() const;
     ge::graphStatus CheckGmmYShapeInfo() const;
-    ge::graphStatus CheckMmYShapeInfo();
+    ge::graphStatus CheckMmYShapeInfo() const;
     ge::graphStatus CheckPermuteOutShapeInfo() const;
     ge::graphStatus CheckCommSize();
     ge::graphStatus CheckEpWorldSizeValue();
-    ge::graphStatus CheckCommCountsRange();
+    ge::graphStatus CheckCommCountsRange() const;
     ge::graphStatus CheckCommCountsValue();
-    ge::graphStatus CheckOptionalMatmulFormats();
+    ge::graphStatus CheckOptionalMatmulFormats() const;
     ge::graphStatus CheckFormat();
 };
 } // namespace optiling
