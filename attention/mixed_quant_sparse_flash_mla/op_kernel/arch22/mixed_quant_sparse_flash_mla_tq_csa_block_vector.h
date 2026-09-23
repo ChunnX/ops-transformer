@@ -66,6 +66,8 @@ public:
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void ColumnMuls(LocalTensor<T> dataUb, LocalTensor<T> scalesUb, uint32_t dealRowCount,
+                                      uint32_t columnCount);
     // ================================Vector0==========================================
     __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit,
                                              const LocalTensor<int32_t> &blockTableCache, uint32_t blockTableCacheSize);
@@ -488,6 +490,30 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInTq4Scale
 }
 
 template <typename SAST>
+__aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ColumnMuls(LocalTensor<T> dataUb,
+                                                                             LocalTensor<T> scalesUb,
+                                                                             uint32_t dealRowCount,
+                                                                             uint32_t columnCount)
+{
+    BinaryRepeatParams repeatParams{1,
+                                    1,
+                                    1,
+                                    static_cast<uint8_t>(columnCount / FP32_BLOCK_ELEMENT_NUM),
+                                    static_cast<uint8_t>(columnCount / FP32_BLOCK_ELEMENT_NUM),
+                                    0};
+    uint32_t repeatCount = columnCount / FP32_REPEAT_ELEMENT_NUM;
+    uint32_t tailCount = columnCount % FP32_REPEAT_ELEMENT_NUM;
+    for (uint32_t i = 0; i < repeatCount; ++i) {
+        uint32_t offset = i * FP32_REPEAT_ELEMENT_NUM;
+        Mul(dataUb[offset], dataUb[offset], scalesUb[offset], FP32_REPEAT_ELEMENT_NUM, dealRowCount, repeatParams);
+    }
+    if (tailCount > 0) {
+        uint32_t offset = repeatCount * FP32_REPEAT_ELEMENT_NUM;
+        Mul(dataUb[offset], dataUb[offset], scalesUb[offset], tailCount, dealRowCount, repeatParams);
+    }
+}
+
+template <typename SAST>
 __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute(
     const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, const LocalTensor<T> &mmResUb,
     uint32_t dealRowCount, uint32_t columnCount)
@@ -495,9 +521,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->tqBaseParams.softmaxScale), dealRowCount * columnCount);
     if (!info.isOriOnly) {
         LocalTensor<T> scalesFp32 = v0ValidSizeBuff.Get<T>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(T)];
-        for (uint32_t row = 0; row < dealRowCount; ++row) {
-            Mul(mmResUb[row * columnCount], mmResUb[row * columnCount], scalesFp32, columnCount);
-        }
+        ColumnMuls(mmResUb, scalesFp32, dealRowCount, columnCount);
         PipeBarrier<PIPE_V>();
     }
 
@@ -687,9 +711,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::DealBmm1ResBas
     PipeBarrier<PIPE_V>();
     if (!info.isOriOnly) {
         LocalTensor<T> scalesFp32 = v0ValidSizeBuff.Get<T>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(T)];
-        for (uint32_t row = 0; row < dealRowCount; ++row) {
-            Mul(mmResUb[row * columnCount], mmResUb[row * columnCount], scalesFp32, columnCount);
-        }
+        ColumnMuls(mmResUb, scalesFp32, dealRowCount, columnCount);
         PipeBarrier<PIPE_V>();
     }
     LocalTensor<KV_T> tmpMMResCastTensor = outputBuff1.Get<KV_T>();
