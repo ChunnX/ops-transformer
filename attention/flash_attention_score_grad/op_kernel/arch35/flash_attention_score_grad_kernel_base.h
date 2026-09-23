@@ -446,7 +446,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         }
         // swizzle
         // The host enables the column-owned schedule only for 950DT. Other and unknown products use the old schedule.
-        const bool enableNewNonDeterSwizzle = tilingData->s1s2BNGS1S2BaseParams.get_enableNewNonDeterSwizzle() != 0;
+        const bool enableNewNonDeterSwizzle = tilingData->s1s2BNGS1S2BaseParams.enableNewNonDeterSwizzle != 0;
         const bool denseSizeEnough = enableNewNonDeterSwizzle ? constInfo.commonConstInfo.s1Size >= M_SWIZZLE_SIZE &&
                                                                     constInfo.commonConstInfo.s2Size >= N_SWIZZLE_SIZE :
                                                                 constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE &&

@@ -16,7 +16,6 @@
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "err/ops_err.h"
-#include "../flash_attention_score_grad_soc_version.h"
 
 using namespace Ops::Transformer::OpTiling;
 
@@ -804,7 +803,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
                     OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "compile_info is null"),
                     return ge::GRAPH_FAILED);
         npuArch = compileInfoPtr->npuArch;
-        fBaseParams.enableNewNonDeterSwizzle = compileInfoPtr->isAscend950DT;
+        // CompileInfo has no 950DT flag; unknown / parse-only path keeps the old schedule.
+        fBaseParams.enableNewNonDeterSwizzle = false;
         fBaseParams.coreNum = compileInfoPtr->aivNum;
         fBaseParams.aicNum = compileInfoPtr->aicNum;
         fBaseParams.ubSize = compileInfoPtr->ubSize;

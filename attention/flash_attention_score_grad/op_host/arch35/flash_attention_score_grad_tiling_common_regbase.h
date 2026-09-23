@@ -16,15 +16,24 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 #include <register/tilingdata_base.h>
 #include <register/op_impl_registry.h>
+#include "platform/platform_info.h"
 #include <tiling/tiling_api.h>
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 
 namespace optiling {
+
+inline bool IsAscend950DT(const std::string &socVersion)
+{
+    constexpr char ascend950DTPrefix[] = "Ascend950DT_";
+    return socVersion.rfind(ascend950DTPrefix, 0) == 0;
+}
+
 namespace fag {
 
 constexpr size_t DIM_0 = 0;

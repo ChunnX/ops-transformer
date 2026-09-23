@@ -16,7 +16,6 @@
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 #include "../../../../op_host/arch35/flash_attention_score_grad_tiling_common_regbase.h"
-#include "../../../../op_host/flash_attention_score_grad_soc_version.h"
 
 using namespace std;
 

@@ -68,7 +68,6 @@ struct FlashAttentionScoreGradCompileInfo {
     int64_t coreNum;
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch;
-    bool isAscend950DT;
 };
 
 struct FACompileInfoCommon {

@@ -15,10 +15,10 @@
 
 #include "../op_kernel/arch22/flash_attention_score_grad_tiling.h"
 #include <register/op_impl_registry.h>
+#include "platform/platform_info.h"
 #include "log/log.h"
 #include "op_host/data_copy_transpose_tiling.h"
 #include "op_host/tiling_templates_registry.h"
-#include "flash_attention_score_grad_soc_version.h"
 #include "../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
 #include "../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 
@@ -592,10 +592,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
         return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    std::string socVersion;
-    (void)platformInfoPtr->GetPlatformRes("version", "SoC_version", socVersion);
-    // Short_SoC_version and NpuArch are shared by 950PR and 950DT. An unknown full version fails closed to false.
-    compileInfoPtr->isAscend950DT = IsAscend950DT(socVersion);
     compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
@@ -608,11 +604,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::T
 
     OP_LOGI(context,
             "parse TilingParseContext succ. aivNum:%u, aicNum:%u, "
-            "ubSize:%lu, l1Size:%lu, l0aSize:%lu, l0bSize:%lu, l0cSize:%lu, l2CacheSize:%lu, "
-            "socVersion:%s, isAscend950DT:%d",
+            "ubSize:%lu, l1Size:%lu, l0aSize:%lu, l0bSize:%lu, l0cSize:%lu, l2CacheSize:%lu",
             compileInfoPtr->aivNum, compileInfoPtr->aicNum, compileInfoPtr->ubSize, compileInfoPtr->l1Size,
-            compileInfoPtr->l0aSize, compileInfoPtr->l0bSize, compileInfoPtr->l0cSize, compileInfoPtr->l2CacheSize,
-            socVersion.c_str(), static_cast<int>(compileInfoPtr->isAscend950DT));
+            compileInfoPtr->l0aSize, compileInfoPtr->l0bSize, compileInfoPtr->l0cSize, compileInfoPtr->l2CacheSize);
 
     return ge::GRAPH_SUCCESS;
 }
