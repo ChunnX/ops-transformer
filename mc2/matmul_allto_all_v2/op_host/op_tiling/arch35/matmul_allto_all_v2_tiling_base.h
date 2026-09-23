@@ -741,18 +741,22 @@ protected:
         if (hccBufPtr != nullptr && *hccBufPtr > 0 && static_cast<uint64_t>(*hccBufPtr) < WIN_REUSE_BUDGET_CAP) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "hccl_buffer_size", std::to_string(*hccBufPtr).c_str(),
                                       (std::string(">= ") + std::to_string(WIN_REUSE_BUDGET_CAP / (1024UL * 1024UL)) +
-                                       " MB (400MB) for win buffer reuse").c_str());
+                                       " MB (400MB) for win buffer reuse")
+                                          .c_str());
             return ge::GRAPH_FAILED;
         }
-        uint64_t totalWinBytesNeeded = m_ * n_ * Y_OUTPUT_BYTE;
+        // no-reuse 判定须按 kernel 实际占用口径: 全部 slot 按 maxTileM 步进预留
+        // (bufferSlotBytes = maxTileM * n_ * 2), m 非 TILE_M_SIZE 整除时大于 m_ * n_ * 2,
+        // 缝隙场景(WIN_REUSE_BUDGET_CAP 落在两者之间)会误判不复用导致 Win 区越界写
+        uint64_t totalSlotBytesNeeded = totalTileCnt * maxTileM * n_ * Y_OUTPUT_BYTE;
         uint64_t slotNum = 0;
-        if (totalWinBytesNeeded <= WIN_REUSE_BUDGET_CAP) {
+        if (totalSlotBytesNeeded <= WIN_REUSE_BUDGET_CAP) {
             slotNum = totalTileCnt; // 空间足够时不复用buffer 此时slotNum = tileNum
         } else {
-            uint64_t slotDataSize = headMSize * n_ * Y_OUTPUT_BYTE;
+            uint64_t slotDataSize = maxTileM * n_ * Y_OUTPUT_BYTE;
             if (slotDataSize > WIN_REUSE_BUDGET_CAP) {
-                OP_LOGE_WITHOUT_REPORT(opName, "Per tile datasize: %lu is bigger than win cap datasize %lu", slotDataSize,
-                    WIN_REUSE_BUDGET_CAP);
+                OP_LOGE_WITHOUT_REPORT(opName, "Per tile datasize: %lu is bigger than win cap datasize %lu",
+                                       slotDataSize, WIN_REUSE_BUDGET_CAP);
                 return ge::GRAPH_FAILED;
             }
             uint64_t budgetDepth = (slotDataSize == 0) ? totalTileCnt : WIN_REUSE_BUDGET_CAP / slotDataSize;
@@ -762,7 +766,8 @@ protected:
         }
         td->commTilingData.slotNum = slotNum;
 
-        OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu, slotNum=%lu",
+        OP_LOGI(opName,
+                "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu, slotNum=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
                 td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
                 td->commTilingData.nonSplitAxisSize, td->commTilingData.slotNum);
