@@ -241,11 +241,12 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             tc.expectSuccess = ParseBool(Trim(items[idx++]));
             tc.expectTilingKey = stoll(Trim(items[idx++]));
 
-            tc.compileInfo = {
-                static_cast<uint64_t>(stoull(Trim(items[idx++]))), static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  ParseBool(Trim(items[idx++])),
-            };
+            tc.compileInfo.ubSize_ = stoull(Trim(items[idx++]));
+            tc.compileInfo.aicNum_ = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.compileInfo.aivNum_ = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.compileInfo.baseM_ = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.compileInfo.baseN_ = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.compileInfo.npuArch_ = stoi(Trim(items[idx++]));
 
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
                 tc.inputs[tensorIdx] = ParseTensorDescList(Trim(items[idx]), Trim(items[idx + 1U]),
@@ -412,6 +413,20 @@ TEST_P(TestGroupedMatmulSwigluQuantV2Tiling910B, csvDrivenCase)
 
 INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_910B, TestGroupedMatmulSwigluQuantV2Tiling910B,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);
+
+TEST(TestGroupedMatmulSwigluQuantV2Tiling910BWhiteBox, Dav2201UsesLegacyInt8Template)
+{
+    const auto &cases = GetAscend910BCases();
+    const auto iter =
+        find_if(cases.begin(), cases.end(), [](const auto &item) { return item.prefix == "test_w8a8_normal_case_1"; });
+    ASSERT_NE(iter, cases.end());
+    auto compileInfoForRun = iter->compileInfo;
+    auto context = iter->BuildContext(&compileInfoForRun);
+    ASSERT_EQ(compileInfoForRun.npuArch_, static_cast<int32_t>(NpuArch::DAV_2201));
+    TilingInfo result;
+    ASSERT_TRUE(ExecuteTiling(context, result));
+    EXPECT_EQ(result.tilingKey, 3);
+}
 
 class TestTilingParseForGroupedMatmulSwigluQuantV2 : public testing::Test {
 protected:

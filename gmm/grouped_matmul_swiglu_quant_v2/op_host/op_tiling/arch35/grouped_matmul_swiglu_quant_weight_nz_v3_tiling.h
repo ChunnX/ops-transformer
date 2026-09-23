@@ -22,8 +22,8 @@
 
 #include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
-#include "grouped_matmul_swiglu_quant_v2_tiling.h"
-#include "../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
+#include "../grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 
 namespace optiling {
 

@@ -13,7 +13,7 @@
  * \brief Tiling registration for the Ascend 950 MXFP8 weight-NZ V3 path.
  */
 
-#include "grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 
 using namespace optiling::GroupedMatmulSwigluQuantV3Tiling;
