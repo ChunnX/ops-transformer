@@ -28,8 +28,8 @@ kv_hat[d] = centroid[code[d]] * corrected_scale
 
 | 产品 | 支持情况 |
 | --- | --- |
-| Atlas A2 推理系列 | 支持 |
-| Atlas A3 推理系列 | 支持 |
+| Atlas A2推理系列产品 | 支持 |
+| Atlas A3推理系列产品 | 支持 |
 
 ## 接口约束
 
