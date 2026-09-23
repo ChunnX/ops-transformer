@@ -476,7 +476,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInTq4Scale
 {
     LocalTensor<half> scalesFp16 = v0ValidSizeBuff.Get<half>();
     LocalTensor<T> scalesFp32 = v0ValidSizeBuff.Get<T>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(T)];
-    DataCopyExtParams copyParams{1, TQ4_SCALE_STAGE_BYTES, 0, 0, 0};
+    DataCopyExtParams copyParams{
+        1, static_cast<uint32_t>(info.actualSingleProcessSInnerSize * sizeof(half)), 0, 0, 0};
     DataCopyPadExtParams<half> padParams;
     DataCopyPad(scalesFp16, tqScaleGm_[info.cmpLoop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_ROWS], copyParams,
                 padParams);
