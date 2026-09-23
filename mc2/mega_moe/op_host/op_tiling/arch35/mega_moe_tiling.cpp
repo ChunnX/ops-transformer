@@ -266,6 +266,13 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
+    OP_LOGD(nodeName,
+            "preQuantB1: B=%u, slotBytes=%u, doubleBufferBytes=%u, token=%u/%u, scale=%u/%u, weight=%u/%u, record=%u",
+            tilingData->preQuantB, tilingData->preQuantSlotBytes, tilingData->preQuantDoubleBufferBytes,
+            tilingData->preQuantTokenValidBytes, tilingData->preQuantTokenAlignedBytes,
+            tilingData->preQuantScaleValidBytes, tilingData->preQuantScaleAlignedBytes,
+            tilingData->preQuantWeightSrcBytes, tilingData->preQuantWeightAlignedBytes,
+            tilingData->preQuantRecordBytes);
 
     PrintMegaMoeBufferConfigs(tilingData, nodeName);
 }
@@ -1049,6 +1056,80 @@ static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData,
 }
 
 /*
+ * 预量化 B=1 分阶段搬运布局。两个 slot 只按最大字段长度分配，
+ * token、scale、weight 分三个阶段复用；输出记录布局保持 dispatch 既有协议。
+ */
+static void SetPreQuantB1Config(MegaMoeTilingData *tilingData, bool isPreQuantizedX,
+                                uint32_t activationElementsPerByte, ge::DataType topKWeightsDataType)
+{
+    tilingData->preQuantB = 0U;
+    tilingData->preQuantSlotBytes = 0U;
+    tilingData->preQuantDoubleBufferBytes = 0U;
+    tilingData->preQuantTokenValidBytes = 0U;
+    tilingData->preQuantTokenAlignedBytes = 0U;
+    tilingData->preQuantTokenPadBytes = 0U;
+    tilingData->preQuantScaleValidBytes = 0U;
+    tilingData->preQuantScaleAlignedBytes = 0U;
+    tilingData->preQuantScalePadBytes = 0U;
+    tilingData->preQuantWeightSrcBytes = 0U;
+    tilingData->preQuantWeightSrcAlignedBytes = 0U;
+    tilingData->preQuantWeightSrcPadBytes = 0U;
+    tilingData->preQuantWeightValidBytes = 0U;
+    tilingData->preQuantWeightAlignedBytes = 0U;
+    tilingData->preQuantWeightPadBytes = 0U;
+    tilingData->preQuantTokenSrcStrideBytes = 0U;
+    tilingData->preQuantScaleSrcStrideBytes = 0U;
+    tilingData->preQuantWeightSrcStrideBytes = 0U;
+    tilingData->preQuantTokenOffsetBytes = 0U;
+    tilingData->preQuantScaleOffsetBytes = 0U;
+    tilingData->preQuantWeightOffsetBytes = 0U;
+    tilingData->preQuantRecordBytes = 0U;
+    if (!isPreQuantizedX || tilingData->h == 0U) {
+        return;
+    }
+
+    const uint32_t tokenValidBytes = tilingData->h / activationElementsPerByte;
+    // token 的输出对齐沿用 dispatch 现有的 256B 协议；scale/weight 按 32B 对齐。
+    const uint32_t tokenAlignedBytes = ops::CeilAlign(tokenValidBytes, static_cast<uint32_t>(ALIGN_256));
+    const uint32_t scaleValidBytes = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    const uint32_t scaleAlignedBytes = ops::CeilAlign(scaleValidBytes, static_cast<uint32_t>(ALIGN_32));
+    const bool topkWeightsPrefetch = tilingData->topkWeightsPrefetch == 1;
+    const uint32_t weightSrcBytes =
+        topkWeightsPrefetch ? static_cast<uint32_t>(tilingData->topK * ge::GetSizeByDataType(topKWeightsDataType)) : 0U;
+    const uint32_t weightSrcAlignedBytes = ops::CeilAlign(weightSrcBytes, static_cast<uint32_t>(ALIGN_32));
+    const uint32_t weightValidBytes =
+        topkWeightsPrefetch ? static_cast<uint32_t>(tilingData->topK * sizeof(float)) : 0U;
+    const uint32_t weightAlignedBytes = ops::CeilAlign(weightValidBytes, static_cast<uint32_t>(ALIGN_32));
+    const uint32_t slotBytes = ops::CeilAlign(
+        std::max(std::max(tokenAlignedBytes, scaleAlignedBytes), std::max(weightSrcAlignedBytes, weightAlignedBytes)),
+        static_cast<uint32_t>(ALIGN_32));
+    const uint32_t recordBytes = CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte);
+
+    tilingData->preQuantB = 1U;
+    tilingData->preQuantSlotBytes = slotBytes;
+    tilingData->preQuantDoubleBufferBytes = 2U * slotBytes;
+    tilingData->preQuantTokenValidBytes = tokenValidBytes;
+    tilingData->preQuantTokenAlignedBytes = tokenAlignedBytes;
+    tilingData->preQuantTokenPadBytes = tokenAlignedBytes - tokenValidBytes;
+    tilingData->preQuantScaleValidBytes = scaleValidBytes;
+    tilingData->preQuantScaleAlignedBytes = scaleAlignedBytes;
+    tilingData->preQuantScalePadBytes = scaleAlignedBytes - scaleValidBytes;
+    tilingData->preQuantWeightSrcBytes = weightSrcBytes;
+    tilingData->preQuantWeightSrcAlignedBytes = weightSrcAlignedBytes;
+    tilingData->preQuantWeightSrcPadBytes = weightSrcAlignedBytes - weightSrcBytes;
+    tilingData->preQuantWeightValidBytes = weightValidBytes;
+    tilingData->preQuantWeightAlignedBytes = weightAlignedBytes;
+    tilingData->preQuantWeightPadBytes = weightAlignedBytes - weightValidBytes;
+    tilingData->preQuantTokenSrcStrideBytes = tokenValidBytes;
+    tilingData->preQuantScaleSrcStrideBytes = scaleValidBytes;
+    tilingData->preQuantWeightSrcStrideBytes = weightSrcBytes;
+    tilingData->preQuantTokenOffsetBytes = 0U;
+    tilingData->preQuantScaleOffsetBytes = tokenAlignedBytes;
+    tilingData->preQuantWeightOffsetBytes = tokenAlignedBytes + scaleAlignedBytes;
+    tilingData->preQuantRecordBytes = recordBytes;
+}
+
+/*
  * 计算 dispatch 阶段不随 ring 深度与 route batch 变化的固定 UB 占用。
  */
 static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData)
@@ -1378,7 +1459,9 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
     uint32_t resetTensorBytes =
         ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
 
-    uint32_t moeQuantOutputBufferBytes = CalcDispatchCopyBufferBytes(tilingData, moeActivationElementsPerByte);
+    uint32_t moeQuantOutputBufferBytes =
+        tilingData->preQuantB != 0U ? tilingData->preQuantSlotBytes :
+                                      CalcDispatchCopyBufferBytes(tilingData, moeActivationElementsPerByte);
     uint32_t quantOutputBufferBytes = moeQuantOutputBufferBytes;
     if (isSharedQuantIndependent) {
         // 独立共享量化增加一组输出双缓冲，输入和 mxTemp 共用；共享输出不包含 topK weight。
@@ -1467,9 +1550,11 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
                                      uint32_t availableUbBytes)
 {
     auto topKWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
+    const bool isPreQuantizedX = context->GetInputDesc(config.xIndex)->GetDataType() != ge::DT_BF16;
 
     uint32_t activationElementsPerByte = expertParams.moe.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     uint32_t sharedActivationElementsPerByte = expertParams.shared.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
+    SetPreQuantB1Config(tilingData, isPreQuantizedX, activationElementsPerByte, topKWeightsDesc->GetDataType());
     // 所有 AIV 核共用同一套 dispatch UB 配置，该布局与分核方式无关。
     // 若 kernel 改为按核拆分 tensor 或调整 copyTmp 槽位布局，需同步更新此处计算。
     tilingData->dispatchBufferConfig =

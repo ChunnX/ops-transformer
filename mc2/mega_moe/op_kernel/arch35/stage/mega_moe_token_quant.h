@@ -192,100 +192,159 @@ __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const Mo
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
-// 聚合预量化搬运的 GM 视图和参数，不负责申请 GM 或 UB 空间。
-struct PreQuantizedCopyContext {
-    uint32_t dataValidBytes;
+// B=1 预量化搬运只保留两个最大字段 slot，token、scale、weight 分阶段复用。
+struct PreQuantizedB1Context {
+    uint32_t tokenValidBytes;
+    uint32_t tokenAlignedBytes;
     uint32_t scaleValidBytes;
+    uint32_t scaleAlignedBytes;
+    uint32_t weightSrcBytes;
+    uint32_t weightSrcAlignedBytes;
+    uint32_t weightAlignedBytes;
+    uint32_t tokenSrcStrideBytes;
+    uint32_t scaleSrcStrideBytes;
+    uint32_t weightSrcStrideBytes;
+    uint32_t tokenOffsetBytes;
+    uint32_t scaleOffsetBytes;
+    uint32_t weightOffsetBytes;
+    uint32_t recordBytes;
     GlobalTensor<uint8_t> dataSrcGlobalTensor;
     GlobalTensor<uint8_t> scaleSrcGlobalTensor;
-    GlobalTensor<uint8_t> tokenScaleDstGlobalTensor;
-    DataCopyExtParams dataCopyInParams;
-    DataCopyExtParams scaleCopyInParams;
-    DataCopyPadExtParams<uint8_t> copyInPadParams;
-    DataCopyExtParams tokenScaleCopyOutParams;
+    GlobalTensor<uint8_t> weightSrcGlobalTensor;
+    GlobalTensor<uint8_t> outputGlobalTensor;
 };
 
-// 执行一个任务范围内的双 buffer 搬运，flag 初始化、复用同步和收尾等待集中在此处。
+__aicore__ inline void PreQuantCopyField(LocalTensor<uint8_t> slot, GlobalTensor<uint8_t> src, uint64_t srcOffset,
+                                         uint32_t validBytes, uint32_t alignedBytes, TEventID event,
+                                         GlobalTensor<uint8_t> output, uint64_t outputOffset)
+{
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+    DataCopyPad(slot, src[srcOffset], {1U, validBytes, 0U, 0U, 0U}, {true, 0U, 0U, 0U});
+    SetFlag<AscendC::HardEvent::MTE2_MTE3>(event);
+    WaitFlag<AscendC::HardEvent::MTE2_MTE3>(event);
+    DataCopyPad(output[outputOffset], slot, {1U, alignedBytes, 0U, 0U, 0U});
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+}
+
+template <typename ActivationType>
+__aicore__ inline void PreQuantCopyPhase(uint32_t tokenCount, GlobalTensor<uint8_t> src, uint32_t srcStrideBytes,
+                                         uint32_t validBytes, uint32_t alignedBytes, uint32_t outputOffsetBytes,
+                                         uint32_t recordBytes, GlobalTensor<uint8_t> output,
+                                         QuantProcessScratch<ActivationType> &scratch)
+{
+    for (uint32_t index = 0U; index < tokenCount; ++index) {
+        const TEventID event = (index & 1U) == 0U ? EVENT_ID0 : EVENT_ID1;
+        LocalTensor<ActivationType> slotTensor = event == EVENT_ID0 ? scratch.xOutTensor0 : scratch.xOutTensor1;
+        LocalTensor<uint8_t> slot = slotTensor.template ReinterpretCast<uint8_t>();
+        const uint64_t sourceOffset = static_cast<uint64_t>(index) * srcStrideBytes;
+        const uint64_t outputOffset = static_cast<uint64_t>(index) * recordBytes + outputOffsetBytes;
+        PreQuantCopyField(slot, src, sourceOffset, validBytes, alignedBytes, event, output, outputOffset);
+    }
+}
+
 template <typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
 __aicore__ inline void PackPreQuantizedTokenRange(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
-                                                  const Params &params, const QuantProcessConfig &config,
-                                                  const PreQuantizedCopyContext &copyContext,
+                                                  const PreQuantizedB1Context &copyContext,
                                                   QuantProcessScratch<ActivationType> &scratch)
 {
-    // xOut 双缓冲已经由 SendAndQuantBuffInit 整段清零；这里只覆盖有效 data/scale/weight，
-    // data、scale 以及 optional weight 的各自对齐 padding 因此保持为 0。
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-    for (uint32_t index = 0U; index < tokenRange.count; ++index) {
-        bool useFirstBuffer = index % DOUBLE_BUFFER == 0U;
-        TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<ActivationType> tokenScaleTensor = useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
-        LocalTensor<uint8_t> tokenScaleBytesTensor = tokenScaleTensor.template ReinterpretCast<uint8_t>();
-        uint64_t dataOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(copyContext.dataValidBytes);
-        uint64_t scaleOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(copyContext.scaleValidBytes);
-        uint64_t tokenScaleOffset =
-            static_cast<uint64_t>(index) * static_cast<uint64_t>(config.quantTokenScaleAlignBytes);
 
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        DataCopyPad(tokenScaleBytesTensor, copyContext.dataSrcGlobalTensor[dataOffset], copyContext.dataCopyInParams,
-                    copyContext.copyInPadParams);
-        DataCopyPad(tokenScaleBytesTensor[config.quantTokenAlignBytes], copyContext.scaleSrcGlobalTensor[scaleOffset],
-                    copyContext.scaleCopyInParams, copyContext.copyInPadParams);
-        if constexpr (TopkWeightsPrefetch) {
-            uint32_t tokenIndex = tokenRange.start + index;
-            GM_ADDR tokenTopkWeightsAddr =
-                params.probsGmAddr + static_cast<uint64_t>(tokenIndex) * common.topK * sizeof(TopkWeightsType);
-            PrefetchTopkWeights<TopkWeightsType>(tokenTopkWeightsAddr, common.topK, config, scratch, tokenScaleTensor,
-                                                 event);
-            if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-                // BF16 topK 权重需要由 Vector 转为 FP32 后写入拼接数据，Vector 是最终生产者。
+    // 阶段一：逐 token 搬入并写回 token 字段。
+    PreQuantCopyPhase<ActivationType>(tokenRange.count, copyContext.dataSrcGlobalTensor,
+                                      copyContext.tokenSrcStrideBytes, copyContext.tokenValidBytes,
+                                      copyContext.tokenAlignedBytes, copyContext.tokenOffsetBytes,
+                                      copyContext.recordBytes, copyContext.outputGlobalTensor, scratch);
+
+    // 阶段二：逐 token 搬入并写回 scale 字段。
+    PreQuantCopyPhase<ActivationType>(tokenRange.count, copyContext.scaleSrcGlobalTensor,
+                                      copyContext.scaleSrcStrideBytes, copyContext.scaleValidBytes,
+                                      copyContext.scaleAlignedBytes, copyContext.scaleOffsetBytes,
+                                      copyContext.recordBytes, copyContext.outputGlobalTensor, scratch);
+
+    if constexpr (TopkWeightsPrefetch) {
+        if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            // BF16 weight 先放入 mxTemp，再转换到 slot，避免输入和 float 输出重叠。
+            for (uint32_t index = 0U; index < tokenRange.count; ++index) {
+                const TEventID event = (index & 1U) == 0U ? EVENT_ID0 : EVENT_ID1;
+                LocalTensor<ActivationType> slotTensor = event == EVENT_ID0 ? scratch.xOutTensor0 : scratch.xOutTensor1;
+                LocalTensor<uint8_t> slot = slotTensor.template ReinterpretCast<uint8_t>();
+                const uint32_t tempOffset = static_cast<uint32_t>(event) *
+                                             (copyContext.weightSrcAlignedBytes / sizeof(uint16_t));
+                LocalTensor<bfloat16_t> weightTemp =
+                    scratch.mxTempTensor[tempOffset].template ReinterpretCast<bfloat16_t>();
+                const uint64_t sourceOffset = static_cast<uint64_t>(index) * copyContext.weightSrcStrideBytes;
+                const uint64_t outputOffset = static_cast<uint64_t>(index) * copyContext.recordBytes +
+                                              copyContext.weightOffsetBytes;
+                WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+                DataCopyPad(weightTemp, copyContext.weightSrcGlobalTensor[sourceOffset],
+                            {1U, copyContext.weightSrcBytes, 0U, 0U, 0U}, {true, 0U, 0U, 0U});
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                Duplicate<uint8_t>(slot, 0U, copyContext.weightAlignedBytes);
+                LocalTensor<float> weightOutput = slot.template ReinterpretCast<float>();
+                Cast(weightOutput, weightTemp, AscendC::RoundMode::CAST_NONE, common.topK);
+                PipeBarrier<PIPE_V>();
                 SetFlag<AscendC::HardEvent::V_MTE3>(event);
                 WaitFlag<AscendC::HardEvent::V_MTE3>(event);
+                DataCopyPad(copyContext.outputGlobalTensor[outputOffset], slot,
+                            {1U, copyContext.weightAlignedBytes, 0U, 0U, 0U});
+                SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
             }
+        } else {
+            // FP32 weight 不需要转换，直接复用普通字段搬运。
+            PreQuantCopyPhase<ActivationType>(tokenRange.count, copyContext.weightSrcGlobalTensor,
+                                               copyContext.weightSrcStrideBytes, copyContext.weightSrcBytes,
+                                               copyContext.weightAlignedBytes, copyContext.weightOffsetBytes,
+                                               copyContext.recordBytes, copyContext.outputGlobalTensor, scratch);
         }
-        if constexpr (!TopkWeightsPrefetch || !Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-            // FP32 预取和不预取场景均由 MTE2 直接搬入，同步后再由 MTE3 搬出。
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(event);
-        }
-        DataCopyPad(copyContext.tokenScaleDstGlobalTensor[tokenScaleOffset], tokenScaleBytesTensor,
-                    copyContext.tokenScaleCopyOutParams);
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
+
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
-// 仅由 AIV 调用，tokenRange 非空；将已量化的 x 和逐 32 元素 scale 按 dispatch 布局拼接，按需附加 topK 权重。
-// 不对 x/scales 做数值转换。
-template <typename XType, typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
+// 仅由 AIV 调用；布局长度、stride、offset 和 slot 大小全部由 tilingData 提供。
+template <typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
 __aicore__ inline void PackPreQuantizedLocalTokens(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
-                                                   const Params &params, const QuantProcessConfig &config,
-                                                   GM_ADDR outputAddr, QuantProcessScratch<ActivationType> &scratch)
+                                                   const Params &params, GM_ADDR outputAddr,
+                                                   QuantProcessScratch<ActivationType> &scratch)
 {
-    constexpr uint32_t X_ELEMS_PER_BYTE = PackedElementTraits<XType>::ELEMENTS_PER_BYTE;
-    PreQuantizedCopyContext copyContext;
-    copyContext.dataValidBytes = common.tokenHiddenDim / X_ELEMS_PER_BYTE;
-    copyContext.scaleValidBytes = config.quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(fp8_e8m0_t));
-    uint64_t dataRangeOffset =
-        static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(copyContext.dataValidBytes);
-    uint64_t scaleRangeOffset =
-        static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(copyContext.scaleValidBytes);
-    uint64_t tokenScaleRangeOffset =
-        static_cast<uint64_t>(tokenRange.start) * static_cast<uint64_t>(config.quantTokenScaleAlignBytes);
-    copyContext.dataSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.aGmAddr) +
-                                                    dataRangeOffset);
-    copyContext.scaleSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.xScaleGmAddr) +
-                                                     scaleRangeOffset);
-    copyContext.tokenScaleDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(outputAddr) +
-                                                          tokenScaleRangeOffset);
+    const auto *tilingData = params.tilingData;
+    PreQuantizedB1Context copyContext;
+    copyContext.tokenValidBytes = tilingData->preQuantTokenValidBytes;
+    copyContext.tokenAlignedBytes = tilingData->preQuantTokenAlignedBytes;
+    copyContext.scaleValidBytes = tilingData->preQuantScaleValidBytes;
+    copyContext.scaleAlignedBytes = tilingData->preQuantScaleAlignedBytes;
+    copyContext.weightSrcBytes = tilingData->preQuantWeightSrcBytes;
+    copyContext.weightSrcAlignedBytes = tilingData->preQuantWeightSrcAlignedBytes;
+    copyContext.weightAlignedBytes = tilingData->preQuantWeightAlignedBytes;
+    copyContext.tokenSrcStrideBytes = tilingData->preQuantTokenSrcStrideBytes;
+    copyContext.scaleSrcStrideBytes = tilingData->preQuantScaleSrcStrideBytes;
+    copyContext.weightSrcStrideBytes = tilingData->preQuantWeightSrcStrideBytes;
+    copyContext.tokenOffsetBytes = tilingData->preQuantTokenOffsetBytes;
+    copyContext.scaleOffsetBytes = tilingData->preQuantScaleOffsetBytes;
+    copyContext.weightOffsetBytes = tilingData->preQuantWeightOffsetBytes;
+    copyContext.recordBytes = tilingData->preQuantRecordBytes;
 
-    copyContext.dataCopyInParams = {1U, copyContext.dataValidBytes, 0U, 0U, 0U};
-    copyContext.scaleCopyInParams = {1U, copyContext.scaleValidBytes, 0U, 0U, 0U};
-    copyContext.copyInPadParams = {true, 0U, 0U, 0U};
-    copyContext.tokenScaleCopyOutParams = {1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U};
-    PackPreQuantizedTokenRange<ActivationType, TopkWeightsType, TopkWeightsPrefetch>(tokenRange, common, params, config,
-                                                                                     copyContext, scratch);
+    const uint64_t tokenRangeDataOffset =
+        static_cast<uint64_t>(tokenRange.start) * copyContext.tokenSrcStrideBytes;
+    const uint64_t tokenRangeScaleOffset =
+        static_cast<uint64_t>(tokenRange.start) * copyContext.scaleSrcStrideBytes;
+    const uint64_t tokenRangeWeightOffset =
+        static_cast<uint64_t>(tokenRange.start) * copyContext.weightSrcStrideBytes;
+    const uint64_t tokenRangeOutputOffset =
+        static_cast<uint64_t>(tokenRange.start) * copyContext.recordBytes;
+    copyContext.dataSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.aGmAddr) +
+                                                    tokenRangeDataOffset);
+    copyContext.scaleSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.xScaleGmAddr) +
+                                                     tokenRangeScaleOffset);
+    copyContext.weightSrcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.probsGmAddr) +
+                                                      tokenRangeWeightOffset);
+    copyContext.outputGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(outputAddr) +
+                                                   tokenRangeOutputOffset);
+    PackPreQuantizedTokenRange<ActivationType, TopkWeightsType, TopkWeightsPrefetch>(tokenRange, common, copyContext,
+                                                                                     scratch);
 }
 
 } // namespace MegaMoeImpl
