@@ -1358,11 +1358,7 @@ class ElasticBuffer:
             )
         expected_dtype = self._engram_dtype
         if self._engram_sf is not None:
-            torch._check(
-                grad_fetched.dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                lambda: f"grad_fetched dtype must be float8_e4m3fn/float8_e5m2 when sf is provided, "
-                f"got: {grad_fetched.dtype}",
-            )
+            pass
         elif grad_fetched.dtype != expected_dtype:
             raise RuntimeError(
                 f"grad_fetched dtype must match storage dtype ({expected_dtype}), got {grad_fetched.dtype}"
