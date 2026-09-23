@@ -367,14 +367,18 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
         totalWorkspaceSize += pooledScoreSize + postStagingSize;
     }
 
-    // softmax 单趟化：per-tile 列组部分和（每 AIV 16 个 kTile 槽，每槽 128 行×(K_TILE_COLS/16) 列组 fp32）
+    // softmax 单趟化：per-tile 列组部分和（每 AIV 16 个 kTile 槽，每槽 128 行×foldG 列组 fp32）
     // + per-tile 局部行 max（128 fp32/槽）
+    // foldW 由实际 postBlockShapeY 决定（%16==0 用 16 与客户场景快路径一致，否则 8），
+    // BLOCK_SHAPE_ALIGN=8 已保证 postBlockShapeY 为 8 的倍数
     constexpr uint32_t KTILE_COLS = 4 * 128; // = kernel 侧 CV_EXEC_RATIO*K_CHUNK_SIZE
+    const uint32_t foldW = (usePostBlockShape && postBlockShapeY % 16 != 0) ? 8u : 16u;
+    const uint32_t foldG = KTILE_COLS / foldW;
     uint32_t ktilesPerChunk = static_cast<uint32_t>((yBlocks + KTILE_COLS - 1) / KTILE_COLS);
     // 槽数必须与 kernel 一致：kernel 用 GetBlockNum()*AIC_AIV_RATIO（MIX_AIC_1_2 下 = aicNum*2）
     uint32_t aivSubCoreNum = aicNum * 2;
-    uint64_t partSumSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE *
-                           (KTILE_COLS / 16) * sizeof(float);
+    uint64_t partSumSize =
+        static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE * foldG * sizeof(float);
     uint64_t partMaxSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE * sizeof(float);
     totalWorkspaceSize += partSumSize + partMaxSize;
 

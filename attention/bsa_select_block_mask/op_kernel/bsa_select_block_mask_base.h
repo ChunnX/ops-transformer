@@ -459,13 +459,21 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                     CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
                 }
 
-                // 上一 chunk 收尾（其 partSum/partMax/globalMax/Sum 已在上轮 tiles 完成，依赖就绪）
-                if (hasPrevChunk) {
-                    ProcessSoftmaxSecondPass(prevQChunkStart, prevCurQChunkSize, batchIdx, headIdx, validXBlocks,
-                                             validYBlocks);
+                if (constInfo.usePostBlockShape) {
+                    // post 模式：chunk 边界重排——poolQ(c)+V1C1(c) 提到 finalize(c-1) 之前，
+                    // AIC 在 AIV 收尾期间完成 Q/K 装载并预产出 t0/t1，消除 ramp-up 空转
+                    if (hasPrevChunk) {
+                        ProcessSoftmaxSecondPass(prevQChunkStart, prevCurQChunkSize, batchIdx, headIdx, validXBlocks,
+                                                 validYBlocks);
+                    }
+                    ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validXBlocks, validYBlocks);
+                } else {
+                    // 非 post：旧 pass2 需重读 scratch 环 tile，重排会让 AIC 提前写下一 chunk 的
+                    // 环槽（N=2 下与 pass2 重读竞态，base4 实测 50% 错）——退化为立即收尾
+                    // （pass2(c) 紧跟 pass1(c)，AIC 此时等 V1C1(c+1) 空闲，环槽无覆写）
+                    ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validXBlocks, validYBlocks);
+                    ProcessSoftmaxSecondPass(qChunkStart, curQChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
                 }
-
-                ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validXBlocks, validYBlocks);
 
                 prevQChunkStart = qChunkStart;
                 prevCurQChunkSize = curQChunkSize;
