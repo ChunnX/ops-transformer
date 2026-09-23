@@ -69,6 +69,12 @@ private:
     ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleContiguousMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleDimMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleQueryShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
+    void LogDequantScaleQueryShapeWarnMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleKVShapePAMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleKVShapeNoPAMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
