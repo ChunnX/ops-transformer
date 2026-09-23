@@ -88,8 +88,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
             MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff], x2Cache[headBegin * D_ + tOff],
                                                          gammaEven, invRmsMid, tD);
-            PipeBarrier<PIPE_V>();
 
+            // 两个head使用独立x2/gamma区间，第二路MTE2事件可与第一路Vector重叠；
+            // Vector流水天然按发射顺序执行，只在pair末尾统一等待。
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
