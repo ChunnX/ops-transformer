@@ -176,6 +176,41 @@ def test_engram_gate_npu_precision_generalized_ndim(lead, hc, dim, mask_kind):
 @pytest.mark.parametrize(
     "t,hc,dim,mask_kind",
     [
+        pytest.param(29, 4, 5120, "none", id="pair_pipeline_phase_two"),
+        pytest.param(72, 4, 5120, "none", id="model_token_count_nomask"),
+        pytest.param(72, 4, 5120, "partial", id="model_token_count_partial_mask"),
+        pytest.param(128, 4, 5120, "none", id="large_tokens_nomask"),
+        pytest.param(100, 3, 5120, "partial", id="generic_mapping_partial_mask"),
+    ],
+)
+def test_engram_gate_npu_precision_pair_pipeline(t, hc, dim, mask_kind):
+    pytest.importorskip("torch_npu")
+    x, key, value, weight = _inputs(t, hc, dim, 20260920 + t)
+    image_mask = None
+    if mask_kind == "partial":
+        image_mask = torch.arange(t) % 2 == 1
+    expected = _golden(x, key, value, weight, 1e-6, 1e-6, image_mask)
+    actual = engram_gate(
+        x.npu(),
+        key.npu(),
+        value.npu(),
+        weight.npu(),
+        None if image_mask is None else image_mask.npu(),
+    )
+    torch.npu.synchronize()
+    actual_cpu = actual.cpu()
+    max_error = (actual_cpu.float() - expected.float()).abs().max().item()
+    assert torch.allclose(
+        actual_cpu.float(), expected.float(), atol=2e-2, rtol=2e-2
+    ), f"max absolute error: {max_error}"
+    if image_mask is not None:
+        assert torch.equal(actual_cpu[image_mask], x[image_mask])
+
+
+@pytest.mark.npu
+@pytest.mark.parametrize(
+    "t,hc,dim,mask_kind",
+    [
         pytest.param(3, 4, 8449, "none", id="chunked_one_chunk_tail_one"),
         pytest.param(3, 4, 16385, "partial", id="chunked_two_chunks_tail_one"),
         pytest.param(2, 2, 40000, "partial", id="chunked_multi_chunk_aligned"),

@@ -14,7 +14,7 @@ import torch
 
 from cannbotdsl import MemLoc, Tensor, const_expr, dtypes
 from cannbotdsl.buffer import Buffer
-from cannbotdsl.tensor import tile_view
+from cannbotdsl.tensor import tile_slice
 from cannbotdsl.lang.jit import jit
 from cannbotdsl.lang.kernel import kernel
 from cannbotdsl.lang.control_flow import range as dsl_range
@@ -544,6 +544,22 @@ class EngramGateKernel:
                 )
             rr.vmem_bar("vst_vld")
 
+    @jit
+    def _init_rotation_buffers(self):
+        with vf(mode="raw"):
+            full = rr.full_mask()
+            zero = rr.vcast(
+                rr.vdups(0.0, dtypes.float32, mask=full),
+                dtypes.bfloat16,
+                mask=full,
+            )
+            rr.vstore_pack(self.x_b, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+            rr.vstore_pack(self.x_c, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+            rr.vstore_pack(self.key_b, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+            rr.vstore_pack(self.key_c, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+            rr.vstore_pack(self.value_b, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+            rr.vstore_pack(self.value_c, 0, zero, full, pack_mode=rr.PackMode.B32_TO_B16)
+
     def __call__(
         self,
         gm_x: Tensor,
@@ -571,9 +587,9 @@ class EngramGateKernel:
                         o_row = gm_out[token_idx, hc_idx, None]
                         self._acc_init()
                         for ch in range(self.num_chunks):
-                            mem_copy(self.x_ch, tile_view(x_row, (1, self.chunk), (0, ch)))
-                            mem_copy(self.key_ch, tile_view(key_row, (1, self.chunk), (0, ch)))
-                            mem_copy(self.weight_ch, tile_view(w_row, (self.chunk,), (ch,)))
+                            mem_copy(self.x_ch, tile_slice(x_row, (1, self.chunk), (0, ch)))
+                            mem_copy(self.key_ch, tile_slice(key_row, (1, self.chunk), (0, ch)))
+                            mem_copy(self.weight_ch, tile_slice(w_row, (self.chunk,), (ch,)))
                             if ch + 1 < self.num_chunks:
                                 self._acc_full_chunk()
                             else:
@@ -581,21 +597,21 @@ class EngramGateKernel:
                         self._finalize_gate(epsilon, clamp_value)
                         for ch in range(self.num_chunks):
                             if self.num_chunks > 1:
-                                mem_copy(self.x_ch, tile_view(x_row, (1, self.chunk), (0, ch)))
-                            mem_copy(self.value_ch, tile_view(v_row, (self.chunk,), (ch,)))
+                                mem_copy(self.x_ch, tile_slice(x_row, (1, self.chunk), (0, ch)))
+                            mem_copy(self.value_ch, tile_slice(v_row, (self.chunk,), (ch,)))
                             if ch + 1 < self.num_chunks:
                                 self._emit_full_chunk()
                             else:
                                 self._emit_last_chunk()
-                            mem_copy(tile_view(o_row, (1, self.chunk), (0, ch)), self.out_ch)
+                            mem_copy(tile_slice(o_row, (1, self.chunk), (0, ch)), self.out_ch)
                     else:
                         masked = gm_mask[token_idx]
                         if masked:
                             x_row = gm_x[token_idx, hc_idx, None]
                             o_row = gm_out[token_idx, hc_idx, None]
                             for ch in range(self.num_chunks):
-                                mem_copy(self.x_ch, tile_view(x_row, (1, self.chunk), (0, ch)))
-                                mem_copy(tile_view(o_row, (1, self.chunk), (0, ch)), self.x_ch)
+                                mem_copy(self.x_ch, tile_slice(x_row, (1, self.chunk), (0, ch)))
+                                mem_copy(tile_slice(o_row, (1, self.chunk), (0, ch)), self.x_ch)
                         else:
                             x_row = gm_x[token_idx, hc_idx, None]
                             key_row = gm_key[token_idx, hc_idx, None]
@@ -604,9 +620,9 @@ class EngramGateKernel:
                             o_row = gm_out[token_idx, hc_idx, None]
                             self._acc_init()
                             for ch in range(self.num_chunks):
-                                mem_copy(self.x_ch, tile_view(x_row, (1, self.chunk), (0, ch)))
-                                mem_copy(self.key_ch, tile_view(key_row, (1, self.chunk), (0, ch)))
-                                mem_copy(self.weight_ch, tile_view(w_row, (self.chunk,), (ch,)))
+                                mem_copy(self.x_ch, tile_slice(x_row, (1, self.chunk), (0, ch)))
+                                mem_copy(self.key_ch, tile_slice(key_row, (1, self.chunk), (0, ch)))
+                                mem_copy(self.weight_ch, tile_slice(w_row, (self.chunk,), (ch,)))
                                 if ch + 1 < self.num_chunks:
                                     self._acc_full_chunk()
                                 else:
@@ -614,14 +630,15 @@ class EngramGateKernel:
                             self._finalize_gate(epsilon, clamp_value)
                             for ch in range(self.num_chunks):
                                 if self.num_chunks > 1:
-                                    mem_copy(self.x_ch, tile_view(x_row, (1, self.chunk), (0, ch)))
-                                mem_copy(self.value_ch, tile_view(v_row, (self.chunk,), (ch,)))
+                                    mem_copy(self.x_ch, tile_slice(x_row, (1, self.chunk), (0, ch)))
+                                mem_copy(self.value_ch, tile_slice(v_row, (self.chunk,), (ch,)))
                                 if ch + 1 < self.num_chunks:
                                     self._emit_full_chunk()
                                 else:
                                     self._emit_last_chunk()
-                                mem_copy(tile_view(o_row, (1, self.chunk), (0, ch)), self.out_ch)
+                                mem_copy(tile_slice(o_row, (1, self.chunk), (0, ch)), self.out_ch)
             return
+        self._init_rotation_buffers()
         if block_num % self.hc_mult == 0:
             hc_idx = block_idx % self.hc_mult
             first_row = block_idx
