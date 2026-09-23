@@ -23,19 +23,15 @@
 #include "arch35/mhc_norm_post_preonly_kernel.h"
 
 template <typename Op>
-__aicore__ inline void ProcessDualSiblingByStaticD(Op &op, GM_ADDR tiling)
+__aicore__ inline void ProcessDualSiblingWithStaticSingleTile(Op &op, GM_ADDR tiling)
 {
     GET_TILING_DATA(tdStaticD, tiling);
     const uint32_t embedDim = tdStaticD.embedDim;
     if (embedDim == 2560U) {
         op.template ProcessStaticD<2560U>();
-    } else if (embedDim == 5120U) {
-        op.template ProcessStaticD<5120U>();
-    } else if (embedDim == 6144U) {
-        op.template ProcessStaticD<6144U>();
     } else {
-        // Host与ACLNN已把D严格限制为四档，最后一个分支固定对应7168。
-        op.template ProcessStaticD<7168U>();
+        // 多tile静态展开会放大指令体并破坏MTE2流水，保留原有运行时循环。
+        op.Process();
     }
 }
 
@@ -75,7 +71,7 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
             KernelMhcNormPostPreonly<DTYPE_H_OUT, false, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            ProcessDualSiblingByStaticD(op, tiling);
+            ProcessDualSiblingWithStaticSingleTile(op, tiling);
         }
     } else if (TILING_KEY_IS(5)) {
         KERNEL_TASK_TYPE(5, KERNEL_TYPE_MIX_AIC_1_2);
@@ -83,7 +79,7 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
             KernelMhcNormPostPreonly<DTYPE_H_OUT, true, false, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            ProcessDualSiblingByStaticD(op, tiling);
+            ProcessDualSiblingWithStaticSingleTile(op, tiling);
         }
     } else if (TILING_KEY_IS(6)) {
         KERNEL_TASK_TYPE(6, KERNEL_TYPE_MIX_AIC_1_2);
@@ -91,7 +87,7 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
             KernelMhcNormPostPreonly<DTYPE_H_OUT, false, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            ProcessDualSiblingByStaticD(op, tiling);
+            ProcessDualSiblingWithStaticSingleTile(op, tiling);
         }
     } else if (TILING_KEY_IS(7)) {
         KERNEL_TASK_TYPE(7, KERNEL_TYPE_MIX_AIC_1_2);
@@ -99,7 +95,7 @@ extern "C" __global__ __aicore__ void mhc_norm_post_preonly(
             KernelMhcNormPostPreonly<DTYPE_H_OUT, true, true, true> op;
             op.Init(h_out, residual, h_post, h_res, phi, alpha, bias, pre_mix, gamma_0, gamma_1, gamma_2, h_in_prime,
                     x_2_out, h_in_f32, h_pre, GetUserWorkspace(workspace), tiling);
-            ProcessDualSiblingByStaticD(op, tiling);
+            ProcessDualSiblingWithStaticSingleTile(op, tiling);
         }
     }
 }

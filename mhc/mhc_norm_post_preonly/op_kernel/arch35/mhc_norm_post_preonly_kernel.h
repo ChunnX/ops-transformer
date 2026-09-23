@@ -191,13 +191,12 @@ public:
         }
     }
 
-    // 四档D均由Host严格校验。双sibling热路径按D实例化，固定展开D轴分块，
-    // 避免每个阶段重复执行tile循环控制、尾块判断和动态偏移计算。
+    // D=2560恰好只有一个tile：固定实例化后由if constexpr消除各阶段的
+    // tile循环控制、尾块判断和动态偏移计算。多tile维度继续使用原流水。
     template <uint32_t D_VALUE>
     __aicore__ inline void ProcessStaticD()
     {
-        static_assert(D_VALUE == 2560U || D_VALUE == 5120U || D_VALUE == 6144U || D_VALUE == 7168U,
-                      "unsupported embed dim");
+        static_assert(D_VALUE == D_TILE_MAX, "static path only supports the single-tile embed dim");
         static_assert(DUAL_SIBLING, "static D dispatch is only used by the dual-sibling path");
         if (tokenStart_ >= tokenEnd_) {
             return;
