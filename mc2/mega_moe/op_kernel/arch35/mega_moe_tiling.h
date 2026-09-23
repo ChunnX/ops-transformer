@@ -228,5 +228,17 @@ struct MegaMoeTilingData {
     bool isSharedQuantIndependent;
     // Appended to retain all existing field offsets; host and kernel packages must match.
     MegaMoeL1Layout a8w4L1Layout;
+    // Pre-quantized fixed-tile layout. These fields are zero for internally quantized input.
+    uint32_t preQuantTileTokens;
+    uint32_t preQuantStageBytes;
+    uint32_t preQuantTokenValidBytes;
+    uint32_t preQuantTokenAlignedBytes;
+    uint32_t preQuantScaleValidBytes;
+    uint32_t preQuantScaleAlignedBytes;
+    uint32_t preQuantWeightSrcBytes;
+    uint32_t preQuantWeightSrcAlignedBytes;
+    uint32_t preQuantWeightAlignedBytes;
+    uint32_t preQuantRecordBytes;
+    uint32_t preQuantWeightOffsetBytes;
 };
 #endif
