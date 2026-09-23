@@ -74,6 +74,8 @@ inline bool CheckTensorStorageBounds(const aclTensor *tensor, const char *opName
     int64_t storageElements = 1;
     for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
         const int64_t dim = storageShape.GetDim(i);
+        // Negative dimensions were rejected above, and zero dimensions return through
+        // the empty-storage check before this loop, so dim is strictly positive here.
         if (storageElements > std::numeric_limits<int64_t>::max() / dim) {
             return ReportInvalidTensorStorage(tensor, opName, name, "storage element count overflows int64");
         }
