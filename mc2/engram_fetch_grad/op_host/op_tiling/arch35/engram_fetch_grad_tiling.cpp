@@ -53,10 +53,9 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL;
 
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
-constexpr uint32_t DOUBLE_BUFFER_NUM 2
+constexpr uint32_t DOUBLE_BUFFER_NUM 2;
 
-    static const std::vector<ge::DataType>
-        GRAD_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
+static const std::vector<ge::DataType> GRAD_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
 
 static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value)
 {
