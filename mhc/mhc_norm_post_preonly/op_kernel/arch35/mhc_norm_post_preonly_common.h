@@ -21,7 +21,6 @@ using namespace AscendC;
 // 全局常量
 // ---------------------------------------------------------------------------
 constexpr uint32_t N_MAX  = 4;
-constexpr uint32_t D_TILE_MAX = 2560; // Host对全部合法D固定使用该分块大小
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_TWO = 2;
 constexpr uint32_t BUFFER_NUM_ONE = 1;

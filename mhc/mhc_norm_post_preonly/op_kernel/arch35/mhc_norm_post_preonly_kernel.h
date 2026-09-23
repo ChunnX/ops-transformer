@@ -50,6 +50,7 @@ public:
         rowsPerCore_ = td.rowsPerCore;
         rowsPerCoreSp_ = td.rowsPerCoreSp;
         blockPivot_ = td.blockPivot;
+        dimTile_ = td.dimTile;
         dimLoop_ = td.dimLoop;
         lastDimTile_ = td.lastDimTile;
         phiRows_ = td.phiRows;
@@ -245,10 +246,7 @@ private:
     // Tiling参数
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
     uint32_t usedCoreNum_ = 0, rowsPerCore_ = 0, rowsPerCoreSp_ = 0, blockPivot_ = 0;
-    // ACLNN与tiling已把D限制为四档且均不小于2560，Host的dimTile恒为2560。
-    // 保留tiling字段ABI，但kernel使用编译期常量折叠热循环中的行跨度和偏移计算。
-    static constexpr uint32_t dimTile_ = D_TILE_MAX;
-    uint32_t dimLoop_ = 0, lastDimTile_ = 0;
+    uint32_t dimTile_ = 0, dimLoop_ = 0, lastDimTile_ = 0;
     uint32_t phiRows_ = 0, phiCols_ = 0;
     float normEps_ = 1e-6f, mhcPreNormEps_ = 1e-6f, hcEps_ = 1e-6f, invD_ = 0.0f, invK_ = 0.0f;
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
