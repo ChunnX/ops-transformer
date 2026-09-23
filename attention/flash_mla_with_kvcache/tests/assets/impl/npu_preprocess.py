@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Resize and fill metadata after H2D, before timing and graph capture."""
+"""Materialize metadata after H2D, before timing and graph capture."""
 
 from .metadata import build_metadata
 
@@ -33,8 +33,6 @@ def run(
     return_softmax_lse=False,
     **kwargs,
 ):
-    if metadata is None:
-        raise ValueError("MLA requires an int32 metadata placeholder with shape (0,)")
     generated = build_metadata(
         q,
         k_cache,
@@ -49,6 +47,8 @@ def run(
         layout_kv=layout_kv,
         **kwargs,
     )
+    if metadata is None:
+        return {"metadata": generated}
     if metadata.dtype != generated.dtype:
         raise ValueError(
             f"MLA metadata placeholder must be {generated.dtype}; got {metadata.dtype}"
