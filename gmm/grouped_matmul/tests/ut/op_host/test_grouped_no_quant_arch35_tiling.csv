@@ -25,3 +25,10 @@ Ascend950,split_m_single_single_multi_y_invalid,true,split_m_single_single_multi
 Ascend950,split_k_single_single_multi_y_invalid,true,split_k_single_single_multi_y_invalid,,256,1024,512,2,false,false,2,0,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
 Ascend950,nz_unaligned_k_invalid,true,nz_unaligned_k_invalid,,256,1025,512,2,false,false,0,3,NZ,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
 Ascend950,k_zero_invalid,true,k_zero_invalid,,256,0,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
+Ascend950,split_m_sss_sparse,true,split_m_sss_sparse,,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,32,0,2 32 1 1 1 0 2 0 1 1 0 0 32 256 512 1024 1024 256 256 1024 256 256 64 8 8 1 1 0 0 0 0 0 0 0 0 0 0 0 4 4 0 0 2 2 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0,2,
+Ascend950,count_1d_grouplist,true,count_1d_grouplist,,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,32,0,2 32 1 1 1 0 1 0 1 1 0 0 32 256 512 1024 1024 256 256 1024 256 256 64 8 8 1 1 0 0 0 0 0 0 0 0 0 0 0 4 4 0 0 2 2 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0,1,
+Ascend950,split_k_sss_sparse_invalid,true,split_k_sss_sparse_invalid,,256,1024,512,2,false,false,2,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,2,
+Ascend950,nosplit_mmm_sparse_invalid,true,nosplit_mmm_sparse_invalid,,256,1024,512,2,false,false,-1,0,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,2,
+Ascend950,sparse_1d_grouplist_invalid,true,sparse_1d_grouplist_invalid,,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,2,1
+Ascend950,count_2d_grouplist_invalid,true,count_2d_grouplist_invalid,,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,1,2
+Ascend950,invalid_grouplist_type,true,invalid_grouplist_type,,256,1024,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,32,0,,3,
