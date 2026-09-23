@@ -26,6 +26,7 @@ using AscendC::Reg::StoreDist;
 #include "common/flash_decode.h"
 #include "common/get_kv_phy_addr_vf.h"
 #include "common/smla_vector_common_arch35.h"
+#include "common/smla_l1_layout.h"
 
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
@@ -147,6 +148,9 @@ public:
     static constexpr bool DIRECT_SPARSE_KV_L1 =
         TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
         KV_LAYOUT_T == SMLA_LAYOUT::TND && !IS_SPLIT_G && !IS_BATCH_CONSISTENCY;
+    static constexpr bool SPLIT_SPARSE_KV_L1 =
+        DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
+    static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
     static constexpr uint32_t KV_ND_ROW_STRIDE = DIRECT_SPARSE_KV_L1 ? 528 : dVTemplateType;
     static constexpr int64_t KV_COPYIN_UNIT = 8;   // 每次搬入8行
     static constexpr int64_t KV_PROCESS_UNIT = 16; // 每次拷出16行
@@ -659,12 +663,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 {
     if constexpr (DIRECT_SPARSE_KV_L1) {
         if (runInfo.s2RealSize == s2BaseSize) {
-            // Match [P x2][Q half x3][KV x3] in the Cube local-buffer layout.
-            constexpr uint32_t kvL1BaseBytes =
-                (2 * s1BaseSize * s2BaseSize + 3 * L1Q_ELEM_PER_BUF) * sizeof(Q_T);
-            LocalTensor<Q_T> dst(TPosition::B1,
-                kvL1BaseBytes + runInfo.taskIdMod3 * L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T),
-                L1_RIGHT_ELEM_PER_BLOCK);
             LocalTensor<Q_T> nzUb = sparseKvNzBufs[pingPongV0].tensor;
             // MTE2 produces ND; V produces padded NZ; MTE3 consumes padded NZ.
             SetFlag<HardEvent::MTE2_V>(pingPongV0);
@@ -683,7 +681,30 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
             nzCopy.srcStride = SPARSE_KV_NZ_ROW_STRIDE - KV_PROCESS_UNIT;
             // Skip the UB bank-rotation padding rows.
             nzCopy.dstStride = s2BaseSize - KV_PROCESS_UNIT;
-            DataCopy(dst[s2StartIdx * 16], nzUb, nzCopy);
+            if constexpr (SPLIT_SPARSE_KV_L1) {
+                static_assert(sizeof(Q_T) == 2, "D256 L1 layout requires two-byte input");
+                nzCopy.blockCount = 256 / 16;
+                for (uint32_t half = 0; half < 2; ++half) {
+                    if constexpr (HALF_KV_FREE) {
+                        if (half == 1 && s2StartIdx == sparseS2Start) {
+                            // Consume half1 credit once, after the first 16-row half0 write.
+                            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                                CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+                        }
+                    }
+                    LocalTensor<Q_T> dst(TPosition::B1,
+                        ActiveSparseKvL1Layout::HalfBase(runInfo.taskIdMod3, half),
+                        ActiveSparseKvL1Layout::HALF_BYTES / sizeof(Q_T));
+                    DataCopy(dst[s2StartIdx * 16], nzUb[half * 256 * SPARSE_KV_NZ_ROW_STRIDE], nzCopy);
+                }
+            } else {
+                constexpr uint32_t kvL1BaseBytes =
+                    (2 * s1BaseSize * s2BaseSize + 3 * L1Q_ELEM_PER_BUF) * sizeof(Q_T);
+                LocalTensor<Q_T> dst(TPosition::B1,
+                    kvL1BaseBytes + runInfo.taskIdMod3 * L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T),
+                    L1_RIGHT_ELEM_PER_BLOCK);
+                DataCopy(dst[s2StartIdx * 16], nzUb, nzCopy);
+            }
             SetFlag<HardEvent::MTE3_V>(2 + pingPongV0);
             return;
         }
@@ -744,8 +765,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (DIRECT_SPARSE_KV_L1) {
-        // The previous PV consumer releases each ring slot after its final MTE1 read.
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+        if constexpr (HALF_KV_FREE) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_V0RES(runInfo.taskIdMod3));
+            if (runInfo.s2RealSize != s2BaseSize) {
+                // GM-staged tails, including zero-row AIVs, still consume both credits.
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+            }
+        } else {
+            // The previous PV consumer releases the whole slot after its final MTE1 read.
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+        }
     }
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) {
@@ -1742,6 +1771,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInf
     }
     if constexpr (DIRECT_SPARSE_KV_L1) {
         for (uint32_t slot = 0; slot < 3; ++slot) {
+            if constexpr (HALF_KV_FREE) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_V0RES(slot));
+            }
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(slot));
         }
         WaitFlag<HardEvent::MTE3_V>(2);

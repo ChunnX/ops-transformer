@@ -19,6 +19,7 @@
 #include "sparse_flash_mla_common_arch35.h"
 #include "common/static_matmul.h"
 #include "common/cube_local_buffer.h"
+#include "common/smla_l1_layout.h"
 
 #include "../../common/op_kernel/offset_calculator.h"
 #include "../../common/op_kernel/matmul.h"
@@ -65,6 +66,10 @@ public:
     static constexpr bool DIRECT_SPARSE_KV_L1 =
         TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
         KV_LAYOUT_T == SMLA_LAYOUT::TND && !IS_SPLIT_G && !IS_BATCH_CONSISTENCY;
+    static constexpr bool SPLIT_SPARSE_KV_L1 =
+        DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
+    static constexpr bool UNIFIED_KV_READY = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE >= 1;
+    static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -100,6 +105,9 @@ public:
     __aicore__ inline void FreeEvent();
 
 private:
+    __aicore__ inline LocalTensor<Q_T> GetKvQuarter(uint32_t slot, uint32_t quarter, uint32_t rows);
+    __aicore__ inline void MatmulPvSplit(const LocalTensor<Q_T> &pL1, const LocalTensor<T> &cL0,
+                                       const MMParam &param, uint32_t slot);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                         __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
                                         __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
@@ -156,6 +164,13 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
     AttentionCommon::InitCubeLocalBuffer<Q_T, T>(l1QBufs, l1RightBufs, l0ABufs, l0A, l0BBufs, l0B, l0CBufs, l0C,
                                                  l1BaseAddr);
     if ASCEND_IS_AIC {
+        if constexpr (SPLIT_SPARSE_KV_L1) {
+            static_assert(sizeof(Q_T) == 2, "D256 L1 layout requires two-byte input");
+            for (uint32_t slot = 0; slot < l1QBufNum; ++slot) {
+                l1QBufs[slot].tensor = LocalTensor<Q_T>(
+                    TPosition::A1, ActiveSparseKvL1Layout::QueryBase(slot), L1Q_ELEM_PER_BUF);
+            }
+        }
         // QK scratch [0,32KiB), PV P [32,48KiB), first Q K-tile [48,64KiB).
         static_assert(4 * L0A_ELEM_PER_BUF * sizeof(Q_T) <= 64 * 1024);
         l0ResidentP = LocalTensor<Q_T>(TPosition::A2, 2 * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
@@ -165,8 +180,65 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
             for (uint32_t slot = 0; slot < 3; ++slot) {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot));
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot) + AIV0_AIV1_OFFSET);
+                if constexpr (HALF_KV_FREE) {
+                    // Same numeric IDs as READY, but opposite destination core.
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_V0RES(slot));
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_V0RES(slot) + AIV0_AIV1_OFFSET);
+                }
             }
         }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline LocalTensor<Q_T> CSABlockCube<TEMPLATE_ARGS>::GetKvQuarter(
+    uint32_t slot, uint32_t quarter, uint32_t rows)
+{
+    if constexpr (SPLIT_SPARSE_KV_L1) {
+        return LocalTensor<Q_T>(TPosition::B1, ActiveSparseKvL1Layout::QuarterBase(slot, quarter, rows),
+                                rows * dBaseMatmulSize);
+    } else {
+        return l1RightBufs[slot].tensor[quarter * rows * dBaseMatmulSize];
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulPvSplit(
+    const LocalTensor<Q_T> &pL1, const LocalTensor<T> &cL0, const MMParam &param, uint32_t slot)
+{
+    // One four-N128 PV lifecycle: P is loaded once, and all original AB events remain.
+    uint32_t cOffset = Align16Func(param.realM != 0 ? param.realM : param.singleM) * dBaseMatmulSize;
+    MmadParams mm;
+    mm.m = param.realM != 0 ? param.realM : param.singleM;
+    if (mm.m == 1) {
+        mm.m = 16;
+    }
+    mm.n = dBaseMatmulSize;
+    mm.k = param.singleK;
+    mm.cmatrixInitVal = param.isOutKFisrt;
+    mm.cmatrixSource = false;
+    mm.unitFlag = param.unitFlag;
+    for (uint32_t quarter = 0; quarter < 4; ++quarter) {
+        StaticBuffer<Q_T> &aBuf = l0A.GetNext();
+        StaticBuffer<Q_T> &bBuf = l0B.GetNext();
+        WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(aBuf.idx));
+        if (quarter == 0) {
+            LoadDataToL0A(l0ResidentP, pL1, param, 0, param.singleK, param.singleM);
+        }
+        LocalTensor<Q_T> kvQuarter = GetKvQuarter(slot, quarter, Align16Func(param.singleK));
+        LoadDataToL0B(bBuf.tensor, kvQuarter, param, 0, param.singleK, dBaseMatmulSize, 1);
+        if constexpr (HALF_KV_FREE) {
+            if (quarter == 1 || quarter == 3) {
+                // MTE1 has consumed this half; L0B retains its own M_MTE1 protection.
+                uint32_t freeId = quarter == 1 ? CROSSCORE_V0RES(slot) : CROSSCORE_L1KV_FREE(slot);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(freeId);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(freeId + AIV0_AIV1_OFFSET);
+            }
+        }
+        SetFlag<HardEvent::MTE1_M>(INNERCORE_L0AB(aBuf.idx));
+        WaitFlag<HardEvent::MTE1_M>(INNERCORE_L0AB(aBuf.idx));
+        Mmad(cL0[quarter * cOffset], l0ResidentP, bBuf.tensor, mm);
+        SetFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(aBuf.idx));
     }
 }
 
@@ -378,7 +450,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
         CalcS2Coord(runInfo, constInfo);
         LoadKGmToL1(dst, runInfo, constInfo);
     } else {
-        if constexpr (!DIRECT_SPARSE_KV_L1) {
+        if constexpr (!DIRECT_SPARSE_KV_L1 || UNIFIED_KV_READY) {
             v0ResGm.WaitCrossCore();
         } else if (runInfo.s2RealSize != s2BaseSize) {
             v0ResGm.WaitCrossCore();
@@ -391,13 +463,23 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
         if constexpr (DIRECT_SPARSE_KV_L1) {
             // Full tiles are already in this L1 slot after the AIV MTE3 ready flag.
             if (runInfo.s2RealSize != s2BaseSize) {
-                CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+                if constexpr (SPLIT_SPARSE_KV_L1) {
+                    for (uint32_t half = 0; half < 2; ++half) {
+                        LocalTensor<Q_T> halfDst(TPosition::B1,
+                            ActiveSparseKvL1Layout::HalfBase(runInfo.taskIdMod3, half),
+                            ActiveSparseKvL1Layout::HALF_BYTES / sizeof(Q_T));
+                        CopyToL1Nd2Nz<Q_T>(halfDst, v0ResGmTensor[half * 256], runInfo.s2RealSize,
+                                          256, constInfo.mm1Kb);
+                    }
+                } else {
+                    CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+                }
             }
         } else {
             CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
         }
     }
-    if constexpr (!DIRECT_SPARSE_KV_L1) {
+    if constexpr (!DIRECT_SPARSE_KV_L1 || UNIFIED_KV_READY) {
         SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
     } else if (runInfo.s2RealSize != s2BaseSize) {
         SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
@@ -426,8 +508,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
                                                                     RunInfo &runInfoNext, RunInfo &runInfo,
                                                                     ConstInfo &constInfo)
 {
-    LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
-    if constexpr (DIRECT_SPARSE_KV_L1) {
+    LocalTensor<Q_T> curL1RightTensor = GetKvQuarter(runInfo.taskIdMod3, 0, Align16Func(runInfo.s2RealSize));
+    if constexpr (DIRECT_SPARSE_KV_L1 && !UNIFIED_KV_READY) {
         if (runInfo.s2RealSize == s2BaseSize) {
             // Full tiles are produced directly in L1 by AIV MTE3; MTE1 is the consumer.
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_V0RES(runInfo.taskIdMod3));
@@ -464,7 +546,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     smlaParam.isOutKFisrt = false;
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
-        curL1RightTensor[dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
+        GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
         l0A, l0B, smlaCBuf.tensor, smlaParam);
 
     smlaCurL1QBufId = (smlaCurL1QBufId + 1) % l1QBufNum;
@@ -473,11 +555,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     }
     // The supported D=512 also makes the second half two fixed K128 tiles.
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor[2 * dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
+        l1QBufs[smlaCurL1QBufId].tensor, GetKvQuarter(runInfo.taskIdMod3, 2, Align16Func(runInfo.s2RealSize)),
         l0A, l0B, smlaCBuf.tensor, smlaParam);
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
-        curL1RightTensor[3 * dBaseMatmulSize * Align16Func(runInfo.s2RealSize)],
+        GetKvQuarter(runInfo.taskIdMod3, 3, Align16Func(runInfo.s2RealSize)),
         l0A, l0B, smlaCBuf.tensor, smlaParam);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
@@ -522,7 +604,6 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
                                                                     StaticBuffer<Q_T> &l1PBuffer,
                                                                     const RunInfo &runInfo, const ConstInfo &constInfo)
 {
-    LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1P(l1PBuffer.idx));
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1P(l1PBuffer.idx) + AIV0_AIV1_OFFSET);
 
@@ -538,11 +619,16 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
     // M_FIX orders FIX only. A separate M_MTE1 event protects resident P
     // across PV calls while QK continues to use its independent lower slots.
     WaitFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
-    MatmulNStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
-        l1PBuffer.tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentP);
+    if constexpr (SPLIT_SPARSE_KV_L1) {
+        MatmulPvSplit(l1PBuffer.tensor, smlaCBuf.tensor, smlaParam, runInfo.taskIdMod3);
+    } else {
+        LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
+        MatmulNStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
+            l1PBuffer.tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentP);
+    }
     SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
 
-    if constexpr (DIRECT_SPARSE_KV_L1) {
+    if constexpr (DIRECT_SPARSE_KV_L1 && !HALF_KV_FREE) {
         // Both QK and PV have finished loading this slot into L0.
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3) + AIV0_AIV1_OFFSET);
