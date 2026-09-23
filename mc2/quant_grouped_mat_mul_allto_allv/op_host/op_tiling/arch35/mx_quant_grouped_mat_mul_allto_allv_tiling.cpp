@@ -686,16 +686,13 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
     inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
     localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
-    // MX 量化路径 workspace：apace 构建开启时，GroupedMatmulMxKernel 的 group 序
+    // MX 量化路径 workspace：GroupedMatmulMxKernel 的 group 序
     // (expertIdx * ep + rankIdx) 与 expert 序不一致，B/ScaleB 无法走 kernel 默认公式，
     // 需在公共布局（groupList + cGroupOffsetTable + ptrTable + scale repeat）基础上
-    // 追加 B/scaleB 偏移表；构建未开启时保持公共口径（kernel 走原通路，不使用该表）
+    // 追加 B/scaleB 偏移表
     uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
     uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
-    uint64_t mxOffsetTableSize = 0;
-#ifdef ENABLE_APACE_QUANT_GMM_A2AV
-    mxOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t) * 2;
-#endif
+    uint64_t mxOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t) * 2;
     uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
     uint64_t gmmComputeWsSize =
         groupListSize + cGroupOffsetTableSize + mxOffsetTableSize + tensorListSize + ttScaleRepeatSize;

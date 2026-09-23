@@ -23,19 +23,11 @@ if (BUILD_OPEN_PROJECT)  # custom
     file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/impl/c_api
                          ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/include/c_api)
 
-    # apace hcomm 融合通路构建开关（默认关闭）：构建时导出环境变量 ENABLE_APACE_QUANT_GMM_A2AV=1 开启。
-    # 开启后 kernel 侧定义该宏（MX 量化实例的 GMM 计算走 apace GroupedMatmulMxKernel，
-    # AlltoAllV 通信在 AIC 核内经 Hccl 提交）；tiling 侧 MX 类为 B/scaleB 偏移表扩容 workspace。
-    set(APACE_GMM_A2AV_KERNEL_OPTS "")
-    if("$ENV{ENABLE_APACE_QUANT_GMM_A2AV}" STREQUAL "1")
-        add_compile_definitions(ENABLE_APACE_QUANT_GMM_A2AV=1)
-        set(APACE_GMM_A2AV_KERNEL_OPTS -DENABLE_APACE_QUANT_GMM_A2AV=1)
-    endif()
-
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
-    # apace hcomm 通路 kernel 头（blaze/tensor_api）经 op_kernel 根与 ops-tensor include 引入
+    # apace hcomm 通路（MX 量化实例默认编译）kernel 头（blaze/tensor_api）
+    # 经 op_kernel 根与 ops-tensor include 引入
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
@@ -45,7 +37,6 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
-                    ${APACE_GMM_A2AV_KERNEL_OPTS}
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

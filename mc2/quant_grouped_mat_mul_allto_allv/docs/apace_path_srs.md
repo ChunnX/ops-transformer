@@ -26,9 +26,9 @@ AIC 核内经 `Hccl` 提交，二者同核融合执行。
 
 ### 1.2 范围
 
-apace 通路是 MX(FP4/FP8) 量化实例的**可选加速路径**（构建开关默认关闭）。TT 量化实例与
-未开启构建开关的构建完全保持原通路（`GmmA2avScheduler + HcclA2avOp + QuantGroupedMatmul`，
-AIV 通信）行为。aclnn 接口、输入校验、infershape、tiling 注册体系均不变。
+apace 通路是 MX(FP4/FP8) 量化实例的加速路径（默认编译，无构建开关）。TT 量化实例完全
+保持原通路（`GmmA2avScheduler + HcclA2avOp + QuantGroupedMatmul`，AIV 通信）行为。
+aclnn 接口、输入校验、infershape、tiling 注册体系均不变。
 
 ### 1.3 术语
 
@@ -42,13 +42,12 @@ AIV 通信）行为。aclnn 接口、输入校验、infershape、tiling 注册�
 
 ## 2 总体描述
 
-### 2.1 选路机制（三层）
+### 2.1 选路机制（两层）
 
-| 层 | 开关 | 默认 | 说明 |
-|---|---|---|---|
-| 构建期 | `ENABLE_APACE_QUANT_GMM_A2AV=1`（环境变量，经 op_host/CMakeLists 以 `-D` 下发 kernel 编译） | 关 | 关闭时 kernel 不含 apace 分支，构建产物与原通路一致 |
-| 编译期-实例 | `MX_QUANT_MODE`（a2av_gmm_utils.h：`defined(ORIG_DTYPE_GMM_X_SCALE) && ORIG_DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0`） | — | 以 **scale dtype 判别 MX 实例**；带 `defined()` 守卫，宏缺失时安全判否 |
-| 运行期 | 无 | — | tiling key / tiling 类 / 环境变量均不参与；MX+开关开启的实例固定走 apace |
+| 层 | 开关 | 说明 |
+|---|---|---|
+| 编译期-实例 | `MX_QUANT_MODE`（a2av_gmm_utils.h：`defined(ORIG_DTYPE_GMM_X_SCALE) && ORIG_DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0`） | 以 **scale dtype 判别 MX 实例**；带 `defined()` 守卫，宏缺失时安全判否 |
+| 运行期 | 无 | tiling key / tiling 类 / 环境变量均不参与；MX 实例固定走 apace，TT 实例固定走原通路 |
 
 **设计约束**：
 - 实例级分支必须编译期可判：tiling key 方案要求全部 dtype 实例编译 apace 分支，依赖
@@ -116,7 +115,7 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 
 ### 3.4 kernel 入口
 
-- `#if defined(ENABLE_APACE_QUANT_GMM_A2AV) && MX_QUANT_MODE` 编译期分支：
+- `#if MX_QUANT_MODE` 编译期分支：
   `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY)`；block0 写部署自检 magic
   `y[0]=0xA5A5A5A5`（成功后被 recv 数据覆盖）→ 按批 `hcommImpl.Process` → `End` →
   共享专家 `Process(0,1)`；
@@ -129,22 +128,19 @@ kernel（MIX_AIC_1_2，与原通路同任务类型）:
 |---|---|---|
 | A1 | 数值正确性 | MXFP8/MXFP4 与原通路 golden 对拍一致（含共享专家、空 expert、多批 e>4） |
 | A2 | TT 无损 | TT 量化实例行为与基线完全一致（编译期隔离） |
-| A3 | 默认构建无损 | 不设构建开关时产物与基线一致 |
+
 | A4 | 通路证据 | 开关开启后 MX 实例走 apace 分支（magic 可检/性能可观测） |
 
 ## 5 附录
 
-### 5.1 构建与开关
+### 5.1 构建
 
 ```
-ENABLE_APACE_QUANT_GMM_A2AV=1 bash build.sh --opkernel --soc=ascend950 \
-    --ops=quant_grouped_mat_mul_allto_allv -j8
+bash build.sh --opkernel --soc=ascend950 --ops=quant_grouped_mat_mul_allto_allv -j8
 ```
 
-| 变量 | 层级 | 用途 |
-|---|---|---|
-| `ENABLE_APACE_QUANT_GMM_A2AV` | 构建期 | apace 编译总开关（默认关） |
-| `MX_QUANT_MODE` | 实例编译期 | E8M0 scale 判别 MX 实例（a2av_gmm_utils.h，勿手设） |
+apace 通路默认编译，无构建/运行开关；`MX_QUANT_MODE` 为实例编译期自动判别
+（a2av_gmm_utils.h，按 gmmXScale 的 E8M0 dtype，勿手工设置）。
 
 ### 5.2 代码索引
 
