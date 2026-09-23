@@ -24,7 +24,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
     QuantizeRoundTrip(hOut, tD);
 
-    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
+    ComputeX2AllHeadsBatched(postVals, (uint64_t)token * K_ + tOff, tOff, tD);
 }
 
 // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
@@ -38,7 +38,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
     // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
     const uint32_t headBegin = laneId_ * 2U;
-    const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
+    const uint64_t gmBaseOffset = (uint64_t)token * K_ + tOff;
     LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
     for (uint32_t n = 0; n < N_MAX; ++n) {
         DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
@@ -65,7 +65,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+    const uint64_t outBase = (uint64_t)token * K_ + tOff;
 
     // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
     if (quantizeInput) {
@@ -106,7 +106,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
+    const uint64_t outBase = (uint64_t)token * K_ + tOff;
     const uint32_t headBegin = laneId_ * 2U;
 
     if (quantizeInput) {
@@ -195,7 +195,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
                 LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-                uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
+                uint64_t phiOffset = (uint64_t)o * K_ + (uint64_t)h0 * D_ + tOff;
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
@@ -204,7 +204,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
                 bufPhiFp32_.FreeTensor(phi);
 
                 phi = bufPhiFp32_.AllocTensor<float>();
-                phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
+                phiOffset = (uint64_t)o * K_ + (uint64_t)h1 * D_ + tOff;
                 DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
                 bufPhiFp32_.EnQue(phi);
                 phi = bufPhiFp32_.DeQue<float>();
@@ -249,9 +249,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Accumul
             if (o + 1U < N_MAX) {
                 nextPhi0 = bufPhiFp32_.AllocTensor<float>();
                 nextPhi1 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
+                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * K_ + (uint64_t)h0 * D_ + tOff], copyParams,
                             copyPad);
-                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
+                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * K_ + (uint64_t)h1 * D_ + tOff], copyParams,
                             copyPad);
                 bufPhiFp32_.EnQue(nextPhi0);
                 bufPhiFp32_.EnQue(nextPhi1);

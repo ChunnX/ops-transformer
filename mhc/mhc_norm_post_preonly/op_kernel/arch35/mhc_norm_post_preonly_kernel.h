@@ -44,7 +44,6 @@ public:
         (void)h_pre_gm;
 
         totalTokens_ = td.totalTokens;
-        N_ = td.headCount;
         D_ = td.embedDim;
         usedCoreNum_ = td.usedCoreNum;
         rowsPerCore_ = td.rowsPerCore;
@@ -53,12 +52,10 @@ public:
         dimTile_ = td.dimTile;
         dimLoop_ = td.dimLoop;
         lastDimTile_ = td.lastDimTile;
-        phiRows_ = td.phiRows;
-        phiCols_ = td.phiCols;
         normEps_ = td.normEps;
         mhcPreNormEps_ = td.mhcPreNormEps;
         hcEps_ = td.hcEps;
-        K_ = N_ * D_;
+        K_ = N_MAX * D_;
         invD_ = td.invD;
         invK_ = td.invK;
         coresPerToken_ = td.coresPerToken;
@@ -87,10 +84,10 @@ public:
 
         // GM张量
         hOutGm_.SetGlobalBuffer((__gm__ T *)h_out_gm, (uint64_t)totalTokens_ * D_);
-        residualGm_.SetGlobalBuffer((__gm__ T *)residual_gm, (uint64_t)totalTokens_ * N_ * D_);
-        hPostGm_.SetGlobalBuffer((__gm__ float *)h_post_gm, (uint64_t)totalTokens_ * N_);
-        hResGm_.SetGlobalBuffer((__gm__ float *)h_res_gm, (uint64_t)totalTokens_ * N_ * N_);
-        phiGm_.SetGlobalBuffer((__gm__ float *)phi_gm, (uint64_t)phiRows_ * phiCols_);
+        residualGm_.SetGlobalBuffer((__gm__ T *)residual_gm, (uint64_t)totalTokens_ * K_);
+        hPostGm_.SetGlobalBuffer((__gm__ float *)h_post_gm, (uint64_t)totalTokens_ * N_MAX);
+        hResGm_.SetGlobalBuffer((__gm__ float *)h_res_gm, (uint64_t)totalTokens_ * N_MAX * N_MAX);
+        phiGm_.SetGlobalBuffer((__gm__ float *)phi_gm, (uint64_t)N_MAX * K_);
         alpha0Gm_.SetGlobalBuffer((__gm__ float *)alpha_gm, ALIGN8);
         biasGm_.SetGlobalBuffer((__gm__ float *)bias_gm, ALIGN8);
         gamma0Gm_.SetGlobalBuffer((__gm__ float *)gamma_0_gm, D_);
@@ -99,7 +96,7 @@ public:
             gamma2Gm_.SetGlobalBuffer((__gm__ float *)gamma_2_gm, K_);
         }
         hInPrimeGm_.SetGlobalBuffer((__gm__ T *)h_in_prime_gm, (uint64_t)totalTokens_ * D_);
-        x2OutGm_.SetGlobalBuffer((__gm__ T *)x_2_out_gm, (uint64_t)totalTokens_ * N_ * D_);
+        x2OutGm_.SetGlobalBuffer((__gm__ T *)x_2_out_gm, (uint64_t)totalTokens_ * K_);
         if (h_in_f32_gm != nullptr) {
             hInF32Gm_.SetGlobalBuffer((__gm__ float *)h_in_f32_gm, (uint64_t)totalTokens_ * D_);
         }
@@ -111,15 +108,15 @@ public:
         pipe_.InitBuffer(bufHOutBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
         // 双sibling每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存。
-        const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_;
+        const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_MAX;
         pipe_.InitBuffer(bufX2Fp32_, x2Fp32Rows * dimTile_ * sizeof(float));
         // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
         // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
-        pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufResidualBf16_, 1, N_MAX * dimTile_ * sizeof(T));
         // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
-        pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufResFp32_, (N_MAX + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
@@ -244,10 +241,9 @@ private:
     GlobalTensor<float> partial1Gm_;
 
     // Tiling参数
-    uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
+    uint32_t totalTokens_ = 0, D_ = 0, K_ = 0;
     uint32_t usedCoreNum_ = 0, rowsPerCore_ = 0, rowsPerCoreSp_ = 0, blockPivot_ = 0;
     uint32_t dimTile_ = 0, dimLoop_ = 0, lastDimTile_ = 0;
-    uint32_t phiRows_ = 0, phiCols_ = 0;
     float normEps_ = 1e-6f, mhcPreNormEps_ = 1e-6f, hcEps_ = 1e-6f, invD_ = 0.0f, invK_ = 0.0f;
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
     float alpha0_ = 0.0f;

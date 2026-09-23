@@ -150,7 +150,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
     // 避免按tile、按head重复发出MTE2搬运指令。
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    const uint64_t followerHeadOffset = (uint64_t)token * K_ + 2U * D_;
     DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
