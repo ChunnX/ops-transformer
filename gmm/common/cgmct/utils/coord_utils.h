@@ -312,13 +312,9 @@ public:
             } else {
                 Get<3>(offset) = nOffset * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE; // 3: idx of x2Scale
             }
-            auto scaleN = CeilDiv(n / 2, static_cast<int64_t>(64)) * MXFP_MULTI_BASE_SIZE;
+            auto scaleN = CeilDiv(n / 2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
             // 6: idx of yScale
-            // Flatten the final [two scales] dimension: each 32-value output
-            // group advances by one byte, while each row is padded to an even
-            // number of bytes for every 64 output values.
-            constexpr int64_t scaleGroupSize = MXFP_DIVISOR_SIZE / MXFP_MULTI_BASE_SIZE;
-            Get<6>(offset) = mOffset * scaleN + nOffset / scaleGroupSize;
+            Get<6>(offset) = mOffset * scaleN + CeilDiv(nOffset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
             Get<2>(offset) = mOffset; // 2: idx of x1Scale
             Get<3>(offset) = nOffset; // 3: idx of x2Scale
