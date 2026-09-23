@@ -641,10 +641,6 @@ sym_buffer.get_local_buffer_tensor(dtype, size=None, offset=0) -> Tensor
 sym_buffer.update_group(group) -> None
 ```
 
-arch22（A2/A3）的 INT4 权重仍以打包后的 `torch.int32` Tensor 传入，shape 为打包后的 shape，每个 int32 承载 8 个 INT4 元素。`weight1_type` / `weight2_type` 表示逻辑数据类型：省略时从 int32 权重推导为 INT4；也兼容显式指定 INT32 的既有调用。extension 通过公共 `TensorListWrapper` 创建 `ACL_INT4` 描述符，恢复末维 ×8 及对应 stride、offset、NZ storage shape，不转换数值或复制权重。共享专家权重遵循相同规则，仍要求二维、连续、非转置的 FRACTAL_NZ 权重。arch35 的 FP4 字节载体仍按每个字节 2 个 FP4 元素解释，接口和打包方式不变。
-
-上述适配位于 eager C++ extension；本次不新增图模式支持。直接调用 ACLNN 时，既有 INT32 兼容入口继续保留，也可传入真实 INT4 描述符和逻辑 shape。
-
 `mask_buffer` 及以上五个 `SymmBuffer` 弹性扩缩容接口当前仅支持 <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>。`SymmBuffer` 默认不创建 `mask_buffer`，因此各代际默认均不会向算子传入该参数。第一次调用 `query_mask_buffer`、`update_mask_buffer` 或 `clean_mask_buffer` 时，才会在 NPU 上创建 shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank 会在后续计算和卡间通信中被跳过。
 
 - `query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor。

@@ -111,7 +111,7 @@ def _collect_op(op_cat, op_dir, te_dir):
     csrc_dir = os.path.join(te_dir, "csrc")
     if os.path.isdir(csrc_dir):
         for cpp in sorted(os.listdir(csrc_dir)):
-            if cpp.endswith((".cpp", ".h", ".hpp")):
+            if cpp.endswith(".cpp"):
                 _op_cpp_files.append(
                     (os.path.join("csrc", op_cat, cpp), os.path.join(csrc_dir, cpp))
                 )

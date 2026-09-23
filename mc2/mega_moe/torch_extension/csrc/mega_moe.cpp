@@ -14,13 +14,76 @@
 #include <cstring>
 #include <limits>
 #include "aclnn_common.h"
-#include "mega_moe_weight_utils.h"
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
 constexpr int64_t GE_DTYPE_UNDEFINED = 28;
+constexpr int64_t INT4_PER_INT32 = 8;
+
+struct MegaMoeWeightList {
+    at::TensorList tensors;
+    aclDataType dtype;
+    bool packedInt4;
+};
+
+// Only arch22 packed INT32 weights need a different ACL descriptor. Keep the
+// original storage; the last logical dimension contains eight INT4s per INT32.
+aclTensorList *ConvertType(const MegaMoeWeightList &weights)
+{
+    if (!weights.packedInt4) {
+        return ::ConvertType(TensorListWrapper{weights.tensors, weights.dtype});
+    }
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
+    if (aclCreateTensor == nullptr || aclCreateTensorList == nullptr) {
+        return nullptr;
+    }
+
+    std::vector<const aclTensor *> tensors;
+    tensors.reserve(weights.tensors.size());
+    for (const auto &tensor : weights.tensors) {
+        TORCH_CHECK(tensor.scalar_type() == at::kInt && tensor.dim() > 0 && tensor.is_contiguous(),
+                    "arch22 packed INT4 weights must be contiguous INT32 tensors.");
+        TORCH_CHECK(at_npu::native::get_npu_format(tensor) == ACL_FORMAT_FRACTAL_NZ,
+                    "arch22 packed INT4 weights must use FRACTAL_NZ.");
+        auto shape = tensor.sizes().vec();
+        auto strides = tensor.strides().vec();
+        shape.back() *= INT4_PER_INT32;
+        for (size_t i = 0; i + 1 < strides.size(); ++i) {
+            strides[i] *= INT4_PER_INT32;
+        }
+
+        auto storageShape = at_npu::native::get_npu_storage_sizes(tensor);
+        int64_t storageElements = 1;
+        for (int64_t dim : storageShape) {
+            TORCH_CHECK(dim > 0 && storageElements <= INT64_MAX / dim, "Invalid packed INT4 storage shape.");
+            storageElements *= dim;
+        }
+        const auto storageBytes = tensor.storage().nbytes();
+        TORCH_CHECK(storageBytes % storageElements == 0, "Packed INT4 storage shape does not match its byte size.");
+        const auto bytesPerStorageElement = storageBytes / storageElements;
+        TORCH_CHECK(bytesPerStorageElement > 0 && bytesPerStorageElement <= INT64_MAX / 2,
+                    "Invalid packed INT4 storage element size.");
+        storageShape.back() *= static_cast<int64_t>(bytesPerStorageElement) * 2;
+        TORCH_CHECK(tensor.storage_offset() <= INT64_MAX / INT4_PER_INT32, "Packed INT4 storage offset is too large.");
+        auto *desc =
+            aclCreateTensor(shape.data(), shape.size(), ACL_INT4, strides.data(),
+                            tensor.storage_offset() * INT4_PER_INT32, ACL_FORMAT_FRACTAL_NZ, storageShape.data(),
+                            storageShape.size(), const_cast<void *>(tensor.storage().data()));
+        TORCH_CHECK(desc != nullptr, "Failed to create packed INT4 weight descriptor.");
+        tensors.push_back(desc);
+    }
+    return aclCreateTensorList(tensors.data(), tensors.size());
+}
+
+static MegaMoeWeightList MakeWeightList(at::TensorList tensors, aclDataType dtype, bool isArch22)
+{
+    bool packedInt4 = isArch22 && !tensors.empty() && tensors[0].scalar_type() == at::kInt &&
+                      (dtype == ACL_INT32 || dtype == ACL_INT4);
+    return {tensors, packedInt4 ? ACL_INT4 : dtype, packedInt4};
+}
 
 static void CheckNpuInput(const at::Tensor &tensor, const std::string &name, const char *socName)
 {
@@ -272,7 +335,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::TensorList bias1Ref = toTensorList(bias1);
     at::TensorList bias2Ref = toTensorList(bias2);
 
-    aclDataType weight1RefDtype = ResolveMegaMoeWeightDtype(weight1Ref, weight1Type, isArch22, "weight1");
+    aclDataType weight1RefDtype = weight1Type.has_value() ? GetAclDataType(weight1Type.value()) :
+                                                            ConvertToAclDataType(weight1Ref[0].scalar_type());
     aclDataType weightScales1Dtype;
     if (weight1RefDtype == aclDataType::ACL_FLOAT8_E5M2 || weight1RefDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
         weight1RefDtype == aclDataType::ACL_FLOAT4_E2M1) {
@@ -281,7 +345,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         weightScales1Dtype = aclDataType::ACL_UINT64;
     }
 
-    aclDataType weight2RefDtype = ResolveMegaMoeWeightDtype(weight2Ref, weight2Type, isArch22, "weight2");
+    aclDataType weight2RefDtype = weight2Type.has_value() ? GetAclDataType(weight2Type.value()) :
+                                                            ConvertToAclDataType(weight2Ref[0].scalar_type());
     aclDataType weightScales2Dtype;
     if (weight2RefDtype == aclDataType::ACL_FLOAT8_E5M2 || weight2RefDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
         weight2RefDtype == aclDataType::ACL_FLOAT4_E2M1) {
@@ -343,8 +408,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         CheckWeightDtype(weight2Ref, weight2RefDtype, "l2_weights", socName);
     }
 
-    TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
-    TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};
+    MegaMoeWeightList weight1Wrapper = MakeWeightList(weight1Ref, weight1RefDtype, isArch22);
+    MegaMoeWeightList weight2Wrapper = MakeWeightList(weight2Ref, weight2RefDtype, isArch22);
     TensorListWrapper weightScales1Wrapper = {weightScales1Ref, weightScales1Dtype};
     TensorListWrapper weightScales2Wrapper = {weightScales2Ref, weightScales2Dtype};
     TensorListWrapper bias1Wrapper = {bias1Ref, aclDataType::ACL_FLOAT};
@@ -361,20 +426,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         sharedWeight1Type.has_value() ? GetAclDataType(sharedWeight1Type.value()) : weight1RefDtype;
     aclDataType sharedWeight2RefDtype =
         sharedWeight2Type.has_value() ? GetAclDataType(sharedWeight2Type.value()) : weight2RefDtype;
-    if (isArch22) {
-        if (!sharedWeight1Ref.empty()) {
-            sharedWeight1RefDtype =
-                ResolveMegaMoeWeightDtype(sharedWeight1Ref, sharedWeight1Type, true, "shared_weight1");
-        } else if (sharedWeight1RefDtype == ACL_INT32) {
-            sharedWeight1RefDtype = ACL_INT4;
-        }
-        if (!sharedWeight2Ref.empty()) {
-            sharedWeight2RefDtype =
-                ResolveMegaMoeWeightDtype(sharedWeight2Ref, sharedWeight2Type, true, "shared_weight2");
-        } else if (sharedWeight2RefDtype == ACL_INT32) {
-            sharedWeight2RefDtype = ACL_INT4;
-        }
-    }
     const auto getWeightScaleDtype = [](aclDataType weightDtype) {
         return weightDtype == aclDataType::ACL_FLOAT8_E5M2 || weightDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
                        weightDtype == aclDataType::ACL_FLOAT4_E2M1 ?
@@ -387,8 +438,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         CheckWeightDtype(sharedWeight2Ref, sharedWeight2RefDtype, "shared_l2_weights", socName);
     }
 
-    TensorListWrapper sharedWeight1Wrapper = {sharedWeight1Ref, sharedWeight1RefDtype};
-    TensorListWrapper sharedWeight2Wrapper = {sharedWeight2Ref, sharedWeight2RefDtype};
+    MegaMoeWeightList sharedWeight1Wrapper = MakeWeightList(sharedWeight1Ref, sharedWeight1RefDtype, isArch22);
+    MegaMoeWeightList sharedWeight2Wrapper = MakeWeightList(sharedWeight2Ref, sharedWeight2RefDtype, isArch22);
     TensorListWrapper sharedWeightScales1Wrapper = {sharedWeightScales1Ref, getWeightScaleDtype(sharedWeight1RefDtype)};
     TensorListWrapper sharedWeightScales2Wrapper = {sharedWeightScales2Ref, getWeightScaleDtype(sharedWeight2RefDtype)};
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
