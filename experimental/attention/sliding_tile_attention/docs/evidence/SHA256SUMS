@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
+
+9ed5538dd25174f4d973872241284309837b4ad88d9fd343809670e7bc310599  experimental/attention/sliding_tile_attention/docs/evidence/run_taskbook_cases.log
+5b698c2bab27698c7497f64c453a46cbd4f00ed4d6d6cfe45fcec1089c5b5df5  experimental/attention/sliding_tile_attention/docs/evidence/taskbook_case_manifest.csv
+47e37b56cef2b090d3439cc0a73030b466ae7106eba6949f36d3a8bd12e9e0b7  experimental/attention/sliding_tile_attention/docs/evidence/taskbook_self_validation.csv
+723063aa6cc46de957d02a56ea8bafd15ae244f3c6319fffd762fef74d2e01ec  experimental/attention/sliding_tile_attention/docs/evidence/operator_source.sha256
+d373e0ab0a2f15070f09e09d467df599b0d28d20a5ddfe9dd4c361b71c09f3ea  experimental/attention/sliding_tile_attention/docs/evidence/current_reproducer.sha256
+681766f0892f84a899265c7d23e8e3580fa032a84351c39b632d333dfff60436  experimental/attention/sliding_tile_attention/docs/evidence/case_execution.png
+4a455f7ca1fe60e72b5376b1ae85fc08d4957f9e5cb0e486c30abe82c930e86f  experimental/attention/sliding_tile_attention/docs/evidence/overall_pass.png
+67ee69d855b631d905cc4544a2539e7d21516dc0fc1af135f60acfa7c70a12fa  experimental/attention/sliding_tile_attention/docs/evidence/paired_performance.png
+5d5643b5665f6e22fe55f741b08ff20763cea56719e4cc6a0208330f7857f600  experimental/attention/sliding_tile_attention/docs/evidence/SlidingTileAttention_50case_A100对标.csv

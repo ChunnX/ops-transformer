@@ -1,0 +1,10 @@
+
+experimental/attention/sliding_tile_attention/docs/evidence/run_taskbook_cases.log: OK
+experimental/attention/sliding_tile_attention/docs/evidence/taskbook_case_manifest.csv: OK
+experimental/attention/sliding_tile_attention/docs/evidence/taskbook_self_validation.csv: OK
+experimental/attention/sliding_tile_attention/docs/evidence/operator_source.sha256: OK
+experimental/attention/sliding_tile_attention/docs/evidence/current_reproducer.sha256: OK
+experimental/attention/sliding_tile_attention/docs/evidence/case_execution.png: OK
+experimental/attention/sliding_tile_attention/docs/evidence/overall_pass.png: OK
+experimental/attention/sliding_tile_attention/docs/evidence/paired_performance.png: OK
+experimental/attention/sliding_tile_attention/docs/evidence/SlidingTileAttention_50case_A100对标.csv: OK
