@@ -192,9 +192,8 @@ __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], 
     LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
     for (uint32_t h = 0; h < N; h += 2U) {
-        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
-                                                   residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
-                                                   tD);
+        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut, residual,
+                                               combWeights, dimTile_, h, postVals[h], postVals[h + 1U], tD);
     }
     PipeBarrier<PIPE_V>();
     bufResidualBf16_.FreeTensor(residual);
@@ -209,14 +208,17 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
     // Host已固定校验N为4，使用编译期常量便于展开标量循环。
     constexpr uint32_t N = N_MAX;
     float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-    for (uint32_t o = 0; o < N; ++o)
-        xHatVals[o] *= invRmsPre;
+    xHatVals[0] *= invRmsPre;
+    xHatVals[1] *= invRmsPre;
+    xHatVals[2] *= invRmsPre;
+    xHatVals[3] *= invRmsPre;
 
     LocalTensor<float> scBuf = bufScalar_.Get<float>();
-    for (uint32_t i = 0; i < N; ++i)
-        scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
+    scBuf.SetValue(0, -(alpha0_ * xHatVals[0] + biasCache_[0]));
+    scBuf.SetValue(1, -(alpha0_ * xHatVals[1] + biasCache_[1]));
+    scBuf.SetValue(2, -(alpha0_ * xHatVals[2] + biasCache_[2]));
+    scBuf.SetValue(3, -(alpha0_ * xHatVals[3] + biasCache_[3]));
     LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
-    // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
     MhcNormRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
     PipeBarrier<PIPE_V>();
 }
