@@ -12,8 +12,8 @@
 #define MHC_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
-                                                        DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
+__aicore__ inline void
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -47,8 +47,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff],
-                                                       x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -60,9 +59,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     if constexpr (USE_RMS_MID) {
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
-        for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            midBuf.SetValue(i, 0.0f);
-        }
+        // 跨 sibling 搬运按 32B 对齐，但接收端只读取 slot 0；padding 无需设备侧逐项清零。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
@@ -92,8 +89,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 if (n + 1U < headBegin + 2U) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
-                    x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
+                                                             gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 if (n + 2U < headBegin + 2U) {
                     FenceVToMte2();
@@ -111,9 +108,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         for (uint32_t o = 0; o < N_MAX; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
         }
-        for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
-            partialBuf.SetValue(i, 0.0f);
-        }
+        // slot 5~7 仅用于补齐 32B，leader 不读取，避免无效 Scalar 写入。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
