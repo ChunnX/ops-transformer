@@ -332,9 +332,12 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
              static_cast<unsigned long>(hcclBufSize), static_cast<unsigned long>(hcclBufSize / (1024UL * 1024UL)));
     uint64_t totalTileCntAll = static_cast<uint64_t>(tileCnt) + static_cast<uint64_t>(tailCnt);
     uint64_t maxTileM = (tileSize > tailSize) ? static_cast<uint64_t>(tileSize) : static_cast<uint64_t>(tailSize);
-    uint64_t totalWinBytesNeeded = static_cast<uint64_t>(m) * static_cast<uint64_t>(n) * Y_OUTPUT_BYTE;
+    // no-reuse 判定须按 kernel 实际占用口径: 全部 slot 按 maxTileM 步进预留
+    // (bufferSlotBytes = maxTileM * n * 2), tailSize < tileSize 时大于 m * n * 2,
+    // 否则缝隙场景(hcclBufSize 落在两者之间)会误判不复用导致越界写
+    uint64_t totalSlotBytesNeeded = totalTileCntAll * maxTileM * static_cast<uint64_t>(n) * Y_OUTPUT_BYTE;
     uint64_t slotNum = 0;
-    if (totalWinBytesNeeded <= hcclBufSize) {
+    if (totalSlotBytesNeeded <= hcclBufSize) {
         slotNum = totalTileCntAll; // 空间足够不复用buffer 此时slotNum = tileNum
     } else {
         uint64_t slotDataSize = maxTileM * static_cast<uint64_t>(n) * Y_OUTPUT_BYTE;
@@ -350,8 +353,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
         slotNum = (slotNum > WIN_REUSE_DEPTH_CAP) ? WIN_REUSE_DEPTH_CAP : slotNum;
     }
     commTd.slotNum = slotNum;
-    INFO_LOG("BufferReuse: totalWin=%lu hcclBufSize=%lu totalTileCnt=%lu slotNum=%lu",
-             static_cast<unsigned long>(totalWinBytesNeeded), static_cast<unsigned long>(hcclBufSize),
+    INFO_LOG("BufferReuse: totalSlotBytesNeeded=%lu hcclBufSize=%lu totalTileCnt=%lu slotNum=%lu",
+             static_cast<unsigned long>(totalSlotBytesNeeded), static_cast<unsigned long>(hcclBufSize),
              static_cast<unsigned long>(totalTileCntAll), static_cast<unsigned long>(slotNum));
 
     exchanger.Barrier();
