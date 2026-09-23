@@ -121,6 +121,17 @@ python tests/invalid_cases.py --json /tmp/invalid_cases.json
 `rotation_matrix`/`qjl_matrix` dtype≠FP32、空 tensor（tokens=0）；并含 `valid_base`
 合法基准自检（必须被接受），防止"全部拒绝"式的假通过。
 
+### 4.3 算子 UT（op_host，仓标准方式）
+
+```bash
+cd <ops-transformer 根目录>
+PATH=<python3.11>/bin:$PATH \
+  bash build.sh -u --ophost --experimental --ops=kv_cache_turbo_quant --soc=ascend910b
+```
+
+覆盖 tiling 校验（合法 7 + 非法 10）与 shape 推导（合法 4 + 非法 3），共 **24 例**；本机实测 `[
+ PASSED ] 24 tests`。UT 只跑到 tiling/推导层（不执行 kernel），数值正确性由上面三套件保证。
+
 ### 单步命令（等价）
 
 ```bash
@@ -180,5 +191,6 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
 | `gen_edge_input.py` | 生成边界用例输入；`--pattern edge-rows` 造零行/次正规行/抵消行 |
 | `run_edge_cases.sh` | 一键跑 9 个边界用例（套件②） |
 | `invalid_cases.py` | 非法输入拒绝套件（套件③，驱动 `examples` 的 `--neg` 模式） |
+| `ut/op_host/` | 算子 UT（gtest）：tiling 校验 17 例 + shape 推导 7 例，见 §4.3 |
 
 > 运行产物（`_out/`、`data/`、`inputs/`）不入库，见 `.gitignore`。
