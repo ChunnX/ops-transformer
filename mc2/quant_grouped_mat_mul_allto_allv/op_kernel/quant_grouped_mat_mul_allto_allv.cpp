@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file quant_grouped_mat_mul_allto_allv.cpp
@@ -17,6 +17,8 @@
 #include "quant_grouped_mat_mul_allto_allv_tiling_key.h"
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_mat_mul_allto_allv/quant_grouped_mat_mul_allto_allv_impl.h"
+#include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_mat_mul_allto_allv/quant_grouped_mat_mul_allto_allv_hcomm_impl.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
@@ -52,13 +54,6 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
     const QuantGmmA2avTilingData *tilingData_ = &tilingData;
-    const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
-                                  offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
-    constexpr CubeFormat W_FORMAT = CubeFormat::ND;
-    constexpr bool USE_SEND_COUNTS = true;
-    constexpr bool IS_SHARED_EXPERT = true;
-    constexpr bool IS_NOT_SHARED_EXPERT = false;
 
     // workspace布局 (后通信模式):
     //   [0, wsGmmOutputSize)                 → 路由专家 GMM 输出 (每轮从偏移0开始写入)
@@ -72,10 +67,46 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
 
+#if MX_QUANT_MODE
+    // MX(FP4/FP8) 量化路径：切换 apace 模板 GroupedMatmulMxKernel 计算 GMM，
+    // 通信采用 AIC 核内 AlltoAllV（参考 PR 10588 hcomm 通算融合模式），
+    // 规避 Blaze 与 AIV/AICPU KFC 通信引擎的兼容问题。
+    using SharedGmmExpertOpType =
+        Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                    DTYPE_MM_X_SCALE, DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true,
+                                    false>;
+    using HcommImpl =
+        Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                     DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
+                                     TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
+    if ASCEND_IS_AIC {
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                           gmmArrayAddr_, tilingGM);
+        HcommImpl hcommImpl;
+        hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM, tilingData_,
+                       &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+        uint32_t e = tilingData_->taskTilingInfo.e;
+        uint32_t expertNum = tilingData_->taskTilingInfo.expertNum;
+        for (uint32_t start = 0; start < e; start += expertNum) {
+            uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+            hcommImpl.Process(start, actualExpertNum);
+        }
+        hcommImpl.End();
+        // 共享专家（独立输出，不走通信）
+        if constexpr (TILINGKEY_COMPUTE_MATMUL) {
+            GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
+                                               mmArrayAddr_, tilingGM);
+            SharedGmmExpertOpType shareComputeOp;
+            shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+            shareComputeOp.Process(0, 1);
+        }
+    }
+    if ASCEND_IS_AIV {
+        // 通信在 AIC 核完成，AIV 不参与
+    }
+#else
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
-    using GmmASWKernelType =
-        Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMM_X_SCALE, DTYPE_Y, W_FORMAT,
-                                          TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
     using ComputeOpType =
         QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE,
                            DTYPE_Y, CubeFormat::ND, false, TILINGKEY_GROUPED_MATMUL_TRANS, false, false>;
@@ -84,23 +115,28 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                            DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true, false>;
     using GmmA2avSchedulerType =
         GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
+    const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
+                                  offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
     // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
-    GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
-    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
+    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, gmmOutputGM, yGM,
                 static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
-    // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
-                                       gmmArrayAddr_, tilingGM);
-    ComputeOpType computeOp;
-    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
-                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
-    // sharedmm
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
-                                       mmArrayAddr_, tilingGM);
-    SharedGmmExpertOpType shareComputeOp;
-    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                        sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-    GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
-    gmmA2avScheduler.Process();
+    if ASCEND_IS_AIC {
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                           gmmArrayAddr_, tilingGM);
+        ComputeOpType computeOp;
+        computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
+                       &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
+                                           mmArrayAddr_, tilingGM);
+        SharedGmmExpertOpType shareComputeOp;
+        shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                            sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, &tilingData.taskTilingInfo);
+    }
+    if ASCEND_IS_AIV {
+        GmmA2avSchedulerType::ProcessAiv(hcclOp, &tilingData.taskTilingInfo);
+    }
+#endif
 }
