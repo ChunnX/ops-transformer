@@ -27,6 +27,15 @@ ge::graphStatus CheckSoftmaxLseShape(gert::TilingContext *context, int64_t b, in
         OP_LOGE(context, "CheckSoftmaxLseShape softmaxLse is nullptr");
         return ge::GRAPH_FAILED;
     }
+    auto layout = context->GetAttrs()->GetAttrPointer<char>(7);
+    if (layout != nullptr && std::string(layout) == "TND") {
+        const auto &shape = softmaxLseShape->GetStorageShape();
+        auto query = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
+        OP_CHECK_IF(query == nullptr || shape.GetDimNum() != 2 || shape.GetDim(0) != n1 ||
+                        shape.GetDim(1) != query->GetStorageShape().GetDim(0),
+                    OP_LOGE(context, "TND softmaxLse must have shape [N,Tq]"), return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     auto softmaxLseShapeDim = softmaxLseShape->GetStorageShape().GetDimNum();
     if (softmaxLseShapeDim != 3) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad", "softmaxLse",
@@ -94,22 +103,7 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase &fBaseParams)
 {
-    // check atten_mask shape when enable atten_mask_compress
     if (fBaseParams.attenMaskCompressMode == 0) {
-        bool invalid =
-            fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
-            (static_cast<int64_t>(fBaseParams.attenMaskS1Size) * static_cast<int64_t>(fBaseParams.attenMaskS2Size) <
-             static_cast<int64_t>(fBaseParams.s1) * static_cast<int64_t>(fBaseParams.s2));
-        if (invalid) {
-            std::string shapeSizeMsg =
-                std::to_string(fBaseParams.attenMaskS1Size) + " *" + std::to_string(fBaseParams.attenMaskS2Size);
-            std::string reasonMsg = "When attenMaskOptional is not empty and inputLayout is not TND, "
-                                    "the shape size of attenMaskOptional cannot be less than" +
-                                    std::to_string(fBaseParams.s1) + " *" + std::to_string(fBaseParams.s2);
-            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("QuantFlashAttentionScoreGrad", "attenMaskOptional",
-                                                      shapeSizeMsg.c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -643,17 +637,21 @@ void GetCommonS1S2OuterIndex(const FuzzyBaseInfoParamsRegbase &fBaseParams, int6
 void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx, int64_t &actualCalcS1Token,
                        int64_t &actualCalcS2Token)
 {
+    actualCalcS1Token = fBaseParams.s1Token;
+    actualCalcS2Token = fBaseParams.s2Token;
+    // TND/seqused 的右下角 token 在 metadata 逐 batch 计算，host 不用 Smax 校正。
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) {
+        return;
+    }
     int64_t actualS1Len = fBaseParams.actualSeqQlen[batchIdx];
     int64_t actualS2Len = fBaseParams.actualSeqKvlen[batchIdx];
     // 对unpad场景的token值做二次校正
     // sparse_mode =4 (band)时 或者sparse_mode ==3 (RIGHT_DOWN_CAUSAL) 时，token以右下角为基准，需要校正
-    actualCalcS1Token = fBaseParams.s1Token;
-    actualCalcS2Token = fBaseParams.s2Token;
     if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CASUAL_BAND) &&
          batchIdx != fBaseParams.bandIdx) ||
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND_LEFT_UP_CASUAL) &&
          batchIdx != fBaseParams.bandIdx)) {
-        actualCalcS1Token = INT32_MAX;
+        actualCalcS1Token = TOKEN_UNLIMITED;
         actualCalcS2Token = 0;
     }
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
@@ -672,6 +670,11 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1 * fBaseParams.d;
     fBaseParams.kSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d;
     fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        fBaseParams.qSize = fBaseParams.t1 * fBaseParams.n1 * fBaseParams.d;
+        fBaseParams.kSize = fBaseParams.t2 * fBaseParams.n2 * fBaseParams.d;
+        fBaseParams.vSize = fBaseParams.t2 * fBaseParams.n2 * fBaseParams.d1;
+    }
     fBaseParams.dropMaskSize =
         static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.s1;
 
@@ -680,6 +683,8 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     fBaseParams.queryType = queryType;
     fBaseParams.calTypeSize = FP32_BYTES;
 
+    fBaseParams.sparseMode =
+        *(context_->GetAttrs()->GetAttrPointer<uint32_t>(static_cast<size_t>(AttrIndex::SPARSE_MODE)));
     fBaseParams.scaleValue =
         *(context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SCALE_VALUE)));
     auto metadataShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::METADATA));
@@ -800,13 +805,14 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
             OP_LOGE_WITH_INVALID_INPUT("QuantFlashAttentionScoreGrad", "query, keyIn, value, dy, attentionIn");
             return ge::GRAPH_FAILED;
         }
-        // 校验query, key, value, dy, attn_out的维度必须为4维
+        // Packed TND inputs have rank 3; padded layouts have rank 4.
         auto attentionInShapeDim = attentionInShape->GetStorageShape().GetDimNum();
         auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
         auto dyShapeDim = dyShape->GetStorageShape().GetDimNum();
         auto keyShapeDim = keyShape->GetStorageShape().GetDimNum();
         auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();
-        constexpr int64_t EXPECTED_DIM_NUM = 4;
+        const bool isTnd = fBaseParams.layoutType == INPUT_FORMAT_TND;
+        const int64_t EXPECTED_DIM_NUM = isTnd ? 3 : 4;
         if (attentionInShapeDim != EXPECTED_DIM_NUM || queryShapeDim != EXPECTED_DIM_NUM ||
             dyShapeDim != EXPECTED_DIM_NUM || keyShapeDim != EXPECTED_DIM_NUM || valueShapeDim != EXPECTED_DIM_NUM) {
             std::string dimMsg = "{" + std::to_string(attentionInShapeDim) + ", " + std::to_string(queryShapeDim) +
@@ -815,7 +821,7 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
                                                      "query, keyIn, value, dy, attentionIn", dimMsg.c_str(),
                                                      "The shape dim of query, keyIn, value, dy, attentionIn "
-                                                     "must be 4");
+                                                     "must match the layout rank (TND: 3, padded: 4)");
             return ge::GRAPH_FAILED;
         }
         for (uint32_t dimIdx = 0; dimIdx < queryShapeDim; dimIdx++) {
@@ -839,13 +845,15 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
                 return ge::GRAPH_FAILED;
             }
         }
-        if (queryShape->GetStorageShape().GetDim(0) != keyShape->GetStorageShape().GetDim(0) ||
-            queryShape->GetStorageShape().GetDim(3) != keyShape->GetStorageShape().GetDim(3)) {
+        const int64_t sharedAxis = isTnd ? 1 : 0;
+        const int64_t headDimAxis = isTnd ? 2 : 3;
+        if (queryShape->GetStorageShape().GetDim(sharedAxis) != keyShape->GetStorageShape().GetDim(sharedAxis) ||
+            queryShape->GetStorageShape().GetDim(headDimAxis) != keyShape->GetStorageShape().GetDim(headDimAxis)) {
             std::string shapesMsg = "{" + Ops::Base::ToString(keyShape->GetStorageShape()) + ", " +
                                     Ops::Base::ToString(queryShape->GetStorageShape()) + "}";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 "QuantFlashAttentionScoreGrad", "keyIn, query", shapesMsg.c_str(),
-                "When the dtype of query is HIFLOAT8, b of keyIn and query must be same");
+                "HIFLOAT8 query/key must share head dimension and batch (padded) or heads (TND)");
             return ge::GRAPH_FAILED;
         }
     }
@@ -948,7 +956,11 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
         return ge::GRAPH_FAILED;
     }
     fBaseParams.attenMaskCompressMode = 0;
-    fBaseParams.attenMaskOptional = EMPTY_TENSOR;
+    if (attnMaskShape == nullptr || attnMaskShape->GetStorageShape().GetDimNum() == 0) {
+        fBaseParams.attenMaskOptional = EMPTY_TENSOR;
+    } else {
+        fBaseParams.attenMaskOptional = NORMAL_TENSOR;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -961,13 +973,23 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
     // 自动校正left和right causal的token值，token信息仅用于sparse分核计算
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) ||
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
-        fBaseParams.s1Token = INT32_MAX;
+        fBaseParams.s1Token = TOKEN_UNLIMITED;
         fBaseParams.s2Token = 0;
+    }
+
+    // band场景下winLeft/winRight传-1表示该方向不限窗，需在右下角校正之前替换
+    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+        if (fBaseParams.s1Token == -1) {
+            fBaseParams.s1Token = TOKEN_UNLIMITED;
+        }
+        if (fBaseParams.s2Token == -1) {
+            fBaseParams.s2Token = TOKEN_UNLIMITED;
+        }
     }
 
     // 对pad场景做校正
     // sparse_mode =4 (band)时 或者sparse_mode ==3 (RIGHT_DOWN_CAUSAL) 时，token以右下角为基准，需要校正
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+    if (fBaseParams.layoutType != INPUT_FORMAT_TND && !fBaseParams.hasSequsedQ && !fBaseParams.hasSequsedKV &&
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
          fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND))) {
         fBaseParams.s1Token = fBaseParams.s1Token + fBaseParams.s1 - fBaseParams.s2;
@@ -976,8 +998,8 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
 
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::ALL_MASK) ||
         fBaseParams.attenMaskOptional == EMPTY_TENSOR) {
-        fBaseParams.s1Token = INT32_MAX;
-        fBaseParams.s2Token = INT32_MAX;
+        fBaseParams.s1Token = TOKEN_UNLIMITED;
+        fBaseParams.s2Token = TOKEN_UNLIMITED;
     }
 
     OP_LOGD("ProcessTokensInfo", " the corrected s1Token = %ld, s2Token %ld.", fBaseParams.s1Token,
@@ -993,13 +1015,13 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
     }
 
     // 校验pad场景token是否合法
-    if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+    if (fBaseParams.layoutType != INPUT_FORMAT_TND && !fBaseParams.hasSequsedQ && !fBaseParams.hasSequsedKV &&
         (-fBaseParams.s1Token > int64_t(fBaseParams.s2) || -fBaseParams.s2Token > int64_t(fBaseParams.s1) ||
          (fBaseParams.s1Token + fBaseParams.s2Token) < 0)) {
         std::string valueMsg = "{" + std::to_string(fBaseParams.s1Token) + ", " + std::to_string(fBaseParams.s2Token) +
                                ", " + std::to_string(fBaseParams.s1Token + fBaseParams.s2Token) + "}";
-        std::string reasonMsg = "When inputLayout is TND, the valud of nextTokens, preTokens, nextToKens + preTokens "
-                                "cannot be less than {" +
+        std::string reasonMsg = "When inputLayout is not TND and seqused is absent, nextTokens, preTokens, "
+                                "nextTokens + preTokens cannot be less than {" +
                                 std::to_string(int64_t(-fBaseParams.s2)) + ", " +
                                 std::to_string(int64_t(-fBaseParams.s1)) + ", 0}";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("QuantFlashAttentionScoreGrad", "nextTokens, preTokens, nextToKens",
