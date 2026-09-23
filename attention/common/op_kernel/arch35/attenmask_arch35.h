@@ -615,7 +615,8 @@ template <bool hasAtten, bool hasRope = false, bool isInfer = false, bool isMxfp
           bool optionalDn = false>
 __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
                                          RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
-                                         AttenMaskInfo &attenMaskInfo, bool needAtten, const int32_t subLoop = 0)
+                                         AttenMaskInfo &attenMaskInfo, bool needAtten, uint32_t s1CopyRows,
+                                         const int32_t subLoop = 0)
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
@@ -625,15 +626,8 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                     ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128,
                                            isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
                 if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
-#if (__NPU_ARCH__ == 3510)
-                    BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
-                                               runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
-                                               runInfo.s1RealSizeAlign64 >> 1, constInfo);
-#else
-                    BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
-                                               constInfo.s1BaseSize, attenMaskInfo.attenMaskS2Size,
-                                               constInfo.s1BaseSize, constInfo);
-#endif
+                    BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize, s1CopyRows,
+                                               attenMaskInfo.attenMaskS2Size, s1CopyRows, constInfo);
                 }
             }
         } else {
@@ -647,9 +641,8 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                         s2RealSize = subLoop == 0 ? 256 : runInfo.s2RealSize - 256;
                     }
                 }
-                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
-                                           constInfo.s1BaseSize / ArchInfo::CV_RATIO, attenMaskInfo.attenMaskS2Size,
-                                           constInfo.s1BaseSize / ArchInfo::CV_RATIO, constInfo);
+                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize, s1CopyRows,
+                                           attenMaskInfo.attenMaskS2Size, s1CopyRows, constInfo);
             }
         }
         attenMaskInQue.template EnQue(attenMaskUb);
