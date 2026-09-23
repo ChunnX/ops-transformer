@@ -49,7 +49,10 @@ using namespace AscendC;
 using namespace matmul;
 
 constexpr uint32_t KCTQ_D = optiling::KCTQ_HEAD_DIM;
-constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 100U * 1024U;
+// Local workspace of the matmul framework. The C type is L0C->UB (KFC client), so this has to hold
+// the C staging tile (baseM x baseN fp32 = 64KB for the 128 x 128 tiling) plus the framework's own
+// buffers; 64KB is what the current tiling actually needs (verified against the golden reference).
+constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 64U * 1024U;
 
 // Vector cores per cube core. The kernel is declared as MIX_AIC_1_2, so one AIC is served by two
 // AIVs and both of them are KFC clients of that AIC. Measured with a hardware probe on 910B3
@@ -124,25 +127,25 @@ public:
     static constexpr uint32_t kChunksPerRow = KCTQ_D / PackCfg<BITS>::kChunkLanes;
     static constexpr uint32_t kChunksPerBatch = KCTQ_BATCH_ROWS * kChunksPerRow;
 
-    // Arena slices, one KCTQ_BATCH_LANES (= 4KB) each. Slice 0 also holds the matmul C tile.
-    static constexpr uint32_t kSliceRow = 0U;   // x / unit, y, p
-    static constexpr uint32_t kSliceTmp = 1U;   // mask, fold scratch
-    static constexpr uint32_t kSliceIdx = 2U;   // primary index, residual
-    static constexpr uint32_t kSlicePrim = 3U;  // primary value
-    static constexpr uint32_t kSliceWork = 4U;  // reduce work
-    static constexpr uint32_t kSliceCv = 5U;    // folded chunk values
-    static constexpr uint32_t kSliceCi = 6U;    // chunk words as int32
-    static constexpr uint32_t kSliceCvHi = 7U;  // 4bit high halves
-    static constexpr uint32_t kSliceCiHi = 8U;
-    static constexpr uint32_t kSliceDenom = 9U;
-    // Second copies of every slice that an asynchronous store reads from (residual, packed words and
-    // the spread chunks): batches alternate between the copies so a store only has to be drained
-    // before the same copy is written again, two batches later. See QuantizeRows.
-    static constexpr uint32_t kSliceIdxB = 10U;
-    static constexpr uint32_t kSliceCiB = 11U;
-    static constexpr uint32_t kSliceCiHiB = 12U;
-    static constexpr uint32_t kSliceRowB = 13U; // second copy of x for the normalized vector store
-    static constexpr uint32_t kSliceCount = 14U;
+    // Arena slices, indexed by lane offset. The matmul C tile (baseM x headDim fp32) occupies the
+    // first kTileLanes lanes and is consumed in place by the vector stage of the same tile, so every
+    // slice that stays alive during a GEMM sits behind it. kSliceRow / kSliceRowB only exist during
+    // NormalizeRows (before the first GEMM) and therefore alias the C tile area.
+    static constexpr uint32_t kTileLanes = 128U * KCTQ_D; // baseM x headDim = 64KB fp32
+    static constexpr uint32_t kSliceRow = 0U;              // x / unit, y, p (aliases the C tile)
+    static constexpr uint32_t kSliceTmp = 1U * KCTQ_BATCH_LANES;  // mask, fold scratch
+    static constexpr uint32_t kSliceIdx = 2U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSlicePrim = 3U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceWork = 4U * KCTQ_BATCH_LANES; // reduce work area
+    static constexpr uint32_t kSliceCv = 5U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceCi = 6U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceCvHi = 7U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceCiHi = 8U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceDenom = 9U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceIdxB = 10U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceCiB = 11U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kSliceRowB = 12U * KCTQ_BATCH_LANES;
+    static constexpr uint32_t kArenaLanes = kTileLanes; // the slices alias the C tile region
 
     __aicore__ inline KvCacheTurboQuant() = default;
 
@@ -202,11 +205,7 @@ public:
         // drain before the next vector stage starts), so they share one arena instead of each
         // claiming its own UB.
         SetSysWorkspace(workspace);
-        const uint32_t tileLanes = static_cast<uint32_t>(td->cubeTiling.baseM) * KCTQ_D;
-        const uint32_t arenaLanes = (tileLanes > KCTQ_BATCH_LANES * kSliceCount)
-                                        ? tileLanes
-                                        : KCTQ_BATCH_LANES * kSliceCount;
-        pipe_.InitBuffer(arenaBuf_, arenaLanes * sizeof(float));
+        pipe_.InitBuffer(arenaBuf_, kArenaLanes * sizeof(float));
         pipe_.InitBuffer(mmLocalWsBuf_, KCTQ_MM_LOCAL_WS_BYTES);
 
         if (g_coreType == AIV) {
@@ -214,8 +213,11 @@ public:
             pipe_.InitBuffer(scalarBuf_, 512U * sizeof(float));
             pipe_.InitBuffer(bf16Buf_, 2U * KCTQ_SCALAR_SLOTS * sizeof(bfloat16_t));
             pipe_.InitBuffer(weightBuf_, KCTQ_BATCH_LANES * sizeof(float));
-            pipe_.InitBuffer(weightHiBuf_, KCTQ_BATCH_LANES * sizeof(float));
             pipe_.InitBuffer(qjlWeightBuf_, KCTQ_BATCH_LANES * sizeof(float));
+            // only the 2bit / 4bit layouts fold two halves of a chunk
+            pipe_.InitBuffer(weightHiBuf_, PackCfg<BITS>::kSplitChunk ? KCTQ_BATCH_LANES * sizeof(float)
+                                                                      : 32U);
+            pipe_.InitBuffer(offsetBuf_, 2048U);
         }
     }
 
@@ -242,9 +244,10 @@ public:
         }
     }
 
+    // Slice index is a lane offset inside the arena (see the kSlice* constants).
     __aicore__ inline LocalTensor<float> Slice(uint32_t index) const
     {
-        return const_cast<ArenaBuf &>(arenaBuf_).Get<float>()[index * KCTQ_BATCH_LANES];
+        return const_cast<ArenaBuf &>(arenaBuf_).Get<float>()[index];
     }
 
     // parity selector for the double buffered store sources (see kSliceIdxB)
@@ -293,16 +296,79 @@ public:
                 wh.SetValue(i, (i >= 4U) ? Pow2(static_cast<uint32_t>(BITS) * (i - 4U)) : 0.0f);
             } else {
                 w.SetValue(i, Pow2(static_cast<uint32_t>(BITS) * i));
-                wh.SetValue(i, 0.0f);
             }
         }
         SetFlag<HardEvent::S_V>(EVENT_ID2);
         WaitFlag<HardEvent::S_V>(EVENT_ID2);
         for (uint32_t span = kGroup; span < KCTQ_BATCH_LANES; span *= 2U) {
             Adds(w[span], w, 0.0f, span);
-            Adds(wh[span], wh, 0.0f, span);
+            if constexpr (PackCfg<BITS>::kSplitChunk) {
+                Adds(wh[span], wh, 0.0f, span);
+            }
             Adds(wq[span], wq, 0.0f, span);
             PipeBarrier<PIPE_V>();
+        }
+        if constexpr (BITS == 3) {
+            // Gather offset tables for the 3bit stream packing (see PackStream3Bit).
+            // The offsets are byte offsets into the source UB buffer (verified on hardware).
+            LocalTensor<uint32_t> off = offsetBuf_.Get<uint32_t>();
+            for (uint32_t i = 0; i < 128U; ++i) {
+                off.SetValue(i, 4U * ((i + 1U < 128U) ? (i + 1U) : 127U)); // +1 chunk view (tail clamped)
+            }
+            for (uint32_t i = 0; i < 128U; ++i) {
+                // 4 chunks make 3 words: word i sits at lane i + i / 3; the tail entries are unused
+                off.SetValue(128U + i, 4U * ((i < 96U) ? (i + i / 3U) : 0U));
+            }
+            SetFlag<HardEvent::S_V>(EVENT_ID2);
+            WaitFlag<HardEvent::S_V>(EVENT_ID2);
+        }
+    }
+
+    // ---- bits=3 packing: chunks -> 3 of every 4 lanes -> one contiguous byte stream -----------------
+    // A 24bit chunk has no packed container type, and storing 3 bytes out of every 32B block costs
+    // about 8.7us per batch (measured: 128 sub 32B blocks). Here the 48 byte row is assembled in
+    // place instead: lane L < 96 holds output word L of the batch stream (4 chunks = 3 words), so a
+    // single DataCopyPad leaves with the whole batch.
+    //   class 0 (L%4==0): ci[L]        | ci[L+1] << 24
+    //   class 1 (L%4==1): ci[L] >> 8   | ci[L+1] << 16
+    //   class 2 (L%4==2): ci[L] >> 16  | ci[L+1] << 8
+    //   class 3          : junk, dropped by the compaction gather below
+    __aicore__ inline void PackStream3Bit(uint32_t row0, uint32_t validRows,
+                                          const LocalTensor<int32_t> &ci)
+    {
+        LocalTensor<float> ci1F = Slice(kSliceCvHi);
+        LocalTensor<int32_t> ci1 = ci1F.ReinterpretCast<int32_t>();
+        LocalTensor<float> wordF = Slice(kSliceCiHi);
+        LocalTensor<int32_t> word = wordF.ReinterpretCast<int32_t>();
+        LocalTensor<uint32_t> off = offsetBuf_.Get<uint32_t>();
+
+        // ci1[L] = ci[L + 1] (the tail lanes belong to junk classes and are never used)
+        Gather(ci1, ci, off, 0U, 64U, 2U, 8U);
+        PipeBarrier<PIPE_V>();
+
+        uint64_t cls0[2] = {0x1111111111111111ULL, 0x1111111111111111ULL};
+        uint64_t cls1[2] = {0x2222222222222222ULL, 0x2222222222222222ULL};
+        uint64_t cls2[2] = {0x4444444444444444ULL, 0x4444444444444444ULL};
+        const UnaryRepeatParams up{1U, 1U, 8U, 8U};
+        // left halves (the a operand) into word, right halves pushed into ci1 in place: the three
+        // masked writes touch disjoint lane classes, so the source survives until the last one
+        Adds(word, ci, static_cast<int32_t>(0), cls0, 16U, up);
+        ShiftRight(word, ci, static_cast<int32_t>(8), cls1, 16U, up);
+        ShiftRight(word, ci, static_cast<int32_t>(16), cls2, 16U, up);
+        ShiftLeft(ci1, ci1, static_cast<int32_t>(24), cls0, 16U, up);
+        ShiftLeft(ci1, ci1, static_cast<int32_t>(16), cls1, 16U, up);
+        ShiftLeft(ci1, ci1, static_cast<int32_t>(8), cls2, 16U, up);
+        Or(word, word, ci1, KCTQ_BATCH_LANES);
+        PipeBarrier<PIPE_V>();
+        // compact 4 chunks -> 3 words: packed[i] = word[i + i/3]. ci itself is dead here and becomes
+        // the store source, so the copy only reads the parity copy of the *next* batch again later.
+        Gather(ci, word, off[128], 0U, 64U, 2U, 8U);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        if (validRows > 0U) {
+            LocalTensor<uint8_t> bytes = ci.ReinterpretCast<uint8_t>();
+            DataCopyExtParams cp{1, static_cast<uint32_t>(validRows * kIdxBytesPerRow), 0, 0, 0};
+            DataCopyPad(idxGm_[static_cast<uint64_t>(row0) * kIdxBytesPerRow], bytes, cp);
         }
     }
 
@@ -426,6 +492,10 @@ public:
     }
 
     // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
+    // ---- AIC: steps 3 and 7, dense fp32 GEMM ------------------------------------------------
+    // The received C tile is written back to the workspace; the vector stage of the same rows then
+    // reads it from GM. Interleaving the vector work into this loop was measured to be much slower
+    // (~2x on the t2048 case), so the two sides stay in their own phases.
     __aicore__ inline void Gemm(const GlobalTensor<float> &aGm, const GlobalTensor<float> &bGm,
                                 const GlobalTensor<float> &cGm)
     {
@@ -438,7 +508,11 @@ public:
         mm_.SetTensorB(bGm, true);
 
         uint32_t done = 0;
-        while (mm_.template Iterate<true>()) {
+        while (true) {
+            const bool more = mm_.template Iterate<true>();
+            if (!more) {
+                break;
+            }
             LocalTensor<float> cLocal = arenaBuf_.Get<float>();
             mm_.template GetTensorC<true>(cLocal, false, true);
             // The framework signals the arrival of the C tile on the vector pipe, so the scalar/MTE3
@@ -449,14 +523,13 @@ public:
                 rows = static_cast<uint32_t>(td_->cubeTiling.baseM);
             }
             if (g_coreType == AIV) {
-                // Only the KFC client owns the received tile: the engine hands the C data to the
-                // client UB, the cube side never fills its own staging buffer.
                 DataCopyExtParams cpOut{1, static_cast<uint32_t>(rows * KCTQ_D * sizeof(float)), 0, 0, 0};
                 DataCopyPad(cGm[static_cast<uint64_t>(done) * KCTQ_D], cLocal, cpOut);
             }
             done += rows;
-            PipeBarrier<PIPE_ALL>();
         }
+        // No per tile full barrier: the copy above and the next tile's C delivery are both MTE3
+        // traffic and therefore drain in issue order (verified against the golden reference).
         mm_.End();
         PipeBarrier<PIPE_ALL>();
     }
@@ -473,6 +546,7 @@ public:
             // Batches alternate between the two copies of the residual slice, so the store issued
             // by batch k only blocks the batch that rewrites the same copy (k + 2) - which lets the
             // pipeline drain below run on every other batch instead of on every batch.
+            const uint32_t grow = row0;
             const uint32_t pb = ((row0 - rowBegin_) / KCTQ_BATCH_ROWS) & 1U;
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
                                            ? KCTQ_BATCH_ROWS
@@ -507,7 +581,7 @@ public:
                 Add(idx, idx, mask, KCTQ_BATCH_LANES);
                 Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
             }
-            PackIdx(row0, validRows, idx, pb);
+            PackIdx(grow, validRows, idx, pb);
 
             LocalTensor<float> res = idx;
             LocalTensor<float> work = Slice(kSliceWork);
@@ -543,7 +617,7 @@ public:
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             if (validRows > 0U) {
                 DataCopyExtParams cpG{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
-                DataCopyPad(gammaGm_[row0], gb, cpG);
+                DataCopyPad(gammaGm_[grow], gb, cpG);
             }
             DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPad(wsRNormGm_[base], res, cpR);
@@ -564,9 +638,7 @@ public:
         LocalTensor<float> wv = Slice(kSliceTmp);
         LocalTensor<float> cv = Slice(kSliceCv);
         LocalTensor<float> ciF = SliceP(kSliceCi, kSliceCiB, parity);
-        LocalTensor<float> spreadF = SliceP(kSliceCiHi, kSliceCiHiB, parity);
         LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
-        LocalTensor<int32_t> spread = spreadF.ReinterpretCast<int32_t>();
 
         FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
@@ -577,7 +649,7 @@ public:
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
             LocalTensor<float> cvh = Slice(kSliceCvHi);
             LocalTensor<float> wvh = Slice(kSliceWork);
-            LocalTensor<float> cihF = SliceP(kSliceCiHi, kSliceCiHiB, parity);
+            LocalTensor<float> cihF = Slice(kSliceCiHi); // intra batch only, no parity copy needed
             FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES);
             if constexpr (BITS == 4) {
                 LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
@@ -607,10 +679,18 @@ public:
                 DataCopyExtParams cp{1, validRows * kIdxBytesPerRow, 0, 0, 0};
                 DataCopyPad(idxGm_[static_cast<uint64_t>(row0) * kIdxBytesPerRow], bytes, cp);
             }
+        } else if constexpr (BITS == 3) {
+            // 3bit: a 24bit chunk has no packed container type and a 3 byte per block store costs
+            // ~8.7us per batch (measured), so the words are assembled inside the batch and leave in
+            // one contiguous copy, see PackStream3Bit.
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+            PipeBarrier<PIPE_V>();
+            PackStream3Bit(row0, validRows, ci);
         } else {
-            // 1bit / 2bit / 3bit: the chunk width is not a power of two (or the value would not fit
-            // a signed 16bit word), so the words cannot be narrowed to a packed element type;
-            // spread them one per 32B block and store strided.
+            // 1bit: the 2 byte chunks are not a packed container either; spread them one per 32B
+            // block and store strided.
+            LocalTensor<float> spreadF = Slice(kSliceCiHi);
+            LocalTensor<int32_t> spread = spreadF.ReinterpretCast<int32_t>();
             Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             SpreadChunks(spread, ci, kChunksPerBatch);
@@ -687,6 +767,7 @@ private:
     TBuf<TPosition::VECCALC> weightBuf_;                    // packing lane weights
     TBuf<TPosition::VECCALC> weightHiBuf_;
     TBuf<TPosition::VECCALC> qjlWeightBuf_;
+    TBuf<TPosition::VECCALC> offsetBuf_;                      // 3bit gather offset tables (2 x 128 u32)
 
     using aType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
     using bType = MatmulType<TPosition::GM, CubeFormat::ND, float, true>; // matrices are handed transposed
