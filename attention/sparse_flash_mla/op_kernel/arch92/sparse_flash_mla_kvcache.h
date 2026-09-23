@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "sparse_flash_mla_common_arch35.h"
+#include "sparse_flash_mla_common_arch92.h"
 #include "util_regbase.h"
 
 using namespace matmul;

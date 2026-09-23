@@ -17,7 +17,7 @@
 #define SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
 
 #include "util_regbase.h"
-#include "sparse_flash_mla_common_arch35.h"
+#include "sparse_flash_mla_common_arch92.h"
 #include "common/buffers_policy.h"
 #include "common/buffer_manager.h"
 #include "common/buffer.h"

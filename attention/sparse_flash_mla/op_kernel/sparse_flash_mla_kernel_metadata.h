@@ -18,7 +18,7 @@
 
 #include <cstdint>
 #if (__NPU_ARCH__ == 9201)
-#include "arch920_r1/common/smla_metadata_common.h"
+#include "arch92/common/smla_metadata_common.h"
 #else
 #include "arch35/common/smla_metadata_common.h"
 #endif
