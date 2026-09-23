@@ -416,6 +416,7 @@ aclnnStatus aclnnMhcNormPostPreonly(
    - `hOut`、`residual`、`hInPrimeOut`和`x2Out`的数据类型必须一致，仅支持BFLOAT16或FLOAT16；
    - 两种前导维形式不可混用：`hOut`为`[B,S,D]`时，其余带前导维Tensor必须使用`[B,S,...]`；`hOut`为`[T,D]`时，其余带前导维Tensor必须使用`[T,...]`；
    - 当前仅支持`N=4`；
+   - `D`仅支持2560、5120、6144、7168；
    - `gamma0Optional`为可选输入，当前仅支持传入非空指针；
    - `preMixOptional`为可选输入，当前仅支持传入空指针；
    - `hResOptional`为可选输入，当前仅支持传入非空指针；

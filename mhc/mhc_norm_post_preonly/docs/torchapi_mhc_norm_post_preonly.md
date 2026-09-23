@@ -147,6 +147,7 @@ cann_ops_transformer.mhc_norm_post_preonly(
 
 - 该接口支持单算子模式调用、TorchAir 图模式调用。
 - 仅支持 `N=4`。
+- `D` 仅支持 2560、5120、6144、7168。
 - 主路径 dtype 必须一致：`h_out`、`residual`、`h_in_prime`、`x_2_out` 仅支持 float16 / bfloat16，且类型一致。
 - 输入支持 `[T, D]` 或 `[B, S, D]` 两种前导维形式，且各输入的前导维形式须保持一致。
 - `gamma_0` 为接口预留参数，当前暂不支持传 `None`。
