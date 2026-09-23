@@ -51,13 +51,54 @@ namespace SMLAKernel {
 // changing the transpose loop or its MTE3 copy contract.
 constexpr uint32_t SPARSE_KV_NZ_ROW_STRIDE = 17;
 
+#if SMLA_FINAL_UPDATE_CAST
+// Forward in-place compaction: each B16 store only overwrites an already read
+// FP32 prefix. Keep the original separate Mul, Add, Div and CAST_ROUND semantics.
+template <typename OUT>
+__simd_vf__ inline void SparseFinalUpdateCast512(__ubuf__ OUT *dst, __ubuf__ float *cur,
+    __ubuf__ float *previous, __ubuf__ float *rescale, __ubuf__ float *sum, uint16_t rows)
+{
+    Reg::RegTensor<float> weight, denominator, oldValue, currentValue, product, added, divided;
+    Reg::RegTensor<OUT> converted;
+    Reg::MaskReg all = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+    static constexpr Reg::CastTrait outputCast = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    for (uint16_t row = 0; row < rows; ++row) {
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(weight, rescale + row);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(denominator, sum + row);
+        for (uint16_t col = 0; col < 8; ++col) {
+            Reg::LoadAlign(oldValue, previous + row * 512 + col * 64);
+            Reg::LoadAlign(currentValue, cur + row * 512 + col * 64);
+            Reg::Mul(product, weight, oldValue, all);
+            Reg::Add(added, product, currentValue, all);
+            Reg::Div(divided, added, denominator, all);
+            Reg::Cast<OUT, float, outputCast>(converted, divided, all);
+            Reg::StoreAlign<OUT, Reg::StoreDist::DIST_PACK_B32>(
+                dst + row * 512 + col * 64, converted, all);
+        }
+    }
+}
+#endif
+
 __simd_vf__ inline void SparseKvNdToNz16(__ubuf__ uint16_t *dst, __ubuf__ uint16_t *src)
 {
     Reg::RegTensor<uint16_t> data;
+#if SMLA_KV_NZ_LOAD_PAIR
+    Reg::RegTensor<uint16_t> second;
+#endif
     Reg::MaskReg mask = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
     for (uint16_t row = 0; row < 8; ++row) {
         for (uint16_t col = 0; col < 4; ++col) {
             Reg::LoadAlign<uint16_t>(data, src + row * 512 + col * 128);
+#if SMLA_KV_NZ_LOAD_PAIR
+            Reg::LoadAlign<uint16_t>(second, src + 8 * 512 + 128 + row * 512 + col * 128);
+            Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + row * 16, data,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
+            Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + (row + 8) * 16, second,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
+#else
             Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
                 dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + row * 16, data,
                 SPARSE_KV_NZ_ROW_STRIDE, mask);
@@ -65,6 +106,7 @@ __simd_vf__ inline void SparseKvNdToNz16(__ubuf__ uint16_t *dst, __ubuf__ uint16
             Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
                 dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + (row + 8) * 16, data,
                 SPARSE_KV_NZ_ROW_STRIDE, mask);
+#endif
         }
     }
 }
@@ -82,9 +124,18 @@ __simd_vf__ inline void SparseFusedSoftmax128(__ubuf__ P *outP, __ubuf__ float *
     Reg::RegTensor<uint32_t> zeroIndex, rowIndex;
     Reg::MaskReg all = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
     Reg::MaskReg all16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+#if SMLA_SOFTMAX_REGISTER_STATS
+    Reg::RegTensor<int32_t> lanes;
+    Reg::RegTensor<float> sumBrc;
+    Reg::MaskReg rowMask;
+    Reg::Arange(lanes, 0);
+    Reg::Duplicate(newMaxAll, 0.0f);
+    Reg::Duplicate(newSumAll, 0.0f);
+#else
     Reg::UnalignRegForStore sumStore, maxStore;
     __ubuf__ float *sumWrite = stats;
     __ubuf__ float *maxWrite = stats + 64;
+#endif
     Reg::LoadAlign(oldMaxAll, maximum);
     Reg::Duplicate(zeroIndex, 0);
     for (uint16_t row = 0; row < rows; ++row) {
@@ -101,15 +152,24 @@ __simd_vf__ inline void SparseFusedSoftmax128(__ubuf__ P *outP, __ubuf__ float *
         Reg::ExpSub(e1, x1, maxBrc, all);
         Reg::Add(sumReduced, e0, e1, all);
         Reg::Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(sumReduced, sumReduced, all);
+#if SMLA_SOFTMAX_REGISTER_STATS
+        Reg::Gather(sumBrc, sumReduced, zeroIndex);
+        Reg::Compares<int32_t, CMPMODE::EQ>(rowMask, lanes, static_cast<int32_t>(row), all);
+        Reg::Select(newSumAll, sumBrc, newSumAll, rowMask);
+        Reg::Select(newMaxAll, maxBrc, newMaxAll, rowMask);
+#else
         Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumWrite, sumReduced, sumStore, 1);
         Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(maxWrite, maxBrc, maxStore, 1);
+#endif
         FaVectorApi::CastStoreExp128<float, P>(e0, e1, outP, 33, 1, all, all16, nullptr);
     }
+#if !SMLA_SOFTMAX_REGISTER_STATS
     Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumWrite, sumStore, 0);
     Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(maxWrite, maxStore, 0);
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     Reg::LoadAlign(newMaxAll, stats + 64);
     Reg::LoadAlign(newSumAll, stats);
+#endif
     Reg::LoadAlign(oldSumAll, sum);
     Reg::FusedExpSub(weight, oldMaxAll, newMaxAll, all);
     Reg::Mul(updated, weight, oldSumAll, all);
@@ -836,6 +896,35 @@ template <bool IS_FULL>
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyIn8Block(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t &s2,
                                                                 const RunInfo &runInfo, ConstInfo &constInfo)
 {
+#if SMLA_KV_SCALAR_DIRECT
+    if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR && IS_FULL) {
+        if (runInfo.s2RealSize == s2BaseSize) {
+            const int64_t addrStart = sparseAddrOffset + s2 - sparseS2Start;
+            auto dst = reinterpret_cast<__ubuf__ uint16_t *>(
+                kvInUb.GetPhyAddr(startRow * 512 + (startRow / 8) * 128));
+            auto src = reinterpret_cast<__gm__ uint16_t *>(keyGm.GetPhyAddr(0));
+            // Avoid the eight-element temporary and its separate load/issue loops.
+            // Each pair remains sorted exactly as in CopyInKvSparse<true>.
+            for (uint32_t pair = 0; pair < 4; ++pair) {
+                int64_t a = sparseKvAddrBuf.tensor.GetValue(addrStart + pair * 2);
+                int64_t b = sparseKvAddrBuf.tensor.GetValue(addrStart + pair * 2 + 1);
+                if (likely(a >= 0 && b >= 0)) {
+                    int64_t first = a < b ? a : b;
+                    uint64_t stride = static_cast<uint64_t>(a < b ? b - a : a - b) * sizeof(KV_T);
+                    if ASCEND_IS_AIV {
+                        copy_gm_to_ubuf_align_v2(dst + pair * 1024, src + first,
+                            0, 2, 512 * sizeof(KV_T), 0, 0, false, 0, stride, 512 * sizeof(KV_T));
+                    }
+                } else {
+                    CopyInSingleKv(kvInUb, startRow + pair * 2, a, constInfo);
+                    CopyInSingleKv(kvInUb, startRow + pair * 2 + 1, b, constInfo);
+                }
+            }
+            s2 += KV_COPYIN_UNIT;
+            return;
+        }
+    }
+#endif
     // tokenData元素为-1表示无效token，尾块场景下GetReal*仅填充有效区间，其余保持-1
     int64_t tokenData[KV_COPYIN_UNIT] = {-1, -1, -1, -1, -1, -1, -1, -1};
     if constexpr (IS_VEC_S2PHYADDR) {
@@ -1339,6 +1428,31 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
     LocalTensor<T> smlaVec2ResUb = this->stage2OutBufs.tensor;
     LocalTensor<T> smlaMmRes = bmm2ResBuf.tensor;
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
+#if SMLA_FINAL_UPDATE_CAST
+    if constexpr (DIRECT_SPARSE_KV_L1 && IsSameType<T, float>::value &&
+                  (IsSameType<OUTPUT_T, half>::value || IsSameType<OUTPUT_T, bfloat16_t>::value)) {
+        if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount > 0 &&
+            runInfo.s2LoopCount == runInfo.s2LoopLimit && runInfo.s2RealSizeUpdate > 0) {
+            LocalTensor<OUTPUT_T> packedOutput = smlaVec2ResUb.template ReinterpretCast<OUTPUT_T>();
+            SparseFinalUpdateCast512<OUTPUT_T>((__ubuf__ OUTPUT_T *)packedOutput.GetPhyAddr(),
+                (__ubuf__ float *)smlaMmRes.GetPhyAddr(), (__ubuf__ float *)smlaVec2ResUb.GetPhyAddr(),
+                (__ubuf__ float *)softmaxExpBufs[runInfo.taskIdMod2].tensor.GetPhyAddr(),
+                (__ubuf__ float *)softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor.GetPhyAddr(),
+                static_cast<uint16_t>(runInfo.vec2MRealSize));
+            SetFlag<HardEvent::V_MTE3>(INNERCORE_STAGE2);
+            WaitFlag<HardEvent::V_MTE3>(INNERCORE_STAGE2);
+            DataCopyExtParams copy;
+            copy.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            copy.srcStride = (dTemplateAlign64 - constInfo.dSizeV) >> 4;
+            copy.dstStride = constInfo.attentionOutStride;
+            copy.blockCount = runInfo.vec2MRealSize;
+            DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset], packedOutput, copy);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2);
+            SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
+            return;
+        }
+    }
+#endif
     bool smlaNeedIntraBlockReduce = false;
     if constexpr (IS_BATCH_CONSISTENCY) {
         smlaNeedIntraBlockReduce = runInfo.isLastBase && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId > 0;

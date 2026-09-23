@@ -37,4 +37,29 @@
 #define SMLA_AIV_HALF_ORDER 0
 #endif
 
+// Private candidate: fuse the final non-split PV update with its output cast.
+#ifndef SMLA_FINAL_UPDATE_CAST
+#define SMLA_FINAL_UPDATE_CAST 0
+#endif
+
+// Collect per-row softmax max/sum in registers within the existing fused VF.
+#ifndef SMLA_SOFTMAX_REGISTER_STATS
+#define SMLA_SOFTMAX_REGISTER_STATS 0
+#endif
+
+// Resident P has its own lifetime event; do not wait for quarter-0 L0B credit.
+#ifndef SMLA_P_EARLY_LOAD
+#define SMLA_P_EARLY_LOAD 0
+#endif
+
+// Direct cached-address pair issue for full sparse tiles; invalid rows still fall back.
+#ifndef SMLA_KV_SCALAR_DIRECT
+#define SMLA_KV_SCALAR_DIRECT 0
+#endif
+
+// Independent ND row loads precede both NZ stores; data layout is unchanged.
+#ifndef SMLA_KV_NZ_LOAD_PAIR
+#define SMLA_KV_NZ_LOAD_PAIR 0
+#endif
+
 #endif // SMLA_EXPERIMENT_CONFIG_H

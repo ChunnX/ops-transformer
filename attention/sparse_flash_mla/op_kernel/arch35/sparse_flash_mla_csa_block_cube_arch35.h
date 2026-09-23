@@ -240,13 +240,22 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulPvSplit(
     mm.cmatrixInitVal = param.isOutKFisrt;
     mm.cmatrixSource = false;
     mm.unitFlag = param.unitFlag;
+#if SMLA_P_EARLY_LOAD
+    // Caller already consumed P-ready and resident-P-free. The first quarter's
+    // MTE1_M still joins this load before MMAD; AB ping-pong is unchanged.
+    if (ablation.Transfer(task, AttentionAblation::RP)) {
+        LoadDataToL0A(l0ResidentP, pL1, param, 0, param.singleK, param.singleM);
+    }
+#endif
     for (uint32_t quarter = 0; quarter < 4; ++quarter) {
         StaticBuffer<Q_T> &aBuf = l0A.GetNext();
         StaticBuffer<Q_T> &bBuf = l0B.GetNext();
         WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(aBuf.idx));
+#if !SMLA_P_EARLY_LOAD
         if (quarter == 0 && ablation.Transfer(task, AttentionAblation::RP)) {
             LoadDataToL0A(l0ResidentP, pL1, param, 0, param.singleK, param.singleM);
         }
+#endif
         LocalTensor<Q_T> kvQuarter = GetKvQuarter(slot, quarter, Align16Func(param.singleK));
         if (ablation.Transfer(task, AttentionAblation::RV)) {
             LoadDataToL0B(bBuf.tensor, kvQuarter, param, 0, param.singleK, dBaseMatmulSize, 1);
