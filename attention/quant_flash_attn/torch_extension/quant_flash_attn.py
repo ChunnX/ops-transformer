@@ -16,9 +16,7 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from torch.library import impl
 
 QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
-METADATA_STRIDE = (
-    16  # 每核 metadata 字段数, 与 AICPU/kernel 侧 METADATA_STRIDE 同名同值
-)
+METADATA_STRIDE = 16  # 每核 metadata 字段数, 与 AICPU/kernel 侧 METADATA_STRIDE 同名同值
 
 
 class QuantMode(IntEnum):
@@ -51,9 +49,7 @@ def _resolve_quant_mode(quant_mode: Union[str, int, "QuantMode"]) -> int:
             return int(QuantMode[quant_mode.strip().upper()])
         except KeyError as exc:
             valid = ", ".join(m.name.lower() for m in QuantMode)
-            raise ValueError(
-                f"quant_mode should be one of [{valid}], but got {quant_mode!r}"
-            ) from exc
+            raise ValueError(f"quant_mode should be one of [{valid}], but got {quant_mode!r}") from exc
     return int(QuantMode(quant_mode))
 
 
@@ -66,9 +62,7 @@ def _resolve_mask_mode(mask_mode: Union[str, int, "MaskMode", None]) -> int:
             return int(MaskMode[mask_mode.strip().upper()])
         except KeyError as exc:
             valid = ", ".join(m.name.lower() for m in MaskMode)
-            raise ValueError(
-                f"mask_mode should be one of [{valid}], but got {mask_mode!r}"
-            ) from exc
+            raise ValueError(f"mask_mode should be one of [{valid}], but got {mask_mode!r}") from exc
     return int(MaskMode(mask_mode))
 
 
@@ -192,9 +186,7 @@ def _get_output_shape_sizes(q, v, layout_q, layout_kv):
 
 class QuantFlashAttnOpBuilder(OpBuilder):
     def __init__(self):
-        super(QuantFlashAttnOpBuilder, self).__init__(
-            "quant_flash_attn", category="attention"
-        )
+        super(QuantFlashAttnOpBuilder, self).__init__("quant_flash_attn", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
@@ -307,9 +299,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
                 v.dim() == kv_expected,
                 lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
             )
-            t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
-                q, v, layout_q, layout_kv
-            )
+            t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(q, v, layout_q, layout_kv)
             if layout_q == "TND":
                 softmax_out_size = (n_size, t_size)
             else:
@@ -555,15 +545,9 @@ def quant_flash_attn(
     )
     # 异常拦截: 仅校验决定输出 shape 的维度(q 除 D 外的 B/T/S/N 维度及 v 的 D 维度),
     # 其余维度(如 q 的 D 维)不影响输出 shape, 不在此拦截
-    t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
-        q, v, layout_q, layout_kv
-    )
+    t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(q, v, layout_q, layout_kv)
     torch._check(
-        all(
-            size > 0
-            for size in (t_size, b_size, s_size, n_size, d_size)
-            if size is not None
-        ),
+        all(size > 0 for size in (t_size, b_size, s_size, n_size, d_size) if size is not None),
         lambda: (
             f"The output-related dims of q (except D) and the D dim of v must not be 0, "
             f"got q.shape={tuple(q.shape)}, v.shape={tuple(v.shape)}"
@@ -584,17 +568,11 @@ def quant_flash_attn(
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
         if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
+            raise ValueError(f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}")
         if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
+            raise ValueError(f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}")
         if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
+            raise ValueError(f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}")
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
