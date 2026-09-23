@@ -369,7 +369,6 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>
           <ul>
                 <li>True表示返回，False表示不返回；默认值为False。</li>
-                <li>该参数仅在训练且layoutKv不为PA_BSND场景支持。</li>
           </ul>
       </td>
       <td>BOOL</td>
@@ -530,10 +529,12 @@ aclnnStatus aclnnSparseFlashAttention(
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - N1支持1~128。
   - 仅支持sparseBlockSize为1。
+  - returnSoftmaxLse为True时，支持layoutKv为PA_BSND。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - N1支持1/2/4/8/16/32/64/128。
   - sparseBlockSize支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparseBlockSize整除blockSize。
   - key、value和key_rope不支持非连续。
+  - returnSoftmaxLse为True时，layoutKv不支持PA_BSND。
 
 ## 调用示例
 
