@@ -73,7 +73,7 @@ public:
     static constexpr uint32_t L0A_POLICY = SPLIT_SPARSE_KV_L1 ? SMLA_L0A_MODE : 0;
     static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
     static constexpr uint32_t s1BaseSize = 64;
-    static constexpr uint32_t s2BaseSize = 128;
+    static constexpr uint32_t s2BaseSize = SPLIT_SPARSE_KV_L1 ? ActiveSparseKvL1Layout::S2_ROWS : 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
     static constexpr uint32_t rightBufNum = 3;

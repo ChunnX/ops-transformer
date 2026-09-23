@@ -137,7 +137,6 @@ public:
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = 64;
-    static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
@@ -152,6 +151,7 @@ public:
         DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
     static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
     static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
+    static constexpr uint32_t s2BaseSize = SPLIT_SPARSE_KV_L1 ? ActiveSparseKvL1Layout::S2_ROWS : 128;
     static constexpr uint32_t KV_ND_ROW_STRIDE = DIRECT_SPARSE_KV_L1 ? 528 : dVTemplateType;
     static constexpr int64_t KV_COPYIN_UNIT = 8;   // 每次搬入8行
     static constexpr int64_t KV_PROCESS_UNIT = 16; // 每次拷出16行
@@ -1016,7 +1016,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(LocalTenso
                                                                       LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
                                                                       ConstInfo &constInfo)
 {
-    if constexpr (DIRECT_SPARSE_KV_L1 && UPDATE) {
+    if constexpr (DIRECT_SPARSE_KV_L1 && UPDATE && s2BaseSize == 128) {
         if (runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128) {
             asc_vf_call<SparseFusedSoftmax128<Q_T>>(
                 reinterpret_cast<__ubuf__ Q_T *>(stage1CastTensor.GetPhyAddr()),
@@ -1030,7 +1030,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(LocalTenso
         }
     }
 
-    if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
+    if constexpr (s2BaseSize == 64) {
+        ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
+            runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+    } else if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
         ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
             stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
             runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
@@ -2205,7 +2209,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
     // SMLA特有: 加上s2RealBuf大小
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t S2_REAL_BUF_LEN = 128;
+    constexpr uint32_t S2_REAL_BUF_LEN = s2BaseSize;
     smlaV0TotalOffset += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * GetBlockNum();
 
     uint32_t totalBS1 = (LAYOUT_T == SMLA_LAYOUT::TND) ? constInfo.s1Size : (constInfo.bSize * constInfo.s1Size);

@@ -158,6 +158,11 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+                  LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
+                  !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && ActiveSparseKvL1Layout::SPLIT) {
+        constInfo.s2BaseSize = ActiveSparseKvL1Layout::S2_ROWS;
+    }
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV,
                           cmpResidualKV);

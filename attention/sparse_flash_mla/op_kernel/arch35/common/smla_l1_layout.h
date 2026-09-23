@@ -11,12 +11,7 @@
 #define SMLA_L1_LAYOUT_H
 
 #include <stdint.h>
-
-// Experimental build selector: 0 original, 1 split reference, 2 control,
-// 3 balanced, 4 balanced with slot1's logical halves exchanged.
-#ifndef SMLA_L1_LAYOUT_MODE
-#define SMLA_L1_LAYOUT_MODE 0
-#endif
+#include "smla_experiment_config.h"
 
 // 0 original readiness, 1 unified MTE2 readiness, 2 unified readiness + half FREE.
 #ifndef SMLA_L1_SYNC_MODE
@@ -41,12 +36,15 @@ static_assert(SMLA_L1_PHASE_MODE == 0 || SMLA_L1_SYNC_MODE == 1,
 namespace SMLAKernel {
 template <uint32_t Mode>
 struct SparseKvL1Layout {
-    static_assert(Mode <= 4, "Unsupported sparse KV L1 layout");
+    static_assert(Mode <= 5, "Unsupported sparse KV L1 layout");
     static constexpr uint32_t KIB = 1024;
-    static constexpr uint32_t HALF_BYTES = 64 * KIB;
+    static constexpr uint32_t S2_ROWS = Mode == 5 ? 64 : 128;
+    static constexpr uint32_t HALF_BYTES = S2_ROWS * 256 * 2;
     static constexpr uint32_t QUARTER_ELEMENTS = 128 * 128;
     static constexpr bool SPLIT = Mode != 0;
-    static_assert((2 * 16 + 3 * 32 + 6 * 64) * KIB == 512 * KIB, "L1 capacity mismatch");
+    static constexpr uint32_t P_BYTES = 64 * S2_ROWS * 2;
+    static constexpr uint32_t ALLOCATED_BYTES = 2 * P_BYTES + 3 * 32 * KIB + 6 * HALF_BYTES;
+    static_assert(ALLOCATED_BYTES <= 512 * KIB, "L1 capacity exceeded");
 
     __aicore__ static constexpr uint32_t QueryBase(uint32_t slot)
     {
@@ -73,7 +71,7 @@ struct SparseKvL1Layout {
             if constexpr (Mode == 4) {
                 half ^= slot & 1U;
             }
-            return (64 + slot * 64 + half * 256) * KIB;
+            return (64 + half * 256) * KIB + slot * HALF_BYTES;
         }
     }
 

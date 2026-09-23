@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cmath>
 #include "sparse_flash_mla_metadata_aicpu.h"
+#include "../../sparse_flash_mla/op_kernel/arch35/common/smla_experiment_config.h"
 
 using namespace optiling;
 
@@ -448,6 +449,13 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         }
         mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
+#if SMLA_L1_LAYOUT_MODE == 5
+        // Must match the AI Core's ORI_CMP TND non-split/non-consistency guard.
+        if (isSparseOriKv_ && isSparseCmpKv_ && layoutQ_ == "TND" && layoutKv_ == "TND" &&
+            !isSplitG_ && !isBatchConsistency_) {
+            s2BaseSize_ = 64U;
+        }
+#endif
     } else {
         mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
