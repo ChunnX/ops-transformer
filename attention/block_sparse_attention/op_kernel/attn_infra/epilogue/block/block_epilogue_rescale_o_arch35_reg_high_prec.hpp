@@ -20,8 +20,6 @@
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 #include "../../../tla/tensor_bsa.hpp"
 
-#include "../../../tla/layout_bsa.hpp"
-
 namespace NpuArch::Epilogue::Block {
 
 enum class DRegSplitStages {

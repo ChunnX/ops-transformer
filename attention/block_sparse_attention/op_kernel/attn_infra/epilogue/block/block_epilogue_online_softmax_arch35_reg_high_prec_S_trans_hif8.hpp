@@ -149,7 +149,6 @@ public:
         __ubuf__ float *lastMaxStartAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
         __ubuf__ float *lastSumAddr = (__ubuf__ float *)glUbTensor.GetPhyAddr();
         __ubuf__ ElementInput *nowMaxAddr = (__ubuf__ float *)lmUbTensor.GetPhyAddr();
-        __ubuf__ ElementInput *nowMaxStartAddr = (__ubuf__ float *)lmUbTensor.GetPhyAddr();
         __ubuf__ ElementInput *nowSumAddr = (__ubuf__ float *)llUbTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
         __ubuf__ uint8_t *pGatherIndexUbAddr = (__ubuf__ uint8_t *)pGatherIndexUbTensor.GetPhyAddr();
@@ -158,8 +157,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
         uint32_t mAlignedTile = mRound / 4;
-        uint32_t mFirstTile = m % mAlignedTile;  // 最后一个未满区里的行数
-        uint32_t mAligned16TileNum = m / mAlignedTile;  // 有几个"满区"
+        uint32_t mFirstTile = m % mAlignedTile;  // Valid rows in the final tile.
+        uint32_t mAligned16TileNum = m / mAlignedTile;  // Number of full tiles.
         if (mAligned16TileNum == 4) {
             mFirstTile = mAlignedTile;
         }

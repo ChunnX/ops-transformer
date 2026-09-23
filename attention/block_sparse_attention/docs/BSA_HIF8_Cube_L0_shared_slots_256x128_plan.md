@@ -124,13 +124,13 @@ attention/block_sparse_attention/op_kernel/attn_infra/gemm/bsa_gemm_dispatch_pol
 
 ```cpp
 template <bool transposedMm1_ = true>
-struct MmadAtlasA5BsaQKHif8 : public MmadAtlasA5 {
+struct MmadAtlasA5BsaQKFp8 : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
     static constexpr bool transposedMm1 = transposedMm1_;
 };
 
 template <bool transposedMm1_ = true>
-struct MmadAtlasA5BsaPVHif8 : public MmadAtlasA5 {
+struct MmadAtlasA5BsaPVFp8 : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
     static constexpr bool transposedMm1 = transposedMm1_;
 };
@@ -164,7 +164,7 @@ attention/block_sparse_attention/op_kernel/attn_infra/gemm/block/block_mmad_k_qt
 修改内容：
 
 1. 改为独立 include guard。
-2. 模板特化切换到 `MmadAtlasA5BsaQKHif8<true>`。
+2. 模板特化切换到 `MmadAtlasA5BsaQKFp8<true>`。
 3. L0C 槽位大小改为整个 L0C 的一半：
 
    ```cpp
@@ -194,7 +194,7 @@ attention/block_sparse_attention/op_kernel/attn_infra/gemm/block/block_mmad_pv_a
 修改内容：
 
 1. 改为独立 include guard。
-2. 模板特化切换到 `MmadAtlasA5BsaPVHif8<true>`。
+2. 模板特化切换到 `MmadAtlasA5BsaPVFp8<true>`。
 3. L0C 槽位大小改为 `ArchTag::L0C_SIZE / L0_STAGES`。
 4. 删除原来的 `L0C_HALF_BUF_SIZE` 起始偏移。
 5. 两个 prefix 参数改为同一个 `uint64_t &l0Stage`。
@@ -234,10 +234,10 @@ attention/block_sparse_attention/op_kernel/block_sparse_attention_kernel_interfa
 
 ```cpp
 using L0TileShapeQK = Shape<Int<256>, Int<128>, Int<128>>;
-using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKHif8<true>;
+using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKFp8<true>;
 
 using L0TileShapePV = Shape<Int<128>, Int<128>, Int<256>>;
-using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPVHif8<true>;
+using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPVFp8<true>;
 ```
 
 原 FP8/非量化接口继续使用原 dispatch policy 和原 MMAD 文件。
