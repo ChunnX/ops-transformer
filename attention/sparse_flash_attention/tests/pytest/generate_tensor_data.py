@@ -19,7 +19,6 @@ import json
 import math
 import struct
 import torch
-import tensorflow as tf
 import copy
 
 
@@ -27,13 +26,14 @@ INVALID_VALUE = -1
 
 
 def get_np_dtype(type_str):
+    # bf16数据先以fp32生成(numpy原生不支持bfloat16), 由_np_to_torch统一转到torch.bfloat16
     type_dict = {
         "fp32": np.float32,
         "float32": np.float32,
         "fp16": np.float16,
         "float16": np.float16,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "bf16": np.float32,
+        "bfloat16": np.float32,
         "int32": np.int32,
         "int8": np.int8,
         "uint8": np.uint8,
