@@ -16,7 +16,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cmath>
 #include <tuple>
 #include <vector>
 
@@ -203,9 +202,30 @@ private:
         }
     }
 
+    // 整数平方根（向下取整，Hacker's Delight 位法）。设备侧 TU 链接无 libm，
+    // 量化版 tiling 家族同样保持纯整数运算（无 sqrt/ceil/floor 依赖）。
+    static uint64_t Isqrt(uint64_t value)
+    {
+        uint64_t root = 0UL;
+        uint64_t bit = 1UL << 62UL;
+        while (bit > value) {
+            bit >>= 2UL;
+        }
+        while (bit != 0UL) {
+            if (value >= root + bit) {
+                value -= root + bit;
+                root = (root >> 1UL) + bit;
+            } else {
+                root >>= 1UL;
+            }
+            bit >>= 2UL;
+        }
+        return root;
+    }
+
     uint64_t GetAswWindowLen() const
     {
-        uint64_t sqrtNum = static_cast<uint64_t>(std::sqrt(platformInfo_.aicNum));
+        uint64_t sqrtNum = Isqrt(platformInfo_.aicNum);
         for (uint64_t factor = sqrtNum; factor >= 1UL; --factor) {
             if (platformInfo_.aicNum % factor == 0UL) {
                 return factor;
@@ -393,15 +413,19 @@ private:
 
     void CalcSingleX(uint64_t &higherSingleX, uint64_t &lowerSingleX)
     {
-        double data = static_cast<double>(args_.m * args_.n) / platformInfo_.aicNum;
-
-        while (data > static_cast<double>(BASIC_BLOCK_SIZE_256 * BASIC_BLOCK_SIZE_256)) {
-            data /= NUM_TWO;
+        // 纯整数实现（无 libm）：data = m*n/aicNum 的循环减半等价于分母翻倍；
+        // floor(sqrt(N/D)) == isqrt(N/D 整除)（可证等价），ceil 由 floor 推导。
+        uint64_t numer = args_.m * args_.n;
+        uint64_t denom = platformInfo_.aicNum;
+        constexpr uint64_t maxData = BASIC_BLOCK_SIZE_256 * BASIC_BLOCK_SIZE_256;
+        while (numer > maxData && denom <= (numer - 1UL) / maxData) {
+            denom *= NUM_TWO;
         }
 
-        double bestValue = std::sqrt(data);
-        higherSingleX = Align(static_cast<uint64_t>(std::ceil(bestValue)), BASIC_BLOCK_SIZE_16);
-        lowerSingleX = FloorAlign(static_cast<uint64_t>(std::floor(bestValue)), BASIC_BLOCK_SIZE_16);
+        uint64_t floorSqrt = Isqrt(numer / denom);
+        uint64_t ceilSqrt = (denom * floorSqrt * floorSqrt == numer) ? floorSqrt : floorSqrt + 1UL;
+        higherSingleX = Align(ceilSqrt, BASIC_BLOCK_SIZE_16);
+        lowerSingleX = FloorAlign(floorSqrt, BASIC_BLOCK_SIZE_16);
     }
 
     uint64_t Floor(uint64_t value, uint64_t align)
