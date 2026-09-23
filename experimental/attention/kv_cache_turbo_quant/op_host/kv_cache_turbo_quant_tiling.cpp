@@ -28,7 +28,7 @@ constexpr int64_t MATRIX_DIMS = 2;
 constexpr int64_t MIN_KV_HEADS = 4;
 constexpr int64_t MAX_KV_HEADS = 32;
 constexpr int64_t QJL_DIM_ALIGN = 8;
-constexpr int64_t FP32_SIZE = 4;
+
 
 static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
 {

@@ -70,6 +70,7 @@ public:
         // work assignment in chunks of CHUNK_VEC vectors (keeps every per-chunk
         // output region a multiple of 32B, see file header notes)
         const int64_t chunkNum = (totalVec_ + CHUNK_VEC - 1) / CHUNK_VEC;
+        // mix-kernel launches a 2x grid (AIC+AIV pairs); fold to the logical core id
         const int64_t blockIdx = static_cast<int64_t>(GetBlockIdx());
         const int64_t base = chunkNum / static_cast<int64_t>(coreNum_);
         const int64_t rem = chunkNum % static_cast<int64_t>(coreNum_);
@@ -349,7 +350,7 @@ private:
                     reps, BinaryRepeatParams(1, 1, 1, HALF_DIM / 8, HEAD_DIM / 8, HALF_DIM / 8));
             }
             PipeBarrier<PIPE_V>();
-            Adds(t, mh, 0.0f, rows);   // TIMING VARIANT: WRS removed
+            WholeReduceSum(t, mh, HALF_DIM, rows, 1, 1, HALF_DIM / 8);
         }
         PipeBarrier<PIPE_V>();
         Add(dst, t0, t1, rows);
