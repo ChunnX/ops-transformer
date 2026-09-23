@@ -21,6 +21,7 @@
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/callback.hpp"
 #include "gated_activation.hpp"
+#include "swiglu_epilogue_common.hpp"
 #include "get_tensor_addr.hpp"
 
 namespace Catlass::Epilogue::Block {
@@ -213,19 +214,9 @@ public:
                 GetTensorAddr<float>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(gmWeightAux))));
             uint32_t weightAuxOffset = listLen == 1 ? groupIdx * shapeC.column() : 0;
 
-            uint32_t scaleOffsetInBatch = (loopIdx - loopStartIdx) % SCALE_INPUT_COUNT;
-            if (scaleOffsetInBatch == 0) {
-                uint32_t remain = tasksForIdx - (loopIdx - loopStartIdx);
-                uint32_t copyCount = remain >= SCALE_INPUT_COUNT ?
-                                         SCALE_INPUT_COUNT :
-                                         (remain + BYTE_PER_BLK / sizeof(ElementPerTokenScale) - 1) /
-                                             (BYTE_PER_BLK / sizeof(ElementPerTokenScale)) *
-                                             (BYTE_PER_BLK / sizeof(ElementPerTokenScale));
-                AscendC::DataCopy(ubPerTokenScaleInput, gmPerTokenScale1[loopIdx], copyCount);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-            }
-            ElementPerTokenScale perTokenScale = ubPerTokenScaleInput.GetValue(scaleOffsetInBatch);
+            ElementPerTokenScale perTokenScale =
+                ::Catlass::Epilogue::Block::detail::ReadSwigluInputScale<SCALE_INPUT_COUNT>(
+                    ubPerTokenScaleInput, gmPerTokenScale1, loopIdx, loopStartIdx, tasksForIdx);
             uint32_t tileCount = TileCount(branchLength);
             uint32_t currentStage = 0;
             LoadTile(gmTileC, weightAux[weightAuxOffset], branchLength, 0, TileLength(branchLength, 0),
@@ -297,68 +288,46 @@ private:
     CATLASS_DEVICE
     bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
     {
-        uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
-        uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
-        if (subblockIdx < moveDataCoreNum) {
-            return false;
-        }
-        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
-        uint32_t perCoreData = blockM / epilogueCoreNum;
-        uint32_t remainderData = blockM % epilogueCoreNum;
-        tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        loopStartIdx =
-            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
-        return true;
+        return ::Catlass::Epilogue::Block::detail::SwigluTaskRange(blockM, epilogueCoreNum, loopStartIdx, tasksForIdx);
     }
 
     CATLASS_DEVICE
     void FlushScaleBatch(AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, uint32_t gmOffset,
                          uint32_t scaleCount, uint32_t scaleStage)
     {
-        if (scaleCount == 0) {
-            return;
-        }
-        LayoutPerTokenScale scaleLayout{scaleCount};
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
-        copyUbToGmDequantScale(gmPerTokenScale[gmOffset], ubPerTokenScaleOutputList[scaleStage], scaleLayout,
-                               scaleLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+        ::Catlass::Epilogue::Block::detail::FlushSwigluScaleBatch<LayoutPerTokenScale>(
+            gmPerTokenScale, ubPerTokenScaleOutputList[scaleStage], copyUbToGmDequantScale, gmOffset, scaleCount,
+            scaleStage);
     }
 
     CATLASS_DEVICE
     void WaitScaleBuffer(uint32_t scaleStage)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+        ::Catlass::Epilogue::Block::detail::WaitSwigluScaleBuffer(scaleStage);
     }
 
     CATLASS_DEVICE
     void DrainScaleBuffers(uint32_t scaleBatchCount)
     {
-        uint32_t pendingCount = scaleBatchCount < SCALE_BUFFER_COUNT ? scaleBatchCount : SCALE_BUFFER_COUNT;
-        uint32_t firstPendingBatch = scaleBatchCount - pendingCount;
-        for (uint32_t i = 0; i < pendingCount; ++i) {
-            WaitScaleBuffer((firstPendingBatch + i) % SCALE_BUFFER_COUNT);
-        }
+        ::Catlass::Epilogue::Block::detail::DrainSwigluScaleBuffers(scaleBatchCount, SCALE_BUFFER_COUNT);
     }
 
     CATLASS_DEVICE
     static uint32_t TileCount(uint32_t branchLength)
     {
-        return (branchLength + TILE_LENGTH - 1) / TILE_LENGTH;
+        return ::Catlass::Epilogue::Block::detail::SwigluTileCount<TILE_LENGTH>(branchLength);
     }
 
     CATLASS_DEVICE
     static uint32_t TileLength(uint32_t branchLength, uint32_t tileOffset)
     {
-        uint32_t remaining = branchLength - tileOffset;
-        return remaining < TILE_LENGTH ? remaining : TILE_LENGTH;
+        return ::Catlass::Epilogue::Block::detail::SwigluTileLength<TILE_LENGTH>(branchLength, tileOffset);
     }
 
     CATLASS_DEVICE
     static uint32_t NextStage(uint32_t stageId)
     {
-        return stageId + 1 < UB_STAGES ? stageId + 1 : 0;
+        return ::Catlass::Epilogue::Block::detail::SwigluNextStage<UB_STAGES>(stageId);
     }
 
     CATLASS_DEVICE
@@ -495,8 +464,7 @@ private:
     CATLASS_DEVICE
     void ResetRowAbsMax()
     {
-        AscendC::Duplicate(ubRowAbsMax, 0.0f, BYTE_PER_BLK / sizeof(float));
-        AscendC::PipeBarrier<PIPE_V>();
+        ::Catlass::Epilogue::Block::detail::ResetSwigluRowAbsMax(ubRowAbsMax);
     }
 
     CATLASS_DEVICE
@@ -513,9 +481,7 @@ private:
     CATLASS_DEVICE
     ElementPerTokenScale ReadRowAbsMax()
     {
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-        return ubRowAbsMax.GetValue(0);
+        return ::Catlass::Epilogue::Block::detail::ReadSwigluRowAbsMax(ubRowAbsMax);
     }
 
     Params params;

@@ -98,6 +98,72 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
     return;
 }
 
+FORCE_INLINE_AICORE void FillRdmaSendWqe(GM_ADDR srcDmaAddr, GM_ADDR destDmaAddr, uint64_t destRankId,
+                                         uint64_t messageLen, __gm__ uint8_t *wqeAddr, uint64_t curHead, uint64_t shift,
+                                         decltype(HcclAiRMAInfo::memPtr) mem_info_table,
+                                         decltype(HcclAiRMAInfo::sizeOfAiRMAMem) sizeof_memdetail)
+{
+    uint64_t ownBit = (curHead >> shift) & 1U;
+    uint32_t byte_4 = 3U;
+    byte_4 |= ((~ownBit) << 7U) & (1U << 7U);
+    byte_4 |= 1U << 8U;
+
+    *(__gm__ uint32_t *)(wqeAddr) = byte_4;
+    *(__gm__ uint32_t *)(wqeAddr + 4) = messageLen;
+    *(__gm__ uint32_t *)(wqeAddr + 8) = 0;
+    *(__gm__ uint32_t *)(wqeAddr + 12) = 1U << 24U;
+    *(__gm__ uint32_t *)(wqeAddr + 16) = 0;
+    __gm__ HcclAiRMAMemInfo *memDetail = (__gm__ HcclAiRMAMemInfo *)(mem_info_table + sizeof_memdetail * destRankId);
+    *(__gm__ uint32_t *)(wqeAddr + 20) =
+        ((__gm__ MemDetails *)(memDetail->memDetailPtr +
+                               memDetail->sizeOfMemDetails * static_cast<uint32_t>(HcclAiRMAMemType::REMOTE_INPUT)))
+            ->key;
+    *(__gm__ uint64_t *)(wqeAddr + 24) = (uint64_t)(destDmaAddr);
+
+    // Setup SGE and write to GM
+    __gm__ uint8_t *sgeAddr = wqeAddr + sizeof(struct hns_roce_rc_sq_wqe);
+    *(__gm__ uint32_t *)(sgeAddr) = messageLen;
+    memDetail = (__gm__ HcclAiRMAMemInfo *)(mem_info_table + sizeof_memdetail * destRankId);
+    *(__gm__ uint32_t *)(sgeAddr + sizeof(uint32_t)) =
+        ((__gm__ MemDetails *)(memDetail->memDetailPtr +
+                               memDetail->sizeOfMemDetails * static_cast<uint32_t>(HcclAiRMAMemType::LOCAL_OUTPUT)))
+            ->key;
+    *(__gm__ uint64_t *)(sgeAddr + 2 * sizeof(uint32_t)) = (uint64_t)(srcDmaAddr);
+
+    cacheWriteThrough(wqeAddr, sizeof(struct hns_roce_rc_sq_wqe) + sizeof(struct hns_roce_lite_wqe_data_seg));
+}
+
+FORCE_INLINE_AICORE void PublishRdmaSendHead(__gm__ HcclAiRMAWQ *qp_ctx_entry, uint64_t curHead,
+                                             decltype(HcclAiRMAWQ::headAddr) curHardwareHead,
+                                             AscendC::LocalTensor<uint64_t> &ubLocal,
+                                             AscendC::LocalTensor<uint32_t> &ubLocalHead)
+{
+    uint64_t doorBellInfo = 0;
+    doorBellInfo |= qp_ctx_entry->wqn;
+    doorBellInfo |= 0UL << 24UL;
+    doorBellInfo |= (curHead % 65536UL) << 32UL;
+    doorBellInfo |= static_cast<uint64_t>(qp_ctx_entry->sl) << 48UL;
+
+    __gm__ uint64_t *doorBellAddr = (__gm__ uint64_t *)(qp_ctx_entry->dbAddr);
+    AscendC::PipeBarrier<PIPE_ALL>();
+
+    ubLocal.SetValue(0, doorBellInfo);
+    AscendC::GlobalTensor<uint64_t> DBGlobalTensor;
+    DBGlobalTensor.SetGlobalBuffer(doorBellAddr);
+    AscendC::DataCopyExtParams copyParams{1, 1 * sizeof(uint64_t), 0, 0, 0};
+    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::DataCopyPad(DBGlobalTensor, ubLocal, copyParams);
+    AscendC::PipeBarrier<PIPE_ALL>();
+
+    ubLocalHead.SetValue(0, static_cast<uint32_t>(curHead));
+    AscendC::GlobalTensor<uint32_t> HeadGlobalTensor;
+    HeadGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)curHardwareHead);
+    AscendC::DataCopyExtParams copyParamsHead{1, 1 * sizeof(uint32_t), 0, 0, 0};
+    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHead, copyParamsHead);
+    AscendC::PipeBarrier<PIPE_ALL>();
+}
+
 FORCE_INLINE_AICORE void AIVRDMAPostSend(GM_ADDR srcDmaAddr, GM_ADDR destDmaAddr, uint64_t destRankId,
                                          uint64_t messageLen, __gm__ HcclAiRMAInfo *QpInfo,
                                          AscendC::LocalTensor<uint64_t> &ubLocal,
@@ -130,61 +196,12 @@ FORCE_INLINE_AICORE void AIVRDMAPostSend(GM_ADDR srcDmaAddr, GM_ADDR destDmaAddr
 
     __gm__ uint8_t *wqeAddr = (__gm__ uint8_t *)(sqBaseAddr + wqeSize * (curHead % QP_DEPTH));
 
-    uint64_t ownBit = (curHead >> shift) & 1U;
-    uint32_t byte_4 = 3U;
-    byte_4 |= ((~ownBit) << 7U) & (1U << 7U);
-    byte_4 |= 1U << 8U;
-
-    *(__gm__ uint32_t *)(wqeAddr) = byte_4;
-    *(__gm__ uint32_t *)(wqeAddr + 4) = messageLen;
-    *(__gm__ uint32_t *)(wqeAddr + 8) = 0;
-    *(__gm__ uint32_t *)(wqeAddr + 12) = 1U << 24U;
-    *(__gm__ uint32_t *)(wqeAddr + 16) = 0;
-    __gm__ HcclAiRMAMemInfo *memDetail = (__gm__ HcclAiRMAMemInfo *)(mem_info_table + sizeof_memdetail * destRankId);
-    *(__gm__ uint32_t *)(wqeAddr + 20) =
-        ((__gm__ MemDetails *)(memDetail->memDetailPtr +
-                               memDetail->sizeOfMemDetails * static_cast<uint32_t>(HcclAiRMAMemType::REMOTE_INPUT)))
-            ->key;
-    *(__gm__ uint64_t *)(wqeAddr + 24) = (uint64_t)(destDmaAddr);
-
-    // Setup SGE and write to GM
-    __gm__ uint8_t *sgeAddr = wqeAddr + sizeof(struct hns_roce_rc_sq_wqe);
-    *(__gm__ uint32_t *)(sgeAddr) = messageLen;
-    memDetail = (__gm__ HcclAiRMAMemInfo *)(mem_info_table + sizeof_memdetail * destRankId);
-    *(__gm__ uint32_t *)(sgeAddr + sizeof(uint32_t)) =
-        ((__gm__ MemDetails *)(memDetail->memDetailPtr +
-                               memDetail->sizeOfMemDetails * static_cast<uint32_t>(HcclAiRMAMemType::LOCAL_OUTPUT)))
-            ->key;
-    *(__gm__ uint64_t *)(sgeAddr + 2 * sizeof(uint32_t)) = (uint64_t)(srcDmaAddr);
-
-    cacheWriteThrough(wqeAddr, sizeof(struct hns_roce_rc_sq_wqe) + sizeof(struct hns_roce_lite_wqe_data_seg));
+    FillRdmaSendWqe(srcDmaAddr, destDmaAddr, destRankId, messageLen, wqeAddr, curHead, shift, mem_info_table,
+                    sizeof_memdetail);
     AscendC::PipeBarrier<PIPE_ALL>();
     curHead++;
 
-    uint64_t doorBellInfo = 0;
-    doorBellInfo |= qp_ctx_entry->wqn;
-    doorBellInfo |= 0UL << 24UL;
-    doorBellInfo |= (curHead % 65536UL) << 32UL;
-    doorBellInfo |= static_cast<uint64_t>(qp_ctx_entry->sl) << 48UL;
-
-    __gm__ uint64_t *doorBellAddr = (__gm__ uint64_t *)(qp_ctx_entry->dbAddr);
-    AscendC::PipeBarrier<PIPE_ALL>();
-
-    ubLocal.SetValue(0, doorBellInfo);
-    AscendC::GlobalTensor<uint64_t> DBGlobalTensor;
-    DBGlobalTensor.SetGlobalBuffer(doorBellAddr);
-    AscendC::DataCopyExtParams copyParams{1, 1 * sizeof(uint64_t), 0, 0, 0};
-    AscendC::PipeBarrier<PIPE_ALL>();
-    AscendC::DataCopyPad(DBGlobalTensor, ubLocal, copyParams);
-    AscendC::PipeBarrier<PIPE_ALL>();
-
-    ubLocalHead.SetValue(0, static_cast<uint32_t>(curHead));
-    AscendC::GlobalTensor<uint32_t> HeadGlobalTensor;
-    HeadGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)curHardwareHead);
-    AscendC::DataCopyExtParams copyParamsHead{1, 1 * sizeof(uint32_t), 0, 0, 0};
-    AscendC::PipeBarrier<PIPE_ALL>();
-    AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHead, copyParamsHead);
-    AscendC::PipeBarrier<PIPE_ALL>();
+    PublishRdmaSendHead(qp_ctx_entry, curHead, curHardwareHead, ubLocal, ubLocalHead);
 }
 
 template <bool IS_A2>
@@ -427,20 +444,39 @@ public:
     // i.e. needs at least 3 * UB_ALIGN = 96 bytes of UB and must be free for the
     // duration of this call (matches how CrossRankSyncV2Set lays out its scratch).
     FORCE_INLINE_AICORE
-    void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer)
+    void PostCrossRankSyncWrites(int vec_id, int vec_size, uint64_t flag_offset_i64, int64_t count,
+                                 AscendC::GlobalTensor<int32_t> &gmCrossServerPayload,
+                                 AscendC::LocalTensor<uint64_t> &rdmaUbLocal,
+                                 AscendC::LocalTensor<uint32_t> &rdmaUbLocalHead)
     {
-        uint64_t flag_offset_i64 = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
-        uint64_t flag_offset_bytes = ((m_segmentSize - m_tailReservedSize));
-        __gm__ int64_t *sync_counter = (__gm__ int64_t *)(*this)() + flag_offset_i64;
-        __gm__ int64_t *sync_base = (__gm__ int64_t *)(*this)() + flag_offset_i64 + m_rankSize * 8;
-        gm_dcci((__gm__ uint8_t *)sync_base);
-        int64_t count = gm_load(sync_base) + 1;
-        int vec_id = AscendC::GetBlockIdx();
-        int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
+        // Phase 1: post every outbound write. RDMA is async, so we must finish
+        // posting all WQEs before any local poll (otherwise an intra-server peer
+        // may already have arrived while our own cross-server WQEs are still
+        // sitting unposted, and the producer side never makes forward progress).
+        for (int i = vec_id; i < m_rankSize; i += vec_size) {
+            __gm__ int64_t *sync_remote = (__gm__ int64_t *)((*this)(i)) + flag_offset_i64 + m_rank * 8;
+            if constexpr (IS_A2) {
+                int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
+                int32_t dstServerId = i / SERVER_RANK_SIZE_A2;
+                if (dstServerId != localServerId) {
+                    AIVRDMAPostSend((GM_ADDR)gmCrossServerPayload.GetPhyAddr(), (GM_ADDR)sync_remote,
+                                    static_cast<uint64_t>(i), 4 * sizeof(int64_t),
+                                    reinterpret_cast<__gm__ HcclAiRMAInfo *>(WinContext_->aiRMAInfo), rdmaUbLocal,
+                                    rdmaUbLocalHead);
+                    continue;
+                }
+            }
+            gm_store(sync_remote, count);
+            gm_dcci((__gm__ uint8_t *)sync_remote);
+        }
+    }
 
-        AscendC::LocalTensor<uint64_t> rdmaUbLocal;
-        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
-        AscendC::GlobalTensor<int32_t> gmCrossServerPayload;
+    FORCE_INLINE_AICORE
+    void PrepareCrossRankSyncPayload(AscendC::LocalTensor<int32_t> &ctrBuffer, int64_t count, int vec_id, int vec_size,
+                                     uint64_t flag_offset_bytes, AscendC::GlobalTensor<int32_t> &gmCrossServerPayload,
+                                     AscendC::LocalTensor<uint64_t> &rdmaUbLocal,
+                                     AscendC::LocalTensor<uint32_t> &rdmaUbLocalHead)
+    {
         if constexpr (IS_A2) {
             rdmaUbLocal = ctrBuffer[UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint64_t>();
             rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
@@ -467,27 +503,28 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         }
+    }
 
-        // Phase 1: post every outbound write. RDMA is async, so we must finish
-        // posting all WQEs before any local poll (otherwise an intra-server peer
-        // may already have arrived while our own cross-server WQEs are still
-        // sitting unposted, and the producer side never makes forward progress).
-        for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            __gm__ int64_t *sync_remote = (__gm__ int64_t *)((*this)(i)) + flag_offset_i64 + m_rank * 8;
-            if constexpr (IS_A2) {
-                int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
-                int32_t dstServerId = i / SERVER_RANK_SIZE_A2;
-                if (dstServerId != localServerId) {
-                    AIVRDMAPostSend((GM_ADDR)gmCrossServerPayload.GetPhyAddr(), (GM_ADDR)sync_remote,
-                                    static_cast<uint64_t>(i), 4 * sizeof(int64_t),
-                                    reinterpret_cast<__gm__ HcclAiRMAInfo *>(WinContext_->aiRMAInfo), rdmaUbLocal,
-                                    rdmaUbLocalHead);
-                    continue;
-                }
-            }
-            gm_store(sync_remote, count);
-            gm_dcci((__gm__ uint8_t *)sync_remote);
-        }
+    FORCE_INLINE_AICORE
+    void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer)
+    {
+        uint64_t flag_offset_i64 = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
+        uint64_t flag_offset_bytes = ((m_segmentSize - m_tailReservedSize));
+        __gm__ int64_t *sync_counter = (__gm__ int64_t *)(*this)() + flag_offset_i64;
+        __gm__ int64_t *sync_base = (__gm__ int64_t *)(*this)() + flag_offset_i64 + m_rankSize * 8;
+        gm_dcci((__gm__ uint8_t *)sync_base);
+        int64_t count = gm_load(sync_base) + 1;
+        int vec_id = AscendC::GetBlockIdx();
+        int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
+
+        AscendC::LocalTensor<uint64_t> rdmaUbLocal;
+        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
+        AscendC::GlobalTensor<int32_t> gmCrossServerPayload;
+        PrepareCrossRankSyncPayload(ctrBuffer, count, vec_id, vec_size, flag_offset_bytes, gmCrossServerPayload,
+                                    rdmaUbLocal, rdmaUbLocalHead);
+
+        PostCrossRankSyncWrites(vec_id, vec_size, flag_offset_i64, count, gmCrossServerPayload, rdmaUbLocal,
+                                rdmaUbLocalHead);
 
         // Phase 2: wait for the same set of source ranks to land their count in
         // our local sync slots. Works uniformly for intra-server (gm_store) and
@@ -532,6 +569,19 @@ public:
     }
 
     FORCE_INLINE_AICORE
+    void BeginCrossRankSyncV2Set(AscendC::LocalTensor<int32_t> ctrBuffer)
+    {
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
+        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
+        AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+        pipe_barrier(PIPE_ALL);
+        int64_t epStateValue64 = static_cast<int64_t>(static_cast<uint32_t>(epStateValue_));
+        ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, epStateValue64);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+    }
+
+    FORCE_INLINE_AICORE
     void CrossRankSyncV2Set(AscendC::LocalTensor<int32_t> ctrBuffer)
     {
         uint32_t stateOffset_ = STATE_OFFSET;
@@ -540,15 +590,7 @@ public:
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
 
-        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
-        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
-        AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
-        pipe_barrier(PIPE_ALL);
-
-        int64_t epStateValue64 = static_cast<int64_t>(static_cast<uint32_t>(epStateValue_));
-        ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, epStateValue64);
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        BeginCrossRankSyncV2Set(ctrBuffer);
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
         if constexpr (IS_A2) {
@@ -585,14 +627,7 @@ public:
         uint64_t flag_offset = (m_segmentSize - m_tailReservedSize) + m_rank * STATE_OFFSET;
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
-        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
-        AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
-        AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
-        pipe_barrier(PIPE_ALL);
-        int64_t epStateValue64 = static_cast<int64_t>(static_cast<uint32_t>(epStateValue_));
-        ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, epStateValue64);
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        BeginCrossRankSyncV2Set(ctrBuffer);
         for (uint32_t dstEpIdx = vec_id; dstEpIdx < m_rankSize; dstEpIdx += vec_size) {
             if (rankMask.GetValue(dstEpIdx) != 0) {
                 continue;

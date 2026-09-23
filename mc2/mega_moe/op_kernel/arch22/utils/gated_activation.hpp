@@ -25,6 +25,23 @@ enum class GatedActivationMode : uint32_t {
     SWIGLU_OAI = 4,
 };
 
+namespace detail {
+
+CATLASS_DEVICE void ComputeSiluGate(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                                    uint32_t dataLength)
+{
+    AscendC::Muls(output, gate, -1.0f, dataLength);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::Exp(output, output, dataLength);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::Adds(output, output, 1.0f, dataLength);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::Div(output, gate, output, dataLength);
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
+} // namespace detail
+
 // All gated activations used by MegaMoe follow this interface. A new
 // activation only needs to implement Compute; data movement, tiling and
 // quantization remain shared by the epilogues.
@@ -51,14 +68,7 @@ struct SwigluActivation {
         }
 
         // SiLU(gate) * up = gate / (1 + exp(-gate)) * up.
-        AscendC::Muls(output, gate, -1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Exp(output, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(output, output, 1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Div(output, gate, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
+        detail::ComputeSiluGate(output, gate, dataLength);
         AscendC::Mul(output, output, up, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -80,14 +90,7 @@ struct SwigluStepActivation {
             AscendC::PipeBarrier<PIPE_V>();
         }
 
-        AscendC::Muls(output, gate, -1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Exp(output, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(output, output, 1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Div(output, gate, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
+        detail::ComputeSiluGate(output, gate, dataLength);
         if (clampLimit > 0.0f) {
             AscendC::ClampMax(output, output, sharedTmpBuffer, clampLimit, dataLength);
             AscendC::PipeBarrier<PIPE_V>();
