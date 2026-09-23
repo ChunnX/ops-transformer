@@ -75,8 +75,9 @@ constexpr uint32_t MAX_EXP_FOR_FP8_IN_FP32 = 0x000000ff;
 constexpr uint32_t NAN_CUSTOMIZATION_PACK = 0x00007f81;
 constexpr uint32_t MAN_MASK_FLOAT = 0x007fffff;
 constexpr uint32_t NUMBER_ZERO = 0x00000000;
-constexpr uint32_t NUMBER_TWO_FIVE_FOUR = 0x000000fe;
-constexpr uint32_t NUMBER_HALF = 0x00400000;
+constexpr uint32_t FP32_MAX_FINITE_BIASED_EXPONENT = 0x000000fe;
+// Half of the smallest normal FP32 value, expressed as subnormal mantissa bits.
+constexpr uint32_t FP32_SUBNORMAL_MANTISSA_ROUND_THRESHOLD = 0x00400000;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0F;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0F;
 } // namespace
@@ -193,8 +194,7 @@ private:
 
     __aicore__ inline void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
-                                                        __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB,
-                                                        uint16_t loopNum);
+                                                        __ubuf__ int8_t *outLocalAddr, uint16_t loopNum);
 
     __aicore__ inline void ComputeDataForQuantTargetFp4(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
@@ -553,13 +553,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::ShiftRights(exp32, max32, SHR_NUM_FOR_FP32, maskFloat);
             AscendC::Reg::And(mantissa32, max32, mantissaMask, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate0, exp32, NUMBER_ZERO, maskFloat);
-            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32, NUMBER_TWO_FIVE_FOUR,
-                                                                        maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32,
+                                                                        FP32_MAX_FINITE_BIASED_EXPONENT, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate2, mantissa32, NUMBER_ZERO, maskFloat);
             AscendC::Reg::MaskAnd(predicate0, predicate0, predicate1, maskFloat);
             AscendC::Reg::MaskAnd(predicate0, predicate0, predicate2, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::EQ>(predicate1, exp32, NUMBER_ZERO, maskFloat);
-            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate2, mantissa32, NUMBER_HALF, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(
+                predicate2, mantissa32, FP32_SUBNORMAL_MANTISSA_ROUND_THRESHOLD, maskFloat);
             AscendC::Reg::MaskAnd(predicate1, predicate1, predicate2, maskFloat);
             AscendC::Reg::MaskOr(predicate0, predicate0, predicate1, maskFloat);
             AscendC::Reg::Adds(expAddOne32, exp32, 1, maskFloat);
@@ -653,9 +654,8 @@ QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp8(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
-    uint32_t totalCountInUB, uint16_t loopNum)
+    uint16_t loopNum)
 {
-    (void)totalCountInUB;
     using T = bfloat16_t;
     using U = DataTypeOut;
     __VEC_SCOPE__
@@ -864,7 +864,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
+        ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, loopDataNum);
     }
     if constexpr (IS_FP4_OUT) {
         ComputeDataForQuantTargetFp4(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);
