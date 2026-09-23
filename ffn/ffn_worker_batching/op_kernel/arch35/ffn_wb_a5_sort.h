@@ -105,7 +105,7 @@ private:
 
         const uint16_t repeatTimes = static_cast<uint16_t>(Ceil(count, FLOAT_REG_ELEMENTS));
         uint32_t remain = static_cast<uint32_t>(count);
-        __local_mem__ float *keyAddr = reinterpret_cast<__local_mem__ float *>(keys.GetPhyAddr());
+        __ubuf__ float *keyAddr = reinterpret_cast<__ubuf__ float *>(keys.GetPhyAddr());
         const float negOne = -1.0f;
 
         __VEC_SCOPE__
@@ -114,9 +114,9 @@ private:
             Reg::RegTensor<float> keyReg;
             for (uint16_t i = 0; i < repeatTimes; i++) {
                 loopMask = Reg::UpdateMask<float>(remain);
-                Reg::DataCopy(keyReg, keyAddr + i * FLOAT_REG_ELEMENTS);
+                Reg::LoadAlign(keyReg, keyAddr + i * FLOAT_REG_ELEMENTS);
                 Reg::Muls(keyReg, keyReg, negOne, loopMask);
-                Reg::DataCopy(keyAddr + i * FLOAT_REG_ELEMENTS, keyReg, loopMask);
+                Reg::StoreAlign(keyAddr + i * FLOAT_REG_ELEMENTS, keyReg, loopMask);
             }
         }
         PipeBarrier<PIPE_V>();

@@ -11,6 +11,7 @@
 #include <torch/extension.h>
 #include <c10/core/DeviceGuard.h>
 #include <cstring>
+#include <limits>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -50,6 +51,12 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
     const auto a = max_out_shape[0], bs = max_out_shape[1], k = max_out_shape[2], h = max_out_shape[3];
     TORCH_CHECK(a > 0 && a <= MAX_SESSIONS && bs > 0 && k > 0 && k <= MAX_K && h > 0, "invalid max_out_shape: A=", a,
                 ", BS=", bs, ", K=", k, ", H=", h);
+    // Guard each product before evaluating it; host tiling runs after allocation.
+    TORCH_CHECK(a <= std::numeric_limits<int64_t>::max() / bs, "max_out_shape A*BS overflows int64: ", a, "*", bs);
+    const int64_t a_bs = a * bs;
+    TORCH_CHECK(a_bs <= std::numeric_limits<int64_t>::max() / k, "max_out_shape A*BS*K overflows int64: ", a, "*", bs,
+                "*", k);
+    const int64_t y_rows = a_bs * k;
     TORCH_CHECK(expert_num > 0 && expert_num <= MAX_EXPERTS, "invalid expert_num: ", expert_num);
     TORCH_CHECK(token_dtype >= FP16 && token_dtype <= FP4_E2M1, "invalid token_dtype: ", token_dtype);
     TORCH_CHECK(token_dtype != FP4_E2M1 || h % FP4_ELEMENTS_PER_BYTE == 0, "FP4 requires even H, got ", h);
@@ -74,7 +81,6 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
                                               at::ScalarType::Float8_e5m2,
                                               at::ScalarType::Float8_e4m3fn,
                                               at::ScalarType::Float4_e2m1fn_x2};
-        const int64_t y_rows = a * bs * k;
         const bool mx = token_dtype >= FP8_E5M2;
         const int64_t y_cols = token_dtype == FP4_E2M1 ? h / FP4_ELEMENTS_PER_BYTE : h;
         const int64_t scales = h / MX_BLOCK_SIZE + (h % MX_BLOCK_SIZE != 0);

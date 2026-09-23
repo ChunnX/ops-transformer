@@ -369,7 +369,7 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
   - 令`S=ceil(H/32)`，tokenDtype=3、4、5时的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，以字节计，可包含行尾padding。
   - 异步接收（`need_schedule=1、sync_flag=true`）场景，要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
 <!-- end id7 -->
-<!-- npu="950" id7 -->
+
 - 确定性计算：
   - aclnnFfnWorkerBatchingV2默认确定性实现。
 

@@ -365,7 +365,7 @@ aclnnStatus aclnnFfnWorkerBatching(
   - 额外支持`tokenDtype=3、4、5`。
   - 令`S=ceil(H/32)`，tokenDtype=3、4、5时的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，以字节计，可包含行尾padding
 <!-- end id7 -->
-<!-- npu="950" id7 -->
+
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
 

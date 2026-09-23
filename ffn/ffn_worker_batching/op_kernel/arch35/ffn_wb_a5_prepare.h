@@ -367,19 +367,19 @@ private:
         const uint32_t bias = offset >= 0 ? static_cast<uint32_t>(offset) : 0;
         uint32_t remain = static_cast<uint32_t>(count);
         const uint16_t repeats = static_cast<uint16_t>((count + LANES - 1) / LANES);
-        __local_mem__ uint32_t *addr = reinterpret_cast<__local_mem__ uint32_t *>(buf.GetPhyAddr());
+        __ubuf__ uint32_t *addr = reinterpret_cast<__ubuf__ uint32_t *>(buf.GetPhyAddr());
         __VEC_SCOPE__
         {
             Reg::RegTensor<uint32_t> ids, encoded, masked, result;
             Reg::MaskReg active, valid;
             for (uint16_t i = 0; i < repeats; ++i) {
                 active = Reg::UpdateMask<uint32_t>(remain);
-                Reg::DataCopy(ids, addr + i * LANES);
+                Reg::LoadAlign(ids, addr + i * LANES);
                 Reg::Compares<uint32_t, CMPMODE::LT>(valid, ids, limit, active);
                 Reg::Adds(encoded, ids, bias, valid);
                 Reg::Duplicate(masked, static_cast<uint32_t>(MASK_SENTINEL), active);
                 Reg::Select(result, encoded, masked, valid);
-                Reg::DataCopy(addr + i * LANES, result, active);
+                Reg::StoreAlign(addr + i * LANES, result, active);
             }
         }
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);

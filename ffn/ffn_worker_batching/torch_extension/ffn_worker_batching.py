@@ -19,6 +19,7 @@ _MAX_SESSIONS = 1024
 _MAX_EXPERTS = 8192
 _MAX_SELECTED_EXPERTS = 64
 _SHAPE_DIMS = 4
+_INT64_MAX = (1 << 63) - 1
 _GROUP_LIST_COLUMNS = 2
 _INDEX_OUTPUT_COUNT = 4
 _FP4_ELEMENTS_PER_BYTE = 2
@@ -43,6 +44,33 @@ _Outputs = Tuple[
     torch.Tensor,
     torch.Tensor,
 ]
+
+
+def _checked_y_rows(max_out_shape: List[int]) -> int:
+    """Validate shape metadata before any allocation or GE attribute conversion."""
+    torch._check(
+        len(max_out_shape) == _SHAPE_DIMS, lambda: "max_out_shape must be [A, BS, K, H]"
+    )
+    a, bs, k, h = max_out_shape
+    torch._check(
+        0 < a <= _MAX_SESSIONS, lambda: f"A must be in [1, {_MAX_SESSIONS}], got {a}"
+    )
+    torch._check(bs > 0, lambda: f"BS must be positive, got {bs}")
+    torch._check(
+        0 < k <= _MAX_SELECTED_EXPERTS,
+        lambda: f"K must be in [1, {_MAX_SELECTED_EXPERTS}], got {k}",
+    )
+    torch._check(h > 0, lambda: f"H must be positive, got {h}")
+    torch._check(
+        a <= _INT64_MAX // bs,
+        lambda: f"max_out_shape A*BS overflows int64: {a}*{bs}",
+    )
+    a_bs = a * bs
+    torch._check(
+        a_bs <= _INT64_MAX // k,
+        lambda: f"max_out_shape A*BS*K overflows int64: {a}*{bs}*{k}",
+    )
+    return a_bs * k
 
 
 def _validate(
@@ -71,19 +99,8 @@ def _validate(
         schedule_context.numel() >= _CONTEXT_BYTES,
         lambda: f"schedule_context needs at least {_CONTEXT_BYTES} bytes, got {schedule_context.numel()}",
     )
-    torch._check(
-        len(max_out_shape) == _SHAPE_DIMS, lambda: "max_out_shape must be [A, BS, K, H]"
-    )
-    a, bs, k, h = max_out_shape
-    torch._check(
-        0 < a <= _MAX_SESSIONS, lambda: f"A must be in [1, {_MAX_SESSIONS}], got {a}"
-    )
-    torch._check(bs > 0, lambda: f"BS must be positive, got {bs}")
-    torch._check(
-        0 < k <= _MAX_SELECTED_EXPERTS,
-        lambda: f"K must be in [1, {_MAX_SELECTED_EXPERTS}], got {k}",
-    )
-    torch._check(h > 0, lambda: f"H must be positive, got {h}")
+    _checked_y_rows(max_out_shape)
+    h = max_out_shape[3]
     torch._check(
         0 < expert_num <= _MAX_EXPERTS,
         lambda: f"expert_num must be in [1, {_MAX_EXPERTS}], got {expert_num}",
@@ -123,8 +140,8 @@ def _output_specs(
     token_dtype: int,
     mx_output_uint8: bool = False,
 ) -> List[Tuple[Tuple[int, ...], torch.dtype]]:
-    a, bs, k, h = max_out_shape
-    y = a * bs * k
+    y = _checked_y_rows(max_out_shape)
+    h = max_out_shape[3]
     dtype = getattr(torch, _TOKEN_DTYPE_NAMES[token_dtype])
     scale_dtype = (
         torch.float8_e8m0fnu if token_dtype >= _FIRST_MX_TOKEN_DTYPE else torch.float32
@@ -254,6 +271,7 @@ def ffn_worker_batching(
             被引用缓冲存活至执行完成，并保证其位于同一设备及正确的流依赖。
         expert_num: 专家数，1..8192。
         max_out_shape: [A, BS, K, H]；A=1..1024、BS>0、K=1..64、H>0，K 含共享专家。
+            输出创建前检查 A*BS 和 A*BS*K 均不超过 INT64_MAX。
         token_dtype: 0 FP16、1 BF16、2 INT8、3 FP8 E5M2、4 FP8 E4M3FN、5 FP4 E2M1。
             FP4 要求 H 为偶数，返回 torch.float4_e2m1fn_x2 打包张量。
         need_schedule: 0 直接 batching，1 接收并 batching，默认 0。

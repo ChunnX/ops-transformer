@@ -75,8 +75,6 @@ cann_ops_transformer.ffn_worker_batching(
 
 ## 调用示例
 
-完整脚本：[torch_ffn_worker_batching_async.py](../examples/torch_ffn_worker_batching_async.py)。不依赖ops-test-kit或测试辅助模块。
-
 按[Torch扩展构建说明](../../../torch_extension/README.md)安装whl，并加载配套的自定义OPP环境后，从仓库根目录运行：
 
 示例设置`expert_num=8、layer_num=2`，每层4个专家。session 0属于layer 1，session 1属于layer 0，两者使用相同的层内专家号`[[1,0],[3,1]]`。micro batch 0未就绪，micro batch 1仅这两个session就绪，session 2不应被消费。
@@ -262,8 +260,6 @@ if __name__ == "__main__":
 ```
 
 ### TorchAir GE调用方式
-
-完整脚本：[torch_ffn_worker_batching_async_ge.py](../examples/torch_ffn_worker_batching_async_ge.py)。
 
 ```python
 import importlib
