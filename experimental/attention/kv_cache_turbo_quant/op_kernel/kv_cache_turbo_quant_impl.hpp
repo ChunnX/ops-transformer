@@ -223,7 +223,7 @@ public:
             // only the 2bit / 4bit layouts fold two halves of a chunk
             pipe_.InitBuffer(weightHiBuf_, PackCfg<BITS>::kSplitChunk ? KCTQ_BATCH_LANES * sizeof(float)
                                                                       : 32U);
-            pipe_.InitBuffer(offsetBuf_, 2048U);
+            pipe_.InitBuffer(offsetBuf_, 8192U);
         }
     }
 
@@ -335,6 +335,16 @@ public:
             SetFlag<HardEvent::S_V>(EVENT_ID2);
             WaitFlag<HardEvent::S_V>(EVENT_ID2);
         }
+        // The per row divisors (max(rho, 1e-30) of every row) sit on the 16 element grid; the lane
+        // wise divisor a whole batch needs is that grid read back by row, which is a plain gather
+        // over a byte offset table (row r owns lanes [128 r, 128 r + 128) and reads byte 64 r).
+        {
+            LocalTensor<int32_t> offB = offsetBuf_.Get<int32_t>()[256];
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                Duplicate(offB[r * KCTQ_D], static_cast<int32_t>(64U * r), static_cast<int32_t>(KCTQ_D));
+            }
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     // ---- bits=3 packing: chunks -> 3 of every 4 lanes -> one contiguous byte stream -----------------
@@ -409,6 +419,43 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
+    // Lane wise divisor of a whole batch from the per row scalars on the 16 element grid. The vector
+    // clamp is bit identical to the scalar comparison it replaces and the per row broadcast is one
+    // gather (row r owns lanes [128 r, 128 r + 128) and reads its scalar at lane 16 r, byte 64 r).
+    // Keeping both on the vector pipe removes the round trip through the scalar unit: reading the
+    // sums back scalar wise (V_S, eight GetValue, S_V) exposed the completion latency of the reduce
+    // and was measured at 1.1us per batch.
+    __aicore__ inline void BroadcastDivisors(const LocalTensor<float> &dst, const LocalTensor<float> &scalars)
+    {
+        LocalTensor<float> clamped = Slice(kSliceCvHi);
+        Maxs(clamped, scalars, 1e-30f, static_cast<int32_t>(KCTQ_SCALAR_SLOTS));
+        PipeBarrier<PIPE_V>();
+        LocalTensor<uint32_t> offB = offsetBuf_.Get<uint32_t>()[256];
+        Gather(dst, clamped, offB, 0U, 64U, static_cast<uint8_t>(KCTQ_BATCH_LANES / 64U), 8U);
+        PipeBarrier<PIPE_V>();
+    }
+
+    // Row sums of a whole batch: dst[row * KCTQ_SCALAR_STRIDE] = sum of src[row * KCTQ_D .. + KCTQ_D).
+    // Two reduce intrinsics replace the eight level 2 ReduceSum calls that were measured to cost
+    // 1.4us per batch: every level 2 call runs one vcadd plus three cross pipe handshakes (V_S, S_V,
+    // S_MTE3) and a scalar write back, while the two instructions below only need the completion
+    // wait the caller issues once per batch. Stage 1 packs the eight block sums of every repeat into
+    // one destination block (dstRepStride = 1), so a row (two repeats) leaves 16 partial sums
+    // behind; stage 2 folds those 16 with one whole reduce per row.
+    __aicore__ inline void BatchRowSum(const LocalTensor<float> &dst, const LocalTensor<float> &tmp,
+                                       const LocalTensor<float> &src)
+    {
+        // tmp[8 * rep + j] = sum of src[64 * rep + 8 * j .. + 8)
+        BlockReduceSum<float>(tmp, src, static_cast<int32_t>(KCTQ_BATCH_LANES / 64U), 64, 1, 1, 8);
+        PipeBarrier<PIPE_V>();
+        // dst[row * 16] = sum of tmp[row * 16 .. + 16): the whole reduce writes one result per
+        // repeat and its destination repeat stride counts in elements, so stride 16 lands the sums
+        // on the 16 lane grid the rest of the pipeline expects (measured on hardware, see the probe
+        // dump analysis in docs/evidence/repro/2026-09-23_kctq_v10_qstall).
+        WholeReduceSum<float>(dst, tmp, 16, static_cast<int32_t>(KCTQ_BATCH_ROWS), 16, 1, 2);
+        PipeBarrier<PIPE_V>();
+    }
+
     // Store the packed chunk bytes of the 1bit and 3bit layouts: `blockBytes` bytes are taken from
     // the head of every 32B block of `src` and appended to gm. The batch is contiguous in gm as
     // well as one chunk per 32B block in UB, so a single call stores a whole batch.
@@ -428,7 +475,6 @@ public:
     __aicore__ inline void NormalizeRows()
     {
         LocalTensor<float> sq = scalarBuf_.Get<float>();                  // ||x||^2 at [16*row]
-        LocalTensor<float> denom = Slice(kSliceDenom);
 
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
             // same KCTQ_PARITY way staging as QuantizeRows: the store sources alternate between the
@@ -458,28 +504,14 @@ public:
             LocalTensor<float> work = Slice(kSliceWork);
             Mul(tmp, x, x, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                ReduceSum<float>(sq[r * KCTQ_SCALAR_STRIDE], tmp[r * KCTQ_D], work,
-                                 static_cast<int32_t>(KCTQ_D));
-            }
-            PipeBarrier<PIPE_V>();
-            Sqrt(norm, sq, KCTQ_SCALAR_SLOTS);
-            PipeBarrier<PIPE_V>();
-
-            // Only the clamp stays scalar: it has to reproduce max(norm, 1e-30) exactly, which is
-            // why the divisor is not derived from a reciprocal approximation.
+            BatchRowSum(sq, work, tmp);
+            // see QuantizeRows: the reduce has to complete before the sums are consumed
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                const float n = norm.GetValue(r * KCTQ_SCALAR_STRIDE);
-                div_[r] = (n > 1e-30f) ? n : 1e-30f;
-            }
-            SetFlag<HardEvent::S_V>(EVENT_ID0);
-            WaitFlag<HardEvent::S_V>(EVENT_ID0);
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                Duplicate(denom[r * KCTQ_D], div_[r], KCTQ_D);
-            }
+            Sqrt(norm, sq, KCTQ_SCALAR_SLOTS);
             PipeBarrier<PIPE_V>();
+            LocalTensor<float> denom = Slice(kSliceDenom);
+            BroadcastDivisors(denom, norm);
             Div(x, x, denom, KCTQ_BATCH_LANES); // x := unit vector
 
             LocalTensor<bfloat16_t> nb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
@@ -550,7 +582,6 @@ public:
         LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS];
         LocalTensor<float> gamma = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS * 3U];
         LocalTensor<float> denom = Slice(kSliceDenom);
-
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
             // Batches alternate between the two copies of the residual slice, so the store issued
             // by batch k only blocks the batch that rewrites the same copy (k + 2) - which lets the
@@ -591,33 +622,21 @@ public:
                 Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
             }
             PackIdx(grow, validRows, idx, pb);
-
-            LocalTensor<float> res = idx;
+            const LocalTensor<float> res = idx; // the residual replaces the packed index values
             LocalTensor<float> work = Slice(kSliceWork);
             Sub(res, y, prim, KCTQ_BATCH_LANES);
             Mul(mask, res, res, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                ReduceSum<float>(sq[r * KCTQ_SCALAR_STRIDE], mask[r * KCTQ_D], work,
-                                 static_cast<int32_t>(KCTQ_D));
-            }
-            PipeBarrier<PIPE_V>();
+            BatchRowSum(sq, work, mask);
+            // The reduce intrinsics are long latency instructions: a vector pipe barrier only orders
+            // issue, so the sums have to be waited for explicitly before anything reads or rewrites
+            // their slices. The level 2 ReduceSum this replaced carried the same wait internally.
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             Sqrt(sq, sq, KCTQ_SCALAR_SLOTS);
             Mul(gamma, sq, norm, KCTQ_SCALAR_SLOTS); // gamma = norm * rho
             PipeBarrier<PIPE_V>();
-
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                const float v = sq.GetValue(r * KCTQ_SCALAR_STRIDE);
-                div_[r] = (v > 1e-30f) ? v : 1e-30f;
-            }
-            SetFlag<HardEvent::S_V>(EVENT_ID0);
-            WaitFlag<HardEvent::S_V>(EVENT_ID0);
-            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
-                Duplicate(denom[r * KCTQ_D], div_[r], KCTQ_D);
-            }
-            PipeBarrier<PIPE_V>();
+            BroadcastDivisors(denom, sq);
             Div(res, res, denom, KCTQ_BATCH_LANES); // residual unit vector (0 when residual is 0)
 
             LocalTensor<bfloat16_t> gb = bf16Buf_.Get<bfloat16_t>()[pb * KCTQ_SCALAR_SLOTS];
@@ -809,7 +828,6 @@ private:
     uint32_t wsRowBase_ = 0; // baseM aligned workspace row base of this AIV
     uint32_t wsOff_ = 0;     // wsRowBase_ - rowBegin_
     uint32_t wsRows_ = 0;    // rows reserved in the workspace in total
-    float div_[KCTQ_BATCH_ROWS] = {0.0f}; // per row divisors handed between scalar and vector ops
 };
 
 } // namespace NsKvCacheTurboQuant
