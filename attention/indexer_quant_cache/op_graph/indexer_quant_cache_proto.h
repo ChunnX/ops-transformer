@@ -59,7 +59,7 @@ namespace ge {
  *  - slot_mapping dimensions should equal x dimensions minus 1.
  *  - The last dimension (d) of x is quantized per 128 elements per block;
  *    MX-FP4 (quant_mode=3) quantizes per 32 elements (standard MX block).
- *  - Ascend950PR/Ascend950DT.
+ *  - Ascend 950PR&950DT products.
  * @endcode
  */
 REG_OP(IndexerQuantCache)
