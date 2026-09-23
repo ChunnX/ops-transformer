@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul、MXFP8反量化、SwiGLU和MXFP8量化。该接口为weight NZ特化版本，调用者必须传入FRACTAL_NZ格式的`weight`。当前仅支持Ascend 950PR/Ascend 950DT的单Tensor MXFP8场景。
+- 接口功能：融合GroupedMatmul、dequant、SwiGLU和quant。该接口为weight NZ特化版本，调用者必须传入FRACTAL_NZ格式的`weight`。当前仅支持Ascend 950PR/Ascend 950DT的单Tensor MXFP8场景。
 
 - 与V2接口的主要区别：增加SwiGLU计算参数`swigluMode`、`clampLimit`、`gluAlpha`和`gluBias`，以及MX量化参数`roundMode`、`scaleAlg`和`dstTypeMax`。当前`swigluMode`仅支持2。
 
@@ -126,8 +126,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     </thead>
     <tbody>
       <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入；当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。仅支持下文规定的NZ/ZN stride和storage shape，不支持任意非连续view。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维</td><td>参见约束说明</td></tr>
-      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置和转置的API入口view shape均为(E, ceil(K / 64), N, 2)，转置属性必须与weight一致。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维</td><td>√</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。支持下文规定的NZ/ZN view、stride和storage shape，包括ZN转置形成的非连续view；接口保留其FRACTAL_NZ物理存储，不执行任意非连续weight的转连续操作。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维，(E, K, N)</td><td>仅支持约束说明中的ZN转置view</td></tr>
+      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置和转置的API入口view shape均为(E, ceil(K / 64), N, 2)，转置属性必须与weight一致。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维，(E, ceil(K / 64), N, 2)</td><td>√</td></tr>
       <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持有效数据；可传nullptr、长度为0的TensorList，或长度为1且唯一元素为nullptr/shape (0)的TensorList。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>xScale</td><td>输入</td><td>激活量化因子。</td><td>按 K 方向每 64 个元素对应两个 E8M0 scale。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil(K / 64), 2)</td><td>√</td></tr>
@@ -328,16 +328,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
-
-// 示例场景：E=1，M=2048，K=64，N=128。
-// x:            [M, K]，FLOAT8_E4M3FN，ND
-// weight:       入口view为TensorList{[E, K, N]}，FLOAT8_E4M3FN，FRACTAL_NZ；
-//               转置场景由[E, N, K] source交换末两轴得到该入口view。
-// weightScale:  入口view为TensorList{[E, ceil(K/64), N, 2]}，FLOAT8_E8M0，ND；
-//               转置场景由[E, N, ceil(K/64), 2] source交换中间两轴得到该入口view。
-// xScale:       [M, ceil(K/64), 2]，FLOAT8_E8M0，ND
-// output:       [M, N/2]，FLOAT8_E4M3FN，ND
-// outputScale:  [M, ceil((N/2)/64), 2]，FLOAT8_E8M0，ND
 
 aclTensorList *weight = nullptr;      // 使用 aclCreateTensorList 创建长度为 1 的 TensorList
 aclTensorList *weightScale = nullptr; // 使用 aclCreateTensorList 创建长度为 1 的 TensorList
