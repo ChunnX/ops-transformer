@@ -679,9 +679,8 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     constexpr uint32_t SORT_TMP_BYTES_PER_GROUP = 7U;
     constexpr uint32_t SORT_TMP_GROUP_TILES = 32U;
     if (budget < SORT_LIB_FIXED_BYTES + SORT_MIN_TILE_ELEMS * SORT_TILE_ELEM_BYTES) {
-        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, hookReserve=%llu, need>=%llu",
-                static_cast<unsigned long long>(tilingData.ubSize), static_cast<unsigned long long>(hookReserve),
-                static_cast<unsigned long long>(SORT_LIB_FIXED_BYTES + SORT_MIN_TILE_ELEMS * SORT_TILE_ELEM_BYTES));
+        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%lu, hookReserve=%lu, need>=%lu", tilingData.ubSize,
+                hookReserve, SORT_LIB_FIXED_BYTES + SORT_MIN_TILE_ELEMS * SORT_TILE_ELEM_BYTES);
         return ge::GRAPH_FAILED;
     }
     uint32_t numTile = static_cast<uint32_t>((totalRecv + tilingData.aivNum - 1) / tilingData.aivNum);
