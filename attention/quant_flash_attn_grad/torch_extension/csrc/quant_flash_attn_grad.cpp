@@ -47,6 +47,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> quant_flash_attn_grad
         nSize = query.size(1);
         dSize = query.size(2);
         dqSize = {tSize, nSize, dSize};
+        dkSize = {key.size(0), key.size(1), key.size(2)};
     } else if (layout_q == "BSND") {
         bSize = query.size(0);
         sSize = query.size(1);
