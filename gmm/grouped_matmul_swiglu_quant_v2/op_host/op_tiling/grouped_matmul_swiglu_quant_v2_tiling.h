@@ -140,6 +140,7 @@ struct GMMSwigluV2CompileInfo {
     uint32_t aivNum_ = 0;
     uint32_t baseM_ = 128;
     uint32_t baseN_ = 256;
+    bool supportL12BtBf16 = false;
     uint64_t l1Size_ = 0;
     uint64_t l0ASize_ = 0;
     uint64_t l0BSize_ = 0;
