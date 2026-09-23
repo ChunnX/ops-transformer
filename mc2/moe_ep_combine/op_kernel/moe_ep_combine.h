@@ -114,6 +114,9 @@ private:
     __aicore__ inline uint32_t PipeBatchCount(uint64_t totalCount, uint32_t batchIdx) const;
     __aicore__ inline void CopyMetaBatch(uint64_t globalBegin, uint32_t batchCount, uint32_t bufIdx, event_t evId);
     __aicore__ inline void BuildBatchAddrs(uint32_t batchCount, __ubuf__ uint32_t *metaUb, __ubuf__ uint64_t *addrUb);
+    template <bool FullBatch>
+    __aicore__ inline void BuildBatchAddrsImpl(uint32_t batchCount, __ubuf__ uint32_t *metaUb,
+                                               __ubuf__ uint64_t *addrUb);
     template <auto const &config>
     __aicore__ inline void EmitTokenWrite(uint32_t regionOff, uint32_t tokenIdx, const LocalTensor<uint64_t> &addrUb,
                                           GM_ADDR remoteDataBase, GM_ADDR xBase, GM_ADDR weightBase,
@@ -413,6 +416,20 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildBatchAdd
                                                                                    __ubuf__ uint32_t *metaUb,
                                                                                    __ubuf__ uint64_t *addrUb)
 {
+    // Select once on the scalar side. The full-batch VF has four fixed rounds and no tail path.
+    if (batchCount == HCOMM_PIPE_BATCH_TOKENS) {
+        BuildBatchAddrsImpl<true>(batchCount, metaUb, addrUb);
+    } else {
+        BuildBatchAddrsImpl<false>(batchCount, metaUb, addrUb);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+template <bool FullBatch>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildBatchAddrsImpl(uint32_t batchCount,
+                                                                                       __ubuf__ uint32_t *metaUb,
+                                                                                       __ubuf__ uint64_t *addrUb)
+{
     const uint32_t slotStep = perSlotBytes_;
     const uint32_t xStep = axisH_ * sizeof(XType);
     // Host limits: topK <= 32, hidden <= 8192, sizeof(XType) == 2, perSlotBytes <= 16896.
@@ -429,14 +446,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildBatchAdd
     {
         AscendC::Reg::RegTensor<int32_t> lane;
         AscendC::Reg::RegTensor<uint32_t> tokIndex, topkIndex, rxIndex;
-        AscendC::Reg::RegTensor<uint32_t> gTok, gTopk, gRx;
         AscendC::Reg::RegTensor<uint32_t> tok, topk, rx;
         AscendC::Reg::RegTensor<uint32_t> dstStepReg, xStepReg, zero;
         AscendC::Reg::RegTensor<uint32_t> offsetLo, offsetHi, topkBytes;
-        AscendC::Reg::MaskReg m32, mAll, carryLo, carryHi;
-        uint16_t count = static_cast<uint16_t>(batchCount);
-        uint16_t totalRounds = static_cast<uint16_t>((static_cast<uint32_t>(count) + HCOMM_PIPE_ROUND_TOKENS - 1U) /
-                                                     HCOMM_PIPE_ROUND_TOKENS);
+        AscendC::Reg::MaskReg mAll, carryLo, carryHi;
+        const uint16_t fullRounds = FullBatch ? (HCOMM_PIPE_BATCH_TOKENS / HCOMM_PIPE_ROUND_TOKENS) :
+                                                static_cast<uint16_t>(batchCount / HCOMM_PIPE_ROUND_TOKENS);
         AscendC::Reg::Arange(lane, 0);
         uint32_t allCnt = REG_VLEN_B32;
         mAll = AscendC::Reg::UpdateMask<uint32_t>(allCnt);
@@ -447,37 +462,60 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildBatchAdd
         AscendC::Reg::Duplicate(dstStepReg, dstTokenStep, mAll);
         AscendC::Reg::Duplicate(xStepReg, xStep, mAll);
         AscendC::Reg::Duplicate(zero, 0U, mAll);
-        for (uint16_t r = 0; r < totalRounds; ++r) {
-            uint16_t done = static_cast<uint16_t>(r * HCOMM_PIPE_ROUND_TOKENS);
-            uint16_t remain = count - done;
-            uint16_t round = (remain < HCOMM_PIPE_ROUND_TOKENS) ? remain : HCOMM_PIPE_ROUND_TOKENS;
-            uint32_t clamp = static_cast<uint32_t>(remain) * RECV_META_FIELDS - 1U;
-            uint32_t cnt32 = round;
-            m32 = AscendC::Reg::UpdateMask<uint32_t>(cnt32);
-            // Keep even inactive Gather lanes within this batch's valid metadata.
-            AscendC::Reg::Mins(gTok, tokIndex, clamp, mAll);
-            AscendC::Reg::Mins(gTopk, topkIndex, clamp, mAll);
-            AscendC::Reg::Mins(gRx, rxIndex, clamp, mAll);
-            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(tok, metaUb, gTok, m32);
-            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(topk, metaUb, gTopk, m32);
-            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(rx, metaUb, gRx, m32);
+        // All 64 lanes are valid: reuse the indices/mask and advance by a constant metadata stride.
+        for (uint16_t r = 0; r < fullRounds; ++r) {
+            const uint16_t done = static_cast<uint16_t>(r * HCOMM_PIPE_ROUND_TOKENS);
+            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(tok, metaUb, tokIndex, mAll);
+            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(topk, metaUb, topkIndex, mAll);
+            AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(rx, metaUb, rxIndex, mAll);
             // dst = tokenIdx * (topK * slotStep) + topkIdx * slotStep, without truncating dstSlot to u32.
-            AscendC::Reg::Mull(offsetLo, offsetHi, tok, dstStepReg, m32);
-            AscendC::Reg::Muls(topkBytes, topk, slotStep, m32);
-            AscendC::Reg::Add(carryLo, offsetLo, offsetLo, topkBytes, m32);
-            AscendC::Reg::AddC(carryHi, offsetHi, offsetHi, zero, carryLo, m32);
+            AscendC::Reg::Mull(offsetLo, offsetHi, tok, dstStepReg, mAll);
+            AscendC::Reg::Muls(topkBytes, topk, slotStep, mAll);
+            AscendC::Reg::Add(carryLo, offsetLo, offsetLo, topkBytes, mAll);
+            AscendC::Reg::AddC(carryHi, offsetHi, offsetHi, zero, carryLo, mAll);
             AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(dstOffUb + done * 2U, offsetLo,
-                                                                                        offsetHi, m32);
-            AscendC::Reg::Mull(offsetLo, offsetHi, rx, xStepReg, m32);
+                                                                                        offsetHi, mAll);
+            AscendC::Reg::Mull(offsetLo, offsetHi, rx, xStepReg, mAll);
             AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(xOffUb + done * 2U, offsetLo,
-                                                                                        offsetHi, m32);
+                                                                                        offsetHi, mAll);
             if constexpr (HasTopkWeight == 1) {
-                AscendC::Reg::ShiftLefts(offsetLo, rx, static_cast<int16_t>(2), m32);
-                AscendC::Reg::ShiftRights(offsetHi, rx, static_cast<int16_t>(30), m32);
+                AscendC::Reg::ShiftLefts(offsetLo, rx, static_cast<int16_t>(2), mAll);
+                AscendC::Reg::ShiftRights(offsetHi, rx, static_cast<int16_t>(30), mAll);
                 AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(wOffUb + done * 2U,
-                                                                                            offsetLo, offsetHi, m32);
+                                                                                            offsetLo, offsetHi, mAll);
             }
-            metaUb += static_cast<uint32_t>(round) * RECV_META_FIELDS;
+            metaUb += HCOMM_PIPE_ROUND_TOKENS * RECV_META_FIELDS;
+        }
+        if constexpr (!FullBatch) {
+            const uint16_t done = fullRounds * HCOMM_PIPE_ROUND_TOKENS;
+            uint32_t tailCount = batchCount - done;
+            if (tailCount != 0U) {
+                // Only the final partial round needs a tail mask and clamped inactive Gather lanes.
+                const uint32_t clamp = tailCount * RECV_META_FIELDS - 1U;
+                AscendC::Reg::MaskReg mTail = AscendC::Reg::UpdateMask<uint32_t>(tailCount);
+                AscendC::Reg::RegTensor<uint32_t> gTok, gTopk, gRx;
+                AscendC::Reg::Mins(gTok, tokIndex, clamp, mAll);
+                AscendC::Reg::Mins(gTopk, topkIndex, clamp, mAll);
+                AscendC::Reg::Mins(gRx, rxIndex, clamp, mAll);
+                AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(tok, metaUb, gTok, mTail);
+                AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(topk, metaUb, gTopk, mTail);
+                AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(rx, metaUb, gRx, mTail);
+                AscendC::Reg::Mull(offsetLo, offsetHi, tok, dstStepReg, mTail);
+                AscendC::Reg::Muls(topkBytes, topk, slotStep, mTail);
+                AscendC::Reg::Add(carryLo, offsetLo, offsetLo, topkBytes, mTail);
+                AscendC::Reg::AddC(carryHi, offsetHi, offsetHi, zero, carryLo, mTail);
+                AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(dstOffUb + done * 2U,
+                                                                                            offsetLo, offsetHi, mTail);
+                AscendC::Reg::Mull(offsetLo, offsetHi, rx, xStepReg, mTail);
+                AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(xOffUb + done * 2U,
+                                                                                            offsetLo, offsetHi, mTail);
+                if constexpr (HasTopkWeight == 1) {
+                    AscendC::Reg::ShiftLefts(offsetLo, rx, static_cast<int16_t>(2), mTail);
+                    AscendC::Reg::ShiftRights(offsetHi, rx, static_cast<int16_t>(30), mTail);
+                    AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(
+                        wOffUb + done * 2U, offsetLo, offsetHi, mTail);
+                }
+            }
         }
     }
 }
