@@ -27,6 +27,7 @@ constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2;
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_DUAL_SIBLING_AIV = 1ULL << 2;
+constexpr uint64_t TILING_KEY_STATIC_SINGLE_TILE = 1ULL << 3;
 
 static bool IsSupportedD(uint32_t d)
 {
@@ -245,7 +246,8 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
     }
     uint64_t tilingKey = (useRmsMid ? TILING_KEY_USE_RMS_MID : 0ULL) |
                          (returnHInF32 ? TILING_KEY_RETURN_H_IN_F32 : 0ULL) |
-                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL);
+                         (coresPerToken == 2 ? TILING_KEY_DUAL_SIBLING_AIV : 0ULL) |
+                         (enableDualSibling && D == HOST_D_TILE_MAX ? TILING_KEY_STATIC_SINGLE_TILE : 0ULL);
     context->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
