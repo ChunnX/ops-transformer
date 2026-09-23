@@ -117,6 +117,8 @@ private:
      *   [248, 256 KiB)    硬件保留，不使用。
      */
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
+    __aicore__ inline CombineBufferConfig InitMoeCombineBufferConfig(bool dedupCombineActive);
+    __aicore__ inline void PrepareMoeCountAndDedupTables();
     __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
                                                   Gmm2CombineSync &gmm2CombineSync);
     __aicore__ inline bool IsSameExpertTokenPosition(const ExpertTokenPosition &currentPosition,
@@ -577,6 +579,36 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     DrainCombineRowBuffersDedup(rowSequence, bufferConfig.rowBufferCount, waveCombineDedupState_);
 }
 
+// 按 combine 形态初始化行环缓冲：量化走量化布局，非量化去重走去重布局，基线路径零缓冲。
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline typename MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::CombineBufferConfig
+MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitMoeCombineBufferConfig(bool dedupCombineActive)
+{
+    CombineBufferConfig combineBufferConfig{};
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        combineBufferConfig = InitCombineBuffers();
+    } else if (dedupCombineActive) {
+        combineBufferConfig =
+            InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
+    }
+    return combineBufferConfig;
+}
+
+// 准备完整 count 表；去重开启时随后完成 AIV0 本地前缀表与 rowDesc prepass 建表。
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::PrepareMoeCountAndDedupTables()
+{
+    MM_KTS_T(ktsCountT0);
+    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    MM_KTS_SPAN(MgbKts::MM_COUNT_TABLE_PREP, 0U, 0U, 0U, 0U, ktsCountT0);
+    if (tokenDispatchConfig_.dedup.dedupMode != 0) {
+        // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
+        PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, params_, tokenDispatchScratch_);
+        BuildDedupRowDescTable<TopkIndexType>(tokenDispatchConfig_.dedup, commonConfig_, gmmExecutionConfig_.blockJob,
+                                              syncWorkspaceLayout_, params_, tokenDispatchScratch_);
+    }
+}
+
 /*
  * 按动态 WAVE 边界滚动执行 A8W8 MoE 流水。AIV1 启动时连续准备 W0/W1，稳态消费已准备 WAVE 的同时
  * Dispatch 下一 WAVE，始终保持一轮 lookahead。每次先规划完整 WAVE 的 [begin, end) 范围，再通过统一的
@@ -597,23 +629,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 非量化 combine 去重复用量化 combine 的专家粒度独立消费形态（tiling 已保证两者互斥）。
     const bool dedupCombineActive =
         CombineQuantMode == COMBINE_NO_QUANT && (params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
-    CombineBufferConfig combineBufferConfig{};
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        combineBufferConfig = InitCombineBuffers();
-    } else if (dedupCombineActive) {
-        combineBufferConfig = InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_,
-                                                                 waveCombineDedupScratch_);
-    }
-    MM_KTS_T(ktsCountT0);
-    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-    MM_KTS_SPAN(MgbKts::MM_COUNT_TABLE_PREP, 0U, 0U, 0U, 0U, ktsCountT0);
-    if (tokenDispatchConfig_.dedup.dedupMode != 0) {
-        // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
-        PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, params_, tokenDispatchScratch_);
-        BuildDedupRowDescTable<TopkIndexType>(tokenDispatchConfig_.dedup, commonConfig_,
-                                              gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-                                              tokenDispatchScratch_);
-    }
+    CombineBufferConfig combineBufferConfig = InitMoeCombineBufferConfig(dedupCombineActive);
+    PrepareMoeCountAndDedupTables();
 
     GMMAddrInfo gmm1AddrInfo{};
     ExpertLoopState gmm1ExpertState = CreateExpertLoopState(commonConfig_);
