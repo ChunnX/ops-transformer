@@ -22,7 +22,7 @@ namespace FaVectorApi {
 static constexpr Reg::CastTrait castTraitP0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
                                                RoundMode::CAST_RINT};
 static constexpr Reg::CastTrait castTraitP1 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
-                                               RoundMode::CAST_ROUND};
+                                               RoundMode::CAST_HYBRID};
 
 template <typename T, typename OUTPUT_T>
 __simd_callee__ inline void CastToOutputFromMul(RegTensor<half> &vregCastB16, RegTensor<OUTPUT_T> &vregCast,
