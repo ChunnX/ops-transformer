@@ -1086,7 +1086,7 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
 }
 
 struct AttentionToFFNCompileInfo {};
-ge::graphStatus TilingParseForAttentionToFFN(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForAttentionToFFN(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

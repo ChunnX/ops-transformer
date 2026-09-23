@@ -746,7 +746,7 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext *context)
 }
 
 struct FFNToAttentionCompileInfo {};
-ge::graphStatus TilingParseForFFNToAttention(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForFFNToAttention(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
