@@ -157,8 +157,8 @@ bool KvRmsNormRopeCacheTilingDs::validateQuantCrossTermShapes()
         isValid = isValid && (scale1Shape->GetStorageShape().GetDimNum() == scale2Shape->GetStorageShape().GetDimNum());
     }
     if ((offset1Shape != nullptr) && (offset2Shape != nullptr)) {
-        isValid = isValid
-                  && (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
+        isValid =
+            isValid && (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
     }
     return isValid;
 }
