@@ -50,6 +50,9 @@ TILING_DATA_FIELD_DEF(uint32_t, cmpKvPostBaseNum);
 TILING_DATA_FIELD_DEF(uint32_t, cmpKvPostTailNum);
 TILING_DATA_FIELD_DEF(uint64_t, dqWorkSpaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dkWorkSpaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, dSinkWorkSpaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, cmpSoftmaxL1WorkSpaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, deterKvWorkSpaceOffset);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SmlagPostParamsOp, SmlagPostParams)
 
@@ -80,6 +83,11 @@ TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft);
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
+TILING_DATA_FIELD_DEF(int64_t, deterKvWorkspaceLen);
+TILING_DATA_FIELD_DEF(int64_t, dSinkWorkspaceLen);
+TILING_DATA_FIELD_DEF(int64_t, cmpSoftmaxL1WorkspaceLen);
+TILING_DATA_FIELD_DEF(uint32_t, isDeterministic);
+TILING_DATA_FIELD_DEF(uint32_t, aivNum);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqQ);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqOriKV);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqCmpKV);
