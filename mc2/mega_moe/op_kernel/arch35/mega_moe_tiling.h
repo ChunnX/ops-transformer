@@ -228,13 +228,8 @@ struct MegaMoeTilingData {
     bool isSharedQuantIndependent;
     // Appended to retain all existing field offsets; host and kernel packages must match.
     MegaMoeL1Layout a8w4L1Layout;
-    // 预量化输入搬运 tile 配置。动态量化路径保持旧的 scratch 布局，这些字段为 0。
+    // 预量化输入搬运 tile 配置。动态量化路径保持旧的 scratch 布局，这两个字段为 0。
     uint32_t preQuantTileTokens;
     uint32_t preQuantStageBytes;
-    // 预量化 x、scale、topK weight 分阶段使用独立的 tile token 数。
-    // preQuantTileTokens 保留为兼容/诊断字段，取三者的最大值。
-    uint32_t preQuantXTileTokens;
-    uint32_t preQuantScaleTileTokens;
-    uint32_t preQuantWeightTileTokens;
 };
 #endif
