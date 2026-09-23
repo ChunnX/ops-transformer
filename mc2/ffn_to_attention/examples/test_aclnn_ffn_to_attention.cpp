@@ -76,8 +76,8 @@ class FFNToAttentionExample {
 public:
     void InitHostData();
     int CreateInputTensors();
-    int PrepareWorkspace(char *hcomName);
-    int Execute(Args &args);
+    int PrepareWorkspace(const char *hcomName);
+    int Execute(const Args &args);
     void Release();
 
 private:
@@ -177,7 +177,7 @@ int FFNToAttentionExample::CreateInputTensors()
     return 0;
 }
 
-int FFNToAttentionExample::PrepareWorkspace(char *hcomName)
+int FFNToAttentionExample::PrepareWorkspace(const char *hcomName)
 {
     /**************************************** 调用FFN2Attention ********************************************/
     // 调用第一阶段接口
@@ -194,7 +194,7 @@ int FFNToAttentionExample::PrepareWorkspace(char *hcomName)
     return 0;
 }
 
-int FFNToAttentionExample::Execute(Args &args)
+int FFNToAttentionExample::Execute(const Args &args)
 {
     int ret = 0;
     // 调用第二阶段接口

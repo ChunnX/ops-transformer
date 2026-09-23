@@ -1012,7 +1012,7 @@ static ge::graphStatus CheckAttentionWindowSize(gert::TilingContext *context, co
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckAttentionFFNRankRange(const char *nodeName, AttentionToFFNTilingData *tilingData)
+static ge::graphStatus CheckAttentionFFNRankRange(const char *nodeName, const AttentionToFFNTilingData *tilingData)
 {
     // ffn_start_rank_id + ffn_num must not exceed world_size, otherwise the
     // kernel will access epHcclBuffer_[rankId] / hcommHandle_[rankId] beyond
@@ -1094,5 +1094,7 @@ ge::graphStatus TilingParseForAttentionToFFN(const gert::TilingParseContext *con
 
 IMPL_OP_OPTILING(AttentionToFFN)
     .Tiling(AttentionToFFNTilingFunc)
-    .TilingParse<AttentionToFFNCompileInfo>(TilingParseForAttentionToFFN);
+    .TilingParse<AttentionToFFNCompileInfo>([](gert::TilingParseContext *context) {
+        return TilingParseForAttentionToFFN(context);
+    });
 } // namespace MC2Tiling
