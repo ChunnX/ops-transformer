@@ -16,15 +16,26 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 #include <register/tilingdata_base.h>
 #include <register/op_impl_registry.h>
+#include "platform/platform_info.h"
 #include <tiling/tiling_api.h>
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 
 namespace optiling {
+
+// SocVersion::ASCEND950 and Short_SoC_version "Ascend950" are shared by 950PR and 950DT.
+// The full SoC_version is "Ascend950DT_<chip>" or "Ascend950PR_<chip>".
+inline bool IsAscend950DT(const std::string &fullSocVersion)
+{
+    constexpr char ascend950DTPrefix[] = "Ascend950DT_";
+    return fullSocVersion.rfind(ascend950DTPrefix, 0) == 0;
+}
+
 namespace fag {
 
 constexpr size_t DIM_0 = 0;
@@ -499,6 +510,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     int64_t kvStartIdx;
     bool enableSwizzle = false;
     bool isSplitByBlockIdx = false;
+    bool enableNewNonDeterSwizzle = false;
     DeterBandScheduleMode deterBandScheduleMode = DeterBandScheduleMode::DISABLED;
     uint32_t sinkOptional = 0;
     uint64_t sinkSize = 0;

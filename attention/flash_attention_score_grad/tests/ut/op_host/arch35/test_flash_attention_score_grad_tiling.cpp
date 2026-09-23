@@ -74,6 +74,15 @@ protected:
     }
 };
 
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950DT_SocVersion)
+{
+    EXPECT_TRUE(optiling::IsAscend950DT("Ascend950DT_9591"));
+    EXPECT_TRUE(optiling::IsAscend950DT("Ascend950DT_95A2"));
+    EXPECT_FALSE(optiling::IsAscend950DT("Ascend950PR_9599"));
+    EXPECT_FALSE(optiling::IsAscend950DT("Ascend950DTX_9591"));
+    EXPECT_FALSE(optiling::IsAscend950DT(""));
+}
+
 static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5CompileInfo()
 {
     return {64,       // aivNum

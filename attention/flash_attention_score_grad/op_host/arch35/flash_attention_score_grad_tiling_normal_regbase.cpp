@@ -803,6 +803,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
                     OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "compile_info is null"),
                     return ge::GRAPH_FAILED);
         npuArch = compileInfoPtr->npuArch;
+        socVersion = compileInfoPtr->socVersion;
+        // CompileInfo only has SocVersion::ASCEND950, which is shared by PR and DT. Keep the old schedule.
+        fBaseParams.enableNewNonDeterSwizzle = false;
         fBaseParams.coreNum = compileInfoPtr->aivNum;
         fBaseParams.aicNum = compileInfoPtr->aicNum;
         fBaseParams.ubSize = compileInfoPtr->ubSize;
@@ -812,6 +815,14 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
         fBaseParams.l2CacheSize = compileInfoPtr->l2CacheSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+        socVersion = ascendcPlatform.GetSocVersion();
+        std::string fullSocVersion;
+        // 950PR stays on the old schedule. Only a full name Ascend950DT_<chip> takes the new one.
+        if (!platformInfoPtr->GetPlatformResWithLock("version", "SoC_version", fullSocVersion)) {
+            fBaseParams.enableNewNonDeterSwizzle = false;
+        } else {
+            fBaseParams.enableNewNonDeterSwizzle = IsAscend950DT(fullSocVersion);
+        }
         npuArch = ascendcPlatform.GetCurNpuArch();
         coreNum = ascendcPlatform.GetCoreNumAiv();
         fBaseParams.coreNum = coreNum;
@@ -928,8 +939,11 @@ void FlashAttentionScoreGradTilingNormalRegbase::DetermineBlockSchedule()
                 fBaseParams.aicNum, actualBatch, result.deterBandSchedule.m, result.deterBandSchedule.n,
                 result.deterBandSchedule.p, result.deterBandSchedule.q);
     }
-    OP_LOGI(context_, "Determine block schedule, isSplitByBlockIdx=[%d], deterBandScheduleMode=[%u]",
-            static_cast<int>(fBaseParams.isSplitByBlockIdx), static_cast<uint32_t>(fBaseParams.deterBandScheduleMode));
+    OP_LOGI(context_,
+            "Determine block schedule, isSplitByBlockIdx=[%d], deterBandScheduleMode=[%u], "
+            "enableNewNonDeterSwizzle=[%d]",
+            static_cast<int>(fBaseParams.isSplitByBlockIdx), static_cast<uint32_t>(fBaseParams.deterBandScheduleMode),
+            static_cast<int>(fBaseParams.enableNewNonDeterSwizzle));
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
@@ -2347,6 +2361,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
 
     s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(static_cast<uint8_t>(fBaseParams.isSplitByBlockIdx));
     s1s2BNGS1S2BaseParams_->set_deterBandScheduleMode(static_cast<uint8_t>(fBaseParams.deterBandScheduleMode));
+    s1s2BNGS1S2BaseParams_->set_enableNewNonDeterSwizzle(static_cast<uint8_t>(fBaseParams.enableNewNonDeterSwizzle));
     s1s2BNGS1S2BaseParams_->set_reservedPad();
     s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(0);
     if (fBaseParams.isSplitByBlockIdx) {

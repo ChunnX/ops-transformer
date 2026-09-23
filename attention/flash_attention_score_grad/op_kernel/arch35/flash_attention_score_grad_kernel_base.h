@@ -39,6 +39,7 @@ public:
     __aicore__ inline void SetConstInfo();
     __aicore__ inline void SetOptionalInfo();
     __aicore__ inline void SetSwizzleConstInfo();
+    __aicore__ inline void SetOriginalSwizzleConstInfo();
     __aicore__ inline void SetAxisRunInfo(FagRunInfo &runInfo, int64_t s2CvBegin, int64_t s2CvEnd, int64_t boIdx,
                                           int64_t n2oIdx, int64_t goIdx, int64_t s1oIdx, int64_t s2oIdx);
     __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, FagRunInfo &nextRunInfo, int64_t taskId, int64_t index,
@@ -60,6 +61,8 @@ public:
     __aicore__ inline int64_t GetNextValidIdxForSwizzle(FagRunInfo &runInfo, int64_t loopIdx);
     __aicore__ inline int64_t GetNextValidIdxForSwizzleDense(FagRunInfo &runInfo, int64_t loopIdx);
     __aicore__ inline int64_t GetNextValidIdxForSwizzleCasual(FagRunInfo &runInfo, int64_t loopIdx);
+    __aicore__ inline int64_t GetNextValidIdxForOriginalSwizzleDense(FagRunInfo &runInfo, int64_t loopIdx);
+    __aicore__ inline int64_t GetNextValidIdxForOriginalSwizzleCasual(FagRunInfo &runInfo, int64_t loopIdx);
     template <bool IS_MM1_MM2 = true>
     __aicore__ inline int64_t GetQueryOffset(FagRunInfo &runInfo);
     __aicore__ inline int64_t GetQueryRopeOffset(FagRunInfo &runInfo);
@@ -73,6 +76,9 @@ public:
     __aicore__ inline void SyncALLCores();
     __aicore__ inline void GetSeqQlenKvlenByBidx(int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen);
     __aicore__ inline void CheckS1RangeInBn2(int64_t taskId);
+    template <const bool IS_DENSE = false>
+    __aicore__ inline bool GetOriginalLocalS1S2Idx(int64_t loopIdx, int64_t m, int64_t n, int64_t &localS1Idx,
+                                                   int64_t &localS2Idx);
     __aicore__ inline void UpdateMNPQ(int64_t &m, int64_t &n, int64_t &p, int64_t &q, int64_t &mGap, int64_t &nGap);
     __aicore__ inline ChildClass *GetDerived()
     {
@@ -104,6 +110,8 @@ public:
          !IS_DKV_RES_EXCEED_UB);
     constexpr static bool IS_DV_WRITE_UB =
         ((SPLIT_AXIS == BN2S2 && DETER_SPARSE_TYPE == NO_DETER) && !IS_DKV_RES_EXCEED_UB);
+    constexpr static uint32_t M_SWIZZLE_BLOCK_SIZE = M_SWIZZLE_SIZE / CUBE_BASEM;
+    constexpr static uint32_t N_SWIZZLE_BLOCK_SIZE = N_SWIZZLE_SIZE / CUBE_BASEN;
     constexpr static uint8_t DETER_TILING_SPLIT_MODE =
         (CUBE_BASEM == CUBE_BASEN ? 0 : (CUBE_BASEM > CUBE_BASEN ? 2 : 1));
     constexpr static uint32_t DETER_CUBE_BASEM = CUBE_BASEM < CUBE_BASEN ? CUBE_BASEN : CUBE_BASEM;
@@ -180,6 +188,8 @@ protected:
 
     typename std::conditional<IS_TND_SWIZZLE, int64_t, std::nullptr_t>::type deltaCnt{};
     typename std::conditional<IS_TND_SWIZZLE, int64_t, std::nullptr_t>::type bandLoopIdx{};
+    int64_t originalSwizzleLoopIdx = 0;
+    bool useOriginalSwizzle = false;
     bool enableDenseSwizzle = false;
     bool enableCasualSwizzle = false;
 };
@@ -358,6 +368,76 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetOriginalSwizzleConstInfo()
+{
+    constInfo.mSwizzleBlockNum = constInfo.s1Outer / M_SWIZZLE_BLOCK_SIZE;
+    constInfo.mSwizzleBlockNumTail = constInfo.s1Outer % M_SWIZZLE_BLOCK_SIZE;
+    uint64_t allCoreOnceBlockNum = constInfo.aicCoreNum * constInfo.continuousBlockNum;
+    if (enableDenseSwizzle) {
+        constInfo.nSwizzleBlockNum = constInfo.s2Outer / N_SWIZZLE_BLOCK_SIZE;
+        constInfo.nSwizzleBlockNumTail = constInfo.s2Outer % N_SWIZZLE_BLOCK_SIZE;
+
+        uint64_t c1Tmp = (M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+        uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
+        constInfo.leftUpTotalRound =
+            ((M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c1;
+
+        uint64_t c2Tmp = (constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+        uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
+        constInfo.leftDownTotalRound = ((constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
+                                           constInfo.continuousBlockNum +
+                                       c2;
+
+        uint64_t c3Tmp = (M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
+        uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
+        constInfo.rightUpTotalRound = ((M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
+                                          constInfo.continuousBlockNum +
+                                      c3;
+
+        uint64_t c4Tmp = (constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
+        uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
+        constInfo.rightDownTotalRound =
+            ((constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
+                constInfo.continuousBlockNum +
+            c4;
+
+        constInfo.leftSingleColTotalRound =
+            constInfo.leftUpTotalRound * constInfo.mSwizzleBlockNum + constInfo.leftDownTotalRound;
+        constInfo.leftTotalRound = constInfo.leftSingleColTotalRound * constInfo.nSwizzleBlockNum;
+        constInfo.batchTotalRound = constInfo.leftTotalRound +
+                                    constInfo.rightUpTotalRound * constInfo.mSwizzleBlockNum +
+                                    constInfo.rightDownTotalRound;
+    } else {
+        uint64_t triangleBlockNum = M_SWIZZLE_BLOCK_SIZE * (M_SWIZZLE_BLOCK_SIZE + 1) >> 1;
+        uint64_t c1Tmp = triangleBlockNum % allCoreOnceBlockNum;
+        uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
+        constInfo.leftUpTotalRound = triangleBlockNum / allCoreOnceBlockNum * constInfo.continuousBlockNum + c1;
+
+        uint64_t c2Tmp = (M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+        uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
+        constInfo.leftDownTotalRound =
+            ((M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c2;
+
+        uint64_t c3Tmp = (constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+        uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
+        constInfo.rightUpTotalRound = ((constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
+                                          constInfo.continuousBlockNum +
+                                      c3;
+
+        triangleBlockNum = (constInfo.mSwizzleBlockNumTail + 1) * constInfo.mSwizzleBlockNumTail >> 1;
+        uint64_t c4Tmp = triangleBlockNum % allCoreOnceBlockNum;
+        uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
+        constInfo.rightDownTotalRound = triangleBlockNum / allCoreOnceBlockNum * constInfo.continuousBlockNum + c4;
+
+        constInfo.leftTotalRound =
+            (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) * constInfo.mSwizzleBlockNum +
+            ((constInfo.mSwizzleBlockNum - 1) * constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
+        constInfo.batchTotalRound = constInfo.leftTotalRound + constInfo.rightDownTotalRound;
+    }
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetSwizzleConstInfo()
 {
     if constexpr (IS_NORMAL_SWIZZLE) {
@@ -365,22 +445,34 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             return;
         }
         // swizzle
+        // The host enables the column-owned schedule only for 950DT. 950PR and unknown products use the old schedule.
+        const bool enableNewNonDeterSwizzle = tilingData->s1s2BNGS1S2BaseParams.enableNewNonDeterSwizzle != 0;
+        const bool denseSizeEnough = enableNewNonDeterSwizzle ? constInfo.commonConstInfo.s1Size >= M_SWIZZLE_SIZE &&
+                                                                    constInfo.commonConstInfo.s2Size >= N_SWIZZLE_SIZE :
+                                                                constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE &&
+                                                                    constInfo.commonConstInfo.s2Size > N_SWIZZLE_SIZE;
+        const bool casualSizeEnough = enableNewNonDeterSwizzle ? constInfo.commonConstInfo.s1Size >= M_SWIZZLE_SIZE :
+                                                                 constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE;
         enableDenseSwizzle = (!IS_ATTEN_MASK || tilingData->s1s2BNGS1S2BaseParams.sparseType ==
                                                     static_cast<uint8_t>(SparseType::DENSE)) &&
-                             constInfo.commonConstInfo.s1Size >= M_SWIZZLE_SIZE &&
-                             constInfo.commonConstInfo.s2Size >= N_SWIZZLE_SIZE;
+                             denseSizeEnough;
         enableCasualSwizzle =
             IS_ATTEN_MASK && tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::CASUAL) &&
-            constInfo.commonConstInfo.s1Size == constInfo.commonConstInfo.s2Size &&
-            constInfo.commonConstInfo.s1Size >= M_SWIZZLE_SIZE;
+            constInfo.commonConstInfo.s1Size == constInfo.commonConstInfo.s2Size && casualSizeEnough;
+        useOriginalSwizzle = !enableNewNonDeterSwizzle && (enableDenseSwizzle || enableCasualSwizzle);
         uint32_t maxContinuousBlockNum =
             constInfo.commonConstInfo.s1Size < MIN_SWIZZLE_S1 ?
                 MAX_CONTINUOUS_BLOCK_NUM :
                 (constInfo.commonConstInfo.s1Size / MIN_SWIZZLE_S1) * BASE_SWIZZLE_BLOCK_NUM;
+        if (useOriginalSwizzle) {
+            maxContinuousBlockNum = ORIGINAL_SWIZZLE_CONTINUOUS_BLOCK_NUM;
+        }
         constInfo.continuousBlockNum = tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen > maxContinuousBlockNum ?
                                            maxContinuousBlockNum :
                                            tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
-        if (enableDenseSwizzle) {
+        if (useOriginalSwizzle) {
+            SetOriginalSwizzleConstInfo();
+        } else if (enableDenseSwizzle) {
             // A complete (flatBatch, S2) column is owned by one core. Flattening B*N2*G before
             // round-robin assignment avoids serializing each logical batch and removes 128x128 tile padding.
             int64_t flatBatchCount = constInfo.bSize * constInfo.commonConstInfo.n2G;
@@ -1614,6 +1706,177 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetNextValidIdxForOriginalSwizzleDense(
+    FagRunInfo &runInfo, int64_t loopIdx)
+{
+    while (true) {
+        int64_t bIdx = originalSwizzleLoopIdx / constInfo.batchTotalRound;
+        loopIdx = originalSwizzleLoopIdx % constInfo.batchTotalRound;
+        if (bIdx >= constInfo.bSize * constInfo.n2Size * constInfo.commonConstInfo.gSize) {
+            return -1;
+        }
+        int64_t globalS2Idx = 0;
+        int64_t globalS1Idx = 0;
+        int64_t localS1Idx = 0;
+        int64_t localS2Idx = 0;
+        bool isEnd = false;
+        if (loopIdx < constInfo.leftTotalRound) {
+            globalS2Idx = loopIdx / constInfo.leftSingleColTotalRound;
+            int64_t tmp = loopIdx % constInfo.leftSingleColTotalRound;
+            globalS1Idx = tmp / constInfo.leftUpTotalRound;
+            int64_t rTmp =
+                loopIdx - globalS2Idx * constInfo.leftSingleColTotalRound - globalS1Idx * constInfo.leftUpTotalRound;
+            if (globalS1Idx == constInfo.mSwizzleBlockNum) {
+                isEnd = GetOriginalLocalS1S2Idx<true>(rTmp, constInfo.mSwizzleBlockNumTail, N_SWIZZLE_BLOCK_SIZE,
+                                                      localS1Idx, localS2Idx);
+            } else {
+                isEnd = GetOriginalLocalS1S2Idx<true>(rTmp, M_SWIZZLE_BLOCK_SIZE, N_SWIZZLE_BLOCK_SIZE, localS1Idx,
+                                                      localS2Idx);
+            }
+        } else {
+            loopIdx -= constInfo.leftTotalRound;
+            globalS2Idx = constInfo.nSwizzleBlockNum;
+            globalS1Idx = loopIdx / constInfo.rightUpTotalRound;
+            int64_t rTmp = loopIdx - globalS1Idx * constInfo.rightUpTotalRound;
+            if (globalS1Idx == constInfo.mSwizzleBlockNum) {
+                isEnd = GetOriginalLocalS1S2Idx<true>(rTmp, constInfo.mSwizzleBlockNumTail,
+                                                      constInfo.nSwizzleBlockNumTail, localS1Idx, localS2Idx);
+            } else {
+                isEnd = GetOriginalLocalS1S2Idx<true>(rTmp, M_SWIZZLE_BLOCK_SIZE, constInfo.nSwizzleBlockNumTail,
+                                                      localS1Idx, localS2Idx);
+            }
+        }
+        originalSwizzleLoopIdx++;
+        if (isEnd) {
+            continue;
+        }
+
+        int64_t s1Idx = M_SWIZZLE_BLOCK_SIZE * globalS1Idx + localS1Idx;
+        int64_t s2Idx = N_SWIZZLE_BLOCK_SIZE * globalS2Idx + localS2Idx;
+        if (s1Idx < 0 || s1Idx >= constInfo.s1Outer || s2Idx < 0 || s2Idx >= constInfo.s2Outer) {
+            continue;
+        }
+        runInfo.s2CvBegin = s2Idx * CUBE_BASEN;
+        runInfo.s2CvEnd = runInfo.s2CvBegin + CUBE_BASEN;
+        if (s2Idx == constInfo.s2Outer - 1) {
+            runInfo.s2CvEnd = runInfo.s2CvBegin + constInfo.s2Tail;
+        }
+        runInfo.commonRunInfo.boIdx = bIdx / constInfo.commonConstInfo.n2G;
+        int64_t bDimTail = bIdx % constInfo.commonConstInfo.n2G;
+        runInfo.commonRunInfo.n2oIdx = bDimTail / constInfo.commonConstInfo.gSize;
+        runInfo.commonRunInfo.goIdx = bDimTail % constInfo.commonConstInfo.gSize;
+        runInfo.commonRunInfo.s1oIdx = s1Idx;
+        runInfo.s2oIdx = s2Idx;
+        return 0;
+    }
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetNextValidIdxForOriginalSwizzleCasual(
+    FagRunInfo &runInfo, int64_t loopIdx)
+{
+    while (true) {
+        int64_t bIdx = originalSwizzleLoopIdx / constInfo.batchTotalRound;
+        loopIdx = originalSwizzleLoopIdx % constInfo.batchTotalRound;
+        if (bIdx >= constInfo.bSize * constInfo.n2Size * constInfo.commonConstInfo.gSize) {
+            return -1;
+        }
+        int64_t globalS2Idx = 0;
+        int64_t globalS1Idx = 0;
+        int64_t localS1Idx = 0;
+        int64_t localS2Idx = 0;
+        bool isEnd = false;
+        if (loopIdx < constInfo.leftTotalRound) {
+            int64_t tmp = constInfo.leftUpTotalRound + constInfo.rightUpTotalRound +
+                          constInfo.leftDownTotalRound * (constInfo.mSwizzleBlockNum - 1);
+            int64_t a = -constInfo.leftDownTotalRound / NUM_TWO;
+            int64_t b = constInfo.leftDownTotalRound / NUM_TWO - tmp;
+            int64_t c = tmp - loopIdx - 1;
+            globalS2Idx = Ceil<int64_t>(-b - sqrt(b * b - ((a * c) << NUM_TWO)), constInfo.leftDownTotalRound);
+            loopIdx -= globalS2Idx * (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) +
+                       (NUM_TWO * constInfo.mSwizzleBlockNum - 1 - globalS2Idx) * globalS2Idx / NUM_TWO *
+                           constInfo.leftDownTotalRound;
+            if (loopIdx < constInfo.leftUpTotalRound) {
+                globalS1Idx = globalS2Idx;
+                isEnd = GetOriginalLocalS1S2Idx<false>(loopIdx, M_SWIZZLE_BLOCK_SIZE, M_SWIZZLE_BLOCK_SIZE, localS1Idx,
+                                                       localS2Idx);
+            } else if (loopIdx < constInfo.leftUpTotalRound +
+                                     constInfo.leftDownTotalRound * (constInfo.mSwizzleBlockNum - 1 - globalS2Idx)) {
+                loopIdx -= constInfo.leftUpTotalRound;
+                globalS1Idx = globalS2Idx + loopIdx / constInfo.leftDownTotalRound + 1;
+                loopIdx %= constInfo.leftDownTotalRound;
+                isEnd = GetOriginalLocalS1S2Idx<true>(loopIdx, M_SWIZZLE_BLOCK_SIZE, M_SWIZZLE_BLOCK_SIZE, localS1Idx,
+                                                      localS2Idx);
+            } else {
+                globalS1Idx = constInfo.mSwizzleBlockNum;
+                loopIdx -= constInfo.leftUpTotalRound +
+                           constInfo.leftDownTotalRound * (constInfo.mSwizzleBlockNum - 1 - globalS2Idx);
+                isEnd = GetOriginalLocalS1S2Idx<true>(loopIdx, constInfo.mSwizzleBlockNumTail, M_SWIZZLE_BLOCK_SIZE,
+                                                      localS1Idx, localS2Idx);
+            }
+        } else {
+            globalS1Idx = constInfo.mSwizzleBlockNum;
+            globalS2Idx = constInfo.mSwizzleBlockNum;
+            loopIdx -= constInfo.leftTotalRound;
+            isEnd = GetOriginalLocalS1S2Idx<false>(loopIdx, constInfo.mSwizzleBlockNumTail,
+                                                   constInfo.mSwizzleBlockNumTail, localS1Idx, localS2Idx);
+        }
+        originalSwizzleLoopIdx++;
+        if (isEnd) {
+            continue;
+        }
+
+        int64_t s1Idx = M_SWIZZLE_BLOCK_SIZE * globalS1Idx + localS1Idx;
+        int64_t s2Idx = M_SWIZZLE_BLOCK_SIZE * globalS2Idx + localS2Idx;
+        if (s1Idx < 0 || s1Idx >= constInfo.s1Outer || s2Idx < 0 || s2Idx >= constInfo.s2Outer) {
+            continue;
+        }
+        runInfo.s2CvBegin = s2Idx * CUBE_BASEN;
+        runInfo.s2CvEnd = runInfo.s2CvBegin + CUBE_BASEN;
+        if (s2Idx == constInfo.s2Outer - 1) {
+            runInfo.s2CvEnd = runInfo.s2CvBegin + constInfo.s2Tail;
+        }
+        runInfo.commonRunInfo.boIdx = bIdx / constInfo.commonConstInfo.n2G;
+        int64_t bDimTail = bIdx % constInfo.commonConstInfo.n2G;
+        runInfo.commonRunInfo.n2oIdx = bDimTail / constInfo.commonConstInfo.gSize;
+        runInfo.commonRunInfo.goIdx = bDimTail % constInfo.commonConstInfo.gSize;
+        runInfo.commonRunInfo.s1oIdx = s1Idx;
+        runInfo.s2oIdx = s2Idx;
+        return 0;
+    }
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+template <const bool IS_DENSE>
+__aicore__ inline bool
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetOriginalLocalS1S2Idx(
+    int64_t loopIdx, int64_t m, int64_t n, int64_t &localS1Idx, int64_t &localS2Idx)
+{
+    int64_t r1 = loopIdx / constInfo.continuousBlockNum;
+    int64_t r2 = loopIdx % constInfo.continuousBlockNum;
+    int64_t globalIdx =
+        constInfo.aicCoreNum * constInfo.continuousBlockNum * r1 + cBlockIdx * constInfo.continuousBlockNum + r2;
+    if constexpr (IS_DENSE) {
+        if (globalIdx >= m * n) {
+            return true;
+        }
+        localS1Idx = globalIdx % m;
+        localS2Idx = globalIdx / m;
+    } else {
+        if (globalIdx >= m * (NUM_TWO * m - n + 1) / NUM_TWO) {
+            return true;
+        }
+        localS2Idx = Ceil((NUM_TWO * m - 1) - sqrt((NUM_TWO * m - 1) * (NUM_TWO * m - 1) +
+                                                   ORIGINAL_SWIZZLE_QUADRATIC_MULTIPLIER * (m - 1 - globalIdx)),
+                          NUM_TWO);
+        localS1Idx = globalIdx - (NUM_TWO * m - localS2Idx - 1) * localS2Idx / NUM_TWO;
+    }
+    return false;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetNextValidIdxForSwizzleDense(
     FagRunInfo &runInfo, int64_t loopIdx)
 {
@@ -1741,8 +2004,14 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
     FagRunInfo &runInfo, int64_t loopIdx)
 {
     if (enableDenseSwizzle) {
+        if (useOriginalSwizzle) {
+            return GetNextValidIdxForOriginalSwizzleDense(runInfo, loopIdx);
+        }
         return GetNextValidIdxForSwizzleDense(runInfo, loopIdx);
     } else if (enableCasualSwizzle) {
+        if (useOriginalSwizzle) {
+            return GetNextValidIdxForOriginalSwizzleCasual(runInfo, loopIdx);
+        }
         return GetNextValidIdxForSwizzleCasual(runInfo, loopIdx);
     } else {
         int64_t blockGroupIdx = loopIdx / constInfo.continuousBlockNum;      // 第几组

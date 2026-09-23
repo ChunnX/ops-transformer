@@ -239,7 +239,8 @@ public:
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
     uint8_t deterBandScheduleMode;
-    uint8_t reservedPad[7]; // tilingData需要8字节对齐，对应编译器尾部padding
+    uint8_t enableNewNonDeterSwizzle;
+    uint8_t reservedPad[6]; // tilingData需要8字节对齐，对应编译器尾部padding
 
     int64_t get_coreNum() const
     {
@@ -372,6 +373,10 @@ public:
     uint8_t get_deterBandScheduleMode() const
     {
         return deterBandScheduleMode;
+    }
+    uint8_t get_enableNewNonDeterSwizzle() const
+    {
+        return enableNewNonDeterSwizzle;
     }
 
     void set_coreNum(int64_t coreNumParam)
@@ -517,6 +522,10 @@ public:
     void set_deterBandScheduleMode(uint8_t deterBandScheduleModeParam)
     {
         this->deterBandScheduleMode = deterBandScheduleModeParam;
+    }
+    void set_enableNewNonDeterSwizzle(uint8_t enableNewNonDeterSwizzleParam)
+    {
+        this->enableNewNonDeterSwizzle = enableNewNonDeterSwizzleParam;
     }
     void set_reservedPad(uint8_t reservedPadVal = 0)
     {
