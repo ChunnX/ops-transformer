@@ -22,6 +22,12 @@
 #include "fia_kernel_fullquant_gqa.h"
 #include "fia_kernel_fullquant_mla.h"
 
+template <typename T>
+__aicore__ inline __gm__ uint8_t *GetFiaMetaDataFromTiling(__gm__ T *tiling)
+{
+    return (__gm__ uint8_t *)tiling + offsetof(T, fiaMetaData);
+}
+
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
           uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableS1OutSplit>
 inline __aicore__ void run_fia_noquant_gqa_kernel(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -63,9 +69,9 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(__gm__ uint8_t *query, __gm__ 
     // KernelType
     using Kernel = FlashAttentionNoQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreTilingData, baseTiling, baseTilingIn, tiling);
-    const NoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
-    __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreTilingData, fiaMetaData);
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreTilingData, tilingDataIn, tiling);
+    const NoQuantTilingArch35 *__restrict tilingData = &tilingDataIn.baseTiling;
+    __gm__ uint8_t *fiaMetaData = GetFiaMetaDataFromTiling(&tilingDataIn);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryRope, keyRope,
@@ -115,9 +121,9 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
     // KernelType
     using Kernel = FlashAttentionNoQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreTilingData, baseTiling, baseTilingIn, tiling);
-    const NoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
-    __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreTilingData, fiaMetaData);
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreTilingData, tilingDataIn, tiling);
+    const NoQuantTilingArch35 *__restrict tilingData = &tilingDataIn.baseTiling;
+    __gm__ uint8_t *fiaMetaData = GetFiaMetaDataFromTiling(&tilingDataIn);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryRope, keyRope,
@@ -182,9 +188,9 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
+    __gm__ uint8_t *fiaMetaData = GetFiaMetaDataFromTiling(&tilingDataIn);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
@@ -252,9 +258,9 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
+    __gm__ uint8_t *fiaMetaData = GetFiaMetaDataFromTiling(&tilingDataIn);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
@@ -315,9 +321,9 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    __gm__ uint8_t *fiaMetaData = tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
+    __gm__ uint8_t *fiaMetaData = GetFiaMetaDataFromTiling(&tilingDataIn);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
