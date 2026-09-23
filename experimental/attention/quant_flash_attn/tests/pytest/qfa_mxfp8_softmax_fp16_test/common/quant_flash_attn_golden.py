@@ -203,7 +203,7 @@ def generate_data():
 
 
 # ==============================================================================
-# CPU Golden（fp32 softmax，反量化按 5D descale）
+# CPU Golden（NPU fp16 softmax 管线仿真，反量化按 5D descale）
 # ==============================================================================
 def cpu_mxfp8_golden(
     q_fp8,
@@ -226,10 +226,16 @@ def cpu_mxfp8_golden(
 
     if softmax_scale is None:
         softmax_scale = 1.0 / math.sqrt(D)
-    # 显式折算 fp32 标量（2026-09-23）：与 kernel constInfo_.scaleValue → FixpipeMm1 deqScalar
-    # 的 fp32 通路逐位一致（同一 double 值的同一次 double→float 舍入）。
-    # PyTorch 对 Python 标量本就按弱提升折算 tensor dtype，此处显式化避免依赖隐式语义。
+    # softmaxScale 显式折算 fp32 标量（kernel constInfo_.scaleValue 的 fp32 通路，
+    # 同一 double 值的同一次 double→float 舍入）
     softmax_scale_f32 = torch.tensor(softmax_scale, dtype=torch.float32)
+    # FixpipeMm1 deqScalar 的 (1,8,10) 硬件格式（accompanying_quantization.md 表 2，
+    # NPU 架构版本 3510/ascend950）：标量以 1 符号 + 8 指数 + 10 尾数位参与计算——
+    # fp32 尾数低 13 位（bit0-12）被硬件丢弃。2026-09-23 经 L0C/mm1Res dump 反推并
+    # 1024 样本验证：fp16(v · s_hw) 与 kernel mm1Res 逐位一致（0/1024），
+    # 偏差全部来自此标量截断（s=0.0883883→s_hw=0.0883789，相对 -1.07e-4），
+    # 乘积本身的 fp16 舍入是标准 RNE。
+    softmax_scale_hw = (softmax_scale_f32.view(torch.int32) & -8192).view(torch.float32)
 
     # 反量化：descale 取尾轴第一个有效值 [..., 0]，e8m0 -> fp32，再扩到逐元素
     q_scale = e8m0_to_fp32(dequant_scale_q[..., 0]).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[..., : q_fp8.shape[-1]]
@@ -249,13 +255,14 @@ def cpu_mxfp8_golden(
     # ===== NPU fp16 softmax 管线仿真 golden（2026-09-23，fp16 tensor 风格，
     #       镜像 assets/flash_attention_cpu_golden.py 的 s_dtype 模式）=====
     # 逐级建模 kernel 的 FP16 Softmax 方案（quant_mode=3，P 量化 e4m3）：
-    #   ① mm1Res：fp32 matmul（Mmad fp32 累加仿真）× scale（fp32 deqScalar）→ fp16 舍入
-    #      （QF322F16 仿真），此后 S/max/k/Sub/Exp 全程 fp16 tensor
+    #   ① mm1Res：fp32 matmul（Mmad fp32 累加仿真，L0C 已证精确）× deqScalar 的
+    #      (1,8,10) 硬件格式截断标量（softmax_scale_hw）→ 标准 RNE fp16 舍入，
+    #      此后 S/max/k/Sub/Exp 全程 fp16 tensor
     #   ② k 链：k_i = max(accMax, ceil(max(S16)·INV_LN2))——fp16 域 Muls+CEIL，
     #      subLoop(128 KV) 粒度、跨块累积（kernel softmaxMaxUB half 域同构）
     #   ③ P：x = S16 - k·LN2；P16 = exp(x)——fp16 域 Sub+Exp（kernel V1 ③段同构）
-    #   ④ 量化：P8 = e4m3(P16 · 2^Δk)——与 kernel 的 e4m3(P16)·pscale 逐位等价
-    #      （2 的幂缩放下 e4m3 网格自相似）
+    #   ④ 量化：P8 = e4m3(P16)·pscale——pscale 经 e8m0 编码-解码往返（VfCalcPScale→
+    #      L1 网格→Mmad e8m0 字面链），在 fp32 域施加（不再重量化）
     #   ⑤ 分子/分母均用 P8（kernel oneFill rowsum 同款）；累积/跨块因子在 fp32
     #      （kernel mm2Res/stage2Out/accRowsum fp32 域同构）
     # fp16 常量镜像 kernel vf_common_def 的 half 常量（同一 double 的 fp16 舍入）：
@@ -280,9 +287,11 @@ def cpu_mxfp8_golden(
         o_acc = torch.zeros([b_, n_, q1 - q0, dv], dtype=torch.float32)
         for kv0 in range(0, skv, K_BLOCK):
             kv1 = min(kv0 + K_BLOCK, skv)
-            # ① mm1Res fp16（fp32 matmul × fp32 scale → QF322F16 舍入），保持 fp16 tensor
-            s_blk = (torch.matmul(qi, k_t[:, :, kv0:kv1, :].transpose(-1, -2))
-                     * softmax_scale_f32).to(F16)
+            # ① mm1Res fp16：fp32 matmul（Mmad fp32 累加仿真，L0C 已证精确）→
+            #   乘 deqScalar 的 (1,8,10) 硬件格式截断标量（fp64 域乘避免中间舍入）→
+            #   标准 RNE fp16 舍入，保持 fp16 tensor
+            s_blk = torch.matmul(qi, k_t[:, :, kv0:kv1, :].transpose(-1, -2))
+            s_blk = (s_blk.double() * softmax_scale_hw.double()).to(F16)
             m_blk_start = m_acc
             # ② subLoop 粒度 k 链（128 KV 一节，尾节短行只取有效行）
             sub_ps = []
@@ -302,7 +311,11 @@ def cpu_mxfp8_golden(
             num_blk = torch.zeros([b_, n_, q1 - q0, dv], dtype=torch.float32)
             den_blk = torch.zeros([b_, n_, q1 - q0, 1], dtype=torch.float32)
             for p16, k_i, s0, s1_ in sub_ps:
-                ps = torch.exp2(k_i.float() - k_final.float())         # 2^Δk，精确幂
+                # pscale e8m0 编码-解码往返（kernel VfCalcPScale→L1 网格→Mmad e8m0 全链字面仿真）：
+                # byte = SAT(Δk+127)（Maxs 负钳 0；Δk ≤ 0 恒 ≤ 127，上界不可达），
+                # 解码 = e8m0_to_fp32 = 2^(byte-127)——与文件头输入 descale 同款解码路径
+                ps_u8 = torch.clamp(k_i.float() - k_final.float() + 127.0, min=0.0, max=255.0).to(torch.uint8)
+                ps = e8m0_to_fp32(ps_u8.view(torch.float8_e8m0fnu))
                 # kernel 字面 Cast 链（2026-09-23 对齐）：fp16 --h2iCast--> fp32（精确展宽）
                 #   --castTraitRint--> e4m3（RINT+SAT 量化）；pscale 随后在 Mmad e8m0 域施加
                 #   （fp32 乘、不再重量化）。subnormal 区与"先乘 ps 再量化"不等价——
@@ -310,13 +323,17 @@ def cpu_mxfp8_golden(
                 p8 = p16.float().to(FP8_DTYPE).to(torch.float32) * ps
                 num_blk = num_blk + torch.matmul(p8, v_t[:, :, s0:s1_, :])
                 den_blk = den_blk + p8.sum(dim=-1, keepdim=True)
-            # 跨块累积（factor = 2^(K_blkStart - K_final)，kernel VfCalcRescaleFactor 同值）
+            # 跨块累积（factor = 2^(K_blkStart - K_final)，kernel VfCalcRescaleFactor 同值；
+            # 同款负指数饱和：ΔK < -127 时钳到 2^-127 而非下溢 0）
             factor = torch.zeros([b_, n_, q1 - q0, 1], dtype=torch.float32) if m_blk_start is None else \
-                torch.exp2(m_blk_start.float() - k_final.float())
+                torch.exp2(torch.clamp(m_blk_start.float() - k_final.float(), min=-127.0))
             o_acc = o_acc * factor + num_blk
             s_acc = s_acc * factor + den_blk
-        out[:, :, q0:q1, :] = o_acc / (s_acc + 1e-20)
-        lse[:, :, q0:q1] = (m_acc.float() * LN2 + torch.log(s_acc + 1e-20)).squeeze(-1)
+        # 分母零保护（assets/flash_attention_cpu_golden.py 的 l_safe 同款）：
+        # l ≤ 0 的退化行（全零 P）除以 1，避免 0/0 与 inf 污染
+        s_safe = torch.where(s_acc > 0, s_acc, torch.ones_like(s_acc))
+        out[:, :, q0:q1, :] = o_acc / s_safe
+        lse[:, :, q0:q1] = (m_acc.float() * LN2 + torch.log(s_safe)).squeeze(-1)
 
     out = out.to(torch.bfloat16)
     logger.info("[CPU] out=%s", tuple(out.shape))
