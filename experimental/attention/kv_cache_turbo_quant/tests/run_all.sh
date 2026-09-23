@@ -66,6 +66,10 @@ for line in "${CASES[@]}"; do
     "$PY" "$HERE/kctq_v3_precision.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \
         --tokens "$tokens" --heads "$heads" --bits "$bits" --golden "$GOLDEN" \
         --json "$out/v3.json" | tee "$out/v3.log"
+    # 4) 生态算子开源精度标准的混合容差判定（补充层，不替代任务书 §3.2 指标）
+    "$PY" "$HERE/kctq_std_tolerance.py" --workdir "$out" --kv "$inp/kv_vectors.bin" --rot "$ROT" --qjl "$QJL" \
+        --tokens "$tokens" --heads "$heads" --bits "$bits" --material "$MATERIAL" \
+        --json "$out/std_tolerance.json" | tee "$out/std_tolerance.log"
     median=$(grep -o 'latency_ms_median: [0-9.]*' "$out/run.log" | awk '{print $2}')
     SUMMARY+=("$name bits=$bits median=${median}ms")
 done

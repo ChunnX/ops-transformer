@@ -87,7 +87,7 @@ bash tests/run_all.sh
 ```
 
 `run_all.sh` 会按 `case.json` 依次跑 5 个 case：算子 → `kctq_compare.py`（逐字节对拍）→
-`kctq_v3_precision.py`（V3 双口径），并在最后打印汇总。
+`kctq_v3_precision.py`（V3 双口径）→ `kctq_std_tolerance.py`（生态标准混合容差），并在最后打印汇总。
 
 ### 4.1 边界用例套件
 
@@ -150,6 +150,14 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
   拒绝来源（`561002` tiling 校验失败 / `161002` OpDef dtype 不一致）。
 - **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
   主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
+- **生态标准层**（`kctq_std_tolerance.py`）：按《生态算子开源精度标准》
+  （`third_party/opbase/docs/zh/ops_precision_standard/experimental_standard.md`，上游文件名
+  `mixed_tolerance_standard.md`）的**混合容差**逐元素判定：`|a-g| ≤ atol + rtol·|g|`，
+  整体要求 `matched_ratio ≥ 0.99` 且 `max_abs_error ≤ limit`。
+  `quant_norm`/`quant_gamma`（bf16）用 **BFLOAT16 行**（rtol = atol = 2⁻⁶、limit = 1e0）；
+  `quant_idx`/`quant_qjl` 是 uint8 位打包，**标准 §0 明确不覆盖整型/搬运类输出**，只报
+  "匹配率"（参照 0.99）并显式声明。该层判"与单标杆 `golden.py` 的数值一致性"，
+  **不替代**任务书 §3.2 的业务指标。
 
 ## 6. 文件说明
 
@@ -160,6 +168,7 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
 | `gen_case_input.py` | 生成某个 case 的 `kv_vectors.bin`（BF16） |
 | `kctq_compare.py` | 与 `golden.py` 逐字节对拍（`--material` 指定任务包目录） |
 | `kctq_v3_precision.py` | V3 双口径精度（decode 两条路径 × 两种分母；`--golden` 指定 `golden.py`） |
+| `kctq_std_tolerance.py` | 生态标准混合容差逐元素判定（bf16 输出按标准行；位打包输出按匹配率） |
 | `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总（套件①） |
 | `edge_cases.json` | 边界用例形状表（套件②） |
 | `gen_edge_input.py` | 生成边界用例输入；`--pattern edge-rows` 造零行/次正规行/抵消行 |
