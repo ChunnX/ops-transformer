@@ -48,7 +48,7 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    // APACE 分支覆写：tiling key 扩 USING_APACE_IMPL 位（位序见 apt_tiling_key.h 冻结句）
+    // 非量化路径覆写：tiling key 6 维（R13 删 USING_APACE_IMPL 位，位序见 apt_tiling_key.h 位序口径）
     [[nodiscard]] uint64_t GetTilingKey() const override;
 
     // APACE 分支覆写：workspace = libApi + gatherLen（不消费 v1 的 biasLen 预留）
@@ -81,12 +81,6 @@ protected:
     ge::graphStatus CheckInput() override;
 
 private:
-    // APACE_IMPL_MAX_RANK_DIM=64 为本算子自定义值（V2-B3：按 B7 rankSize 支持域 2~64 放宽，
-    // 由 N2 的 FragmentTensor MaxFragments=64 + 数组扩容承接；a2a 先例同名常量为 8 属其业务上限）
-    static constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 64;
-
-    // APACE 使能开关（B2 拍板：初期默认 v1 路径，预留 env 覆盖，上板验证通过后切默认）
-    void SetApaceImplSwitch();
     // APACE 分支 tiling 产出：commTile（fit-balance + 256 对齐封顶，O4）/ mmTile（v1 local tiling 映射）/
     // mc2InitTiling/mc2CcTiling（SetMc2Hcomm 产出共享）/ gatherLen（v1 GetStorageA 语义）
     ge::graphStatus DoApaceTiling();
@@ -97,8 +91,6 @@ private:
     uint64_t myWorkSpaceSize_{0U};
     Mc2MatmulV3CompileInfo compileInfo_;
     Mc2MatMulV3Args mmV3Args_;
-    bool usingApaceImpl_{false};
-    bool usingApaceImplEnabled_{false};
     Apace::hcommAllGatherMatmulTilingData hcommTilingDataSelf_{};
 };
 ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context);

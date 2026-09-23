@@ -19,12 +19,13 @@
  *   - GetHcclDataType 扩 FP16→HCCL_DATA_TYPE_FP16(3)、bfloat16_t→HCCL_DATA_TYPE_BFP16(11)；
  *   - Init 8→6 参（去 aScaleGM/bScaleGM）；模板 IsMxFp4→TransB（LayoutB 双布局透传给内核）；
  *   - HCCL 生命周期（InitV2/SetCcTilingV2/GetRankId/GetRankDim/Finalize）与 gatherLen 语义原样保留；
- *   - MIX_AIC_1_2 入口核型下 AIV 参与生命周期注册（InitV2 等全核执行，P10 回归 v1/底本契约），
- *     不参与通信提交（CommitAllGather）与计算（Run 首行守卫）。
+ *   - AIC_ONLY 入口核型（R13，SEL 表逐组合供给）：无 AIV block，入口仅 AIC。P10 教训保留：
+ *     若将来切回 MIX 核型，AIV block 必须注册 HCCL 生命周期（InitV2 等全核执行）——
+ *     AIV 早退不注册 → Wait 挂起 507014。
  *
  * Init():
- *   全核(AIC+AIV): hccl_.InitV2()/SetCcTilingV2()/GetRankId()/GetRankDim()（生命周期注册）。
- *   AIC: 批量下发 AllGather<true>（dataHead + dataTail），
+ *   AIC: hccl_.InitV2()/SetCcTilingV2()/GetRankId()/GetRankDim()（生命周期注册）、
+ *        批量下发 AllGather<true>（dataHead + dataTail），
  *        GetCommPolicy().state_ = &commState_ 绑定 WaitPolicy。
  *
  * Run():
@@ -166,20 +167,16 @@ template <typename AType, typename BType, typename CType, AscendC::HcclServerTyp
 __aicore__ inline void AllGatherMatmulHcommImpl<AType, BType, CType, ServerType, TransB>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM)
 {
-    // 【P10·契约对齐】HCCL 上下文注册改为全核执行（含 AIV）后再按核型分流：
-    // v1（all_gather_matmul_fp16_bf16.h Init 全核 hccl_.InitV2/SetCcTilingV2）与 apace 底本
-    // （all_gather_mx_matmul_hcomm_impl.h 无 AIV 守卫）均在全部 block（AIC+AIV）注册通信
-    // 上下文；v2 原 AIV 首行早退为无先例偏离，本处回归 v1/底本契约。AIV 仍不参与通信提交
-    // （CommitAllGather）与计算（Run 守卫不变），仅承担生命周期注册。
-    // 注：该对齐未消除 L1-133 无 host 日志快路径下的 Wait 永等问题（507014，APACE 分支特有、
-    // host 时序双稳；v1 同路径不受影响），该问题登记为 P10-R1 已知事项回传（见 3.4 报告 v1.5）。
+    // 【P10·契约知识（R13 AIC_ONLY 口径）】入口核型 AIC_ONLY（SEL 表逐组合供给），无 AIV block，
+    // 生命周期注册（InitV2/SetCcTilingV2/GetRankId/GetRankDim）仅由 AIC 执行即可。
+    // P10 教训保留：若将来切回 MIX 核型，AIV block 必须注册 HCCL 生命周期（InitV2 等全核执行，
+    // v1 all_gather_matmul_fp16_bf16.h 同款契约）——AIV 首行早退不注册 → Wait 永等挂起（507014）。
+    // 注：L1-133 无 host 日志快路径下的 Wait 永等问题（507014，host 时序双稳）登记为 P10-R1
+    // 已知事项回传（见 3.4 报告 v1.5）。
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
-    if ASCEND_IS_AIV {
-        return;
-    }
     aGM_ = aGM;
     bGM_ = bGM;
     biasGM_ = biasGM;
@@ -260,10 +257,6 @@ __aicore__ inline void AllGatherMatmulHcommImpl<AType, BType, CType, ServerType,
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool TransB>
 __aicore__ inline void AllGatherMatmulHcommImpl<AType, BType, CType, ServerType, TransB>::Run()
 {
-    // MIX_AIC_1_2 入口核型：AIV 空转
-    if ASCEND_IS_AIV {
-        return;
-    }
     KernelParams params;
     SetupKernelParams(params);
     matmulKernelImpl_(params, opStateDump_);
