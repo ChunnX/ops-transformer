@@ -290,7 +290,7 @@ protected:
                           int64_t headSize);
     bool CheckVCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                           int64_t headSize);
-        virtual bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
+    virtual bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead,
                                  int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char *cacheName);
     virtual bool CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize, size_t cacheIndex,
                                    const char *cacheName);
@@ -319,7 +319,7 @@ protected:
     ge::graphStatus PostTiling() override;
 
 protected:
-        void DoOpTilingPaBlkNz();
+    void DoOpTilingPaBlkNz();
     bool CheckQuantTermShape(const gert::TilingContext *context, size_t inputIdx, int64_t headSize, bool &hasShape);
     bool CheckCacheValid(const gert::TilingContext *context, int64_t batchSize, int64_t numHead, int64_t cacheLen,
                          int64_t headSize, size_t cacheIndex, const char *cacheName) override;

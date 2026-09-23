@@ -157,8 +157,8 @@ bool KvRmsNormRopeCacheTilingDs::validateQuantCrossTermShapes()
         isValid = isValid && (scale1Shape->GetStorageShape().GetDimNum() == scale2Shape->GetStorageShape().GetDimNum());
     }
     if ((offset1Shape != nullptr) && (offset2Shape != nullptr)) {
-        isValid = isValid &&
-                  (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
+        isValid = isValid
+                  && (offset1Shape->GetStorageShape().GetDimNum() == offset2Shape->GetStorageShape().GetDimNum());
     }
     return isValid;
 }
@@ -245,7 +245,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
     }
 
     // Validate cache shapes
-        if (currentCacheMode_ == CacheMode::Norm) {
+    if (currentCacheMode_ == CacheMode::Norm) {
         OP_CHECK_IF(!CheckKCacheValid(context_, batchSize, numHead, seqLength, hDimKCache),
                     OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(!CheckVCacheValid(context_, batchSize, numHead, seqLength, hDimVCache),
@@ -300,7 +300,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
 
-        if (methodMode_ == 0) {
+    if (methodMode_ == 0) {
         OP_CHECK_IF((currentCacheMode_ == CacheMode::Norm) && (quantMode_ == QUANT_MODE),
                     OP_LOGE(context_->GetNodeName(), "CacheMode::Norm do not support quant!"), return ge::GRAPH_FAILED);
 
@@ -391,7 +391,7 @@ ge::graphStatus KvRmsNormRopeCacheTilingDs::DoOpTiling()
             tilingData_.set_numBlocks(batchSize);
             tilingData_.set_rowsPerBlock(1);
         }
-                // Check numBlocks <= MAX_BLOCK_DIM
+        // Check numBlocks <= MAX_BLOCK_DIM
         OP_CHECK_IF(tilingData_.get_numBlocks() > MAX_BLOCK_DIM,
                     OP_LOGE(context_->GetNodeName(), "numBlocks must be smaller than 65535."), return ge::GRAPH_FAILED);
     }

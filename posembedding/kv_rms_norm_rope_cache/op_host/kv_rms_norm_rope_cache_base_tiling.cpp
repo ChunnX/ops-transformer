@@ -215,10 +215,9 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext *co
     return isValid;
 }
 
-bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(
-    const gert::TilingContext *context, int64_t batchSize,
-    int64_t numHead, int64_t cacheLen, int64_t headSize,
-    size_t cacheIndex, const char *cacheName)
+bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(const gert::TilingContext *context, int64_t batchSize,
+                                                   int64_t numHead, int64_t cacheLen, int64_t headSize,
+                                                   size_t cacheIndex, const char *cacheName)
 {
     auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
     int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
@@ -261,9 +260,8 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(const gert::TilingContext *c
     return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "v_cache");
 }
 
-bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(
-    const gert::TilingContext *context, int64_t headSize,
-    size_t cacheIndex, const char *cacheName)
+bool KvRmsNormRopeCacheTilingBase::CheckCacheValidPA(const gert::TilingContext *context, int64_t headSize,
+                                                     size_t cacheIndex, const char *cacheName)
 {
     // Default PA format cache check
     // In PageAttention mode, cache dimensions are in [block_num, block_size, N, hDim].
@@ -453,8 +451,8 @@ bool KvRmsNormRopeCacheTilingBase::ValidateSBroadcast()
     if (cosSinNeedBrc_ == 1) {
         // got cosSeq == 1 && cosSeq != seqLen && seqLen > 1
         // only CacheMode::Norm and non-quant PA can be broadcasted
-        isValid = (currentCacheMode_ == CacheMode::Norm) ||
-                  (isPagedAttention_ && !isPABNSD_ && quantMode_ == NON_QUANT_MODE);
+        isValid = (currentCacheMode_ == CacheMode::Norm)
+                  || (isPagedAttention_ && !isPABNSD_ && quantMode_ == NON_QUANT_MODE);
     }
     return isValid;
 }
