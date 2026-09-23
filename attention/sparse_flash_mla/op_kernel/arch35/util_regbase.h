@@ -18,6 +18,7 @@
 
 #include "util.h"
 #include "common/util_regbase_const_info.h"
+#include "common/smla_attention_ablation.h"
 
 using AscendC::QuePosition;
 using AscendC::TQue;
@@ -156,6 +157,7 @@ struct RunInfo {
 };
 
 struct ConstInfo {
+    SMLAKernel::AttentionAblation ablation;
     SMLA_CONST_INFO_COMMON_FIELDS;
     SMLA_CONST_INFO_KV_STRIDE_FIELDS;
     SMLA_CONST_INFO_SPARSE_ONLY_FIELDS;

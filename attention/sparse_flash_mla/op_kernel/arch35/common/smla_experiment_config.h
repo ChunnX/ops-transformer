@@ -22,4 +22,19 @@
 #define SMLA_BANK_DIAGNOSTIC 0
 #endif
 
+// Actual-attention transfer ablation. Never enable in a production package.
+#ifndef SMLA_ATTENTION_ABLATION
+#define SMLA_ATTENTION_ABLATION 0
+#endif
+
+// Build counters/timestamps in a separate audit package, never formal timing.
+#ifndef SMLA_ATTENTION_AUDIT
+#define SMLA_ATTENTION_AUDIT 0
+#endif
+
+// Opposite D256 copy order for the two AIVs; whole-slot ownership is unchanged.
+#ifndef SMLA_AIV_HALF_ORDER
+#define SMLA_AIV_HALF_ORDER 0
+#endif
+
 #endif // SMLA_EXPERIMENT_CONFIG_H

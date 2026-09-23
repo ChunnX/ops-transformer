@@ -685,7 +685,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
             if constexpr (SPLIT_SPARSE_KV_L1) {
                 static_assert(sizeof(Q_T) == 2, "D256 L1 layout requires two-byte input");
                 nzCopy.blockCount = 256 / 16;
-                for (uint32_t half = 0; half < 2; ++half) {
+                static_assert(SMLA_AIV_HALF_ORDER == 0 || !HALF_KV_FREE,
+                              "Opposite half order requires whole-slot FREE");
+                for (uint32_t step = 0; step < 2; ++step) {
+                    uint32_t half = step;
+                    if constexpr (SMLA_AIV_HALF_ORDER == 1) {
+                        half ^= constInfo.subBlockIdx;
+                    }
                     if constexpr (HALF_KV_FREE) {
                         if (half == 1 && s2StartIdx == sparseS2Start) {
                             // Consume half1 credit once, after the first 16-row half0 write.
@@ -696,7 +702,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
                     LocalTensor<Q_T> dst(TPosition::B1,
                         ActiveSparseKvL1Layout::HalfBase(runInfo.taskIdMod3, half),
                         ActiveSparseKvL1Layout::HALF_BYTES / sizeof(Q_T));
-                    DataCopy(dst[s2StartIdx * 16], nzUb[half * 256 * SPARSE_KV_NZ_ROW_STRIDE], nzCopy);
+                    if (constInfo.ablation.Transfer(runInfo.taskId, AttentionAblation::W3KV)) {
+                        DataCopy(dst[s2StartIdx * 16], nzUb[half * 256 * SPARSE_KV_NZ_ROW_STRIDE], nzCopy);
+                    }
                 }
             } else {
                 constexpr uint32_t kvL1BaseBytes =
@@ -1085,7 +1093,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyVec1ResultToL1(StaticBuff
     SetFlag<HardEvent::V_MTE3>(INNERCORE_STAGE1(stage1Offset));
     WaitFlag<HardEvent::V_MTE3>(INNERCORE_STAGE1(stage1Offset));
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.tensor;
-    if (likely(runInfo.halfMRealSize != 0)) {
+    if (likely(runInfo.halfMRealSize != 0) && constInfo.ablation.Transfer(runInfo.taskId, AttentionAblation::W3P)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) *
                               (runInfo.mRealSize - runInfo.halfMRealSize)],
                  stage1CastTensor,

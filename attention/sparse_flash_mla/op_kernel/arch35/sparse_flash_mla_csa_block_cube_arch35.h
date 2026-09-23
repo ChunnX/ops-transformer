@@ -17,7 +17,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "util_regbase.h"
 #include "sparse_flash_mla_common_arch35.h"
-#include "common/static_matmul.h"
+#include "common/smla_attention_matmul.h"
 #include "common/cube_local_buffer.h"
 #include "common/smla_l1_layout.h"
 
@@ -117,7 +117,8 @@ public:
 private:
     __aicore__ inline LocalTensor<Q_T> GetKvQuarter(uint32_t slot, uint32_t quarter, uint32_t rows);
     __aicore__ inline void MatmulPvSplit(const LocalTensor<Q_T> &pL1, const LocalTensor<T> &cL0,
-                                       const MMParam &param, uint32_t slot);
+                                       const MMParam &param, uint32_t slot,
+                                       const AttentionAblation &ablation, int64_t task);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                         __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
                                         __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
@@ -224,7 +225,8 @@ __aicore__ inline LocalTensor<Q_T> CSABlockCube<TEMPLATE_ARGS>::GetKvQuarter(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulPvSplit(
-    const LocalTensor<Q_T> &pL1, const LocalTensor<T> &cL0, const MMParam &param, uint32_t slot)
+    const LocalTensor<Q_T> &pL1, const LocalTensor<T> &cL0, const MMParam &param, uint32_t slot,
+    const AttentionAblation &ablation, int64_t task)
 {
     // One four-N128 PV lifecycle: P is loaded once, and all original AB events remain.
     uint32_t cOffset = Align16Func(param.realM != 0 ? param.realM : param.singleM) * dBaseMatmulSize;
@@ -242,11 +244,13 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulPvSplit(
         StaticBuffer<Q_T> &aBuf = l0A.GetNext();
         StaticBuffer<Q_T> &bBuf = l0B.GetNext();
         WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(aBuf.idx));
-        if (quarter == 0) {
+        if (quarter == 0 && ablation.Transfer(task, AttentionAblation::RP)) {
             LoadDataToL0A(l0ResidentP, pL1, param, 0, param.singleK, param.singleM);
         }
         LocalTensor<Q_T> kvQuarter = GetKvQuarter(slot, quarter, Align16Func(param.singleK));
-        LoadDataToL0B(bBuf.tensor, kvQuarter, param, 0, param.singleK, dBaseMatmulSize, 1);
+        if (ablation.Transfer(task, AttentionAblation::RV)) {
+            LoadDataToL0B(bBuf.tensor, kvQuarter, param, 0, param.singleK, dBaseMatmulSize, 1);
+        }
         if constexpr (HALF_KV_FREE) {
             if (quarter == 1 || quarter == 3) {
                 // MTE1 has consumed this half; L0B retains its own M_MTE1 protection.
@@ -378,16 +382,20 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo &r
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
 {
+    constInfo.ablation.template Mark<HardEvent::MTE2_S>(runInfo.taskId, 0);
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
                                                                  runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
     for (uint32_t i = 0; i < qHalfNum; i++) {
         uint32_t smlaCurL1QBufId = (l1QBufId + i) % l1QBufNum;
         WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(smlaCurL1QBufId));
         uint64_t curGmOffset = gmOffset + i * (constInfo.dSize >> 1);
-        CopyToL1Nd2Nz<Q_T>(l1QBufs[smlaCurL1QBufId].tensor, this->queryGm.gmTensor[curGmOffset], runInfo.mRealSize,
-                           constInfo.dSize >> 1, constInfo.mm1Ka);
+        if (constInfo.ablation.Transfer(runInfo.taskId, AttentionAblation::W2Q)) {
+            CopyToL1Nd2Nz<Q_T>(l1QBufs[smlaCurL1QBufId].tensor, this->queryGm.gmTensor[curGmOffset], runInfo.mRealSize,
+                               constInfo.dSize >> 1, constInfo.mm1Ka);
+        }
         SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1Q(smlaCurL1QBufId));
     }
+    constInfo.ablation.template Mark<HardEvent::MTE2_S>(runInfo.taskId, 1);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -528,6 +536,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
                                                                     RunInfo &runInfoNext, RunInfo &runInfo,
                                                                     ConstInfo &constInfo)
 {
+    constInfo.ablation.Tile(runInfo.s2RealSize == s2BaseSize);
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 2);
     LocalTensor<Q_T> curL1RightTensor = GetKvQuarter(runInfo.taskIdMod3, 0, Align16Func(runInfo.s2RealSize));
     if constexpr (DIRECT_SPARSE_KV_L1 && !UNIFIED_KV_READY) {
         if (runInfo.s2RealSize == s2BaseSize) {
@@ -561,19 +571,20 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     // tile from the preceding query's last read; no separate Q event is needed.
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
         l1QBufs[smlaCurL1QBufId].tensor, curL1RightTensor, l0A, l0B, smlaCBuf.tensor, smlaParam,
-        {}, {}, l0ResidentQ, runInfo.s2LoopCount == 0);
+        {}, {}, l0ResidentQ, runInfo.s2LoopCount == 0, constInfo.ablation, runInfo.taskId);
     // Explicit K128 calls keep the resident-tile selection out of the K loop.
     smlaParam.isOutKFisrt = false;
     if constexpr (L0A_POLICY == 2) {
         MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
             l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
             GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
-            l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentQSecond, runInfo.s2LoopCount == 0);
+            l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, l0ResidentQSecond, runInfo.s2LoopCount == 0,
+            constInfo.ablation, runInfo.taskId);
     } else {
         MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
             l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
             GetKvQuarter(runInfo.taskIdMod3, 1, Align16Func(runInfo.s2RealSize)),
-            l0A, l0B, smlaCBuf.tensor, smlaParam);
+            l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, {}, true, constInfo.ablation, runInfo.taskId);
     }
 
     smlaCurL1QBufId = (smlaCurL1QBufId + 1) % l1QBufNum;
@@ -583,11 +594,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     // The supported D=512 also makes the second half two fixed K128 tiles.
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1QBufs[smlaCurL1QBufId].tensor, GetKvQuarter(runInfo.taskIdMod3, 2, Align16Func(runInfo.s2RealSize)),
-        l0A, l0B, smlaCBuf.tensor, smlaParam);
+        l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, {}, true, constInfo.ablation, runInfo.taskId);
     MatmulKStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1QBufs[smlaCurL1QBufId].tensor[dBaseMatmulSize * Align16Func(runInfo.mRealSize)],
         GetKvQuarter(runInfo.taskIdMod3, 3, Align16Func(runInfo.s2RealSize)),
-        l0A, l0B, smlaCBuf.tensor, smlaParam);
+        l0A, l0B, smlaCBuf.tensor, smlaParam, {}, {}, {}, true, constInfo.ablation, runInfo.taskId);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         SetFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(l1QBufId));
@@ -601,6 +612,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
     SetFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
     WaitFlag<HardEvent::M_FIX>(INNERCORE_L0C(smlaCBuf.idx));
 
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 3);
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1(outputBuf.idx));
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1(outputBuf.idx) + AIV0_AIV1_OFFSET);
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
@@ -631,8 +643,15 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
                                                                     StaticBuffer<Q_T> &l1PBuffer,
                                                                     const RunInfo &runInfo, const ConstInfo &constInfo)
 {
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 4);
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1P(l1PBuffer.idx));
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1P(l1PBuffer.idx) + AIV0_AIV1_OFFSET);
+    if (constInfo.ablation.Sample(runInfo.taskId)) {
+        // Bridge the MTE1 ready wait to a scalar-observable M join, not pure MTE1 time.
+        SetFlag<HardEvent::MTE1_M>(7);
+        WaitFlag<HardEvent::MTE1_M>(7);
+    }
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 5);
 
     StaticBuffer<T> &smlaCBuf = l0C.GetNext();
     WaitFlag<HardEvent::FIX_M>(INNERCORE_L0C(smlaCBuf.idx));
@@ -646,8 +665,10 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
     // M_FIX orders FIX only. A separate M_MTE1 event protects resident P
     // across PV calls while QK continues to use its independent lower slots.
     WaitFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 6, false);
     if constexpr (SPLIT_SPARSE_KV_L1) {
-        MatmulPvSplit(l1PBuffer.tensor, smlaCBuf.tensor, smlaParam, runInfo.taskIdMod3);
+        MatmulPvSplit(l1PBuffer.tensor, smlaCBuf.tensor, smlaParam, runInfo.taskIdMod3,
+                      constInfo.ablation, runInfo.taskId);
     } else {
         LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
         MatmulNStatic<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN, true>(
@@ -669,6 +690,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
     }
     l1KMatmul2BufId = (l1KMatmul2BufId + 1) % l1KBufNum;
 
+    constInfo.ablation.template Mark<HardEvent::M_S>(runInfo.taskId, 7);
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2);
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2 + AIV0_AIV1_OFFSET);
     // L0C→UB;FixpipeParamsM300:L0C→UB

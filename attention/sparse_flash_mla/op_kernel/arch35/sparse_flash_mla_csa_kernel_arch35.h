@@ -168,6 +168,19 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
                           cmpResidualKV);
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
                   LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
+                  !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && SMLA_L1_LAYOUT_MODE == 3 &&
+                  SMLA_L1_SYNC_MODE == 0 && SMLA_L0A_MODE == 0 && SMLA_L1_PHASE_MODE == 0) {
+        constInfo.ablation.Init(metadata, aicIdx, constInfo.subBlockIdx,
+            constInfo.bSize == 1 && constInfo.gSize == 64 && constInfo.n2Size == 1 &&
+            constInfo.s1Size == 4096 && constInfo.s2Size == 8192 && constInfo.cmpS2Size == 2048 &&
+            constInfo.dSize == 512 && constInfo.dSizeV == 512 &&
+            constInfo.oriSparseBlockCount == 128 && constInfo.cmpSparseBlockCount == 512 &&
+            constInfo.oriMaskMode == 4 && constInfo.cmpMaskMode == 3 &&
+            constInfo.oriWinLeft == -1 && constInfo.oriWinRight == -1 &&
+            oriTopkLength == nullptr && cmpTopkLength == nullptr && sequsedQ == nullptr);
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+                  LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
                   !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && IS_VEC_S2PHYADDR) {
         if (constInfo.gSize == 64 && constInfo.n2Size == 1 && hasCuSeqlensQ &&
             oriTopkLength == nullptr && constInfo.oriSparseBlockCount > 0 &&
@@ -486,6 +499,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         }
     }
     FreeEvent(this->bmm1Buffers, this->cubeBlock, this->vecBlock, this->constInfo);
+    this->constInfo.ablation.Finish();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -628,8 +642,11 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                     if ASCEND_IS_AIV {
                         if (smlaNotLastThreeLoop) {
                             RunInfo &runInfo1 = runInfo[taskId % 4];
+                            this->constInfo.ablation.Tile(runInfo1.s2RealSize == this->constInfo.s2BaseSize);
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo1.taskId, 0);
                             this->vecBlock.ProcessVec0(this->v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1,
                                                        this->constInfo);
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo1.taskId, 1);
                         }
                         if (taskId > 1 && smlaNotLast) {
                             uint32_t bmm1Slot = bmm1GetFlag;
@@ -637,12 +654,16 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             uint32_t l1PSlot = l1PGetFlag;
                             l1PGetFlag ^= 1;
                             auto &runInfo2 = runInfo[(taskId + 2) % 4];
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo2.taskId, 2);
                             this->vecBlock.ProcessVec1(this->l1PBuffers[l1PSlot], this->bmm1Buffers[bmm1Slot], runInfo2,
                                                        this->constInfo);
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo2.taskId, 3);
                         }
                         if (taskId > 2) {
                             RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo3.taskId, 4);
                             this->vecBlock.ProcessVec2(this->bmm2Buffers, runInfo3, this->constInfo);
+                            this->constInfo.ablation.template Mark<HardEvent::MTE3_S>(runInfo3.taskId, 5);
                         }
                     } else {
                         if constexpr (CubeBlockType::PHASED_KV) {
