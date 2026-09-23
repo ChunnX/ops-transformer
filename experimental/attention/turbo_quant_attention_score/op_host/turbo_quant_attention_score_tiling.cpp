@@ -159,8 +159,7 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     OP_CHECK_IF(table.GetDim(0) <= 0, OP_LOGE(context, "batch must be positive"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(table.GetDim(0) != seq.GetDim(0), OP_LOGE(context, "block_table/seq_lens batch mismatch"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(table.GetDim(1) <= 0, OP_LOGE(context, "max_blocks_per_seq must be positive"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(table.GetDim(1) <= 0, OP_LOGE(context, "max_blocks_per_seq must be positive"), return ge::GRAPH_FAILED);
 
     const auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -222,18 +221,18 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     const uint64_t headBf16 = AlignUp(static_cast<uint64_t>(params.headDim) * sizeof(uint16_t), alignBytes);
     const bool isPrefill = (params.numTokens > 1U && params.maxBatch == 1U);
     constexpr uint32_t K_SHARE = 4U;
-    const uint64_t fixedBytes =
-        2U * headBf16 + (2U * K_SHARE + 4U) * headBytes + AlignUp(16U * sizeof(float), alignBytes) +
-        AlignUp(24U * sizeof(float), alignBytes) +
-        AlignUp(static_cast<uint64_t>(params.headDim) * sizeof(uint32_t), alignBytes) +
-        AlignUp(256U * 8U * sizeof(float), alignBytes);
+    const uint64_t fixedBytes = 2U * headBf16 + (2U * K_SHARE + 4U) * headBytes +
+                                AlignUp(16U * sizeof(float), alignBytes) + AlignUp(24U * sizeof(float), alignBytes) +
+                                AlignUp(static_cast<uint64_t>(params.headDim) * sizeof(uint32_t), alignBytes) +
+                                AlignUp(256U * 8U * sizeof(float), alignBytes);
     uint64_t perKv =
         (static_cast<uint64_t>(K_SHARE) + 1U) * sizeof(float) +
-        static_cast<uint64_t>(params.numKvHeads) *
-            (static_cast<uint64_t>(params.idxPackedBytes) + params.qjlPackedBytes + 2U * sizeof(uint16_t) +
-             2U * sizeof(float));
+        static_cast<uint64_t>(params.numKvHeads) * (static_cast<uint64_t>(params.idxPackedBytes) +
+                                                    params.qjlPackedBytes + 2U * sizeof(uint16_t) + 2U * sizeof(float));
     if (isPrefill) {
-        perKv += 2U * static_cast<uint64_t>(params.headDim) * sizeof(float) + 2U * sizeof(float);
+        // dequant+signs cache, norm/gamma rows, and batched-dot scratch (1x headDim per kv).
+        perKv += 3U * static_cast<uint64_t>(params.headDim) * sizeof(float) + 2U * sizeof(float) +
+                 8U * sizeof(float); // BlockReduceSum tv scratch
     }
     OP_CHECK_IF(budget <= fixedBytes + perKv, OP_LOGE(context, "UB size %lu insufficient for tiling", ubBytes),
                 return ge::GRAPH_FAILED);
@@ -242,7 +241,8 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
         std::min<uint64_t>(std::min<uint64_t>((budget - fixedBytes) / perKv, MAX_KV_TILE), params.maxKvLen));
     OP_CHECK_IF(params.kvTile == 0U, OP_LOGE(context, "calculated kvTile is zero"), return ge::GRAPH_FAILED);
     if (isPrefill) {
-        params.kvTile = std::min(params.kvTile, 32U);
+        // A2 192KB UB: allow larger tile to cut prefill loop overhead (was 32).
+        params.kvTile = std::min(params.kvTile, 64U);
     } else {
         params.kvTile = std::min(params.kvTile, 64U);
     }
@@ -250,8 +250,7 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     uint32_t coreNum = platform.GetCoreNumAiv();
     OP_CHECK_IF(coreNum == 0U, OP_LOGE(context, "AIV core num is zero"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(params.kvTile == 0U, OP_LOGE(context, "kvTile is zero before numKvTiles"), return ge::GRAPH_FAILED);
-    const uint64_t numKvTiles =
-        (static_cast<uint64_t>(params.maxKvLen) + params.kvTile - 1U) / params.kvTile;
+    const uint64_t numKvTiles = (static_cast<uint64_t>(params.maxKvLen) + params.kvTile - 1U) / params.kvTile;
     if (isPrefill) {
         const uint64_t totalUnits = static_cast<uint64_t>(params.numKvHeads) * numKvTiles;
         params.usedCoreNum = static_cast<uint32_t>(std::min<uint64_t>(totalUnits, coreNum));
@@ -322,8 +321,8 @@ static ge::graphStatus TilingPrepareForTurboQuantAttentionScore(gert::TilingPars
     compileInfo->aivCoreNum = platform.GetCoreNumAiv();
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo->ubSize);
     compileInfo->ubBlockSize = Ops::Base::GetUbBlockSize(context);
-    OP_CHECK_IF(compileInfo->aivCoreNum <= 0, OP_LOGE(context, "aivCoreNum must be positive, got %ld",
-                                                      compileInfo->aivCoreNum),
+    OP_CHECK_IF(compileInfo->aivCoreNum <= 0,
+                OP_LOGE(context, "aivCoreNum must be positive, got %ld", compileInfo->aivCoreNum),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(compileInfo->ubSize == 0U, OP_LOGE(context, "ubSize must be positive"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(compileInfo->ubBlockSize == 0U, OP_LOGE(context, "ubBlockSize must be positive"),

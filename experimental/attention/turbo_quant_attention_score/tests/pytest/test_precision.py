@@ -24,6 +24,7 @@ from golden import calc_expect_func
 
 def softmax_kl(a: np.ndarray, b: np.ndarray) -> float:
     """KL(softmax(a) || softmax(b)) averaged over tokens/heads."""
+
     def _sm(x):
         x = x - np.max(x, axis=-1, keepdims=True)
         e = np.exp(np.clip(x, -80, 80))

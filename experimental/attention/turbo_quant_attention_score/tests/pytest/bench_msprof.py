@@ -125,7 +125,9 @@ def run_case(case: dict, warmup: int, samples: int, drop_max: int) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--case-json", default=str(Path(__file__).with_name("case.json")))
+    parser.add_argument(
+        "--case-json", default=str(Path(__file__).with_name("case.json"))
+    )
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--samples", type=int, default=60)
     parser.add_argument("--drop-max", type=int, default=10)
@@ -151,7 +153,9 @@ def main():
             print(json.dumps(err, ensure_ascii=False), flush=True)
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    Path(args.out).write_text(
+        json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"wrote {args.out}")
 
 

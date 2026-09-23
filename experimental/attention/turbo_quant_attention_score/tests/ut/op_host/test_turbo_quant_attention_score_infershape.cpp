@@ -54,10 +54,8 @@ TEST_F(TurboQuantAttentionScoreInfershapeTest, DecodeBasicShape)
                                    {numBlocks, pagedBlockSize, numKvHeads, idxPackedBytes}};
     gert::StorageShape qjlShape = {{numBlocks, pagedBlockSize, numKvHeads, qjlPackedBytes},
                                    {numBlocks, pagedBlockSize, numKvHeads, qjlPackedBytes}};
-    gert::StorageShape normShape = {{numBlocks, pagedBlockSize, numKvHeads},
-                                    {numBlocks, pagedBlockSize, numKvHeads}};
-    gert::StorageShape gammaShape = {{numBlocks, pagedBlockSize, numKvHeads},
-                                     {numBlocks, pagedBlockSize, numKvHeads}};
+    gert::StorageShape normShape = {{numBlocks, pagedBlockSize, numKvHeads}, {numBlocks, pagedBlockSize, numKvHeads}};
+    gert::StorageShape gammaShape = {{numBlocks, pagedBlockSize, numKvHeads}, {numBlocks, pagedBlockSize, numKvHeads}};
     gert::StorageShape blockTableShape = {{numTokens, maxBlocksPerSeq}, {numTokens, maxBlocksPerSeq}};
     gert::StorageShape seqLensShape = {{numTokens}, {numTokens}};
 

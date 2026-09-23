@@ -59,7 +59,13 @@ public:
         this->Attr("mse_bits").AttrType(OPTIONAL).Int(3);
 
         OpAICoreConfig aicoreConfig;
-        aicoreConfig.ExtendCfgInfo("opFile.value", "turbo_quant_attention_score");
+        aicoreConfig.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(false)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("opFile.value", "turbo_quant_attention_score");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
     }

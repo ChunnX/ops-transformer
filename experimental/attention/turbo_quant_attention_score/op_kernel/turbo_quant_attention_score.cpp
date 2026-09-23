@@ -31,9 +31,11 @@ __aicore__ inline void CopyTilingData(optiling::TurboQuantAttentionScoreTilingDa
     }
 }
 
-extern "C" __global__ __aicore__ void turbo_quant_attention_score(
-    GM_ADDR queryRotated, GM_ADDR queryQjl, GM_ADDR keyCacheIdx, GM_ADDR keyCacheQjl, GM_ADDR keyCacheNorm,
-    GM_ADDR keyCacheGamma, GM_ADDR blockTable, GM_ADDR seqLens, GM_ADDR attnScores, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void turbo_quant_attention_score(GM_ADDR queryRotated, GM_ADDR queryQjl,
+                                                                  GM_ADDR keyCacheIdx, GM_ADDR keyCacheQjl,
+                                                                  GM_ADDR keyCacheNorm, GM_ADDR keyCacheGamma,
+                                                                  GM_ADDR blockTable, GM_ADDR seqLens,
+                                                                  GM_ADDR attnScores, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::TurboQuantAttentionScoreTilingData);
     optiling::TurboQuantAttentionScoreTilingData tilingDataIn;

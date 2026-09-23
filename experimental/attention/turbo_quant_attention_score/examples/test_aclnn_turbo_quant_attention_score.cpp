@@ -33,8 +33,8 @@ constexpr int64_t BLOCK_SIZE = 128;
 constexpr int64_t HEAD_DIM = 128;
 constexpr int64_t MSE_BITS = 3;
 constexpr float PI = 3.14159265358979323846F;
-constexpr float CENTROIDS3[] = {-0.19020693F, -0.1187859178F, -0.06682205945F, -0.02166347019F,
-                                0.02166347019F, 0.06682205945F, 0.1187859178F, 0.19020693F};
+constexpr float CENTROIDS3[] = {-0.19020693F,   -0.1187859178F, -0.06682205945F, -0.02166347019F,
+                                0.02166347019F, 0.06682205945F, 0.1187859178F,   0.19020693F};
 
 uint16_t FloatToBf16Bits(float value)
 {
@@ -97,8 +97,8 @@ void PackQjl(const std::vector<int8_t> &signs, uint8_t *packed)
 std::vector<float> Golden(const std::vector<float> &query, const std::vector<float> &queryQjl,
                           const std::vector<uint8_t> &idxPacked, const std::vector<uint8_t> &qjlPacked,
                           const std::vector<float> &norm, const std::vector<float> &gamma,
-                          const std::vector<int32_t> &blockTable, const std::vector<int32_t> &seqLens,
-                          int64_t tokens, int64_t qHeads, int64_t kvHeads, int64_t maxBlocks, int64_t maxKvLen)
+                          const std::vector<int32_t> &blockTable, const std::vector<int32_t> &seqLens, int64_t tokens,
+                          int64_t qHeads, int64_t kvHeads, int64_t maxBlocks, int64_t maxKvLen)
 {
     const float coeff = std::sqrt(PI / 2.0F) / static_cast<float>(HEAD_DIM);
     const int64_t groups = qHeads / kvHeads;
@@ -127,8 +127,8 @@ std::vector<float> Golden(const std::vector<float> &query, const std::vector<flo
                 int64_t dim = 0;
                 for (int64_t trip = 0; trip < 16; ++trip) {
                     const uint32_t word = static_cast<uint32_t>(idxBytes[trip * 3]) |
-                                         (static_cast<uint32_t>(idxBytes[trip * 3 + 1]) << 8) |
-                                         (static_cast<uint32_t>(idxBytes[trip * 3 + 2]) << 16);
+                                          (static_cast<uint32_t>(idxBytes[trip * 3 + 1]) << 8) |
+                                          (static_cast<uint32_t>(idxBytes[trip * 3 + 2]) << 16);
                     for (int64_t s = 0; s < 24; s += 3) {
                         const uint32_t index = (word >> s) & 7U;
                         mainDot += query[qBase + dim] * CENTROIDS3[index];

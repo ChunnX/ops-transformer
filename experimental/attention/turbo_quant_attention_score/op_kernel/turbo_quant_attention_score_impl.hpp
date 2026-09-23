@@ -69,10 +69,8 @@ public:
         kShare_ = (groups_ >= 4U) ? 4U : 2U;
 
         const uint64_t queryElems = totalRows_ * headDim_;
-        const uint64_t idxElems =
-            static_cast<uint64_t>(numBlocks_) * blockSize_ * numKvHeads_ * idxPackedBytes_;
-        const uint64_t qjlElems =
-            static_cast<uint64_t>(numBlocks_) * blockSize_ * numKvHeads_ * qjlPackedBytes_;
+        const uint64_t idxElems = static_cast<uint64_t>(numBlocks_) * blockSize_ * numKvHeads_ * idxPackedBytes_;
+        const uint64_t qjlElems = static_cast<uint64_t>(numBlocks_) * blockSize_ * numKvHeads_ * qjlPackedBytes_;
         const uint64_t scalarElems = static_cast<uint64_t>(numBlocks_) * blockSize_ * numKvHeads_;
         const uint64_t tableElems = static_cast<uint64_t>(maxBatch_) * maxBlocksPerSeq_;
         const uint64_t outElems = totalRows_ * maxKvLen_;
@@ -126,6 +124,10 @@ public:
             pipe_.InitBuffer(signsCacheBuf_, AlignUpBytes(kvTile_ * headDim_ * sizeof(float), ubBlockSize_));
             pipe_.InitBuffer(normRowBuf_, AlignUpBytes(kvTile_ * sizeof(float), ubBlockSize_));
             pipe_.InitBuffer(gammaRowBuf_, AlignUpBytes(kvTile_ * sizeof(float), ubBlockSize_));
+            // Scratch for batched Mul across kvTile rows (fewer PIPE_V barriers).
+            pipe_.InitBuffer(dotTmpBuf_, AlignUpBytes(kvTile_ * headDim_ * sizeof(float), ubBlockSize_));
+            // Scratch for BlockReduceSum: 8 floats per row.
+            pipe_.InitBuffer(reduceTvBuf_, AlignUpBytes(kvTile_ * 8U * sizeof(float), ubBlockSize_));
         }
 
         InitCentroids();
@@ -227,8 +229,7 @@ private:
         DataCopyPad(dst, src, copy, pad);
     }
 
-    __aicore__ inline void CopyBytes(const LocalTensor<uint8_t> &dst, const GlobalTensor<uint8_t> &src,
-                                     uint32_t bytes)
+    __aicore__ inline void CopyBytes(const LocalTensor<uint8_t> &dst, const GlobalTensor<uint8_t> &src, uint32_t bytes)
     {
         DataCopyExtParams copy{1, bytes, 0, 0, 0};
         DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
@@ -263,18 +264,10 @@ private:
     __aicore__ inline void WriteScoreRow(uint32_t token, uint32_t qHead, uint32_t kvStart, uint32_t rows,
                                          const LocalTensor<float> &scores)
     {
-        const uint64_t outOff = (static_cast<uint64_t>(token) * numQHeads_ + qHead) * maxKvLen_;
-        LocalTensor<float> outLocal = outputQue_.AllocTensor<float>();
-        for (uint32_t j = 0; j < rows; ++j) {
-            outLocal.SetValue(j, scores.GetValue(j));
-        }
-        outputQue_.EnQue(outLocal);
-        outLocal = outputQue_.DeQue<float>();
-        CopyScores(outOff + kvStart, outLocal, rows);
-        // Must drain MTE3 before recycling outputQue for the next row write.
-        SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
-        outputQue_.FreeTensor(outLocal);
+        // Direct UB->GM; caller resolves S/V→MTE3 and may batch several writes before MTE3_S.
+        const uint64_t outOff = (static_cast<uint64_t>(token) * numQHeads_ + qHead) * maxKvLen_ + kvStart;
+        DataCopyExtParams copy{1, static_cast<uint32_t>(rows * sizeof(float)), 0, 0, 0};
+        DataCopyPad(outputGm_[outOff], scores, copy);
     }
 
     __aicore__ inline uint64_t CacheScalarOffset(uint32_t physBlock, uint32_t offsetInBlock, uint32_t kvHead) const
@@ -357,6 +350,34 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    // Batched GEMV: broadcast-q Mul, fold 128→64, BlockReduceSum rows→scalars.
+    __aicore__ inline void DotBatchRows(const LocalTensor<float> &q, const LocalTensor<float> &mat,
+                                        const LocalTensor<float> &tmpMat, const LocalTensor<float> &work,
+                                        const LocalTensor<float> &dstScores, uint32_t rows)
+    {
+        (void)work;
+        if (rows == 0U) {
+            return;
+        }
+        constexpr uint8_t kRowBlocks = 16; // headDim=128 floats / 8
+        constexpr uint64_t kVecLen = 64;
+        const BinaryRepeatParams mulBrp(1, 1, 1, kRowBlocks, 0, kRowBlocks);
+        const uint8_t rep = static_cast<uint8_t>(rows);
+        Mul(tmpMat, q, mat, kVecLen, rep, mulBrp);
+        Mul(tmpMat[kVecLen], q[kVecLen], mat[kVecLen], kVecLen, rep, mulBrp);
+        PipeBarrier<PIPE_V>();
+        const BinaryRepeatParams addBrp(1, 1, 1, kRowBlocks, kRowBlocks, kRowBlocks);
+        Add(tmpMat, tmpMat, tmpMat[kVecLen], kVecLen, rep, addBrp);
+        PipeBarrier<PIPE_V>();
+        // 64→8 per row (src stride = 128 floats = 16 blocks), then 8→1.
+        LocalTensor<float> tv = reduceTvBuf_.Get<float>();
+        BlockReduceSum<float, false>(tv, tmpMat, static_cast<int32_t>(rows), 0, 1, 1, static_cast<int32_t>(kRowBlocks));
+        PipeBarrier<PIPE_V>();
+        const int32_t stage2Rep = static_cast<int32_t>((static_cast<uint32_t>(rows) * 8U + 63U) / 64U);
+        BlockReduceSum<float, false>(dstScores, tv, stage2Rep, 0, 1, 1, 8);
+        PipeBarrier<PIPE_V>();
+    }
+
     // score = norm * main + qjlCoeff * gamma * corr  (vector, over n KV positions)
     __aicore__ inline void FuseNormGammaCorr(const LocalTensor<float> &scores, const LocalTensor<float> &corr,
                                              const LocalTensor<float> &normRow, const LocalTensor<float> &gammaRow,
@@ -380,11 +401,9 @@ private:
     }
 
     // Unpack once; dual query dots; MTE3-sync between the two score GM writes.
-    __aicore__ inline void ProcessKvShared2(uint32_t token, uint32_t kvHead, uint32_t kvStart,
-                                             uint32_t qHeadBase)
+    __aicore__ inline void ProcessKvShared2(uint32_t token, uint32_t kvHead, uint32_t kvStart, uint32_t qHeadBase)
     {
-        const uint32_t rows =
-            (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
+        const uint32_t rows = (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
         const uint32_t batchIdx = (maxBatch_ == 1U) ? 0U : token;
 
         LocalTensor<float> q0 = queryFp32Buf_.Get<float>();
@@ -422,8 +441,7 @@ private:
 
             const uint32_t logical0 = kvPos / blockSize_;
             const uint32_t offset0 = kvPos % blockSize_;
-            const int32_t phys = blockTableGm_.GetValue(
-                static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
+            const int32_t phys = blockTableGm_.GetValue(static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
 
             uint32_t run = 1;
             while (i + run < rows) {
@@ -437,8 +455,7 @@ private:
                 ++run;
             }
 
-            const uint64_t baseScalar =
-                (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
+            const uint64_t baseScalar = (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
             const uint32_t span = run * numKvHeads_;
 
             LocalTensor<uint8_t> idxLocal = idxInQue_.AllocTensor<uint8_t>();
@@ -505,14 +522,14 @@ private:
         WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
         WriteScoreRow(token, qHeadBase, kvStart, rows, scores0);
         WriteScoreRow(token, qHeadBase + 1U, kvStart, rows, scores1);
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
     }
 
     // One KV walk for 4 GQA queries (groups=4); MTE3-sync after each score write.
-    __aicore__ inline void ProcessKvShared4(uint32_t token, uint32_t kvHead, uint32_t kvStart,
-                                             uint32_t qHeadBase)
+    __aicore__ inline void ProcessKvShared4(uint32_t token, uint32_t kvHead, uint32_t kvStart, uint32_t qHeadBase)
     {
-        const uint32_t rows =
-            (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
+        const uint32_t rows = (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
         const uint32_t batchIdx = (maxBatch_ == 1U) ? 0U : token;
 
         LocalTensor<float> q0 = queryFp32Buf_.Get<float>();
@@ -560,8 +577,7 @@ private:
 
             const uint32_t logical0 = kvPos / blockSize_;
             const uint32_t offset0 = kvPos % blockSize_;
-            const int32_t phys = blockTableGm_.GetValue(
-                static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
+            const int32_t phys = blockTableGm_.GetValue(static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
 
             uint32_t run = 1;
             while (i + run < rows) {
@@ -575,8 +591,7 @@ private:
                 ++run;
             }
 
-            const uint64_t baseScalar =
-                (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
+            const uint64_t baseScalar = (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
             const uint32_t span = run * numKvHeads_;
 
             LocalTensor<uint8_t> idxLocal = idxInQue_.AllocTensor<uint8_t>();
@@ -651,6 +666,8 @@ private:
         WriteScoreRow(token, qHeadBase + 1U, kvStart, rows, scores1);
         WriteScoreRow(token, qHeadBase + 2U, kvStart, rows, scores2);
         WriteScoreRow(token, qHeadBase + 3U, kvStart, rows, scores3);
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
     }
 
     // Prefill: schedule by (kvHead, tile); unpack once then fan out over tokens.
@@ -662,15 +679,17 @@ private:
             const uint32_t kvHead = static_cast<uint32_t>(unit / numKvTiles);
             const uint32_t tileIdx = static_cast<uint32_t>(unit % numKvTiles);
             const uint32_t kvStart = tileIdx * kvTile_;
+            const uint32_t tokenStart = 0U;
+            const uint32_t tokenEnd = numTokens_;
             if (groups_ >= 4U) {
-                ProcessPrefillKvShared4(kvHead, kvStart);
+                ProcessPrefillKvShared4(kvHead, kvStart, tokenStart, tokenEnd);
             } else if (groups_ >= 2U) {
                 const uint32_t qHeadBase = kvHead * groups_;
                 for (uint32_t g = 0; g < groups_; g += 2U) {
-                    ProcessPrefillKvShared2(kvHead, kvStart, qHeadBase + g);
+                    ProcessPrefillKvShared2(kvHead, kvStart, qHeadBase + g, tokenStart, tokenEnd);
                 }
             } else {
-                ProcessPrefillKvSingle(kvHead, kvStart);
+                ProcessPrefillKvSingle(kvHead, kvStart, tokenStart, tokenEnd);
             }
         }
     }
@@ -678,8 +697,7 @@ private:
     // Unpack one (kvHead, tile) into UB caches; returns valid row count and fills mask via NEG_INF later.
     __aicore__ inline void UnpackTileToCache(uint32_t kvHead, uint32_t kvStart, uint32_t rows,
                                              const LocalTensor<float> &dequantCache,
-                                             const LocalTensor<float> &signsCache,
-                                             const LocalTensor<float> &normRow,
+                                             const LocalTensor<float> &signsCache, const LocalTensor<float> &normRow,
                                              const LocalTensor<float> &gammaRow, int32_t seqLen)
     {
         LocalTensor<float> centroids = centroidBuf_.Get<float>();
@@ -713,8 +731,7 @@ private:
                 ++run;
             }
 
-            const uint64_t baseScalar =
-                (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
+            const uint64_t baseScalar = (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
             const uint32_t span = run * numKvHeads_;
 
             LocalTensor<uint8_t> idxLocal = idxInQue_.AllocTensor<uint8_t>();
@@ -770,10 +787,10 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessPrefillKvShared4(uint32_t kvHead, uint32_t kvStart)
+    __aicore__ inline void ProcessPrefillKvShared4(uint32_t kvHead, uint32_t kvStart, uint32_t tokenStart,
+                                                   uint32_t tokenEnd)
     {
-        const uint32_t rows =
-            (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
+        const uint32_t rows = (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
         const uint32_t qHeadBase = kvHead * groups_;
 
         LocalTensor<float> dequantCache = dequantCacheBuf_.Get<float>();
@@ -788,10 +805,9 @@ private:
         UnpackTileToCache(kvHead, kvStart, rows, dequantCache, signsCache, normRow, gammaRow, seqLen);
 
         const uint32_t validRows =
-            (static_cast<int32_t>(kvStart) >= seqLen)
-                ? 0U
-                : ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows
-                                                                      : (static_cast<uint32_t>(seqLen) - kvStart));
+            (static_cast<int32_t>(kvStart) >= seqLen) ?
+                0U :
+                ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows : (static_cast<uint32_t>(seqLen) - kvStart));
 
         LocalTensor<float> q0 = queryFp32Buf_.Get<float>();
         LocalTensor<float> s0 = qjlFp32Buf_.Get<float>();
@@ -810,54 +826,56 @@ private:
         LocalTensor<float> corr1 = signsBuf_.Get<float>();
         LocalTensor<float> corr2 = normFpBuf_.Get<float>();
         LocalTensor<float> corr3 = gammaFpBuf_.Get<float>();
-        LocalTensor<float> tmp = tmpBuf_.Get<float>();
+        LocalTensor<float> tmpMat = dotTmpBuf_.Get<float>();
         LocalTensor<float> work = reduceWorkBuf_.Get<float>();
 
-        for (uint32_t token = 0; token < numTokens_; ++token) {
+        for (uint32_t token = tokenStart; token < tokenEnd; ++token) {
             LoadQueryPair(token, qHeadBase, q0, s0);
             LoadQueryPair(token, qHeadBase + 1U, q1, s1);
             LoadQueryPair(token, qHeadBase + 2U, q2, s2);
             LoadQueryPair(token, qHeadBase + 3U, q3, s3);
 
-            for (uint32_t i = 0; i < validRows; ++i) {
-                const uint32_t rowOff = i * headDim_;
-                DotToSlot(q0, dequantCache[rowOff], tmp, work, scores0[i]);
-                DotToSlot(s0, signsCache[rowOff], tmp, work, corr0[i]);
-                DotToSlot(q1, dequantCache[rowOff], tmp, work, scores1[i]);
-                DotToSlot(s1, signsCache[rowOff], tmp, work, corr1[i]);
-                DotToSlot(q2, dequantCache[rowOff], tmp, work, scores2[i]);
-                DotToSlot(s2, signsCache[rowOff], tmp, work, corr2[i]);
-                DotToSlot(q3, dequantCache[rowOff], tmp, work, scores3[i]);
-                DotToSlot(s3, signsCache[rowOff], tmp, work, corr3[i]);
-            }
-
             if (validRows > 0U) {
+                DotBatchRows(q0, dequantCache, tmpMat, work, scores0, validRows);
+                DotBatchRows(s0, signsCache, tmpMat, work, corr0, validRows);
+                DotBatchRows(q1, dequantCache, tmpMat, work, scores1, validRows);
+                DotBatchRows(s1, signsCache, tmpMat, work, corr1, validRows);
+                DotBatchRows(q2, dequantCache, tmpMat, work, scores2, validRows);
+                DotBatchRows(s2, signsCache, tmpMat, work, corr2, validRows);
+                DotBatchRows(q3, dequantCache, tmpMat, work, scores3, validRows);
+                DotBatchRows(s3, signsCache, tmpMat, work, corr3, validRows);
                 FuseNormGammaCorr(scores0, corr0, normRow, gammaRow, validRows);
                 FuseNormGammaCorr(scores1, corr1, normRow, gammaRow, validRows);
                 FuseNormGammaCorr(scores2, corr2, normRow, gammaRow, validRows);
                 FuseNormGammaCorr(scores3, corr3, normRow, gammaRow, validRows);
             }
 
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            MaskTailNegInf(scores0, validRows, rows);
-            MaskTailNegInf(scores1, validRows, rows);
-            MaskTailNegInf(scores2, validRows, rows);
-            MaskTailNegInf(scores3, validRows, rows);
-
-            SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            if (validRows < rows) {
+                SetFlag<HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<HardEvent::V_S>(EVENT_ID0);
+                MaskTailNegInf(scores0, validRows, rows);
+                MaskTailNegInf(scores1, validRows, rows);
+                MaskTailNegInf(scores2, validRows, rows);
+                MaskTailNegInf(scores3, validRows, rows);
+                SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            } else {
+                SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            }
             WriteScoreRow(token, qHeadBase, kvStart, rows, scores0);
             WriteScoreRow(token, qHeadBase + 1U, kvStart, rows, scores1);
             WriteScoreRow(token, qHeadBase + 2U, kvStart, rows, scores2);
             WriteScoreRow(token, qHeadBase + 3U, kvStart, rows, scores3);
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
         }
     }
 
-    __aicore__ inline void ProcessPrefillKvShared2(uint32_t kvHead, uint32_t kvStart, uint32_t qHeadBase)
+    __aicore__ inline void ProcessPrefillKvShared2(uint32_t kvHead, uint32_t kvStart, uint32_t qHeadBase,
+                                                   uint32_t tokenStart, uint32_t tokenEnd)
     {
-        const uint32_t rows =
-            (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
+        const uint32_t rows = (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
 
         LocalTensor<float> dequantCache = dequantCacheBuf_.Get<float>();
         LocalTensor<float> signsCache = signsCacheBuf_.Get<float>();
@@ -871,10 +889,9 @@ private:
         UnpackTileToCache(kvHead, kvStart, rows, dequantCache, signsCache, normRow, gammaRow, seqLen);
 
         const uint32_t validRows =
-            (static_cast<int32_t>(kvStart) >= seqLen)
-                ? 0U
-                : ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows
-                                                                      : (static_cast<uint32_t>(seqLen) - kvStart));
+            (static_cast<int32_t>(kvStart) >= seqLen) ?
+                0U :
+                ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows : (static_cast<uint32_t>(seqLen) - kvStart));
 
         LocalTensor<float> q0 = queryFp32Buf_.Get<float>();
         LocalTensor<float> s0 = qjlFp32Buf_.Get<float>();
@@ -884,42 +901,44 @@ private:
         LocalTensor<float> scores1 = scoreTile1Buf_.Get<float>();
         LocalTensor<float> corr0 = dequantBuf_.Get<float>();
         LocalTensor<float> corr1 = signsBuf_.Get<float>();
-        LocalTensor<float> tmp = tmpBuf_.Get<float>();
+        LocalTensor<float> tmpMat = dotTmpBuf_.Get<float>();
         LocalTensor<float> work = reduceWorkBuf_.Get<float>();
 
-        for (uint32_t token = 0; token < numTokens_; ++token) {
+        for (uint32_t token = tokenStart; token < tokenEnd; ++token) {
             LoadQueryPair(token, qHeadBase, q0, s0);
             LoadQueryPair(token, qHeadBase + 1U, q1, s1);
 
-            for (uint32_t i = 0; i < validRows; ++i) {
-                const uint32_t rowOff = i * headDim_;
-                DotToSlot(q0, dequantCache[rowOff], tmp, work, scores0[i]);
-                DotToSlot(s0, signsCache[rowOff], tmp, work, corr0[i]);
-                DotToSlot(q1, dequantCache[rowOff], tmp, work, scores1[i]);
-                DotToSlot(s1, signsCache[rowOff], tmp, work, corr1[i]);
-            }
-
             if (validRows > 0U) {
+                DotBatchRows(q0, dequantCache, tmpMat, work, scores0, validRows);
+                DotBatchRows(s0, signsCache, tmpMat, work, corr0, validRows);
+                DotBatchRows(q1, dequantCache, tmpMat, work, scores1, validRows);
+                DotBatchRows(s1, signsCache, tmpMat, work, corr1, validRows);
                 FuseNormGammaCorr(scores0, corr0, normRow, gammaRow, validRows);
                 FuseNormGammaCorr(scores1, corr1, normRow, gammaRow, validRows);
             }
 
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            MaskTailNegInf(scores0, validRows, rows);
-            MaskTailNegInf(scores1, validRows, rows);
-
-            SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            if (validRows < rows) {
+                SetFlag<HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<HardEvent::V_S>(EVENT_ID0);
+                MaskTailNegInf(scores0, validRows, rows);
+                MaskTailNegInf(scores1, validRows, rows);
+                SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            } else {
+                SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            }
             WriteScoreRow(token, qHeadBase, kvStart, rows, scores0);
             WriteScoreRow(token, qHeadBase + 1U, kvStart, rows, scores1);
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
         }
     }
 
-    __aicore__ inline void ProcessPrefillKvSingle(uint32_t kvHead, uint32_t kvStart)
+    __aicore__ inline void ProcessPrefillKvSingle(uint32_t kvHead, uint32_t kvStart, uint32_t tokenStart,
+                                                  uint32_t tokenEnd)
     {
-        const uint32_t rows =
-            (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
+        const uint32_t rows = (kvStart + kvTile_ <= maxKvLen_) ? kvTile_ : (maxKvLen_ - kvStart);
 
         LocalTensor<float> dequantCache = dequantCacheBuf_.Get<float>();
         LocalTensor<float> signsCache = signsCacheBuf_.Get<float>();
@@ -933,38 +952,39 @@ private:
         UnpackTileToCache(kvHead, kvStart, rows, dequantCache, signsCache, normRow, gammaRow, seqLen);
 
         const uint32_t validRows =
-            (static_cast<int32_t>(kvStart) >= seqLen)
-                ? 0U
-                : ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows
-                                                                      : (static_cast<uint32_t>(seqLen) - kvStart));
+            (static_cast<int32_t>(kvStart) >= seqLen) ?
+                0U :
+                ((kvStart + rows <= static_cast<uint32_t>(seqLen)) ? rows : (static_cast<uint32_t>(seqLen) - kvStart));
 
         LocalTensor<float> queryFp32 = queryFp32Buf_.Get<float>();
         LocalTensor<float> qjlFp32 = qjlFp32Buf_.Get<float>();
         LocalTensor<float> scoreTile = scoreTileBuf_.Get<float>();
         LocalTensor<float> corr = dequantBuf_.Get<float>();
-        LocalTensor<float> tmp = tmpBuf_.Get<float>();
+        LocalTensor<float> tmpMat = dotTmpBuf_.Get<float>();
         LocalTensor<float> work = reduceWorkBuf_.Get<float>();
 
-        for (uint32_t token = 0; token < numTokens_; ++token) {
+        for (uint32_t token = tokenStart; token < tokenEnd; ++token) {
             LoadQueryPair(token, kvHead, queryFp32, qjlFp32);
 
-            for (uint32_t i = 0; i < validRows; ++i) {
-                const uint32_t rowOff = i * headDim_;
-                DotToSlot(queryFp32, dequantCache[rowOff], tmp, work, scoreTile[i]);
-                DotToSlot(qjlFp32, signsCache[rowOff], tmp, work, corr[i]);
-            }
-
             if (validRows > 0U) {
+                DotBatchRows(queryFp32, dequantCache, tmpMat, work, scoreTile, validRows);
+                DotBatchRows(qjlFp32, signsCache, tmpMat, work, corr, validRows);
                 FuseNormGammaCorr(scoreTile, corr, normRow, gammaRow, validRows);
             }
 
-            SetFlag<HardEvent::V_S>(EVENT_ID0);
-            WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            MaskTailNegInf(scoreTile, validRows, rows);
-
-            SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            if (validRows < rows) {
+                SetFlag<HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<HardEvent::V_S>(EVENT_ID0);
+                MaskTailNegInf(scoreTile, validRows, rows);
+                SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            } else {
+                SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            }
             WriteScoreRow(token, kvHead, kvStart, rows, scoreTile);
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
         }
     }
 
@@ -1008,8 +1028,8 @@ private:
 
                 const uint32_t logical0 = kvPos / blockSize_;
                 const uint32_t offset0 = kvPos % blockSize_;
-                const int32_t phys = blockTableGm_.GetValue(
-                    static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
+                const int32_t phys =
+                    blockTableGm_.GetValue(static_cast<uint64_t>(batchIdx) * maxBlocksPerSeq_ + logical0);
 
                 uint32_t run = 1;
                 while (i + run < rows) {
@@ -1023,8 +1043,7 @@ private:
                     ++run;
                 }
 
-                const uint64_t baseScalar =
-                    (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
+                const uint64_t baseScalar = (static_cast<uint64_t>(phys) * blockSize_ + offset0) * numKvHeads_;
                 const uint32_t span = run * numKvHeads_;
 
                 LocalTensor<uint8_t> idxLocal = idxInQue_.AllocTensor<uint8_t>();
@@ -1132,6 +1151,8 @@ private:
     TBuf<TPosition::VECCALC> signsCacheBuf_;
     TBuf<TPosition::VECCALC> normRowBuf_;
     TBuf<TPosition::VECCALC> gammaRowBuf_;
+    TBuf<TPosition::VECCALC> dotTmpBuf_;
+    TBuf<TPosition::VECCALC> reduceTvBuf_;
 
     GlobalTensor<bfloat16_t> queryRotatedGm_;
     GlobalTensor<bfloat16_t> queryQjlGm_;

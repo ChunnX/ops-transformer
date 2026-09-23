@@ -72,8 +72,8 @@ TEST_F(aclnnTurboQuantAttentionScoreTest, GetWorkspaceSizeNormal)
     auto attnScores = TensorDesc({NUM_TOKENS, NUM_Q_HEADS, MAX_KV_LEN}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnTurboQuantAttentionScore,
-                        INPUT(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma,
-                              blockTable, seqLens, MSE_BITS),
+                        INPUT(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma, blockTable,
+                              seqLens, MSE_BITS),
                         OUTPUT(attnScores));
     uint64_t workspaceSize = 0U;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACL_SUCCESS);

@@ -61,13 +61,21 @@ def make_inputs(kv_len: int, q_heads=32, kv_heads=8, mse_bits=3, seed=0):
     num_blocks = (kv_len + BLOCK_SIZE - 1) // BLOCK_SIZE
     idx_bytes = (HEAD_DIM * mse_bits + 7) // 8
     qjl_bytes = (HEAD_DIM + 7) // 8
-    q = torch.from_numpy(rng.uniform(-1, 1, (1, q_heads, HEAD_DIM)).astype(np.float32)).npu()
-    qjl = torch.from_numpy(rng.uniform(-1, 1, (1, q_heads, HEAD_DIM)).astype(np.float32)).npu()
+    q = torch.from_numpy(
+        rng.uniform(-1, 1, (1, q_heads, HEAD_DIM)).astype(np.float32)
+    ).npu()
+    qjl = torch.from_numpy(
+        rng.uniform(-1, 1, (1, q_heads, HEAD_DIM)).astype(np.float32)
+    ).npu()
     idx = torch.from_numpy(
-        rng.integers(0, 256, (num_blocks, BLOCK_SIZE, kv_heads, idx_bytes), dtype=np.uint8)
+        rng.integers(
+            0, 256, (num_blocks, BLOCK_SIZE, kv_heads, idx_bytes), dtype=np.uint8
+        )
     ).npu()
     qjl_p = torch.from_numpy(
-        rng.integers(0, 256, (num_blocks, BLOCK_SIZE, kv_heads, qjl_bytes), dtype=np.uint8)
+        rng.integers(
+            0, 256, (num_blocks, BLOCK_SIZE, kv_heads, qjl_bytes), dtype=np.uint8
+        )
     ).npu()
     norm = torch.from_numpy(
         rng.uniform(0.1, 2.0, (num_blocks, BLOCK_SIZE, kv_heads)).astype(np.float32)
@@ -91,7 +99,9 @@ def compute_opt(q, qjl, idx, qjl_p, norm, gamma, table, lengths, mse_bits, chunk
     max_kv = int(lengths.max().item())
     q_main = q.reshape(num_tokens, kv_heads, groups, HEAD_DIM)
     q_res = qjl.reshape(num_tokens, kv_heads, groups, HEAD_DIM)
-    out = torch.empty((num_tokens, q_heads, max_kv), dtype=torch.float32, device=q.device)
+    out = torch.empty(
+        (num_tokens, q_heads, max_kv), dtype=torch.float32, device=q.device
+    )
 
     for start in range(0, max_kv, chunk):
         end = min(start + chunk, max_kv)
