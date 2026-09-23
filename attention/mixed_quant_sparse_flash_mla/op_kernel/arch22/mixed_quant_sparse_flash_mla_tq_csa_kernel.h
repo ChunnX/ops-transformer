@@ -54,8 +54,6 @@ struct TempLoopInfo {
     uint64_t mBasicSizeTail = 0U; // gS1方向循环的尾基本块大小
     uint32_t cmpLoopTimes = 0;
     uint32_t oriLoopTimes = 0;
-    uint32_t v0OriSize = 0;
-    uint32_t v0CmpSize = 0;
 
     // sparsemode = 4
     int32_t oriMaskRight = 0;
@@ -768,18 +766,10 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::ProcessBalance
             }
 
             uint32_t s2SplitNum = oriSplitNum + cmpSplitNum;
-            constexpr uint32_t V0_SPLIT = 32; // align to 32
-            uint32_t v0OriSize = CeilDiv(oriS2Size * cmpS2Size, oriS2Size + cmpS2Size);
-            if (cmpS2Size > V0_SPLIT * oriSplitNum) {
-                v0OriSize = SASAlign(v0OriSize, V0_SPLIT * oriSplitNum);
-            }
-            uint32_t v0CmpSize = cmpS2Size - v0OriSize;
 
             tempLoopInfo.oriLoopTimes = oriSplitNum;
             tempLoopInfo.cmpLoopTimes = cmpSplitNum;
             tempLoopInfo.s2LoopTimes = s2SplitNum;
-            tempLoopInfo.v0OriSize = v0OriSize;
-            tempLoopInfo.v0CmpSize = v0CmpSize;
 
             uint32_t s2LoopEnd = (isEnd && constInfo.s2End != 0) ? constInfo.s2End : tempLoopInfo.s2LoopTimes;
             tempLoopInfo.s2LoopTimes = s2LoopEnd;
