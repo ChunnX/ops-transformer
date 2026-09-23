@@ -141,6 +141,28 @@ __aicore__ inline void QuantizeTokenInUb(const LocalTensor<bfloat16_t> &input,
     }
 }
 
+// 装载一个 token 的输入到 xInTensor；记录带权重段（prefetch 或 tkw=0 combine 去重）时随后
+// 预取整 token 的 topk 权重进 xOutTensor 尾段（tkw=1 实例编译期常量折叠，零开销）。
+template <typename TopkWeightsType, bool TopkWeightsPrefetch, typename ActivationType, typename ScratchType>
+__aicore__ inline void LoadTokenInputAndWeights(const MoeStageCommonConfig &common, const QuantProcessConfig &config,
+                                                ScratchType &scratch, GM_ADDR topkWeightsAddr, uint32_t tokenIndex,
+                                                const LocalTensor<bfloat16_t> &xInTensor,
+                                                const LocalTensor<ActivationType> &xOutTensor, TEventID event)
+{
+    const uint32_t hiddenDim = common.tokenHiddenDim;
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+    DataCopyPad(xInTensor, scratch.inputGm[static_cast<uint64_t>(tokenIndex) * hiddenDim],
+                {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U}, {true, 0, 0, 0});
+    if (TopkWeightsPrefetch || QuantRecordHasWeights(config)) {
+        GM_ADDR tokenTopkWeightsAddr =
+            topkWeightsAddr + static_cast<uint64_t>(tokenIndex) * common.topK * sizeof(TopkWeightsType);
+        PrefetchTopkWeights<TopkWeightsType>(tokenTopkWeightsAddr, common.topK, config, scratch, xOutTensor, event);
+    } else {
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+    }
+}
+
 // 仅由 AIV 调用，tokenRange 非空；量化指定范围的本卡 token，按逐 token 交织布局写入数据与 scale。
 template <typename TopkWeightsType, bool TopkWeightsPrefetch, typename MoeQuantParams, typename... SharedQuantParams>
 __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
@@ -160,18 +182,8 @@ __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const Mo
         auto xInTensor = useFirstBuffer ? scratch.xInTensor0 : scratch.xInTensor1;
         auto xOutTensor = useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
         uint32_t tokenIndex = tokenRange.start + index;
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        DataCopyPad(xInTensor, scratch.inputGm[static_cast<uint64_t>(tokenIndex) * hiddenDim],
-                    {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U}, {true, 0, 0, 0});
-        // tkw=0 的 combine 去重同样携带整 token 权重段（发送端乘权语义）；tkw=1 实例常量折叠零开销。
-        if (TopkWeightsPrefetch || QuantRecordHasWeights(config)) {
-            GM_ADDR tokenTopkWeightsAddr =
-                topkWeightsAddr + static_cast<uint64_t>(tokenIndex) * common.topK * sizeof(TopkWeightsType);
-            PrefetchTopkWeights<TopkWeightsType>(tokenTopkWeightsAddr, common.topK, config, scratch, xOutTensor, event);
-        } else {
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        }
+        LoadTokenInputAndWeights<TopkWeightsType, TopkWeightsPrefetch>(common, config, scratch, topkWeightsAddr,
+                                                                       tokenIndex, xInTensor, xOutTensor, event);
         // 同一 token 的输入与分组方式相同，最大指数只统计一次。
         Quant::ComputeMaxExp(reinterpret_cast<__ubuf__ bfloat16_t *>(xInTensor.GetPhyAddr()),
                              reinterpret_cast<__ubuf__ uint16_t *>(scratch.mxTempTensor.GetPhyAddr()), hiddenDim);
