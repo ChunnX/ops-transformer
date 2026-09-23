@@ -1,0 +1,53 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file kv_cache_turbo_quant_tiling_data.h
+ * \brief TilingData shared by host tiling and device kernel (keep the two sides identical).
+ */
+
+#ifndef KV_CACHE_TURBO_QUANT_TILING_DATA_H
+#define KV_CACHE_TURBO_QUANT_TILING_DATA_H
+
+#include "kernel_tiling/kernel_tiling.h"
+
+namespace optiling {
+
+// The codebook of this operator is the d=128 Lloyd-Max table, so headDim is fixed by design.
+constexpr uint32_t KCTQ_HEAD_DIM = 128;
+constexpr uint32_t KCTQ_QJL_DIM = 128;
+
+// Tiling key == mse_bits: one template instantiation per supported primary width.
+constexpr uint64_t KCTQ_TILING_KEY_MSE2 = 2;
+constexpr uint64_t KCTQ_TILING_KEY_MSE3 = 3;
+constexpr uint64_t KCTQ_TILING_KEY_MSE4 = 4;
+
+// Workspace layout (byte offsets from the user workspace base), all 512B aligned.
+struct KvCacheTurboQuantTilingData {
+    TCubeTiling cubeTiling;  // single-core view of the (rowsPerCore x headDim) x (headDim x headDim) GEMM
+    uint32_t mseBits;        // 2 / 3 / 4
+    uint32_t usedCoreNum;    // AI core blocks (AIC and AIV are 1:1)
+    uint32_t totalRows;      // numTokens * numKvHeads
+    uint32_t rowsPerCore;    // rows owned by one core (16 aligned)
+    uint32_t alignedRows;    // rowsPerCore * usedCoreNum
+    uint32_t headDim;        // 128
+    uint32_t idxBytesPerRow; // headDim * mseBits / 8
+    uint32_t qjlBytesPerRow; // headDim / 8
+    uint64_t wsU;            // normalized vectors (fp32)  [alignedRows, headDim]
+    uint64_t wsY;            // rotated vectors   (fp32)  [alignedRows, headDim]
+    uint64_t wsR;            // residual unit vectors (fp32) [alignedRows, headDim]
+    uint64_t wsP;            // residual projections  (fp32) [alignedRows, headDim]
+    uint64_t wsNorm;         // per row L2 norm   (fp32)  [alignedRows]
+    uint64_t wsBytes;        // total user workspace bytes
+};
+
+} // namespace optiling
+
+#endif // KV_CACHE_TURBO_QUANT_TILING_DATA_H
