@@ -23,11 +23,12 @@
  *             the runtime transpose flag of the B operand has to be set)
  *   8. qjl  = 1[p >= 0] bit packed together with the packed idx           (AIV)
  *
- * AIC and AIV run 1:1. Both sub cores walk the same call sequence: the matmul framework turns the
- * AIV call into the KFC client and the AIC call into the serving cube work, so a global SyncAll
- * barrier must not be inserted between the phases (the cube side has to stay in the serving loop).
- * The intermediate matrices live in the user workspace. Everything is computed in fp32; bf16 is
- * produced exactly once, on the store of norm/gamma.
+ * AIC and AIV run 1:2 (one cube core, two vector cores). Both sub kinds walk the same call sequence:
+ * the matmul framework turns the AIV call into the KFC client and the AIC call into the serving
+ * cube work, so a global SyncAll barrier must not be inserted between the phases (the cube side has
+ * to stay in the serving loop). The two AIVs of one AIC are independent KFC clients, each with its
+ * own A rows and its own C tiles. The intermediate matrices live in the user workspace. Everything
+ * is computed in fp32; bf16 is produced exactly once, on the store of norm/gamma.
  *
  * KCTQ_BATCH_ROWS rows are carried through the whole row pipeline at once. Measured on the
  * gqa_prefill_t2048 case a single row costs about 8700 AIV cycles while its pure vector work is
@@ -49,6 +50,13 @@ using namespace matmul;
 
 constexpr uint32_t KCTQ_D = optiling::KCTQ_HEAD_DIM;
 constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 100U * 1024U;
+
+// Vector cores per cube core. The kernel is declared as MIX_AIC_1_2, so one AIC is served by two
+// AIVs and both of them are KFC clients of that AIC. Measured with a hardware probe on 910B3
+// (CANN 9.1.0): the launch is blockDim AICs plus 2 * blockDim AIVs, an AIV sees its *global* index
+// in GetBlockIdx() (0 .. 2 * usedCoreNum - 1) and GetSubBlockIdx() only repeats GetBlockIdx() % 2,
+// so one AIV owns rowsPerCore / 2 rows and the AIC that serves it is GetBlockIdx() / 2.
+constexpr uint32_t KCTQ_AIV_PER_AIC = 2U;
 
 // Rows per pipeline iteration. The AIV staging buffers are sized for this many rows, and the
 // arena below is shared with the matmul C tile, which is dead while the vector stages run.
@@ -137,11 +145,12 @@ public:
                                 const optiling::KvCacheTurboQuantTilingData *td)
     {
         td_ = td;
-        coreIdx_ = GetBlockIdx();
-        rowBegin_ = coreIdx_ * td->rowsPerCore;
-        const uint32_t rowEnd = rowBegin_ + td->rowsPerCore;
+        coreIdx_ = static_cast<uint32_t>(GetBlockIdx());
+        rowsPerAiv_ = td->rowsPerCore / KCTQ_AIV_PER_AIC;
+        rowBegin_ = coreIdx_ * rowsPerAiv_;
+        const uint32_t rowEnd = rowBegin_ + rowsPerAiv_;
         rowEnd_ = (rowEnd > td->totalRows) ? td->totalRows : rowEnd;
-        rowsToCompute_ = td->rowsPerCore; // padded rows feed the GEMM tile but are never stored
+        rowsToCompute_ = rowsPerAiv_; // padded rows feed the GEMM tile but are never stored
 
         kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors),
                               static_cast<uint64_t>(td->totalRows) * KCTQ_D);
@@ -673,6 +682,7 @@ private:
 
     const optiling::KvCacheTurboQuantTilingData *td_ = nullptr;
     uint32_t coreIdx_ = 0;
+    uint32_t rowsPerAiv_ = 0; // rowsPerCore of the tiling (one AIC) split over KCTQ_AIV_PER_AIC AIVs
     uint32_t rowBegin_ = 0;
     uint32_t rowEnd_ = 0;
     uint32_t rowsToCompute_ = 0;

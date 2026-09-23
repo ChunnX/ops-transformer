@@ -24,7 +24,10 @@ extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kvVectors, GM
                                                             GM_ADDR quantGamma, GM_ADDR workspace,
                                                             GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    // 1 AIC : 2 AIV. The row count of one AIV is half the row count of one AIC, see the probe notes
+    // in the kernel implementation. The cube work per AIC is unchanged, only the vector side is
+    // spread over twice as many cores.
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(optiling::KvCacheTurboQuantTilingData);
     GET_TILING_DATA_WITH_STRUCT(optiling::KvCacheTurboQuantTilingData, tilingDataIn, tiling);
 
