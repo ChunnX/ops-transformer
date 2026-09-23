@@ -33,7 +33,7 @@
 #include "basic_api/reg_compute/kernel_reg_compute_datacopy_intf.h"
 #include "basic_api/reg_compute/kernel_reg_compute_vec_binary_intf.h"
 #include "basic_api/reg_compute/kernel_reg_compute_vec_binary_scalar_intf.h"
-#include "basic_api/reg_compute/kernel_reg_compute_pack_intf.h"
+#include "basic_api/reg_compute/kernel_reg_compute_vec_duplicate_intf.h"
 #include "basic_api/reg_compute/kernel_reg_compute_maskreg_intf.h"
 #else
 #include "kernel_operator.h"
@@ -79,8 +79,10 @@ constexpr uint64_t UB_ALIGN = 32UL;
 // Metadata-to-address pipeline: per batch of tokens, MTE2 copies metadata, VF builds GM addresses, scalar emits WQEs.
 static constexpr uint32_t HCOMM_PIPE_BATCH_TOKENS = 256U;
 static constexpr uint32_t HCOMM_PIPE_META_ELEMS = HCOMM_PIPE_BATCH_TOKENS * RECV_META_FIELDS;
-static constexpr uint32_t HCOMM_PIPE_ROUND_TOKENS = 32U;
+static constexpr uint32_t HCOMM_PIPE_ROUND_TOKENS = 64U;
 static constexpr uint32_t REG_VLEN_B32 = 64U;
+static_assert(HCOMM_PIPE_ROUND_TOKENS == REG_VLEN_B32);
+static_assert(HCOMM_PIPE_BATCH_TOKENS % HCOMM_PIPE_ROUND_TOKENS == 0U);
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
@@ -411,58 +413,69 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildBatchAdd
                                                                                    __ubuf__ uint32_t *metaUb,
                                                                                    __ubuf__ uint64_t *addrUb)
 {
-    const uint64_t topK = topK_;
-    const uint64_t slotStep = perSlotBytes_;
-    const uint64_t xStep = static_cast<uint64_t>(axisH_) * sizeof(XType);
-    __ubuf__ uint64_t *dstOffUb = addrUb;
-    __ubuf__ uint64_t *xOffUb = addrUb + HCOMM_PIPE_BATCH_TOKENS;
-    [[maybe_unused]] __ubuf__ uint64_t *wOffUb = addrUb + HCOMM_PIPE_BATCH_TOKENS * 2U;
-    // 每token产出dst槽位/recv-x/权重三个字节偏移；Gather索引钳位到本批有效范围，避免mask外lane越界访问UB。
-    // UpdateMask按引用消耗计数值，必须传独立左值副本；Arange仅支持有符号reg，按位重解释为u32索引。
+    const uint32_t slotStep = perSlotBytes_;
+    const uint32_t xStep = axisH_ * sizeof(XType);
+    // Host limits: topK <= 32, hidden <= 8192, sizeof(XType) == 2, perSlotBytes <= 16896.
+    // Both topK * slotStep and srcTopKIdx * slotStep fit u32; token-dependent byte offsets need u64.
+    const uint32_t dstTokenStep = topK_ * slotStep;
+    __ubuf__ uint32_t *dstOffUb = reinterpret_cast<__ubuf__ uint32_t *>(addrUb);
+    __ubuf__ uint32_t *xOffUb = reinterpret_cast<__ubuf__ uint32_t *>(addrUb + HCOMM_PIPE_BATCH_TOKENS);
+    [[maybe_unused]] __ubuf__ uint32_t *wOffUb =
+        reinterpret_cast<__ubuf__ uint32_t *>(addrUb + HCOMM_PIPE_BATCH_TOKENS * 2U);
+    // Process 64 tokens with u32 lanes. Mull/AddC retain the high words, including when dstSlot exceeds u32.
+    // Interleaved stores preserve the existing u64 offset layout. Each region is padded to a whole 64-token round,
+    // so full-width tail stores stay within that region even on store modes that ignore the mask.
     __VEC_SCOPE__
     {
         AscendC::Reg::RegTensor<int32_t> lane;
+        AscendC::Reg::RegTensor<uint32_t> tokIndex, topkIndex, rxIndex;
         AscendC::Reg::RegTensor<uint32_t> gTok, gTopk, gRx;
         AscendC::Reg::RegTensor<uint32_t> tok, topk, rx;
-        AscendC::Reg::RegTensor<uint64_t> tok64, topk64, rx64, dst64, x64, w64;
-        AscendC::Reg::MaskReg m32, m64, mAll;
+        AscendC::Reg::RegTensor<uint32_t> dstStepReg, xStepReg, zero;
+        AscendC::Reg::RegTensor<uint32_t> offsetLo, offsetHi, topkBytes;
+        AscendC::Reg::MaskReg m32, mAll, carryLo, carryHi;
         uint16_t count = static_cast<uint16_t>(batchCount);
         uint16_t totalRounds = static_cast<uint16_t>((static_cast<uint32_t>(count) + HCOMM_PIPE_ROUND_TOKENS - 1U) /
                                                      HCOMM_PIPE_ROUND_TOKENS);
         AscendC::Reg::Arange(lane, 0);
         uint32_t allCnt = REG_VLEN_B32;
         mAll = AscendC::Reg::UpdateMask<uint32_t>(allCnt);
+        AscendC::Reg::Muls(tokIndex, (AscendC::Reg::RegTensor<uint32_t> &)lane, RECV_META_FIELDS, mAll);
+        AscendC::Reg::Adds(topkIndex, tokIndex, META_TOPK_IDX_OFFSET, mAll);
+        AscendC::Reg::Adds(rxIndex, tokIndex, META_RECV_X_IDX_OFFSET, mAll);
+        AscendC::Reg::Adds(tokIndex, tokIndex, META_TOKEN_IDX_OFFSET, mAll);
+        AscendC::Reg::Duplicate(dstStepReg, dstTokenStep, mAll);
+        AscendC::Reg::Duplicate(xStepReg, xStep, mAll);
+        AscendC::Reg::Duplicate(zero, 0U, mAll);
         for (uint16_t r = 0; r < totalRounds; ++r) {
             uint16_t done = static_cast<uint16_t>(r * HCOMM_PIPE_ROUND_TOKENS);
             uint16_t remain = count - done;
             uint16_t round = (remain < HCOMM_PIPE_ROUND_TOKENS) ? remain : HCOMM_PIPE_ROUND_TOKENS;
             uint32_t clamp = static_cast<uint32_t>(remain) * RECV_META_FIELDS - 1U;
             uint32_t cnt32 = round;
-            uint32_t cnt64 = round;
             m32 = AscendC::Reg::UpdateMask<uint32_t>(cnt32);
-            m64 = AscendC::Reg::UpdateMask<uint64_t>(cnt64);
-            AscendC::Reg::Muls(gTok, (AscendC::Reg::RegTensor<uint32_t> &)lane, RECV_META_FIELDS, mAll);
-            AscendC::Reg::Adds(gTopk, gTok, META_TOPK_IDX_OFFSET, mAll);
-            AscendC::Reg::Adds(gRx, gTok, META_RECV_X_IDX_OFFSET, mAll);
-            AscendC::Reg::Adds(gTok, gTok, META_TOKEN_IDX_OFFSET, mAll);
-            AscendC::Reg::Mins(gTok, gTok, clamp, mAll);
-            AscendC::Reg::Mins(gTopk, gTopk, clamp, mAll);
-            AscendC::Reg::Mins(gRx, gRx, clamp, mAll);
+            // Keep even inactive Gather lanes within this batch's valid metadata.
+            AscendC::Reg::Mins(gTok, tokIndex, clamp, mAll);
+            AscendC::Reg::Mins(gTopk, topkIndex, clamp, mAll);
+            AscendC::Reg::Mins(gRx, rxIndex, clamp, mAll);
             AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(tok, metaUb, gTok, m32);
             AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(topk, metaUb, gTopk, m32);
             AscendC::Reg::Gather<uint32_t, uint32_t, uint32_t>(rx, metaUb, gRx, m32);
-            AscendC::Reg::UnPack<uint64_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(tok64, tok);
-            AscendC::Reg::Muls(tok64, tok64, topK, m64);
-            AscendC::Reg::UnPack<uint64_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(topk64, topk);
-            AscendC::Reg::Add(tok64, tok64, topk64, m64);
-            AscendC::Reg::Muls(dst64, tok64, slotStep, m64);
-            AscendC::Reg::StoreAlign(dstOffUb + done, dst64, m64);
-            AscendC::Reg::UnPack<uint64_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(rx64, rx);
-            AscendC::Reg::Muls(x64, rx64, xStep, m64);
-            AscendC::Reg::StoreAlign(xOffUb + done, x64, m64);
+            // dst = tokenIdx * (topK * slotStep) + topkIdx * slotStep, without truncating dstSlot to u32.
+            AscendC::Reg::Mull(offsetLo, offsetHi, tok, dstStepReg, m32);
+            AscendC::Reg::Muls(topkBytes, topk, slotStep, m32);
+            AscendC::Reg::Add(carryLo, offsetLo, offsetLo, topkBytes, m32);
+            AscendC::Reg::AddC(carryHi, offsetHi, offsetHi, zero, carryLo, m32);
+            AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(dstOffUb + done * 2U, offsetLo,
+                                                                                        offsetHi, m32);
+            AscendC::Reg::Mull(offsetLo, offsetHi, rx, xStepReg, m32);
+            AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(xOffUb + done * 2U, offsetLo,
+                                                                                        offsetHi, m32);
             if constexpr (HasTopkWeight == 1) {
-                AscendC::Reg::Muls(w64, rx64, static_cast<uint64_t>(sizeof(float)), m64);
-                AscendC::Reg::StoreAlign(wOffUb + done, w64, m64);
+                AscendC::Reg::ShiftLefts(offsetLo, rx, static_cast<int16_t>(2), m32);
+                AscendC::Reg::ShiftRights(offsetHi, rx, static_cast<int16_t>(30), m32);
+                AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_INTLV_B32>(wOffUb + done * 2U,
+                                                                                            offsetLo, offsetHi, m32);
             }
             metaUb += static_cast<uint32_t>(round) * RECV_META_FIELDS;
         }
@@ -477,6 +490,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::EmitTokenWrit
                                                                                   GM_ADDR weightBase,
                                                                                   uint64_t tokenBytes)
 {
+    // ConsumeBatchAddrs accounts for WQEBBs once per run (or once for a CQE token).
     GM_ADDR dst = remoteDataBase + addrUb.GetValue(regionOff + tokenIdx);
     GM_ADDR src = xBase + addrUb.GetValue(regionOff + HCOMM_PIPE_BATCH_TOKENS + tokenIdx);
     if constexpr (HasTopkWeight == 1) {
@@ -487,7 +501,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::EmitTokenWrit
     } else {
         (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, tokenBytes);
     }
-    preparedWriteCount_ += kTokenWqebbCount;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -497,38 +510,43 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ConsumeBatchA
     uint32_t &sqBudget, uint32_t &wqebbBudget)
 {
     const bool batchIsLast = (globalBegin + batchCount == rangeEnd);
-    const uint32_t specialIdx = batchIsLast ? (batchCount - 1U) : batchCount;
+    const uint32_t plainEnd = batchIsLast ? (batchCount - 1U) : batchCount;
     uint32_t t = 0U;
     while (t < batchCount) {
-        uint32_t plainStop = (specialIdx < batchCount && specialIdx >= t) ? specialIdx : batchCount;
-        uint32_t avail = plainStop - t;
-        uint32_t plainCap = sqBudget / kTokenWqebbCount;
-        uint32_t run = (plainCap < avail) ? plainCap : avail;
-        for (uint32_t i = 0; i < run; ++i) {
-            if (wqebbBudget < kTokenWqebbCount) {
-                FlushPreparedWrites(true);
-                wqebbBudget = HCOMM_BATCH_CAPACITY;
-            }
-            EmitTokenWrite<DEFAULT_WQE_CONFIG>(regionOff, t + i, addrUb, remoteDataBase, xBase, weightBase, tokenBytes);
-            wqebbBudget -= kTokenWqebbCount;
+        if (wqebbBudget < kTokenWqebbCount) {
+            FlushPreparedWrites(true);
+            wqebbBudget = HCOMM_BATCH_CAPACITY;
         }
-        sqBudget -= run * kTokenWqebbCount;
-        t += run;
-        if (t < batchCount) {
-            bool drainNow = (sqBudget < kTokenWqebbCount);
-            if (wqebbBudget < kTokenWqebbCount) {
-                FlushPreparedWrites(true);
-                wqebbBudget = HCOMM_BATCH_CAPACITY;
+        const uint32_t sqCap = sqBudget / kTokenWqebbCount;
+        const uint32_t batchCap = wqebbBudget / kTokenWqebbCount;
+        uint32_t run = plainEnd - t;
+        run = (run < sqCap) ? run : sqCap;
+        run = (run < batchCap) ? run : batchCap;
+        if (run != 0U) {
+            // The whole run fits both budgets: no capacity checks or counter updates per token.
+            for (uint32_t i = 0; i < run; ++i) {
+                EmitTokenWrite<DEFAULT_WQE_CONFIG>(regionOff, t + i, addrUb, remoteDataBase, xBase, weightBase,
+                                                   tokenBytes);
             }
+            const uint32_t used = run * kTokenWqebbCount;
+            preparedWriteCount_ += used;
+            wqebbBudget -= used;
+            sqBudget -= used;
+            t += run;
+        } else {
+            // Only the range's last token or the token filling the SQ requests a CQE.
+            const bool drainNow = (sqBudget < kTokenWqebbCount);
             EmitTokenWrite<DEFAULT_CQE_WQE_CONFIG>(regionOff, t, addrUb, remoteDataBase, xBase, weightBase, tokenBytes);
+            preparedWriteCount_ += kTokenWqebbCount;
+            wqebbBudget -= kTokenWqebbCount;
             if (drainNow) {
                 FlushPreparedWrites(true);
                 (void)hcomm_.Drain(activeBatchChannel_);
                 sqBudget = HCOMM_SQ_MAX_PENDING;
+                wqebbBudget = HCOMM_BATCH_CAPACITY;
             } else {
                 sqBudget -= kTokenWqebbCount;
             }
-            wqebbBudget -= kTokenWqebbCount;
             ++t;
         }
     }
