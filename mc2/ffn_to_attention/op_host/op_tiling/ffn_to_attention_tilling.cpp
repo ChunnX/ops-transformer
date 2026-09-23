@@ -753,5 +753,7 @@ ge::graphStatus TilingParseForFFNToAttention(const gert::TilingParseContext *con
 
 IMPL_OP_OPTILING(FFNToAttention)
     .Tiling(FFNToAttentionTilingFunc)
-    .TilingParse<FFNToAttentionCompileInfo>(TilingParseForFFNToAttention);
+    .TilingParse<FFNToAttentionCompileInfo>([](gert::TilingParseContext *context) {
+        return TilingParseForFFNToAttention(context);
+    });
 } // namespace MC2Tiling

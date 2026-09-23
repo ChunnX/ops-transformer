@@ -92,8 +92,8 @@ public:
         : rankId(workerRankId)
     {}
     int CreateInputTensors();
-    int PrepareWorkspace(char *hcomName);
-    int Execute(Args &args);
+    int PrepareWorkspace(const char *hcomName);
+    int Execute(const Args &args);
     void Release();
 
 private:
@@ -195,7 +195,7 @@ int AttentionToFFNExample::CreateInputTensors()
     return 0;
 }
 
-int AttentionToFFNExample::PrepareWorkspace(char *hcomName)
+int AttentionToFFNExample::PrepareWorkspace(const char *hcomName)
 {
     /**************************************** 调用AttentionToFFN ********************************************/
     // 调用第一阶段接口
@@ -215,7 +215,7 @@ int AttentionToFFNExample::PrepareWorkspace(char *hcomName)
     return 0;
 }
 
-int AttentionToFFNExample::Execute(Args &args)
+int AttentionToFFNExample::Execute(const Args &args)
 {
     int ret = 0;
     if (args.rankId < FFN_WORKER_NUM) { // FFN Worker
