@@ -1974,10 +1974,8 @@ mc2:
         - mc2/common
         - mc2/3rd
       exclude:
-        - mc2/moe_distribute_combine_setup/docs
         - mc2/moe_distribute_combine_setup/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
         examples: False
@@ -1991,10 +1989,8 @@ mc2:
         - mc2/common
         - mc2/3rd
       exclude:
-        - mc2/moe_distribute_combine_teardown/docs
         - mc2/moe_distribute_combine_teardown/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
         examples: False
@@ -2008,11 +2004,8 @@ mc2:
         - mc2/common
         - mc2/3rd
       exclude:
-        - mc2/moe_distribute_dispatch_setup/docs
         - mc2/moe_distribute_dispatch_setup/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_dispatch_setup/op_api
-        - mc2/moe_distribute_dispatch_setup/op_graph
         - mc2/moe_distribute_dispatch_setup/op_kernel
       test:
         examples: False
@@ -2029,11 +2022,8 @@ mc2:
         - mc2/common
         - mc2/3rd
       exclude:
-        - mc2/moe_distribute_dispatch_teardown/docs
         - mc2/moe_distribute_dispatch_teardown/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_dispatch_teardown/op_api
-        - mc2/moe_distribute_dispatch_teardown/op_graph
         - mc2/moe_distribute_dispatch_teardown/op_kernel
       test:
         examples: False
