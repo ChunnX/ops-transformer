@@ -640,6 +640,12 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             this->vecBlock.ProcessVec2(this->bmm2Buffers, runInfo3, this->constInfo);
                         }
                     } else {
+                        if constexpr (CubeBlockType::PHASED_KV) {
+                            if (taskId < 3 && smlaNotLastThreeLoop) {
+                                // Initial slots have FREE credits: finish their writes before QK.
+                                this->cubeBlock.WaitKvWritePhase(runInfo[taskId % 4].taskIdMod3);
+                            }
+                        }
                         if (taskId > 0 && smlaNotLastTwoLoop) {
                             RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
                             this->cubeBlock.IterateLoadQK(this->v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1,
@@ -668,6 +674,13 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                             this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot], runInfo3,
                                                         this->constInfo);
+                        }
+                        if constexpr (CubeBlockType::PHASED_KV) {
+                            if (taskId >= 3 && smlaNotLastThreeLoop) {
+                                // PV(t-3) must release FREE before waiting for V0(t), not after.
+                                // No wait during drain when there is no corresponding producer.
+                                this->cubeBlock.WaitKvWritePhase(runInfo[taskId % 4].taskIdMod3);
+                            }
                         }
                     }
                 }

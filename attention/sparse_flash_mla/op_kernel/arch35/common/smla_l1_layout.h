@@ -30,6 +30,14 @@ static_assert(SMLA_L1_SYNC_MODE <= 2, "Unsupported sparse KV synchronization");
 #endif
 static_assert(SMLA_L0A_MODE <= 2, "Unsupported sparse L0A policy");
 
+// Diagnostic phase gate: separate full KV MTE3 writes from KV MTE1 reads.
+#ifndef SMLA_L1_PHASE_MODE
+#define SMLA_L1_PHASE_MODE 0
+#endif
+static_assert(SMLA_L1_PHASE_MODE <= 1, "Unsupported sparse KV phase policy");
+static_assert(SMLA_L1_PHASE_MODE == 0 || SMLA_L1_SYNC_MODE == 1,
+              "KV phase gate requires unified READY and whole-slot FREE");
+
 namespace SMLAKernel {
 template <uint32_t Mode>
 struct SparseKvL1Layout {

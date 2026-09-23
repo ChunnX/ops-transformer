@@ -71,6 +71,7 @@ public:
     static constexpr bool UNIFIED_KV_READY = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE >= 1;
     static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
     static constexpr uint32_t L0A_POLICY = SPLIT_SPARSE_KV_L1 ? SMLA_L0A_MODE : 0;
+    static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -104,6 +105,14 @@ public:
     __aicore__ inline void IterateBmm2(StaticBuffer<T> &outputBuf, StaticBuffer<Q_T> &l1PBuffer, const RunInfo &runInfo,
                                        const ConstInfo &constInfo);
     __aicore__ inline void FreeEvent();
+    __aicore__ inline void WaitKvWritePhase(uint32_t slot)
+    {
+        if constexpr (PHASED_KV) {
+            // Reverse direction of whole-slot FREE: these ACKs target the AIC.
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot));
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1KV_FREE(slot) + AIV0_AIV1_OFFSET);
+        }
+    }
 
 private:
     __aicore__ inline LocalTensor<Q_T> GetKvQuarter(uint32_t slot, uint32_t quarter, uint32_t rows);

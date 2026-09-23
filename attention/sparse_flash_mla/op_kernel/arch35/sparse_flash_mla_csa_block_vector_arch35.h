@@ -151,6 +151,7 @@ public:
     static constexpr bool SPLIT_SPARSE_KV_L1 =
         DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
     static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
+    static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
     static constexpr uint32_t KV_ND_ROW_STRIDE = DIRECT_SPARSE_KV_L1 ? 528 : dVTemplateType;
     static constexpr int64_t KV_COPYIN_UNIT = 8;   // 每次搬入8行
     static constexpr int64_t KV_PROCESS_UNIT = 16; // 每次拷出16行
@@ -815,6 +816,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         CalSparseCalSize(runInfo, constInfo);
         ProcessSparseKv(v0ResGm, runInfo, constInfo);
         v0ResGm.SetCrossCore();
+    }
+    if constexpr (PHASED_KV) {
+        // Independent of READY; both notifications follow all writes on MTE3.
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
     }
 }
 
