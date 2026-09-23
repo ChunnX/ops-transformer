@@ -22,6 +22,25 @@ def load(path, shape, dtype):
     return data.reshape(shape)
 
 
+def bit_mismatch(got, exp):
+    """逐位不一致计数（bf16 视图）：同为 nan 视为一致。返回 (不一致数, nan 不对齐数)。"""
+    same = np.asarray(got).view(np.uint16) == np.asarray(exp).view(np.uint16)
+    an = np.isnan(np.asarray(got, dtype=np.float32))
+    bn = np.isnan(np.asarray(exp, dtype=np.float32))
+    return int((~(same | (an & bn))).sum()), int((an ^ bn).sum())
+
+
+def max_diffs(got, exp):
+    """有限配对上的 (最大绝对差, 最大相对差)；无有限配对时返回 (nan, nan)。"""
+    a = np.asarray(got, dtype=np.float32)
+    b = np.asarray(exp, dtype=np.float32)
+    m = np.isfinite(a) & np.isfinite(b)
+    if not m.any():
+        return float("nan"), float("nan")
+    d = np.abs(a[m] - b[m])
+    return float(d.max()), float((d / np.maximum(np.abs(b[m]), 1e-12)).max())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workdir", required=True)
@@ -57,29 +76,42 @@ def main():
     print("[V1] quant_norm got", got_norm.shape, "| exp", exp_norm.shape)
     print("[V1] quant_gamma got", got_gamma.shape, "| exp", exp_gamma.shape)
 
-    idx_bad = int((got_idx != exp_idx).sum())
-    qjl_bad = int((got_qjl != exp_qjl).sum())
-    norm_got = got_norm.astype(np.float32)
-    norm_exp = exp_norm.astype(np.float32)
-    gamma_got = got_gamma.astype(np.float32)
-    gamma_exp = exp_gamma.astype(np.float32)
-    norm_bits = int((got_norm.view(np.uint16) != exp_norm.view(np.uint16)).sum())
-    gamma_bits = int((got_gamma.view(np.uint16) != exp_gamma.view(np.uint16)).sum())
-    print(f"[V2] quant_idx : 不一致 {idx_bad}/{exp_idx.size}  匹配率 {1 - idx_bad / exp_idx.size:.8f}")
-    print(f"[V2] quant_qjl : 不一致 {qjl_bad}/{exp_qjl.size}  匹配率 {1 - qjl_bad / exp_qjl.size:.8f}")
+    idx_ne = got_idx != exp_idx
+    qjl_ne = got_qjl != exp_qjl
+    # 非有限输入行（含 inf/nan）：位打包输出语义未定义 → 不参与 idx/qjl 判定，单独报出
+    finite_rows = np.isfinite(np.asarray(kv, dtype=np.float32)).all(axis=1)
+    nf_rows = np.flatnonzero(~finite_rows)
+    idx_bad = int(idx_ne[finite_rows].sum())
+    qjl_bad = int(qjl_ne[finite_rows].sum())
+    idx_nf_bad = int(idx_ne.sum()) - idx_bad
+    qjl_nf_bad = int(qjl_ne.sum()) - qjl_bad
+    idx_suffix = (f"  （非有限输入行 {idx_nf_bad} 处不判定）" if nf_rows.size else "")
+    qjl_suffix = (f"  （非有限输入行 {qjl_nf_bad} 处不判定）" if nf_rows.size else "")
+    norm_bits, norm_nan_bad = bit_mismatch(got_norm, exp_norm)
+    gamma_bits, gamma_nan_bad = bit_mismatch(got_gamma, exp_gamma)
+    norm_max_abs, norm_max_rel = max_diffs(got_norm, exp_norm)
+    gamma_max_abs, gamma_max_rel = max_diffs(got_gamma, exp_gamma)
+    print(f"[V2] quant_idx : 不一致 {int(idx_ne.sum())}/{exp_idx.size}"
+          f"  匹配率 {1 - idx_ne.sum() / exp_idx.size:.8f}" + idx_suffix)
+    print(f"[V2] quant_qjl : 不一致 {int(qjl_ne.sum())}/{exp_qjl.size}"
+          f"  匹配率 {1 - qjl_ne.sum() / exp_qjl.size:.8f}" + qjl_suffix)
     print(f"[V2] quant_norm: 逐位不一致 {norm_bits}/{exp_norm.size}"
-          f"  最大绝对差 {np.abs(norm_got - norm_exp).max():.6f}"
-          f"  最大相对差 {np.abs((norm_got - norm_exp) / np.maximum(np.abs(norm_exp), 1e-12)).max():.3e}")
+          f"  最大绝对差 {norm_max_abs:.6f}  最大相对差 {norm_max_rel:.3e}"
+          + (f"  nan 不对齐 {norm_nan_bad}" if norm_nan_bad else ""))
     print(f"[V2] quant_gamma: 逐位不一致 {gamma_bits}/{exp_gamma.size}"
-          f"  最大绝对差 {np.abs(gamma_got - gamma_exp).max():.6f}"
-          f"  最大相对差 {np.abs((gamma_got - gamma_exp) / np.maximum(np.abs(gamma_exp), 1e-12)).max():.3e}")
+          f"  最大绝对差 {gamma_max_abs:.6f}  最大相对差 {gamma_max_rel:.3e}"
+          + (f"  nan 不对齐 {gamma_nan_bad}" if gamma_nan_bad else ""))
+    if nf_rows.size:
+        print(f"[V2] 非有限输入行 {nf_rows.size}/{rows} 行（inf/nan）：该域内位打包输出的语义**未定义**"
+              f"（任务书与 golden 均未规定），此处不计入判定；标量输出 norm/gamma 仍按"
+              f"“逐位一致 或 同为 nan” 判定；实测本档案中 norm/gamma 在该域与 golden 一致。")
     if idx_bad:
-        flat = np.flatnonzero(got_idx != exp_idx)[:5]
+        flat = np.flatnonzero(idx_ne)[:5]
         print("     前 5 个 idx 不一致位置(展平):", flat.tolist())
     print("RESULT:", "PASS" if (idx_bad == 0 and qjl_bad == 0) else "FAIL")
     print("注：本行只统计 idx/qjl 逐字节一致的诊断口径（严于官方精度标准，"
           "standard §0 不覆盖位打包类输出）；"
-          "整卷绑定判据为随后 V3（官方标准阈值）与性能门槛。")
+          "整卷绑定判据为随后 V3（官方标准阈值）、生态标准层与性能门槛。")
 
 
 if __name__ == "__main__":

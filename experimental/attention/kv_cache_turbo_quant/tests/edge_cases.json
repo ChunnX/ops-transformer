@@ -62,5 +62,13 @@
     "bits": 3,
     "pattern": "edge-rows",
     "why": "行内特例：全零行、近零行、单元素稀疏行 + 普通行（零向量语义）"
+  },
+  {
+    "name": "extreme_rows_t8_h8_b3",
+    "tokens": 8,
+    "heads": 8,
+    "bits": 3,
+    "pattern": "extreme",
+    "why": "特殊值行：+inf / -inf / nan / 大值（1e4），对应生态标准 §1.4 的 INF/-INF/NAN 场景；位打包输出在该域未定义，只判声明域（见 kctq_compare 的非有限行说明）"
   }
 ]

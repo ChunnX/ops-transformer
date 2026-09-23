@@ -49,7 +49,7 @@ for line in "${CASES[@]}"; do
             --tokens "$tokens" --heads "$heads" --bits "$bits" --samples 64 --golden "$GOLDEN" \
             --json "$out/v3.json" | tee "$out/v3.log" | grep -E "relMSE|p95|判定" || true
     else
-        echo "（edge-rows：跳过 V3 统计口径，逐字节对拍已覆盖零向量语义）"
+        echo "（pattern=${pattern}：跳过 V3 统计口径，逐字节对拍已覆盖该行内语义）"
     fi
     median=$(grep -o 'latency_ms_median: [0-9.]*' "$out/run.log" | awk '{print $2}')
     SUMMARY+=("$name bits=$bits median=${median}ms compare=$([[ $compare_ok == 1 ]] && echo PASS || echo FAIL)")

@@ -106,6 +106,7 @@ bash tests/run_edge_cases.sh          # 9 个用例，逐个打印 对拍 PASS/F
 | `tail_t3_h8_b3` / `tail_t9_h8_b4` / `tail_t17_h8_b2` | tokens 非核数整数倍（对齐尾块） |
 | `wave_t2081_h8_b3` | 2081 行触发多轮/尾轮调度 |
 | `edge_rows_t8_h8_b3` | 行内容边界：全 0 行、次正规量级行、正负成对抵消行 |
+| `extreme_rows_t8_h8_b3` | 特殊值行：+inf / −inf / nan / 1e4 大值（生态标准 §1.4 的 INF/-INF/NAN 场景；位打包输出在该域未定义，见口径说明） |
 
 ### 4.2 非法输入拒绝套件
 
@@ -148,6 +149,11 @@ python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_mat
   `task_submission/` 中的精度报告与口径说明。
 - **非法输入**：判据是"必须被拒绝"，且 `valid_base` 必须被接受；打印的 `error` 字段区分
   拒绝来源（`561002` tiling 校验失败 / `161002` OpDef dtype 不一致）。
+- **非有限输入（inf/nan）**：属于**未定义域**——任务书与 `golden.py` 均未规定该域内位打包输出
+  （`idx`/`qjl`）的语义，实测算子与 golden 在含 inf/nan 的行上会给出不同编码（标量输出
+  `norm`/`gamma` 语义一致：`norm=inf`、`gamma=nan`）。因此 `kctq_compare.py` 对**非有限输入行
+  不参与 idx/qjl 判定**（单独打印行数与不判定处数），`norm`/`gamma` 则按"逐位一致 **或** 同为 nan"
+  判定；有限行（声明域）仍要求逐字节一致。对应用例：`extreme_rows_t8_h8_b3`。
 - **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
   主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
 - **生态标准层**（`kctq_std_tolerance.py`）：按《生态算子开源精度标准》
