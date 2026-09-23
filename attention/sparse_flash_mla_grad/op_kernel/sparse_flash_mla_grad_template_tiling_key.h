@@ -31,13 +31,13 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMlaGrad, // 算子OpType
                                             SMLAG_LAYOUT_TND),
                       ASCENDC_TPL_UINT_DECL(MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SMLAG_SWA_MODE, SMLAG_CFA_MODE,
                                             SMLAG_SCFA_MODE),
-                      ASCENDC_TPL_BOOL_DECL(HAS_SEQUSED, 0, 1), );
+                      ASCENDC_TPL_BOOL_DECL(HAS_SEQUSED, 0, 1), ASCENDC_TPL_BOOL_DECL(Deterministic, 0, 1), );
 
 // 支持的模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
                     ASCENDC_TPL_UINT_SEL(LAYOUT, ASCENDC_TPL_UI_LIST, SMLAG_LAYOUT_BSND, SMLAG_LAYOUT_TND),
                     ASCENDC_TPL_UINT_SEL(MODE, ASCENDC_TPL_UI_LIST, SMLAG_SWA_MODE, SMLAG_CFA_MODE, SMLAG_SCFA_MODE),
-                    ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED, 0, 1), ), );
+                    ASCENDC_TPL_BOOL_SEL(HAS_SEQUSED, 0, 1), ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1), ), );
 
 #endif // TEMPLATE_TILING_KEY
