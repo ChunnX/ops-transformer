@@ -8,7 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Generate 50 supported-range TTK cases (or the 16-case --suite smoke)."""
+"""Generate supported-range TTK cases (or the 16-case --suite smoke).
+
+Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
+Use --static-metadata for the two-stage --no-prof / --manual-data-dirs flow;
+TTK does not support manual-data preparation with dynamic slots.
+"""
 
 import argparse
 import ast
@@ -84,7 +89,7 @@ def coverage_row(
         (batch + 1,),
         None if no_seqused else (batch,),
         (2048, 2048) if mask else None,
-        (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
+        (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
     )
     dtypes = (
         dtype,
@@ -139,9 +144,12 @@ def coverage_row(
     row["remark"] = name
     if nc_axes:
         assert set(nc_axes) <= ({0} if layout == "PA_BBND" else {0, 1})
-        strides = [contiguous_stride(s) if s is not None else None for s in shapes]
-        offsets = [0 if s is not None else None for s in shapes]
-        storage = list(shapes)
+        strides = [
+            contiguous_stride(s) if s is not None and -1 not in s else None
+            for s in shapes
+        ]
+        offsets = [0 if s is not None and -1 not in s else None for s in shapes]
+        storage = [s if s is None or -1 not in s else None for s in shapes]
         kv_stride = list(strides[1])
         for axis in nc_axes:
             kv_stride[axis] *= 2
@@ -315,7 +323,7 @@ def cases():
             (3,) if layout_q == "TND" else None,
             (2,),
             (2048, 2048) if mask == 3 else None,
-            (0,),  # Device-independent placeholder; npu_preprocess fills it after H2D.
+            (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
         )
         dtypes = (
             dtype,
@@ -370,6 +378,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument("--suite", choices=("smoke", "coverage"), default="coverage")
+    parser.add_argument(
+        "--static-metadata",
+        action="store_true",
+        help="Use an empty metadata placeholder for manual-data bin preparation",
+    )
     args = parser.parse_args()
     requested = args.output or Path(
         f"testcase/flash_mla_with_kvcache_e2e_{args.suite}.csv"
@@ -383,7 +396,21 @@ def main():
             lineterminator="\n",
         )
         writer.writeheader()
-        writer.writerows(coverage_cases() if args.suite == "coverage" else cases())
+        for row in coverage_cases() if args.suite == "coverage" else cases():
+            if args.static_metadata:
+                shapes = list(ast.literal_eval(row["tensor_view_shapes"]))
+                shapes[7] = (0,)
+                row["tensor_view_shapes"] = repr(tuple(shapes))
+                for field, value in (
+                    ("tensor_storage_shapes", (0,)),
+                    ("tensor_view_strides", (1,)),
+                    ("tensor_view_offsets", 0),
+                ):
+                    if row.get(field):
+                        values = list(ast.literal_eval(row[field]))
+                        values[7] = value
+                        row[field] = repr(tuple(values))
+            writer.writerow(row)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,10 @@
 
 """Convert pytests TestCases dict → TTK E2E CSV.
 
+Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
+Use --static-metadata for the two-stage --no-prof / --manual-data-dirs flow;
+TTK does not support manual-data preparation with dynamic slots.
+
 Usage:
     # 默认: 读取 functional_stc 用例, 输出到 testcase/flash_attn_stc.csv
     python3 gen_cases.py
@@ -436,7 +440,7 @@ def _fa_metadata_size(batch, kv_heads):
     return ((metadata_size + 4095) // 4096) * 4096
 
 
-def _build_row(case_name, p):
+def _build_row(case_name, p, *, static_metadata=False):
     q_shape, k_shape, v_shape = _qkv_shapes(p)
     bt_shape, cu_q_shape, cu_kv_shape, sq_shape, skv_shape = _aux_shapes(p)
     attrs = _build_attrs(p)
@@ -444,13 +448,14 @@ def _build_row(case_name, p):
     mask_mode = int(p.get("mask_mode", 0))
     attn_mask_shape = (2048, 2048) if mask_mode in (3, 4) else None
 
-    # metadata 槽位(索引10) int32 占位 shape, 大小镜像 op 公式。batch 复用
+    # Dynamic metadata is materialized on device. For legacy bin preparation,
+    # --static-metadata retains the fixed-size placeholder. batch 复用
     # _build_attrs 已写入的 batch_size attr 语义(非 TND=B, TND=len(cu_q)-1),
     # 严禁直接取 p["B"] —— TND 下 normalize_params 会把裸 B 强制为 1。
     # kv_heads 用 N2(非 N1)。
     batch = int(attrs["batch_size"])
     kv_heads = int(p.get("N2", p["N1"]))
-    metadata_shape = (_fa_metadata_size(batch, kv_heads),)
+    metadata_shape = (_fa_metadata_size(batch, kv_heads),) if static_metadata else (-1,)
 
     shapes = [
         q_shape,
@@ -492,8 +497,8 @@ def _build_row(case_name, p):
     view_offsets = [None] * len(shapes)
     if nc_kv_dims is not None:
         for i, shape in enumerate(shapes):
-            if shape is None:
-                continue  # 槽位无张量, TTK 跳过
+            if shape is None or -1 in shape:
+                continue  # Empty and dynamic slots have no host storage override.
             if i in (1, 2):
                 storage_shapes[i], view_strides[i], view_offsets[i] = _nc_fields(
                     shape, nc_kv_dims
@@ -539,6 +544,11 @@ def main():
         default="functional_stc",
         help="Test case module (default: functional_stc)",
     )
+    parser.add_argument(
+        "--static-metadata",
+        action="store_true",
+        help="Use a fixed metadata slot for manual-data bin preparation",
+    )
     args = parser.parse_args()
 
     from core.case_loader import load_case_modules
@@ -557,7 +567,7 @@ def main():
         for case_id, raw_params in sorted(cases.items()):
             short_name = case_id.rsplit("/", 1)[-1]
             p = normalize_params(raw_params)
-            row = _build_row(short_name, p)
+            row = _build_row(short_name, p, static_metadata=args.static_metadata)
             writer.writerow(row if has_nc else row[: len(HEADER)])
             written += 1
 
