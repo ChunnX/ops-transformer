@@ -20,7 +20,8 @@
  *   4. comm_mode 属性为 ccu（apace hcomm 通路当前仅支持 CCU 引擎）；
  *   5. gmmX 非空且 H1 为 64 的倍数（MX scale 对齐 + SWAT 引擎约束）；
  *   6. gmmX 与 gmmWeight dtype 相同（kernel 侧 APACE_GMM_A2AV_MX_DTYPE_OK 守卫要求，
- *      混合 MXFP8 组合回退原通路，避免下发 kernel 兜底空跑的 tiling key）。
+ *      混合 MXFP8 组合回退原通路，避免下发 kernel 兜底空跑的 tiling key）；
+ *   7. AIC 核数 ≤ 64（AIC_ONLY 跨核软 barrier 槽位数组 barrierSlots[64] 容量约束）。
  */
 
 #include "op_mc2.h"
@@ -111,6 +112,16 @@ bool ApaceMxQuantGroupedMatmulAllToAllvTiling::IsCapable()
     const int64_t h1 = gmmXStorageShape->GetStorageShape().GetDim(DIM_ONE);
     if (aTotal <= 0 || h1 <= 0 || (static_cast<uint64_t>(h1) % MX_SCALE_GROUP != 0UL)) {
         OP_LOGD(opName_, "Apace path requires non-empty gmmX and H1 multiple of 64, skip.");
+        return false;
+    }
+    // AIC_ONLY 跨核软 barrier 槽位数组容量约束（barrierSlots[GMM_A2AV_MAX_AIC_CORE_NUM]，
+    // 核数超限时 tiling 侧回退原通路而非越界）
+    auto *platformInfoPtr = context_->GetPlatformInfo();
+    OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "platformInfo"), return false);
+    const uint32_t aicCoreNum = platform_ascendc::PlatformAscendC(platformInfoPtr).GetCoreNumAic();
+    if (aicCoreNum == 0U || aicCoreNum > Apace::GMM_A2AV_MAX_AIC_CORE_NUM) {
+        OP_LOGD(opName_, "Apace path requires aicCoreNum(%u) in (0, %u], skip.", aicCoreNum,
+                Apace::GMM_A2AV_MAX_AIC_CORE_NUM);
         return false;
     }
     // ERROR 级别确保现场可见：这是"tiling 实际选择 apace 通路"的直接证据
@@ -208,9 +219,10 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::SetApaceTilingData(
     if (const char *stageEnv = getenv("MC2_APACE_GMM_A2AV_DEBUG_STAGE"); stageEnv != nullptr) {
         td->debugStage = static_cast<uint32_t>(atoi(stageEnv));
         // ERROR 级别确保现场可见，用于确认开关已生效
-        OP_LOGE(opName_,
-                "Apace debugStage=%u生效 (1=仅通信 2=计算+barrier 3=计算+提交 4=仅GMM 5=仅barrier 6=仅Init 7=空kernel)",
-                td->debugStage);
+        OP_LOGE(
+            opName_,
+            "Apace debugStage=%u生效 (1=仅通信 2=计算+barrier 3=计算+提交 4=仅GMM 5=仅SoftBarrier 6=仅Init 7=空kernel)",
+            td->debugStage);
     }
     for (uint64_t i = 0; i < expertNum; i++) {
         td->sendCnt[i] = localTilingData_.taskTilingInfo.sendCnt[i];
@@ -312,11 +324,12 @@ ge::graphStatus ApaceMxQuantGroupedMatmulAllToAllvTiling::PostTiling()
     } else {
         rawTiling->SetDataSize(apaceSize);
     }
-    // 与原通路完全对齐：不设置 SetScheduleMode（原通路为默认 0；独占模式与 MC2 通信域
-    // 辅助 task 的调度交互未知，属未验证组合）
-    // 必须全核启动（与原通路 aicCoreNum 口径一致）：kernel 逐批使用 mode-0 全核 FFTS barrier
-    // （CrossCoreSetFlag<0>(8)+WaitFlag）及 SyncAll<false>，其计数域为调度域内全部 AIC 核，
-    // 部分核启动（SWAT usedCoreNum）时未启动核永不 arrive → barrier 永不释放 → 卡死。
+    // SetScheduleMode(1)：镜像算子 PR 11573 的 AIC-only tiling 同款（唯一验证过的
+    // AIC_ONLY 调度形态）；此前 MIX 版对齐原通路去掉过该设置，切换 AIC_ONLY 后恢复
+    context_->SetScheduleMode(1);
+    // 全核启动（与原通路 aicCoreNum 口径一致）：AIC_ONLY 下 kernel 逐批执行跨核软 barrier
+    // （GM 槽位轮询 SoftBarrier），其轮询域为调度域内全部 AIC 核，部分核启动
+    // （SWAT usedCoreNum）时未启动核永不写槽位 → barrier 永不释放 → 卡死。
     // GMM 调度器在满核下自行分配 block，闲置核空跑 Run 循环并正常参与 barrier。
     context_->SetBlockDim(localParams_.aicCoreNum);
     OP_LOGI(opName_, "Apace blockDim=%lu (usedCoreNum=%u)", localParams_.aicCoreNum, usedCoreNum_);

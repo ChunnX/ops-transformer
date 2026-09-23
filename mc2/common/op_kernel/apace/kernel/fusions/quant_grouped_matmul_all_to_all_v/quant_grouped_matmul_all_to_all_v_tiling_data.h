@@ -29,7 +29,7 @@ namespace Apace {
 
 // e * epWorldSize 上限，与原算子约束一致（groupList / cGroupOffsetTable 表长）
 constexpr uint32_t GMM_A2AV_MAX_EXPERT_NUM = 256U;
-// AIV 侧 AllToAllV send/recv cnt/offset 数组按 rank 数开表的上限（epWorldSize 超限时 tiling 侧回退原通路）
+// AIC_ONLY 全核 AllToAllV send/recv cnt/offset 数组按 rank 数开表的上限（epWorldSize 超限时 tiling 侧回退原通路）
 constexpr uint32_t GMM_A2AV_MAX_RANK_NUM = 128U;
 // 分批通算掩盖流水：expertNumPerBatch = CeilDiv(e, 4)（与原通路 TARGET_COMM_ROUNDS=4 口径一致），
 // totalLoopCnt = CeilDiv(e, expertNumPerBatch) ≤ 4（e ≤ 32）；AIV 侧 handle 数组按此上限留余量
@@ -90,7 +90,8 @@ struct hcommQuantGmmAlltoAllvTilingData {
     uint32_t hasSharedMm; // 是否携带共享专家 MM 计算
 
     // ============ 跨 AIC 软 barrier 槽位（host 清零，kernel 按 generation 单调递增使用） ============
-    // 位于 tiling 数据尾部（tiling buffer 每次下发前整体清零，保证初值为 0）
+    // 位于 tiling 数据尾部，kernel 侧绑定 tilingGM 原址（栈拷贝不可跨核共享）；
+    // AIC_ONLY 下全核同构流水以 SoftBarrier 逐批汇聚（替代 MIX 版 flag8/flag9）
     volatile uint32_t barrierSlots[GMM_A2AV_MAX_AIC_CORE_NUM];
 
     // ============ 分阶段诊断开关（host 读环境变量 MC2_APACE_GMM_A2AV_DEBUG_STAGE 填入） ============

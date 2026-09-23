@@ -2,10 +2,16 @@
 
 | 项 | 内容 |
 |---|---|
-| 文档版本 | V1.0 |
-| 基线代码 | apace 分支 commit `2b7026857` |
+| 文档版本 | V1.1 |
+| 基线代码 | apace 分支（AIC_ONLY 实现提交） |
 | 适用芯片 | Ascend 950（dav_c310，`__NPU_ARCH__=3510`） |
 | 关联参考 | 镜像算子 PR 11573（allto_allv_quant_grouped_mat_mul，apace AIC-only 形态）；原通路 `GmmA2avScheduler + HcclA2avOp + QuantGroupedMatmul`（mc2_templates） |
+
+> **V1.1 变更记录**：apace 通路任务类型由 MIX_AIC_1_2 切换为 **AIC_ONLY**（第 4 章由规划转为实现，
+> 第 3 章 MIX 场景转为历史参考）。切换依据：镜像算子 PR 11573 为 AIC-only 形态（唯一验证先例），
+> 其 tiling 配置（SetScheduleMode(1)+SetBlockDim(aicCoreNum)）随之采纳；OB-1 前置风险保留在 4.2 节，
+> 启用前建议以 debugStage=7 验证任务层可用性。诊断 stage 语义微调：stage 4 为纯 GMM 隔离
+> （不含 SoftBarrier），stage 5 为仅 SoftBarrier。
 
 ---
 
