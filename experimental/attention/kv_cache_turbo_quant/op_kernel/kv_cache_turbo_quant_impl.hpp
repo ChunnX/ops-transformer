@@ -350,7 +350,9 @@ private:
                         static_cast<int32_t>(KCTQ_D));
         mm_.SetHF32(false); // indices are decided on fp32 values, so HF32 must stay off
         mm_.SetTensorA(aGm);
-        mm_.SetTensorB(bGm);
+        // The runtime flag is what actually drives the transpose unit; the template argument alone
+        // does not switch it on.
+        mm_.SetTensorB(bGm, true);
 
         uint32_t done = 0;
         while (mm_.template Iterate<true>()) {
@@ -532,6 +534,10 @@ private:
             DataCopyExtParams cpP{1, static_cast<uint32_t>(KCTQ_D * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padP{false, 0, 0, 0};
             DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(row) * KCTQ_D], cpP, padP);
+            // The GM -> UB copy is asynchronous: without draining it here the vector ops below
+            // would read the previous row (or the stale buffer content for the first row).
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             LocalTensor<float> mask = tmpBuf_.Get<float>();
             LocalTensor<float> chunk = chunkBuf_.Get<float>();
