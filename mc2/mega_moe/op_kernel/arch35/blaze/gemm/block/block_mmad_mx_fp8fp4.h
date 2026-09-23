@@ -14,12 +14,13 @@
  */
 #pragma once
 #include "../tile/copy_gmm1_concat.h"
-
 #include "../policy/dispatch_policy_mega_moe.h"
 #include "blaze/gemm/tile/tile_trait.h"
 #include "kernel_basic_intf.h"
 #include "blaze/gemm/block/block_mmad.h"
 #include "tensor_api/tensor.h"
+#include "../utils/common_utils_mega_moe.h"
+#include "../../../mega_moe_tiling.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -34,11 +35,6 @@ using AscendC::TEventID;
 using AscendC::WaitFlag;
 using Blaze::Gemm::DOUBLE_BUFFER;
 using Blaze::Gemm::FINAL_ACCUMULATION;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE;
 using Blaze::Gemm::MXFP_DIVISOR_SIZE;
 using Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
 using Blaze::Gemm::NON_FINAL_ACCUMULATION;
@@ -63,13 +59,9 @@ using Blaze::Gemm::SYNC_MODE4;
  *
  * Distinctive behaviors:
  * 1) It synchronizes with prologue through cross-core flags, and the sync semantics must match prologue exactly.
- * 2) It uses dynamic kL1 splitting (kaL1/kbL1) and this policy is aligned with prologue's K-window organization.
- * 3) It uses dynamic kL0 splitting inside each kL1 tile to balance compute and memory movement.
- * 4) A/scaleA/scaleB/B use different transfer granularities by design:
- *    - scaleA/scaleB are moved with MX_FP8FP4_SCALE_K_L1_SIZE = 4096 K-window,
- *    - typical kaL1/kbL1 are 256/512,
- *    - this larger 4096 window is used to organize scale transfer at 128B cacheline-friendly granularity,
- *      improving effective bandwidth and reuse.
+ * 2) Host tiling chooses A/B buffer counts and the shared scale K window.
+ * 3) A and B use K256 L1 tiles, including M/N tails; scales use two larger K windows.
+ * 4) Each L0 B tile is reused across M strips, with independent L0A/L0B rotation.
  *
  * Key constraints:
  * 1) A must satisfy ND format.
@@ -77,8 +69,8 @@ using Blaze::Gemm::SYNC_MODE4;
  * 3) Scale layout must satisfy MXFP_DIVISOR_SIZE = 64.
  *
  * When to use:
- * - Use this block on the mxfp8fp4 path when dynamic kL1/kL0 blocking is needed to increase per-tile data workload
- *   and overall throughput.
+ * - Use this block on the mxfp8fp4 path when pipelined L1 copies and L0 M-strip reuse are needed to increase per-tile
+ * data workload and overall throughput.
  */
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION {
@@ -107,15 +99,14 @@ public:
     constexpr static int32_t SCALE_C0 = 2;
     constexpr static int32_t L0C_C0 = 16;
 
-    struct L1Params {
-        uint64_t kL1;
-        uint64_t scaleKL1;
-    };
+    // Common scheduler type slot; A8W4 L1 parameters are supplied only by host layout.
+    struct L1Params {};
 
+    template <bool ResetBufferIndices = true>
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
-                                const L1Params &l1Params, bool interleave = false);
+                                bool interleave = false);
 
-    __aicore__ inline BlockMmad();
+    __aicore__ inline BlockMmad(const MegaMoeL1Layout &layout);
     // When copyUbToV1 is true, L0C->UB copies the result to V1 core instead of V0.
     // Only meaningful when C tensor resides in UB; ignored for GM output.
     template <typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC>
@@ -138,26 +129,36 @@ private:
     __aicore__ inline void WaitAivToAic();
     __aicore__ inline void SetAicToAiv();
 
-    __aicore__ inline void CalcDynamicKBlock(uint64_t mL1Size, uint64_t nL1Size, uint64_t configuredKbL1Size,
-                                             uint64_t &kaL1Size, uint64_t &kbL1Size) const;
-    __aicore__ inline void ProcessTileL1(int64_t kbOffset, uint64_t kbL1RealSize, const BlockMmadOffsetParam &param);
+    template <typename TensorC>
+    __aicore__ inline void ProcessTileL1(int64_t kbOffset, uint64_t kbL1RealSize, const BlockMmadOffsetParam &param,
+                                         const TensorC &tensorC, bool copyUbToV1);
     __aicore__ inline void CopyAAndScaleAL1ToL0(uint64_t l1KOffset, uint64_t kbOffset, uint64_t realL0K,
-                                                uint64_t realL0ScaleK, const BlockMmadOffsetParam &param);
+                                                uint64_t realL0ScaleK, uint64_t mOffset, uint64_t mSize,
+                                                const BlockMmadOffsetParam &param);
     template <typename TensorBL1Type>
     __aicore__ inline void CopyBAndScaleBL1ToL0(const TensorBL1Type &tensorBL1, uint64_t l1KOffset, uint64_t kbOffset,
                                                 uint64_t realL0K, uint64_t realL0ScaleK,
                                                 const BlockMmadOffsetParam &param);
+    template <typename TensorC>
+    __aicore__ inline auto GetBlockMmadOffsetParam(const TensorC &tensorC) const;
+    template <typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC>
+    __aicore__ inline void ProcessTilesL1(const TensorA &tensorA, const TensorScaleA &tensorScaleA,
+                                          const TensorScaleB &tensorScaleB, const TensorC &tensorC,
+                                          const BlockMmadOffsetParam &blockParam, bool copyUbToV1);
     __aicore__ inline void WaitAMTE1ToMTE2();
     __aicore__ inline void SetMTE1ToMTE2();
     __aicore__ inline void WaitScaleMTE1ToMTE2();
     __aicore__ inline void SetScaleMTE1ToMTE2();
     template <typename TensorA>
-    __aicore__ inline void CopyAGmToL1(const TensorA &tensorA, const BlockMmadOffsetParam &param, int64_t kaGmOffset);
+    __aicore__ inline auto CopyAGmToL1(const TensorA &tensorA, const BlockMmadOffsetParam &param, int64_t kaGmOffset,
+                                       uint64_t slot);
     template <typename TensorScaleA, typename TensorScaleB>
-    __aicore__ inline void CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA, const TensorScaleB &tensorScaleB,
-                                             const BlockMmadOffsetParam &param, uint64_t kbL1Offset);
+    __aicore__ inline auto CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA, const TensorScaleB &tensorScaleB,
+                                             const BlockMmadOffsetParam &param, uint64_t kbL1Offset, uint64_t slot);
+
     template <typename TensorC>
-    __aicore__ inline void CopyCL0c2GmOrUb(const TensorC &tensorC, const BlockMmadOffsetParam &param, bool copyUbToV1);
+    __aicore__ inline void CopyCL0c2GmOrUb(const TensorC &tensorC, const BlockMmadOffsetParam &param, bool copyUbToV1,
+                                           uint64_t mOffset, uint64_t mSize);
 
     using MakeLayoutAL1 = asc::te::frame_layout_format<asc::te::nz_layout_ptn, AscendC::Std::Int<C0_SIZE>>;
     using MakeLayoutScaleAL1 =
@@ -173,21 +174,16 @@ private:
         typename asc::te::frame_layout_format<asc::te::nn_layout_ptn, AscendC::Std::Int<SCALE_C0>>;
 
     // Init state used by the Tensor-based operator() path.
+    const MegaMoeL1Layout layout_;
     uint64_t concatHalfN_{0};
     uint64_t k_{1};
-    uint64_t kL1_{1};
-    uint64_t scaleKL1_{MX_FP8FP4_SCALE_K_L1_SIZE};
-    uint64_t baseM_{256};
-    uint64_t baseN_{256};
     uint64_t baseK_{128};
-    uint64_t kaL1Size_{MX_FP8FP4_L1_K_CONFIG_256};
-    uint64_t kbL1Size_{MX_FP8FP4_L1_K_CONFIG_256};
-    bool hasInitConfig_{false};
 
     uint64_t aL1BufIdx_ = 0;
     uint64_t bL1BufIdx_ = 0;
     uint64_t scaleL1BufIdx_ = 0;
-    uint64_t l0BufIdx_ = 0;
+    uint64_t l0aBufIdx_ = 0;
+    uint64_t l0bBufIdx_ = 0;
 
     template <typename DType, typename Layout>
     using L1TensorType =
@@ -202,35 +198,18 @@ private:
     TensorScaleBL1 tensorScaleBL1_;
 
     // --- sync ---
-    // 2 buffer
     static constexpr TEventID eventIdsMte1ToMte2_ = 0;
-    // 2 buffer
-    static constexpr TEventID eventIdsMxScaleMte1ToMte2_ = 2;
-    static constexpr TEventID eventIdMte1ToMte2_ = 4;
+    const TEventID eventIdsMxScaleMte1ToMte2_ = layout_.aBufferNum;
+    static constexpr TEventID eventIdsAReady_ = 0;
+    const TEventID eventIdsScaleReady_ = layout_.aBufferNum;
     static constexpr TEventID eventIdMte2ToMte1_ = 0;
     static constexpr TEventID eventIdMToMte1_ = 0;
+    static constexpr TEventID eventIdMToMte1B_ = 2;
     static constexpr TEventID eventIdMte1ToM_ = 0;
     static constexpr uint64_t SYNC_AIV_AIC_FLAG = 0;
     static constexpr uint64_t SYNC_AIC_AIV_FLAG = 1;
 
-    /**
-     * L1 512KB Memory Map
-     * * Segment 1 [0KB - 256KB]:
-     * [0k]    [64k]      [96k]    [128k]                        [256k]
-     * |--B B0---|--scA0---|--scB0---|----------- A (Part 1) -------|
-     *     (64KB)     (32KB)    (32KB)            (128KB)
-     * * Segment 2 [256KB - 512KB]:
-     * [256k]                    [384k]        [448k]   [480k]   [512k]
-     * |-------- A (Part 2) -------|---- B B1 ----|--scA1--|--scB1--|
-     *          (128KB)               (64KB)        (32KB)    (32KB)
-     * * Note: A is a contiguous 256KB block spanning the middle of the buffer.
-     */
-    static constexpr uint64_t SCALE_AL1_OFFSET = 64 * 1024;
-    static constexpr uint64_t SCALE_BL1_OFFSET = 96 * 1024;
-    static constexpr uint64_t A_L1_OFFSET = 128 * 1024;
-    static constexpr uint64_t L1_BUF_OFFSET = 384 * 1024;
-    static constexpr uint64_t A_L1_BUF_OFFSET = 128 * 1024;
-    static constexpr uint64_t A_L1_SINGLE_BUF_SIZE = 128 * 1024;
+    // Host layout packs A, interleaved B and two scale pairs; see CalcMegaMoeL1Layout.
 
     /**
      * L0 64KB Memory Map (double-buffered B tiles)
@@ -239,29 +218,31 @@ private:
      *    (32KB)     (32KB)
      */
     static constexpr uint64_t L0_BUF_OFFSET = 32 * 1024;
+    static constexpr uint64_t MX_FP8FP4_M_STRIP = 128;
 };
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAAndScaleAL1ToL0(uint64_t l1KOffset, uint64_t kbOffset,
                                                                                  uint64_t realL0K,
                                                                                  uint64_t realL0ScaleK,
+                                                                                 uint64_t mOffset, uint64_t mSize,
                                                                                  const BlockMmadOffsetParam &param)
 {
-    auto layoutAL0 = MakeLayoutAL0{}(param.mL1Size, realL0K);
+    auto layoutAL0 = MakeLayoutAL0{}(mSize, realL0K);
     auto tensorAL0 = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l0a, AType>(l0BufIdx_ * L0_BUF_OFFSET), layoutAL0);
-    auto tensorBlockAL1 = tensorAL1_.slice(asc::te::make_coord(0, (l1KOffset + kbOffset) % param.kaL1Size),
-                                           asc::te::make_shape(param.mL1Size, realL0K));
+        asc::te::make_mem_ptr<asc::te::location::l0a, AType>(l0aBufIdx_ * L0_BUF_OFFSET), layoutAL0);
+    auto tensorBlockAL1 = tensorAL1_.slice(asc::te::make_coord(mOffset, (l1KOffset + kbOffset) % param.kaL1Size),
+                                           asc::te::make_shape(mSize, realL0K));
     asc::te::copy(asc::te::make_copy(asc::te::copy_l1_to_l0a{}), tensorAL0, tensorBlockAL1);
 
-    auto layoutScaleAL0 = MakeLayoutScaleAL0{}(param.mL1Size, realL0ScaleK);
+    auto layoutScaleAL0 = MakeLayoutScaleAL0{}(mSize, realL0ScaleK);
     auto tensorScaleAL0 = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l0scalea, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
+        asc::te::make_mem_ptr<asc::te::location::l0scalea, fp8_e8m0_t>((l0aBufIdx_ * L0_BUF_OFFSET) >> 4),
         layoutScaleAL0);
     auto tensorBlockScaleAL1 = tensorScaleAL1_.slice(
         asc::te::make_coord(
-            0, CeilDiv(((l1KOffset + kbOffset) % param.scaleKL1Size), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE),
-        asc::te::make_shape(param.mL1Size, realL0ScaleK));
+            mOffset, CeilDiv(((l1KOffset + kbOffset) % param.scaleKL1Size), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE),
+        asc::te::make_shape(mSize, realL0ScaleK));
     asc::te::copy(asc::te::make_copy(asc::te::copy_l1_to_l0scalea{}), tensorScaleAL0, tensorBlockScaleAL1);
 }
 
@@ -275,14 +256,14 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyBAndScaleBL1ToL0
 {
     auto layoutBL0 = MakeLayoutBL0{}(realL0K, param.nL1Size);
     auto tensorBL0 = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l0b, AType>(l0BufIdx_ * L0_BUF_OFFSET), layoutBL0);
+        asc::te::make_mem_ptr<asc::te::location::l0b, AType>(l0bBufIdx_ * L0_BUF_OFFSET), layoutBL0);
     auto tensorBlockBL1 =
         tensorBL1.slice(asc::te::make_coord(l1KOffset, 0), asc::te::make_shape(realL0K, param.nL1Size));
     asc::te::copy(asc::te::make_copy(asc::te::copy_l1_to_l0b{}), tensorBL0, tensorBlockBL1);
 
     auto layoutScaleBL0 = MakeLayoutScaleBL0{}(realL0ScaleK, param.nL1Size);
     auto tensorScaleBL0 = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l0scaleb, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
+        asc::te::make_mem_ptr<asc::te::location::l0scaleb, fp8_e8m0_t>((l0bBufIdx_ * L0_BUF_OFFSET) >> 4),
         layoutScaleBL0);
     auto tensorBlockScaleBL1 = tensorScaleBL1_.slice(
         asc::te::make_coord(
@@ -292,54 +273,67 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyBAndScaleBL1ToL0
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
+template <typename TensorC>
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::ProcessTileL1(int64_t kbOffset, uint64_t kbL1RealSize,
-                                                                          const BlockMmadOffsetParam &param)
+                                                                          const BlockMmadOffsetParam &param,
+                                                                          const TensorC &tensorC, bool copyUbToV1)
 {
+    const uint64_t bL1Offset = layout_.bOffsets[bL1BufIdx_];
     auto tensorBL1 =
-        asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, AType>(bL1BufIdx_ * L1_BUF_OFFSET),
+        asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, AType>(bL1Offset),
                              asc::te::frame_layout_format<asc::te::zn_layout_ptn, AscendC::Std::Int<C0_SIZE>>{}(
                                  kbL1RealSize, param.nL1Size));
-    SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_);
-    WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_);
-    // Decide the MMAD accumulation mode for this K-tile.
-    bool isLastGmK = kbOffset + kbL1RealSize >= param.kSize;
-    bool isFirstGmK = kbOffset == 0;
-    uint64_t l0KSize = param.l0KSize;
-    for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += l0KSize) {
-        bool isLastL1K = l1KOffset + l0KSize >= kbL1RealSize;
-        uint64_t realL0K = isLastL1K ? kbL1RealSize - l1KOffset : l0KSize;
-        uint64_t realL0ScaleK = CeilDiv(realL0K, MXFP_DIVISOR_SIZE) * 2;
-        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0BufIdx_);
-
-        CopyAAndScaleAL1ToL0(l1KOffset, kbOffset, realL0K, realL0ScaleK, param);
+    const bool isLastGmK = kbOffset + kbL1RealSize >= param.kSize;
+    const bool isFirstGmK = kbOffset == 0;
+    for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += param.l0KSize) {
+        const uint64_t realL0K = min(param.l0KSize, kbL1RealSize - l1KOffset);
+        const uint64_t realL0ScaleK = CeilDiv(realL0K, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        const bool finalK = isLastGmK && l1KOffset + realL0K == kbL1RealSize;
+        // One B/scaleB load serves all M strips for this K split. Its free event
+        // is returned only after the last strip's MAD has stopped reading it.
+        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
         CopyBAndScaleBL1ToL0(tensorBL1, l1KOffset, kbOffset, realL0K, realL0ScaleK, param);
-        auto tensorAL0 =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0a, AType>(l0BufIdx_ * L0_BUF_OFFSET),
-                                 MakeLayoutAL0{}(param.mL1Size, realL0K));
-        auto tensorBL0 =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0b, AType>(l0BufIdx_ * L0_BUF_OFFSET),
-                                 MakeLayoutBL0{}(realL0K, param.nL1Size));
+        for (uint64_t mOffset = 0; mOffset < param.mL1Size; mOffset += MX_FP8FP4_M_STRIP) {
+            const uint64_t mSize = min(MX_FP8FP4_M_STRIP, param.mL1Size - mOffset);
 
-        SetFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
-        WaitFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
+            auto tensorBL0 =
+                asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0b, AType>(l0bBufIdx_ * L0_BUF_OFFSET),
+                                     MakeLayoutBL0{}(realL0K, param.nL1Size));
+            WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0aBufIdx_);
+            CopyAAndScaleAL1ToL0(l1KOffset, kbOffset, realL0K, realL0ScaleK, mOffset, mSize, param);
+            auto tensorAL0 =
+                asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0a, AType>(l0aBufIdx_ * L0_BUF_OFFSET),
+                                     MakeLayoutAL0{}(mSize, realL0K));
+            SetFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
+            WaitFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
 
-        auto layoutL0C =
-            asc::te::make_frame_layout<asc::te::nz_layout_ptn, AscendC::Std::Int<L0C_C0>>(param.mL1Size, param.nL1Size);
-        auto tensorL0C = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0c, float>(0), layoutL0C);
-        asc::te::mmad_params params;
-        params.m = static_cast<uint16_t>(param.mL1Size);
-        params.k = static_cast<uint16_t>(realL0K);
-        params.n = static_cast<uint16_t>(param.nL1Size);
-        params.unit_flag =
-            (isLastGmK && isLastL1K) ? asc::te::unit_flag_mode::enable_update : asc::te::unit_flag_mode::enable_keep;
-        params.init_with_zero = isFirstGmK && l1KOffset == 0;
-        asc::te::mmad(
-            asc::te::mmad_atom<asc::te::mmad_traits<asc::te::mmad_operation, Blaze::Gemm::Tile::MmadTraitMX>>{}.with(
-                params),
-            tensorL0C, tensorAL0, tensorBL0);
+            // Each strip owns a contiguous, 512-byte-aligned L0C range. Retain
+            // the original per-element K order and the 2/3 unit-flag protocol.
+            auto layoutL0C =
+                asc::te::make_frame_layout<asc::te::nz_layout_ptn, AscendC::Std::Int<L0C_C0>>(mSize, param.nL1Size);
+            auto tensorL0C =
+                asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0c, float>(
+                                         mOffset * CeilAlign(param.nL1Size, uint64_t{L0C_C0}) * sizeof(float)),
+                                     layoutL0C);
+            asc::te::mmad_params params;
+            params.m = static_cast<uint16_t>(mSize);
+            params.k = static_cast<uint16_t>(realL0K);
+            params.n = static_cast<uint16_t>(param.nL1Size);
+            params.unit_flag = finalK ? asc::te::unit_flag_mode::enable_update : asc::te::unit_flag_mode::enable_keep;
+            params.init_with_zero = isFirstGmK && l1KOffset == 0;
+            asc::te::mmad(
+                asc::te::mmad_atom<asc::te::mmad_traits<asc::te::mmad_operation, Blaze::Gemm::Tile::MmadTraitMX>>{}
+                    .with(params),
+                tensorL0C, tensorAL0, tensorBL0);
+            SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0aBufIdx_);
+            l0aBufIdx_ ^= 1;
 
-        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0BufIdx_);
-        l0BufIdx_ ^= 1;
+            if (finalK) {
+                CopyCL0c2GmOrUb(tensorC, param, copyUbToV1, mOffset, mSize);
+            }
+        }
+        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + l0bBufIdx_);
+        l0bBufIdx_ ^= 1;
     }
 }
 
@@ -366,90 +360,102 @@ BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::SetMTE1ToMTE2()
 {
     SetFlag<HardEvent::MTE1_MTE2>(eventIdsMte1ToMte2_ + aL1BufIdx_);
-    aL1BufIdx_ ^= 1;
+    aL1BufIdx_ = (aL1BufIdx_ + 1) % layout_.aBufferNum;
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename TensorA>
-__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAGmToL1(const TensorA &tensorA,
+__aicore__ inline auto BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAGmToL1(const TensorA &tensorA,
                                                                         const BlockMmadOffsetParam &param,
-                                                                        int64_t kaGmOffset)
+                                                                        int64_t kaGmOffset, uint64_t slot)
 {
     int64_t kaL1RealSize = (kaGmOffset + param.kaL1Size) >= param.kSize ? param.kSize - kaGmOffset : param.kaL1Size;
     auto copyGM2L1 = asc::te::make_copy(asc::te::copy_gm_to_l1{});
     auto layoutAL1 = MakeLayoutAL1{}(param.mL1Size, kaL1RealSize);
     auto gmBlockA = tensorA.slice(asc::te::make_coord(0, kaGmOffset), asc::te::make_shape(param.mL1Size, kaL1RealSize));
-    tensorAL1_ = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, AType>(A_L1_OFFSET + aL1BufIdx_ * A_L1_BUF_OFFSET), layoutAL1);
-    asc::te::copy(copyGM2L1, tensorAL1_, gmBlockA);
+    const uint64_t aL1Offset = layout_.aOffsets[slot];
+    auto destination = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, AType>(aL1Offset), layoutAL1);
+    asc::te::copy(copyGM2L1, destination, gmBlockA);
+    return destination;
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename TensorScaleA, typename TensorScaleB>
-__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA,
+__aicore__ inline auto BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(const TensorScaleA &tensorScaleA,
                                                                               const TensorScaleB &tensorScaleB,
                                                                               const BlockMmadOffsetParam &param,
-                                                                              uint64_t kbL1Offset)
+                                                                              uint64_t kbL1Offset, uint64_t slot)
 {
     uint64_t scaleKGmSize = CeilDiv(param.kSize, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     uint64_t scaleKL1StandardLen = CeilDiv(param.scaleKL1Size, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + param.scaleKL1Size) > param.kSize ?
                                     CeilDiv(param.kSize - kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE :
                                     scaleKL1StandardLen;
+    const uint64_t scaleAL1Offset = layout_.scaleAOffsets[slot];
+    const uint64_t scaleBL1Offset = layout_.scaleBOffsets[slot];
     auto CopyScaleGM2L1 = asc::te::make_copy(asc::te::copy_gm_to_l1{});
     auto layoutScaleAL1 = MakeLayoutScaleAL1{}(param.mL1Size, scaleKL1RealSize);
-    tensorScaleAL1_ = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(SCALE_AL1_OFFSET + scaleL1BufIdx_ * L1_BUF_OFFSET),
-        layoutScaleAL1);
+    auto destinationA =
+        asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(scaleAL1Offset), layoutScaleAL1);
     auto gmBlockScaleA =
         tensorScaleA.slice(asc::te::make_coord(0, CeilDiv(kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE),
                            asc::te::make_shape(param.mL1Size, scaleKL1RealSize));
-    asc::te::copy(CopyScaleGM2L1, tensorScaleAL1_, gmBlockScaleA);
+    asc::te::copy(CopyScaleGM2L1, destinationA, gmBlockScaleA);
 
     auto layoutScaleBL1 = MakeLayoutScaleBL1{}(scaleKL1RealSize, param.nL1Size);
-    tensorScaleBL1_ = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(SCALE_BL1_OFFSET + scaleL1BufIdx_ * L1_BUF_OFFSET),
-        layoutScaleBL1);
+    auto destinationB =
+        asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(scaleBL1Offset), layoutScaleBL1);
     auto gmBlockScaleB =
         tensorScaleB.slice(asc::te::make_coord(CeilDiv(kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, 0),
                            asc::te::make_shape(scaleKL1RealSize, param.nL1Size));
     if (concatHalfN_ != 0U) {
-        MegaMoeImpl::CopyGmm1ScaleConcatToL1(tensorScaleBL1_, gmBlockScaleB, concatHalfN_, k_);
+        MegaMoeImpl::CopyGmm1ScaleConcatToL1(destinationB, gmBlockScaleB, concatHalfN_, k_);
     } else {
-        asc::te::copy(CopyScaleGM2L1, tensorScaleBL1_, gmBlockScaleB);
+        asc::te::copy(CopyScaleGM2L1, destinationB, gmBlockScaleB);
     }
+    return AscendC::Std::tuple<decltype(destinationA), decltype(destinationB)>{destinationA, destinationB};
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename TensorC>
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyCL0c2GmOrUb(const TensorC &tensorC,
                                                                             const BlockMmadOffsetParam &param,
-                                                                            bool copyUbToV1)
+                                                                            bool copyUbToV1, uint64_t mOffset,
+                                                                            uint64_t mSize)
 {
     constexpr uint64_t FP32_64_AS_UINT64 = 0x42800000;
     auto layoutL0C =
-        asc::te::make_frame_layout<asc::te::nz_layout_ptn, AscendC::Std::Int<L0C_C0>>(param.mL1Size, param.nL1Size);
-    auto tensorL0C = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0c, float>(0), layoutL0C);
+        asc::te::make_frame_layout<asc::te::nz_layout_ptn, AscendC::Std::Int<L0C_C0>>(mSize, param.nL1Size);
+    auto tensorL0C = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l0c, float>(
+                                              mOffset * CeilAlign(param.nL1Size, uint64_t{L0C_C0}) * sizeof(float)),
+                                          layoutL0C);
+    auto tensorStripC = tensorC.slice(asc::te::make_coord(mOffset, 0), asc::te::make_shape(mSize, param.nL1Size));
     if constexpr (AscendC::Std::is_same_v<asc::te::get_mem_location<TensorC>, asc::te::location::ub>) {
         // C L0C->UB
         auto CopyL0C2UB = asc::te::make_copy(asc::te::copy_l0c_to_ub{});
         asc::te::copy(CopyL0C2UB.with(asc::te::l0c_to_ub_params(asc::te::unit_flag_mode::enable_update, copyUbToV1)),
-                      tensorC, tensorL0C, FP32_64_AS_UINT64);
+                      tensorStripC, tensorL0C, FP32_64_AS_UINT64);
     } else {
         // C L0C->GM
         auto CopyL0C2GM = asc::te::make_copy(asc::te::copy_l0c_to_gm{});
-        asc::te::copy(CopyL0C2GM.with(asc::te::l0c_to_gm_params(asc::te::unit_flag_mode::enable_update)), tensorC,
+        asc::te::copy(CopyL0C2GM.with(asc::te::l0c_to_gm_params(asc::te::unit_flag_mode::enable_update)), tensorStripC,
                       tensorL0C, FP32_64_AS_UINT64);
     }
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::BlockMmad()
+__aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::BlockMmad(const MegaMoeL1Layout &layout)
+    : layout_(layout)
 {
-    for (uint64_t i = 0; i < DOUBLE_BUFFER; i++) {
+    for (uint64_t i = 0; i < layout_.bBufferNum; i++) {
         SetAicToAiv();
+    }
+    for (uint64_t i = 0; i < DOUBLE_BUFFER; i++) {
         SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
+        SetFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + i);
         SetFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + i);
+    }
+    for (uint64_t i = 0; i < layout_.aBufferNum; i++) {
         SetFlag<HardEvent::MTE1_MTE2>(eventIdsMte1ToMte2_ + i);
     }
 }
@@ -459,56 +465,47 @@ __aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::~BlockMmad()
 {
     for (uint64_t i = 0; i < DOUBLE_BUFFER; i++) {
         WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + i);
+        WaitFlag<HardEvent::M_MTE1>(eventIdMToMte1B_ + i);
         WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + i);
+    }
+    for (uint64_t i = 0; i < layout_.aBufferNum; i++) {
         WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMte1ToMte2_ + i);
     }
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
+template <bool ResetBufferIndices>
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemShape &problemShape,
-                                                                 const BlockShape &l0TileShape,
-                                                                 const L1Params &l1Params, bool interleave)
+                                                                 const BlockShape &l0TileShape, bool interleave)
 {
     concatHalfN_ = interleave ? asc::te::get<IDX_N_IDX>(problemShape) / MegaMoeImpl::ACTIVATION_N_HALF : 0U;
     k_ = asc::te::get<IDX_K_IDX>(problemShape);
-    kL1_ = l1Params.kL1;
-    scaleKL1_ = l1Params.scaleKL1;
-    baseM_ = asc::te::get<IDX_M_IDX>(l0TileShape);
-    baseN_ = asc::te::get<IDX_N_IDX>(l0TileShape);
     baseK_ = asc::te::get<IDX_K_IDX>(l0TileShape);
-    CalcDynamicKBlock(baseM_, baseN_, kL1_, kaL1Size_, kbL1Size_);
 
-    aL1BufIdx_ = 0;
-    bL1BufIdx_ = 0;
-    scaleL1BufIdx_ = 0;
-    l0BufIdx_ = 0;
-    hasInitConfig_ = true;
+    // Continuous AIC/AIV0 operation must preserve matching B-slot phase.
+    if constexpr (ResetBufferIndices) {
+        aL1BufIdx_ = 0;
+        bL1BufIdx_ = 0;
+        scaleL1BufIdx_ = 0;
+        l0aBufIdx_ = 0;
+        l0bBufIdx_ = 0;
+    }
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(uint64_t mL1Size, uint64_t nL1Size,
-                                                                              uint64_t configuredKbL1Size,
-                                                                              uint64_t &kaL1Size,
-                                                                              uint64_t &kbL1Size) const
+template <typename TensorC>
+__aicore__ inline auto BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::GetBlockMmadOffsetParam(const TensorC &tensorC) const
 {
-    kbL1Size = configuredKbL1Size != 0 ? configuredKbL1Size :
-                                         (mL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
-                                                  nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD ?
-                                              MX_FP8FP4_L1_K_CONFIG_512 :
-                                              MX_FP8FP4_L1_K_CONFIG_256);
-    if (mL1Size < nL1Size) {
-        uint64_t mL1Align = CeilAlign(mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
-        /*
-         * 小 M 时若直接填满 128 KiB A 槽位，首个 MMAD 会等待一个过深的 A 搬运窗口。
-         * 按 N / (2M) 选择 ka 深度，使 A 搬运更细地与连续的 B/prologue 窗口重叠；物理容量仅作为上限。
-         */
-        uint64_t balancedKaDepth = CeilDiv(nL1Size, mL1Align * DOUBLE_BUFFER);
-        uint64_t maxKaDepth = (A_L1_SINGLE_BUF_SIZE / sizeof(AType)) / (mL1Align * kbL1Size);
-        uint64_t kaDepth = balancedKaDepth < maxKaDepth ? balancedKaDepth : maxKaDepth;
-        kaL1Size = kaDepth * kbL1Size;
-    } else {
-        kaL1Size = kbL1Size;
-    }
+    BlockMmadOffsetParam blockParam = {};
+    blockParam.mL1Size = asc::te::get_element<asc::te::attr_info::shape, asc::te::attr_info::row, 1>(tensorC.layout());
+    blockParam.nL1Size =
+        asc::te::get_element<asc::te::attr_info::shape, asc::te::attr_info::column, 1>(tensorC.layout());
+    blockParam.kSize = k_;
+    blockParam.scaleKL1Size = layout_.scaleK;
+    blockParam.l0KSize = baseK_;
+    blockParam.kaL1Size = layout_.tileK;
+    blockParam.kbL1Size = layout_.tileK;
+    return blockParam;
 }
 
 /*
@@ -522,53 +519,80 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
                                                                        const TensorScaleB &tensorScaleB,
                                                                        const TensorC &tensorC, bool copyUbToV1)
 {
-    BlockMmadOffsetParam blockParam = {};
-    blockParam.mL1Size = asc::te::get_element<asc::te::attr_info::shape, asc::te::attr_info::row, 1>(tensorC.layout());
-    blockParam.nL1Size =
-        asc::te::get_element<asc::te::attr_info::shape, asc::te::attr_info::column, 1>(tensorC.layout());
-    if (hasInitConfig_) {
-        blockParam.kSize = k_;
-        blockParam.scaleKL1Size = scaleKL1_;
-        blockParam.l0KSize = baseK_;
-        if (blockParam.mL1Size == baseM_ && blockParam.nL1Size == baseN_) {
-            blockParam.kaL1Size = kaL1Size_;
-            blockParam.kbL1Size = kbL1Size_;
-        } else {
-            CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, kL1_, blockParam.kaL1Size, blockParam.kbL1Size);
-        }
-    } else {
-        blockParam.kSize =
-            asc::te::get_element<asc::te::attr_info::shape, asc::te::attr_info::column, 1>(tensorA.layout());
-        blockParam.scaleKL1Size = MX_FP8FP4_SCALE_K_L1_SIZE;
-        blockParam.l0KSize = (blockParam.mL1Size <= 128 && blockParam.nL1Size <= 128) ? 256 : 128;
-        CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, 0, blockParam.kaL1Size, blockParam.kbL1Size);
-    }
+    const auto blockParam = GetBlockMmadOffsetParam(tensorC);
+    ProcessTilesL1(tensorA, tensorScaleA, tensorScaleB, tensorC, blockParam, copyUbToV1);
+}
 
-    for (uint64_t kbGmOffset = 0; kbGmOffset < blockParam.kSize; kbGmOffset += blockParam.kbL1Size, bL1BufIdx_ ^= 1) {
-        uint64_t kbL1RealSize = (kbGmOffset + blockParam.kbL1Size) >= blockParam.kSize ? blockParam.kSize - kbGmOffset :
-                                                                                         blockParam.kbL1Size;
+BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
+template <typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC>
+__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::ProcessTilesL1(
+    const TensorA &tensorA, const TensorScaleA &tensorScaleA, const TensorScaleB &tensorScaleB, const TensorC &tensorC,
+    const BlockMmadOffsetParam &blockParam, bool copyUbToV1)
+{
+    uint64_t nextAKOffset = 0;
+    uint64_t nextScaleKOffset = 0;
+    uint64_t aCopySlot = aL1BufIdx_;
+    uint64_t scaleCopySlot = scaleL1BufIdx_;
+    for (uint64_t kbGmOffset = 0;; kbGmOffset += blockParam.kbL1Size) {
+        // 启动时填充 A 槽，随后补充上一轮释放的槽。scale 只允许当前和下一窗口常驻，
+        // 避免将第三窗口的等待排在释放该槽所需的消费操作之前。
+        const uint64_t aCopyLimit = kbGmOffset + layout_.aBufferNum * blockParam.kaL1Size;
+        const uint64_t scaleCopyLimit =
+            (kbGmOffset / blockParam.scaleKL1Size + DOUBLE_BUFFER) * blockParam.scaleKL1Size;
+        while (nextAKOffset < blockParam.kSize && nextAKOffset < aCopyLimit && nextAKOffset < scaleCopyLimit) {
+            // 先搬对应 scale，再搬 A；不能让当前需要的 scale 排在未来 A 块之后。
+            if (nextAKOffset == nextScaleKOffset) {
+                WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMxScaleMte1ToMte2_ + scaleCopySlot);
+                CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, nextScaleKOffset, scaleCopySlot);
+                SetFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + scaleCopySlot);
+                nextScaleKOffset += blockParam.scaleKL1Size;
+                scaleCopySlot ^= 1;
+            }
+            WaitFlag<HardEvent::MTE1_MTE2>(eventIdsMte1ToMte2_ + aCopySlot);
+            CopyAGmToL1(tensorA, blockParam, nextAKOffset, aCopySlot);
+            SetFlag<HardEvent::MTE2_MTE1>(eventIdsAReady_ + aCopySlot);
+            nextAKOffset += blockParam.kaL1Size;
+            aCopySlot = (aCopySlot + 1) % layout_.aBufferNum;
+        }
+        // 补充 MTE2 队列后再归还上一轮的 B 槽。最后一轮也归还额度，但不再执行计算。
+        if (kbGmOffset != 0) {
+            SetAicToAiv();
+            bL1BufIdx_ = (bL1BufIdx_ + 1) % layout_.bBufferNum;
+        }
+        if (kbGmOffset >= blockParam.kSize) {
+            break;
+        }
+        const uint64_t kbL1RealSize = min(blockParam.kbL1Size, blockParam.kSize - kbGmOffset);
+        // 消费端只绑定当前槽；提前搬入后续块不会修改这些 tensor 的地址和尾块布局。
         if (kbGmOffset % blockParam.scaleKL1Size == 0) {
-            WaitScaleMTE1ToMTE2();
-            CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, kbGmOffset);
+            WaitFlag<HardEvent::MTE2_MTE1>(eventIdsScaleReady_ + scaleL1BufIdx_);
+            const uint64_t realScaleK =
+                CeilDiv(min(blockParam.scaleKL1Size, blockParam.kSize - kbGmOffset), MXFP_DIVISOR_SIZE) *
+                MXFP_MULTI_BASE_SIZE;
+            tensorScaleAL1_ = asc::te::make_tensor(
+                asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(layout_.scaleAOffsets[scaleL1BufIdx_]),
+                MakeLayoutScaleAL1{}(blockParam.mL1Size, realScaleK));
+            tensorScaleBL1_ = asc::te::make_tensor(
+                asc::te::make_mem_ptr<asc::te::location::l1, fp8_e8m0_t>(layout_.scaleBOffsets[scaleL1BufIdx_]),
+                MakeLayoutScaleBL1{}(realScaleK, blockParam.nL1Size));
         }
-
         if (kbGmOffset % blockParam.kaL1Size == 0) {
-            WaitAMTE1ToMTE2();
-            CopyAGmToL1(tensorA, blockParam, kbGmOffset);
+            WaitFlag<HardEvent::MTE2_MTE1>(eventIdsAReady_ + aL1BufIdx_);
+            const uint64_t realKa = min(blockParam.kaL1Size, blockParam.kSize - kbGmOffset);
+            tensorAL1_ =
+                asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, AType>(layout_.aOffsets[aL1BufIdx_]),
+                                     MakeLayoutAL1{}(blockParam.mL1Size, realKa));
         }
-
         WaitAivToAic();
-        ProcessTileL1(kbGmOffset, kbL1RealSize, blockParam);
-        uint64_t nextKbGmOffset = kbGmOffset + blockParam.kbL1Size;
+        ProcessTileL1(kbGmOffset, kbL1RealSize, blockParam, tensorC, copyUbToV1);
+        const uint64_t nextKbGmOffset = kbGmOffset + blockParam.kbL1Size;
         if (nextKbGmOffset % blockParam.kaL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             SetMTE1ToMTE2();
         }
         if (nextKbGmOffset % blockParam.scaleKL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             SetScaleMTE1ToMTE2();
         }
-        SetAicToAiv();
     }
-    CopyCL0c2GmOrUb(tensorC, blockParam, copyUbToV1);
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS

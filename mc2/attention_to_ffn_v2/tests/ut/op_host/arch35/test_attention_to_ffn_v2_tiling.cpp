@@ -70,7 +70,7 @@ void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, bool quant,
 {
     AttentionToFfnV2CompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("AttentionToFfnV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}},
-                                              BuildAttrs(quant, sync), &compileInfo, "Ascend950");
+                                              BuildAttrs(quant, sync), &compileInfo, "3510");
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);

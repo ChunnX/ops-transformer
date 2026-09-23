@@ -33,6 +33,14 @@ constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
+// Non-owning references: AIC supplies MMAD, AIV0 supplies Prologue, AIV1 supplies neither.
+template <typename BlockMmad, typename BlockPrologue>
+struct A8W4BlockContext {
+    // AIC and AIV compile different pointer types; AIV1 carries no compute object.
+    using Block = Std::conditional_t<g_coreType == AscendC::AIC, BlockMmad, BlockPrologue>;
+    Block *block = nullptr;
+};
+
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
@@ -110,11 +118,12 @@ struct Config {
     using L1Params = typename BlockMmad::L1Params;
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
+    using BlockContext = A8W4BlockContext<BlockMmad, BlockPrologue>;
 
     static __aicore__ inline L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
     {
         if constexpr (IsA8W4) {
-            return L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1};
+            return {};
         } else {
             return L1Params{.kAL1 = kL1, .kBL1 = kL1, .scaleKL1 = scaleKL1};
         }
@@ -123,7 +132,7 @@ struct Config {
     static __aicore__ inline L1Params DefaultL1Params()
     {
         if constexpr (IsA8W4) {
-            return MakeL1Params(L1_TILE_K, Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE);
+            return {};
         } else {
             return MakeL1Params(L1_TILE_K, L1_TILE_K * SCALE_K_L1_RATE);
         }
@@ -235,12 +244,8 @@ struct Config {
         }
 
         if constexpr (IsA8W4) {
-            /*
-             * kL1=0 让 BlockMmad 与 AIV prologue 按相同规则、基于实际 tile M/N 自动选择 kbL1；
-             * BlockMmad 还会独立按实际 M/N 选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
-             */
-            return BlockMmadTilingConfig{tileM, L1_TILE_N,
-                                         L1Params{.kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+            // A8W4 L1 windows come from the host layout, independent of tile tails.
+            return baselineConfig;
         }
 
         if constexpr (!IsA8W4 && g_coreType == AscendC::AIC) {
@@ -382,28 +387,7 @@ enum class GmmStage {
 };
 
 template <typename BlockMmad, typename DispatchPolicy = typename BlockMmad::DispatchPolicy>
-struct BlockMmadContext {
-    BlockMmad blockMmad;
-
-    template <GmmStage Stage, typename ProblemConfig>
-    __aicore__ inline void Init(const ProblemConfig &config)
-    {
-        const auto &tiling = config.blockMmadTiling;
-        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tiling.tileN, tiling.l1Params.kL1,
-                                                  tiling.l1Params.scaleKL1};
-        if (!initialized_ || initConfig_ != requestedConfig) {
-            typename BlockMmad::BlockShape tileShape{tiling.tileM, tiling.tileN, L0_TILE_K, 0};
-            typename BlockMmad::ProblemShape problemShape{config.m, config.n, config.k, 0};
-            blockMmad.Init(problemShape, tileShape, tiling.l1Params);
-            initConfig_ = requestedConfig;
-            initialized_ = true;
-        }
-    }
-
-private:
-    BlockMmadInitConfig initConfig_{};
-    bool initialized_ = false;
-};
+struct BlockMmadContext;
 
 template <typename BlockMmad>
 struct BlockMmadContext<BlockMmad, Blaze::Gemm::GroupedMatmulWithScaleMx<>> {

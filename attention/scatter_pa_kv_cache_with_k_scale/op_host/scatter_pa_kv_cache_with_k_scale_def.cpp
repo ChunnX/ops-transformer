@@ -27,8 +27,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("value")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
@@ -36,8 +35,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("key_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
@@ -45,8 +43,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("value_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
@@ -54,8 +51,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("slot_mapping")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64,
@@ -63,8 +59,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("key_scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT,
@@ -72,8 +67,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("key_scale_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT,
@@ -81,8 +75,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+                                 ge::FORMAT_ND, ge::FORMAT_ND});
 
         // 输出（inplace：与对应输入同名）
         this->Output("key_cache")

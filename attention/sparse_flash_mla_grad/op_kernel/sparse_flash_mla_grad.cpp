@@ -60,7 +60,7 @@ __global__ __aicore__ void sparse_flash_mla_grad(
                    d_ori_kv, d_cmp_kv, d_sinks, cmp_softmax_l1_norm, user, tilingData); \
     } while (0)
 
-template <int LAYOUT, int MODE, bool HAS_SEQUSED>
+template <int LAYOUT, int MODE, bool HAS_SEQUSED, bool Deterministic>
 __global__ __aicore__ void sparse_flash_mla_grad(
     __gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse, __gm__ uint8_t *ori_kv,
     __gm__ uint8_t *cmp_kv, __gm__ uint8_t *ori_sparse_indices, __gm__ uint8_t *cmp_sparse_indices,
@@ -77,16 +77,16 @@ __global__ __aicore__ void sparse_flash_mla_grad(
         if (MODE == SMLAG_SCFA_MODE) {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
                 INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, true, SMLAG_SCFA_MODE,
-                                        HAS_SEQUSED);
+                                        HAS_SEQUSED, Deterministic);
             } else {
                 INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, half, false, SMLAG_SCFA_MODE,
-                                        HAS_SEQUSED);
+                                        HAS_SEQUSED, Deterministic);
             }
         } else {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, half, true, MODE, HAS_SEQUSED);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, half, true, MODE, HAS_SEQUSED, Deterministic);
             } else {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, half, false, MODE, HAS_SEQUSED);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, half, false, MODE, HAS_SEQUSED, Deterministic);
             }
         }
     }
@@ -94,16 +94,18 @@ __global__ __aicore__ void sparse_flash_mla_grad(
         if (MODE == SMLAG_SCFA_MODE) {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
                 INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, true, SMLAG_SCFA_MODE,
-                                        HAS_SEQUSED);
+                                        HAS_SEQUSED, Deterministic);
             } else {
                 INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SelectedAttentionGradBasic, bfloat16_t, false, SMLAG_SCFA_MODE,
-                                        HAS_SEQUSED);
+                                        HAS_SEQUSED, Deterministic);
             }
         } else {
             if (LAYOUT == SMLAG_LAYOUT_BSND) {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, true, MODE, HAS_SEQUSED);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, true, MODE, HAS_SEQUSED,
+                                        Deterministic);
             } else {
-                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, false, MODE, HAS_SEQUSED);
+                INVOKE_SMLAG_BASIC_IMPL(SMLAG_BASIC::SparseFlashMlaGrad, bfloat16_t, false, MODE, HAS_SEQUSED,
+                                        Deterministic);
             }
         }
     }
