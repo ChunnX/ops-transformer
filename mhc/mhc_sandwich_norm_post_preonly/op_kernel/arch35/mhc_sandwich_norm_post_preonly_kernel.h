@@ -62,6 +62,7 @@ public:
         invD_ = td.invD;
         invK_ = td.invK;
         coresPerToken_ = td.coresPerToken;
+        cubeProj_ = coresPerToken_ == 3U;
 
         const uint32_t aivIdx = GetBlockIdx();
         // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
@@ -105,6 +106,16 @@ public:
         }
         if constexpr (DUAL_SIBLING) {
             partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
+            if (cubeProj_) {
+                const uint64_t partialElems = (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS;
+                const uint64_t x2Elems = (uint64_t)totalTokens_ * K_;
+                GlobalTensor<float> workspaceFp32;
+                workspaceFp32.SetGlobalBuffer((__gm__ float *)workspace,
+                                              partialElems + x2Elems +
+                                                  (uint64_t)totalTokens_ * PARTIAL_SLOT_ELEMS);
+                cubeX2Gm_ = workspaceFp32[partialElems];
+                cubeDotGm_ = workspaceFp32[partialElems + x2Elems];
+            }
         }
 
         // UB空间分配
@@ -210,6 +221,8 @@ private:
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
                                                   uint32_t halfEnd = 2);
+    __aicore__ inline void AccumulateCubeSumSqAndStore(uint32_t token, uint32_t tOff, uint32_t tD,
+                                                       float (&sumSqHalf)[2]);
 
     // =================================================================
     //  共享计算模块
@@ -242,6 +255,7 @@ private:
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
     GlobalTensor<float> hInF32Gm_;
     GlobalTensor<float> partial1Gm_;
+    GlobalTensor<float> cubeX2Gm_, cubeDotGm_;
 
     // Tiling参数
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
@@ -252,9 +266,10 @@ private:
     uint32_t tokenStart_ = 0, tokenEnd_ = 0;
     float alpha0_ = 0.0f;
     float biasCache_[N_MAX] = {0.0f};
-    // A5执行方案选择值，第一阶段只使用1
+    // A5执行方案选择值：1=单AIV，2=双sibling Vector投影，3=双sibling+Cube投影。
     uint32_t coresPerToken_ = 1;
     uint32_t laneId_ = 0;
+    bool cubeProj_ = false;
 
     int32_t evtMte2toV_ = 0;
     int32_t evtVtoMte2_ = 0;
