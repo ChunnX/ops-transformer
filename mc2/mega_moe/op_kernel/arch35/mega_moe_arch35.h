@@ -710,6 +710,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     // 阶段 1：量化本卡输入、推送 compact route、清零同步状态，并准备共享专家输入。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
+    trap();
     ProcessInputPreparationStage();
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
