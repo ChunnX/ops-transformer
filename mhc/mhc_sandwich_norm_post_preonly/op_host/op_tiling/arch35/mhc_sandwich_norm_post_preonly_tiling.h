@@ -12,7 +12,6 @@
 #define MHC_SANDWICH_NORM_POST_PREONLY_TILING_H_
 
 #include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
 
 namespace optiling {
 
@@ -50,9 +49,6 @@ TILING_DATA_FIELD_DEF(float, invK); // 1.0f / (N*D)
 TILING_DATA_FIELD_DEF(uint32_t, useRmsMid); // 0表示关闭，1表示开启
 // A5执行方案：1=单AIV，2=双sibling Vector投影，3=双sibling+Cube投影。
 TILING_DATA_FIELD_DEF(uint32_t, coresPerToken);
-
-// 目标shape的FP32 Cube Phi投影参数。
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingData)
 
 // 是否返回h_in_f32
 TILING_DATA_FIELD_DEF(int8_t, returnHInF32); // TILING_DATA_FIELD_DEF接口不支持bool

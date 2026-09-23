@@ -197,8 +197,8 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
         totalTokens == 4U && dualSiblingDim && !returnHInF32 &&
         (hOutDesc->GetDataType() == ge::DT_BF16 || hOutDesc->GetDataType() == ge::DT_FLOAT16);
     // O13独立路由：仅目标5op BF16 shape启用FP32 Cube Phi投影，其他shape保持已验证Vector路径。
-    const bool enableCubeProjection =
-        enableDualSibling && useRmsMid && D == 5120U && hOutDesc->GetDataType() == ge::DT_BF16;
+    const bool enableCubeProjection = enableDualSibling && useRmsMid && D == 5120U &&
+                                      hOutDesc->GetDataType() == ge::DT_BF16;
     const uint32_t coresPerToken = enableCubeProjection ? 3U : (enableDualSibling ? 2U : 1U);
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
@@ -229,25 +229,6 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     tiling.set_coresPerToken(coresPerToken);
     tiling.set_returnHInF32(static_cast<int8_t>(returnHInF32));
 
-    if (enableCubeProjection) {
-        constexpr int64_t cubeM = 1;
-        constexpr int64_t cubeN = HOST_N_MAX;
-        const int64_t cubeK = static_cast<int64_t>(N) * D;
-        const auto featureType = matmul_tiling::DataType::DT_FLOAT;
-        matmul_tiling::MatmulApiTiling cubeTiling(ascendcPlatform);
-        cubeTiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureType);
-        cubeTiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureType, true);
-        cubeTiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, featureType);
-        cubeTiling.SetOrgShape(cubeM, cubeN, cubeK);
-        cubeTiling.SetShape(cubeM, cubeN, cubeK);
-        cubeTiling.SetBias(false);
-        cubeTiling.SetBufferSpace(-1, -1, -1);
-        if (cubeTiling.GetTiling(tiling.cubeTilingData) == -1) {
-            OP_LOGE(context->GetNodeName(), "Cube Matmul tiling failed, M=%ld, N=%ld, K=%ld", cubeM, cubeN, cubeK);
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     // 双sibling partial槽固定为每token 64B。Cube路径额外保存每token 4D 个FP32 x2和32B投影结果。
     size_t sysWsBytes = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
@@ -257,8 +238,9 @@ static ge::graphStatus TilingMhcSandwichNormPostPreonly(gert::TilingContext *con
     }
     const size_t partialBytes =
         enableDualSibling ? (size_t)totalTokens * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES : 0U;
-    const size_t cubeBytes =
-        enableCubeProjection ? (size_t)totalTokens * ((size_t)N * D * sizeof(float) + PARTIAL_SLOT_BYTES) : 0U;
+    const size_t cubeBytes = enableCubeProjection
+                                 ? (size_t)totalTokens * ((size_t)N * D * sizeof(float) + PARTIAL_SLOT_BYTES)
+                                 : 0U;
     currentWorkspace[0] = sysWsBytes + partialBytes + cubeBytes;
 
     // 输出Tiling数据
