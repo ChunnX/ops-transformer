@@ -1,0 +1,6 @@
+tests/cpu_encode_twin
+tests/verify_kernel_encode_vs_twin
+tests/data/*.bin
+tests/logs/
+**/__pycache__/
+*.o
