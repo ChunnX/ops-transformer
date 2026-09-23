@@ -187,9 +187,6 @@ public:
             outCopyParams.srcStride = 0U;
             outCopyParams.dstStride = constInfo.attentionOutStride;
             const uint32_t querySequenceOffset = s1Idx + vecMbaseIdx;
-            const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset, n1Idx,
-                                                           constInfo.realN2Size, constInfo.qSeqSize) *
-                                       constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
             constexpr uint32_t emptyRowsPerCopy = STAGE1_OUT_UB_SIZE / (DV_BASE * sizeof(OUTPUT_T));
             for (uint32_t row = 0U; row < actVecMSize; row += emptyRowsPerCopy) {
@@ -200,8 +197,10 @@ public:
                 stage1OutQue_[0].template EnQue(emptyOut);
                 emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
                 outCopyParams.blockCount = rows;
-                DataCopyPad(attentionOutGm_[outOffset + static_cast<uint64_t>(row) *
-                    constInfo.realN2Size * DV_BASE], emptyOut, outCopyParams);
+                const uint64_t outOffset = MxQuerySlot<LAYOUT>(queryTokenBase, querySequenceOffset + row, n1Idx,
+                                                               constInfo.realN2Size, constInfo.qSeqSize) *
+                                           constInfo.dSizeV;
+                DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
                 stage1OutQue_[0].template FreeTensor(emptyOut);
             }
 
