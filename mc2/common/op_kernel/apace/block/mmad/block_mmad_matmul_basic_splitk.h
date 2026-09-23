@@ -43,7 +43,9 @@
 #include "blaze/gemm/utils/buffer_manager.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/tile/copy_gm_to_l1.h"
-#include "block_mmad.h"
+// 原文件位于 blaze/gemm/block/ 下用相对路径 "#include "block_mmad.h""（同目录优先解析）；
+// 本文件迁移到 apace/block/mmad/ 后必须用全路径，经 -I ops-tensor/include 解析
+#include "blaze/gemm/block/block_mmad.h"
 #include "tensor_api/tensor.h"
 
 namespace Blaze {
