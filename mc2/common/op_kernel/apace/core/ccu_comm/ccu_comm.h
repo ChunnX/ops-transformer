@@ -10,18 +10,17 @@
 
 /*!
  * \file ccu_comm.h
- * \brief CCU 通信公共件——槽位/事件契约、LoopGroup 搬运引擎、host 侧 CCU 资源管理
+ * \brief CCU 通信公共件——事件契约、LoopGroup 搬运引擎、host 侧 CCU 资源管理
  *
  * 内容三块（可被任意 CCU 通信消费方复用）：
- *   契约   CommSlot 槽位表（AIC 写侧与 CCU 读侧共用）、CcuMappedAddrs（XN/CKE 寄存器
- *          槽位的 MMIO 地址映射，非 GM 内存）、A2aGoSize（本地拷贝 loop 参数四元组）
+ *   契约   CcuMappedAddrs（CKE 事件槽位的 MMIO 地址映射，非 GM 内存）、
+ *          A2aGoSize（本地拷贝 loop 参数四元组）、通信参数 GM staging 通路
  *   引擎   LoopGroup 本地拷贝（GM → CCU Buffer → GM）、loop 参数位域编码、CalGoSize
  *   资源   CCU 实例创建（跨 DIE 资源池）、P2P 通道获取（host 侧）
  *
  * 命名规则（词根=功能域；新增函数/类型按此对号，防演化漂移）：
- *   Ccu      = CCU 传输原语——只碰寄存器/实例/通道语义（wake、轮询 done、写参数区
- *              槽位、销毁实例），与具体集合通信算法无关；出现第二个 CCU 服务时，
- *              此类可上提本文件共享
+ *   Ccu      = CCU 传输原语——只碰寄存器/实例/通道语义（wake、轮询 done、销毁实例），
+ *              与具体集合通信算法无关；出现第二个 CCU 服务时，此类可上提本文件共享
  *   AllToAll = 服务函数——语义绑定 AllToAll 算法（轮参数布局、轮结构资源、服务
  *              流程），定义于 all_to_all/ 子目录
  *   存量类型名未按此对齐（CcuCommTilingData 实为 AllToAll 服务 tiling、
@@ -141,28 +140,14 @@ constexpr uint32_t SIZE_TABLE[HCCL_DATA_TYPE_RESERVED] = {sizeof(int8_t), sizeof
     2, sizeof(float), sizeof(int64_t), sizeof(uint64_t), sizeof(uint8_t), sizeof(uint16_t), sizeof(uint32_t),
     8, 2, 16, 2, 1, 1, 1, 1};
 
-// ---- 通信参数区槽位契约（AIC 写侧与 CCU 读侧共用的唯一事实源，槽位总数 = COMM_SLOT_NUM）----
-enum CommSlot : uint32_t {
-    SLOT_INPUT = 0,           // sendBuf 地址（本 rank 发送侧）
-    SLOT_OUTPUT = 1,          // recvBuf 地址（接收侧）
-    SLOT_TOKEN = 2,           // CCU 内存访问令牌
-    SLOT_SRC_OFFSET = 3,      // round 级公共源偏移
-    SLOT_DST_OFFSET = 4,      // round 级公共目的偏移（host 预乘烧入）
-    SLOT_SLICE_SIZE = 5,      // 本轮子段字节数
-    SLOT_SRC_STRIDE = 6,      // 块间距字节数（均匀 AllToAll 紧邻切分）
-    SLOT_GO_ADDR_OFFSET = 7,  // 本地拷贝 loop 参数：完整 loop 块起始偏移
-    SLOT_GO_LOOP_ITER = 8,    // 本地拷贝 loop 参数：完整 loop 块迭代数
-    SLOT_GO_LOOP_EXTEND = 9,  // 本地拷贝 loop 参数：尾部扩展 loop 参数（位编码）
-    SLOT_GO_TAIL_SIZE = 10,   // 本地拷贝 loop 参数：尾部剩余字节数
-    COMM_SLOT_NUM = 11
-};
-constexpr uint32_t HCOMM_HOST_TASK_ARG_NUM = COMM_SLOT_NUM;
+// ---- 通信参数通路 ----
+// 参数直达：host 每次调用把 CcuCommTilingData 整体写入 GM staging（stageAddr），
+// CCU kernel 唤醒后自读并按轮闭式派生（LoadRoundArgs）；AIC 不再经手通信参数
+// （历史设计：AIC 逐槽 MMIO 推送 55 个寄存器槽位 + CCU 每轮重绑，已退役）
 constexpr uint32_t MAX_COMMTURN = 16;
 
-// Variable(XN)/Event(CKE) 寄存器槽位到 MMIO 映射地址的映射表
+// CKE 事件槽位到 MMIO 映射地址的映射表（AIC 清扫/commit/逐 tile 轮询用）
 struct CcuMappedAddrs {
-    // (dataCommTurn+1) 组 Variable，每组 COMM_SLOT_NUM 个：组 0 = scale 轮，组 1..dataCommTurn = data 轮 t-1
-    uint64_t startVa[MAX_COMMTURN + 1][HCOMM_HOST_TASK_ARG_NUM];
     // dataCommTurn+2 个 Event：[0]=wake，[1]=scale 轮 done，[t+2]=data 轮 t done
     uint64_t eventVa[MAX_COMMTURN + 2];
 };
@@ -204,34 +189,65 @@ struct CcuLoopEntity {
     ccu::Variable loopParam[2];
 };
 
-// CCU kernel 参数块（对齐 CANN CcuKernelArgAlltoAllMesh1D；通信参数经参数区逐 round 传入）
+// CCU kernel 随参携带的通信参数块（host 每次调用刷新）。按值嵌入 kernelArg——
+// CCU kernel 只读参数块本体，不 chase 二级指针（launch 参数块是 CCU 侧唯一确定
+// 可解引用的载体）；字段语义与消费方服务 tiling（all_to_all/_tiling.h）共用此定义
+struct CcuCommStageParams {
+    // data 轮闭式派生源标量（src=t*subBytes、dst=rankId*blockSize+t*subBytes、slice=subBytes）
+    uint64_t blockSize{0};
+    uint64_t subBytes{0};
+    uint64_t srcStride{0};
+    // scale 轮标量
+    uint64_t scaleSliceSize{0};
+    uint64_t scaleSrcStride{0};
+    uint64_t scaleDstOffset{0};
+    // 通信地址（帧可变：输入/接收 buffer 可能换址）
+    uint64_t x1Addr{0};
+    uint64_t x1ScaleAddr{0};
+    uint64_t recvBufAddr{0};
+    uint64_t recvScaleBufAddr{0};
+    // CCU 内存访问令牌（data / scale 两 buffer 各一）
+    uint64_t token{0};
+    uint64_t scaleToken{0};
+    // 本地拷贝 loop 参数（data / scale 各一）
+    A2aGoSize goSize{};
+    A2aGoSize scaleGoSize{};
+};
+
+// CCU kernel 参数块（对齐 CANN CcuKernelArgAlltoAllMesh1D；通信参数随参按值直达）
 struct CcuKernelArgAllToAllMesh1D {
     ChannelHandle channels[CCU_MAX_RANK_SIZE];
     uint32_t channelCount;
     uint64_t rankSize;
     uint32_t rankId;
-    CcuVariableHandle varHandle;
-    uint32_t varNum;
     CcuEventHandle eventHandle;
     uint32_t eventNum;
     uint32_t commTurn;  // CCU kernel 内部循环次数 = dataCommTurn + 1
+    CcuCommStageParams stage;  // 通信参数（host 每次调用刷新，CCU 唤醒后自读）
+};
+
+// 对端路由：每对端 2 个通道槽位句柄（output+token 成对，单槽位复用 + r==1 重发布）
+struct PeerRoute {
+    ccu::Variable output;
+    ccu::Variable token;
 };
 
 // CCU kernel 工作上下文（传输引擎的运行态）
 struct AllToAllMesh1DContext {
     const CcuKernelArgAllToAllMesh1D *arg;
 
+    // 本 rank 轮参数物化（LoadRoundArgs 从 stage 闭式派生后 imm 赋值进寄存器）
     ccu::Variable input;
-    // TODO(后续重构)：output/token 两表可合并为定长 PeerRouting routing[CCU_MAX_RANK_SIZE]
-    // （output+token 成对字段）——去 vector 堆分配（rankSize≤16 硬上限，kernelArg 的
-    // channels 即定长先例）、消两表对齐；另 LoadArgs 每轮重读 SLOT_OUTPUT/SLOT_TOKEN，
-    // data 类值 r==1 后恒定，可只在轮类切换的 PreSync 读一次
-    std::vector<ccu::Variable> output;
-    std::vector<ccu::Variable> token;
     ccu::Variable srcOffset;
     ccu::Variable dstOffset;
     ccu::Variable sliceSize;
     ccu::Variable srcStride;
+    // 本 rank self output/token（轮类切换的 PreSync 从 stage 重新物化：scale 类 / data 类）
+    ccu::Variable selfOutput;
+    ccu::Variable selfToken;
+    // 对端路由（按 rankId 索引；self 槽位未用。沿用 vector 而非定长数组：
+    // Variable 默认构造即分配寄存器槽，定长数组会为未用 rank 空配 16×2 槽）
+    std::vector<PeerRoute> routing;
     ccu::Event event;
 
     GroupOpSizeVars goSize;

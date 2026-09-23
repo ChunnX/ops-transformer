@@ -2,9 +2,10 @@
 
 CCU 直调（asc-comm `<<<>>>` host launch）的 AllToAll + Blaze MXFP8 MatMul 融合 ST：
 通信运行在 `__ccu_host__` CCU kernel 内（streamCcu，scale 轮 + data 轮多轮事件桥），
-AIC 融合 kernel（streamAicore）经 XN/CKE 寄存器 MMIO 直写预写通信参数区 + wake，
-matmul 逐 tile 轮询 round-done，tile 级通算 overlap。数据语义与
-`../`（urma/hcomm 变体）一致：K-并行 GEMM，Y = Σ_r recvData[r块,:] @ x2[r*K段,:]。
+通信参数随 kernelArg->stage 按值直达 CCU kernel（AIC 不经手）；AIC 融合 kernel
+（streamAicore）经 CKE 事件寄存器 MMIO 直写清残值 + wake，matmul 逐 tile 轮询
+round-done，tile 级通算 overlap。数据语义与 `../`（urma/hcomm 变体）一致：
+K-并行 GEMM，Y = Σ_r recvData[r块,:] @ x2[r*K段,:]。
 
 ## 目录结构
 
@@ -24,18 +25,18 @@ device 侧实现：
 
 ```
 apace/core/ccu_comm/                                       # CCU 通信公共件（可复用）
-├── ccu_comm.h                                             # 槽位/事件契约 + LoopGroup 搬运引擎 + host 资源管理
+├── ccu_comm.h                                             # 事件契约 + stage 参数通路 + LoopGroup 搬运引擎 + host 资源管理
 └── all_to_all/
-    ├── ccu_all_to_all_tiling.h                            # 通信 tiling 契约（kernel 侧入参；host 填写后传入）
-    ├── ccu_all_to_all_aic.h                               # AIC 侧同步原语（prepare/commit/wait，__aicore__）
-    ├── ccu_all_to_all_host.h                              # host 侧资源装配（AllocAllToAllRegion / Release）
+    ├── ccu_all_to_all_tiling.h                            # 通信参数契约（host 侧唯一事实源；参数经 stage 直达 CCU）
+    ├── ccu_all_to_all_aic.h                               # AIC 侧同步原语（清残值/commit/wait，__aicore__）
+    ├── ccu_all_to_all_host.h                              # host 侧资源装配（CKE Event 预约 AllocAllToAllRegion / Release）
     └── ccu_all_to_all_kernel.asc                          # __ccu_host__ CcuAllToAllMesh1DKernel（单锚点，名字冻结）
 
 apace/kernel/fusions/all_to_all_quant_matmul/              # 本融合专属
 ├── all_to_all_mx_quant_matmul_ccu_tiling_data.h           # tiling 聚合（comm + matmul）
 ├── all_to_all_mx_quant_matmul_ccu_impl.h                  # AIC 侧：CcuCommWaitPolicy + 融合 matmul impl
 ├── all_to_all_ccu_kernel_impl.asc                         # 单 TU 锚点：AIC 入口 + Custom（双流 launch）
-└── all_to_all_mx_quant_matmul_ccu_host_impl.h             # host 编排：Validate/Prepare/Release
+└── all_to_all_mx_quant_matmul_ccu_host_impl.h             # host 编排：Validate/Prepare/Refresh/Release
 ```
 
 > 单翻译单元：`src/main.cpp` 经 `#include` 引入 `all_to_all_ccu_kernel_impl.asc`（锚点），
@@ -76,4 +77,6 @@ rank 数 = 本机 NPU 数（进程内每卡一线程，单进程多 rank）。
 
 - CANN ≥ 9.2.0，`HCCL_OP_EXPANSION_MODE=CCU_SCHED`
 - 至少 2 张 NPU 卡；共享服务器运行须走排队工具（勿裸跑）
-- perf 数据解析：`python3 scripts/parse_prof.py --all`（AIC kernel duration，后 5 次取平均）
+- perf 数据解析：`python3 scripts/parse_prof.py --all`（AIC kernel duration，后 5 次取平均）；
+  运行时另打印 event 计时旁证（端到端单次耗时，含 launch/同步间隙、剔除首帧的稳态均值），
+  与 profiler Task Duration 互补，两者之差即串行帧的 host 间隙税

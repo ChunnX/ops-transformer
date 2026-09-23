@@ -12,9 +12,9 @@
  * \file all_to_all_mx_quant_matmul_ccu_impl.h
  * \brief AllToAll MX Quant Matmul（CCU 版）AIC 侧融合实现
  *
- * 通信同步原语（PrepareAllToAllComm/CommitCcuComm/WaitCcuCommDone）在
+ * 通信同步原语（AllToAllProcess 帧首清扫+commit / WaitCcuCommDone 逐轮等待）在
  * core/ccu_comm/all_to_all/ccu_all_to_all_aic.h；CCU 侧 kernel 见
- * core/ccu_comm/all_to_all/ccu_all_to_all_kernel.asc。
+ * core/ccu_comm/all_to_all/ccu_all_to_all_kernel.asc（通信参数经 GM staging 直达）。
  * 本文件：CcuCommWaitPolicy（qbmm CommPolicy 注入位，逐 tile 轮询 round-done，
  * 与 matmul 消费节奏耦合——tile 级通算 overlap 的来源）+ 融合 matmul impl +
  * AllToAllMatmulProcess（AIC 编排：workspace 切分 → AllToAllProcess（通信侧）→ matmul）。
@@ -206,7 +206,8 @@ __aicore__ inline void AllToAllMatmulProcess(
     __gm__ void *recvScaleBuf = reinterpret_cast<__gm__ void *>(
         wsBytes + comm.workspaceScaleOffset);
 
-    AllToAllProcess(comm, x1, x1Scale, recvBuf, recvScaleBuf);
+    // 通信参数经 GM staging 直达 CCU，AIC 只发令（清扫+commit），不再转交地址
+    AllToAllProcess(comm);
 
     Apace::AllToAllMxQuantMatmulCcuImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> matmulImpl(
         &tilingData.matmul);

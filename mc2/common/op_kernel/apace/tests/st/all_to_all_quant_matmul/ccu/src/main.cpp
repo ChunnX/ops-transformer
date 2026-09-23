@@ -247,8 +247,21 @@ int RunAllToAllMatmul(ThreadContext &ctx)
 
         AllToAllMatmulContext a2aCtx;
         const uint32_t totalRuns = (ctx.mode == RunMode::PERF) ? ctx.loopCount : 1;
+        // event 计时旁证（对齐 quant_matmul_all_to_all 家族口径）：串行迭代下 event 间隔
+        // = 端到端单次调用耗时（含 launch/同步间隙），与 profiler Task Duration 互补，
+        // 两者之差即串行帧的 host 间隙税
+        aclrtEvent iterStartEvent = nullptr;
+        aclrtEvent iterEndEvent = nullptr;
+        float eventElapsedTotalMs = 0.0F;
+        if (ctx.mode == RunMode::PERF) {
+            ACLCHECK(aclrtCreateEvent(&iterStartEvent));
+            ACLCHECK(aclrtCreateEvent(&iterEndEvent));
+        }
         int runRet = 0;
         for (uint32_t iter = 0; iter < totalRuns; iter++) {
+            if (ctx.mode == RunMode::PERF) {
+                ACLCHECK(aclrtRecordEvent(iterStartEvent, streamAicore));
+            }
             runRet = static_cast<int>(InvokeAllToAllMatmul(hcclComm, streamAicore, streamCcu, a2aCtx,
                                                            x1, x1Scale, x2, x2Scale, output, workspace,
                                                            sendCount, scaleCount,
@@ -257,9 +270,26 @@ int RunAllToAllMatmul(ThreadContext &ctx)
                 break;
             }
             if (ctx.mode == RunMode::PERF) {
+                // Invoke 内部已 sync streamAicore，end event 立即完成；elapsed 为端到端单次耗时
+                float iterMs = 0.0F;
+                ACLCHECK(aclrtRecordEvent(iterEndEvent, streamAicore));
+                ACLCHECK(aclrtSynchronizeEvent(iterEndEvent));
+                ACLCHECK(aclrtEventElapsedTime(&iterMs, iterStartEvent, iterEndEvent));
+                if (iter > 0) {
+                    // 首帧含 Prepare（通道创建 ~1.2s），不计入稳态均值
+                    eventElapsedTotalMs += iterMs;
+                }
                 std::cout << "rankId: " << myRank << ", perf iter " << (iter + 1) << "/" << totalRuns
-                          << " done" << std::endl;
+                          << " event=" << (iterMs * 1000.0F) << "us" << std::endl;
             }
+        }
+        if (ctx.mode == RunMode::PERF) {
+            const uint32_t steadyRuns = (totalRuns > 1) ? (totalRuns - 1) : 1;
+            std::cout << "rankId: " << myRank << ", event timing steady avg="
+                      << (eventElapsedTotalMs * 1000.0F / steadyRuns) << "us/iter over " << steadyRuns
+                      << " iters (end-to-end incl launch+sync gap, first frame excluded)" << std::endl;
+            ACLCHECK(aclrtDestroyEvent(iterStartEvent));
+            ACLCHECK(aclrtDestroyEvent(iterEndEvent));
         }
         // 兜底同步后统一释放 CCU 资源（实例销毁前双流必须已静默）
         (void)aclrtSynchronizeStream(streamAicore);
