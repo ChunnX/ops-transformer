@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include "../matmul_reduce_scatter_v2_host_ut_param.h"
