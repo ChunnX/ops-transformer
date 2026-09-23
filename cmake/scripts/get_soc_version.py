@@ -39,7 +39,7 @@ class GetSocModules(Module):
                     "ascend350",
                 ]
                 return any(
-                    folder in path_obj.parts for folder in ascend310p_exclued_folders
+                    folder in path_obj.parts for folder in ascend310p_exclude_folders
                 )
             if option[0] == "ascend910b":
                 ascend910b_exclude_folders = [
@@ -51,7 +51,7 @@ class GetSocModules(Module):
                     "ascend350",
                 ]
                 return any(
-                    folder in path_obj.parts for folder in ascend910b_exclued_folders
+                    folder in path_obj.parts for folder in ascend910b_exclude_folders
                 )
             if option[0] == "ascend950":
                 ascend950_exclude_folders = [
@@ -64,7 +64,7 @@ class GetSocModules(Module):
                     "ascend350",
                 ]
                 return any(
-                    folder in path_obj.parts for folder in ascend950_exclued_folders
+                    folder in path_obj.parts for folder in ascend950_exclude_folders
                 )
             if option[0] == "ascend350":
                 ascend350_exclude_folders = [
