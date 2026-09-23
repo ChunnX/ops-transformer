@@ -10,7 +10,6 @@
 
 #include "mc2_comm_algo_selector.h"
 #include "mc2_log_compat.h"
-#include <algorithm>
 #include <vector>
 
 namespace Mc2Hcom {
@@ -60,61 +59,38 @@ std::string Mc2CommAlgoSelector::SelectAlgoName(const std::string &opName, const
             "commDataBytes=%llu, rankSize=%u, entries=%u",
             group, topoType, topoType, layerNum, commEngine, commDataBytes, rankSize, n);
 
-    const CommAlgoEntry *buf[2][MAX_COMM_ALGO_CANDIDATES];
-    uint32_t cnt[2] = {n, 0};
-    uint32_t src = 0;
-    uint32_t dst = 1;
+    // 表项各维度（引擎/卡数/层数/拓扑/数据量）均为硬约束，全部匹配才成为候选；
+    // 引擎0为通配引擎；topoType/layerNum查询失败（未知）时对应维度不做约束
+    const CommAlgoEntry *best = nullptr;
     for (uint32_t i = 0; i < n; i++) {
-        buf[0][i] = &entries[i];
+        const CommAlgoEntry *entry = &entries[i];
+        if (entry->commEngine != 0 && entry->commEngine != commEngine) {
+            continue;
+        }
+        if (rankSize < entry->minRankSize || rankSize > entry->maxRankSize) {
+            continue;
+        }
+        if (layerNum != 0 && (entry->minLayers > layerNum || entry->maxLayers < layerNum)) {
+            continue;
+        }
+        if (topoType != INVALID_TOPO_TYPE && entry->topoType != WILDCARD_TOPO_TYPE && entry->topoType != topoType) {
+            continue;
+        }
+        if (commDataBytes < entry->minBytes || commDataBytes > entry->maxBytes) {
+            continue;
+        }
+        if (best == nullptr || entry->priority > best->priority) {
+            best = entry;
+        }
     }
 
-    auto applyFilter = [&](const char *name, auto &&pred) {
-        if (cnt[src] == 0) {
-            return;
-        }
-        cnt[dst] = 0;
-        for (uint32_t i = 0; i < cnt[src]; i++) {
-            if (pred(buf[src][i])) {
-                buf[dst][cnt[dst]++] = buf[src][i];
-            }
-        }
-        if (cnt[dst] == 0) {
-            OP_LOGI(opName.c_str(), "[CommAlgoSelector] filter '%s' removed all %u candidates, skipping this filter",
-                    name, cnt[src]);
-            return;
-        }
-        std::swap(src, dst);
-        OP_LOGD(opName.c_str(), "[CommAlgoSelector] after '%s': %u candidates remain", name, cnt[src]);
-    };
-
-    applyFilter("commEngine",
-                [&](const CommAlgoEntry *e) { return e->commEngine == 0 || e->commEngine == commEngine; });
-    applyFilter("rankSize",
-                [&](const CommAlgoEntry *e) { return rankSize >= e->minRankSize && rankSize <= e->maxRankSize; });
-    applyFilter("layers", [&](const CommAlgoEntry *e) {
-        return layerNum == 0 || (e->minLayers <= layerNum && e->maxLayers >= layerNum);
-    });
-    applyFilter("topoType", [&](const CommAlgoEntry *e) {
-        return topoType == INVALID_TOPO_TYPE || e->topoType == WILDCARD_TOPO_TYPE || e->topoType == topoType;
-    });
-    applyFilter("commDataBytes",
-                [&](const CommAlgoEntry *e) { return commDataBytes >= e->minBytes && commDataBytes <= e->maxBytes; });
-
-    if (cnt[src] == 0) {
-        OP_LOGW(opName.c_str(), "[CommAlgoSelector] no candidate survived all filters, fallback to default: %s",
+    if (best == nullptr) {
+        OP_LOGW(opName.c_str(), "[CommAlgoSelector] no candidate matched all constraints, fallback to default: %s",
                 defaultAlgoName.c_str());
         return defaultAlgoName;
     }
 
-    const CommAlgoEntry *best = buf[src][0];
-    for (uint32_t i = 1; i < cnt[src]; i++) {
-        if (buf[src][i]->priority > best->priority) {
-            best = buf[src][i];
-        }
-    }
-
-    OP_LOGI(opName.c_str(), "[CommAlgoSelector] selected algo: %s (priority=%d, candidates=%u)", best->algoName,
-            best->priority, cnt[src]);
+    OP_LOGI(opName.c_str(), "[CommAlgoSelector] selected algo: %s (priority=%d)", best->algoName, best->priority);
     return best->algoName;
 }
 

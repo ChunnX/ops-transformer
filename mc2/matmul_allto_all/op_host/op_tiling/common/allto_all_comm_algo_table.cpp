@@ -11,39 +11,23 @@
 #include "allto_all_comm_algo_table.h"
 #include "hccl/hccl_rank_graph.h"
 #include "mc2_log_compat.h"
+#include "mc2_tiling_utils.h"
 
 namespace Mc2Tiling {
 
-constexpr uint8_t ENGINE_AICPU = 2;
-constexpr uint8_t ENGINE_CCU = 6;
 constexpr uint64_t MAX_DATA_BYTES = ~0ULL;
-constexpr uint32_t MAX_RANK_SIZE = ~0U;
-constexpr uint64_t LARGE_DATA_BYTES = 256ULL * 1024ULL * 1024ULL;
 
+// 表项为硬约束（引擎/拓扑/层数/卡数/数据量全匹配才生效），仅覆盖单层CUSTOM拓扑的卡数[2,4]与[8,16]；
+// 未覆盖场景（如卡数5~7、>16或多层网）由选择器回退默认算法 ALLTOALL_DEFAULT_ALGO_NAME
 static constexpr Mc2Hcom::CommAlgoEntry ALLTOALL_COMM_ALGO_TABLE[] = {
-    // 高阶api具体算法未明确固定，当前暂时全走默认算法
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 3, ALLTOALL_DEFAULT_ALGO_NAME},
-    // 高阶api具体算法未明确固定，当前暂时全走默认算法
-    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 3, ALLTOALL_DEFAULT_ALGO_NAME},
-    // 暂不生效：被上方默认算法表项(priority=3)压制，当前对所有卡数均不生效。
-    // 预留说明：若未来移除默认表项，本表项(AICPU + CUSTOM + 单层 + 卡数[8,16])
-    // 中 rank=8 会被下方Concurrent(priority=2)以高优先级覆盖，假想生效范围为[9,16]
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 8, 16, 1, "AicpuAllToAllSoleMeshUBX"},
-    // 暂不生效：被上方默认算法表项(priority=3)压制。AICPU + CUSTOM + 单层 + 卡数[2,8] → AicpuAllToAllSoleMeshConcurrent
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 8, 2, "AicpuAllToAllSoleMeshConcurrent"},
-    // 暂不生效：被上方默认算法表项(priority=3)压制。AICPU + CUSTOM + 两层 + 数据量[0,256MB) + 卡数[2,MAX] →
-    // AicpuAllToAllSoleMeshSingleChannel
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 2, 2, 0, LARGE_DATA_BYTES - 1, 2, MAX_RANK_SIZE, 1,
-     "AicpuAllToAllSoleMeshSingleChannel"},
-    // 暂不生效：被上方默认算法表项(priority=3)压制。AICPU + CUSTOM + 两层 + 数据量[256MB,MAX] + 卡数[2,MAX] →
-    // AicpuAllToAllSoleMesh
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 2, 2, LARGE_DATA_BYTES, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 1,
-     "AicpuAllToAllSoleMesh"},
-    // 暂不生效：被上方默认算法表项(priority=3)压制。CCU + CUSTOM + 单层 + 卡数[2,8] →
-    // CcuSchedAllToAllSoleMeshConcurrent
-    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 8, 1, "CcuSchedAllToAllSoleMeshConcurrent"},
-    // 暂不生效：被上方默认算法表项(priority=3)压制。CCU + CUSTOM + 两层 + 卡数[2,8] → CcuSchedAllToAllSoleMesh
-    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, 8, 1, "CcuSchedAllToAllSoleMesh"},
+    // AICPU + CUSTOM + 单层 + 卡数[8,16] → sole[mesh]
+    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 8, 16, 1, "sole[mesh]"},
+    // AICPU + CUSTOM + 单层 + 卡数[2,4] → concur[mesh,mesh]
+    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 4, 1, "concur[mesh,mesh]"},
+    // CCU + CUSTOM + 单层 + 卡数[2,4] → concur[mesh,mesh]
+    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 4, 1, "concur[mesh,mesh]"},
+    // CCU + CUSTOM + 单层 + 卡数[8,16] → sole[mesh.multi_channel]
+    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 8, 16, 1, "sole[mesh.multi_channel]"},
 };
 
 const Mc2Hcom::CommAlgoEntry *GetAllToAllCommAlgoTable(uint32_t &count)

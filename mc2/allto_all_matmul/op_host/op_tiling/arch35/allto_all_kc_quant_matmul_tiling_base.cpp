@@ -182,7 +182,7 @@ CutResult AllToAllKcQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
                                                Ops::Base::DAV_3510, true);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
-            constexpr uint64_t KC_AICPU_TILING_MAX_NUM = 5;
+            constexpr uint64_t KC_AICPU_TILING_MAX_NUM = 3;
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(KC_AICPU_TILING_MAX_NUM);
         }
         alltoallMatmulTileFormulate.GetTiling();
