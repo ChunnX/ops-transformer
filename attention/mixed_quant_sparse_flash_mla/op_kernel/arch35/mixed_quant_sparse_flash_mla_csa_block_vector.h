@@ -204,13 +204,13 @@ private:
     __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(const RunInfo<HIGH_PERF> &runInfo,
                                                         const ConstInfo<HIGH_PERF> &constInfo) const
     {
-        uint32_t coreIdx;
+        uint32_t mqsmlaCoreIdx;
         if constexpr (IS_SPLIT_G) {
-            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
+            mqsmlaCoreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
         } else {
-            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
+            mqsmlaCoreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
         }
-        return (coreIdx << 1U) + runInfo.multiCoreIdxMod2;
+        return (mqsmlaCoreIdx << 1U) + runInfo.multiCoreIdxMod2;
     }
 
     __aicore__ inline int64_t GetFaStagingMOffset(const RunInfo<HIGH_PERF> &runInfo,
@@ -378,17 +378,17 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
     uint64_t idxBase = topkBS1Idx + runInfo.s2StartIdx + topkKIdx;
     for (uint64_t i = 0; i < KV_COPYIN_UNIT; ++i) {
-        uint64_t idx = idxBase + i;
+        uint64_t mqsmlaIdx = idxBase + i;
         if constexpr (!IS_FULL) {
             // 尾块：保留边界判断，防止越界读取
             if (likely(s2IdxInBase + i < curProcessS2End)) {
-                tokenData[i] = sparseIndicesGm.GetValue(idx);
+                tokenData[i] = sparseIndicesGm.GetValue(mqsmlaIdx);
             } else {
                 break;
             }
         } else {
             // 非尾块：8行均有效，直接读取
-            tokenData[i] = sparseIndicesGm.GetValue(idx);
+            tokenData[i] = sparseIndicesGm.GetValue(mqsmlaIdx);
         }
     }
 }
@@ -2217,44 +2217,44 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo<HIG
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIGH_PERF> &constInfo, uint32_t ubBaseAddr)
 {
-    uint32_t ubAddr = ubBaseAddr;
+    uint32_t mqsmlaUbAddr = ubBaseAddr;
 
     // {64, 16, 2}：每个向量操作单元处理的元素个数为64，每个处理块包含的向量数量为16，需要处理两个不同的数据流或阶段
-    dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 64 * 16 * 2), 0};
-    ubAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
+    dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 64 * 16 * 2), 0};
+    mqsmlaUbAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
 
-    SoftmaxInitBuffer(ubAddr);
+    SoftmaxInitBuffer(mqsmlaUbAddr);
 
-    commonUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
-    ubAddr += 512;                                                             // 512：同上
-    sinksUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};  // 512：同上
-    ubAddr += 512;                                                             // 512：同上
+    commonUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
+    mqsmlaUbAddr += 512;                                                             // 512：同上
+    sinksUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：同上
+    mqsmlaUbAddr += 512;                                                            // 512：同上
     if constexpr (!HIGH_PERF) {
         if (constInfo.isSoftmaxLseEnable) {
-            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
+            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 256 / sizeof(float)),
                             0}; // 256：缓冲区大小，单位是字节
-            ubAddr += 256U;
-            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)), 1}; // 256：同上
-            ubAddr += 256U;
+            mqsmlaUbAddr += 256U;
+            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 256 / sizeof(float)), 1}; // 256：同上
+            mqsmlaUbAddr += 256U;
         }
     }
 
-    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16),
-                       0};                       // 16：每个v0缓冲区块中存储的向量数量
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
-    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16), 1}; // 16：同上
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
-    stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 0};
-    ubAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
-    stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 1};
-    ubAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
+    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16),
+                       0};                             // 16：每个v0缓冲区块中存储的向量数量
+    mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
+    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16), 1}; // 16：同上
+    mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
+    stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * (16U + 1)), 0};
+    mqsmlaUbAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
+    stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * (16U + 1)), 1};
+    mqsmlaUbAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
 
-    stage1OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 0};
-    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
-    stage1OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 1};
-    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
+    stage1OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, vec1Srcstride * s2BaseSize), 0};
+    mqsmlaUbAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
+    stage1OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, vec1Srcstride * s2BaseSize), 1};
+    mqsmlaUbAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
 
-    stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, ubAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
+    stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
 
     // 显式 flag 初始化 (替代 AllocEventID + 初始 SetFlag)
     SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
