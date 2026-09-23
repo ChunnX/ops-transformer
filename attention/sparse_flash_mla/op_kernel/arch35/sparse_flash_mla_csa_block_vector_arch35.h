@@ -248,7 +248,7 @@ private:
                                         GlobalTensor<int32_t> &actualSeqGm, GlobalTensor<int32_t> &cuSeqlensGm,
                                         int64_t defaultSize);
     __aicore__ inline PhyAddrValidInfo CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
-                                                            int32_t restoredSize, ConstInfo &constInfo);
+                                                            int64_t restoredSize, ConstInfo &constInfo);
     __aicore__ inline int32_t CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv,
                                              GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &topkLengthGm,
                                              ConstInfo &constInfo, int32_t sparseBlockCount,
@@ -486,10 +486,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
             }
         }
         int64_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
-        int64_t keySrcStride =
-            (smlaKeyOffset0 > smlaKeyOffset1 ? (smlaKeyOffset0 - smlaKeyOffset1) : (smlaKeyOffset1 - smlaKeyOffset0)) *
-                sizeof(KV_T) -
-            combineBytes;
+        int64_t keySrcStride;
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            // batch一致性场景，token读取顺序只与逻辑顺序有关，为保证确定性不可交换读取顺序
+            keySrcStride = (smlaKeyOffset1 - smlaKeyOffset0) * sizeof(KV_T) - combineBytes;
+        } else {
+            keySrcStride = (smlaKeyOffset0 > smlaKeyOffset1 ? (smlaKeyOffset0 - smlaKeyOffset1) :
+                                                              (smlaKeyOffset1 - smlaKeyOffset0)) *
+                               sizeof(KV_T) -
+                           combineBytes;
+        }
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
             CopyInSingleKv(kvInUb, startRow, smlaKeyOffset0, constInfo);
@@ -1477,7 +1483,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
                                                                                     int32_t actualOriS2Size,
-                                                                                    int32_t restoredSize,
+                                                                                    int64_t restoredSize,
                                                                                     ConstInfo &constInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
@@ -1604,13 +1610,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             smlaBS1IdxBase = constInfo.s1Size * bIdx;
         }
 
-        int32_t restoredSize = 0;
+        int64_t restoredSize = 0;
         if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = static_cast<int64_t>(actualKvSize) * static_cast<int64_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;
@@ -1684,13 +1691,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             bS2BaseHigh = static_cast<uint32_t>(bS2Base >> 32U);
         }
 
-        int32_t restoredSize = 0;
+        int64_t restoredSize = 0;
         if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = static_cast<int64_t>(actualKvSize) * static_cast<int64_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;

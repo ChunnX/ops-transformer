@@ -345,7 +345,7 @@ static void RunUrmaTilingCase(int64_t xBs, int64_t topkIdsBs, int64_t topkWeight
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
-    const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 9053220UL : 0UL;
+    const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 42607652UL : 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
 
     if (expectedStatus != ge::GRAPH_SUCCESS || activation != "situglu") {
@@ -598,11 +598,34 @@ static void RunA8W4FormatCase(ge::Format weightOneFormat, ge::Format weightTwoFo
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
+    if (expectedStatus != ge::GRAPH_SUCCESS) {
+        return;
+    }
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    const bool tilingSucceeded = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    ASSERT_TRUE(tilingSucceeded);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    MegaMoeTilingData tilingData{};
+    std::memcpy(&tilingData, tilingInfo.tilingData.get(), sizeof(tilingData));
+    const auto &layout = tilingData.a8w4L1Layout;
+    EXPECT_EQ(layout.aBufferNum, 3U);
+    EXPECT_EQ(layout.bBufferNum, 4U);
+    EXPECT_EQ(layout.tileK, 256U);
+    EXPECT_EQ(layout.scaleK, 2048U);
+    const uint64_t expectedBOffsets[] = {192U * 1024, 320U * 1024, 256U * 1024, 384U * 1024};
+    for (uint64_t slot = 0; slot < 4U; ++slot) {
+        EXPECT_EQ(layout.bOffsets[slot], expectedBOffsets[slot]);
+    }
+    EXPECT_EQ(layout.aOffsets[2] + layout.aSlotBytes, layout.bOffsets[0]);
+    EXPECT_EQ(layout.scaleAOffsets[0], 448U * 1024);
+    EXPECT_EQ(layout.scaleBOffsets[1] + layout.scaleBSlotBytes, 512U * 1024);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A8W4_URMA)
 {
-    RunA8W4FormatCase(ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::GRAPH_SUCCESS, 13248552UL);
+    RunA8W4FormatCase(ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32, ge::GRAPH_SUCCESS, 46802984UL);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A8W4_URMA_InvalidWeight2Format)
@@ -668,7 +691,7 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A4W4_URMA)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = 28583976UL;
+    uint64_t expectTilingKey = 62138408UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -736,7 +759,7 @@ static void RunA4W4NzFormatCase(ge::Format weightOneFormat, ge::Format weightTwo
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A4W4_NZ_URMA)
 {
-    RunA4W4NzFormatCase(ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32, ge::GRAPH_SUCCESS, 28583976UL);
+    RunA4W4NzFormatCase(ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32, ge::GRAPH_SUCCESS, 62138408UL);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A4W4_NZ_URMA_InvalidWeight1Format)
@@ -810,7 +833,7 @@ static void RunPerExpertTensorListCase(uint32_t weightTwoTensorCount, ge::graphS
     gert::TilingContextPara tilingContextPara("MegaMoe", inputs, outputs, attrs, inputInstanceNum, outputInstanceNum,
                                               &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 9053220UL : 0UL;
+    const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 42607652UL : 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
 }
 

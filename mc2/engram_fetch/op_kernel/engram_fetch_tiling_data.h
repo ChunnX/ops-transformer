@@ -31,5 +31,8 @@ struct EngramFetchTilingData {
     int64_t commBufferSize;
     int64_t numSfPacks;
     int64_t sfElemSize;
+    uint32_t sortNumTileData;
+    uint32_t sortTileCount;
+    uint32_t sortTmpUbSize;
 };
 #endif

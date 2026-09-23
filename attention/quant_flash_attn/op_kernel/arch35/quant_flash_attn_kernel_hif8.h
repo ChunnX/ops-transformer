@@ -21,11 +21,7 @@
 #include "quant_flash_attn_block_vec_hif8.h"
 #include "quant_flash_attn_block_vec_flashdecode.h"
 #include "memory_copy_arch35_quant_flash_attn.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/op_kernel/vector_common.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -281,7 +277,6 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);

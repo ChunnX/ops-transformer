@@ -18,27 +18,14 @@
 #include "kernel_operator.h"
 
 #include "adv_api/activation/softmax.h"
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#else
-#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/arch35/vf/vf_div_cast_arch35.h"
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#endif
 #include "fia_public_define_arch35.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/vector_common.h"
-#endif
 #include "memory_copy_arch35_fused_infer.h"
 
 using namespace AscendC;
@@ -56,6 +43,27 @@ struct Bmm2ResBuffSel {
 };
 
 namespace BaseApi {
+
+template <bool useDn>
+__simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float minValue, const float scaleValue,
+                                              const float pScale)
+{
+    RegTensor<float> vregMin;
+    RegTensor<float> vregPScale;
+    RegTensor<float> vregLnPScale;
+    MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    Duplicate(vregMin, minValue);
+    Duplicate(vregPScale, pScale);
+    Ln(vregLnPScale, vregPScale, pregAll);
+    if constexpr (useDn) {
+        Muls(vregMin, vregMin, scaleValue, pregAll);
+    }
+    Muls(vregMin, vregMin, INV_LN2, pregAll);
+    Truncate<float, RoundMode::CAST_CEIL>(vregMin, vregMin, pregAll);
+    Muls(vregMin, vregMin, LN2, pregAll);
+    Sub(vregMin, vregMin, vregLnPScale, pregAll);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
+}
 
 template <
     typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -188,10 +196,6 @@ public:
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
-        if constexpr (USE_DN) {
-            minValue = NEGATIVE_MIN_VALUE_FP32;
-            UpdateMinCheckValue();
-        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -325,7 +329,7 @@ public:
         if constexpr (HAS_MASK) {
             maskLine = ComputeMaskLineDN(runInfo, subLoop);
         }
-        if (isFullMask) {
+        if (unlikely(isFullMask)) {
             maskLine = -256;
         }
         uint32_t softmaxBufIdx = runInfo.mloop % PRELOAD_N;
@@ -448,18 +452,13 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        float min = *((float *)&minValue);
-        if constexpr (USE_DN) {
-            min *= constInfo.scaleValue;
-        }
-        float tmp = min * INV_LN2;
-        // int32_t 范围 [-2147483648, 2147483647]，下限约 -2.1e9
-        // 若 tmp 小于 int32 最小值，float 精度丢失，直接原样计算
-        if (tmp > -2147483648.0f) {
-            min = static_cast<int32_t>(tmp) * LN2;
-        } else {
-            min = tmp * LN2;
-        }
+        LocalTensor<float> minValueUb = commonTBuf.template Get<float>();
+        TEventID minCheckEventId = GetTPipePtr()->FetchEventID(HardEvent::V_S);
+        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue),
+                                      constInfo.scaleValue, pScaleValue);
+        SetFlag<HardEvent::V_S>(minCheckEventId);
+        WaitFlag<HardEvent::V_S>(minCheckEventId);
+        float min = minValueUb.GetValue(0);
         minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
@@ -1039,6 +1038,7 @@ public:
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
                 }
+                UpdateMinCheckValue();
             } else {
                 tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
                                   128); // s2realsize (64, 128]

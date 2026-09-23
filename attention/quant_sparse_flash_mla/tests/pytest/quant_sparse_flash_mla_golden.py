@@ -28,10 +28,14 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
-def restore_cmp_kv_lengths(seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None):
+def restore_cmp_kv_lengths(
+    seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
+):
     """Restore the logical CMP context lengths used by the Arch35 kernels."""
     if seqused_cmp_kv is None:
         return None
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual_kv = None
     if cmp_residual_kv is not None and len(cmp_residual_kv) != len(seqused_cmp_kv):
         raise ValueError("cmp_residual_kv and seqused_cmp_kv must have the same length")
 
@@ -150,7 +154,7 @@ class GeneralizedSFAQuant:
         G = int(self.N1 / self.N2)
         s2_base_size = 128
         cmp_restored_lengths = restore_cmp_kv_lengths(
-            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv
+            seqused_cmp_kv, self.cmp_ratio, cmp_residual_kv, self.cmp_mask_mode
         )
 
         for i_B in range(B):
@@ -1248,7 +1252,7 @@ def gen_cmp_kv(
     cmp_topk_length = None
     if template_run_mode in ("CSA", "ORI_CMP_SPARSE") and cmp_max_s2 != 0:
         cmp_restored_len = restore_cmp_kv_lengths(
-            seqused_cmp_kv, cmp_ratio, cmp_residual_kv
+            seqused_cmp_kv, cmp_ratio, cmp_residual_kv, cmp_mask_mode
         )
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(
@@ -1663,9 +1667,6 @@ def gen_data(params, generate_golden=True):
     # Sparse templates derive KV lengths from sparse indices and top-k lengths.
     # Keep the derived values for metadata and CPU Golden, but do not expose them
     # as direct API inputs when their CSV slots are intentionally absent.
-    no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
     cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
@@ -1722,8 +1723,8 @@ def gen_data(params, generate_golden=True):
             "seqused_q": seqused_q,
             "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
             "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
-            "seqused_ori_kv": op_seqused_ori_kv,
-            "seqused_cmp_kv": op_seqused_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
             "cmp_residual_kv": cmp_residual_kv,
             "sinks": sinks,
             "q_descale": q_descale,

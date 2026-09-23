@@ -191,7 +191,7 @@ private:
                                         GlobalTensor<int32_t> &actualSeqGm, GlobalTensor<int32_t> &cuSeqlensGm,
                                         int64_t defaultSize);
     __aicore__ inline PhyAddrValidInfo CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
-                                                            int32_t restoredSize, ConstInfo &constInfo);
+                                                            int64_t restoredSize, ConstInfo &constInfo);
     __aicore__ inline int32_t CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv,
                                              GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &topkLengthGm,
                                              ConstInfo &constInfo, int32_t sparseBlockCount,
@@ -493,7 +493,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(
     dataCopyParams.blockCount = constInfo.dSize / blockElementNum;
     dataCopyParams.blockLen = dealRow;
     dataCopyParams.srcGap = (dealRow | 0x1) - dealRow;
-    dataCopyParams.dstGap = ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow; // 31：计算目标地址间隙，确保对齐到32的倍数
+    dataCopyParams.dstGap =
+        ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow; // {31, 5}：计算目标地址间隙，确保对齐到32的倍数
     DataCopy(dst[s2StartIdx * blockElementNum], kvOutUb, dataCopyParams);
 }
 
@@ -508,7 +509,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     dataCopyParams.blockCount = constInfo.dSize / blockElementNum;
     dataCopyParams.blockLen = dealRow;
     dataCopyParams.srcGap = (dealRow | 0x1) - dealRow;
-    dataCopyParams.dstGap = ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow; // 31：计算目标地址间隙，确保对齐到32的倍数
+    dataCopyParams.dstGap =
+        ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow; // {31, 5}：计算目标地址间隙，确保对齐到32的倍数
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], kvOutUb, dataCopyParams);
 }
 
@@ -725,9 +727,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             } else {
                 GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
             }
-            s2 += 8; // 每次搬运8行
-            if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
-                tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
+            s2 += 8;                                                              // 每次搬运8行
+            if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && // 2：数组下标
+                tokenData[3] == -1 &&                                             // 3：同上
+                tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && // {4, 5, 6}：同上
+                tokenData[7] == -1) {                                             // 7：同上
                 meetEnd = true;
                 break;
             }
@@ -1035,7 +1039,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
                                                                                     int32_t actualOriS2Size,
-                                                                                    int32_t restoredSize,
+                                                                                    int64_t restoredSize,
                                                                                     ConstInfo &constInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
@@ -1163,13 +1167,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             qsmlaBS1IdxBase = constInfo.s1Size * bIdx;
         }
 
-        int32_t restoredSize = 0;
+        int64_t restoredSize = 0;
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = static_cast<int64_t>(actualKvSize) * static_cast<int64_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;
@@ -1229,13 +1234,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             qsmlaS1End = nextGs1Idx;
         }
 
-        int32_t restoredSize = 0;
+        int64_t restoredSize = 0;
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = static_cast<int64_t>(actualKvSize) * static_cast<int64_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;
@@ -1293,13 +1299,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
                 break;
             }
         }
-        SetFlag<AscendC::HardEvent::V_MTE2>(3);
+        SetFlag<AscendC::HardEvent::V_MTE2>(3); // 3: 同步标志位值
         qsmlaTmpGS1Start = 0;
     }
 
-    WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(4);
-    WaitFlag<AscendC::HardEvent::MTE3_V>(7);
+    WaitFlag<AscendC::HardEvent::V_MTE2>(3); // 3: 同步标志位值
+    WaitFlag<AscendC::HardEvent::V_MTE2>(4); // 4: 同步标志位值
+    WaitFlag<AscendC::HardEvent::MTE3_V>(7); // 7: 同步标志位值
 }
 
 TEMPLATES_DEF_NO_DEFAULT

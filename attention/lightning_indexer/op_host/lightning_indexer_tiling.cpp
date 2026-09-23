@@ -572,10 +572,10 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 ge::graphStatus LIInfoParser::GetN1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO);
     } else {
         // TND
-        n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+        n1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
     OP_LOGI(context_->GetNodeName(), "n1Size is %d", n1Size_);
     if (npuArch_ == NpuArch::DAV_3510) {
@@ -597,7 +597,7 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+static ge::graphStatus LiGetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                              const std::string &liActualSeqLenName, const char *liOpName)
 {
     liSize = static_cast<uint32_t>(liTensor->GetShapeSize());
@@ -610,7 +610,7 @@ static ge::graphStatus LiGetActualSeqLenSize(uint32_t &liSize, const gert::Tenso
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+ge::graphStatus LIInfoParser::GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                                   const std::string &liSeqLenName) const
 {
     return LiGetActualSeqLenSize(liSize, liTensor, liSeqLenName, opName_);
@@ -619,7 +619,7 @@ ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &liSize, const gert::
 ge::graphStatus LIInfoParser::GetAndCheckN2Size()
 {
     uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
-    n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
+    n2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index);
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
@@ -656,7 +656,7 @@ ge::graphStatus LIInfoParser::GetBatchSize()
 }
 
 static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataLayout liQLayout, const char *liOpName,
-                                    uint32_t &liHeadDim)
+                                    int64_t &liHeadDim)
 {
     uint32_t liDIndex = DIM_IDX_TWO;
     switch (liQLayout) {
@@ -695,7 +695,7 @@ ge::graphStatus LIInfoParser::GetS1Size()
 
 ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
 {
-    blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
+    blockSize_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     OP_LOGI(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
@@ -744,6 +744,32 @@ ge::graphStatus LIInfoParser::GetS2Size()
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
     } else if (kLayout_ == DataLayout::BSND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// A2/A3(arch22)场景BSND布局下S1/S2超过8M直接报错不支持
+// TND/PA布局序列长度host侧不可见, 不做该校验
+ge::graphStatus LIInfoParser::CheckSeqLenLimit() const
+{
+    if (npuArch_ != NpuArch::DAV_2201) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (qLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s1Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        "S1 of query is " + std::to_string(s1Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
+    }
+    if (kLayout_ == DataLayout::BSND) {
+        OP_CHECK_IF(s2Size_ > MAX_SEQ_LEN_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                        "S2 of key is " + std::to_string(s2Size_) + ", exceeds max supported seqLen " +
+                            std::to_string(MAX_SEQ_LEN_LIMIT) + " on A2/A3, operator not supported"),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1088,6 +1114,10 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
         ge::GRAPH_SUCCESS != GetS2Size()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ge::GRAPH_SUCCESS != CheckSeqLenLimit()) {
         return ge::GRAPH_FAILED;
     }
 

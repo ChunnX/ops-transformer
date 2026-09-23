@@ -80,7 +80,6 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
                                                        int64_t worldSize, uint64_t *workspaceSize,
                                                        aclOpExecutor **executor)
 {
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclTensor *mc2Context = nullptr;
@@ -92,7 +91,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
         (void)strncpy_s(groupBuf, HCCL_GROUP_NAME_MAX, group, HCCL_GROUP_NAME_MAX - 1);
     }
     aclTensor *xRefBuf = const_cast<aclTensor *>(xRef);
-    if (!is950) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_3510) {
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(xRefBuf, timeOut, elasticInfo, groupBuf,
                                                                            worldSize, workspaceSize, executor);
     } else {
@@ -111,12 +110,11 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
 aclnnStatus aclnnDistributeBarrierBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                        aclrtStream stream)
 {
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    if (is950) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         OP_LOGD("aclnn_distribute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
     }
