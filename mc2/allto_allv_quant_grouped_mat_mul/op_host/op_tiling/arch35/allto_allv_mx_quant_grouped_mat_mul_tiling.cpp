@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
+#include <algorithm>
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
 #include "securec.h"
@@ -240,7 +241,14 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        gmmHelper.SetGroupNum(gmmGroupNum);
+        // APACE consumes only the base tile parameters from this helper and obtains the actual
+        // group count from apaceTilingData_. Keep the helper within its 128-entry tensor-list capacity.
+        uint32_t helperGroupNum = gmmGroupNum;
+        if (usingApaceImpl_) {
+            helperGroupNum =
+                std::min(helperGroupNum, static_cast<uint32_t>(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT));
+        }
+        gmmHelper.SetGroupNum(helperGroupNum);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
