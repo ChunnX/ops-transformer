@@ -82,7 +82,7 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REPO_NAME=$(basename "$REPO_ROOT")
 OAT_REPORT_DIR="${TMPDIR:-/tmp}/oat_reports_$$"
-OAT_RESULT_DIR="$REPO_ROOT/oat_reports"
+OAT_RESULT_DIR="$REPO_ROOT/pre-commit_reports"
 
 # ---------------------------------------------------------------------------
 # 2a. PR-range deduplication (pure git, no CI env vars required)
@@ -257,11 +257,11 @@ mkdir -p "$OAT_RESULT_DIR"
 # ---------------------------------------------------------------------------
 # 5. Build oat command — use OAT.xml if present in repo root
 # ---------------------------------------------------------------------------
-_OAT_BASE_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $OAT_REPORT_DIR -n $REPO_NAME -w 1"
+_OAT_ARGS=(-mode s -s "$REPO_ROOT" -r "$OAT_REPORT_DIR" -n "$REPO_NAME" -w 1)
 
 _OAT_XML="$REPO_ROOT/OAT.xml"
 if [ -f "$_OAT_XML" ]; then
-    _OAT_BASE_CMD="$_OAT_BASE_CMD -oatconfig $_OAT_XML"
+    _OAT_ARGS+=(-oatconfig "$_OAT_XML")
 fi
 
 # ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ _BATCH_ISSUES=0
 _run_oat_batch() {
     echo "[OAT] Running compliance scan..."
     set +e
-    eval "$_OAT_BASE_CMD -f $1" >/dev/null 2>&1
+    "$_PYTHON" -m oat "${_OAT_ARGS[@]}" -f "$1" >/dev/null 2>&1
     _OAT_RC=$?
     set -e
     if [ "$_OAT_RC" -ne 0 ] && [ "$_OAT_RC" -ne 1 ]; then
@@ -362,11 +362,11 @@ if [ -n "$_BATCH_COUNT" ] && [ "$_BATCH_COUNT" -gt 1 ] 2>/dev/null; then
                 cat "$OAT_RESULT_DIR/batch_details.txt"
             fi
             echo "==================================="
-        } > "$OAT_RESULT_DIR/result.txt"
+        } > "$OAT_RESULT_DIR/oat_result.txt"
         echo "[OAT] Found $_BATCH_ISSUES compliance issue(s) across $_BATCH_COUNT batches."
         echo "[OAT] Details (also saved to: $OAT_RESULT_DIR/batch_details.txt):"
         echo "---"
-        cat "$OAT_RESULT_DIR/result.txt"
+        cat "$OAT_RESULT_DIR/oat_result.txt"
         echo "---"
         echo ""
         echo "Fix the issues and recommit, or skip with:"
@@ -391,7 +391,7 @@ fi
 #    Only: Invalid File Type + License Header Invalid (no copyright)
 # ---------------------------------------------------------------------------
 REPORT_FILE="$OAT_REPORT_DIR/PlainReport_${REPO_NAME}.txt"
-RESULT_FILE="$OAT_RESULT_DIR/result.txt"
+RESULT_FILE="$OAT_RESULT_DIR/oat_result.txt"
 
 # Section headers used as stop-boundaries when extracting sections
 _ALL_HEADERS="Invalid File Type Total Count:|License Not Compatible Total Count:|License Header Invalid Total Count:|Copyright Header Invalid Total Count:|No License File Total Count:|No Readme.OpenSource Total Count:|No Readme Total Count:|Import Invalid Total Count:|Redundant License File Total Count:|Third Party Software Info Total Count:"
