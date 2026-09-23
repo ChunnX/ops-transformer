@@ -57,6 +57,7 @@ public:
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitTq4Buffers(TPipe *pipe);
+    __aicore__ inline void LoadTq4Codebook();
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData);
     __aicore__ inline void InitMm2ResInt32GmGlobalTensor(GlobalTensor<int32_t> mm2ResInt32Gm);
@@ -301,6 +302,17 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitTq4Buffers(TPipe *pipe)
     pipe->InitBuffer(tq4ScaleBuf_, ConstInfo::BUFFER_SIZE_BYTE_4K);
     pipe->InitBuffer(tq4CentBuf_, ConstInfo::BUFFER_SIZE_BYTE_256B);
     pipe->InitBuffer(tq4ByteLutBuf_, ConstInfo::BUFFER_SIZE_BYTE_1K);
+    LoadTq4Codebook();
+    // 一次性把 fp32 scale 区整段填 1.0，保证该区域永不含未初始化数据，否则 NaN 会在掩码
+    // 之前被乘进 score 并穿透 softmax。有了它，热路径只需对有效前缀做 Cast，不必再从
+    // qsfaScaleF[validCol] 起补尾 —— 那是个非 32B 对齐的向量写，会抛 507015。
+    Duplicate(tq4ScaleBuf_.Get<T>()[TQ4_SCALE_UB_F32], static_cast<T>(1.0), TQ4_SCALE_SLOT_STRIDE);
+    PipeBarrier<PIPE_ALL>();
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::LoadTq4Codebook()
+{
     tq4Cent_ = tq4CentBuf_.Get<float>();
     // centSigned[k] = _CENT[(k + 8) % 16]，即按有符号 nibble 重排后的码本
     tq4Cent_.SetValue(0, 0.00547294f);
@@ -344,11 +356,6 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitTq4Buffers(TPipe *pipe)
             }
         }
     }
-    // 一次性把 fp32 scale 区整段填 1.0，保证该区域永不含未初始化数据，否则 NaN 会在掩码
-    // 之前被乘进 score 并穿透 softmax。有了它，热路径只需对有效前缀做 Cast，不必再从
-    // qsfaScaleF[validCol] 起补尾 —— 那是个非 32B 对齐的向量写，会抛 507015。
-    Duplicate(tq4ScaleBuf_.Get<T>()[TQ4_SCALE_UB_F32], static_cast<T>(1.0), TQ4_SCALE_SLOT_STRIDE);
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <typename QSFAT>
