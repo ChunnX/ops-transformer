@@ -1,0 +1,647 @@
+[
+  {
+    "case_name": "gqa_decode_b1",
+    "op_name": "KvCacheTurboQuant",
+    "case_path": "/home/operator/ascendOpTest/kv_cache_turbo_quant",
+    "expect_func": "/home/operator/ascendOpTest/kv_cache_turbo_quant/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          8,
+          128
+        ],
+        "value_range": [
+          -2,
+          2
+        ],
+        "name": "kv_vectors",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "rotation_matrix",
+        "data_path": "data/rotation_matrix.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -4,
+          4
+        ],
+        "name": "qjl_matrix",
+        "data_path": "data/qjl_matrix.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          1,
+          8,
+          48
+        ],
+        "name": "quant_idx",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.00001
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          1,
+          8,
+          16
+        ],
+        "name": "quant_qjl",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.000011
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          8
+        ],
+        "name": "quant_norm",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          8
+        ],
+        "name": "quant_gamma",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_decode_b64",
+    "op_name": "KvCacheTurboQuant",
+    "case_path": "/home/operator/ascendOpTest/kv_cache_turbo_quant",
+    "expect_func": "/home/operator/ascendOpTest/kv_cache_turbo_quant/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          64,
+          8,
+          128
+        ],
+        "value_range": [
+          -2,
+          2
+        ],
+        "name": "kv_vectors",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "rotation_matrix",
+        "data_path": "data/rotation_matrix.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -4,
+          4
+        ],
+        "name": "qjl_matrix",
+        "data_path": "data/qjl_matrix.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          64,
+          8,
+          48
+        ],
+        "name": "quant_idx",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.00001
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          64,
+          8,
+          16
+        ],
+        "name": "quant_qjl",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.000011
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          64,
+          8
+        ],
+        "name": "quant_norm",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          64,
+          8
+        ],
+        "name": "quant_gamma",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_prefill_t2048",
+    "op_name": "KvCacheTurboQuant",
+    "case_path": "/home/operator/ascendOpTest/kv_cache_turbo_quant",
+    "expect_func": "/home/operator/ascendOpTest/kv_cache_turbo_quant/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          128
+        ],
+        "value_range": [
+          -2,
+          2
+        ],
+        "name": "kv_vectors",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "rotation_matrix",
+        "data_path": "data/rotation_matrix.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -4,
+          4
+        ],
+        "name": "qjl_matrix",
+        "data_path": "data/qjl_matrix.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          48
+        ],
+        "name": "quant_idx",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.00001
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          16
+        ],
+        "name": "quant_qjl",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.000011
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_norm",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_gamma",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_mse2_t2048",
+    "op_name": "KvCacheTurboQuant",
+    "case_path": "/home/operator/ascendOpTest/kv_cache_turbo_quant",
+    "expect_func": "/home/operator/ascendOpTest/kv_cache_turbo_quant/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          128
+        ],
+        "value_range": [
+          -2,
+          2
+        ],
+        "name": "kv_vectors",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "rotation_matrix",
+        "data_path": "data/rotation_matrix.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -4,
+          4
+        ],
+        "name": "qjl_matrix",
+        "data_path": "data/qjl_matrix.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          32
+        ],
+        "name": "quant_idx",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.00001
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          16
+        ],
+        "name": "quant_qjl",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.000011
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_norm",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_gamma",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_mse4_t2048",
+    "op_name": "KvCacheTurboQuant",
+    "case_path": "/home/operator/ascendOpTest/kv_cache_turbo_quant",
+    "expect_func": "/home/operator/ascendOpTest/kv_cache_turbo_quant/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          128
+        ],
+        "value_range": [
+          -2,
+          2
+        ],
+        "name": "kv_vectors",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "rotation_matrix",
+        "data_path": "data/rotation_matrix.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          128,
+          128
+        ],
+        "value_range": [
+          -4,
+          4
+        ],
+        "name": "qjl_matrix",
+        "data_path": "data/qjl_matrix.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          64
+        ],
+        "name": "quant_idx",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.00001
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8,
+          16
+        ],
+        "name": "quant_qjl",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0.000011
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_norm",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          2048,
+          8
+        ],
+        "name": "quant_gamma",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 4
+      }
+    ]
+  }
+]

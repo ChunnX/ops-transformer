@@ -1,0 +1,92 @@
+# 自测（精度 / 性能）
+
+本目录给出 KvCacheTurboQuant 的**可复现自测**：5 个指定 case（`case.json`，任务包原样）的
+**逐字节对拍**、**V3 双口径精度**与**计时**。
+
+## 0. 依赖
+
+- CANN 9.1.0+、Ascend 910B（A2）/`ascend910_93`（A3）
+- Python 3.11（`numpy`、`ml_dtypes`）、`torch` + `torch_npu`（对拍与精度用）
+- g++（编译 `examples/` 里的 aclnn 驱动器）
+
+## 1. 构建并安装算子
+
+```bash
+cd <ops-transformer 根目录>
+bash build.sh --pkg --experimental --soc=ascend910b --ops=kv_cache_turbo_quant
+cd build
+./cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=<CANN>/opp
+source <CANN>/opp/vendors/custom_transformer/bin/set_env.bash
+```
+
+> 也可用 `--extract=<dir> --noexec` 解包后不安装：此时把 `<dir>/packages` 传给
+> `examples/build_and_run.sh`，并让运行环境能找到 `libcust_opapi.so`（加入 `LD_LIBRARY_PATH`）。
+
+## 2. 编译 aclnn 驱动器
+
+```bash
+bash examples/build_and_run.sh <算子包>/packages /tmp/kctq_example
+```
+
+## 3. 生成测试数据
+
+任务包里**未随附** `data/rotation_matrix.bin`、`data/qjl_matrix.bin`（`case.json` 引用了它们），
+本目录用固定种子生成统计等价的矩阵，并把 sha256 写进 `data/meta.json`：
+
+```bash
+python tests/gen_test_data.py --out data        # 归一化 Hadamard 旋转矩阵 + 高斯 QJL 矩阵
+python tests/gen_case_input.py --out data/kctq_case_b1 --tokens 1    --heads 8
+python tests/gen_case_input.py --out data/kctq_case_b64 --tokens 64  --heads 8
+python tests/gen_case_input.py --out data/kctq_case_t2048 --tokens 2048 --heads 8
+# 三个 t2048 档共用同一份 kv 输入，仅 mse_bits 不同（见 case.json）
+```
+
+输入按 `case.json` 声明的 `value_range` 生成（`kv_vectors` 为 `[-2, 2]` 均匀、BF16 舍入）。
+
+## 4. 一键自测
+
+```bash
+export KCTQ_MATERIAL=<任务包目录>          # 含 golden.py 的目录
+export KCTQ_GOLDEN=$KCTQ_MATERIAL/golden.py
+export KCTQ_BIN=/tmp/kctq_example/test_aclnn_kv_cache_turbo_quant
+bash tests/run_all.sh
+```
+
+`run_all.sh` 会按 `case.json` 依次跑 5 个 case：算子 → `kctq_compare.py`（逐字节对拍）→
+`kctq_v3_precision.py`（V3 双口径），并在最后打印汇总。
+
+### 单步命令（等价）
+
+```bash
+$KCTQ_BIN --kv data/kctq_case_t2048/kv_vectors.bin --rot data/rotation_matrix.bin \
+    --qjl data/qjl_matrix.bin --out out/t2048_b3 --tokens 2048 --heads 8 --bits 3 \
+    --warmup 3 --repeat 10
+python tests/kctq_compare.py --workdir out/t2048_b3 --rot data/rotation_matrix.bin \
+    --qjl data/qjl_matrix.bin --tokens 2048 --heads 8 --bits 3 --material "$KCTQ_MATERIAL"
+python tests/kctq_v3_precision.py --workdir out/t2048_b3 --rot data/rotation_matrix.bin \
+    --qjl data/qjl_matrix.bin --tokens 2048 --heads 8 --bits 3 --golden "$KCTQ_GOLDEN"
+```
+
+## 5. 口径说明（务必与结论一起阅读）
+
+- **计时**：warmup 3 + repeat 10，报告**中位数**；计时环内包含每轮的
+  `GetWorkspaceSize` + workspace `aclrtMalloc` + launch + sync（保守口径）。
+  若需"预分配 workspace"口径，把分配移出计时环即可（同一实现、同一数据）。
+- **对拍**：与任务包 `golden.py` **逐字节**比较四个输出，打印每个输出的不一致数量与匹配率；
+  末行 `RESULT: PASS/FAIL` 仅表示 `idx`/`qjl` 无不一致。
+- **已知差异（非逻辑差异）**：`quant_gamma` 在 3-bit 档、`quant_qjl` 在 4-bit 档各有 **1 个单点**
+  因浮点归约顺序产生 1 ULP / 1 bit 级差异（其余三个输出逐位一致）；逐 case 明细见日志。
+  是否需要逐位全等取决于官方判定口径，见个人仓 `task_submission/` 中的精度报告与口径说明。
+- **V3 精度**：`relMSE` 与内积误差均给**两种口径**（MSE-only / 含 QJL；分母归一化 / 字面），
+  主口径与阈值依据见报告；`REPORT_REF` 为调研报告的同口径参考值。
+
+## 6. 文件说明
+
+| 文件 | 说明 |
+| --- | --- |
+| `case.json` / `op.json` | **任务包原样复制**（未修改）：5 个自测 case 的 shape/阈值与算子接口 |
+| `gen_test_data.py` | 生成旋转/投影矩阵与 `data/meta.json`（含 sha256、来源说明） |
+| `gen_case_input.py` | 生成某个 case 的 `kv_vectors.bin`（BF16） |
+| `kctq_compare.py` | 与 `golden.py` 逐字节对拍（`--material` 指定任务包目录） |
+| `kctq_v3_precision.py` | V3 双口径精度（decode 两条路径 × 两种分母；`--golden` 指定 `golden.py`） |
+| `run_all.sh` | 一键跑 5 个 case 的对拍 + V3 + 计时汇总 |
