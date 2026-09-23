@@ -28,6 +28,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_dispatch_tiling.h"
+#include "../../op_kernel/moe_ep_dispatch_schedule.h"
 #include "../../op_kernel/moe_ep_dispatch_tiling_key.h"
 
 using namespace AscendC;
@@ -621,35 +622,27 @@ static uint64_t AlignUpWin(const uint64_t data)
 
 static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
 {
-    uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
-    uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
-    uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
-    uint64_t numTokens = static_cast<uint64_t>(info.cfg.numTokens);
-
-    // Reserve [aivNum][epAlignWin]; prepare core i writes logical row i, leaving 32 sender-only rows unused.
-    uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
-    uint64_t counterBytes = aivNum * epAlignWinBytes;
-
-    uint64_t sendCntPerRankBytes = epAlignWinBytes;
-
-    // sendCntPerExpert 区
-    uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
-
-    // dstRank 区 [BS][K]
-    uint64_t dstRankInfoBytes = AlignUpWin(numTokens * info.cfg.topK * sizeof(int16_t));
-
-    // tokenHit 发送列表区 [ep][bsAlign]：统一存 tokenId(int32)，
-    uint64_t srcTokenListBytes = AlignUpWin(numTokens * sizeof(int32_t));
-    uint64_t srcTokenTableBytes = epWorldSize * srcTokenListBytes;
-
-    uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
-    info.workspace.dstRankInfoOffset = sendCntBytes;
-    info.workspace.srcTokenTableOffset = sendCntBytes + dstRankInfoBytes;
-    info.workspace.srcTokenListBytes = srcTokenListBytes;
-
-    // 保留公共 workspace 尾部，兼容框架侧的 GM workspace 预留。
-    uint64_t globalABytes = UB_ALIGN;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + srcTokenTableBytes + globalABytes;
+    uint64_t peers = info.cfg.epWorldSize;
+    uint64_t experts = info.cfg.numExperts;
+    uint64_t cores = info.aivNum;
+    uint64_t tokens = info.cfg.numTokens;
+    uint32_t tileTokens = MoeEpDispatchSchedule::TileTokens(info.cfg.numTokens, info.aivNum,
+                                                          info.cfg.topK, info.metaSlotBytes);
+    auto &workspace = info.workspace;
+    workspace.tileTokens = tileTokens;
+    workspace.tileCount = MoeEpDispatchSchedule::TileCount(info.cfg.numTokens, tileTokens);
+    uint64_t rankStride = AlignUpWin(peers * sizeof(int32_t));
+    uint64_t expertStride = AlignUpWin(experts * sizeof(int32_t));
+    workspace.sendCntOffset = workspace.tileCount * rankStride;
+    workspace.tilePrefixOffset = workspace.sendCntOffset + rankStride + expertStride;
+    workspace.expertPartialOffset = workspace.tilePrefixOffset + (workspace.tileCount + 1ULL) * rankStride;
+    workspace.tileReadyOffset = workspace.expertPartialOffset + cores * expertStride;
+    workspace.dstRankInfoOffset = workspace.tileReadyOffset + AlignUpWin(workspace.tileCount * uint64_t{UB_ALIGN});
+    uint64_t rankInfoBytes = AlignUpWin(tokens * info.cfg.topK * sizeof(int16_t));
+    workspace.srcTokenTableOffset = workspace.dstRankInfoOffset + rankInfoBytes;
+    workspace.srcTokenListBytes = AlignUpWin(tokens * sizeof(int32_t));
+    return SYSTEM_NEED_WORKSPACE + workspace.srcTokenTableOffset +
+           peers * workspace.srcTokenListBytes + UB_ALIGN;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,

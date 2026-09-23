@@ -42,6 +42,12 @@ struct MoeEpDispatchWindowLayout {
 };
 
 struct MoeEpDispatchWorkspaceLayout {
+    uint32_t tileTokens;
+    uint32_t tileCount;
+    uint64_t sendCntOffset;       // Final rank/expert totals; tile count rows start at workspace offset zero.
+    uint64_t tilePrefixOffset;    // [tileCount + 1][align512(P * sizeof(int32_t))].
+    uint64_t expertPartialOffset; // [aivNum][align512(E * sizeof(int32_t))].
+    uint64_t tileReadyOffset;     // One local 32-byte ready block per tile, never a remote completion flag.
     uint64_t srcTokenListBytes;        // 发送到每个对端卡的 token索引表 字节数（512B 对齐，int32）
     uint64_t dstRankInfoOffset;        // dstRank 区偏移（sendCnt 区之后），布局 [BS][K] int16
     uint64_t srcTokenTableOffset;      // srcTokenTable 区偏移（dstRank 区之后），布局 [ep][nmtAlign] int32

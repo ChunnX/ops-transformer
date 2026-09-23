@@ -13,39 +13,25 @@
 #include <cstdint>
 
 namespace MoeEpDispatchSchedule {
-struct Range {
-    uint32_t begin;
-    uint32_t end;
-};
+constexpr uint32_t METADATA_TILE_BYTES = 16U * 1024U;
+constexpr uint32_t ROUTE_TILE_ELEMENTS = 4096U;
 
-// Callers validate count > 0 and index < count before launching the kernel.
-__aicore__ inline Range Partition(uint32_t total, uint32_t count, uint32_t index)
+// Host tiling validates positive BS, core count and K; supported metadata slots are at most 1024 B.
+constexpr uint32_t TileTokens(uint32_t bs, uint32_t cores, uint32_t topK, uint32_t metadataBytes)
 {
-    uint32_t base = total / count;
-    uint32_t remainder = total % count;
-    uint32_t begin = base * index + (index < remainder ? index : remainder);
-    return {begin, begin + base + (index < remainder ? 1U : 0U)};
+    // Floor keeps at least one tile per AIV when BS >= cores; ceil can leave count owners idle.
+    uint32_t balanced = bs >= cores ? bs / cores : 1U;
+    uint32_t routeLimit = ROUTE_TILE_ELEMENTS / topK;
+    uint32_t metadataLimit = METADATA_TILE_BYTES / metadataBytes;
+    uint32_t tokens = balanced < routeLimit ? balanced : routeLimit;
+    return tokens < metadataLimit ? tokens : metadataLimit;
 }
 
-// token must be strictly below total; empty partitions cannot own a token.
-__aicore__ inline uint32_t Owner(uint32_t total, uint32_t count, uint32_t token)
+constexpr uint32_t TileCount(uint32_t bs, uint32_t tileTokens)
 {
-    uint32_t base = total / count;
-    uint32_t remainder = total % count;
-    uint32_t largerTokens = remainder * (base + 1U);
-    if (token < largerTokens) {
-        return token / (base + 1U);
-    }
-    return remainder + (token - largerTokens) / base;
+    return bs / tileTokens + (bs % tileTokens != 0U ? 1U : 0U);
 }
 
-__aicore__ inline Range Overlap(uint32_t total, uint32_t count, uint32_t begin, uint32_t end)
-{
-    if (begin == end) {
-        return {0U, 0U};
-    }
-    return {Owner(total, count, begin), Owner(total, count, end - 1U) + 1U};
-}
 } // namespace MoeEpDispatchSchedule
 
 #endif

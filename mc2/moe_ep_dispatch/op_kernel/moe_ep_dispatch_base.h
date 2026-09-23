@@ -42,37 +42,66 @@ namespace MoeEpDispatchBase {
 
 using namespace AscendC;
 
-// PerExpertCnt Calculation
-template <Reg::HistogramsType htype, typename T, typename U>
-__simd_vf__ __aicore__ inline void HistogramsVf(__ubuf__ U *dst, __ubuf__ T *src, uint16_t repeatElm,
-                                                uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
+// The data and mask must be packed together; -1 must never alias valid bin 255.
+template <Reg::HighLowPart part>
+__simd_callee__ inline void PackHistogramPage(Reg::RegTensor<uint8_t> &packed, Reg::MaskReg &packedMask,
+                                             __ubuf__ int16_t *src, int16_t base, uint16_t bins,
+                                             Reg::MaskReg &tail)
 {
-    Reg::RegTensor<T> srcReg;
-    Reg::RegTensor<U> dst0Reg;
-    Reg::RegTensor<U> dst1Reg;
-    Reg::MaskReg pregOut = Reg::CreateMask<U>();
-    Reg::Duplicate(dst0Reg, 0);
-    Reg::Duplicate(dst1Reg, 0);
-    for (uint16_t i = 0; i < repeatTimes; ++i) {
-        uint32_t remaining = totalElm - static_cast<uint32_t>(i) * repeatElm;
-        uint32_t valid = (remaining > repeatElm) ? repeatElm : remaining;
-        Reg::MaskReg preg = Reg::UpdateMask<T>(valid);
-        Reg::LoadAlign(srcReg, src + repeatElm * i);
-        Reg::Histograms<T, U, Reg::HistogramsBinType::BIN0, htype>(dst0Reg, srcReg, preg);
-        Reg::Histograms<T, U, Reg::HistogramsBinType::BIN1, htype>(dst1Reg, srcReg, preg);
-    }
-    Reg::StoreAlign(dst, dst0Reg, pregOut);
-    Reg::StoreAlign(dst + halfRepeat, dst1Reg, pregOut);
+    Reg::RegTensor<int16_t> ids;
+    Reg::MaskReg valid;
+    Reg::LoadAlign(ids, src);
+    Reg::Adds(ids, ids, static_cast<int16_t>(-base), tail);
+    // Unsigned comparison rejects both negative IDs and IDs outside this 256-bin page.
+    Reg::Compares<uint16_t, CMPMODE::LT>(valid, (Reg::RegTensor<uint16_t> &)ids, bins, tail);
+    Reg::Pack<uint8_t, int16_t, part>(packed, ids);
+    Reg::Pack<part>(packedMask, valid);
 }
 
-__aicore__ inline void GetExpertFreq(LocalTensor<uint16_t> &dstLocal, LocalTensor<uint8_t> &srcLocal, uint32_t totalElm)
+// Keep filtering and narrowing in registers; one histogram input covers two int16 registers.
+template <bool highBins>
+__simd_vf__ __aicore__ inline void RouteHistogramsVf(
+    __ubuf__ uint16_t *dst, __ubuf__ int16_t *src, uint32_t count, int16_t base, uint16_t bins)
 {
-    uint32_t repeatElm = GetVecLen();
-    uint16_t repeatTimes = Ceil(totalElm, repeatElm);
-    __ubuf__ uint8_t *src = (__ubuf__ uint8_t *)srcLocal.GetPhyAddr();
+    constexpr uint32_t lanes = GetVecLen() / sizeof(int16_t);
+    uint16_t repeatTimes = (count + 2U * lanes - 1U) / (2U * lanes);
+    Reg::RegTensor<uint8_t> packed;
+    Reg::RegTensor<uint16_t> low, high;
+    Reg::MaskReg outputMask = Reg::CreateMask<uint16_t>();
+    Reg::MaskReg packedMask = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALLF>();
+    Reg::Duplicate(low, 0);
+    if constexpr (highBins) {
+        Reg::Duplicate(high, 0);
+    }
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        Reg::MaskReg tail = Reg::UpdateMask<int16_t>(count);
+        PackHistogramPage<Reg::HighLowPart::LOWEST>(packed, packedMask, src + 2U * lanes * i, base, bins, tail);
+        tail = Reg::UpdateMask<int16_t>(count);
+        PackHistogramPage<Reg::HighLowPart::HIGHEST>(packed, packedMask, src + (2U * i + 1U) * lanes,
+                                                  base, bins, tail);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
+                        Reg::HistogramsType::FREQUENCY>(low, packed, packedMask);
+        if constexpr (highBins) {
+            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1,
+                            Reg::HistogramsType::FREQUENCY>(high, packed, packedMask);
+        }
+    }
+    Reg::StoreAlign(dst, low, outputMask);
+    if constexpr (highBins) {
+        Reg::StoreAlign(dst + lanes, high, outputMask);
+    }
+}
+
+__aicore__ inline void GetRouteHistogram(LocalTensor<uint16_t> dstLocal, LocalTensor<int16_t> srcLocal,
+                                        uint32_t count, uint32_t base, uint32_t bins)
+{
+    __ubuf__ int16_t *src = (__ubuf__ int16_t *)srcLocal.GetPhyAddr();
     __ubuf__ uint16_t *dst = (__ubuf__ uint16_t *)dstLocal.GetPhyAddr();
-    asc_vf_call<HistogramsVf<Reg::HistogramsType::FREQUENCY, uint8_t, uint16_t>>(dst, src, repeatElm, repeatElm >> 1,
-                                                                                 totalElm, repeatTimes);
+    if (bins <= GetVecLen() / sizeof(uint16_t)) {
+        asc_vf_call<RouteHistogramsVf<false>>(dst, src, count, static_cast<int16_t>(base), static_cast<uint16_t>(bins));
+    } else {
+        asc_vf_call<RouteHistogramsVf<true>>(dst, src, count, static_cast<int16_t>(base), static_cast<uint16_t>(bins));
+    }
     PipeBarrier<PIPE_V>();
 }
 
@@ -91,7 +120,7 @@ namespace Mc2Kernel {
 
 #if defined(ENABLE_MOE_EP_KERNEL)
 
-using MoeEpDispatchBase::GetExpertFreq;
+using MoeEpDispatchBase::GetRouteHistogram;
 
 template <typename ContextType>
 __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ ContextType *context, uint32_t rankId, uint64_t offset)

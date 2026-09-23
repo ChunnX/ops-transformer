@@ -42,7 +42,6 @@
 #endif
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch_base.h"
-#include "moe_ep_dispatch_schedule.h"
 
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -82,13 +81,13 @@ constexpr uint32_t SOURCE_INDEX_BUFFER_BYTES = MAX_BATCH_SIZE / 2U;
 constexpr uint32_t SOURCE_INDEX_CHUNK_TOKENS =
     SOURCE_INDEX_BUFFER_BYTES / sizeof(int32_t) / SLOT_NUM_PER_SQE * SLOT_NUM_PER_SQE;
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;                   // UB capacity in full 12-SGE requests
-// Benchmark mode: every WQE produces a CQE; drain each batch before reusing CQ entries.
-constexpr uint32_t HCOMM_DRAIN_BATCH_WQEBB = Mc2Aclnn::MOE_SHARED_JETTY_CQ_DEPTH / 2U;
+// Start DMA after eight full 12-SGE requests; subsequent batches use the existing UB capacity.
+constexpr uint32_t HCOMM_FIRST_BATCH_WQEBB = 32U;
 constexpr uint32_t HCOMM_SGE_BYTES = 16U;
 constexpr uint32_t HCOMM_SQE_BYTES = 48U;
 constexpr uint32_t HCOMM_WQE_BYTES = 64U;
-constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
-constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -117,19 +116,16 @@ private:
     __aicore__ inline void BindWorkspaceAndWindow(GM_ADDR workspaceGM);
     __aicore__ inline void BufferInit();
     __aicore__ inline void ResetCounters();
-    __aicore__ inline void CalSendCntHistograms(LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor,
-                                                LocalTensor<uint32_t> sendCntTensor, uint32_t calCnt,
-                                                uint32_t scopeSize);
+    __aicore__ inline void AccumulateSendCounts(LocalTensor<int16_t> ids, LocalTensor<int32_t> counts,
+                                               uint32_t count, uint32_t scopeSize);
     __aicore__ inline void DedupAndSend(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
                                        uint32_t calCntAlign, uint32_t tmpOffset);
-    __aicore__ inline void CalSendCntPerRank(uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset);
-    __aicore__ inline void CalSendCntPerExpert(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt,
-                                               uint32_t calCntAlign, uint32_t tmpOffset);
-    __aicore__ inline void CalSendCntGroup(uint32_t group, uint32_t groupCnt, uint32_t &calCnt,
-                                           LocalTensor<int32_t> topkIdsGroupTensor,
-                                           LocalTensor<int16_t> tempTensorInt16,
-                                           const DataCopyPadExtParams<int32_t> &copyPadParams);
-    __aicore__ inline void PublishSendCounts();
+    __aicore__ inline void CalSendCntGroup(uint32_t tokenStart, uint32_t tokenCount);
+    __aicore__ inline void BuildSendPrefixes();
+    __aicore__ inline void ScanTileCounts(uint32_t peer, uint32_t firstTile, uint32_t rows);
+    __aicore__ inline void ReduceExpertPartials();
+    __aicore__ inline void PrepareMetadata(uint32_t tokenStart, uint32_t tokenCount);
+    __aicore__ inline void LoadMetadataExtras(uint32_t tokenStart, uint32_t tokenCount);
     __aicore__ inline void CalSendCnt();
     __aicore__ inline void Communication();
     __aicore__ inline void SendCountToPeer(uint32_t peer, GM_ADDR dst, GM_ADDR src,
@@ -138,8 +134,8 @@ private:
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
     __aicore__ inline void WriteToRemoteWindow();
-    __aicore__ inline void WaitIncomingCompletion();
-    __aicore__ inline void GetTokenRange(uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum);
+    __aicore__ inline void LoadTileDescriptor(uint32_t tile);
+    __aicore__ inline void PublishSendCompletions();
     __aicore__ inline void CommBufferInit();
     __aicore__ inline bool NextTokenChunk(uint32_t &peerOffset, uint32_t &start, uint32_t &remaining,
                                          TokenChunk &chunk);
@@ -152,23 +148,16 @@ private:
     __aicore__ inline void SendCompletion(uint32_t dstRankId, GM_ADDR notifyAddr);
     __aicore__ inline void ReserveBatchSpace(uint32_t wqebbCount);
     __aicore__ inline void CommitBatch(bool force);
-    __aicore__ inline uint32_t GetTokenBoundary(uint32_t dstRank, uint32_t tokenBoundary,
-                                               uint32_t prepare, uint32_t base);
-    __aicore__ inline uint32_t LowerBoundToken(uint32_t dstRank, uint32_t begin, uint32_t end,
-                                               uint32_t tokenBoundary);
     __aicore__ inline void SetSrcTokenIdxAndDstSlot(uint32_t topkOffset, uint32_t calCnt, uint32_t calCntAlign,
                                                     uint32_t &sendLocalCnt, LocalTensor<int32_t> &cntLocalTensor);
-    __aicore__ inline void ProcessMetaSlot(uint32_t startId, uint32_t tokenCnt, uint32_t sendLocalCnt,
-                                          uint32_t &curLocalSlot);
-    __aicore__ inline void SendPhase();
-    __aicore__ inline void GetSlotStartNum();
-    __aicore__ inline void CopyInMetaInfo(uint32_t tokenId, uint32_t topkOffset, uint32_t tokenCount);
-    __aicore__ inline void PublishPrepareReady();
-    __aicore__ inline void WaitPrepareReady();
-    __aicore__ inline void GetOverlappingCores(uint32_t begin, uint32_t end, uint32_t coreCount,
-                                              uint32_t &first, uint32_t &last) const;
-    __aicore__ inline void SplitToCore(uint32_t itemCount, uint32_t coreCount, uint32_t coreIndex,
-                                       uint32_t &startId, uint32_t &endId, uint32_t &itemCountPerCore);
+    __aicore__ inline void StoreUncachedSlots(uint32_t topkOffset, uint32_t count, uint32_t aligned);
+    __aicore__ inline void StoreSourceTokens(uint32_t topkOffset, uint32_t peer, uint32_t slot, uint32_t count,
+                                           LocalTensor<int16_t> indices, LocalTensor<int16_t> divisor);
+    __aicore__ inline void CopyLocalMetadata(uint32_t count, uint32_t firstSlot);
+    __aicore__ inline void PrepareSendTiles();
+    __aicore__ inline void PrepareTile(uint32_t tile);
+    __aicore__ inline void PublishTileReady(uint32_t tile);
+    __aicore__ inline void WaitTileReady(uint32_t tile);
 
     __aicore__ inline uint64_t GetOwnedJettyHandle()
     {
@@ -187,6 +176,9 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGMTensor_;
     GlobalTensor<int32_t> cachedSlotIdxGMTensor_;
     GlobalTensor<int32_t> sendCounterGMTensor_;
+    GlobalTensor<int32_t> tilePrefixGMTensor_;
+    GlobalTensor<int32_t> expertPartialGMTensor_;
+    GlobalTensor<int32_t> tileReadyGMTensor_;
     GlobalTensor<int32_t> recvCounterGMTensor_;
     GlobalTensor<int32_t> sendCntPerRankGMTensor_;
     GlobalTensor<int32_t> sendCntPerExpertGMTensor_;
@@ -202,7 +194,6 @@ private:
     LocalTensor<int64_t> numRecvPerExpertTensor_;
     LocalTensor<int32_t> sendCntPerExpertTensor_;
     LocalTensor<int32_t> sendCntPerRankTensor_;
-    LocalTensor<int32_t> slotIdxPerRankTensor_;
     LocalTensor<int16_t> dstRankTensor_;
     LocalTensor<int16_t> dstRankIdTensor_;
     LocalTensor<uint8_t> hcommTensor_;
@@ -226,10 +217,8 @@ private:
     GM_ADDR dstRankInfoAddr_{nullptr};
     GM_ADDR srcTokenTableAddr_{nullptr};
     GM_ADDR localCntStateWinAddr_{nullptr};
-    GM_ADDR localSlotStateWinAddr_{nullptr};
     GM_ADDR localSlotWinAddr_{nullptr};
     GM_ADDR payloadStashWinAddr_{nullptr};
-    GM_ADDR payloadStashStateWinAddr_{nullptr};
     GM_ADDR completionFlagSourceWinAddr_{nullptr};
 
     uint32_t axisBS_{0};
@@ -244,9 +233,8 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
-    uint32_t startTokenId_{0};
-    uint32_t endTokenId_{0};
-    uint32_t sendTokenNum_{0};
+    uint32_t tileTokens_{0};
+    uint32_t tileCount_{0};
     uint32_t perGroupTokenNum_{0};
     uint32_t sendCoreCount_{0};
     uint32_t prepareCoreCount_{0};
@@ -254,6 +242,7 @@ private:
     uint32_t prepareCoreId_{0};
     uint32_t hcommBatchBufferBytes_{0};
     uint32_t pendingWqebb_{0};
+    bool firstBatchCommitted_{false};
     uint32_t tokenSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -277,11 +266,14 @@ private:
     uint32_t srcTokenListBytes_{0};
     uint32_t metaSlotStride_{0};
     uint32_t tokenCntAlign_{0};
+    uint64_t sendCntOffset_{0};
+    uint64_t tilePrefixOffset_{0};
+    uint64_t expertPartialOffset_{0};
+    uint64_t tileReadyOffset_{0};
     uint64_t dstRankInfoOffset_{0};
     uint64_t srcTokenTableOffset_{0};
     uint64_t cntWinStateOffset_{0};
     uint64_t slotWinStateOffset_{0};
-    uint64_t payloadWinStateOffset_{0};
     uint64_t winDataOffset_{0};
     uint64_t payloadStashWinOffset_{0};
     uint64_t completionFlagSourceWinOffset_{0};
@@ -319,12 +311,17 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::InitTilingA
     isSendCore_ = aivId_ < sendCoreCount_;
     isPrepareCore_ = aivId_ >= prepareCoreStart_ && aivId_ < prepareCoreStart_ + prepareCoreCount_;
     prepareCoreId_ = isPrepareCore_ ? aivId_ - prepareCoreStart_ : 0U;
+    tileTokens_ = info.workspace.tileTokens;
+    tileCount_ = info.workspace.tileCount;
+    sendCntOffset_ = info.workspace.sendCntOffset;
+    tilePrefixOffset_ = info.workspace.tilePrefixOffset;
+    expertPartialOffset_ = info.workspace.expertPartialOffset;
+    tileReadyOffset_ = info.workspace.tileReadyOffset;
     srcTokenListBytes_ = info.workspace.srcTokenListBytes;
     dstRankInfoOffset_ = info.workspace.dstRankInfoOffset;
     srcTokenTableOffset_ = info.workspace.srcTokenTableOffset;
     cntWinStateOffset_ = info.window.cntWinStateOffset;
     slotWinStateOffset_ = info.window.slotWinStateOffset;
-    payloadWinStateOffset_ = info.window.payloadWinStateOffset;
     winDataOffset_ = info.window.winDataOffset;
     payloadStashWinOffset_ = info.window.payloadStashWinOffset;
     completionFlagSourceWinOffset_ = info.window.completionFlagSourceWinOffset;
@@ -395,16 +392,17 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BindWorkspaceAndWindow(GM_ADDR workspaceGM)
 {
     sendCounterAddr_ = workspaceGM;
-    sendCntWorkspaceAddr_ = workspaceGM + static_cast<uint64_t>(aivNum_) * epWorldSizeAlign512_;
+    sendCntWorkspaceAddr_ = workspaceGM + sendCntOffset_;
     dstRankInfoAddr_ = workspaceGM + dstRankInfoOffset_;
     srcTokenTableAddr_ = workspaceGM + srcTokenTableOffset_;
     localCntStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_);
-    localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
-    payloadStashStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadWinStateOffset_);
     localSlotWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + dstRankWinOffset_;
     payloadStashWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, payloadStashWinOffset_);
     completionFlagSourceWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, completionFlagSourceWinOffset_);
     sendCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCounterAddr_);
+    tilePrefixGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceGM + tilePrefixOffset_));
+    expertPartialGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceGM + expertPartialOffset_));
+    tileReadyGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceGM + tileReadyOffset_));
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
     metaSlotGMTensor_.SetGlobalBuffer((__gm__ int32_t *)payloadStashWinAddr_);
     sendCntPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
@@ -435,16 +433,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     BindWorkspaceAndWindow(workspaceGM);
 }
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SplitToCore(
-    uint32_t itemCount, uint32_t coreCount, uint32_t coreIndex, uint32_t &startId, uint32_t &endId,
-    uint32_t &itemCountPerCore)
-{
-    auto range = MoeEpDispatchSchedule::Partition(itemCount, coreCount, coreIndex);
-    startId = range.begin;
-    endId = range.end;
-    itemCountPerCore = endId - startId;
-}
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit()
@@ -469,47 +457,37 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BufferInit(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ResetCounters()
 {
+    LocalTensor<int32_t> flag = maskBuf_.Get<int32_t>();
     if (aivId_ == 0U) {
-        LocalTensor<int32_t> flagTensor = maskBuf_.Get<int32_t>();
-        Duplicate<int32_t>(flagTensor, 1, WIN_ADDR_ALIGN / sizeof(int32_t));
-        GlobalTensor<int32_t> flagSource;
-        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(completionFlagSourceWinAddr_));
+        Duplicate<int32_t>(flag, 1, WIN_ADDR_ALIGN / sizeof(int32_t));
+        GlobalTensor<int32_t> source;
+        source.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(completionFlagSourceWinAddr_));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(int32_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        DataCopy(source, flag, WIN_ADDR_ALIGN / sizeof(int32_t));
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
     }
-    if (isSendCore_) {
-        GlobalTensor<int32_t> readyState;
-        readyState.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + aivId_ * WIN_ADDR_ALIGN));
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopy(readyState, sendCntPerRankTensor_, UB_STRIDE);
-    }
-    if (aivId_ == aivNum_ - 1U) {
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
-        DataCopy(sendCntPerRankGMTensor_, sendCntPerRankTensor_, counterCnt_);
+    Duplicate<int32_t>(flag, 0, UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    for (uint32_t tile = aivId_; tile < tileCount_; tile += aivNum_) {
+        DataCopy(tileReadyGMTensor_[static_cast<uint64_t>(tile) * UB_STRIDE], flag, UB_STRIDE);
     }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntHistograms(
-    LocalTensor<int16_t> dstTensor, LocalTensor<int16_t> &tempTensor, LocalTensor<uint32_t> sendCntTensor,
-    uint32_t calCnt, uint32_t scopeSize)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::AccumulateSendCounts(
+    LocalTensor<int16_t> ids, LocalTensor<int32_t> counts, uint32_t count, uint32_t scopeSize)
 {
-    uint64_t rsvdCnt = 0;
-    LocalTensor<uint16_t> gatherMaskTensor = maskBuf_.Get<uint16_t>();
-    LocalTensor<uint8_t> histoSrcTensor = sendCntTensor.template ReinterpretCast<uint8_t>();
-    LocalTensor<uint16_t> histoDstTensor = tempTensor.template ReinterpretCast<uint16_t>();
-    GatherMask(tempTensor, dstTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0}, rsvdCnt);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    if (rsvdCnt == 0) {
-        Duplicate<uint32_t>(sendCntTensor, 0, scopeSize);
-        return;
+    // TopK input has already been narrowed into tempBuf_; this scratch no longer aliases the input.
+    LocalTensor<uint16_t> histogram = topkIdsBuf_.Get<uint16_t>();
+    LocalTensor<int32_t> wide = topkIdsBuf_.GetWithOffset<int32_t>(HISTOGRAM_SCOPE_SIZE,
+                                                                HISTOGRAM_SCOPE_SIZE * sizeof(uint16_t));
+    for (uint32_t base = 0U; base < scopeSize; base += HISTOGRAM_SCOPE_SIZE) {
+        uint32_t bins = scopeSize - base < HISTOGRAM_SCOPE_SIZE ? scopeSize - base : HISTOGRAM_SCOPE_SIZE;
+        GetRouteHistogram(histogram, ids, count, base, bins);
+        Cast(wide.template ReinterpretCast<uint32_t>(), histogram, RoundMode::CAST_NONE, bins);
+        Add(counts[base], counts[base], wide, bins);
+        PipeBarrier<PIPE_V>();
     }
-    Cast(histoSrcTensor, tempTensor, RoundMode::CAST_NONE, rsvdCnt);
-    GetExpertFreq(histoDstTensor, histoSrcTensor, rsvdCnt);
-    Cast(sendCntTensor, histoDstTensor, RoundMode::CAST_NONE, scopeSize);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -525,8 +503,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
     LocalTensor<uint8_t> equalMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, maskBytesAlign_);
     LocalTensor<uint8_t> compareMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, 2 * maskBytesAlign_);
 
+    // A smaller next group can place scratch inside the previous group's rank DMA source.
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
     Duplicate<int16_t>(internalIndexTensor, static_cast<int16_t>(moeExpertNumPerRank_), calCnt);
-    SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待上一轮 MTE3 结束
     Div(dstRankTensor_, expertIdsTensor, internalIndexTensor, calCnt);
 
     if constexpr (IsCached) { // cache下复用 dstSlotIdx
@@ -548,7 +527,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
     Muls(tempTensorInt16, tempTensorInt16, static_cast<int16_t>(sizeof(int16_t)), calCnt); // gather offset
     Cast(gatherIdxTensor, tempTensorInt16, RoundMode::CAST_NONE, calCnt);
 
-    for (uint32_t k = 0; k < axisK_; k++) {
+    // The last TopK column has no later element to suppress.
+    for (uint32_t k = 0; k + 1U < axisK_; k++) {
         Gather(tempTensorInt16, dstRankTensor_, gatherIdxTensor.template ReinterpretCast<uint32_t>(),
                static_cast<uint32_t>(0), calCnt);
         Compare(equalMaskTensor, dstRankTensor_, tempTensorInt16, AscendC::CMPMODE::EQ, calCntAlign);
@@ -562,96 +542,25 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerRank(uint32_t calCnt,
-                                                                                       uint32_t calCntAlign,
-                                                                                       uint32_t tmpOffset)
-{
-    LocalTensor<int16_t> tempTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
-    LocalTensor<uint32_t> sendCntTensor = dstExpBuf_.GetWithOffset<uint32_t>(tmpOffset / sizeof(uint32_t), tmpOffset);
-    LocalTensor<uint8_t> compareMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, 0);
-    Select(dstRankTensor_, compareMaskTensor, dstRankTensor_, static_cast<int16_t>(-1),
-           AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCnt); // 掩码直接使用
-
-    if (epWorldSize_ <= HISTOGRAM_SCOPE_SIZE) {
-        CompareScalar(compareMaskTensor, dstRankTensor_, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
-        CalSendCntHistograms(dstRankTensor_, tempTensor, sendCntTensor, calCnt, epWorldSize_);
-        Add(sendCntPerRankTensor_, sendCntPerRankTensor_, sendCntTensor.template ReinterpretCast<int32_t>(),
-            static_cast<int32_t>(epWorldSize_));
-        return;
-    }
-
-    uint32_t groupNum = Ceil(epWorldSize_, HISTOGRAM_SCOPE_SIZE);
-    uint32_t maskCnt = Ceil(calCntAlign, BITS_PER_BYTE);
-    LocalTensor<int16_t> curGroupTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, tmpOffset);
-    LocalTensor<uint8_t> ltMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, maskBytesAlign_);
-    for (uint32_t group = 0; group < groupNum; group++) {
-        uint32_t baseId = group * HISTOGRAM_SCOPE_SIZE;
-        uint32_t curGroupSize = (group == groupNum - 1) ? (epWorldSize_ - baseId) : HISTOGRAM_SCOPE_SIZE;
-        Subs(curGroupTensor, dstRankTensor_, static_cast<int16_t>(baseId), calCnt);
-        CompareScalar(compareMaskTensor, curGroupTensor, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
-        CompareScalar(ltMaskTensor, curGroupTensor, static_cast<int16_t>(curGroupSize - 1), AscendC::CMPMODE::LE,
-                      calCntAlign);
-        And(compareMaskTensor, compareMaskTensor, ltMaskTensor, maskCnt);
-        CalSendCntHistograms(curGroupTensor, tempTensor, sendCntTensor, calCnt, curGroupSize);
-        Add(sendCntPerRankTensor_[baseId], sendCntPerRankTensor_[baseId],
-            sendCntTensor.template ReinterpretCast<int32_t>(), static_cast<int32_t>(curGroupSize));
-    }
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntPerExpert(
-    LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt, uint32_t calCntAlign, uint32_t tmpOffset)
-{
-    LocalTensor<int16_t> tempTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
-    LocalTensor<uint32_t> sendCntTensor = dstExpBuf_.GetWithOffset<uint32_t>(tmpOffset / sizeof(uint32_t), tmpOffset);
-    LocalTensor<uint8_t> compareMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, 0);
-    if (moeExpertNum_ <= HISTOGRAM_SCOPE_SIZE) {
-        CompareScalar(compareMaskTensor, expertIdsTensor, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
-        CalSendCntHistograms(expertIdsTensor, tempTensor, sendCntTensor, calCnt, moeExpertNum_);
-        Add(sendCntPerExpertTensor_, sendCntPerExpertTensor_, sendCntTensor.template ReinterpretCast<int32_t>(),
-            static_cast<int32_t>(moeExpertNum_));
-        return;
-    }
-
-    uint32_t groupNum = Ceil(moeExpertNum_, HISTOGRAM_SCOPE_SIZE);
-    uint32_t maskCnt = Ceil(calCntAlign, BITS_PER_BYTE);
-    LocalTensor<int16_t> curGroupTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, tmpOffset);
-    LocalTensor<uint8_t> ltMaskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, maskBytesAlign_);
-    for (uint32_t group = 0; group < groupNum; group++) {
-        uint32_t baseId = group * HISTOGRAM_SCOPE_SIZE;
-        uint32_t curGroupSize = (group == groupNum - 1) ? (moeExpertNum_ - baseId) : HISTOGRAM_SCOPE_SIZE;
-        Subs(curGroupTensor, expertIdsTensor, static_cast<int16_t>(baseId), calCnt);
-        CompareScalar(compareMaskTensor, curGroupTensor, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
-        CompareScalar(ltMaskTensor, curGroupTensor, static_cast<int16_t>(curGroupSize - 1), AscendC::CMPMODE::LE,
-                      calCntAlign);
-        And(compareMaskTensor, compareMaskTensor, ltMaskTensor, maskCnt);
-        CalSendCntHistograms(curGroupTensor, tempTensor, sendCntTensor, calCnt, curGroupSize);
-        Add(sendCntPerExpertTensor_[baseId], sendCntPerExpertTensor_[baseId],
-            sendCntTensor.template ReinterpretCast<int32_t>(), static_cast<int32_t>(curGroupSize));
-    }
-}
-
-template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntGroup(
-    uint32_t group, uint32_t groupCnt, uint32_t &calCnt, LocalTensor<int32_t> topkIdsGroupTensor,
-    LocalTensor<int16_t> tempTensorInt16, const DataCopyPadExtParams<int32_t> &copyPadParams)
+    uint32_t tokenStart, uint32_t tokenCount)
 {
-    uint32_t groupOffset = group * perGroupTokenNum_;
-    if (group == groupCnt - 1U) {
-        calCnt = (sendTokenNum_ - groupOffset) * axisK_;
-    }
-    uint32_t topkIdxOffset = (startTokenId_ + groupOffset) * axisK_;
+    uint32_t calCnt = tokenCount * axisK_;
+    uint32_t topkIdxOffset = tokenStart * axisK_;
     uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
+    LocalTensor<int32_t> topkIdsGroupTensor = topkIdsBuf_.Get<int32_t>();
+    LocalTensor<int16_t> tempTensorInt16 = tempBuf_.Get<int16_t>();
+    DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
     DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
     dstRankTensor_ = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
-    if (group > 0U) {
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
-    }
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
     DataCopyPad(topkIdsGroupTensor, topkIdxGMTensor_[topkIdxOffset], copyParams, copyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
+    PrepareMetadata(tokenStart, tokenCount);
     Cast(tempTensorInt16, topkIdsGroupTensor, RoundMode::CAST_NONE, calCnt);
-    CalSendCntPerExpert(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
+    PipeBarrier<PIPE_V>();
+    AccumulateSendCounts(tempTensorInt16, sendCntPerExpertTensor_, calCnt, moeExpertNum_);
     if constexpr (IsCached) {
         dstSlotIdxTensor_ = topkIdsBuf_.Get<int32_t>();
         SyncFunc<AscendC::HardEvent::V_MTE2>();
@@ -666,44 +575,103 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntG
         DataCopyPad(dstSlotIdxGMTensor_[topkIdxOffset], dstSlotIdxTensor_, copyParams);
         SyncFunc<AscendC::HardEvent::MTE3_V>();
     }
-    CalSendCntPerRank(calCnt, calCntAlign, tmpOffset);
+    LocalTensor<uint8_t> selected = maskBuf_.Get<uint8_t>();
+    Select(dstRankTensor_, selected, dstRankTensor_, static_cast<int16_t>(-1),
+           AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCnt);
+    PipeBarrier<PIPE_V>();
+    AccumulateSendCounts(dstRankTensor_, sendCntPerRankTensor_, calCnt, epWorldSize_);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
 }
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishSendCounts()
-{
-    DataCopy(sendCounterGMTensor_[prepareCoreId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
-    SetAtomicAdd<int32_t>();
-    DataCopyPad(sendCntPerRankGMTensor_, sendCntPerRankTensor_, sendPerRankParams_);
-    DataCopyPad(sendCntPerExpertGMTensor_, sendCntPerExpertTensor_, sendPerExpertParams_);
-    SetAtomicNone();
-}
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt()
 {
-    if (!isPrepareCore_) {
-        return;
+    for (uint32_t tile = aivId_; tile < tileCount_; tile += aivNum_) {
+        uint32_t start = tile * tileTokens_;
+        uint32_t count = axisBS_ - start < tileTokens_ ? axisBS_ - start : tileTokens_;
+        Duplicate<int32_t>(sendCntPerRankTensor_, 0, counterCnt_);
+        CalSendCntGroup(start, count);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(sendCounterGMTensor_[static_cast<uint64_t>(tile) * counterAlign512_],
+                 sendCntPerRankTensor_, counterCnt_);
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
     }
-    SplitToCore(axisBS_, prepareCoreCount_, prepareCoreId_, startTokenId_, endTokenId_, sendTokenNum_);
-    if (startTokenId_ >= axisBS_) {
-        DataCopy(sendCounterGMTensor_[prepareCoreId_ * counterAlign512_], sendCntPerRankTensor_, counterCnt_);
-        return;
+    // Empty count owners also publish zeros: the reduction reads every physical AIV row.
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy(expertPartialGMTensor_[static_cast<uint64_t>(aivId_) * moeExpertNumAlign512_ / sizeof(int32_t)],
+             sendCntPerExpertTensor_, moeExpertNumAlign_ / sizeof(int32_t));
+}
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ScanTileCounts(uint32_t peer, uint32_t firstTile, uint32_t rows)
+{
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
+    LocalTensor<int32_t> input = topkIdsBuf_.Get<int32_t>();
+    LocalTensor<int32_t> output = topkIdsBuf_.Get<int32_t>()[perGroupSizeAlign_ / sizeof(int32_t)];
+    // DataCopyPad uses bytes for blockLen and GM stride, unlike DataCopy's 32-byte units.
+    DataCopyParams read{static_cast<uint16_t>(rows), UB_ALIGN,
+                       static_cast<uint16_t>(epWorldSizeAlign512_ - UB_ALIGN), 0U};
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
+    DataCopyPad(input, sendCounterGMTensor_[static_cast<uint64_t>(firstTile) * counterAlign512_ + peer],
+                read, padParams_);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    // Inclusive scan along tile rows, with eight independent peer columns per data block.
+    for (uint32_t step = 1U; step < rows; step *= 2U) {
+        Adds(output, input, int32_t{0}, step * UB_STRIDE);
+        Add(output[step * UB_STRIDE], input[step * UB_STRIDE], input, (rows - step) * UB_STRIDE);
+        PipeBarrier<PIPE_V>();
+        auto previous = input;
+        input = output;
+        output = previous;
     }
-
-    uint32_t groupCnt = Ceil(sendTokenNum_, perGroupTokenNum_);
-    uint32_t calCnt = perGroupTokenNum_ * axisK_;
-    LocalTensor<int32_t> topkIdsGroupTensor = topkIdsBuf_.Get<int32_t>();
-    LocalTensor<int16_t> tempTensorInt16 = tempBuf_.Get<int16_t>();
-    DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
-
-    for (uint32_t group = 0; group < groupCnt; ++group) {
-        CalSendCntGroup(group, groupCnt, calCnt, topkIdsGroupTensor, tempTensorInt16, topkIdsCntCopyPadParams);
+    BinaryRepeatParams broadcastCarry{1, 1, 0, 1, 1, 0};
+    Add(output, input, sendCntPerRankTensor_, UB_STRIDE, static_cast<uint8_t>(rows), broadcastCarry);
+    PipeBarrier<PIPE_V>();
+    Copy(sendCntPerRankTensor_, output[(rows - 1U) * UB_STRIDE], UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyParams write{static_cast<uint16_t>(rows), UB_ALIGN, 0U,
+                        static_cast<uint16_t>(epWorldSizeAlign512_ - UB_ALIGN)};
+    DataCopyPad(tilePrefixGMTensor_[static_cast<uint64_t>(firstTile + 1U) * counterAlign512_ + peer],
+                output, write);
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
+}
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::BuildSendPrefixes()
+{
+    constexpr uint32_t rowsPerBatch = 128U; // Fits repeat-count and UB limits independently of BS/P.
+    for (uint32_t peer = aivId_ * UB_STRIDE; peer < epWorldSize_; peer += aivNum_ * UB_STRIDE) {
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        Duplicate<int32_t>(sendCntPerRankTensor_, 0, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(tilePrefixGMTensor_[peer], sendCntPerRankTensor_, UB_STRIDE);
+        for (uint32_t first = 0U; first < tileCount_; first += rowsPerBatch) {
+            uint32_t rows = tileCount_ - first < rowsPerBatch ? tileCount_ - first : rowsPerBatch;
+            ScanTileCounts(peer, first, rows);
+        }
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(sendCntPerRankGMTensor_[peer], sendCntPerRankTensor_, UB_STRIDE);
     }
-    PublishSendCounts();
+}
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReduceExpertPartials()
+{
+    LocalTensor<int32_t> input = topkIdsBuf_.Get<int32_t>();
+    LocalTensor<uint8_t> scratch = tempBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> result = numRecvPerRankBuf_.Get<int32_t>();
+    for (uint32_t expert = aivId_ * UB_STRIDE; expert < moeExpertNum_; expert += aivNum_ * UB_STRIDE) {
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+        DataCopyParams read{static_cast<uint16_t>(aivNum_), UB_ALIGN,
+                           static_cast<uint16_t>(moeExpertNumAlign512_ - UB_ALIGN), 0U};
+        DataCopyPad(input, expertPartialGMTensor_[expert], read, padParams_);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        const uint32_t shape[] = {aivNum_, UB_STRIDE};
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(result, input, scratch, shape, true);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(sendCntPerExpertGMTensor_[expert], result, UB_STRIDE);
+    }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -717,7 +685,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendCountTo
     hcomm_.WriteWithNotifyNbi<DATA_CFG>(handle, dst, src,
                                                            moeNumPerRankSize_, notifyAddr, notifyVal);
     hcomm_.BatchCommit(batch);
-    hcomm_.Drain(batch);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -849,35 +816,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
     DataCopyPad(numRecvPerRankGMTensor_, numRecvPerRankTensor_, recvPerRankParams);
 }
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStartNum()
-{
-    slotIdxPerRankTensor_ = sendCntExpertBuf_.GetWithOffset<int32_t>(counterCnt_, 0);
-    Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
-    if (prepareCoreId_ == 0U) {
-        return;
-    }
-    uint32_t groupCnt = Ceil(prepareCoreId_ * epWorldSizeAlign_, perGroupSizeAlign_ * 2);
-    uint32_t copyNumPerGroup = perGroupSizeAlign_ * 2 / epWorldSizeAlign_;
-    LocalTensor<int32_t> counterTmpTensor = topkIdsBuf_.Get<int32_t>();
-    LocalTensor<int32_t> hitTmpTensor = sendCntRankBuf_.Get<int32_t>();
-    LocalTensor<uint8_t> sharedTmpTensor = tempBuf_.Get<uint8_t>();
-    DataCopyParams counterCopyParams = {1U, static_cast<uint16_t>(epWorldSizeAlign_),
-                                        static_cast<uint16_t>(epWorldSizeAlign512_ - epWorldSizeAlign_), 0U};
-    for (uint32_t i = 0; i < groupCnt; i++) {
-        uint32_t copyNum =
-            (i == groupCnt - 1) ? (prepareCoreId_ - copyNumPerGroup * i) : copyNumPerGroup;
-        uint32_t gmOffset = i * copyNumPerGroup * epWorldSizeAlign512_ / sizeof(int32_t);
-        counterCopyParams.blockCount = static_cast<uint16_t>(copyNum);
-        DataCopyPad(counterTmpTensor, sendCounterGMTensor_[gmOffset], counterCopyParams, padParams_);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        const uint32_t shape[] = {copyNum, counterCnt_};
-        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(hitTmpTensor, counterTmpTensor, sharedTmpTensor, shape,
-                                                               true);
-        Add(slotIdxPerRankTensor_, slotIdxPerRankTensor_, hitTmpTensor, epWorldSize_);
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
-    }
-}
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcTokenIdxAndDstSlot(
@@ -887,11 +825,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcToken
     uint64_t rsvdCnt = 0;
     LocalTensor<int16_t> internalIndexTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
     LocalTensor<int16_t> scatterTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, calCntAlign * sizeof(int16_t));
-    LocalTensor<int32_t> dstSlotIdxTensor = topkIdsBuf_.Get<int32_t>();
     LocalTensor<int32_t> tempLocalTensor = dstExpBuf_.Get<int32_t>();
     LocalTensor<uint16_t> gatherMaskTensor = maskBuf_.Get<uint16_t>();
     LocalTensor<uint8_t> compareMaskTensor = maskBuf_.Get<uint8_t>();
-    DataCopyParams srcTokenCopyParams = {1U, 0U, 0U, 0U};
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         // 调整处理顺序，先处理其他对端卡，本端卡最后处理，后续处理token可复用
@@ -923,190 +859,187 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcToken
             Scatter(dstRankIdTensor_, scatterTensor, tempLocalTensor.template ReinterpretCast<uint32_t>(),
                     static_cast<uint32_t>(0), curCnt);
         }
-        Duplicate<int16_t>(scatterTensor, static_cast<int16_t>(axisK_), curCnt);
-        Div(internalIndexTensor, internalIndexTensor, scatterTensor, curCnt);
-        Cast(tempLocalTensor, internalIndexTensor, RoundMode::CAST_NONE, curCnt);
-        Adds(tempLocalTensor, tempLocalTensor, static_cast<int32_t>(topkOffset / axisK_), curCnt);
-        uint32_t dstIndex = dstRankId * tokenCntAlign_ + curSlot;
-        srcTokenCopyParams.blockLen = static_cast<uint32_t>(curCnt * sizeof(int32_t));
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(srcTokenIdxGMTensor_[dstIndex], tempLocalTensor, srcTokenCopyParams);
+        StoreSourceTokens(topkOffset, dstRankId, curSlot, curCnt, internalIndexTensor, scatterTensor);
         cntLocalTensor.SetValue(dstRankId, curSlot + curCnt);
         rsvdCnt = 0;
     }
     if constexpr (!IsCached) {
-        // 去偏移，有效位还原为 slot，未散射位(重复/无效)保持 -1
-        CompareScalar(compareMaskTensor, dstRankIdTensor_, static_cast<int16_t>(0), AscendC::CMPMODE::GE, calCntAlign);
-        Subs(dstRankIdTensor_, dstRankIdTensor_, static_cast<int16_t>(epWorldSize_), calCntAlign);
-        Select(dstRankIdTensor_, compareMaskTensor, dstRankIdTensor_, static_cast<int16_t>(-1),
-               AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCntAlign);
-        Cast(dstSlotIdxTensor, dstRankIdTensor_, RoundMode::CAST_NONE, calCnt);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyExtParams dstSlotCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(dstSlotIdxGMTensor_[topkOffset], dstSlotIdxTensor, dstSlotCopyParams);
+        StoreUncachedSlots(topkOffset, calCnt, calCntAlign);
     }
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 下一轮等待这一轮做完
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CopyInMetaInfo(
-    uint32_t tokenId, uint32_t topkOffset, uint32_t tokenCount)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::StoreSourceTokens(
+    uint32_t topkOffset, uint32_t peer, uint32_t slot, uint32_t count,
+    LocalTensor<int16_t> indices, LocalTensor<int16_t> divisor)
 {
-    // Reuse routing scratch only after vector consumers and prior metadata DMA have completed.
-    SyncFunc<AscendC::HardEvent::V_MTE2>();
-    SyncFunc<AscendC::HardEvent::S_MTE2>();
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    metaLocalTensor_ = topkIdsBuf_.Get<int32_t>();
-    DataCopyExtParams topkParams{static_cast<uint16_t>(tokenCount), axisK_ * TOPK_INFO_SIZE, 0U,
-                                (metaSlotBytes_ - kAlignSize_) / UB_ALIGN, 0U};
-    DataCopyPadExtParams<int32_t> topkPad{false, 0U, 0U, 0};
-    DataCopyPad(metaLocalTensor_[topkCopyAlign_], topkIdxGMTensor_[topkOffset], topkParams, topkPad);
+    LocalTensor<int32_t> tokens = dstExpBuf_.Get<int32_t>();
+    Duplicate<int16_t>(divisor, static_cast<int16_t>(axisK_), count);
+    Div(indices, indices, divisor, count);
+    Cast(tokens, indices, RoundMode::CAST_NONE, count);
+    Adds(tokens, tokens, static_cast<int32_t>(topkOffset / axisK_), count);
+    DataCopyParams copy{1U, static_cast<uint16_t>(count * sizeof(int32_t)), 0U, 0U};
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(srcTokenIdxGMTensor_[peer * tokenCntAlign_ + slot], tokens, copy);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::StoreUncachedSlots(
+    uint32_t topkOffset, uint32_t count, uint32_t aligned)
+{
+    LocalTensor<uint8_t> valid = maskBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> slots = topkIdsBuf_.Get<int32_t>();
+    // Remove the peer-disambiguation offset; invalid and deduplicated entries remain -1.
+    CompareScalar(valid, dstRankIdTensor_, static_cast<int16_t>(0), AscendC::CMPMODE::GE, aligned);
+    Subs(dstRankIdTensor_, dstRankIdTensor_, static_cast<int16_t>(epWorldSize_), aligned);
+    Select(dstRankIdTensor_, valid, dstRankIdTensor_, static_cast<int16_t>(-1),
+           AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, aligned);
+    Cast(slots, dstRankIdTensor_, RoundMode::CAST_NONE, count);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyExtParams copy{1U, count * sizeof(int32_t), 0U, 0U, 0U};
+    DataCopyPad(dstSlotIdxGMTensor_[topkOffset], slots, copy);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PrepareMetadata(uint32_t tokenStart, uint32_t tokenCount)
+{
+    uint32_t count = tokenCount * axisK_;
+    uint32_t aligned = Ceil(count * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    LocalTensor<int16_t> index = tempBuf_.Get<int16_t>();
+    LocalTensor<int16_t> token = tempBuf_.GetWithOffset<int16_t>(count, aligned);
+    LocalTensor<int16_t> divisor = topkIdsBuf_.GetWithOffset<int16_t>(count, perGroupSizeAlign_);
+    LocalTensor<int32_t> offsets = tempBuf_.GetWithOffset<int32_t>(count, PER_GROUP_SIZE / 2U);
+    metaLocalTensor_ = dstExpBuf_.Get<int32_t>();
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
+    CreateVecIndex(index, int16_t{0}, count);
+    Duplicate<int16_t>(divisor, static_cast<int16_t>(axisK_), count);
+    Div(token, index, divisor, count);
+    Muls(token, token, static_cast<int16_t>(metaSlotStride_ - axisK_), count);
+    Add(index, index, token, count);
+    Muls(index, index, static_cast<int16_t>(sizeof(int32_t)), count);
+    Cast(offsets, index, RoundMode::CAST_NONE, count);
+    Scatter(metaLocalTensor_[topkCopyAlign_], topkIdsBuf_.Get<int32_t>(),
+            offsets.template ReinterpretCast<uint32_t>(), 0U, count);
+    LoadMetadataExtras(tokenStart, tokenCount);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    uint32_t header = topkCopyAlign_ + 2U * axisKAlign_;
+    for (uint32_t i = 0U; i < tokenCount; ++i) {
+        metaLocalTensor_.SetValue(i * metaSlotStride_ + header, epRankId_);
+        metaLocalTensor_.SetValue(i * metaSlotStride_ + header + 1U, tokenStart + i);
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyExtParams copy{1U, tokenCount * metaSlotBytes_, 0U, 0U, 0U};
+    DataCopyPad(metaSlotGMTensor_[static_cast<uint64_t>(tokenStart) * metaSlotStride_], metaLocalTensor_, copy);
+    // Preserve raw TopK in topkIdsBuf_; the following histogram reuses all other scratch.
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
+}
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::LoadMetadataExtras(uint32_t tokenStart, uint32_t tokenCount)
+{
     if constexpr (IsTopkWeights) {
-        DataCopyPadExtParams<float> weightPad{false, 0U, 0U, 0};
+        DataCopyExtParams weights{static_cast<uint16_t>(tokenCount), axisK_ * TOPK_INFO_SIZE, 0U,
+                                 (metaSlotBytes_ - kAlignSize_) / UB_ALIGN, 0U};
+        DataCopyPadExtParams<float> pad{false, 0U, 0U, 0};
         DataCopyPad(metaLocalTensor_[topkCopyAlign_ + axisKAlign_].template ReinterpretCast<float>(),
-                    topkWeightsGMTensor_[topkOffset], topkParams, weightPad);
+                    topkWeightsGMTensor_[tokenStart * axisK_], weights, pad);
     }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        uint32_t scaleAlignBytes = topkCopyAlign_ * sizeof(int32_t);
-        DataCopyExtParams scaleParams{static_cast<uint16_t>(tokenCount), scalesBytes_, 0U,
-                                      (metaSlotBytes_ - scaleAlignBytes) / UB_ALIGN, 0U};
-        DataCopyPadExtParams<uint8_t> scalePad{false, 0U, 0U, 0};
+        DataCopyExtParams scales{static_cast<uint16_t>(tokenCount), scalesBytes_, 0U,
+                                (metaSlotBytes_ - topkCopyAlign_ * sizeof(int32_t)) / UB_ALIGN, 0U};
+        DataCopyPadExtParams<uint8_t> pad{false, 0U, 0U, 0};
         DataCopyPad(metaLocalTensor_.template ReinterpretCast<uint8_t>(),
-                    scalesGMTensor_.template ReinterpretCast<uint8_t>()[tokenId * scalesBytes_],
-                    scaleParams, scalePad);
+                    scalesGMTensor_.template ReinterpretCast<uint8_t>()[tokenStart * scalesBytes_], scales, pad);
     }
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMetaSlot(
-    uint32_t startId, uint32_t tokenCnt, uint32_t sendLocalCnt, uint32_t &curLocalSlot)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CopyLocalMetadata(uint32_t count, uint32_t firstSlot)
 {
-    LocalTensor<int32_t> srcTokenTensor = dstExpBuf_.Get<int32_t>();
-    uint32_t localIdx = 0U;
-    uint32_t metaSetStride = topkCopyAlign_ + 2U * axisKAlign_;
-    uint32_t capacity = 2U * perGroupSizeAlign_ / metaSlotBytes_;
-    uint32_t tileSize = capacity < META_BATCH_TOKENS ? capacity : META_BATCH_TOKENS;
-    for (uint32_t offset = 0U; offset < tokenCnt; offset += tileSize) {
-        uint32_t tileCount = tokenCnt - offset < tileSize ? tokenCnt - offset : tileSize;
-        CopyInMetaInfo(startId + offset, (startId + offset) * axisK_, tileCount);
-        for (uint32_t i = 0U; i < tileCount; ++i) {
-            uint32_t tokenId = startId + offset + i;
-            auto meta = metaLocalTensor_[i * metaSlotStride_];
-            meta.SetValue(metaSetStride, epRankId_);
-            meta.SetValue(metaSetStride + 1U, tokenId);
-            if (localIdx < sendLocalCnt && static_cast<uint32_t>(srcTokenTensor.GetValue(localIdx)) == tokenId) {
-                localMetaSlotGMTensor_.SetGlobalBuffer(
-                    reinterpret_cast<__gm__ int32_t *>(localSlotWinAddr_ +
-                        static_cast<uint64_t>(curLocalSlot) * perSlotBytes_ + tokenSize_));
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopyPad(localMetaSlotGMTensor_, meta, metaSlotCopyParams_);
-                ++localIdx;
-                ++curLocalSlot;
-            }
+    LocalTensor<int32_t> indices = dstExpBuf_.Get<int32_t>();
+    LocalTensor<int32_t> metadata = topkIdsBuf_.Get<int32_t>();
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    for (uint32_t first = 0U; first < count; first += META_BATCH_TOKENS) {
+        uint32_t rows = count - first < META_BATCH_TOKENS ? count - first : META_BATCH_TOKENS;
+        for (uint32_t i = 0U; i < rows; ++i) {
+            uint32_t token = static_cast<uint32_t>(indices.GetValue(first + i));
+            DataCopyPad(metadata[i * metaSlotStride_], metaSlotGMTensor_[static_cast<uint64_t>(token) * metaSlotStride_],
+                        metaSlotCopyParams_, padParams_);
         }
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyExtParams stashParams{1U, tileCount * metaSlotBytes_, 0U, 0U, 0U};
-        DataCopyPad(metaSlotGMTensor_[(startId + offset) * metaSlotStride_], metaLocalTensor_, stashParams);
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        localMetaSlotGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            localSlotWinAddr_ + static_cast<uint64_t>(firstSlot + first) * perSlotBytes_ + tokenSize_));
+        DataCopyExtParams copy{static_cast<uint16_t>(rows), metaSlotBytes_, 0U,
+                               perSlotBytes_ - metaSlotBytes_, 0U};
+        DataCopyPad(localMetaSlotGMTensor_, metadata, copy);
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     }
-    // SetSrcTokenIdxAndDstSlot reuses this scratch on the next group.
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PrepareTile(uint32_t tile)
+{
+    uint32_t start = tile * tileTokens_;
+    uint32_t tokens = axisBS_ - start < tileTokens_ ? axisBS_ - start : tileTokens_;
+    uint32_t count = tokens * axisK_;
+    uint32_t aligned = Ceil(count * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int16_t);
+    LocalTensor<int32_t> slots = numRecvPerRankBuf_.Get<int32_t>();
+    dstRankIdTensor_ = tempBuf_.Get<int16_t>();
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    DataCopy(slots, tilePrefixGMTensor_[static_cast<uint64_t>(tile) * counterAlign512_], counterCnt_);
+    DataCopyExtParams routes{1U, count * sizeof(int16_t), 0U, 0U, 0U};
+    DataCopyPadExtParams<int16_t> pad{false, 0U, 0U, 0};
+    DataCopyPad(dstRankIdTensor_, dstRankGMTensor_[start * axisK_], routes, pad);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint32_t localSlot = static_cast<uint32_t>(slots.GetValue(epRankId_));
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    uint32_t localCount = 0U;
+    SetSrcTokenIdxAndDstSlot(start * axisK_, count, aligned, localCount, slots);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    CopyLocalMetadata(localCount, localSlot);
+    PublishTileReady(tile);
+}
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PrepareSendTiles()
+{
+    if (!isPrepareCore_) {
+        return;
+    }
+    for (uint32_t tile = prepareCoreId_; tile < tileCount_; tile += prepareCoreCount_) {
+        PrepareTile(tile);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishTileReady(uint32_t tile)
+{
+    LocalTensor<int32_t> ready = maskBuf_.Get<int32_t>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<int32_t>(ready, 1, UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    // A tile is immutable after publication; metadata and its entire peer index slice precede ready.
+    PipeBarrier<PIPE_MTE3>();
+    DataCopy(tileReadyGMTensor_[static_cast<uint64_t>(tile) * UB_STRIDE], ready, UB_STRIDE);
     SyncFunc<AscendC::HardEvent::MTE3_V>();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitTileReady(uint32_t tile)
 {
-    if (!isPrepareCore_ || startTokenId_ >= axisBS_) {
-        return;
-    }
-    GetSlotStartNum(); // 计算起始slot id
-
-    uint32_t groupCnt = Ceil(sendTokenNum_, perGroupTokenNum_);
-    uint32_t tokenCnt = perGroupTokenNum_;
-    uint32_t strideAlign = ALIGNED_LEN_256 / sizeof(int16_t);
-    dstRankIdTensor_ = tempBuf_.Get<int16_t>();
-    LocalTensor<int32_t> cntLocalTensor = numRecvPerRankBuf_.Get<int32_t>();
-    DataCopyPadExtParams<int16_t> dstRankCopyPadParams{false, 0U, 0U, 0U};
-    SyncFunc<AscendC::HardEvent::V_S>();
-    uint32_t curLocalSlot = static_cast<uint32_t>(slotIdxPerRankTensor_.GetValue(epRankId_));
-    uint32_t sendLocalCnt = 0;
-    Copy<int32_t>(cntLocalTensor, slotIdxPerRankTensor_, counterCnt_);
-
-    for (uint32_t group = 0; group < groupCnt; group++) {
-        if (group == groupCnt - 1) {
-            tokenCnt = sendTokenNum_ - group * perGroupTokenNum_;
-        }
-        uint32_t calCnt = tokenCnt * axisK_;
-        uint32_t startId = startTokenId_ + group * perGroupTokenNum_;
-        uint32_t topkOffset = startId * axisK_;
-        uint32_t calCntAlign = Ceil(calCnt, strideAlign) * strideAlign;
-        DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
-        DataCopyPad(dstRankIdTensor_, dstRankGMTensor_[topkOffset], dstRankCopyParams, dstRankCopyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        SetSrcTokenIdxAndDstSlot(topkOffset, calCnt, calCntAlign, sendLocalCnt, cntLocalTensor);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        ProcessMetaSlot(startId, tokenCnt, sendLocalCnt, curLocalSlot);
-        if (group < groupCnt - 1) {
-            SyncFunc<AscendC::HardEvent::V_MTE2>();
-        }
-    }
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishPrepareReady()
-{
-    if (!isPrepareCore_ || startTokenId_ == endTokenId_) {
-        return;
-    }
-    uint32_t firstSender = 0U;
-    uint32_t lastSender = 0U;
-    GetOverlappingCores(startTokenId_, endTokenId_, sendCoreCount_, firstSender, lastSender);
-    LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
-    Duplicate<int32_t>(statusTensor, 1, UB_STRIDE);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    // Publish only after all source indices and metadata in this prepare interval are visible.
-    PipeBarrier<PIPE_MTE3>();
-    SetAtomicAdd<int32_t>();
-    for (uint32_t sender = firstSender; sender < lastSender; ++sender) {
-        GlobalTensor<int32_t> readyCounter;
-        readyCounter.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + sender * WIN_ADDR_ALIGN));
-        DataCopy(readyCounter, statusTensor, UB_STRIDE);
-    }
-    SetAtomicNone();
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitPrepareReady()
-{
-    uint32_t prepareStart = 0U;
-    uint32_t prepareEnd = 0U;
-    SplitToCore(axisBS_, sendCoreCount_, aivId_, startTokenId_, endTokenId_, sendTokenNum_);
-    GetOverlappingCores(startTokenId_, endTokenId_, prepareCoreCount_, prepareStart, prepareEnd);
-    uint32_t expectedReady = prepareEnd - prepareStart;
-    if (expectedReady == 0U) {
-        return;
-    }
-    LocalTensor<int32_t> statusTensor = maskBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> readyCounter;
-    readyCounter.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(payloadStashStateWinAddr_ + aivId_ * WIN_ADDR_ALIGN));
-    int32_t ready = 0;
-    while (ready != static_cast<int32_t>(expectedReady)) {
-        DataCopy(statusTensor, readyCounter, UB_STRIDE);
+    LocalTensor<int32_t> ready = maskBuf_.Get<int32_t>();
+    int32_t value = 0;
+    while (value != 1) {
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+        DataCopy(ready, tileReadyGMTensor_[static_cast<uint64_t>(tile) * UB_STRIDE], UB_STRIDE);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        ready = statusTensor.GetValue(0);
+        value = ready.GetValue(0);
     }
 }
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetOverlappingCores(
-    uint32_t begin, uint32_t end, uint32_t coreCount, uint32_t &first, uint32_t &last) const
-{
-    auto overlap = MoeEpDispatchSchedule::Overlap(axisBS_, coreCount, begin, end);
-    first = overlap.begin;
-    last = overlap.end;
-}
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferInit()
@@ -1125,68 +1058,24 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
     SyncFunc<AscendC::HardEvent::V_S>();
 
     // ub buffer init
-    tpipe_->InitBuffer(sendCntRankBuf_, sendCntRankSizeAlign_);
+    tpipe_->InitBuffer(sendCntRankBuf_, 2U * sendCntRankSizeAlign_);
     tpipe_->InitBuffer(tempBuf_, MAX_BATCH_SIZE);
     tpipe_->InitBuffer(maskBuf_, UB_ALIGN);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetTokenRange(
-    uint32_t dstRank, uint32_t &tokenStart, uint32_t &tokenNum)
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::LoadTileDescriptor(uint32_t tile)
 {
-    uint32_t first = startTokenId_ == axisBS_ ? prepareCoreCount_ :
-        MoeEpDispatchSchedule::Owner(axisBS_, prepareCoreCount_, startTokenId_);
-    uint32_t last = endTokenId_ == axisBS_ ? prepareCoreCount_ :
-        MoeEpDispatchSchedule::Owner(axisBS_, prepareCoreCount_, endTokenId_);
-    uint32_t base = 0U;
-    for (uint32_t row = 0U; row < first; ++row) {
-        base += static_cast<uint32_t>(sendCounterGMTensor_.GetValue(row * counterAlign512_ + dstRank));
-    }
-    tokenStart = GetTokenBoundary(dstRank, startTokenId_, first, base);
-    tokenNum = 0U;
-    if (startTokenId_ < endTokenId_) {
-        // The end prefix extends the start prefix; do not reread preceding prepare rows.
-        for (uint32_t row = first; row < last; ++row) {
-            base += static_cast<uint32_t>(sendCounterGMTensor_.GetValue(row * counterAlign512_ + dstRank));
-        }
-        tokenNum = GetTokenBoundary(dstRank, endTokenId_, last, base) - tokenStart;
-    }
+    WaitTileReady(tile);
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    LocalTensor<int32_t> prefix = sendCntRankBuf_.Get<int32_t>();
+    DataCopyParams rows{2U, static_cast<uint16_t>(epWorldSizeAlign_),
+                       static_cast<uint16_t>(epWorldSizeAlign512_ - epWorldSizeAlign_), 0U};
+    DataCopyPad(prefix, tilePrefixGMTensor_[static_cast<uint64_t>(tile) * counterAlign512_], rows, padParams_);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 }
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetTokenBoundary(
-    uint32_t dstRank, uint32_t tokenBoundary, uint32_t prepare, uint32_t base)
-{
-    if (tokenBoundary == axisBS_) {
-        return base;
-    }
-    auto range = MoeEpDispatchSchedule::Partition(axisBS_, prepareCoreCount_, prepare);
-    // At a prepare boundary its predecessor's count suffices; the next producer may still be running.
-    if (tokenBoundary == range.begin) {
-        return base;
-    }
-    uint32_t peerCount = static_cast<uint32_t>(
-        sendCounterGMTensor_.GetValue(prepare * counterAlign512_ + dstRank));
-    return LowerBoundToken(dstRank, base, base + peerCount, tokenBoundary);
-}
 
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::LowerBoundToken(
-    uint32_t dstRank, uint32_t begin, uint32_t end, uint32_t tokenBoundary)
-{
-    // Only search the ready boundary producer's sorted peer slice, never unfinished neighboring slices.
-    uint32_t peerBase = dstRank * tokenCntAlign_;
-    while (begin < end) {
-        uint32_t middle = begin + (end - begin) / 2U;
-        uint32_t token = static_cast<uint32_t>(srcTokenIdxGMTensor_.GetValue(peerBase + middle));
-        if (token < tokenBoundary) {
-            begin = middle + 1U;
-        } else {
-            end = middle;
-        }
-    }
-    return begin;
-}
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
@@ -1195,38 +1084,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         return;
     }
     CommBufferInit();
-    WaitPrepareReady();
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(sendCounterGMTensor_);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(srcTokenIdxGMTensor_);
     payloadBatch_ = hcomm_.MakeBatchHandle(static_cast<MultiChannelHandle>(GetOwnedJettyHandle()),
                                           hcommBatchTensor_, hcommBatchBufferBytes_);
     pendingWqebb_ = 0U;
-
-    SendTokenPipeline();
-    CommitBatch(true);
-    WaitIncomingCompletion();
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitIncomingCompletion()
-{
-    // Drain covers this SQ's outgoing writes, not this rank's incoming data. Each owner waits its receive lane.
-    LocalTensor<uint32_t> status = maskBuf_.Get<uint32_t>();
-    for (uint32_t srcRank = 0U; srcRank < epWorldSize_; ++srcRank) {
-        uint64_t flagIndex = static_cast<uint64_t>(srcRank) * dispatchNotifyCount_ + aivId_;
-        GlobalTensor<uint32_t> flag;
-        flag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(
-            localSlotStateWinAddr_ + flagIndex * WIN_ADDR_ALIGN));
-        uint32_t ready = 0U;
-        while (ready != 1U) {
-            SyncFunc<AscendC::HardEvent::S_MTE2>();
-            DataCopy(status, flag, UB_ALIGN / sizeof(uint32_t));
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
-            ready = status.GetValue(0);
-        }
+    firstBatchCommitted_ = false;
+    for (uint32_t tile = aivId_; tile < tileCount_; tile += sendCoreCount_) {
+        LoadTileDescriptor(tile);
+        SendTokenPipeline();
+        // Do not leave this ready tile's tail buffered while waiting for its next producer.
+        CommitBatch(true);
     }
-    // The epilogue still owns flag clearing; leave every completion visible to it.
+    PublishSendCompletions();
+    CommitBatch(true);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1239,7 +1109,9 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::NextTokenCh
     uint32_t rank = (aivId_ + peerOffset) % epWorldSize_;
     bool first = remaining == 0U;
     if (first && rank != epRankId_) {
-        GetTokenRange(rank, start, remaining);
+        LocalTensor<int32_t> prefix = sendCntRankBuf_.Get<int32_t>();
+        start = static_cast<uint32_t>(prefix.GetValue(rank));
+        remaining = static_cast<uint32_t>(prefix.GetValue(counterCnt_ + rank)) - start;
     }
     uint32_t count = remaining < SOURCE_INDEX_CHUNK_TOKENS ? remaining : SOURCE_INDEX_CHUNK_TOKENS;
     chunk = {rank, start, count, first, count == remaining};
@@ -1308,9 +1180,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenCh
             WriteTokenPayloads(chunk, buffer, localDescs);
         }
     }
-    if (chunk.last) {
-        SendCompletion(chunk.rank, notifyAddr);
-    }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1349,7 +1218,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenPi
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatchSpace(uint32_t wqebbCount)
 {
-    if (pendingWqebb_ + wqebbCount > HCOMM_DRAIN_BATCH_WQEBB) {
+    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    if (pendingWqebb_ + wqebbCount > limit) {
         CommitBatch(true);
     }
 }
@@ -1357,10 +1227,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ReserveBatc
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommitBatch(bool force)
 {
-    if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= HCOMM_DRAIN_BATCH_WQEBB)) {
+    uint32_t limit = firstBatchCommitted_ ? hcommBatchBufferBytes_ / HCOMM_WQE_BYTES : HCOMM_FIRST_BATCH_WQEBB;
+    if (pendingWqebb_ != 0U && (force || pendingWqebb_ >= limit)) {
         hcomm_.BatchCommit(payloadBatch_);
-        hcomm_.Drain(payloadBatch_);
         pendingWqebb_ = 0U;
+        firstBatchCommitted_ = true;
     }
 }
 
@@ -1399,15 +1270,32 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendComplet
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PublishSendCompletions()
+{
+    // Exactly one ordered flag per sender/peer, even for senders without any BS tile.
+    for (uint32_t offset = 0U; offset < epWorldSize_; ++offset) {
+        uint32_t peer = (aivId_ + offset) % epWorldSize_;
+        GM_ADDR notify = GetWinAddrByRankId(mc2Context_, peer, slotWinStateOffset_) +
+                         dstStateWinOffset_ + aivId_ * WIN_ADDR_ALIGN;
+        if (peer != epRankId_) {
+            uint32_t peerIndex = peer < epRankId_ ? peer : peer - 1U;
+            hcomm_.GetHandleRef(payloadBatch_, peerIndex, notify);
+        }
+        SendCompletion(peer, notify);
+    }
+}
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
-    if ASCEND_IS_AIV { // 全aiv处理
+    if ASCEND_IS_AIV {
         BufferInit();
         CalSendCnt();
         SyncAll<true>();
+        BuildSendPrefixes();
+        ReduceExpertPartials();
+        SyncAll<true>();
         Communication();
-        SendPhase();
-        PublishPrepareReady();
+        PrepareSendTiles();
         GetRecvCount();
         WriteToRemoteWindow();
     }

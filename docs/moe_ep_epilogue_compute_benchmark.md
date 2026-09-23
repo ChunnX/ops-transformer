@@ -1,5 +1,10 @@
 # D/C epilogue 处理耗时测试：通信等待前移
 
+> 历史测试方案：对应 `84d0aba6602dfabd474fa5d8271cc8bc9acab9db`，当前工作树已撤销下述测试模式。
+> Dispatch/Combine 已恢复 `cqe=0`、异步批提交和 epilogue 接收等待；下文仅保留测试口径及设计背景，
+> 不描述当前运行行为。原同步测试模型已由 `mc2/common/tests/test_moe_ep_async_completion.py` 替换。
+> 当前修改与后续方案见 [Dispatch 尽早退出方案](moe_ep_dispatch_early_exit_plan.md)。
+
 ## 目的与计时口径
 
 本轮将出站 Drain 和入站数据就绪等待放到 `MoeEpDispatch` / `MoeEpCombine` 返回前。
