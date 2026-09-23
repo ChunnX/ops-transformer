@@ -67,17 +67,23 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-    uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
-    uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
+    uint32_t aicCoreNum = 0;
+    uint32_t aivCoreNum = 0;
+    if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_CUBE_CORE, &aicCoreNum) != ACL_SUCCESS) {
+        aicCoreNum = npuInfo.GetCubeCoreNum();
+    }
+    if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_VECTOR_CORE, &aivCoreNum) != ACL_SUCCESS) {
+        aivCoreNum = npuInfo.GetVectorCoreNum();
+    }
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
     int64_t deterministicLevel = 0;
     aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicLevel);
     if (aclRet != ACL_SUCCESS) {
-        OP_LOGW("aclnnMixedQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
+        OP_LOGW("Unable to get system param batch consistency level.");
     }
-    OP_LOGD("deterministic_level=%lld", deterministicLevel);
+    OP_LOGD("deterministic_level=%lld", static_cast<long long>(deterministicLevel));
     bool isBatchConsistency = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
 
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
