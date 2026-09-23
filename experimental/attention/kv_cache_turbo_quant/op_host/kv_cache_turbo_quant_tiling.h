@@ -29,6 +29,7 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 TILING_DATA_FIELD_DEF(uint32_t, totalRows);
 TILING_DATA_FIELD_DEF(uint32_t, rowsPerCore);
 TILING_DATA_FIELD_DEF(uint32_t, alignedRows);
+TILING_DATA_FIELD_DEF(uint32_t, aivRowStride);
 TILING_DATA_FIELD_DEF(uint32_t, headDim);
 TILING_DATA_FIELD_DEF(uint32_t, idxBytesPerRow);
 TILING_DATA_FIELD_DEF(uint32_t, qjlBytesPerRow);

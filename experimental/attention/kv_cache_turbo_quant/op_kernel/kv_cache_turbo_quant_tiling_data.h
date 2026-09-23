@@ -23,6 +23,8 @@ namespace optiling {
 // The codebook of this operator is the d=128 Lloyd-Max table, so headDim is fixed by design.
 constexpr uint32_t KCTQ_HEAD_DIM = 128;
 constexpr uint32_t KCTQ_QJL_DIM = 128;
+// One cube core serves this many vector cores (the kernel is declared MIX_AIC_1_2).
+constexpr uint32_t KCTQ_AIV_PER_AIC = 2;
 
 // Tiling key == mse_bits: one template instantiation per supported primary width.
 constexpr uint64_t KCTQ_TILING_KEY_MSE2 = 2;
@@ -30,6 +32,9 @@ constexpr uint64_t KCTQ_TILING_KEY_MSE3 = 3;
 constexpr uint64_t KCTQ_TILING_KEY_MSE4 = 4;
 
 // Workspace layout (byte offsets from the user workspace base), all 512B aligned.
+// The workspace reserves aivRowStride rows per AIV (baseM aligned), not rowsPerCore / AIV per AIC:
+// the C tiles are written by the cube straight into the workspace, so the last, partial tile of an
+// AIV still occupies a whole baseM block and must not reach into the next AIV's rows.
 struct KvCacheTurboQuantTilingData {
     TCubeTiling cubeTiling;  // single-core view of the (rowsPerCore x headDim) x (headDim x headDim) GEMM
     uint32_t mseBits;        // 2 / 3 / 4
@@ -37,14 +42,15 @@ struct KvCacheTurboQuantTilingData {
     uint32_t totalRows;      // numTokens * numKvHeads
     uint32_t rowsPerCore;    // rows owned by one core (16 aligned)
     uint32_t alignedRows;    // rowsPerCore * usedCoreNum
+    uint32_t aivRowStride;   // rows reserved per AIV in the workspace (baseM aligned)
     uint32_t headDim;        // 128
     uint32_t idxBytesPerRow; // headDim * mseBits / 8
     uint32_t qjlBytesPerRow; // headDim / 8
-    uint64_t wsU;            // normalized vectors (fp32)  [alignedRows, headDim]
-    uint64_t wsY;            // rotated vectors   (fp32)  [alignedRows, headDim]
-    uint64_t wsR;            // residual unit vectors (fp32) [alignedRows, headDim]
-    uint64_t wsP;            // residual projections  (fp32) [alignedRows, headDim]
-    uint64_t wsNorm;         // per row L2 norm   (fp32)  [alignedRows]
+    uint64_t wsU;            // normalized vectors (fp32)  [wsRows, headDim]
+    uint64_t wsY;            // rotated vectors   (fp32)  [wsRows, headDim]
+    uint64_t wsR;            // residual unit vectors (fp32) [wsRows, headDim]
+    uint64_t wsP;            // residual projections  (fp32) [wsRows, headDim]
+    uint64_t wsNorm;         // per row L2 norm   (fp32)  [wsRows]
     uint64_t wsBytes;        // total user workspace bytes
 };
 
