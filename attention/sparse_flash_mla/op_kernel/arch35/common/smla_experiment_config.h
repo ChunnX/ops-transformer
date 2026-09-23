@@ -12,8 +12,9 @@
 
 // Shared by the AI Core kernel and its AICPU metadata producer.
 // 0 original; 1 split reference; 2 control; 3 balanced; 4 slot1 phase; 5 S64 balanced.
+// Default 3 enables the accepted E1 split path and E2 cross-half layout under the existing TND guards.
 #ifndef SMLA_L1_LAYOUT_MODE
-#define SMLA_L1_LAYOUT_MODE 0
+#define SMLA_L1_LAYOUT_MODE 3
 #endif
 
 // Private diagnostic package only; a magic metadata marker is also required.
