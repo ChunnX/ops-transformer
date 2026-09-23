@@ -203,12 +203,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                                         actualSeqQlenGm, cuSeqlensQGm, workspace, constInfo);
         }
     }
-    // 屏障：等待所有任务的GetKVPhyAddr行循环结束（该函数内部存在早退，屏障必须放在其外、
-    // 且所有核都可达）。此后InitLocalBuffer中的InitSinksBuffer写UB流水线区（sinksUb位于
-    // 行循环输出缓冲区地址范围内）才不会与仍存活的行循环数据竞争，避免aicore fault。
-    if constexpr (IS_VEC_S2PHYADDR) {
-        SyncAll<false>();
-    }
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if constexpr (IS_BATCH_CONSISTENCY) {
@@ -502,6 +496,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         if (this->constInfo.needInit) {
             SyncAll<false>();
         }
+    }
+    // sinks拷贝写入的UB区域（sinksUb）在GetKVPhyAddr行循环期间存活，SyncAll保证
+    // 所有任务的行循环均已结束后再写入，避免踩坏尚未拷出GM的物理地址（aicore fault根因）
+    if ASCEND_IS_AIV {
+        vecBlock.InitSinksAfterSync(this->constInfo);
     }
     FdRunInfo fdRunInfo;
     if ASCEND_IS_AIV {
