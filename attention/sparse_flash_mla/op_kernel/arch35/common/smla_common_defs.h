@@ -50,7 +50,8 @@ constexpr uint32_t L0C_ELEM_PER_BUF = 32768;        // T  , 128KB
 #define CROSSCORE_L1P(s) (s) // 0,1
 #define CROSSCORE_BMM2 (2)
 #define CROSSCORE_BMM1(s) (3 + (s))  // 3,4
-#define CROSSCORE_V0RES(s) (5 + (s)) // 5,6,7 (GM backward)
+#define CROSSCORE_V0RES(s) (5 + (s)) // 5,6,7 (sparse KV ready)
+#define CROSSCORE_L1KV_FREE(s) (8 + (s)) // 8,9,10: Cube MTE1 -> AIV MTE3
 
 // ===== 对齐函数 =====
 namespace AttentionCommon {

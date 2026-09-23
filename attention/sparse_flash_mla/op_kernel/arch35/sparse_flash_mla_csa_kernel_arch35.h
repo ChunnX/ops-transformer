@@ -161,6 +161,31 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 
     this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV,
                           cmpResidualKV);
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+                  LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
+                  !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && IS_VEC_S2PHYADDR) {
+        if (constInfo.gSize == 64 && constInfo.n2Size == 1 && hasCuSeqlensQ &&
+            oriTopkLength == nullptr && constInfo.oriSparseBlockCount > 0 &&
+            constInfo.oriMaskMode == 4 && constInfo.oriWinLeft == -1 && constInfo.oriWinRight == -1) {
+            bool allRowsWritten = true;
+            for (uint32_t batch = 0; batch < constInfo.bSize; ++batch) {
+                int64_t allocatedQ = cuSeqlensQGm.GetValue(batch + 1) - cuSeqlensQGm.GetValue(batch);
+                int64_t actualQ = GetSeqLen(batch, hasActualSeqQlen, hasCuSeqlensQ,
+                    actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                int64_t actualOri = GetSeqLen(batch, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+                    actualSeqOriKvlenGm, cuSeqlensOriKvGm, constInfo.s2Size);
+                if (actualQ != allocatedQ || actualOri <= 0) {
+                    allRowsWritten = false;
+                    break;
+                }
+            }
+            // Every allocated query has nonempty unbounded ORI attention, so the
+            // normal output/LSE stores cover every row. IS_VEC_S2PHYADDR keeps SyncAll.
+            if (allRowsWritten) {
+                constInfo.needInit = 0;
+            }
+        }
+    }
     vecBlock.InitVecBlock(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
 
@@ -620,6 +645,12 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             this->vecBlock.ProcessVec2(this->bmm2Buffers, runInfo3, this->constInfo);
                         }
                     } else {
+                        if constexpr (CubeBlockType::PHASED_KV) {
+                            if (taskId < 3 && smlaNotLastThreeLoop) {
+                                // Initial slots have FREE credits: finish their writes before QK.
+                                this->cubeBlock.WaitKvWritePhase(runInfo[taskId % 4].taskIdMod3);
+                            }
+                        }
                         if (taskId > 0 && smlaNotLastTwoLoop) {
                             RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
                             this->cubeBlock.IterateLoadQK(this->v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1,
@@ -648,6 +679,13 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                             this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot], runInfo3,
                                                         this->constInfo);
+                        }
+                        if constexpr (CubeBlockType::PHASED_KV) {
+                            if (taskId >= 3 && smlaNotLastThreeLoop) {
+                                // PV(t-3) must release FREE before waiting for V0(t), not after.
+                                // No wait during drain when there is no corresponding producer.
+                                this->cubeBlock.WaitKvWritePhase(runInfo[taskId % 4].taskIdMod3);
+                            }
                         }
                     }
                 }

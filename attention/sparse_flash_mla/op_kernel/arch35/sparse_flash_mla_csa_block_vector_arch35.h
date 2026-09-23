@@ -26,6 +26,7 @@ using AscendC::Reg::StoreDist;
 #include "common/flash_decode.h"
 #include "common/get_kv_phy_addr_vf.h"
 #include "common/smla_vector_common_arch35.h"
+#include "common/smla_l1_layout.h"
 
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
@@ -44,6 +45,79 @@ using namespace fa_base_matmul;
 using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
+
+// The extra NZ row rotates consecutive C0 blocks across UB banks.
+// Keep this in one place so bank-rotation candidates can be evaluated without
+// changing the transpose loop or its MTE3 copy contract.
+constexpr uint32_t SPARSE_KV_NZ_ROW_STRIDE = 17;
+
+__simd_vf__ inline void SparseKvNdToNz16(__ubuf__ uint16_t *dst, __ubuf__ uint16_t *src)
+{
+    Reg::RegTensor<uint16_t> data;
+    Reg::MaskReg mask = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+    for (uint16_t row = 0; row < 8; ++row) {
+        for (uint16_t col = 0; col < 4; ++col) {
+            Reg::LoadAlign<uint16_t>(data, src + row * 512 + col * 128);
+            Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + row * 16, data,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
+            Reg::LoadAlign<uint16_t>(data, src + 8 * 512 + 128 + row * 512 + col * 128);
+            Reg::StoreAlign<uint16_t, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                dst + col * 8 * SPARSE_KV_NZ_ROW_STRIDE * 16 + (row + 8) * 16, data,
+                SPARSE_KV_NZ_ROW_STRIDE, mask);
+        }
+    }
+}
+
+// Full-128 update: retain scaled logits in registers and update online state in the same VF.
+template <typename P>
+__simd_vf__ inline void SparseFusedSoftmax128(__ubuf__ P *outP, __ubuf__ float *logits,
+    __ubuf__ float *sum, __ubuf__ float *maximum, __ubuf__ float *rescale,
+    __ubuf__ float *stats, uint16_t rows, float scale)
+{
+    if (rows == 0) { return; }
+
+    Reg::RegTensor<float> oldMaxAll, oldSumAll, x0, x1, maxReduced, maxBrc, oldMax;
+    Reg::RegTensor<float> e0, e1, sumReduced, weight, updated, newMaxAll, newSumAll;
+    Reg::RegTensor<uint32_t> zeroIndex, rowIndex;
+    Reg::MaskReg all = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+    Reg::MaskReg all16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+    Reg::UnalignRegForStore sumStore, maxStore;
+    __ubuf__ float *sumWrite = stats;
+    __ubuf__ float *maxWrite = stats + 64;
+    Reg::LoadAlign(oldMaxAll, maximum);
+    Reg::Duplicate(zeroIndex, 0);
+    for (uint16_t row = 0; row < rows; ++row) {
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(x0, x1, logits + row * 128);
+        Reg::Muls(x0, x0, scale, all);
+        Reg::Muls(x1, x1, scale, all);
+        Reg::Max(maxReduced, x0, x1, all);
+        Reg::Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(maxReduced, maxReduced, all);
+        Reg::Gather(maxBrc, maxReduced, zeroIndex);
+        Reg::Duplicate(rowIndex, static_cast<uint32_t>(row));
+        Reg::Gather(oldMax, oldMaxAll, rowIndex);
+        Reg::Max(maxBrc, maxBrc, oldMax, all);
+        Reg::ExpSub(e0, x0, maxBrc, all);
+        Reg::ExpSub(e1, x1, maxBrc, all);
+        Reg::Add(sumReduced, e0, e1, all);
+        Reg::Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(sumReduced, sumReduced, all);
+        Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumWrite, sumReduced, sumStore, 1);
+        Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(maxWrite, maxBrc, maxStore, 1);
+        FaVectorApi::CastStoreExp128<float, P>(e0, e1, outP, 33, 1, all, all16, nullptr);
+    }
+    Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumWrite, sumStore, 0);
+    Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(maxWrite, maxStore, 0);
+    Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+    Reg::LoadAlign(newMaxAll, stats + 64);
+    Reg::LoadAlign(newSumAll, stats);
+    Reg::LoadAlign(oldSumAll, sum);
+    Reg::FusedExpSub(weight, oldMaxAll, newMaxAll, all);
+    Reg::Mul(updated, weight, oldSumAll, all);
+    Reg::Add(updated, updated, newSumAll, all);
+    Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(sum, updated, all);
+    Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(maximum, newMaxAll, all);
+    Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(rescale, weight, all);
+}
 
 // 统一窗口公式
 struct PhyAddrValidInfo {
@@ -76,6 +150,14 @@ public:
     static constexpr uint32_t initOutputEventId =
         INNERCORE_INITOUT_MTE3_V; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
     // Sparse KV搬入/拷出块大小：每次搬入8行，每16行做一次拷出
+    static constexpr bool DIRECT_SPARSE_KV_L1 =
+        TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
+        KV_LAYOUT_T == SMLA_LAYOUT::TND && !IS_SPLIT_G && !IS_BATCH_CONSISTENCY;
+    static constexpr bool SPLIT_SPARSE_KV_L1 =
+        DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND && ActiveSparseKvL1Layout::SPLIT;
+    static constexpr bool HALF_KV_FREE = SPLIT_SPARSE_KV_L1 && SMLA_L1_SYNC_MODE == 2;
+    static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
+    static constexpr uint32_t KV_ND_ROW_STRIDE = DIRECT_SPARSE_KV_L1 ? 528 : dVTemplateType;
     static constexpr int64_t KV_COPYIN_UNIT = 8;   // 每次搬入8行
     static constexpr int64_t KV_PROCESS_UNIT = 16; // 每次拷出16行
 
@@ -300,6 +382,13 @@ private:
     StaticBuffer<Q_T> stage1OutBufs[2];
     StaticBuffer<T> stage2OutBufs;
     StaticBuffer<Q_T> stage0OutBufs[2];
+    StaticBuffer<Q_T> sparseKvNzBufs[2];
+    StaticBuffer<int64_t> sparseKvAddrBuf;
+    static constexpr uint32_t SPARSE_ADDR_CAPACITY = 1152;
+    int64_t sparseAddrBatch = -1;
+    int64_t sparseAddrQuery = -1;
+    uint32_t sparseAddrOffset = 0;
+    bool sparseAddrPrefetchPending = false;
     StaticBuffer<float> softmaxMaxBufs[2];
     StaticBuffer<float> softmaxSumBufs[2];
     StaticBuffer<float> softmaxFinalMaxBufs[2];
@@ -378,6 +467,14 @@ template <bool IS_FULL>
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase,
                                                                  const RunInfo &runInfo, ConstInfo &constInfo)
 {
+    if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR) {
+        if (runInfo.s2RealSize == s2BaseSize) {
+            for (uint32_t i = 0; i < KV_COPYIN_UNIT; ++i) {
+                tokenData[i] = sparseKvAddrBuf.tensor.GetValue(sparseAddrOffset + s2IdxInBase - sparseS2Start + i);
+            }
+            return;
+        }
+    }
     int64_t curSparseS2End = this->sparseS2End;
     uint32_t smlaAlignedSparseBlockCount =
         runInfo.isCmp ? constInfo.alignedCmpSparseBlockCount : constInfo.alignedOriSparseBlockCount;
@@ -457,16 +554,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
-    intriParams.blockLen = constInfo.dSize * sizeof(KV_T);
+    intriParams.blockLen = DIRECT_SPARSE_KV_L1 ? 512 * sizeof(KV_T) : constInfo.dSize * sizeof(KV_T);
 
     DataCopyPadExtParams<KV_T> padParams;
-    padParams.isPad = true;
+    padParams.isPad = !DIRECT_SPARSE_KV_L1;
     padParams.leftPadding = 0;
-    padParams.rightPadding =
+    padParams.rightPadding = DIRECT_SPARSE_KV_L1 ? 0 :
         (CeilAlign(constInfo.dSize * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) - constInfo.dSize * sizeof(KV_T)) /
         sizeof(KV_T);
     padParams.paddingValue = 0;
-    DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
+    DataCopyPad(kvInUb[(DIRECT_SPARSE_KV_L1 ? startRow * 512 + (startRow / 8) * 128 : startRow * KV_ND_ROW_STRIDE)], keyGm[keyOffset], intriParams, padParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -485,13 +582,34 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
             smlaKeyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
             smlaKeyOffset1 = GetkeyOffset(tokenData[i + 1], runInfo, constInfo);
         }
+        if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR && IS_FULL) {
+            if (likely(smlaKeyOffset0 >= 0 && smlaKeyOffset1 >= 0)) {
+                int64_t first = smlaKeyOffset0 < smlaKeyOffset1 ? smlaKeyOffset0 : smlaKeyOffset1;
+                uint64_t rowStride = static_cast<uint64_t>(smlaKeyOffset0 < smlaKeyOffset1 ?
+                    smlaKeyOffset1 - smlaKeyOffset0 : smlaKeyOffset0 - smlaKeyOffset1) * sizeof(KV_T);
+                // 3510 native DMA takes a 64-bit row stride including the 1024-byte row.
+                // Unlike DataCopyExtParams, it needs no signed-32-bit gap conversion.
+                if ASCEND_IS_AIV {
+                    copy_gm_to_ubuf_align_v2(
+                        reinterpret_cast<__ubuf__ uint16_t *>(kvInUb.GetPhyAddr((DIRECT_SPARSE_KV_L1 ? startRow * 512 + (startRow / 8) * 128 : startRow * KV_ND_ROW_STRIDE))),
+                        reinterpret_cast<__gm__ uint16_t *>(keyGm.GetPhyAddr(first)),
+                        0, 2, 512 * sizeof(KV_T), 0, 0, false, 0,
+                        rowStride, 512 * sizeof(KV_T));
+                }
+            } else {
+                CopyInSingleKv(kvInUb, startRow, smlaKeyOffset0, constInfo);
+                CopyInSingleKv(kvInUb, startRow + 1, smlaKeyOffset1, constInfo);
+            }
+            startRow += 2;
+            continue;
+        }
         if constexpr (!IS_FULL) {
             // 尾块：提前返回判断
             if (unlikely(smlaKeyOffset0 < 0 && smlaKeyOffset1 < 0)) {
                 return;
             }
         }
-        int64_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
+        int64_t combineBytes = DIRECT_SPARSE_KV_L1 ? 512 * sizeof(KV_T) : constInfo.dSizeVInput * sizeof(KV_T);
         int64_t keySrcStride;
         if constexpr (IS_BATCH_CONSISTENCY) {
             // batch一致性场景，token读取顺序只与逻辑顺序有关，为保证确定性不可交换读取顺序
@@ -502,7 +620,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
                                sizeof(KV_T) -
                            combineBytes;
         }
-        if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
+        if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || (!DIRECT_SPARSE_KV_L1 && constInfo.sparseBlockSize > 1)) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
             CopyInSingleKv(kvInUb, startRow, smlaKeyOffset0, constInfo);
             CopyInSingleKv(kvInUb, startRow + 1, smlaKeyOffset1, constInfo);
@@ -519,9 +637,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
             intriParams.dstStride = 0;
             intriParams.srcStride = keySrcStride;
             DataCopyPadExtParams<KV_T> padParams;
-            padParams.isPad = true;
+            padParams.isPad = !DIRECT_SPARSE_KV_L1;
             padParams.leftPadding = 0;
-            padParams.rightPadding = (CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) - combineBytes) / sizeof(KV_T);
+            padParams.rightPadding = DIRECT_SPARSE_KV_L1 ? 0 : (CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) - combineBytes) / sizeof(KV_T);
             padParams.paddingValue = 0;
 
             int64_t keyOffset;
@@ -531,7 +649,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
                 // 非尾块：两条均有效，取较小地址作为起始
                 keyOffset = smlaKeyOffset0 < smlaKeyOffset1 ? smlaKeyOffset0 : smlaKeyOffset1;
             }
-            DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
+            DataCopyPad(kvInUb[(DIRECT_SPARSE_KV_L1 ? startRow * 512 + (startRow / 8) * 128 : startRow * KV_ND_ROW_STRIDE)], keyGm[keyOffset], intriParams, padParams);
         }
         startRow += 2; // 每次迭代处理2个输入元素
     }
@@ -550,8 +668,65 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> kvOutUb, int64_t dealRow,
     int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        if (runInfo.s2RealSize == s2BaseSize) {
+            LocalTensor<Q_T> nzUb = sparseKvNzBufs[pingPongV0].tensor;
+            // MTE2 produces ND; V produces padded NZ; MTE3 consumes padded NZ.
+            SetFlag<HardEvent::MTE2_V>(pingPongV0);
+            WaitFlag<HardEvent::MTE2_V>(pingPongV0);
+            WaitFlag<HardEvent::MTE3_V>(2 + pingPongV0);
+            asc_vf_call<SparseKvNdToNz16>(
+                reinterpret_cast<__ubuf__ uint16_t *>(nzUb.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ uint16_t *>(kvOutUb.GetPhyAddr()));
+            // ND can be refilled as soon as V has consumed it; NZ has its own MTE3 lifetime.
+            SetFlag<HardEvent::V_MTE2>(pingPongV0);
+            SetFlag<HardEvent::V_MTE3>(2 + pingPongV0);
+            WaitFlag<HardEvent::V_MTE3>(2 + pingPongV0);
+            DataCopyParams nzCopy;
+            nzCopy.blockCount = dVTemplateType / 16;
+            nzCopy.blockLen = KV_PROCESS_UNIT;
+            nzCopy.srcStride = SPARSE_KV_NZ_ROW_STRIDE - KV_PROCESS_UNIT;
+            // Skip the UB bank-rotation padding rows.
+            nzCopy.dstStride = s2BaseSize - KV_PROCESS_UNIT;
+            if constexpr (SPLIT_SPARSE_KV_L1) {
+                static_assert(sizeof(Q_T) == 2, "D256 L1 layout requires two-byte input");
+                nzCopy.blockCount = 256 / 16;
+                for (uint32_t half = 0; half < 2; ++half) {
+                    if constexpr (HALF_KV_FREE) {
+                        if (half == 1 && s2StartIdx == sparseS2Start) {
+                            // Consume half1 credit once, after the first 16-row half0 write.
+                            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                                CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+                        }
+                    }
+                    LocalTensor<Q_T> dst(TPosition::B1,
+                        ActiveSparseKvL1Layout::HalfBase(runInfo.taskIdMod3, half),
+                        ActiveSparseKvL1Layout::HALF_BYTES / sizeof(Q_T));
+                    DataCopy(dst[s2StartIdx * 16], nzUb[half * 256 * SPARSE_KV_NZ_ROW_STRIDE], nzCopy);
+                }
+            } else {
+                constexpr uint32_t kvL1BaseBytes =
+                    (2 * s1BaseSize * s2BaseSize + 3 * L1Q_ELEM_PER_BUF) * sizeof(Q_T);
+                LocalTensor<Q_T> dst(TPosition::B1,
+                    kvL1BaseBytes + runInfo.taskIdMod3 * L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T),
+                    L1_RIGHT_ELEM_PER_BLOCK);
+                DataCopy(dst[s2StartIdx * 16], nzUb, nzCopy);
+            }
+            SetFlag<HardEvent::MTE3_V>(2 + pingPongV0);
+            return;
+        }
+    }
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    DataCopy(v0ResGmTensor[s2StartIdx * constInfo.dSize], kvOutUb, dealRow * constInfo.dSize);
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        uint32_t firstRows = dealRow < 8 ? dealRow : 8;
+        DataCopy(v0ResGmTensor[s2StartIdx * constInfo.dSize], kvOutUb, firstRows * dVTemplateType);
+        if (dealRow > 8) {
+            DataCopy(v0ResGmTensor[(s2StartIdx + 8) * constInfo.dSize],
+                kvOutUb[8 * dVTemplateType + 128], (dealRow - 8) * dVTemplateType);
+        }
+    } else {
+        DataCopy(v0ResGmTensor[s2StartIdx * constInfo.dSize], kvOutUb, dealRow * constInfo.dSize);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -596,6 +771,18 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        if constexpr (HALF_KV_FREE) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_V0RES(runInfo.taskIdMod3));
+            if (runInfo.s2RealSize != s2BaseSize) {
+                // GM-staged tails, including zero-row AIVs, still consume both credits.
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+            }
+        } else {
+            // The previous PV consumer releases the whole slot after its final MTE1 read.
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+        }
+    }
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) {
             return;
@@ -636,6 +823,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         ProcessSparseKv(v0ResGm, runInfo, constInfo);
         v0ResGm.SetCrossCore();
     }
+    if constexpr (PHASED_KV) {
+        // Independent of READY; both notifications follow all writes on MTE3.
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(runInfo.taskIdMod3));
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -666,6 +857,55 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             return;
         }
 
+        if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR) {
+            if (runInfo.s2RealSize == s2BaseSize) {
+                if (sparseAddrPrefetchPending) {
+                    WaitFlag<HardEvent::MTE2_S>(0);
+                    sparseAddrPrefetchPending = false;
+                }
+                uint32_t oriCount = constInfo.alignedOriSparseBlockCount;
+                uint32_t cmpCount = constInfo.alignedCmpSparseBlockCount;
+                uint32_t count = runInfo.isCmp ? cmpCount : oriCount;
+                int64_t loop = runInfo.s2LoopCount - (runInfo.isCmp ? runInfo.oriKvLoopEndIdx : 0);
+                if (oriCount + cmpCount <= SPARSE_ADDR_CAPACITY) {
+                    if (sparseAddrBatch != runInfo.boIdx || sparseAddrQuery != runInfo.s1oIdx) {
+                        uint64_t query = runInfo.boIdx * constInfo.s1Size + runInfo.s1oIdx;
+                        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+                            query = cuSeqlensQGm.GetValue(runInfo.boIdx) + runInfo.s1oIdx;
+                        }
+                        if (oriCount > 0) {
+                            DataCopy(sparseKvAddrBuf.tensor,
+                                oriKvPhyAddrGm.template ReinterpretCast<int64_t>()[query * oriCount], oriCount);
+                        }
+                        if (cmpCount > 0) {
+                            DataCopy(sparseKvAddrBuf.tensor[oriCount],
+                                cmpKvPhyAddrGm.template ReinterpretCast<int64_t>()[query * cmpCount], cmpCount);
+                        }
+                        SetFlag<HardEvent::MTE2_S>(0);
+                        WaitFlag<HardEvent::MTE2_S>(0);
+                        sparseAddrBatch = runInfo.boIdx;
+                        sparseAddrQuery = runInfo.s1oIdx;
+                    }
+                    sparseAddrOffset = (runInfo.isCmp ? oriCount : 0) + runInfo.s2StartIdx +
+                                       loop * s2BaseSize + sparseS2Start;
+                } else {
+                    uint64_t query = runInfo.boIdx * constInfo.s1Size + runInfo.s1oIdx;
+                    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+                        query = cuSeqlensQGm.GetValue(runInfo.boIdx) + runInfo.s1oIdx;
+                    }
+                    GlobalTensor<int64_t> addresses = runInfo.isCmp ?
+                        cmpKvPhyAddrGm.template ReinterpretCast<int64_t>() :
+                        oriKvPhyAddrGm.template ReinterpretCast<int64_t>();
+                    DataCopy(sparseKvAddrBuf.tensor,
+                        addresses[query * count + runInfo.s2StartIdx + loop * s2BaseSize + sparseS2Start],
+                        s2BaseSize / CV_RATIO);
+                    SetFlag<HardEvent::MTE2_S>(0);
+                    WaitFlag<HardEvent::MTE2_S>(0);
+                    sparseAddrOffset = 0;
+                }
+            }
+        }
+
         // 前置计算：16行拷出循环数、尾块行数、尾块内8行搬入次数及剩余行数
         int64_t process16LoopCnt = curSparseCalSize / KV_PROCESS_UNIT;
         int64_t tail16Rows = curSparseCalSize % KV_PROCESS_UNIT;
@@ -678,14 +918,35 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             int64_t s2StartIdx = sparseS2Start + i * KV_PROCESS_UNIT;
             // 1、copy kv in, gm -> ub
             LocalTensor<Q_T> stage0OutUb = this->stage0OutBufs[pingPongV0].tensor;
-            WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            if constexpr (DIRECT_SPARSE_KV_L1) {
+                if (runInfo.s2RealSize == s2BaseSize) {
+                    WaitFlag<HardEvent::V_MTE2>(pingPongV0);
+                } else {
+                    WaitFlag<HardEvent::V_MTE2>(pingPongV0);
+                    WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+                }
+            } else {
+                WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            }
             CopyIn8Block<true>(stage0OutUb, 0, s2, runInfo, constInfo);
             CopyIn8Block<true>(stage0OutUb, KV_COPYIN_UNIT, s2, runInfo, constInfo);
             // 2、copy kv out, ub -> l1
-            SetFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
-            WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            if constexpr (!DIRECT_SPARSE_KV_L1) {
+                SetFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+                WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            } else if (runInfo.s2RealSize != s2BaseSize) {
+                SetFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+                WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            }
             CopyOutKvUb2Gm(v0ResGm, stage0OutUb, KV_PROCESS_UNIT, s2StartIdx, runInfo, constInfo);
-            SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            if constexpr (!DIRECT_SPARSE_KV_L1) {
+                SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            } else if (runInfo.s2RealSize != s2BaseSize) {
+                SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+                SetFlag<HardEvent::MTE3_V>(7);
+                WaitFlag<HardEvent::MTE3_V>(7);
+                SetFlag<HardEvent::V_MTE2>(pingPongV0);
+            }
             pingPongV0 ^= 1;
         }
 
@@ -695,6 +956,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             int64_t dealRow = 0;
             // 1、copy kv in, gm -> ub
             LocalTensor<Q_T> stage0OutUb = this->stage0OutBufs[pingPongV0].tensor;
+            if constexpr (DIRECT_SPARSE_KV_L1) {
+                WaitFlag<HardEvent::V_MTE2>(pingPongV0);
+            }
             WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
             // 尾块内满8行搬入（8行均有效，无需判断）
             for (int64_t j = 0; j < tail8FullCnt; j++) {
@@ -711,7 +975,41 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
             CopyOutKvUb2Gm(v0ResGm, stage0OutUb, tail16Rows, s2StartIdx, runInfo, constInfo);
             SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            if constexpr (DIRECT_SPARSE_KV_L1) {
+                SetFlag<HardEvent::MTE3_V>(7);
+                WaitFlag<HardEvent::MTE3_V>(7);
+                SetFlag<HardEvent::V_MTE2>(pingPongV0);
+            }
             pingPongV0 ^= 1;
+        }
+    }
+    if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR && LAYOUT_T == SMLA_LAYOUT::TND) {
+        uint32_t oriCount = constInfo.alignedOriSparseBlockCount;
+        uint32_t cmpCount = constInfo.alignedCmpSparseBlockCount;
+        if (runInfo.s2LoopCount == runInfo.s2LoopLimit && !runInfo.isCrossCoreSplit &&
+            constInfo.gSize == s1BaseSize && oriCount + cmpCount <= SPARSE_ADDR_CAPACITY) {
+            int64_t query = cuSeqlensQGm.GetValue(runInfo.boIdx) + runInfo.s1oIdx + 1;
+            int64_t queryEnd = cuSeqlensQGm.GetValue(runInfo.boIdx + 1);
+            if (query < queryEnd) {
+                if (sparseAddrPrefetchPending) {
+                    WaitFlag<HardEvent::MTE2_S>(0);
+                }
+                // This query has consumed every address. Protect scalar reads before reuse.
+                SetFlag<HardEvent::S_MTE2>(0);
+                WaitFlag<HardEvent::S_MTE2>(0);
+                if (oriCount > 0) {
+                    DataCopy(sparseKvAddrBuf.tensor,
+                        oriKvPhyAddrGm.template ReinterpretCast<int64_t>()[query * oriCount], oriCount);
+                }
+                if (cmpCount > 0) {
+                    DataCopy(sparseKvAddrBuf.tensor[oriCount],
+                        cmpKvPhyAddrGm.template ReinterpretCast<int64_t>()[query * cmpCount], cmpCount);
+                }
+                SetFlag<HardEvent::MTE2_S>(0);
+                sparseAddrPrefetchPending = true;
+                sparseAddrBatch = runInfo.boIdx;
+                sparseAddrQuery = runInfo.s1oIdx + 1;
+            }
         }
     }
 }
@@ -724,6 +1022,20 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(LocalTenso
                                                                       LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
                                                                       ConstInfo &constInfo)
 {
+    if constexpr (DIRECT_SPARSE_KV_L1 && UPDATE) {
+        if (runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128) {
+            asc_vf_call<SparseFusedSoftmax128<Q_T>>(
+                reinterpret_cast<__ubuf__ Q_T *>(stage1CastTensor.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float *>(mmRes.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float *>(sumUb.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float *>(maxUb.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float *>(softmaxExpBufs[runInfo.taskIdMod2].tensor.GetPhyAddr()),
+                reinterpret_cast<__ubuf__ float *>(apiTmpBuffer.GetPhyAddr()),
+                runInfo.halfMRealSize, constInfo.softmaxScale);
+            return;
+        }
+    }
+
     if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
         ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
             stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -914,7 +1226,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
     }
     CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1ResBuf.idx));
     CopyVec1ResultToL1(outputBuf, smlaStage1CastTensor, runInfo, constInfo);
-    if (!isFirstSoftmaxBase || isSinks) {
+    if ((!isFirstSoftmaxBase || isSinks) &&
+        !(DIRECT_SPARSE_KV_L1 && runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
         SFAUpdateExpSumAndExpMax<T>(smlaSumUb, smlaMaxUb, smlaExpUb, smlaSumUb, smlaMaxUb, smlaApiTmpBuffer,
                                     runInfo.halfMRealSize);
     }
@@ -1405,12 +1718,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * 16U),
+        stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, KV_ND_ROW_STRIDE * 16U),
                             0}; // 输出缓冲区处理16个seq
-        ubAddr += dVTemplateType * 16U * sizeof(KV_T);
-        stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * 16U),
+        ubAddr += KV_ND_ROW_STRIDE * 16U * sizeof(KV_T);
+        stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, KV_ND_ROW_STRIDE * 16U),
                             1}; // 输出缓冲区处理16个seq
-        ubAddr += dVTemplateType * 16U * sizeof(KV_T);
+        ubAddr += KV_ND_ROW_STRIDE * 16U * sizeof(KV_T);
     }
     if (constInfo.isSoftmaxLseEnable) {
         outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
@@ -1427,6 +1740,22 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
     ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
 
     stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, ubAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
+
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        ubAddr += (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T);
+        ubAddr += 256; // Toggle UB bank bit 8 relative to the padded ND rows.
+        for (uint32_t slot = 0; slot < 2; ++slot) {
+            sparseKvNzBufs[slot] = {
+                LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * SPARSE_KV_NZ_ROW_STRIDE), slot};
+            ubAddr += dVTemplateType * SPARSE_KV_NZ_ROW_STRIDE * sizeof(Q_T);
+            SetFlag<HardEvent::MTE3_V>(2 + slot);
+            SetFlag<HardEvent::V_MTE2>(slot);
+        }
+        if constexpr (IS_VEC_S2PHYADDR) {
+            sparseKvAddrBuf = {LocalTensor<int64_t>(TPosition::VECIN, ubAddr, SPARSE_ADDR_CAPACITY), 0};
+            ubAddr += SPARSE_ADDR_CAPACITY * sizeof(int64_t);
+        }
+    }
 
     // 显式 flag 初始化 (替代 AllocEventID + 初始 SetFlag)
     SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
@@ -1452,6 +1781,24 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
 {
+    if constexpr (DIRECT_SPARSE_KV_L1 && IS_VEC_S2PHYADDR) {
+        if (sparseAddrPrefetchPending) {
+            WaitFlag<HardEvent::MTE2_S>(0);
+            sparseAddrPrefetchPending = false;
+        }
+    }
+    if constexpr (DIRECT_SPARSE_KV_L1) {
+        for (uint32_t slot = 0; slot < 3; ++slot) {
+            if constexpr (HALF_KV_FREE) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_V0RES(slot));
+            }
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1KV_FREE(slot));
+        }
+        WaitFlag<HardEvent::MTE3_V>(2);
+        WaitFlag<HardEvent::MTE3_V>(3);
+        WaitFlag<HardEvent::V_MTE2>(0);
+        WaitFlag<HardEvent::V_MTE2>(1);
+    }
     if constexpr (IS_BATCH_CONSISTENCY) {
         WaitFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
         WaitFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
@@ -1732,6 +2079,60 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             WaitFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_PHYADDR_BLKTABLE_READY);
         }
 
+        if constexpr (DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND) {
+            constexpr uint32_t BATCH_ADDR_COUNT = 16384;
+            bool uniformMask = isOriKv ?
+                ((constInfo.oriMaskMode == 0 && !constInfo.hasOriTopkLength) ||
+                 (constInfo.oriMaskMode == 4 && constInfo.oriWinLeft == -1 && constInfo.oriWinRight == -1)) :
+                ((constInfo.cmpMaskMode == 0 && !constInfo.hasCmpTopkLength) || constInfo.cmpMaskMode == 3);
+            // These masks have a constant or nondecreasing valid prefix. Full endpoints
+            // prove every query in this batch span uses all sparse-index columns.
+            if (uniformMask && sparseBlockCount > 0 && sparseBlockCount <= BATCH_ADDR_COUNT &&
+                sparseBlockCount == alignedSparseBlockCount && sparseBlockCount % s2NumPerLoop == 0 &&
+                smlaTmpGS1Start < static_cast<uint32_t>(smlaS1End) &&
+                CalcCurValidS2(bIdx, smlaTmpGS1Start, smlaActualS1Size, isOriKv, cuSeqlensQGm,
+                              topkLengthGm, constInfo, sparseBlockCount, validInfo) == sparseBlockCount &&
+                CalcCurValidS2(bIdx, smlaS1End - 1, smlaActualS1Size, isOriKv, cuSeqlensQGm,
+                              topkLengthGm, constInfo, sparseBlockCount, validInfo) == sparseBlockCount) {
+                int64_t span = static_cast<int64_t>(smlaS1End) - smlaTmpGS1Start;
+                int64_t skip = Min(Max(smlaCurStart - smlaValidCounter, static_cast<int64_t>(0)), span);
+                int64_t count = Min(span - skip, smlaCurCount - smlaProcessedCount);
+                int64_t firstQuery = smlaTmpGS1Start + skip;
+                LocalTensor<int32_t> batchIndices(TPosition::VECIN, 0, BATCH_ADDR_COUNT);
+                LocalTensor<uint32_t> batchAddresses(TPosition::VECIN,
+                    BATCH_ADDR_COUNT * sizeof(int32_t), BATCH_ADDR_COUNT * 2);
+                while (count > 0) {
+                    uint32_t rows = static_cast<uint32_t>(Min(count,
+                        static_cast<int64_t>(BATCH_ADDR_COUNT / sparseBlockCount)));
+                    uint32_t elements = rows * sparseBlockCount;
+                    WaitFlag<HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
+                    // Protect MTE2 writes as well as V writes when generic/wide buffers overlap.
+                    WaitFlag<HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
+                    SetFlag<HardEvent::MTE3_MTE2>(0);
+                    WaitFlag<HardEvent::MTE3_MTE2>(0);
+                    DataCopy(batchIndices, sparseIndicesGm[(bS1Idx + firstQuery) * sparseBlockCount], elements);
+                    SetFlag<HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
+                    WaitFlag<HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
+                    AttentionCommon::GetKVPhyAddrVFTnd<uint32_t>(batchAddresses, batchIndices,
+                        static_cast<uint16_t>(elements / s2NumPerLoop), s2NumPerLoop,
+                        constInfo.sparseBlockSize, static_cast<uint32_t>(constInfo.dSize), kvPrefix);
+                    SetFlag<HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
+                    SetFlag<HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
+                    WaitFlag<HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
+                    DataCopy(phyAddrGm[(bS1Idx + firstQuery) * alignedSparseBlockCount * 2],
+                        batchAddresses, elements * 2);
+                    SetFlag<HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
+                    smlaProcessedCount += rows;
+                    firstQuery += rows;
+                    count -= rows;
+                }
+                smlaValidCounter += span;
+                smlaDone = smlaProcessedCount >= smlaCurCount;
+                smlaTmpGS1Start = 0;
+                continue;
+            }
+        }
+
         for (int32_t s1Idx = smlaTmpGS1Start; s1Idx < smlaS1End; ++s1Idx) {
             int32_t smlaCurValidS2 = CalcCurValidS2(bIdx, s1Idx, smlaActualS1Size, isOriKv, cuSeqlensQGm, topkLengthGm,
                                                     constInfo, static_cast<int32_t>(sparseBlockCount), validInfo);
@@ -1856,6 +2257,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
                               cmpBlockTableGm, cmpSparseIndicesGm, cmpKvPhyAddrGm, constInfo.cmpKvStride,
                               constInfo.cmpBlockSize, constInfo.cmpMaxBlockNumPerBatch, constInfo.cmpSparseBlockCount,
                               constInfo.alignedCmpSparseBlockCount, false);
+    }
+    if constexpr (DIRECT_SPARSE_KV_L1 && LAYOUT_T == SMLA_LAYOUT::TND) {
+        // InitLocalBuffer next loads sinks through MTE2 into the wide address-output area.
+        // A MTE3_V wait alone does not order that independent MTE2 write.
+        SetFlag<HardEvent::MTE3_MTE2>(0);
+        WaitFlag<HardEvent::MTE3_MTE2>(0);
     }
 }
 
