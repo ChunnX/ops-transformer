@@ -153,7 +153,7 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the MXFP8 weight-NZ V3 tiling");
         return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE});
     }
-    if (compileInfoPtr->npuArch_ == static_cast<int32_t>(NpuArch::DAV_3510)) {
+    if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
         auto wDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX);
@@ -203,6 +203,9 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseC
     compileInfoPtr->aicNum_ = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->aivNum_ = ascendcPlatform.GetCoreNumAiv();
     compileInfoPtr->npuArch_ = static_cast<int32_t>(ascendcPlatform.GetCurNpuArch());
+    std::string platformRes;
+    platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
+    compileInfoPtr->supportL12BtBf16 = (platformRes.find("bf16") != std::string::npos);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0ASize_);
