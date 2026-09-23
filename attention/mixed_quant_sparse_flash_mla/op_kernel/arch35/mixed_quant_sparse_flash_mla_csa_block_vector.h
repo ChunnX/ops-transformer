@@ -2276,8 +2276,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
     if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
-
-    // 注意：InitSinksBuffer（UB写入）移至Process()的SyncAll之后执行（见InitSinks）
 }
 
 TEMPLATES_DEF_NO_DEFAULT
