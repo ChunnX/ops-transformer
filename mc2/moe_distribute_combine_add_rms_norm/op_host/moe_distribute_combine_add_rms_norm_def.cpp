@@ -106,80 +106,30 @@ private:
             .AutoContiguous();
     }
 
+    void AddOptionalInput(const char *name, ge::DataType dtype)
+    {
+        this->Input(name)
+            .ParamType(OPTIONAL)
+            .DataType({dtype})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
+    }
+
     void DefineOptionalInputs()
     {
-        this->Input("tp_send_counts")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("x_active_mask")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BOOL})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("activation_scale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("weight_scale")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("group_list")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("expand_scales")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("shared_expert_x")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("elastic_info")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("ori_x")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("const_expert_alpha_1")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("const_expert_alpha_2")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("const_expert_v")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+        AddOptionalInput("tp_send_counts", ge::DT_INT32);
+        AddOptionalInput("x_active_mask", ge::DT_BOOL);
+        AddOptionalInput("activation_scale", ge::DT_FLOAT);
+        AddOptionalInput("weight_scale", ge::DT_FLOAT);
+        AddOptionalInput("group_list", ge::DT_INT64);
+        AddOptionalInput("expand_scales", ge::DT_FLOAT);
+        AddOptionalInput("shared_expert_x", ge::DT_BF16);
+        AddOptionalInput("elastic_info", ge::DT_INT32);
+        AddOptionalInput("ori_x", ge::DT_BF16);
+        AddOptionalInput("const_expert_alpha_1", ge::DT_BF16);
+        AddOptionalInput("const_expert_alpha_2", ge::DT_BF16);
+        AddOptionalInput("const_expert_v", ge::DT_BF16);
     }
 
     void DefineOutputs()
