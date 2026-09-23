@@ -17,6 +17,18 @@ namespace MegaMoeImpl {
 
 constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
 constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
+// mode 0：本卡本次 kernel 的同类核全核同步，AIC 调用时同步全部 AIC，AIV 调用时同步全部 AIV。
+constexpr uint8_t ALL_AICORE_SYNC_MODE = 0;
+// mode 4：同一 AI Core 内 AIC 与单个 AIV 的同步，支持双向通知。
+constexpr uint8_t AIC_SINGLE_AIV_SYNC_MODE = 4;
+// reset、MoE 及共享量化写回完成事件；与 GMM mode 4 独立，避开 SyncAll 的 11--14。
+constexpr uint16_t MTE_QUANT_READY_FLAG = 8;
+// count 表读取完成事件编号：count 表清零前等待所有读取结束。
+constexpr uint16_t COUNT_TABLE_READ_DONE_FLAG = 9;
+// 输入就绪事件编号：AIV0 通知配对 AIC，本卡全部 AIV 已完成 reset 和量化。
+constexpr uint16_t INPUT_READY_FLAG = 2;
+// UB 释放事件编号：AIV0 通知配对 AIC，可以通过 FIX 写入输入准备阶段占用的 UB。
+constexpr uint16_t INPUT_UB_FREE_FLAG = 15;
 
 constexpr int64_t MAX_INT16_TOPK_INDEX_COUNT = 1LL << 15;
 

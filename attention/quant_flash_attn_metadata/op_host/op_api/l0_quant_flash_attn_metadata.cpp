@@ -14,6 +14,8 @@
  */
 
 #include "l0_quant_flash_attn_metadata.h"
+#include <array>
+#include <memory>
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"

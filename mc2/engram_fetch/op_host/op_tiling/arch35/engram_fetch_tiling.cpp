@@ -626,10 +626,18 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
 static void SetTilingKey(gert::TilingContext *context, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
-    const uint64_t tilingKey =
-        isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE) : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
+    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+    auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+    bool hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
+                 fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
+                 fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
+                                            GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d).", tilingKey, isTraining);
+    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, hasSf=%d).", tilingKey, isTraining,
+            static_cast<int32_t>(hasSf));
 }
 
 /**

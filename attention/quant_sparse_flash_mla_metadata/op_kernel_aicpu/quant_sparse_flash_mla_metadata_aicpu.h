@@ -29,6 +29,7 @@ namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
 constexpr uint32_t COST_WEIGHT_M = 6U;
 constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCTION_PARTS = 32U;
 constexpr bool ORI_KV = false;
 constexpr bool CMP_KV = true;
 constexpr uint32_t NO_MASK = 0;
@@ -117,6 +118,7 @@ struct SplitResult {
     uint32_t numOfFdHead{0U};                        // 归约任务数量
     uint32_t maxS2SplitNum{0U};                      // 单个归约任务最大分核数量
     uint32_t maxS2GBaseNum{0U};                      // 单个核最大s2基本块数量
+    uint32_t maxS2LoopNum{0U};                       // 单个核最大s2计算轮次数量
     FlashDecodeResult fdRes{0U, 0U};                 // FD信息
 
     SplitResult(uint32_t aicNum, uint32_t aivNum)
@@ -151,6 +153,7 @@ struct SplitInfo {
 struct CostInfo {
     std::vector<int64_t> bN2CostOfEachBatch{};          // 整个batch的开销
     std::vector<uint32_t> bN2BlockOfEachBatch{};        // 整个batch的开销
+    std::vector<uint32_t> bN2S2LoopOfEachBatch{};       // 整个batch的s2计算轮次数量
     std::vector<int64_t> bN2LastBlockCostOfEachBatch{}; // batch最后一块的开销
     uint32_t totalBlockNum{0U};
     int64_t totalCost{0};
@@ -159,6 +162,7 @@ struct CostInfo {
     explicit CostInfo(uint32_t batchSize)
         : bN2CostOfEachBatch(batchSize),
           bN2BlockOfEachBatch(batchSize),
+          bN2S2LoopOfEachBatch(batchSize),
           bN2LastBlockCostOfEachBatch(batchSize)
     {}
 };
@@ -212,7 +216,8 @@ struct S1GCache {
     int64_t cmpS2TailSize{0};
     uint32_t actOriS2Size{0};
     uint32_t actCmpS2Size{0};
-    uint32_t reductionTileSize{0};
+    uint32_t s2Loop{0U};
+    uint32_t reductionBlockSize{0U};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -220,6 +225,7 @@ struct CoreCache {
     int64_t costLimit{0}; // 负载上限
     int64_t cost{0};      // 已分配负载
     uint32_t block{0U};   // 已分配块数
+    uint32_t s2Loop{0U};  // 已分配s2计算轮次数量
 };
 
 // 分核功能模块内部使用：记录分配过程中的上下文信息
@@ -235,6 +241,7 @@ struct AssignContext {
 
     int64_t bN2Cost{0};
     uint32_t bN2Block{0U};
+    uint32_t bN2S2Loop{0U};
     bool isFinished{false};
     BatchCache batchCache{};
     S1GCache s1GCache{};
@@ -302,12 +309,14 @@ private:
     void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
     int64_t CalcCurBlockCost(const AssignContext &assignContext);
+    uint32_t CalcCurBlockS2Loop(const AssignContext &assignContext);
     void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
     void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignBlocksToCore(const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);
 
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
+    bool IsFirstReductionBlock(const AssignContext &assignContext, const SplitResult &splitRes);
     void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
 
     // main
@@ -369,6 +378,7 @@ private:
     bool isSplitG_ = false;
     bool isSparseOriKv_ = false;
     bool isSparseCmpKv_ = false;
+    uint32_t remainedBlockNum_ = 0U;
 
 private:
     enum class ParamId : uint32_t {

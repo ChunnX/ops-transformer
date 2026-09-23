@@ -12,6 +12,12 @@
 
 """Convert pytests TestCases dict → TTK E2E CSV.
 
+Cases call the installed torch.ops.cann_ops_transformer API directly;
+pass --plugin <assets directory> without adding assets to PYTHONPATH.
+
+Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
+The generator always emits dynamic metadata slots.
+
 Usage:
     # 默认: 读取 functional_stc 用例, 输出到 testcase/flash_attn_stc.csv
     python3 gen_cases.py
@@ -42,7 +48,7 @@ case_loader.normalize_params), computes tensor shapes, and writes a
 TTK E2E CSV file compatible with:
     python3 -m ttk e2e -i flash_attn_stc.csv --plugin .
 
-Tensor order in CSV (matches flash_attn_ttk signature keyword-only order):
+Tensor order in CSV (matches the registered FlashAttn operator schema):
     [0] q              [3] block_table       [6] seqused_q
     [1] k              [4] cu_seqlens_q      [7] seqused_kv
     [2] v              [5] cu_seqlens_kv      [8] sinks
@@ -66,7 +72,7 @@ _PYTESTS = os.path.join(_HERE, "..", "pytests")
 if _PYTESTS not in sys.path:
     sys.path.insert(0, _PYTESTS)
 
-API_NAME = "flash_attn_ttk_ops.flash_attn_ttk"
+API_NAME = "torch.ops.cann_ops_transformer.flash_attn"
 
 HEADER = [
     "testcase_name",
@@ -332,7 +338,7 @@ def _build_attrs(p):
     sq = p.get("seqused_q")
     skv = p.get("seqused_kv")
     # 小整数张量的值不直接放同名 attr: TTK match_overload 会把
-    # "张量参数名出现在 attrs" 重复计入输入数, 超出 flash_attn_ttk 的
+    # "张量参数名出现在 attrs" 重复计入输入数, 超出 FlashAttn 的
     # 11 参数上限导致 PARAM_PLAN_FAILURE。改用 *_values 键,
     # 由 impl/inputs.py customize_inputs 填入对应张量。
     _set("cu_seqlens_q_values", list(cu_q) if cu_q else None)
@@ -422,20 +428,6 @@ def _contiguous_stride(shape):
     return tuple(strides)
 
 
-def _fa_metadata_size(batch, kv_heads):
-    """metadata 槽位的 int32 占位元素数, 逐字镜像 op 公式。
-
-    Mirrors torch_extension/flash_attn.py _calculate_metadata_size:
-        metadata_size = ((36 + 72) * batch * kv_heads + 1) * 16
-        再向上 4096 对齐(元素个数, 非字节数)。
-    """
-    metadata_size = ((36 + 72) * int(batch) * int(kv_heads) + 1) * 16
-    metadata_size += (
-        412  # FAG region (int32 elements), mirrors flash_attn.py FAG_METADATA_SIZE
-    )
-    return ((metadata_size + 4095) // 4096) * 4096
-
-
 def _build_row(case_name, p):
     q_shape, k_shape, v_shape = _qkv_shapes(p)
     bt_shape, cu_q_shape, cu_kv_shape, sq_shape, skv_shape = _aux_shapes(p)
@@ -444,13 +436,8 @@ def _build_row(case_name, p):
     mask_mode = int(p.get("mask_mode", 0))
     attn_mask_shape = (2048, 2048) if mask_mode in (3, 4) else None
 
-    # metadata 槽位(索引10) int32 占位 shape, 大小镜像 op 公式。batch 复用
-    # _build_attrs 已写入的 batch_size attr 语义(非 TND=B, TND=len(cu_q)-1),
-    # 严禁直接取 p["B"] —— TND 下 normalize_params 会把裸 B 强制为 1。
-    # kv_heads 用 N2(非 N1)。
-    batch = int(attrs["batch_size"])
-    kv_heads = int(p.get("N2", p["N1"]))
-    metadata_shape = (_fa_metadata_size(batch, kv_heads),)
+    # Metadata is allocated by npu_preprocess on the execution device.
+    metadata_shape = (-1,)
 
     shapes = [
         q_shape,
@@ -492,8 +479,8 @@ def _build_row(case_name, p):
     view_offsets = [None] * len(shapes)
     if nc_kv_dims is not None:
         for i, shape in enumerate(shapes):
-            if shape is None:
-                continue  # 槽位无张量, TTK 跳过
+            if shape is None or -1 in shape:
+                continue  # Empty and dynamic slots have no host storage override.
             if i in (1, 2):
                 storage_shapes[i], view_strides[i], view_offsets[i] = _nc_fields(
                     shape, nc_kv_dims

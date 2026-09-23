@@ -63,6 +63,11 @@ public:
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = 64;
+    // StageVec1Lse uses two 1 KiB broadcast blocks for max and sum.
+    static constexpr uint32_t FD_VEC1_MAX_ROWS = 32U;
+    static constexpr uint32_t FD_VEC1_BROADCAST_BLOCK_ELEMS =
+        FD_VEC1_MAX_ROWS * AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW;
+    static constexpr uint32_t FD_VEC1_LSE_TMP_ELEMS = 2U * FD_VEC1_BROADCAST_BLOCK_ELEMS;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
@@ -289,6 +294,7 @@ private:
     GlobalTensor<uint32_t> oriKvPhyAddrGm;
     GlobalTensor<uint32_t> cmpKvPhyAddrGm;
 
+    StaticBuffer<float> fdLseTmpUb;
     StaticBuffer<T> commonUb;
     StaticBuffer<T> sinksUb;
     StaticBuffer<Q_T> stage1OutBufs[2];
@@ -749,7 +755,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(Loca
     }
     int64_t sinksOffset = 0;
     if constexpr (!IS_SPLIT_G) {
-        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize; // 2：判断块索引的奇偶性
+        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
     } else {
         sinksOffset = runInfo.goIdx;
         if (constInfo.subBlockIdx == 1) {
@@ -820,7 +826,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageBatchConsistencyVec1Lse(
         AttentionCommon::StageVec1Lse(stagingLayout, intraCoreCombineBase, GetIntraCoreWorkspaceIdx(runInfo, constInfo),
                                       GetFaStagingMOffset(runInfo, constInfo), runInfo.halfMRealSize, maxUb, sumUb,
                                       tmpUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
-        SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+        // 零行 AIV 的 Vec2 会提前返回，不会等待此事件，因此不发送信号。
+        if (runInfo.halfMRealSize > 0) {
+            SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+        }
     } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
         StageCrossCoreVec1Lse(maxUb, sumUb, runInfo, constInfo);
     }
@@ -837,7 +846,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageLegacyVec1Lse(LocalTenso
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(),
                                                              AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                              AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    LocalTensor<float> tmpUb = this->stage2OutBufs.tensor.template ReinterpretCast<float>();
+    LocalTensor<float> tmpUb = this->fdLseTmpUb.tensor;
     AttentionCommon::StageVec1Lse(stagingLayout, fdStagingBase, GetCrossCoreWorkspaceIdx(runInfo),
                                   GetFaStagingMOffset(runInfo, constInfo), static_cast<uint32_t>(runInfo.halfMRealSize),
                                   maxUb, sumUb, tmpUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
@@ -1124,10 +1133,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
             uint32_t smlaWorkspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
             int64_t smlaStagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-            AttentionCommon::StageVec2PartialO<T>(stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset,
-                                                  static_cast<uint32_t>(runInfo.vec2MRealSize),
-                                                  static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb,
-                                                  INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+            AttentionCommon::StageVec2PartialOAndWait<T>(
+                stagingLayout, stagingOutGm, smlaWorkspaceIdx, smlaStagingMOffset,
+                static_cast<uint32_t>(runInfo.vec2MRealSize), static_cast<uint32_t>(constInfo.dSizeV), smlaVec2ResUb,
+                INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, smlaVec2ResUb, 0, smlaVec2CalcSize);
         }
@@ -1351,6 +1360,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer(uint32_t &u
         batchReduceTmpUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 768),
                             0}; // 768：batchReduceTmpUb申请内存大小为768个float
         ubAddr += 768U * sizeof(float);
+    } else {
+        // 普通 FD 即使不向调用方返回 softmax LSE，也需要暂存 max 和 sum。
+        fdLseTmpUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, FD_VEC1_LSE_TMP_ELEMS), 0};
+        ubAddr += FD_VEC1_LSE_TMP_ELEMS * sizeof(float);
     }
     softmaxExpBufs[0] = {LocalTensor<T>(TPosition::VECIN, ubAddr, softmaxBufSize / sizeof(T)), 0};
     ubAddr += softmaxBufSize;
