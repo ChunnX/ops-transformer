@@ -16,7 +16,8 @@ REPO_ROOT=$(dirname "$SCRIPT_DIR")
 
 FORMAT_DIR="${1:-${REPO_ROOT}}"
 if [[ ! -d ${FORMAT_DIR} ]]; then
-    echo "Please specify a directory."
+    echo "Error: directory not found: ${FORMAT_DIR}" >&2
+    exit 1
 fi
 
 CLANG_FORMAT="${CLANG_FORMAT:-clang-format}"
