@@ -22,8 +22,8 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
 void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue);
 aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outArray);
 
-void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
-                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder);
+aclnnStatus FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
+                                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
 // TensorV2 is required to retain view storage/offset/stride metadata.
 bool NnopbaseSupportTensorV2() __attribute__((weak));

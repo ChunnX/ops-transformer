@@ -117,7 +117,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
-    FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    ret = FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    if (ret != ACLNN_SUCCESS) {
+        aclDestroyTensor(fakeActualSeqLengthsOptional);
+        aclDestroyTensor(fakeActualSeqLengthsKvOptional);
+        aclDestroyTensor(fakeActualSharedPrefixLenOptional);
+        return ret;
+    }
 
     ret = aclnnInnerFusedInferAttentionScoreTensorGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, fakeActualSeqLengthsOptional,
@@ -202,9 +208,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
-    FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    aclnnStatus ret = FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
 
-    aclnnStatus ret = InnerFusedInferAttentionScoreV4GetWorkspaceSize(
+    ret = InnerFusedInferAttentionScoreV4GetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
