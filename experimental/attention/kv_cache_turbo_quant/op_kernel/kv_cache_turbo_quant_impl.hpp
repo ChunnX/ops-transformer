@@ -281,30 +281,39 @@ public:
         }
     }
 
-    // Weighted 8-lane fold of a whole batch: dst[n*KCTQ_D + 8*c] = sum_l src[n*KCTQ_D + 8c + l]*2^(BITS*l).
-    // One repeat is restricted to a single 32B block (mask = 8) and every repeat writes its single
-    // sum one 32B block further (dstRepStride = 1), so chunk c of row n lands at element
-    // n*KCTQ_D + 8*c. That spread layout is what the byte-wise store needs: DataCopyPad can only
-    // stride in 32B blocks, so the packed bytes of a chunk have to start on a block boundary.
+    // Weighted 8-lane fold of a whole batch: dst[8*k + j] = sum_l src[64*k + 8*j + l]*2^(BITS*l).
+    // One repeat carries 8 blocks (mask = 64) and its eight sums are written consecutively
+    // (dstRepStride = 1), so the folded values come out compact, eight chunks per 32B block.
     __aicore__ inline void FoldChunks(const LocalTensor<float> &dst, const LocalTensor<float> &scratch,
                                       const LocalTensor<float> &src, const LocalTensor<float> &weights,
-                                      uint32_t lanes, uint32_t chunks)
+                                      uint32_t lanes)
     {
         Mul(scratch, src, weights, lanes);
         PipeBarrier<PIPE_V>();
-        BlockReduceSum<float>(dst, scratch, static_cast<int32_t>(chunks), 8, 1, 1, 1);
+        BlockReduceSum<float>(dst, scratch, static_cast<int32_t>(lanes / 64U), 64, 1, 1, 8);
         PipeBarrier<PIPE_V>();
     }
 
-    // Store the packed chunk bytes: nBytes are taken from the head of every 32B block of `src`
-    // (one chunk per block) and appended to gm. The batch is contiguous in gm as well as one chunk
-    // per 32B block in UB, so a single call stores a whole batch.
+    // Spread compact chunk words so that chunk m starts at element 8*m (byte 32*m). The byte wise
+    // store needs that: DataCopyPad can only stride in whole 32B blocks, so the packed bytes of a
+    // chunk have to start on a block boundary. Each Brcb repeat copies 8 source words, one per
+    // 32B block, so it takes chunks/8 repeats.
+    __aicore__ inline void SpreadChunks(const LocalTensor<int32_t> &dst, const LocalTensor<int32_t> &src,
+                                        uint32_t chunks)
+    {
+        Brcb(dst, src, static_cast<uint8_t>(chunks / 8U), BrcbRepeatParams(1, 8));
+        PipeBarrier<PIPE_V>();
+    }
+
+    // Store the packed chunk bytes of the 1bit and 3bit layouts: `blockBytes` bytes are taken from
+    // the head of every 32B block of `src` and appended to gm. The batch is contiguous in gm as
+    // well as one chunk per 32B block in UB, so a single call stores a whole batch.
     __aicore__ inline void StoreChunks(const GlobalTensor<uint8_t> &gm, uint64_t gmOffset,
                                        const LocalTensor<int32_t> &src, uint32_t nChunks,
-                                       uint32_t nBytes)
+                                       uint32_t blockBytes)
     {
         LocalTensor<uint8_t> bytes = src.ReinterpretCast<uint8_t>();
-        DataCopyExtParams cp{static_cast<uint16_t>(nChunks), nBytes, 0, 0, 0};
+        DataCopyExtParams cp{static_cast<uint16_t>(nChunks), blockBytes, 0, 0, 0};
         DataCopyPad(gm[gmOffset], bytes, cp);
     }
 
@@ -451,19 +460,18 @@ public:
             Duplicate(idx, 0.0f, KCTQ_BATCH_LANES);
             Duplicate(prim, CodeBook<BITS>::kLevel[0], KCTQ_BATCH_LANES);
             for (uint32_t k = 1; k < kLevels; ++k) {
-                // boundary = 0.5 * (level[k-1] + level[k]), computed exactly like the reference
+                // boundary = 0.5 * (level[k-1] + level[k]), computed exactly like the reference.
+                // Vector instructions execute in issue order on one pipe, so the back-to-back
+                // steps below need no barrier; only the scalar constant changes per segment.
                 const float boundary =
                     (CodeBook<BITS>::kLevel[k - 1] + CodeBook<BITS>::kLevel[k]) * 0.5f;
                 Adds(mask, y, -boundary, KCTQ_BATCH_LANES);
-                PipeBarrier<PIPE_V>();
                 Muls(mask, mask, KCTQ_STEP_SCALE, KCTQ_BATCH_LANES);
                 Adds(mask, mask, -1.0f, KCTQ_BATCH_LANES);
                 Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
                 Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES);
-                PipeBarrier<PIPE_V>();
                 Add(idx, idx, mask, KCTQ_BATCH_LANES);
                 Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
-                PipeBarrier<PIPE_V>();
             }
             PackIdx(row0, validRows, idx);
 
@@ -516,19 +524,21 @@ public:
         LocalTensor<float> wv = Slice(kSliceTmp);
         LocalTensor<float> cv = Slice(kSliceCv);
         LocalTensor<float> ciF = Slice(kSliceCi);
+        LocalTensor<float> spreadF = Slice(kSliceCiHi);
         LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
+        LocalTensor<int32_t> spread = spreadF.ReinterpretCast<int32_t>();
 
-        FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES, kChunksPerBatch);
+        FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
             // A 4bit chunk needs 32 bits, which fp32 cannot hold exactly, so the two 16bit halves
-            // are folded separately and recombined in the integer domain. The vector shift/or only
-            // acts correctly when the element count is a multiple of 64, which the batch always is.
+            // are folded separately and recombined in the integer domain. The 32bit words are
+            // already the little endian output bytes, so the batch leaves in one contiguous copy.
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
             LocalTensor<float> cvh = Slice(kSliceCvHi);
             LocalTensor<float> wvh = Slice(kSliceWork);
             LocalTensor<float> cihF = Slice(kSliceCiHi);
             LocalTensor<int32_t> cih = cihF.ReinterpretCast<int32_t>();
-            FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES, kChunksPerBatch);
+            FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES);
             Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
@@ -536,15 +546,28 @@ public:
             PipeBarrier<PIPE_V>();
             Add(ci, ci, cih, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            if (validRows > 0U) {
+                LocalTensor<uint8_t> bytes = ciF.ReinterpretCast<uint8_t>();
+                DataCopyExtParams cp{1, validRows * kIdxBytesPerRow, 0, 0, 0};
+                DataCopyPad(idxGm_[static_cast<uint64_t>(row0) * kIdxBytesPerRow], bytes, cp);
+            }
+        } else if constexpr (BITS == 4) {
+            // unreachable: 4bit is handled by the split chunk branch above
         } else {
+            // 1bit / 2bit / 3bit: the chunk width is not a power of two (or the value would not fit
+            // a signed 16bit word), so the words cannot be narrowed to a packed element type;
+            // spread them one per 32B block and store strided.
             Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-        }
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        if (validRows > 0U) {
-            StoreChunks(idxGm_, static_cast<uint64_t>(row0) * kIdxBytesPerRow, ci,
-                        validRows * kChunksPerRow, kIdxBytesPerRow / kChunksPerRow);
+            SpreadChunks(spread, ci, kChunksPerBatch);
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            if (validRows > 0U) {
+                StoreChunks(idxGm_, static_cast<uint64_t>(row0) * kIdxBytesPerRow, spread,
+                            validRows * kChunksPerRow, kIdxBytesPerRow / kChunksPerRow);
+            }
         }
         PipeBarrier<PIPE_ALL>(); // drain the copy before the next batch reuses the slices
     }
@@ -554,8 +577,10 @@ public:
     {
         LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
         LocalTensor<float> cv = Slice(kSliceCv);
-        LocalTensor<float> ciF = Slice(kSliceCi);
-        LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
+        LocalTensor<float> hF = Slice(kSliceCvHi);
+        LocalTensor<half> h8 = hF.ReinterpretCast<half>();
+        LocalTensor<float> uF = Slice(kSliceCiHi);
+        LocalTensor<uint8_t> u8 = uF.ReinterpretCast<uint8_t>();
 
         for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
             const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
@@ -576,18 +601,21 @@ public:
             Adds(mask, mask, 1.0f, KCTQ_BATCH_LANES);
             Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
             Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES); // 1[p >= 0]
-            PipeBarrier<PIPE_V>();
             // The 8 sign bits of every chunk fold into one byte through the same weighted block
-            // reduction the index packer uses, values stay below 2^8 and are exact in fp32.
-            FoldChunks(cv, wv, mask, wq, KCTQ_BATCH_LANES, kChunksPerBatch);
-            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+            // reduction the index packer uses; values stay below 2^8 and are exact in fp32.
+            FoldChunks(cv, wv, mask, wq, KCTQ_BATCH_LANES);
+            // A packed sign byte is a power of two bytes wide, so the batch narrows through half
+            // (exact for integers this small) into a contiguous byte run and leaves in one copy.
+            // Going through half is what avoids the per chunk 32B block store of the 3bit layout.
+            Cast(h8, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+            PipeBarrier<PIPE_V>();
+            Cast(u8, h8, RoundMode::CAST_NONE, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             if (validRows > 0U) {
-                // one packed sign byte per chunk, one chunk per 32B block
-                StoreChunks(qjlOutGm_, static_cast<uint64_t>(row0) * td_->qjlBytesPerRow, ci,
-                            validRows * kChunksPerRow, 1U);
+                DataCopyExtParams cpQjl{1, validRows * td_->qjlBytesPerRow, 0, 0, 0};
+                DataCopyPad(qjlOutGm_[static_cast<uint64_t>(row0) * td_->qjlBytesPerRow], u8, cpQjl);
             }
             PipeBarrier<PIPE_ALL>(); // drain the copy before the next batch reuses the slices
         }
