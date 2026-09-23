@@ -848,7 +848,7 @@ struct FitBalanceCalibration {
     //    可省尾部, 省略的尾部字段自动取 NSDMI 默认值）——
     struct MatmulFit {
         // 键维度裁定(§4.37 缺陷根治, 2026-09-22): 不含 C 侧字节数——glue 恒 cType=aType,
-        // 运行时 cBytes 恒等于 aBytes(零信息量冗余维度, 假设/真实口径曾在其上分叉致 cpc 缺陷);
+        // 运行时 cBytes 恒等于 aBytes(零信息量冗余维度, 假设/真实口径曾在其上分叉致算力查表缺陷);
         // 物理上 C dtype 只影响写出带宽不影响 MACs/cycle(老表 _1/_2 行同值 8192 佐证)。
         // 未来 outputDtypeSize 口径独立化(真按输出计)且重标定发现 C 影响算力时, 再按独立 CR 加回。
         struct CubeCalc {
@@ -1075,17 +1075,17 @@ inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult 
         return serialTotalTime; // 单块即 NoCut 候选
     }
     const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
-    const double tCommN = ctx.commPerf.TotalCommTime(mValue, cut.totalTileCnt);
+    const double totalCommTime = ctx.commPerf.TotalCommTime(mValue, cut.totalTileCnt);
     const uint64_t firstLen = (cut.numShortTile > 0U && !cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
     const uint64_t lastLen = (cut.numShortTile > 0U && cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
     if (ctx.order == CommComputeOrder::COMM_FIRST) {
         const double commFirst = ctx.commPerf.CommTime(firstLen);
         const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
-        return commFirst + std::max(tCommN - commFirst, totalMmTime - mmLast) + mmLast;
+        return commFirst + std::max(totalCommTime - commFirst, totalMmTime - mmLast) + mmLast;
     }
     const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
     const double commLast = ctx.commPerf.CommTime(lastLen);
-    return mmFirst + std::max(totalMmTime - mmFirst, tCommN - commLast) + commLast;
+    return mmFirst + std::max(totalMmTime - mmFirst, totalCommTime - commLast) + commLast;
 }
 
 inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t mValue)
@@ -1143,15 +1143,15 @@ inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &
     tilingM.cutRes.totalTileCnt = tilingM.cutRes.numLongTile + tilingM.cutRes.numShortTile;
 }
 
-// 键控维度: isAg = (通信原语 == ALL_GATHER)。AG 语义——本卡 A 块已在手:
+// 键控维度: isAllGather = (通信原语 == ALL_GATHER)。AllGather 语义——本卡 A 块已在手:
 // 首块计算无通信依赖(E5), 长块通信掩盖的是本地首轮计算而非短块(E19), 短块恒后置(E4)
 inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 {
-    const bool isAg = (ctx.commPrimitive == CommPrimitive::ALL_GATHER);
+    const bool isAllGather = (ctx.commPrimitive == CommPrimitive::ALL_GATHER);
 
     // ---- ① Estimate: 公共骨干(E1) + E2 总量倍数(ctx.mmRankMul, InitCtx 已派生) ----
-    const auto est = EstimateTotalTimes(ctx);
-    if (isAg) {
+    const auto estimate = EstimateTotalTimes(ctx);
+    if (isAllGather) {
         // E5: 首轮独立计算的 L2 利用率与聚合后不同(frontUtil 修正)
         const double frontUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.mValue, 1,
                                                              MatmulPerfConst::FRONT_UTIL_EXPONENT_COEFFICIENT);
@@ -1163,9 +1163,9 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         ctx.tilingM.cutRes.shortTileAtBack = true; // E4: AG 恒后置
     } else if (ctx.order == CommComputeOrder::COMPUTE_FIRST) {
         // 先行段为瓶颈 → 短块后置(短块放另一端, 由长块掩盖)
-        ctx.tilingM.cutRes.shortTileAtBack = (est.totalMatmulTime >= est.totalTpTime);
+        ctx.tilingM.cutRes.shortTileAtBack = (estimate.totalMatmulTime >= estimate.totalTpTime);
     } else {
-        ctx.tilingM.cutRes.shortTileAtBack = (est.totalTpTime > est.totalMatmulTime);
+        ctx.tilingM.cutRes.shortTileAtBack = (estimate.totalTpTime > estimate.totalMatmulTime);
     }
 
     // ---- ② SetShort: 短块落位(minTileLen 为短块长度种子; NoCut 几何门在落位后) ----
@@ -1179,7 +1179,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     }
 
     // ---- ③ SetLong: E19(AG 键) 长块通信掩盖本地首轮计算 / E18 公共双向配平 ----
-    if (isAg) {
+    if (isAllGather) {
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
     } else {
         BalanceLongTileLen(ctx); // 乘数 ctx.mmRankMul(老代码 A2A 曾误用管线系数 rankTileNum)
@@ -1189,8 +1189,8 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const CommCutResult afterLong = ctx.tilingM.cutRes;
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
-    const bool goodLin = isAg ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
-    ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg); // localAtFront: AG 前端有本地块
+    const bool goodLinearity = isAllGather ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
+    ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isAllGather); // localAtFront: AllGather 前端有本地块
     MergeEqualTiles(ctx.tilingM);
 
     // ---- ⑤ 轮数搜索 + 切分收益门控(§4.37.1): 把每轮启动开销纳入切分决策 ----
@@ -1206,22 +1206,22 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     // 长短结构随预算重新整形), T_cut 择优; 全部候选 ≥ T_serial → NoCut。
     // 成本: N₀ ≤ MAX_COMM_ROUNDS(63), 每档纯整数重切 O(块数)——host 侧微秒级。
     const uint64_t mValue = ctx.matmulPerf.mmShapeInfo_.mValue;
-    const double tSerial = ctx.commPerf.TotalCommTime(mValue, 1U) + est.totalMatmulTime;
+    const double serialTotalTime = ctx.commPerf.TotalCommTime(mValue, 1U) + estimate.totalMatmulTime;
     CommCutResult bestCut = ctx.tilingM.cutRes; // 初次切分(N₀ 轮, 配平产出)即候选
-    double bestT = EstimateCutTotalTime(ctx, bestCut, est.totalMatmulTime, tSerial);
+    double bestTime = EstimateCutTotalTime(ctx, bestCut, estimate.totalMatmulTime, serialTotalTime);
     for (uint64_t budget = 2U; budget < bestCut.totalTileCnt; ++budget) {
         ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
         ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
-        ctx.tilingM.FitTileLengthDiscrete(goodLin, isAg);
+        ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isAllGather);
         MergeEqualTiles(ctx.tilingM);
-        const double t = EstimateCutTotalTime(ctx, ctx.tilingM.cutRes, est.totalMatmulTime, tSerial);
-        if (t < bestT) {
-            bestT = t;
+        const double cutTime = EstimateCutTotalTime(ctx, ctx.tilingM.cutRes, estimate.totalMatmulTime, serialTotalTime);
+        if (cutTime < bestTime) {
+            bestTime = cutTime;
             bestCut = ctx.tilingM.cutRes;
         }
     }
     ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 恢复默认轮次预算
-    if (bestT >= tSerial) {
+    if (bestTime >= serialTotalTime) {
         ctx.tilingM.NoCutTiling(); // 全部候选不敌串行——启动税买不回重叠收益
     } else {
         ctx.tilingM.cutRes = bestCut;
