@@ -395,9 +395,8 @@ public:
         l1ABufId = (l1ABufId + 1) % MXFP8::L1_KV_BUF_CNT;
     }
 
-    __aicore__ inline void PadPS2NotAlign64(uint32_t s2Align64, uint32_t s2Align32, uint32_t embedReal, uint32_t pSlot)
+    __aicore__ inline void PadPS2NotAlign64(uint32_t s2Align64, uint32_t s2Align32, uint32_t pSlot)
     {
-        (void)embedReal;
         // L1 P 是 128 行 NZ、qs 方向 4 个 FP8 C0。pad 的是每面 kvs[align32, align64)。
         AscendC::InitConstValueParams<uint16_t> PL1InitParams(1, static_cast<uint16_t>(s2Align64 - s2Align32), 0,
                                                               MXFP8::ZERO_FILL_PATTERN);
@@ -410,13 +409,11 @@ public:
         }
     }
 
-    __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64, uint32_t curBaseTileSize, uint32_t embedReal,
-                                            uint32_t vSlot)
+    __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64, uint32_t curBaseTileSize, uint32_t vSlot)
     {
-        // mxfp4：halfEmbed = ROW_SUM_NUM/2，始终按 D=128 两面清尾。
-        // fp8 C0=32 → 4 面覆盖 D=128；D=64 的 GM 只占前 2 面，后 2 面写在 32KB KV 槽余量上
-        // （与 mxfp4 D=64 把第二面写进槽余量同构），LoadV kStep 仍按实际 dAct。
-        (void)embedReal;
+        // halfEmbed = ROW_SUM_NUM/2，始终按 D=128 两面清尾。
+        // fp8 C0=32 → 4 面覆盖 D=128；D=64 的 GM 只占前 2 面，后 2 面写在 32KB KV 槽余量上。
+        // LoadV kStep 仍按实际 dAct。
         AscendC::InitConstValueParams<uint16_t> kvL1InitParams(1, static_cast<uint16_t>(s2Align64 - curBaseTileSize), 0,
                                                                MXFP8::ZERO_FILL_PATTERN);
         uint32_t planeElems = s2Align64 * MXFP8::FP8_C0_ELEMS;
@@ -428,7 +425,7 @@ public:
         }
     }
 
-    // P5：只发 GM→L1（even 256 / 尾块 128），不 Wait MTE2、不占 L0。odd 直接 return。
+    // 只发 GM→L1（even 256 / 尾块 128），不 Wait MTE2、不占 L0。odd 直接 return。
     // kernel 在 Wait(V2_C2)/pscale 之前调用，让 V 的 MTE2 和 AIV rescale 重叠。
     template <class TensorV, class TaskInfoT, class TileInfoT>
     __aicore__ inline void PrefetchV(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
@@ -461,7 +458,7 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
         if (pairRows != pairAlign64) {
-            PadVS2NotAlign64(pairAlign64, pairRows, embedReal, vSlot);
+            PadVS2NotAlign64(pairAlign64, pairRows, vSlot);
         }
 
         auto l1ATensorTla = tla::MakeTensor(
@@ -486,7 +483,7 @@ public:
         l1ABufId = (l1ABufId + 1) % MXFP8::L1_KV_BUF_CNT;
     }
 
-    // P5：等本拍 V 的 MTE2 完成后 LoadV/mmad。P pad 每 128-tile 一次。odd 复用 even 的 L1。
+    // 等本拍 V 的 MTE2 完成后 LoadV/mmad。P pad 每 128-tile 一次。odd 复用 even 的 L1。
     template <class TensorC, class TaskInfoT, class TileInfoT>
     __aicore__ inline void ComputePV(TensorC &ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT &delay12TileInfo,
                                      TaskInfoT &delay12TaskInfo)
@@ -502,8 +499,7 @@ public:
         uint32_t mMmad = MXFP8::PV_MMAD_M_DIM;
 
         if (delay12TileInfo.kvsActBaseTileAlign32 != delay12TileInfo.kvsActBaseTileAlign64) {
-            PadPS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, delay12TileInfo.kvsActBaseTileAlign32, embedReal,
-                             pSlot);
+            PadPS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, delay12TileInfo.kvsActBaseTileAlign32, pSlot);
         }
 
         if (!pairOdd) {
@@ -571,7 +567,7 @@ protected:
 
     uint32_t pvL0abBufId = 0;
     uint32_t &l1ABufId;
-    // P1：偶 tile V gather 所用的 L1 槽和整槽 S2 对齐，奇 tile LoadV 复用。
+    // 偶 tile V gather 所用的 L1 槽和整槽 S2 对齐，奇 tile LoadV 复用。
     uint32_t pairVSlot_ = 0;
     uint32_t pairVL1Align64_ = 0;
 };

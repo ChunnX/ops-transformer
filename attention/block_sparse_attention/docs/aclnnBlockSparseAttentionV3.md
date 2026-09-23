@@ -661,11 +661,11 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 - qInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - kvInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - 当前query、key、value的InputLayout必须保持一致。
-- 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
+- 输入query、key、value的数据类型必须一致。非量化只支持FLOAT16和BFLOAT16；quantMode=1/2/3/4 的 dtype 以各节为准。quantMode=4 的 query/key/value 为 FLOAT8_E4M3FN，scale 为 FLOAT8_E8M0。
 - query、key、value的D轴当前仅支持配置为64或128
 - blockShapeOptional如果传入，则必须包含两个元素[blockShapeX, blockShapeY]，且值必须大于0。blockShapeX/blockShapeY在不同产品上的倍数约束如下：
   <!-- npu="950" id7 -->
-  - 在<term>Ascend 950PR/Ascend 950DT</term>上：blockShapeY须为16的倍数；MXFP4量化（quantMode=2/3）时，blockShapeX和blockShapeY均只支持64的倍数；MXFP8量化（quantMode=4）时，blockShapeX仅支持64或128，blockShapeY须为64的倍数。
+  - 在<term>Ascend 950PR/Ascend 950DT</term>上：blockShapeY须为16的倍数；MXFP4量化（quantMode=2/3）时，blockShapeX和blockShapeY均只支持64的倍数；MXFP8量化（quantMode=4）时，blockShapeX和blockShapeY均仅支持64或128。
   <!-- end id7 -->
   <!-- npu="910b,A3" id8 -->
   - 在<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>上：blockShapeY须为128的倍数。
@@ -731,10 +731,10 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 
   - 仅Ascend 950PR/Ascend 950DT支持
   - 输入 query/key/value 为 FLOAT8_E4M3FN，scale 为 FLOAT8_E8M0
-  - blockShapeX 仅支持 64 或 128；blockShapeY 须为 64 的倍数
+  - blockShapeX 与 blockShapeY 均仅支持 64 或 128
   - D仅支持64/128
   - attentionOut数据类型仅支持FLOAT16或BFLOAT16
-  - innerPrecise 必须为 4；暂不支持attenMaskOptional、PagedAttention、softmaxLse等高阶特性
+  - innerPrecise 必须为 4；暂不支持attenMaskOptional、PagedAttention。softmaxLseFlag=1 可以输出 softmaxLse。
   - 仅支持 V3 接口显式传入 quantMode=4，V1/V2 不会自动推断 mxfp8
   - **量化公式**（e4m3 的 emax=8）
     - 以P的量化为例, 其中 $P_{\text{max}}$ 为一个group（32个元素）内元素绝对值的最大值。

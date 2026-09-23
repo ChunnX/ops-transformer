@@ -93,7 +93,7 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2 *pDes
     }
     Muls(curr_group_max, curr_group_max, LN2, preg_all_16bit);
 
-    // mxfp4 even/odd + VL128：4 行×64 打 256B，按 M 拆成 128B 共享 copy 的 256B 槽。
+    // even/odd + VL128：4 行×64 打 256B，按 M 拆成 128B 共享 copy 的 256B 槽。
     // lo qs[0:64) 占 TLA 0-15 / 32-47；hi qs[64:128) 占空出来的 TLA 16-31 / 48-63（+8192）。
     for (uint16_t i = 0; i < GROUP_COUNT; i++) {
         MaskReg preg_valid_max = UpdateMask<half>(MID_VALID_CNT);

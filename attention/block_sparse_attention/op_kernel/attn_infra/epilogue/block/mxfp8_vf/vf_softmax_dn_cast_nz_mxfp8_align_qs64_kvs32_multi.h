@@ -17,7 +17,6 @@
 
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_MULTI_H_
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_MULTI_H_
-// #include "kernel_tensor.h"
 #include "vf_common_def_mxfp8.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 

@@ -2448,7 +2448,8 @@ TEST_F(block_sparse_attention_tiling_ut, softmaxLseFlag_is_not_0_or_1)
 }
 
 // ============================================================================
-// MXFP8 OCP (quantMode=4): blockShapeY 须为 64 倍数。Y=64 通过；Y=32/96 失败。
+// MXFP8 OCP (quantMode=4): host 只要求 blockShapeY 为 64 倍数。Y=64 通过；Y=32/96 失败。
+// 文档约束更紧（X/Y 仅 64 或 128），host 暂不拦截其它 64 倍数。
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A5_mxfp8_ocp_blockShapeY_64)
 {

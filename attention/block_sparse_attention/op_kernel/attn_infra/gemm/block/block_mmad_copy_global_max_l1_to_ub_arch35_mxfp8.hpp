@@ -42,34 +42,26 @@ public:
 
     static constexpr uint8_t VEC0 = 0;
     static constexpr uint8_t VEC1 = 1;
-    static constexpr uint32_t SUB_VEC_NUM = 2;
     static constexpr uint32_t BLOCK_SIZE = 32;
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource)
     {
-        // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
+        // L1 区域顺序：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
         // localGlobalMaxL1 = 256*4
         for (uint32_t i = 0; i < MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_CNT; i++) {
             localGlobalMaxL1[i] = resource.l1Buf.template GetBufferByByte<ElementLocalGlobalMax>(
                 MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
-        // QFA cube 用 TPosition::VECCALC 绝对偏移建 peer UB，copy_cbuf_to_ubuf 才能写到两个 AIV。
+        // Cube 用 TPosition::VECCALC 绝对偏移建 peer UB，copy_cbuf_to_ubuf 才能写到两个 AIV。
         peerGlobalMaxUB = AscendC::LocalTensor<ElementLocalGlobalMax>(
             AscendC::TPosition::VECCALC, NpuArch::Epilogue::Block::MXFP8::UB_PEER_GLOBAL_MAX_BUF_OFFSET,
             L1_SINGLE_GLOBAL_MAX_SIZE * NpuArch::Epilogue::Block::MXFP8::UB_PEER_GLOBAL_MAX_CNT);
     }
     __aicore__ inline ~BlockMmadTla() {}
 
-    template <class TensorGMaxUb, class TileInfoT>
-    __aicore__ inline void operator()(TensorGMaxUb &gMaxUbTensor, TileInfoT &delay3TileInfo)
+    template <class TileInfoT>
+    __aicore__ inline void operator()(TileInfoT &delay3TileInfo)
     {
-        uint32_t blockCount = static_cast<uint32_t>(tla::get<0>(gMaxUbTensor.shape()));
-        uint32_t blockLenPerSubVec = static_cast<uint32_t>(tla::get<1>(gMaxUbTensor.shape())) / SUB_VEC_NUM /
-                                     BLOCK_SIZE * sizeof(ElementLocalGlobalMax);
-
-        (void)gMaxUbTensor;
-        (void)blockCount;
-        (void)blockLenPerSubVec;
 #ifdef __DAV_CUBE__
         AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax0 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx];
         AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax1 =
@@ -78,9 +70,9 @@ public:
             peerGlobalMaxUB[delay3TileInfo.tileMaxIdx * L1_SINGLE_GLOBAL_MAX_SIZE];
 
         // AIC 上 GetSubBlockIdx 恒 0，普通 DataCopy 只写一面且写不到两个 AIV 的 UB。
-        // QFA：L1 row0 → AIV0，row1 → AIV1（UB→L1 写 coord(1-sub)，即交换 peer）。
-        // P2-A：用异步 asc_copy_l12ub，不要 _sync。_sync = copy + pipe_barrier(PIPE_ALL)，
-        // Cube 和 Vec 一起停。完成序靠调用方 CrossCoreSetFlag<PIPE_MTE1>（与 QFA DataCopyL1ToUB 同构）。
+        // L1 row0 → AIV0，row1 → AIV1（UB→L1 写 coord(1-sub)，即交换 peer）。
+        // 用异步 asc_copy_l12ub，不要 _sync。_sync = copy + pipe_barrier(PIPE_ALL)，
+        // Cube 和 Vec 一起停。完成序靠调用方 CrossCoreSetFlag<PIPE_MTE1>。
         constexpr uint16_t burstLen = static_cast<uint16_t>(L1_SINGLE_GLOBAL_MAX_SIZE * sizeof(ElementLocalGlobalMax) /
                                                             BLOCK_SIZE); // 128 half = 8 * 32B
         __ubuf__ void *dst = (__ubuf__ void *)peerGlobalMax.GetPhyAddr();

@@ -58,6 +58,17 @@ public:
     // Q(M) 方向统一 pad 到 128，满足 Fixpipe nSize 32B 倍数约束
     static constexpr uint32_t Q_M_PAD = 128;
 
+    // blockShapeX=64 的满块 qs=64。QK 的 N 用 64，S 写进 128 宽 UB 行的前 64 列。
+    // softmax / pscale / P 拷贝仍按 128 宽；后 64 列不参与有效列。短尾不是 64，继续 align128。
+    template <class TaskInfoT>
+    __aicore__ inline uint32_t QsMmadN(const TaskInfoT &info) const
+    {
+        if (info.qsActBaseTile == 64) {
+            return 64;
+        }
+        return (info.qsActBaseTileAlign128 != 0) ? info.qsActBaseTileAlign128 : info.qsActBaseTileAlign16;
+    }
+
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
     // Event ID：QK 用 2-3，L1 K 复用 MXFP8::KV_EVENT0..3（与 PV 共享）
@@ -247,13 +258,10 @@ public:
     template <class TensorK, class TensorL1K>
     __aicore__ inline void SparseKFusedBaseTileL1FullLoad(
         TensorK gKTensorTla, TensorL1K l1KTensorTla, AscendC::GlobalTensor<uint8_t> gKScale,
-        AscendC::GlobalTensor<int32_t> gSparseBlockIdx, uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
-        uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd, uint32_t nRows,
-        uint32_t embed, uint32_t scaleBufId, uint32_t kvHeadMul, uint32_t firstYBlockIdx, uint32_t firstOriYBlockIdx,
-        uint32_t scaleK)
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx, int64_t kvSeqlen, uint32_t blockShapeY, uint32_t yBlockNumAval,
+        uint32_t yBlockNumRsvd, uint32_t nRows, uint32_t embed, uint32_t scaleBufId, uint32_t kvHeadMul,
+        uint32_t firstYBlockIdx, uint32_t firstOriYBlockIdx, uint32_t scaleK)
     {
-        (void)gatheredKvSTileIdx;
-        (void)kvSBaseTile;
         if (nRows == 0) {
             return;
         }
@@ -356,25 +364,23 @@ public:
 
     // Q → L0B（非转置，带 mx scale；kStart/kCur 沿 D 切段）
     __aicore__ inline void LoadQToL0B(uint32_t qsActBaseTileAlign16, uint32_t kCur, uint32_t qsActBaseTileAlign16L0,
-                                      uint32_t scaleMAlign16, uint32_t scaleK, uint32_t qBufId, uint32_t qkL0abBufId,
-                                      uint32_t kStart)
+                                      uint32_t scaleMAlign16, uint32_t qBufId, uint32_t qkL0abBufId, uint32_t kStart)
     {
         copyL1ToL0BMxQk(l0BTensor[qkL0abBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
                         l1BTensor[qBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
                         l1BScaleTensor[qBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(), qsActBaseTileAlign16,
-                        kCur, qsActBaseTileAlign16L0, scaleMAlign16, scaleK, kStart);
+                        kCur, qsActBaseTileAlign16L0, scaleMAlign16, kStart);
     }
 
     // K → L0A（非转置，带 mx scale，n 方向子切分 + D 方向切段）
     __aicore__ inline void LoadKToL0A(uint32_t nSubRowStart, uint32_t nCur, uint32_t kCur,
-                                      uint32_t kvsActBaseTileAlign16, uint32_t scaleK, uint32_t kBufId,
-                                      uint32_t scaleBufId, uint32_t scaleRowStart, uint32_t qkL0abBufId,
-                                      uint32_t kStart)
+                                      uint32_t kvsActBaseTileAlign16, uint32_t kBufId, uint32_t scaleBufId,
+                                      uint32_t scaleRowStart, uint32_t qkL0abBufId, uint32_t kStart)
     {
         copyL1ToL0AMxQk(l0ATensor[qkL0abBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
                         l1ATensor[kBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
                         l1AScaleTensor[scaleBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(), nSubRowStart, nCur,
-                        kCur, kvsActBaseTileAlign16, scaleK, kStart, scaleRowStart);
+                        kCur, kvsActBaseTileAlign16, kStart, scaleRowStart);
     }
 
     // C = K · Qᵀ；默认整段 D，initC 由调用方传入
@@ -431,7 +437,7 @@ public:
         }
     }
 
-    // P0b：只发 GM→L1（Q 首 tile + 每 tile K），不 Wait MTE2、不占 L0、不推进 kBufId。
+    // 只发 GM→L1（Q 首 tile + 每 tile K），不 Wait MTE2、不占 L0、不推进 kBufId。
     // kernel 在 Wait(V1_C1) 之前调用，让 K 的 MTE2 和 AIV softmax 重叠。
     template <class TensorQ, class TensorK, class TaskInfoT, class TileInfoT>
     __aicore__ inline void PrefetchK(TensorQ &gQTensorTla, TensorK &gKTensorTla,
@@ -442,8 +448,7 @@ public:
                                      uint32_t kvHeadMul, uint32_t qHeadMul)
     {
         uint32_t qsActBaseTile = curTaskInfo.qsActBaseTile;
-        uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
-        uint32_t qsMmadN = (qsActBaseTileAlign128 != 0) ? qsActBaseTileAlign128 : curTaskInfo.qsActBaseTileAlign16;
+        uint32_t qsMmadN = QsMmadN(curTaskInfo);
         int64_t kvSeqlen = curTaskInfo.kvSeqlen;
         uint32_t yBlockNumAval = curTaskInfo.yBlockNumAval;
         uint32_t yBlockNumRsvd = curTaskInfo.yBlockNumRsvd;
@@ -473,7 +478,7 @@ public:
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
         uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
-        // Q 只在 task 首 KV tile 搬。P4：copy 后只 SetFlag；K 发出后再 Wait Q，与 K 的 MTE2 重叠。
+        // Q 只在 task 首 KV tile 搬。copy 后只 SetFlag；K 发出后再 Wait Q，与 K 的 MTE2 重叠。
         if (isFirstKvsTile) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
             if (qsActBaseTile < Q_M_PAD) {
@@ -489,9 +494,9 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
         auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(gatherRows, embed);
         auto l1KTensorTla = tla::MakeTensor(l1ATensor[pairKSlot_], l1KLayout, Arch::PositionL1{});
-        SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx,
-                                       kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd, gatherRows,
-                                       embed, pairKSlot_, kvHeadMul, firstYBlockIdx, firstOriYBlockIdx, scaleK);
+        SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, kvSeqlen,
+                                       blockShapeY, yBlockNumAval, yBlockNumRsvd, gatherRows, embed, pairKSlot_,
+                                       kvHeadMul, firstYBlockIdx, firstOriYBlockIdx, scaleK);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         if (isFirstKvsTile) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
@@ -501,12 +506,10 @@ public:
     }
 
     // 偶拍：LoadK + mmad256 进同一块 L0C S，不碰 UB。kernel 可在 Wait(V1_C1) 之前调用。
-    template <class TaskInfoT, class TileInfoT>
-    __aicore__ inline void ComputeQKMmad256Even(TaskInfoT &curTaskInfo, TileInfoT &curTileInfo, uint32_t embed)
+    template <class TaskInfoT>
+    __aicore__ inline void ComputeQKMmad256Even(TaskInfoT &curTaskInfo, uint32_t embed)
     {
-        uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
-        uint32_t qsMmadN = (qsActBaseTileAlign128 != 0) ? qsActBaseTileAlign128 : curTaskInfo.qsActBaseTileAlign16;
-        uint32_t scaleK = CeilDivision(embed, MXFP8::MX_GROUP_ELEMS);
+        uint32_t qsMmadN = QsMmadN(curTaskInfo);
         uint32_t kSlot = pairKSlot_;
         uint32_t l1KAlign16 = pairKL1Align16_;
         uint32_t l1KEventId = MXFP8::KV_EVENT0 + kSlot;
@@ -519,8 +522,8 @@ public:
         uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-        LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, scaleK, qBufId, L0B_Q_SLOT, 0);
-        LoadKToL0A(0, nCur, embed, l1KAlign16, scaleK, kSlot, kSlot, 0, qkL0abBufId, 0);
+        LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, qBufId, L0B_Q_SLOT, 0);
+        LoadKToL0A(0, nCur, embed, l1KAlign16, kSlot, kSlot, 0, qkL0abBufId, 0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
         // 256 已全部进 L0，奇 tile 不再 LoadK。preload 偶拍在 Wait(V1_C1) 前，必须立刻放 L1。
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
@@ -530,17 +533,13 @@ public:
         qkL0abBufId = (qkL0abBufId + 1) % MXFP8::L0A_QK_BUF_CNT;
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
         pairL0cM_ = nCur;
-        (void)curTileInfo;
     }
 
     // 偶拍：把 L0C S 的前 128 行 Fixpipe 到 UB。不 Set FIX_M，槽留给奇拍第二段。
-    template <class TensorUB, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void EmitFixpipeQK256Even(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, TileInfoT &curTileInfo,
-                                                uint32_t subBlockIdx)
+    template <class TensorUB, class TaskInfoT>
+    __aicore__ inline void EmitFixpipeQK256Even(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, uint32_t subBlockIdx)
     {
-        (void)curTileInfo;
-        uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
-        uint32_t qsMmadN = (qsActBaseTileAlign128 != 0) ? qsActBaseTileAlign128 : curTaskInfo.qsActBaseTileAlign16;
+        uint32_t qsMmadN = QsMmadN(curTaskInfo);
         uint32_t nFix0 = MinU32(MXFP8::QK_HALF_KVS, pairL0cM_);
         EmitFixpipeMm1(qkL0cBufId, 0, nFix0, qsMmadN, ubSTensorTla, subBlockIdx, pairL0cM_, 0, true, false);
     }
@@ -550,13 +549,11 @@ public:
     __aicore__ inline void ComputeQK(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, TileInfoT &curTileInfo,
                                      uint32_t embed, uint32_t subBlockIdx)
     {
-        uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
-        uint32_t qsMmadN = (qsActBaseTileAlign128 != 0) ? qsActBaseTileAlign128 : curTaskInfo.qsActBaseTileAlign16;
+        uint32_t qsMmadN = QsMmadN(curTaskInfo);
         uint32_t kvsActBaseTile = curTileInfo.kvsActBaseTile;
         bool isLastKvsTile = curTileInfo.isLastKvsTile;
         uint32_t gatheredKvSTileIdx = curTileInfo.pvGatheredKvSTileIdx;
 
-        uint32_t scaleK = CeilDivision(embed, MXFP8::MX_GROUP_ELEMS);
         uint32_t l1QEventId = Q_EVENT0 + qBufId;
 
         const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;
@@ -599,8 +596,8 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-            LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, scaleK, qBufId, L0B_Q_SLOT, 0);
-            LoadKToL0A(nSubRowStart, nCur, embed, l1KAlign16, scaleK, kSlot, scaleSlot, scaleRowStart, qkL0abBufId, 0);
+            LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, qBufId, L0B_Q_SLOT, 0);
+            LoadKToL0A(nSubRowStart, nCur, embed, l1KAlign16, kSlot, scaleSlot, scaleRowStart, qkL0abBufId, 0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
             if (nSub + 1 == nLoopNum && !pairEven) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
@@ -654,7 +651,7 @@ protected:
     uint32_t qkL0abBufId = 0;
     uint32_t qkL0cBufId = 0;
     uint64_t softmaxScale_;
-    // P1：偶 tile gather 所用的 L1 槽和整槽行对齐，奇 tile LoadK 复用。
+    // 偶 tile gather 所用的 L1 槽和整槽行对齐，奇 tile LoadK 复用。
     uint32_t pairKSlot_ = 0;
     uint32_t pairKL1Align16_ = 0;
     uint32_t pairL0cM_ = 0;

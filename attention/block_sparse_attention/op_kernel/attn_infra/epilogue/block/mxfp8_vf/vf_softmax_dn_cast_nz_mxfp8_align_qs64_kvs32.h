@@ -17,7 +17,6 @@
 
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_H_
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP8_ALIGN_QS64_KVS32_H_
-// #include "kernel_tensor.h"
 #include "vf_common_def_mxfp8.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 
@@ -34,9 +33,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
-    RegTensor<half> src_n0, src_n1, src_n2, src_n3;
     RegTensor<half> curr_group_max;
-    // RegTensor<half> next_group_max;
     RegTensor<half> group_gmax;
     RegTensor<half> min_val_reg;
     RegTensor<uint8_t> idx_nd2nz;
@@ -49,7 +46,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
     const uint16_t GROUP_COUNT = KvsBaseAlign / ROWS_PER_GROUP;
     const uint16_t ROW_SUB_LOOP = 4;
     const uint16_t ITER_PER_GROUP = ROWS_PER_GROUP / ROW_SUB_LOOP;
-    // uint32_t MID_VALID_CNT = QsBase * (ITER_PER_GROUP - 1);
 
     // ====================== 掩码定义 ======================
     // 向量行宽仍 128 half(256B)，但仅前 64 个元素有效(actQs=64)。
@@ -100,24 +96,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
     // ====================== 核心：双块流水分组循环 ======================
     for (uint16_t i = 0; i < GROUP_COUNT; i++) {
-        // MaskReg preg_valid_max = UpdateMask<half>(MID_VALID_CNT);
-        // MaskNot(preg_invalid_max, preg_valid_max, preg_all_16bit);
-
-        // // 初始化下一个块最大值
-        // Duplicate(next_group_max, MIN_VALUE);
-
         // ========== 第一个内循环：处理偶数子块 j = 0,2,4,6 ==========
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            // uint16_t rowOffset_next = (i + 1) * ROWS_PER_GROUP + j * ROW_SUB_LOOP;
-            // LoadAlign(src_n0, s + (rowOffset_next * QsBase + 0 * QsBase)*2);
-            // LoadAlign(src_n1, s + (rowOffset_next * QsBase + 1 * QsBase)*2);
-            // LoadAlign(src_n2, s + (rowOffset_next * QsBase + 2 * QsBase)*2);
-            // LoadAlign(src_n3, s + (rowOffset_next * QsBase + 3 * QsBase)*2);
-            // Max(src_n0, src_n0, src_n1, preg_valid_max);
-            // Max(src_n2, src_n2, src_n3, preg_valid_max);
-            // Max(next_group_max, next_group_max, src_n0, preg_valid_max);
-            // Max(next_group_max, next_group_max, src_n2, preg_valid_max);
-
             // 当前块计算：FusedExpSub
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + j * ROW_SUB_LOOP;
             LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase) * 2);
@@ -134,18 +114,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
         // ========== 第二个内循环：处理奇数子块 j+1 = 1,3,5,7 ==========
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            // 预计算：下一个块 (i+1) 最大值
-            // uint16_t rowOffset_next = (i + 1) * ROWS_PER_GROUP + (j + 1) * ROW_SUB_LOOP;
-            // LoadAlign(src_n0, s + (rowOffset_next * QsBase + 0 * QsBase)*2);
-            // LoadAlign(src_n1, s + (rowOffset_next * QsBase + 1 * QsBase)*2);
-            // LoadAlign(src_n2, s + (rowOffset_next * QsBase + 2 * QsBase)*2);
-            // LoadAlign(src_n3, s + (rowOffset_next * QsBase + 3 * QsBase)*2);
-
-            // Max(src_n0, src_n0, src_n1, preg_valid_max);
-            // Max(src_n2, src_n2, src_n3, preg_valid_max);
-            // Max(next_group_max, next_group_max, src_n0, preg_valid_max);
-            // Max(next_group_max, next_group_max, src_n2, preg_valid_max);
-
             // 当前块计算：FusedExpSub
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + (j + 1) * ROW_SUB_LOOP;
             LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase) * 2);
@@ -162,19 +130,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
         // ====================== 全局/局部最大值更新 ======================
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(global_max, group_gmax, preg_all_16bit);
-
-        // 下一块最大值归一化
-        // Muls(next_group_max, next_group_max, INV_LN2, preg_valid_max);
-        // Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
-        // Max(group_gmax, group_gmax, next_group_max, preg_valid_max);
-
-        // // 存储下一块最大值到 ulmax (i+1)*128 偏移
-        // StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + ((i + 1) * QsBase), next_group_max,
-        //                                                   preg_valid_max);
-
-        // // 更新当前块最大值，用于下一次循环
-        // Adds(next_group_max, next_group_max, NEG_EIGHT_VALE, preg_all_16bit);
-        // Muls(curr_group_max, next_group_max, LN2, preg_valid_max);
     }
 
     // GroupMaxpadding到64, 使得对应的pscale=0
