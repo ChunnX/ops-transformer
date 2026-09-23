@@ -17,7 +17,7 @@
 #define MIXED_QUANT_SPARSE_FLASH_MLA_METADATA_H
 
 #include <cstdint>
-#include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_kernel_metadata.h"
+#include "../../sparse_flash_mla/op_kernel/arch35/common/smla_metadata_common.h"
 
 namespace optiling {
 
