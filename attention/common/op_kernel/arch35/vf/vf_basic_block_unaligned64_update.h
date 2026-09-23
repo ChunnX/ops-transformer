@@ -48,7 +48,6 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
     RegTensor<float> vreg_pse;
     RegTensor<float> vreg_alibi;
     RegTensor<float> vreg_sel_drop;
-    RegTensor<float> vreg_rowmax_p;
     RegTensor<float> vreg_scale_qk;
     RegTensor<float> vreg_sink_input;
 
@@ -164,19 +163,11 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
+    LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    uint16_t cnt = CeilDivision(m, 64);
-    for (int i = 0; i < cnt; i++) {
-        LoadAlign(vreg_in_max, inMaxUb + i * 64);
-        LoadAlign(vreg_input_max, tmpMaxUb2 + i * 64);            // 获取新的max[s1, 1]
-        Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧max的最大值
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2 + i * 64, vreg_max_new, preg_all);
-    }
-    if constexpr (isMlaFullQuant) {
-        ExpSub(vreg_rowmax_p, vreg_input_max, vreg_max_new, preg_all);
-        Adds(vreg_rowmax_p, vreg_rowmax_p, floatEps, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)pScaleUb, vreg_rowmax_p, preg_all);
-    }
+    LoadAlign(vreg_input_max, tmpMaxUb2);
+    Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all); // 计算新、旧的最大值
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
 
     if constexpr (hasDrop == 1) {
         Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all);
@@ -193,13 +184,12 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum,
                                                                 ureg_exp_sum, 1);
         if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_rowmax_p, pScaleUb + i);
             if constexpr (IsSameType<T2, int8_t>::value) {
-                USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
+                Muls(vreg_exp, vreg_exp, int8MaxValue, preg_ori_src_n);
             } else if constexpr (IsSameType<T2, fp8_e4m3fn_t>::value) {
-                USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
+                Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, preg_ori_src_n);
             } else {
-                USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, preg_ori_src_n);
+                Muls(vreg_exp, vreg_exp, hifp8MaxValue, preg_ori_src_n);
             }
         }
 
@@ -301,7 +291,7 @@ __aicore__ inline void ProcessVec1UpdateImpl64(
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
-    const uint32_t blockStride = (s1BaseSize / ArchInfo::CV_RATIO) | 0x1;
+    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;
     const float dScale = scale * dScaleQK;
     uint32_t pltOriginalN = originN;
@@ -315,14 +305,8 @@ __aicore__ inline void ProcessVec1UpdateImpl64(
     __ubuf__ T *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
     __ubuf__ T *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
     __ubuf__ T *tmpExpSumUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr();
-#if (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
-    const uint32_t tempMaxOffset = s1BaseSize < 64U ? 64U : s1BaseSize;
-    __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + (tempMaxOffset / ArchInfo::CV_RATIO);
-    __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + (tempMaxOffset / ArchInfo::CV_RATIO);
-#else
     __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
-#endif
     __ubuf__ T *qScaleUb = (__ubuf__ T *)queryScaleUb.GetPhyAddr();
     __ubuf__ T *pScaleUb = (__ubuf__ T *)pScaleTensor.GetPhyAddr();
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();

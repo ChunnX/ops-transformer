@@ -101,30 +101,6 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr static AscendC::Reg::CastTrait castTraitZeroMerge = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::SAT,
-    AscendC::Reg::MaskMergeMode::MERGING,
-    AscendC::RoundMode::CAST_ROUND,
-};
-
-#define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \
-    do { \
-        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg); \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
-    } while (0)
-
-#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
-    do { \
-        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg); \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
-    } while (0)
-
-#define USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, MaskReg) \
-    do { \
-        Muls(vreg_exp, vreg_exp, hifp8MaxValue, MaskReg); \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
-    } while (0)
 /* **************************************************************************************************
  * Abs operation: Abs(dst_i, src_i, mask)
  * ************************************************************************************************* */
