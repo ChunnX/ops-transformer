@@ -11,6 +11,8 @@
 # 本目录需接入 ops-tensor 的 Kernel UT 构建（tests/ut/op_kernel/），
 # 通过 -I 将 ops-transformer 的 kernel 目录加入编译搜索路径：
 #   AddOpTestCase(all_to_all_mm_kernel "ascend950pr_9599" "-I<ops-transformer>/mc2/common/op_kernel/apace/kernel/matmul/batch_matmul")
+# 另需 -I op_kernel 根目录：内核 include 的 apace/block/mmad/block_mmad_matmul_basic_splitk.h
+# （splitKIdx 增强版基本 mmad，apace 本地维护）经该路径解析。
 
 if(NOT OPS_TRANSFORMER_ROOT)
     if(OPS_TENSOR_ROOT)
@@ -22,10 +24,11 @@ endif()
 
 set(A2A_MM_KERNEL_DIR
     "${OPS_TRANSFORMER_ROOT}/mc2/common/op_kernel/apace/kernel/matmul/batch_matmul")
+set(OP_KERNEL_ROOT "${OPS_TRANSFORMER_ROOT}/mc2/common/op_kernel")
 
 if(NOT EXISTS "${A2A_MM_KERNEL_DIR}/all_to_all_mm_kernel.h")
     message(WARNING
         "[all_to_all_mm_kernel] all_to_all_mm_kernel.h not found under ${A2A_MM_KERNEL_DIR}; set OPS_TRANSFORMER_ROOT explicitly")
 endif()
 
-AddOpTestCase(all_to_all_mm_kernel "ascend950pr_9599" "-I${A2A_MM_KERNEL_DIR}")
+AddOpTestCase(all_to_all_mm_kernel "ascend950pr_9599" "-I${A2A_MM_KERNEL_DIR} -I${OP_KERNEL_ROOT}")

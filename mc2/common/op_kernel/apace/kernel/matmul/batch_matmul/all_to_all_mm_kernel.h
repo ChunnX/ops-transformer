@@ -24,7 +24,9 @@
 
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "blaze/gemm/block/block_mmad_matmul_basic.h"
+// splitKIdx 增强版基本 mmad（上游 de3bf6f 基线 + L0C 跨调用累加，apace 本地维护，
+// fork 合入上游后切回 "blaze/gemm/block/block_mmad_matmul_basic.h" 并删除该文件）
+#include "apace/block/mmad/block_mmad_matmul_basic_splitk.h"
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_matmul_basic.h"
 #undef WINDOW_LEN

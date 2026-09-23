@@ -68,9 +68,20 @@
    - `isLastSplitK = (splitKIdx == splitKNum_-1)`：只在此 `unitFlag=enable_update`、执行 `CopyL0CToGM`
 4. `NeedProcessBias` 加 `isFirstSplitK`：bias 只在首个 split 加一次
 5. `CopyL1FromGM` 加 `isFirstSplitK`：bias 拷贝也只发生在首个 split
+6. 移除 `operator()` 内的 `kL1_ = Min(oriK, kL1_)` 二次钳制（多 split 调用下会破坏 `Init` 设定值）
 
 > 向后兼容：`splitKNum=1, splitKIdx=0` 时行为与原来完全一致，其它调用方不受影响。
 > L0C ping-pong 只在 `isLastSplitK` 后翻转 → 同块多 split 用同一 L0C 半区累加。
+
+**改动载体（两种，接口一致）**：
+- **fork 分支**：`shiziqito/ops-tensor` 的 `splitk` 分支。注意该分支还包含大量 tensor API 风格迁移
+  （`AscendC::Te::` → `asc::te::`、头文件重命名等），非本算子依赖。
+- **apace 本地副本**（2026-09-23 新增，ST 与 Kernel UT 均使用）：
+  `apace/block/mmad/block_mmad_matmul_basic_splitk.h` = 上游基线 `de3bf6f` + 上述 6 处功能改动
+  （不含风格迁移），内核显式 include（`apace/block/mmad/...` 路径，不遮蔽 blaze 路径），
+  UT 构建 `-I` op_kernel 根目录解析。**ST/UT 从此不依赖 fork 分支**，third_party/ops-tensor
+  保持上游 de3bf6f 即可。fork 合入上游且 `OPTENSOR_TAG_ID` 更新后删除该文件，
+  include 切回 `blaze/gemm/block/block_mmad_matmul_basic.h`。
 
 ### 3.2 非量化 kernel（本目录 `all_to_all_mm_kernel.h`）
 
