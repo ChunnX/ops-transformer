@@ -1026,7 +1026,6 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr &graph, CustomPassContext &passC
         return GRAPH_NOT_CHANGED;
     }
 
-    passContext.SetPassName(kPassName);
     bool changed = false;
     for (auto &groupedMatmulNode : groupedMatmulNodes) {
         auto status = Fusion(graph, groupedMatmulNode, passContext);
