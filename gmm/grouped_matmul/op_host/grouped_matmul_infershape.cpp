@@ -782,7 +782,11 @@ static bool isA8W4AsymmetricQuant(const gert::InferShapeContext *context)
         return false;
     }
     const auto weightAxis = GetWeightAxisInfo(context, weightShape->GetDimNum(), false);
-    if (offsetShape->GetDim(0) == weightShape->GetDim(0) && offsetShape->GetDim(1) == 1 &&
+    auto scaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0);
+    if (scaleShape == nullptr || scaleShape->GetDimNum() != GMM_A8W4_OFFSET_DIM_NUM) {
+        return false;
+    }
+    if (offsetShape->GetDim(0) == weightShape->GetDim(0) && offsetShape->GetDim(1) == scaleShape->GetDim(1) &&
         offsetShape->GetDim(GMM_A8W4_OFFSET_DIM_NUM - 1) == weightShape->GetDim(weightAxis.n)) {
         return true;
     }
@@ -805,6 +809,7 @@ static ge::graphStatus CheckA8W4AsymQuantParams(gert::InferShapeContext *context
     size_t biasDimNum = biasShape->GetDimNum();
     size_t scaleDimNum = scaleShape->GetDimNum();
     int64_t e = weightShape->GetDim(0);
+    int64_t k = xShape->GetDim(1);
     const auto weightAxis = GetWeightAxisInfo(context, weightShape->GetDimNum(), false);
     int64_t n = weightShape->GetDim(weightAxis.n);
     OP_CHECK_IF(
@@ -816,8 +821,9 @@ static ge::graphStatus CheckA8W4AsymQuantParams(gert::InferShapeContext *context
                     context->GetNodeName(), "bias", Ops::Base::ToString(*biasShape).c_str(),
                     Ops::Transformer::Gmm::FormatString("bias shape should be (e,n). e=%ld, n=%ld", e, n).c_str()),
                 return GRAPH_FAILED);
-    auto isScaleInvalid = !(scaleDimNum == GMM_A8W4_OFFSET_DIM_NUM && scaleShape->GetDim(0) == e &&
-                            scaleShape->GetDim(1) == 1 && scaleShape->GetDim(GMM_A8W4_OFFSET_DIM_NUM - 1) == n);
+    int64_t quantGroupNum = scaleDimNum == GMM_A8W4_OFFSET_DIM_NUM ? scaleShape->GetDim(1) : 0;
+    auto isScaleInvalid = !(scaleDimNum == GMM_A8W4_OFFSET_DIM_NUM && scaleShape->GetDim(0) == e && quantGroupNum > 0 &&
+                            k % quantGroupNum == 0 && scaleShape->GetDim(GMM_A8W4_OFFSET_DIM_NUM - 1) == n);
     OP_CHECK_IF(isScaleInvalid,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape).c_str(),

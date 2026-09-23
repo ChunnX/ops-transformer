@@ -1172,25 +1172,29 @@ static aclnnStatus CheckA8W4AsymQuantParamsRelationship(const gmm::GroupedMatmul
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
     const op::Shape &biasShape = (*gmmParams.biasOptional)[0]->GetViewShape();
     const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
+    // isA8W4AsymmetricQuant guarantees that offset is 3D and its G dimension matches scale.
+    const op::Shape &offsetShape = (*gmmParams.offsetOptional)[0]->GetViewShape();
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     size_t biasDim = biasShape.GetDimNum();
     size_t scaleDim = scaleShape.GetDimNum();
     size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
     int64_t e = weightShape.GetDim(0);
     int64_t m = xShape.GetDim(0);
+    int64_t k = xShape.GetDim(1);
     int64_t n = weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
+    int64_t quantGroupNum = scaleDim == WEIGHT_DIM_A8W4 ? scaleShape.GetDim(1) : 0;
     CHECK_COND(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A8W4 asymmetric quant, the shape of [%s] is not supported, got [(%ld, %ld)]. "
                "Constraint:[shape should be (%ld, %ld)].",
                opName, "bias", biasShape.GetDim(0), biasShape.GetDim(1), e, n);
-    CHECK_COND(scaleDim == WEIGHT_DIM_A8W4 && scaleShape.GetDim(0) == e && scaleShape.GetDim(1) == 1 &&
-                   scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1) == n,
+    CHECK_COND(scaleDim == WEIGHT_DIM_A8W4 && scaleShape.GetDim(0) == e && quantGroupNum > 0 &&
+                   k % quantGroupNum == 0 && scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1) == n,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A8W4 asymmetric quant, the shape of [%s] is not supported, got [(%ld, %ld, %ld)]. "
-               "Constraint:[shape should be (%ld, 1, %ld)].",
+               "Constraint:[shape should be (%ld, %ld, %ld), quantGroupNum must be positive and divide K].",
                opName, "scale", scaleShape.GetDim(0), scaleShape.GetDim(1), scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1), e,
-               n);
+               offsetShape.GetDim(1), n);
     CHECK_COND(perTokenScaleDim == BIAS_DIM_A8W4 && perTokenScaleShape.GetDim(0) == m &&
                    perTokenScaleShape.GetDim(BIAS_DIM_A8W4 - 1) == 1,
                ACLNN_ERR_PARAM_INVALID,
@@ -1202,7 +1206,7 @@ static aclnnStatus CheckA8W4AsymQuantParamsRelationship(const gmm::GroupedMatmul
 static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
     DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-    CHECK_COND(yDtype == DataType::DT_FLOAT16, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A8W4 asymmetric quant, the data type of [%s] is not supported, got [%s].", opName, "y",
                gmm::dTypeToString(yDtype).c_str());
     DataType offsetDtype = (*gmmParams.offsetOptional)[0]->GetDataType();
@@ -1236,9 +1240,12 @@ static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmP
     return ACLNN_SUCCESS;
 }
 
-static bool isA8W8AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
+static bool isA8W4AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
 {
     if (gmmParams.offsetOptional == nullptr) {
+        return false;
+    }
+    if (gmmParams.scaleOptional == nullptr) {
         return false;
     }
     const op::Shape &offsetShape = (*gmmParams.offsetOptional)[0]->GetViewShape();
@@ -1247,7 +1254,9 @@ static bool isA8W8AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
         return false;
     }
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
-    if (offsetShape.GetDim(0) == weightShape.GetDim(0) && offsetShape.GetDim(1) == 1 &&
+    const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
+    if (scaleShape.GetDimNum() == OFFSET_DIM_A8W4 && offsetShape.GetDim(0) == weightShape.GetDim(0) &&
+        offsetShape.GetDim(1) == scaleShape.GetDim(1) &&
         offsetShape.GetDim(OFFSET_DIM_A8W4 - 1) == weightShape.GetDim(OFFSET_DIM_A8W4 - 1)) {
         return true;
     }
@@ -1336,7 +1345,7 @@ static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParam
                 "1(count)].",
                 opName, "groupListType", gmmParams.groupListType);
     }
-    if (!isA8W8AsymmetricQuant(gmmParams)) {
+    if (!isA8W4AsymmetricQuant(gmmParams)) {
         CheckA8W4SymmQuantParams(gmmParams);
         return ACLNN_SUCCESS;
     }
