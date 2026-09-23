@@ -897,7 +897,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::StoreUncach
            AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, aligned);
     Cast(slots, dstRankIdTensor_, RoundMode::CAST_NONE, count);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyExtParams copy{1U, count * sizeof(int32_t), 0U, 0U, 0U};
+    DataCopyExtParams copy{1U, static_cast<uint32_t>(count * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(dstSlotIdxGMTensor_[topkOffset], slots, copy);
 }
 
@@ -946,7 +946,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::LoadMetadat
     }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         DataCopyExtParams scales{static_cast<uint16_t>(tokenCount), scalesBytes_, 0U,
-                                (metaSlotBytes_ - topkCopyAlign_ * sizeof(int32_t)) / UB_ALIGN, 0U};
+                                static_cast<uint32_t>((metaSlotBytes_ - topkCopyAlign_ * sizeof(int32_t)) / UB_ALIGN),
+                                0U};
         DataCopyPadExtParams<uint8_t> pad{false, 0U, 0U, 0};
         DataCopyPad(metaLocalTensor_.template ReinterpretCast<uint8_t>(),
                     scalesGMTensor_.template ReinterpretCast<uint8_t>()[tokenStart * scalesBytes_], scales, pad);
@@ -991,7 +992,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::PrepareTile
     SyncFunc<AscendC::HardEvent::V_MTE2>();
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopy(slots, tilePrefixGMTensor_[static_cast<uint64_t>(tile) * counterAlign512_], counterCnt_);
-    DataCopyExtParams routes{1U, count * sizeof(int16_t), 0U, 0U, 0U};
+    DataCopyExtParams routes{1U, static_cast<uint32_t>(count * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int16_t> pad{false, 0U, 0U, 0};
     DataCopyPad(dstRankIdTensor_, dstRankGMTensor_[start * axisK_], routes, pad);
     SyncFunc<AscendC::HardEvent::MTE2_S>();

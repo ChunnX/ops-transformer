@@ -9,6 +9,7 @@
 
 from pathlib import Path
 import random
+import re
 import unittest
 
 from test_dispatch_count_histograms import count_contributions, merge_contributions, oracle, tile_ranges, tile_tokens
@@ -191,6 +192,16 @@ class DispatchTilePipelineTest(unittest.TestCase):
             tokens = sum(end - begin for tile, (begin, end) in enumerate(tiles) if tile % SENDERS == sender)
             count_requests = (peers + SENDERS - 1) // SENDERS
             self.assertLess(2 * tokens * topk + peers - 1 + 2 * count_requests, 4096)
+
+    def test_source_contract_dma_sizeof_fields_have_explicit_width(self):
+        # Source guard for C++ list-initialization narrowing; this does not compile the CANN headers.
+        source = (ROOT / "op_kernel/moe_ep_dispatch.h").read_text(encoding="utf-8")
+        initializers = re.findall(r"DataCopy(?:Ext)?Params\s+\w+\s*(?:=\s*)?\{([^;]+)\};", source)
+        fields = [field.strip() for init in initializers for field in init.split(",") if "sizeof(" in field]
+        self.assertTrue(fields)
+        for field in fields:
+            with self.subTest(field=field):
+                self.assertRegex(field, r"^static_cast<uint(?:16|32)_t>\([\s\S]+\)$")
 
     def test_source_contract_keeps_tile_protocol_and_async_completion(self):
         source = (ROOT / "op_kernel/moe_ep_dispatch.h").read_text(encoding="utf-8")
