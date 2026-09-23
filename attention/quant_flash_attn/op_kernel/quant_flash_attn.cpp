@@ -86,17 +86,15 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
 
-    // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
-    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
-    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
-    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
-    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
+    // SK/静态图兼容：与 flash_attn(flash_attn.cpp) 完全同款写法——
+    // GET_TILING_DATA_PTR_WITH_STRUCT 生成 tilingData，Init 传 &tilingData->baseTiling
+    // （子结构成员指针），kernel 侧用 __tiling_data_ptr__ 子结构类型承接。
+    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling,
             &tPipe);
     op.Process();
 }
@@ -155,17 +153,15 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
 #endif
 
-    // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
-    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
-    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
-    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
-    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
+    // SK/静态图兼容：与 flash_attn(flash_attn.cpp) 完全同款写法——
+    // GET_TILING_DATA_PTR_WITH_STRUCT 生成 tilingData，Init 传 &tilingData->baseTiling
+    // （子结构成员指针），kernel 侧用 __tiling_data_ptr__ 子结构类型承接。
+    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, cuSeqLensQ, cuSeqLensKv, blockTable, qDescale, kDescale, vDescale, pScale,
-            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn, &tPipe);
+            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling, &tPipe);
     op.Process();
 }
 
@@ -224,17 +220,15 @@ __aicore__ inline void quant_flash_attn_hif8(
     using Kernel = BaseApi::QuantFlashAttnKernelHif8<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
 
-    // SK/静态图兼容：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
-    // 不能按 __gm__ 指针解引用。GET_TILING_DATA_WITH_STRUCT 在动/静两种编译下均
-    // 生成栈局部结构体（动态从 GM 拷入，静态 convert_from_bytes），kernel 侧用
-    // 普通指针读栈拷贝。注意不能用 GET_TILING_DATA_PTR_WITH_STRUCT：静态编译的
-    // 宏生成器(get_op_tiling.py)不生成该宏，会回退成 __gm__ 裸强转导致读错。
-    GET_TILING_DATA_WITH_STRUCT(QuantFlashAttnTilingData, tilingDataIn, tiling);
+    // SK/静态图兼容：与 flash_attn(flash_attn.cpp) 完全同款写法——
+    // GET_TILING_DATA_PTR_WITH_STRUCT 生成 tilingData，Init 传 &tilingData->baseTiling
+    // （子结构成员指针），kernel 侧用 __tiling_data_ptr__ 子结构类型承接。
+    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
 
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingDataIn,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling,
             &tPipe);
     op.Process();
 }
