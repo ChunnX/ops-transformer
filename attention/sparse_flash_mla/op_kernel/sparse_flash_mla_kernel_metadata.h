@@ -17,11 +17,19 @@
 #define SPARSE_FLASH_MLA_KERNEL_METADATA_H
 
 #include <cstdint>
+#if (__NPU_ARCH__ == 9201)
+#include "arch920_r1/common/smla_metadata_common.h"
+#else
 #include "arch35/common/smla_metadata_common.h"
+#endif
 
 namespace optiling {
 
+#if (__NPU_ARCH__ == 9201)
+constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 2048;
+#else
 constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 1024;
+#endif
 using SMLA_METADATA_T = int32_t;
 
 namespace detail {
