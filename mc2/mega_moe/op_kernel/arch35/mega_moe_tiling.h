@@ -232,5 +232,17 @@ struct MegaMoeTilingData {
     // 判断统一用 IsDispatchDedupOn/IsCombineDedupOn（mega_moe_peermem.h）。
     // 0 时所有路径与无该字段时逐字等价；dispatch 去重数值恒等，combine 去重为生产卡预加权合并。
     int32_t dedupMode;
+    // Pre-quantized fixed-tile layout. These fields are zero for internally quantized input.
+    uint32_t preQuantTileTokens;
+    uint32_t preQuantStageBytes;
+    uint32_t preQuantTokenValidBytes;
+    uint32_t preQuantTokenAlignedBytes;
+    uint32_t preQuantScaleValidBytes;
+    uint32_t preQuantScaleAlignedBytes;
+    uint32_t preQuantWeightSrcBytes;
+    uint32_t preQuantWeightSrcAlignedBytes;
+    uint32_t preQuantWeightAlignedBytes;
+    uint32_t preQuantRecordBytes;
+    uint32_t preQuantWeightOffsetBytes;
 };
 #endif
