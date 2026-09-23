@@ -20,6 +20,9 @@
 #include "arch35/sparse_flash_mla_csa_kernel_arch35.h"
 #include "arch35/sparse_flash_mla_swa_kernel_arch35.h"
 #include "sparse_flash_mla_kernel_metadata.h"
+#if SMLA_BANK_DIAGNOSTIC
+#include "arch35/common/smla_bank_diagnostic.h"
+#endif
 #else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -77,6 +80,21 @@ __global__ __aicore__ void sparse_flash_mla(
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
 #if (__CCE_AICORE__ == 310)
+#if SMLA_BANK_DIAGNOSTIC
+    if constexpr (TEMPLATE_MODE == ORI_CMP_SPARSE_TEMPLATE && SPLIT_G == 0 && BATCH_CONSISTENCY == 0 &&
+                  LAYOUT_T == static_cast<int>(SMLA_LAYOUT::TND) &&
+                  KV_LAYOUT_T == static_cast<int>(SMLA_LAYOUT::TND)) {
+        if constexpr (ORIG_DTYPE_Q == DT_BF16) {
+            if (SparseL1BankDiagnostic<bfloat16_t>::Run(query, oriKV, cmpKV, metadata, attentionOut, softmaxLse)) {
+                return;
+            }
+        } else if constexpr (ORIG_DTYPE_Q == DT_FLOAT16) {
+            if (SparseL1BankDiagnostic<half>::Run(query, oriKV, cmpKV, metadata, attentionOut, softmaxLse)) {
+                return;
+            }
+        }
+    }
+#endif
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE || TEMPLATE_MODE == ORI_SPARSE_TEMPLATE ||
                       TEMPLATE_MODE == ORI_CMP_SPARSE_TEMPLATE) {

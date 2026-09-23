@@ -16,4 +16,9 @@
 #define SMLA_L1_LAYOUT_MODE 0
 #endif
 
+// Private diagnostic package only; a magic metadata marker is also required.
+#ifndef SMLA_BANK_DIAGNOSTIC
+#define SMLA_BANK_DIAGNOSTIC 0
+#endif
+
 #endif // SMLA_EXPERIMENT_CONFIG_H
