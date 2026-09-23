@@ -79,6 +79,10 @@ static ge::graphStatus KvCacheTurboQuantTilingFunc(gert::TilingContext *context)
                 OP_LOGE(context, "head_dim must be %u", KCTQ_HEAD_DIM), return ge::GRAPH_FAILED);
     OP_CHECK_IF(numTokens <= 0 || numHeads <= 0, OP_LOGE(context, "kv_vectors must not be empty"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numHeads < static_cast<int64_t>(KCTQ_MIN_HEADS) || numHeads > static_cast<int64_t>(KCTQ_MAX_HEADS),
+                OP_LOGE(context, "num_kv_heads must be in [%u, %u], got %ld", KCTQ_MIN_HEADS, KCTQ_MAX_HEADS,
+                        numHeads),
+                return ge::GRAPH_FAILED);
     const auto *kvDesc = context->GetInputDesc(IN_KV_VECTORS);
     OP_CHECK_NULL_WITH_CONTEXT(context, kvDesc);
     OP_CHECK_IF(kvDesc->GetDataType() != ge::DT_BF16, OP_LOGE(context, "kv_vectors must be bfloat16"),
