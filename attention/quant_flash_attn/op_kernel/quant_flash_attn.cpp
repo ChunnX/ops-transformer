@@ -89,7 +89,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData,
             &tPipe);
     op.Process();
 }
@@ -151,7 +151,7 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, cuSeqLensQ, cuSeqLensKv, blockTable, qDescale, kDescale, vDescale, pScale,
-            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling, &tPipe);
+            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData, &tPipe);
     op.Process();
 }
 
@@ -213,7 +213,7 @@ __aicore__ inline void quant_flash_attn_hif8(
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, &tilingData->baseTiling,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData,
             &tPipe);
     op.Process();
 }

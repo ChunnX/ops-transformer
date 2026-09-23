@@ -101,7 +101,7 @@ public:
 
     ConstInfoX constInfo_;
 
-    __tiling_data_ptr__ QuantFlashAttnQuantTilingArch35 *tilingData_;
+    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -158,7 +158,7 @@ public:
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                __tiling_data_ptr__ QuantFlashAttnQuantTilingArch35 *tiling, TPipe *tPipe)
+                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
@@ -266,10 +266,10 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->quantFlashAttnBaseParams;
-        const auto &qfaAttenMaskParams = this->tilingData_->quantFlashAttnAttenMaskParams;
-        const auto &qfaPageAttentionParams = this->tilingData_->quantFlashAttnPageAttentionParams;
-        const auto &qfaWorkspaceParams = this->tilingData_->quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = this->tilingData_->baseTiling.quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = this->tilingData_->baseTiling.quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = this->tilingData_->baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
