@@ -55,30 +55,9 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
            keyRopeOptional, scaleValue, keepProb, preTockens, nextTockens, headNum, inputLayout, innerPrecise, sparseMode,
            pseType, seed, offset, outDtype, softmaxOutLayout);
 
-    if (realShiftOptional == nullptr) {
-        realShiftOptional = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (dropMaskOptional == nullptr) {
-        dropMaskOptional = executor->AllocTensor(DataType::DT_UINT8, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (paddingMaskOptional == nullptr) {
-        paddingMaskOptional = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (attenMaskOptional == nullptr) {
-        attenMaskOptional = executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (dScaleQOptional == nullptr) {
-        dScaleQOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (dScaleKOptional == nullptr) {
-        dScaleKOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (dScaleVOptional == nullptr) {
-        dScaleVOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (pScaleOptional == nullptr) {
-        pScaleOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
+    // Diagnostic experiment: preserve absent inputs as nullptr through both
+    // shape inference and launcher registration. Do not create workspace-backed
+    // placeholder tensors, which may alias the kernel workspace start address.
 
     const aclTensor *prefixOptionalTensor = nullptr;
     if (prefixOptional) {
@@ -86,8 +65,6 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         const_cast<aclTensor *>(prefixOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(prefixOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(prefixOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-    } else {
-        prefixOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *actualSeqQLen = nullptr;
@@ -100,8 +77,6 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         } else {
             FakeArray(actualSeqQLenOptional, const_cast<aclTensor *&>(actualSeqQLen));
         }
-    } else {
-        actualSeqQLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *actualSeqKvLen = nullptr;
@@ -114,8 +89,6 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         } else {
             FakeArray(actualSeqKvLenOptional, const_cast<aclTensor *&>(actualSeqKvLen));
         }
-    } else {
-        actualSeqKvLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *qStartIdxOptionalTensor = nullptr;
@@ -124,8 +97,6 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-    } else {
-        qStartIdxOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *kvStartIdxOptionalTensor = nullptr;
@@ -134,8 +105,6 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
         const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-    } else {
-        kvStartIdxOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     auto softmaxMaxOut = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
