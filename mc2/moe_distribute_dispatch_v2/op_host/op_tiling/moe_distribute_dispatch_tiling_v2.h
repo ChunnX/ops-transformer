@@ -63,6 +63,10 @@ struct DispatchV2Config {
     uint32_t attrCopyExpertNumIndex = 15;  // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
     uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
+    // ccu 入口混合模式（commAlg="ccu" + MOE_DISPATCH_USE_CCU_CTRL=1，仅 A5 V2 入口置位）：控制面走 CCU 卸载、
+    // 数据面走 MTE，tiling 按 fullmesh_v2 同款流程处理（key/UB/窗口校验全复用）；CCU 配置由入口随后经
+    // TryEnableCcuCtrl 覆写。其余入口恒 false，本字段仅作"按 fullmesh_v2 处理"的显式传递通道
+    bool isCcuCtrlHybrid = false;
 };
 using namespace Ops::Transformer::OpTiling;
 
