@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_mla_common_arch35.h
+ * \file sparse_flash_mla_common_arch92.h
  * \brief
  */
-#ifndef SPARSE_FLASH_MLA_COMMON_ARCH35_H
-#define SPARSE_FLASH_MLA_COMMON_ARCH35_H
+#ifndef SPARSE_FLASH_MLA_COMMON_ARCH92_H
+#define SPARSE_FLASH_MLA_COMMON_ARCH92_H
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../sparse_flash_mla_common.h"

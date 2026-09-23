@@ -16,7 +16,7 @@
 #ifndef SPARSE_FLASH_MLA_SWA_KERNEL_H
 #define SPARSE_FLASH_MLA_SWA_KERNEL_H
 
-#include "sparse_flash_mla_common_arch35.h"
+#include "sparse_flash_mla_common_arch92.h"
 #include "sparse_flash_mla_kvcache.h"
 #include "sparse_flash_mla_csa_block_cube.h"
 #include "sparse_flash_mla_csa_block_vector.h"
