@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -107,6 +108,9 @@ public:
         if (HcclGetHcclBuffer(comm_, &buf, &hcclBufSize) != ::HCCL_SUCCESS || buf == nullptr) {
             return false;
         }
+        // 通信窗口大小诊断日志：PUT 写入量为 rankSize * rankDataBytes，超出该值会越界写坏相邻内存
+        fprintf(stderr, "[CommWindow] hccl buffer=%p size=%luB (%.2f MB)\n", buf,
+                static_cast<unsigned long>(hcclBufSize), static_cast<double>(hcclBufSize) / 1048576.0);
         if (aclrtMemset(buf, hcclBufSize, 0, hcclBufSize) != ACL_SUCCESS) {
             return false;
         }
