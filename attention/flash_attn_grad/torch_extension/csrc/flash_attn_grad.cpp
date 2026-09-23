@@ -19,7 +19,7 @@
 
 namespace op_api {
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
     const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &doTensor,
     const at::Tensor &attnOut, const at::Tensor &softmaxLse, const c10::optional<at::Tensor> &cuSeqlensQ,
     const c10::optional<at::Tensor> &cuSeqlensKv, const c10::optional<at::Tensor> &sequsedQ,
@@ -38,20 +38,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
     auto device = q.device();
     c10::OptionalDeviceGuard device_guard(device);
 
-    // Q 的 head 数 N1：TND [T1,N1,D] / BNSD [B,N1,S1,D] 在 dim1，BSND 在 dim2。
-    const int64_t n1 = (layoutQ == "TND" || layoutQ == "BNSD") ? q.size(1) : q.size(2);
-
     at::Tensor dq;
     at::Tensor dk;
     at::Tensor dv;
-    at::Tensor dsink;
     {
         dq = at::empty(q.sizes(), q.options());
         dk = at::empty(k.sizes(), k.options());
         dv = at::empty(v.sizes(), v.options());
-        // dsink 由 kernel 固定次序归约后全量写出（每 AIV 槽位行写 workspace，
-        // post 阶段 AIV0 按固定行序归约）；at::zeros 仅为双保险。
-        dsink = at::zeros({n1}, q.options().dtype(at::kFloat));
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
@@ -60,9 +53,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
 
     ACLNN_CMD(aclnnInnerFlashAttnGrad, q, k, v, doTensor, attnOut, softmaxLse, cuSeqlensQ, cuSeqlensKv, sequsedQ,
               sequsedKv, sinks, attnMask, metadata, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv,
-              layoutQPtr, layoutKvPtr, layoutOutPtr, dq, dk, dv, dsink);
+              layoutQPtr, layoutKvPtr, layoutOutPtr, dq, dk, dv);
 
-    return std::make_tuple(dq, dk, dv, dsink);
+    return std::make_tuple(dq, dk, dv);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
