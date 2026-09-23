@@ -100,26 +100,24 @@ __aicore__ inline uint64_t GetCombineDstRowIndex(const CombineTokenRoute &route,
     return static_cast<uint64_t>(route.tokenIdx) * params.tilingData->topK + route.topkIdx;
 }
 
-// 为 tile 内每个 token 行发送一段有效的 GMM2 tile 数据。
-template <typename ElementMMadOut2, typename BlockShape>
+// 为当前 chunk 内每个 token 行发送一段有效的 GMM2 tile 数据。
+template <typename ElementMMadOut2>
 __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
-                                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
-                                     uint32_t ubTileN, const Params &params)
+                                     LocalTensor<ElementMMadOut2> &chunkUb, uint32_t rowCount, uint32_t validN,
+                                     uint32_t ubRowStride, const Params &params)
 {
-    // 调用方在进入该数据操作前，保证批量加载的 metadata 对 Scalar 可见。
-    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+    // 调用方在进入该数据操作前，保证当前 chunk 的数据和 metadata 均已就绪。
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset =
         static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
+    AscendC::DataCopyExtParams ub2GmParams{
+        1U, static_cast<uint32_t>(validN * sizeof(ElementMMadOut2)), 0U, 0U, 0U};
+    for (uint32_t row = 0U; row < rowCount; ++row) {
+        CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, row);
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
-        uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+        uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * static_cast<uint64_t>(n) + nLoc;
+        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], chunkUb[row * ubRowStride], ub2GmParams);
     }
 }
 
@@ -622,36 +620,106 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
                                          const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
                                          uint32_t tileNum)
 {
+    constexpr uint32_t chunkRows = 64U;
+    constexpr uint32_t bufferCount = 2U;
+    constexpr uint32_t chunkElements = chunkRows * L1_TILE_N;
+    constexpr uint32_t chunkBytes = chunkElements * sizeof(ElementC);
+    static_assert(chunkBytes == 32U * 1024U, "non-quant Combine chunk must be 32 KiB");
+    static_assert(WAVE_COMBINE_UB_BASE + bufferCount * chunkBytes <= WAVE_COMBINE_UB_LIMIT,
+                  "non-quant Combine ping-pong buffers exceed reserved UB");
+
+    auto chunkUbLayout = MakeLayoutC{}(chunkRows, L1_TILE_N);
+    auto copyGmToUb = asc::te::make_copy(asc::te::copy_gm_to_ub{});
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t tileRows = Get<M_VALUE>(actualShape);
+        uint32_t validN = Get<N_VALUE>(actualShape);
 
+        // GMM2 的 ready/ACK 仍保持原 scheduler tile 粒度，64 行 chunk 只是 AIV 内部流水。
         gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
-        auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
-                                            asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
-        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
-        auto tensorBlockUb =
-            asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(tileUbBase), layoutTileUb);
-        LocalTensor<ElementC> tileUb = LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
-        auto copyGM2UB = asc::te::make_copy(asc::te::copy_gm_to_ub{});
-        asc::te::copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+        if (tileRows == 0U || validN == 0U) {
+            // 防御性空 tile：让 MTE3 上的 ACK 显式依赖 MTE2 上已消费的 ready，避免跨 pipe 提前归还额度。
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+            gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
+            continue;
+        }
 
-        int32_t lenTile = Get<M_VALUE>(actualShape);
         GlobalTensor<int32_t> metaInfoGm;
         LocalTensor<int32_t> metaInfoTensor =
-            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
+            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, tileRows * META_INFO_SIZE);
         metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-        CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(nLoc, config.n, metaInfoTensor, tileUb, actualShape,
-                                                                    L1_TILE_N, params);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::DataCopy(metaInfoTensor, metaInfoGm, tileRows * META_INFO_SIZE);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+
+        // 两个 32 KiB 槽初始为空闲。先预取 chunk 0，稳态中先预取下一 chunk，再发送当前 chunk。
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        uint32_t chunkCount = Ops::Base::CeilDiv(tileRows, chunkRows);
+
+        // Prologue：把第一个 chunk 搬入 slot 0。
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        uint32_t firstChunkRows = tileRows < chunkRows ? tileRows : chunkRows;
+        auto firstChunkUbStorage = asc::te::make_tensor(
+            asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(WAVE_COMBINE_UB_BASE), chunkUbLayout);
+        auto firstChunkUbTensor = firstChunkUbStorage.slice(
+            asc::te::make_coord(0U, 0U), asc::te::make_shape(firstChunkRows, validN));
+        auto firstChunkGmTensor = l0cOutGm.slice(
+            asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(firstChunkRows, validN));
+        asc::te::copy(copyGmToUb, firstChunkUbTensor, firstChunkGmTensor);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+
+        for (uint32_t chunkIndex = 0U; chunkIndex < chunkCount; ++chunkIndex) {
+            uint32_t rowOffset = chunkIndex * chunkRows;
+            uint32_t currentRows = tileRows - rowOffset;
+            currentRows = currentRows < chunkRows ? currentRows : chunkRows;
+            uint32_t slot = chunkIndex & 1U;
+            TEventID eventId =
+                static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+
+            // 当前槽 copy-in 完成后才允许 MTE3 读取。
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+
+            // Steady state：先向另一槽提交下一 chunk 的 MTE2，再提交当前 chunk 的 MTE3 发送。
+            if (chunkIndex + 1U < chunkCount) {
+                uint32_t nextChunkIndex = chunkIndex + 1U;
+                uint32_t nextRowOffset = nextChunkIndex * chunkRows;
+                uint32_t nextRows = tileRows - nextRowOffset;
+                nextRows = nextRows < chunkRows ? nextRows : chunkRows;
+                uint32_t nextSlot = nextChunkIndex & 1U;
+                TEventID nextEventId =
+                    static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(nextSlot));
+
+                // 下一槽上一次的发送结束后才可覆盖；该等待只约束 MTE2，不阻塞当前槽的 MTE3。
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(nextEventId);
+                uint32_t nextChunkUbBase = WAVE_COMBINE_UB_BASE + nextSlot * chunkBytes;
+                auto nextChunkUbStorage = asc::te::make_tensor(
+                    asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(nextChunkUbBase), chunkUbLayout);
+                auto nextChunkUbTensor = nextChunkUbStorage.slice(
+                    asc::te::make_coord(0U, 0U), asc::te::make_shape(nextRows, validN));
+                auto nextChunkGmTensor = l0cOutGm.slice(
+                    asc::te::make_coord(mLoc + nextRowOffset, nLoc), asc::te::make_shape(nextRows, validN));
+                asc::te::copy(copyGmToUb, nextChunkUbTensor, nextChunkGmTensor);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(nextEventId);
+            }
+
+            uint32_t chunkUbBase = WAVE_COMBINE_UB_BASE + slot * chunkBytes;
+            LocalTensor<ElementC> chunkUb =
+                LocalTensor<ElementC>(TPosition::VECIN, chunkUbBase, chunkElements);
+            LocalTensor<int32_t> chunkMetaInfo = metaInfoTensor[rowOffset * META_INFO_SIZE];
+            CombineImpl::CombineTokens<ElementC>(nLoc, config.n, chunkMetaInfo, chunkUb, currentRows, validN,
+                                                 L1_TILE_N, params);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        }
+
+        // Epilogue：排空两个槽的最后一批发送后，才向 AIC 归还当前 GMM2 tile 的额度。
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
     }
 }
@@ -733,8 +801,9 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
-        blockPrologue(gmB, config.k, nL1Size, nLoc, config.n, 0U);
+        blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.blockMmadTiling.l1Params.kL1);
     }
 }
 
@@ -807,8 +876,7 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, bool Is
           bool NotifyCombineTileReady, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                     uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertTokenCount,
-                                    uint32_t rowOffsetInExpert, const Params *params,
-                                    const A8W4BlockContext<BlockMmad, BlockPrologue> &pipeline)
+                                    uint32_t rowOffsetInExpert, const Params *params = nullptr)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -841,12 +909,11 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC};
 
     if constexpr (g_coreType == AscendC::AIC) {
-        auto &blockMmad = *pipeline.block;
+        BlockMmad blockMmad{};
         typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN,
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        // GMM2 has no gate/up concatenation; preserve the persistent buffer indices.
-        blockMmad.template Init<false>(matmulShape, l0TileShape, false);
+        blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
         Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
                         decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(
@@ -854,7 +921,8 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
             config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
     } else {
         if (GetSubBlockIdx() == 0U) {
-            Gmm2Aiv0PrologueA8W4(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            BlockPrologue blockPrologue;
+            Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
             // 同上：W4 路径去重开关走运行时判断（嵌套模板参数触发编译器代码生成问题）。
             if (!IsCombineDedupOn(params->tilingData->dedupMode)) {
@@ -929,10 +997,8 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 // RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；可选由配对AIV1逐tile Combine。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false,
-          typename BlockContext>
-__aicore__ inline void RunGmm2A8W4(const BlockContext &pipeline,
-                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
+__aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
                                    uint32_t rowOffsetInExpert, const Params *params = nullptr)
@@ -961,17 +1027,15 @@ __aicore__ inline void RunGmm2A8W4(const BlockContext &pipeline,
 
     GmmKernel::Gmm2ExecA8W4<BlockMmad, BlockPrologue, ElementC, IsShared, IsLayered, NotifyCombineTileReady,
                             GmmKernel::BlockScheduler, decltype(config)>(
-        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, params, pipeline);
+        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, params);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false,
-          typename BlockContext>
-__aicore__ inline void RunGmm2A8W4(const BlockContext &pipeline,
-                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
+__aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const Params *params = nullptr)
 {
@@ -979,8 +1043,8 @@ __aicore__ inline void RunGmm2A8W4(const BlockContext &pipeline,
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch,
                 IsShared, IsLayered, IsWaveFlagGrained, NotifyCombineTileReady>(
-        pipeline, problemShape, gmmAddrInfo, startBlockIdx, blockJob, static_cast<uint32_t>(Get<M_VALUE>(problemShape)),
-        0U, params);
+        problemShape, gmmAddrInfo, startBlockIdx, blockJob, static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U,
+        params);
 }
 
 // 紧凑 token 资源按累计行偏移寻址，专家固定资源按 expertIdx 寻址。
