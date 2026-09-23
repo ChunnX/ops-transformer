@@ -90,7 +90,7 @@ extern "C" __global__ __aicore__ void mhc_sandwich_norm_post_preonly(
         if ASCEND_IS_AIC {
             GET_TILING_DATA(td, tiling);
             MhcSandwichNormPostPreonlyCube op;
-            op.Init(phi, GetUserWorkspace(workspace), td.totalTokens, td.embedDim);
+            op.Init(phi, GetUserWorkspace(workspace), td.totalTokens, td.embedDim, &td.cubeTilingData);
             op.Process();
         }
         if ASCEND_IS_AIV {
