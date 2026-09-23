@@ -21,7 +21,6 @@
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
-#include "flash_attn_block_sync.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/vector_common.h"
@@ -38,7 +37,7 @@ namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
-class FANoQuantGqaBlockVecDn : public FlashAttnVecSync {
+class FANoQuantGqaBlockVecDn {
 public:
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
@@ -60,6 +59,24 @@ public:
     // 索引使用 loop & (DN_VEC_SLOTS - 1) 代替 loop % DN_VEC_SLOTS，要求 DN_VEC_SLOTS 必须是2的幂，否则位掩码结果错误
     static_assert(DN_VEC_SLOTS > 0 && (DN_VEC_SLOTS & (DN_VEC_SLOTS - 1)) == 0,
                   "DN_VEC_SLOTS must be a power of two for bitmask indexing");
+
+    // 核间同步ID
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
+    static constexpr uint32_t CC_MM_0 = 0U;
+    static constexpr uint32_t CC_MM_1 = 1U;
+    static constexpr uint32_t CC_MM_2 = 2U;
+    static constexpr uint32_t CC_MM_3 = 3U;
+    static constexpr uint32_t CC_L1P_0 = 5U;
+    static constexpr uint32_t CC_L1P_1 = 6U;
+    static constexpr uint32_t CC_L1P_2 = 7U;
+
+    // 核内同步ID
+    // MTE3<->V, 输出buffer
+    static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2;
+    static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = 3U;
@@ -248,8 +265,19 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        InitMmResults<dBaseSize>();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
+        if constexpr (dBaseSize <= 128) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+        }
     }
+
+    __aicore__ inline void UnInitCrossCoreSync() {}
+
+    __aicore__ inline void AllocEventID() {}
+
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfo dnRunInfo)
     {
