@@ -215,9 +215,9 @@ TEST_F(TestInferdtype, MXFP4ValidDtypes)
 
 TEST_F(TestInferdtype, MXFP8Bf16OutDtype)
 {
-    ge::DataType d[] = {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E8M0,
-                        ge::DT_UNDEFINED,   ge::DT_FLOAT8_E8M0, ge::DT_INT64,
-                        ge::DT_UNDEFINED,   ge::DT_BF16,        ge::DT_INT64};
+    ge::DataType d[] = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E8M0,
+                        ge::DT_UNDEFINED,     ge::DT_FLOAT8_E8M0,     ge::DT_INT64,
+                        ge::DT_UNDEFINED,     ge::DT_BF16,            ge::DT_INT32};
     ge::DataType outDtype = ge::DT_UNDEFINED;
     EXPECT_EQ(RunInferDtype(d, true, 2, &outDtype), ge::GRAPH_SUCCESS);
     EXPECT_EQ(outDtype, ge::DT_BF16);
@@ -226,8 +226,8 @@ TEST_F(TestInferdtype, MXFP8Bf16OutDtype)
 TEST_F(TestInferdtype, MXFP4Bf16OutDtype)
 {
     ge::DataType d[] = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT8_E8M0,
-                        ge::DT_UNDEFINED,   ge::DT_FLOAT8_E8M0, ge::DT_INT64,
-                        ge::DT_UNDEFINED,   ge::DT_BF16,        ge::DT_INT64};
+                        ge::DT_UNDEFINED,   ge::DT_FLOAT8_E8M0,   ge::DT_INT64,
+                        ge::DT_UNDEFINED,   ge::DT_BF16,          ge::DT_INT32};
     ge::DataType outDtype = ge::DT_UNDEFINED;
     EXPECT_EQ(RunInferDtype(d, true, 2, &outDtype), ge::GRAPH_SUCCESS);
     EXPECT_EQ(outDtype, ge::DT_BF16);
