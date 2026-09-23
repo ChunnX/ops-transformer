@@ -19,6 +19,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/apace/core/aiv_comm/collective_comm_context.h"
 #include "quant_reduce_scatter_context.h"
 #include "quant_reduce_scatter_tiling_data.h"
 
@@ -45,6 +46,7 @@ class MTECommunication {
 public:
     __aicore__ inline MTECommunication(){};
     __aicore__ inline void InitHcclContext(GM_ADDR context, uint64_t hcclBufferSize);
+    __aicore__ inline void InitHcclContextFromChannel(GM_ADDR context, uint64_t hcclBufferSize);
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize,
                                         uint64_t dataSpaceGmSize);
@@ -119,6 +121,22 @@ __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext(GM_ADDR c
     for (int i = 0; i < rankDimHccl_; i++) {
         windowsIn_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
         windowsOut_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i] + hcclBufferSize / 2;
+    }
+}
+
+// 解析 CommChannelBuilderManager(apace CommChannelBuilder) 创建的通道上下文。
+// 单机部署约束：仅支持所有 rank 同属一个通信域的场景，此时 udmaCtx.rankSize 即本机全部 rank，
+// 各 rank 的 HCCL 内置 buffer 地址可直通 GM 访问；跨机场景地址不可直通，本算子不支持。
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::InitHcclContextFromChannel(GM_ADDR context,
+                                                                                  uint64_t hcclBufferSize)
+{
+    __gm__ Apace::AivComm::CommContext *channelContext = (__gm__ Apace::AivComm::CommContext *)context;
+    rankIdHccl_ = channelContext->udmaCtx.rankId;
+    rankDimHccl_ = channelContext->udmaCtx.rankSize;
+    for (uint32_t i = 0; i < rankDimHccl_; i++) {
+        windowsIn_[i] = (GM_ADDR)channelContext->udmaCtx.commBufferAddrs[i];
+        windowsOut_[i] = (GM_ADDR)channelContext->udmaCtx.commBufferAddrs[i] + hcclBufferSize / 2;
     }
 }
 
