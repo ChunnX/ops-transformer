@@ -55,9 +55,9 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
            keyRopeOptional, scaleValue, keepProb, preTockens, nextTockens, headNum, inputLayout, innerPrecise, sparseMode,
            pseType, seed, offset, outDtype, softmaxOutLayout);
 
-    // Diagnostic experiment: preserve absent inputs as nullptr through both
-    // shape inference and launcher registration. Do not create workspace-backed
-    // placeholder tensors, which may alias the kernel workspace start address.
+    // Preserve absent inputs as nullptr through shape inference and launcher
+    // registration, avoiding workspace-backed placeholders that may alias the
+    // kernel workspace start address.
 
     const aclTensor *prefixOptionalTensor = nullptr;
     if (prefixOptional) {

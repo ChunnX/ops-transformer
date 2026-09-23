@@ -1,13 +1,14 @@
-# FA 缺失可选输入 nullptr 透传实验
+# FA 缺失可选输入 nullptr 透传与验证记录
 
-日期：2026-09-23。分支：`debug/fas-nullptr-optionals`。
+日期：2026-09-23。正式提交分支：`fix/fas-nullptr-optionals`。
+原实验分支：`debug/fas-nullptr-optionals`，功能改动提交 `3bb366c44`。
 基线：本次拉取的 upstream/master `4c310b724`。
 
 ## 目的
 
 验证 FA 不再将缺失可选输入转换为 workspace-backed 占位 tensor 后，
 是否能避免其与 workspace 起点同址，以及整网中的 Fixpipe/OOM trap。
-本分支是诊断实验，尚不作为已验证的正式修复。
+本修改已完成下述本地功能对照，提交正式 PR 供检视；异常包整网修复效果尚待确认。
 
 ## 改动范围
 
@@ -24,11 +25,34 @@
 
 不携带 `fix/fas-workspace-prefix-oom` 的 512 字节前缀，不修改 devkit、OOM 开关、
 Fixpipe 参数或通信协议，也不携带 debug/oom 的跳过计算探针。
-本 L0 函数由多个 FA 接口/架构共用，本实验未做仅 Ascend950 的条件限制。
+本 L0 函数由多个 FA 接口/架构共用，本修改未做仅 Ascend950 的条件限制。
+
+## 本地验证结果
+
+环境：CANN 9.1.0、Ascend950PR；同一上游基线 `4c310b724` 与修改版 `3bb366c44` 对照。
+
+- 按 `build.sh -u --ops=flash_attention_score --soc=ascend950` 构建运行，
+  Host 165 个测试通过，API 7 个测试通过；图测试目标无用例，不能算作图功能覆盖。
+- 两版均按 `build.sh --opapi --ops=flash_attention_score --soc=ascend950` 构建真实 op-api 库，
+  通过 dlopen 指定库路径调用 V4 接口，使用同一套本地已安装的 tiling/kernel。
+- BF16 BNSD `[1,1,6256,384]`，可选输入缺省，keepProb=1，原故障 tiling key
+  `2328361010304385840`：两版均通过 workspace 查询、launch 和设备同步。
+- 固定随机 Q/K、常量 V=1：两版各运行 3 次，attention 输出相对 1 的最大误差均为 0。
+- 固定种子随机 Q/K/V：两版各运行 3 次，回读的 BF16 attention 输出逐字节一致。
+  每版累计 14413824 字节，SHA256 均为
+  `d190438684efcb67ed6948767dbade5c817cec66b5d51fb4a63e7c56fb41f64f`。
+- 日志确认缺失输入进入 `UpdateInputArg` 的 nullptr 分支。
+- 验证中曾使用 UT 目录切换构建的另一配置，出现内部输出空 shape；
+  按上述正式 op-api 模式重建后不复现，不将该中间结果归因于 nullptr 修改。
+
+边界：设备对照仅覆盖上述无 mask/dropout 的 V4 场景，未逐项比较 softmax 辅助输出，
+未覆盖所有可选功能组合、其他架构、最大 workspace 接口或全部缓存模式。
+本地基线也可执行成功，且未重新编译 OOM kernel，因此结果证明的是本地功能兼容性，
+不证明异常 CANN 包中的 OOM 问题已经修复，更不等同于整网通过。
 
 ## 运行和结果反馈
 
-按用户要求只提供代码，未进行编译、UT 或设备执行，整网效果待用户验证。
+本地结果见上节，异常包整网效果仍待用户验证。
 改动位于 Host API 层，必须重新构建并加载对应 op-api 库；仅替换 kernel 不会生效。
 保持故障环境、输入与 OOM 开启条件，使用原 BF16 BNSD `[1,1,6256,384]` 整网复现流程。
 
