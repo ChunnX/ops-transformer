@@ -118,6 +118,14 @@ HOST_DEVICE int64_t CalcExpertCountRecvSize(int64_t moeExpertPerRank, int64_t ep
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
 }
 
+// 记录布局是否携带 topk 权重段：prefetch 语义（tkw=1，权重在激活层消费）之外，tkw=0 且
+// combine 去重使能时也携带——合并阶段在发送端乘权，权重需经记录尾段随 token 下发。
+// host（tiling 校验/UB 预算）与 kernel（记录拼装/解析）的布局判定统一走本式，两侧不得各写一份。
+HOST_DEVICE bool MegaMoeRecordHasTopkWeights(const MegaMoeTilingData *tilingData)
+{
+    return tilingData->topkWeightsPrefetch == 1 || (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+}
+
 // 单 token 的量化记录字节数 = 量化数据 + mx scale（prefetch 场景再拼 topk 权重），按 32B 对齐。
 HOST_DEVICE int64_t CalcQuantTokenScaleBytes(int64_t h, uint32_t elemsPerByte, int64_t topK, bool topkWeightsPrefetch)
 {
@@ -133,6 +141,14 @@ HOST_DEVICE int64_t CalcQuantTokenScaleBytes(int64_t h, uint32_t elemsPerByte, i
         tokenScaleBytes = Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
     }
     return static_cast<int64_t>(tokenScaleBytes);
+}
+
+// 去重 rowDesc 每行的 int32 数：头 2 个 + 成员三元组 3*topK 个，向上对齐到 8 个 int32（32B），
+// 使描述符批量搬运天然 32B 对齐。字段语义见 mega_moe_constants.h 的 DEDUP_ROW_* 注释。
+HOST_DEVICE int64_t CalcDedupRowDescStrideInt32(int64_t topK)
+{
+    int64_t rawInt32 = static_cast<int64_t>(DEDUP_ROW_DESC_HEADER_INT32) + 3LL * topK;
+    return Ops::Base::CeilAlign(rawInt32, static_cast<int64_t>(INT32_PER_256B));
 }
 
 // combine 接收区单 token 记录字节数：须与 kernel InitCombineBuffers 的 combine record 布局一致。
@@ -244,7 +260,7 @@ struct PeermemInfo {
         params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
         params.yDtypeSize = static_cast<int64_t>(sizeof(bfloat16_t));
         params.elemsPerByte = elemsPerByte;
-        params.topkWeightsPrefetch = tilingData->topkWeightsPrefetch == 1;
+        params.topkWeightsPrefetch = MegaMoeRecordHasTopkWeights(tilingData);
         params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
         params.topoType = tilingData->topoType;
         params.serverNum = static_cast<int64_t>(serverNum);

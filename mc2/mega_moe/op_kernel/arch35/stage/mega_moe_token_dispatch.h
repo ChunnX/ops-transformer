@@ -14,6 +14,7 @@
 #include "mega_moe_expert_count.h"
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
+#include "mega_moe_token_dedup.h"
 
 namespace MegaMoeImpl {
 
@@ -29,6 +30,7 @@ struct TokenDispatchConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
+    DedupConfig dedup; // dedupMode==0 时所有去重字段为空，走基线路径
 };
 
 template <typename ActivationType, typename TopkIndexType>
@@ -42,6 +44,8 @@ struct TokenDispatchScratch {
     LocalTensor<int32_t> expertTokenNumsOutTensor;
     int64_t revTokenElemCnt;
     int64_t revScaleElemCnt;
+    // 去重暂存区动态基址：紧跟 dispatch 固定 UB 区尾（host 已按 DEDUP_DISPATCH_UB_RESERVE_BYTES 预留）。
+    uint32_t dedupUbBaseAddr = 0U;
 };
 
 // 当前物理 AIV1 在单个专家内负责的左闭右开 row 区间。
@@ -64,7 +68,8 @@ __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &pa
             .quantWinOffset = quantWinOffset,
             .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
             .quantScaleAlignBytes = quantProcessConfig.quantScaleAlignBytes,
-            .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes};
+            .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes,
+            .dedup = CreateDedupConfig(params)};
 }
 
 template <typename ActivationType, typename TopkIndexType>
@@ -102,7 +107,9 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(
         TOPK_INDEX, topkIndex % static_cast<int32_t>(params.tilingData->topK));
-    if constexpr (TopkWeightsPrefetch) {
+    // 事件分叉与 Store 侧的消费条件同式：记录带权重段（prefetch 或 tkw=0 combine 去重）时
+    // Store 要标量读权重，走 MTE2_S；否则直接放行 S_MTE3。
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
     } else {
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
@@ -116,15 +123,16 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
                                                      int32_t bufferIdx,
                                                      GlobalTensor<ActivationType> &tokenRevGlobalTensor,
                                                      GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-                                                     GlobalTensor<int32_t> &metaInfoGlobalTensor, int32_t copyStartIdx,
-                                                     int32_t copyIdx)
+                                                     GlobalTensor<int32_t> &metaInfoGlobalTensor,
+                                                     GlobalTensor<int32_t> &revWeightsGlobalTensor,
+                                                     int32_t copyStartIdx, int32_t copyIdx)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
-    if constexpr (TopkWeightsPrefetch) {
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
@@ -133,6 +141,20 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(params.tilingData->topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
+        // dc 单开（combine 去重 + dispatch 去重关）时本路径是唯一落地入口：每行把整 token
+        // 权重段落到自己的 revWeights 槽，供 merge 在 LAST 行一次连续读回乘权。
+        if constexpr (!TopkWeightsPrefetch) {
+            if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+                const uint32_t topK = params.tilingData->topK;
+                const uint32_t weightAlignInt32 =
+                    Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)),
+                                         static_cast<uint32_t>(ALIGN_32)) /
+                    static_cast<uint32_t>(sizeof(int32_t));
+                DataCopyPad(revWeightsGlobalTensor[static_cast<uint64_t>(copyIdx) * weightAlignInt32],
+                            weightBitsTensor,
+                            {1U, topK * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
+            }
+        }
     }
     DataCopyPad(tokenRevGlobalTensor[copyIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
@@ -159,6 +181,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
     GlobalTensor<int32_t> metaInfoGlobalTensor;
+    GlobalTensor<int32_t> revWeightsGlobalTensor;
     tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
         params.workspaceInfo.dispatchRevDataPtr + rowDstOffset * scratch.revTokenElemCnt));
     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType *>(
@@ -167,6 +190,21 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
         reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
     metaInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
         params.workspaceInfo.metaInfoPtr + rowDstOffset * INT32_PER_256B * sizeof(int32_t)));
+    // tkw=0 的 combine 去重且 dispatch 去重未开（dc 单开）：本基线路径是唯一落地入口，每行把
+    // 整 token 权重段写到自己的 revWeights 槽（merge 在 LAST 行上读，LAST 行也经本路径写过）。
+    // full 模式走 DispatchOwnedExpertRowsDedup/StoreDedupEntry，由那边写 LAST 槽，与此互斥。
+    if constexpr (!TopkWeightsPrefetch) {
+        if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            uint32_t weightAlignInt32 =
+                Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK) *
+                                         static_cast<uint32_t>(sizeof(float)),
+                                     static_cast<uint32_t>(ALIGN_32)) /
+                static_cast<uint32_t>(sizeof(int32_t));
+            revWeightsGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                params.workspaceInfo.dispatchRevWeightsPtr +
+                static_cast<uint64_t>(rowDstOffset) * weightAlignInt32 * sizeof(int32_t)));
+        }
+    }
 
     int32_t firstTopkIndex = static_cast<int32_t>(scratch.validTopkIndexTensor.GetValue(copyStartIdx));
     FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, 0, firstTopkIndex,
@@ -180,7 +218,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
                                                                   remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, scratch, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            revWeightsGlobalTensor, copyStartIdx, copyIdx);
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
@@ -192,12 +230,12 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, scratch, copyBufferIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            revWeightsGlobalTensor, copyStartIdx, copyIdx);
     }
 
     StoreDispatchTokenAndMetaInfo<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, params, scratch, (copyNum - 1) % bufferCount, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
+        metaInfoGlobalTensor, revWeightsGlobalTensor, copyStartIdx, copyNum - 1);
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
@@ -274,6 +312,305 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
 }
 
 /*
+ * 去重版单条目落地：把 ring 槽内一条已拉取记录写到其所属行；该行是重复组首行（FIRST）时，
+ * 同一份 UB 数据额外扇出写到组内全部成员行（数据/scale/metaInfo 三区各一份，metaInfo 按各成员
+ * 自己的 topkIndex/权重位拼装）。事件契约与基线 Store 对齐：消费 Fetch 的 MTE2_MTE3（以及
+ * prefetch 的 MTE2_S / 非 prefetch 的 S_MTE3），结束时释放 MTE3_MTE2 与 MTE3_S。
+ */
+template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const Params &params,
+                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch,
+                                       LocalTensor<int32_t> &descBatchTensor, LocalTensor<int32_t> &fanMetaTensor,
+                                       int32_t bufferIdx, uint32_t remoteRankIdx, int32_t selfRow,
+                                       int32_t selfTopkIndex, int32_t descBase,
+                                       GlobalTensor<ActivationType> &tokenRevAbsTensor,
+                                       GlobalTensor<QuantScaleType> &scaleRevAbsTensor,
+                                       GlobalTensor<int32_t> &metaInfoAbsTensor)
+{
+    TEventID eventId = static_cast<TEventID>(bufferIdx);
+    const int32_t topK = static_cast<int32_t>(params.tilingData->topK);
+    WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+    LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
+    LocalTensor<QuantScaleType> scaleBuffer =
+        tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
+    // 与 Fetch 侧事件分叉同条件：记录带权重段（prefetch 或 tkw=0 combine 去重）走 MTE2_S。
+    const bool recordHasWeights = TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData);
+    LocalTensor<int32_t> weightBitsTensor;
+    if (recordHasWeights) {
+        WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
+        uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
+        weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
+    } else {
+        // Fetch 在无权重段布局下为 ring meta 置了 S_MTE3；本路径不消费 ring meta，在此配平。
+        WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
+    }
+    const int32_t flags = descBatchTensor.GetValue(static_cast<uint32_t>(descBase));
+    const int32_t memberCount = (flags & DEDUP_ROW_FLAG_FIRST) != 0 ? (flags & DEDUP_ROW_MEMBER_COUNT_MASK) : 1;
+    MM_KTS_CTR(MgbKts::MM_KTS_CTR_FANOUT, static_cast<uint32_t>(memberCount - 1));
+
+    // 数据与 scale：组内每个成员一份（memberCount==1 即仅本行）。
+    const uint32_t fanMetaSlotBase =
+        static_cast<uint32_t>(bufferIdx) * static_cast<uint32_t>(topK) * static_cast<uint32_t>(INT32_PER_256B);
+    const int32_t tokenIndex = selfTopkIndex / topK;
+    for (int32_t m = 0; m < memberCount; ++m) {
+        int32_t row = selfRow;
+        int32_t topkIndex = selfTopkIndex;
+        if (memberCount > 1) {
+            uint32_t tripleBase = static_cast<uint32_t>(descBase) + DEDUP_ROW_DESC_HEADER_INT32 +
+                                  static_cast<uint32_t>(m) * 3U;
+            row = descBatchTensor.GetValue(tripleBase);
+            topkIndex = descBatchTensor.GetValue(tripleBase + 1U);
+        }
+        DataCopyPad(tokenRevAbsTensor[static_cast<uint64_t>(row) * scratch.revTokenElemCnt], tokenScaleBuffer,
+                    {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
+        DataCopyPad(scaleRevAbsTensor[static_cast<uint64_t>(row) * scratch.revScaleElemCnt], scaleBuffer,
+                    {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
+        uint32_t metaBase = fanMetaSlotBase + static_cast<uint32_t>(m) * static_cast<uint32_t>(INT32_PER_256B);
+        fanMetaTensor.SetValue(metaBase + RANK_ID, static_cast<int32_t>(remoteRankIdx));
+        fanMetaTensor.SetValue(metaBase + TOKEN_ID, tokenIndex);
+        fanMetaTensor.SetValue(metaBase + TOPK_INDEX, topkIndex % topK);
+        if (recordHasWeights) {
+            fanMetaTensor.SetValue(metaBase + WEIGHT_INDEX,
+                                   weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % topK)));
+        } else {
+            fanMetaTensor.SetValue(metaBase + WEIGHT_INDEX, 0);
+        }
+    }
+    // tkw=0 的 combine 去重：FIRST 行扇出时顺手把整 token 的 topK 权重段落到 LAST 成员行的
+    // revWeights 槽（组成员按行号升序、末位即 LAST）。merge 在 LAST 行上驱动，一次连续读回
+    // 全组权重按成员 topkIndex 乘权；tkw=1 合并纯加不需要本区，编译期折叠。
+    // 条件按 GROUP 标志而非 memberCount>1：clamp 裁剪后 survivorCount==1 的单成员组仍按组发、
+    // 仍走 merge 乘权路径，漏写即读到未初始化权重。
+    if constexpr (!TopkWeightsPrefetch) {
+        if (recordHasWeights && (flags & DEDUP_ROW_FLAG_GROUP) != 0) {
+            const uint32_t weightAlignBytes = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(topK) * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+            const int32_t lastRow = descBatchTensor.GetValue(static_cast<uint32_t>(descBase) +
+                                                             DEDUP_ROW_DESC_HEADER_INT32 +
+                                                             static_cast<uint32_t>(memberCount - 1) * 3U);
+            GlobalTensor<int32_t> revWeightsGm;
+            revWeightsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                params.workspaceInfo.dispatchRevWeightsPtr +
+                static_cast<uint64_t>(static_cast<uint32_t>(lastRow)) * weightAlignBytes));
+            DataCopyPad(revWeightsGm, weightBitsTensor,
+                        {1U, static_cast<uint32_t>(topK) * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
+        }
+    }
+    SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
+    WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
+    for (int32_t m = 0; m < memberCount; ++m) {
+        int32_t row = selfRow;
+        if (memberCount > 1) {
+            row = descBatchTensor.GetValue(static_cast<uint32_t>(descBase) + DEDUP_ROW_DESC_HEADER_INT32 +
+                                           static_cast<uint32_t>(m) * 3U);
+        }
+        DataCopy(metaInfoAbsTensor[static_cast<uint64_t>(row) * INT32_PER_256B],
+                 fanMetaTensor[fanMetaSlotBase + static_cast<uint32_t>(m) * static_cast<uint32_t>(INT32_PER_256B)],
+                 INT32_PER_256B);
+    }
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+    SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
+}
+
+/*
+ * DispatchRankTokens 的去重版本：按批装载 route 条目与 rowDesc；SKIP 行（组内非首行）不产生任何
+ * 拉取与写入（由其组首行扇出写入）；PLAIN/FIRST 行沿用基线的 fetch/store 软流水（对活跃条目
+ * 压紧后流水）。批尾统一发布 tile-ready：段内已写行按连续 run 聚合（AtomicAdd 语义允许分段累加），
+ * 扇出成员行逐行按所属专家/tile 发布——每个物理行恒被其写入者发布一次，GMM1 等值判据不变。
+ */
+template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM,
+          bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchRankTokensDedup(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
+                                               const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                               GM_ADDR *winRankAddr,
+                                               TokenDispatchScratch<ActivationType, TopkIndexType> &scratch,
+                                               uint32_t localExpertId, int32_t expertGlobalRowBegin,
+                                               uint32_t remoteRankIdx, int32_t rankSegmentRowBegin,
+                                               int32_t segmentMatchOrdinalBegin, int32_t segmentMatchOrdinalEnd)
+{
+    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
+    const int32_t bufferCount = bufferConfig.bufferCount;
+    const uint32_t strideInt32 = context.dedup.rowDescStrideInt32;
+    const int32_t descRowsCap =
+        static_cast<int32_t>(DEDUP_DESC_BATCH_UB_BYTES / (strideInt32 * sizeof(int32_t)));
+    const int32_t batchCap =
+        bufferConfig.routeItemsPerBatch < descRowsCap ? bufferConfig.routeItemsPerBatch : descRowsCap;
+
+    LocalTensor<int32_t> descBatchTensor(TPosition::VECCALC, scratch.dedupUbBaseAddr,
+                                         DEDUP_DESC_BATCH_UB_BYTES / sizeof(int32_t));
+    LocalTensor<int32_t> fanMetaTensor(TPosition::VECCALC, scratch.dedupUbBaseAddr + DEDUP_DESC_BATCH_UB_BYTES,
+                                       DEDUP_FAN_META_UB_BYTES / sizeof(int32_t));
+    LocalTensor<int32_t> activeListTensor(
+        TPosition::VECCALC, scratch.dedupUbBaseAddr + DEDUP_DESC_BATCH_UB_BYTES + DEDUP_FAN_META_UB_BYTES,
+        DEDUP_ACTIVE_LIST_UB_BYTES / sizeof(int32_t));
+
+    GlobalTensor<ActivationType> remoteRankGlobalTensor;
+    remoteRankGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
+    GlobalTensor<ActivationType> tokenRevAbsTensor;
+    tokenRevAbsTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ ActivationType *>(params.workspaceInfo.dispatchRevDataPtr));
+    GlobalTensor<QuantScaleType> scaleRevAbsTensor;
+    scaleRevAbsTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ QuantScaleType *>(params.workspaceInfo.dispatchRevScalePtr));
+    GlobalTensor<int32_t> metaInfoAbsTensor;
+    metaInfoAbsTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
+    GlobalTensor<int32_t> rowDescGm;
+    rowDescGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(context.dedup.rowDescPtr));
+    GlobalTensor<TopkIndexType> remoteRouteIndexGlobal;
+
+    // prepass 按需等待：本段（单一 srcRank）批序 token 单调递增，已确认 ready 的 chunk 不再重查。
+    const int32_t topK = static_cast<int32_t>(params.tilingData->topK);
+    __gm__ int32_t *prepassReadyBase = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
+    const uint32_t prepassChunkTokens = context.dedup.prepassChunkTokens;
+    const uint32_t prepassChunkCount = context.dedup.prepassChunkCount;
+    int32_t confirmedChunkEnd = -1;
+
+    int32_t processed = 0;
+    const int32_t segmentTotal = segmentMatchOrdinalEnd - segmentMatchOrdinalBegin;
+    while (processed < segmentTotal) {
+        const int32_t remaining = segmentTotal - processed;
+        const int32_t batchCount = remaining < batchCap ? remaining : batchCap;
+        const int32_t routeOrdinal = segmentMatchOrdinalBegin + processed;
+        const int32_t batchRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
+
+        // 上一批的标量读（desc/activeList）先于本批 MTE2 覆盖完成。
+        SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID4>();
+        uint64_t slotOffset =
+            (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
+        // route 槽元素类型随 numMaxTokensPerRank*topK 在 int16/int32 间切换（UseInt16TopkIndex），与基线同式读取。
+        remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ TopkIndexType *>(
+            params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(TopkIndexType)));
+        DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchCount * sizeof(TopkIndexType)), 0U, 0U, 0U};
+        DataCopyPadExtParams<TopkIndexType> routeCopyPad{false, 0U, 0U, 0U};
+        DataCopyPad(scratch.validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
+        // 本批 desc 覆盖的 prepass 工作项 = (srcRank, [首token,末token] 的 chunk 区间)；只等自己需要的项。
+        {
+            const int32_t tokenFirst = scratch.validTopkIndexTensor.GetValue(0U) / topK;
+            const int32_t tokenLast =
+                scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(batchCount - 1)) / topK;
+            const int32_t chunkLast = tokenLast / static_cast<int32_t>(prepassChunkTokens);
+            if (chunkLast > confirmedChunkEnd) {
+                MM_KTS_T(ktsDescWaitT0);
+                int32_t chunkFirst = tokenFirst / static_cast<int32_t>(prepassChunkTokens);
+                chunkFirst = chunkFirst > confirmedChunkEnd + 1 ? chunkFirst : confirmedChunkEnd + 1;
+                for (int32_t c = chunkFirst; c <= chunkLast; ++c) {
+                    const uint32_t item = remoteRankIdx * prepassChunkCount + static_cast<uint32_t>(c);
+                    WaitUntilGmFlagEquals(prepassReadyBase + (1U + item) * INT_CACHELINE, 1);
+                }
+                confirmedChunkEnd = chunkLast;
+                MM_KTS_SPAN(MgbKts::MM_DEDUP_DESC_WAIT, 0U, localExpertId, static_cast<uint32_t>(chunkLast),
+                            remoteRankIdx, ktsDescWaitT0);
+            }
+        }
+        SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID4>();
+        DataCopyPad(descBatchTensor, rowDescGm[static_cast<uint64_t>(batchRowBegin) * strideInt32],
+                    {1U, static_cast<uint32_t>(batchCount * strideInt32 * sizeof(int32_t)), 0U, 0U, 0U},
+                    {false, 0U, 0U, 0U});
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
+
+        // 第一遍：压紧非 SKIP 条目的批内序号。
+        int32_t activeCount = 0;
+        for (int32_t i = 0; i < batchCount; ++i) {
+            int32_t flags = descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+            if ((flags & DEDUP_ROW_FLAG_GROUP) != 0 && (flags & DEDUP_ROW_FLAG_FIRST) == 0) {
+                continue;
+            }
+            activeListTensor.SetValue(static_cast<uint32_t>(activeCount), i);
+            ++activeCount;
+        }
+
+        // 第二遍：对活跃条目执行基线同款 fetch/store 软流水。
+        if (activeCount > 0) {
+            int32_t entry = activeListTensor.GetValue(0U);
+            FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+                context, params, scratch, 0, scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(entry)),
+                static_cast<int32_t>(remoteRankIdx), remoteRankGlobalTensor);
+            const int32_t firstUseEnd = activeCount < bufferCount ? activeCount : bufferCount;
+            for (int32_t a = 1; a < activeCount; ++a) {
+                int32_t issueEntry = activeListTensor.GetValue(static_cast<uint32_t>(a));
+                if (a < bufferCount) {
+                    FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+                        context, params, scratch, a,
+                        scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(issueEntry)),
+                        static_cast<int32_t>(remoteRankIdx), remoteRankGlobalTensor);
+                } else {
+                    FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
+                        context, params, scratch, a % bufferCount,
+                        scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(issueEntry)),
+                        static_cast<int32_t>(remoteRankIdx), remoteRankGlobalTensor);
+                }
+                int32_t storeEntry = activeListTensor.GetValue(static_cast<uint32_t>(a - 1));
+                StoreDedupEntry<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                    context, params, scratch, descBatchTensor, fanMetaTensor, (a - 1) % bufferCount, remoteRankIdx,
+                    batchRowBegin + storeEntry,
+                    scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(storeEntry)),
+                    storeEntry * static_cast<int32_t>(strideInt32), tokenRevAbsTensor, scaleRevAbsTensor,
+                    metaInfoAbsTensor);
+            }
+            int32_t lastEntry = activeListTensor.GetValue(static_cast<uint32_t>(activeCount - 1));
+            StoreDedupEntry<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, scratch, descBatchTensor, fanMetaTensor, (activeCount - 1) % bufferCount,
+                remoteRankIdx, batchRowBegin + lastEntry,
+                scratch.validTopkIndexTensor.GetValue(static_cast<uint32_t>(lastEntry)),
+                lastEntry * static_cast<int32_t>(strideInt32), tokenRevAbsTensor, scaleRevAbsTensor,
+                metaInfoAbsTensor);
+            for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
+                TEventID eventId = static_cast<TEventID>(bufferIdx);
+                WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+                WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+            }
+        }
+
+        // 第三遍：发布 tile-ready。段内已写行按连续 run 聚合。
+        int32_t runBegin = -1;
+        for (int32_t i = 0; i <= batchCount; ++i) {
+            bool written = false;
+            if (i < batchCount) {
+                int32_t flags = descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+                written = ((flags & DEDUP_ROW_FLAG_GROUP) == 0) || ((flags & DEDUP_ROW_FLAG_FIRST) != 0);
+            }
+            if (written) {
+                runBegin = runBegin < 0 ? i : runBegin;
+                continue;
+            }
+            if (runBegin >= 0) {
+                int32_t segRowBegin = batchRowBegin - expertGlobalRowBegin + runBegin;
+                int32_t segRowEnd = batchRowBegin - expertGlobalRowBegin + i;
+                PublishGmm1TileReady(syncLayout, params, localExpertId, static_cast<int32_t>(PipelineTileM),
+                                     segRowBegin, segRowEnd);
+                runBegin = -1;
+            }
+        }
+        // 去重收益计数：本批实拉/跳过行数（跳过数≈被省掉的跨片拉取数，扇出写在 Store 内计）。
+        MM_KTS_CTR(MgbKts::MM_KTS_CTR_FETCHED, static_cast<uint32_t>(activeCount));
+        MM_KTS_CTR(MgbKts::MM_KTS_CTR_SKIPPED, static_cast<uint32_t>(batchCount - activeCount));
+        // 扇出成员行（组内 j>=1，必在其它专家）逐行发布；flag 槽偏移由 prepass 预计算，不依赖 cumsum。
+        __gm__ int32_t *flagBaseAll = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr);
+        bool memberSyncDone = false;
+        for (int32_t i = 0; i < batchCount; ++i) {
+            int32_t flags = descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+            if ((flags & DEDUP_ROW_FLAG_FIRST) == 0) {
+                continue;
+            }
+            int32_t memberCount = flags & DEDUP_ROW_MEMBER_COUNT_MASK;
+            for (int32_t j = 1; j < memberCount; ++j) {
+                int32_t flagSlotOffset =
+                    descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32 + DEDUP_ROW_DESC_HEADER_INT32 +
+                                             static_cast<uint32_t>(j) * 3U + 2U);
+                if (!memberSyncDone) {
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+                    memberSyncDone = true;
+                }
+                AtomicAdd(flagBaseAll + flagSlotOffset, 1);
+            }
+        }
+        processed += batchCount;
+    }
+}
+
+/*
  * 在当前专家的 source-rank 累计行数中二分查找 globalRowIdx 所属的首个 rank。
  * 返回值作为 DispatchOwnedExpertRows 的扫描起点，后续只访问与本核范围相交的连续 rank 段。
  */
@@ -295,6 +632,47 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
         }
     }
     return searchBegin - expertRankBegin;
+}
+
+/*
+ * DispatchOwnedExpertRows 的去重版本：range 拆段逻辑与基线一致，逐段调用去重版搬运；
+ * tile-ready 已在去重批内完成发布，此处不再做段级 Publish。
+ */
+template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM,
+          bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchOwnedExpertRowsDedup(const TokenDispatchConfig &context,
+                                                    const MoeStageCommonConfig &common,
+                                                    const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                                    GM_ADDR *winRankAddr,
+                                                    TokenDispatchScratch<ActivationType, TopkIndexType> &scratch,
+                                                    uint32_t localExpertId, const ExpertDispatchCoreRange &coreRange)
+{
+    uint32_t coreGlobalRowBegin = coreRange.expertGlobalRowBegin + coreRange.localExpertRowBegin;
+    uint32_t coreGlobalRowEnd = coreRange.expertGlobalRowBegin + coreRange.localExpertRowEnd;
+    uint32_t sourceRankIdx = FindDispatchSourceRank(common, scratch, localExpertId, coreGlobalRowBegin);
+
+    while (sourceRankIdx < common.worldSize) {
+        uint32_t prefixIndex = localExpertId * common.worldSize + sourceRankIdx;
+        uint32_t rankGlobalRowEnd = static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex));
+        uint32_t rankGlobalRowBegin =
+            prefixIndex == 0U ? 0U : static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex - 1U));
+        if (rankGlobalRowBegin >= coreGlobalRowEnd) {
+            break;
+        }
+
+        uint32_t overlapGlobalRowBegin =
+            coreGlobalRowBegin > rankGlobalRowBegin ? coreGlobalRowBegin : rankGlobalRowBegin;
+        uint32_t overlapGlobalRowEnd = coreGlobalRowEnd < rankGlobalRowEnd ? coreGlobalRowEnd : rankGlobalRowEnd;
+        if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
+            DispatchRankTokensDedup<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+                context, common, syncLayout, params, winRankAddr, scratch, localExpertId,
+                static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
+                static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
+                static_cast<int32_t>(overlapGlobalRowBegin - rankGlobalRowBegin),
+                static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin));
+        }
+        ++sourceRankIdx;
+    }
 }
 
 /*
@@ -366,6 +744,20 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     if (GetSubBlockIdx() != 1U || blockJob.totalJobs == 0U) {
         return;
     }
+    if (context.dedup.dedupMode != 0 && params.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+        // AIV0 参与建表后，其 UB 建表区会被 AIC 的首批 GMM1 tile 覆写（P0 探针实测覆写发生在
+        // dispatch 首批发布之后；GMM1 problem 抢全局 tile，任一 AIV1 的发布都可能触发任一 block 的
+        // AIC 写其 AIV0 UB）。发布任何 tile 前只等 done 计数高 16 位=全体 AIV0（本 AIV1 自己已建完，
+        // AIV1 之间不互等，保住 prepass 与 dispatch 的流水交叠）；combine 单开（dispatch 走基线路径）
+        // 同样经由本入口。首个 wave 之后瞬时通过。
+        __gm__ int32_t *dedupDoneSlot = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
+        const int32_t expectAiv0Done = static_cast<int32_t>(GetBlockNum());
+        while ((ReadGmByPassDCache(dedupDoneSlot) >> 16) != expectAiv0Done) {
+            int64_t gateBackoffStart = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - gateBackoffStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
+            }
+        }
+    }
 
     // maxOutputSize 是 Dispatch workspace 的硬边界，先统一裁剪再做分核。
     uint32_t dispatchGlobalRowBegin = static_cast<uint32_t>(
@@ -411,29 +803,29 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
             // 将本核的全局连续区间投影为当前专家内的局部 row 区间。
             ExpertDispatchCoreRange expertRange{expertGlobalRowBegin, overlapGlobalRowBegin - expertGlobalRowBegin,
                                                 overlapGlobalRowEnd - expertGlobalRowBegin};
-            DispatchOwnedExpertRows<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-                context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
+            if ((context.dedup.dedupMode & DEDUP_MODE_DISPATCH) != 0) {
+                DispatchOwnedExpertRowsDedup<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM,
+                                             TopkWeightsPrefetch>(context, common, syncLayout, params, winRankAddr,
+                                                                  scratch, expertIdx, expertRange);
+            } else {
+                DispatchOwnedExpertRows<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM,
+                                        TopkWeightsPrefetch>(context, common, syncLayout, params, winRankAddr, scratch,
+                                                             expertIdx, expertRange);
+            }
         }
     }
 }
 
-// Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
-// W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
-template <bool NeedCumsumReload = false, typename ActivationType, typename TopkIndexType>
-__aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
-                                                       const BlockWorkspaceContext &countWorkspace,
-                                                       const Params &params,
-                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+/*
+ * count 表的装载与本地计算段（从 PrepareMoeExpertTokenCountTable 提取，语义逐字不变）：
+ * 装载原始 count → 逐槽 epoch 到达校验 → 前缀和。不含 GM 发布与 ready 标志。
+ * AIV1 经 PrepareMoeExpertTokenCountTable 调用；AIV0 参与去重 prepass 建表时直接调用本函数，
+ * 在自己的 UB 里得到一份本地前缀表（发布仍由 AIV1 独担；count 槽只被读，无并发写）。
+ */
+template <typename ActivationType, typename TopkIndexType>
+__aicore__ inline void LoadAndComputeExpertCountTable(const MoeStageCommonConfig &common, const Params &params,
+                                                      TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
 {
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次。
-        CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
-        return;
-    }
-
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
 
     /*
@@ -454,6 +846,32 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     // 后续只使用 UB 结果及 workspace 副本，不再读取 peermem 原始 count 表。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+}
+
+// Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
+// W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
+template <bool NeedCumsumReload = false, typename ActivationType, typename TopkIndexType>
+__aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
+                                                       const BlockWorkspaceContext &countWorkspace,
+                                                       const Params &params,
+                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        // AIV0 不读取 count，但 mode 0 需要全部 AIV 每轮各上报一次；参与去重建表的 AIV0
+        // 经 PrepareDedupPrepassAiv0Local -> LoadAndComputeExpertCountTable 已上报，此处不得重复。
+        // 条件必须与 PrepareDedupPrepassAiv0Local 的启用门严格互补（含 hiddenDim 档位），
+        // 否则计算主导档的 AIV0 无人上报，ExportAndResetExpertCounts 等 read-done 挂死。
+        if (params.tilingData->dedupMode == 0 ||
+            params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+            CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
+        }
+        return;
+    }
+    LoadAndComputeExpertCountTable(common, params, scratch);
+    uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
@@ -467,7 +885,48 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
+    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
+}
+
+/*
+ * AIV0 参与去重 prepass 建表的本地准备：AIV0 的 dispatch UB 布局从未初始化（DispatchBuffInit 仅
+ * AIV1 执行），在本子核 UB 自建 cumsum / expertTokenNumsOut 视图与 dedupUbBaseAddr——两子核 UB
+ * 物理独立，且 P0 探针实测本窗口 AIV0 UB [0,200KB) 无人写（AIC 首批 GMM1 tile 的覆写发生在
+ * dispatch 首批发布之后，而发布侧有 done-gate 挡到全体建表完成）。随后本地复算 count 前缀表
+ *（发布仍由 AIV1 独担；count 槽只被读，无并发写）。必须在 BuildDedupRowDescTable 之前调用；
+ * 去重关闭或非 AIV0 为空操作。
+ * 到达性判据：等本 block AIV1 的 countTableReady（AIV1 完成 epoch 校验+前缀和才置位，到达性由它
+ * 背书；AIV0 正常流程本就在下游等同一标志，清零与多 launch 语义均为既有机制），装载后掩低 24 位。
+ * 到达性判据：与 AIV1 相同走 WaitForCountTable（count 携带本轮 epoch tag，整表校验+退避重读；
+ * 输入准备阶段每个物理 AIV 含 AIV0 都推进自己的同步计数，期望 tag 可用）。不可改等 countTableReady
+ * 残留判据：上游已删除入口跨卡握手，且轮尾 count 接收区被清零，而 countTableReady 无人清零——
+ * 首轮=0 时等待成立，第 2 轮起残留非零使 AIV0 冲线，读到"已清零、本轮未到达"的 count 槽即建出
+ * 全 0 前缀表，消费者死等（2026-09-23 连续多轮性能循环停滞实翻，AIV0 禁用对照全绿定案）。
+ */
+template <typename ActivationType, typename TopkIndexType>
+__aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, const MoeStageCommonConfig &common,
+                                                    const Params &params,
+                                                    TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (dedup.dedupMode == 0 || GetSubBlockIdx() != 0U ||
+        params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+        return;
+    }
+    const uint32_t cumsumInfoTensorSize = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<int64_t>(common.worldSize * common.moeExpertPerRank * sizeof(int32_t)),
+                             static_cast<int64_t>(ALIGN_32)));
+    scratch.cumsumInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0U, cumsumInfoTensorSize / sizeof(int32_t));
+    const uint32_t expertTokenNumsOutTensorSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(common.moeExpertPerRank * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32)));
+    scratch.expertTokenNumsOutTensor = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorSize,
+                                                            expertTokenNumsOutTensorSize / sizeof(int32_t));
+    scratch.dedupUbBaseAddr = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<uint64_t>(cumsumInfoTensorSize + expertTokenNumsOutTensorSize),
+                             static_cast<uint64_t>(ALIGN_512)));
+    LoadAndComputeExpertCountTable(common, params, scratch);
 }
 
 /*

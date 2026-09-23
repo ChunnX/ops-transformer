@@ -24,6 +24,7 @@
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
 #include "common/mega_moe_exception_dump_policy.h"
+#include "common/mgb_kts_mega_moe.h" // KTS 打点（默认关，见 mgb_kts_switch.h）
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
@@ -182,6 +183,9 @@ protected:
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType, TopkIndexType> tokenDispatchScratch_;
     WaveCombineScratch waveCombineScratch_;
+    // 非量化 combine 去重的追加 UB 视图与跨行事件武装状态（排空时消费）。
+    WaveCombineDedupScratch waveCombineDedupScratch_;
+    WaveCombineDedupState waveCombineDedupState_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
     __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
@@ -199,7 +203,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs
     } else {
         sharedQuantProcessConfig_ = CreateQuantProcessConfig<typename SharedQuantConfig::QuantStorageType,
                                                              typename SharedQuantConfig::QuantScaleType, false,
-                                                             SharedQuantConfig::A_ELEMS_PER_BYTE>(k_, params_);
+                                                             SharedQuantConfig::A_ELEMS_PER_BYTE, false>(k_, params_);
     }
     // 共享专家启用时仅 AIV1 计算发送 topK 有效下标，其余情况保留全 AIV 分工。
     const uint32_t topkValidIndexCoreIdx = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;
@@ -397,6 +401,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t metaInfoTensorSize = static_cast<uint32_t>(bufferConfig.bufferCount) * INT32_PER_256B * sizeof(int32_t);
     scratch.metaInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoTensorSize / sizeof(int32_t));
+    scratch.dedupUbBaseAddr = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<uint64_t>(metaInfoTensorAddr + metaInfoTensorSize), static_cast<uint64_t>(ALIGN_512)));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -731,7 +737,32 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // AIV1 已在上述 GMM2 调用中消费当前 slice；无需在外部重建 scheduler。
+        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            // combine 去重：跨 WAVE 的专家等最后一个 slice 完成后按专家粒度独立消费（与量化路径
+            // 同构；AIC 被跳过 problem 的情形也会到达本分支，per-expert 标记不漏发）。
+            if (tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {
+                NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
+                if (isFinalCombine) {
+                    if constexpr (g_coreType == AIV) {
+                        if (GetSubBlockIdx() == 0U) {
+                            // W4 prologue 完成后，末轮 AIV0 才能通过 MTE2 复用同一 UB 区域。
+                            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
+                        }
+                    }
+                    combineBufferConfig = InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_,
+                                                                            waveCombineDedupScratch_);
+                    RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                                   waveCombineScratch_, waveCombineDedupScratch_, params_, state,
+                                                   state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                } else {
+                    RunWaveCombineStageDedup<false>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                                    waveCombineScratch_, waveCombineDedupScratch_, params_, state,
+                                                    state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                }
+            }
+            return;
+        }
+        // 基线路径：AIV1 已在上述 GMM2 调用中逐 tile 消费当前 slice；无需在外部重建 scheduler。
         return;
     }
 
@@ -864,8 +895,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExportAndResetExpertCou
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
+    MM_KTS_T(ktsResetT0);
     SendAndQuantBuffInit();
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+    MM_KTS_SPAN(MgbKts::MM_SYNC_RESET, 0U, 0U, 0U, 0U, ktsResetT0);
+    MM_KTS_T(ktsQuantT0);
     const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
     if (tokenRange.count > 0U) {
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
@@ -878,6 +912,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
             // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
         }
     }
+    MM_KTS_SPAN(MgbKts::MM_INPUT_QUANTIZE, 0U, 0U, 0U, 0U, ktsQuantT0);
     // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
     IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
     // 同一 MTE3 流水先完成 reset、MoE 量化及可选共享量化写回，再发布完成通知。
@@ -899,7 +934,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
      * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成下标/count 发送后执行共享激活。
      * count 携带本轮 epoch，接收端逐项确认远端输入就绪；共享计算不等待入口跨卡握手。
      */
+    MM_KTS_T(ktsRouteT0);
     SendTopkIdsIndexAndCount(ownedExpertRange);
+    MM_KTS_SPAN(MgbKts::MM_ROUTE_SEND, 0U, 0U, 0U, 0U, ktsRouteT0);
     // Scalar 读取 GM ready 状态前确认 reset 已完成；此事件在 count 发送前发布。
     WaitFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
 }
@@ -925,6 +962,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     // 保存入口时的溢出模式，计算期间关闭溢出检查。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+    MM_KTS_INIT(params_);
 
     // 阶段 1：准备动态量化或预量化输入、清零、本卡输入同步及下标/count 发送。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
@@ -940,7 +978,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
+        MM_KTS_T(ktsSharedG1T0);
         ProcessSharedExpertGmm1(sharedGmm1ActivationSync);
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_SHARED_GMM1, 0U, 0U, 0U, 0U, ktsSharedG1T0);
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
@@ -948,22 +988,30 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     Gmm2CombineSync gmm2CombineSync;
     derived.ProcessMoeExpertStages(gmm1ActivationSync, gmm2CombineSync);
     if constexpr (g_coreType == AIV) {
+        MM_KTS_T(ktsTailSyncT0);
         ExportAndResetExpertCounts();
+        MM_KTS_SPAN(MgbKts::MM_MOE_TAIL_SYNC, 0U, 0U, 0U, 0U, ktsTailSyncT0);
     }
     if (sharedExpertNum_ > 0U) {
         // 阶段 4：可选的共享专家 GMM2，其结果由输出聚合阶段合并。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
+        MM_KTS_T(ktsSharedG2T0);
         ProcessSharedExpertGmm2();
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_SHARED_GMM2, 0U, 0U, 0U, 0U, ktsSharedG2T0);
     }
 
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+        MM_KTS_T(ktsSyncOutT0);
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        MM_KTS_SPAN(MgbKts::MM_CROSS_RANK_SYNC_OUT, 0U, 0U, 0U, 0U, ktsSyncOutT0);
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
+        MM_KTS_T(ktsUnpermT0);
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+        MM_KTS_SPAN(MgbKts::MM_UNPERMUTE, 0U, 0U, 0U, 0U, ktsUnpermT0);
     }
 
     // 三组 GM 硬同步事件独立，末尾统一回收 ACK，避免阻塞后续共享计算。
@@ -972,6 +1020,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     gmm1ActivationSync.EndSync();
     gmm2CombineSync.EndSync();
 
+    MM_KTS_FINISH(params_);
     // 恢复入口时的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
