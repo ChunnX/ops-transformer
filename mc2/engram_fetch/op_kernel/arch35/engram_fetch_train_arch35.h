@@ -139,7 +139,6 @@ private:
                                                uint32_t chunkLen);
     template <bool HasSf>
     __aicore__ inline void ExchangeTokenWithLocalRead();
-    __aicore__ inline void ExchangeTokenWithLocalRead();
     template <bool HasSf>
     __aicore__ inline void RecvTokensFromPeers();
     template <bool HasSf>

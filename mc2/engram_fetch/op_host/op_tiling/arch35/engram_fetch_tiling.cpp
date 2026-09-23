@@ -673,6 +673,12 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t wsCounterScratch = aivNum * UB_ALIGN;
         int64_t wsPartialCounts = aivNum * numRanks * static_cast<int64_t>(sizeof(int32_t));
         int64_t wsIndicesReadyFlag = AlignTo(numRanks * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
+        // 数值安全防护：sf 分量非负、乘法不溢出，numSfPacks=0 为无 sf 合法场景
+        OP_TILING_CHECK(tilingData.numSfPacks < 0 || tilingData.sfElemSize < 0 ||
+                            (tilingData.sfElemSize > 0 && tilingData.numSfPacks > INT64_MAX / tilingData.sfElemSize),
+                        OP_LOGE(nodeName, "invalid sf dims: numSfPacks=%ld, sfElemSize=%ld", tilingData.numSfPacks,
+                                tilingData.sfElemSize),
+                        return ge::GRAPH_FAILED);
         int64_t sfBytes = static_cast<int64_t>(tilingData.numSfPacks) * static_cast<int64_t>(tilingData.sfElemSize);
         int64_t rowStride = tilingData.hiddenBytes + sfBytes;
         OP_TILING_CHECK(tilingData.totalRecv < 0 || rowStride <= 0 || tilingData.totalRecv > INT64_MAX / rowStride,
