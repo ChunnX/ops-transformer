@@ -19,7 +19,7 @@
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 
-#if (__CCE_AICORE__ == 310)
+#if (__CCE_AICORE__ == 310) || (__NPU_ARCH__ == 9201)
 #define PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, ...) \
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]); \
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
