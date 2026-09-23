@@ -8,6 +8,35 @@
 | ② 边界用例 | `run_edge_cases.sh` | 9 个边界 shape（head 数上下界、tail 非整块、wave 临界、零/近零行）：对拍 + V3 |
 | ③ 非法输入拒绝 | `invalid_cases.py` | 11 个非法输入（shape/dtype/attr 越界）必须被 tiling 拒绝 |
 
+## 用例清单（精度测试 case / 性能测试 case）
+
+全部用例来自任务包 `case.json`（原样复制、未修改）。**同一个 case 同时承担精度与性能判定**：
+精度判据 = V2 逐字节对拍 + V3 双口径指标；性能判据 = 相对任务书 §3.5 的 PyTorch eager 基线 ≥10×。
+
+**精度测试 case**（由 `run_all.sh` 逐 case 调 `kctq_compare.py` + `kctq_v3_precision.py`）
+
+| # | case | num_tokens | num_kv_heads | head_dim | mse_bits | 精度判据 | 阈值 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | `gqa_decode_b1` | 1 | 8 | 128 | 3 | relMSE(MSE-only) / 内积 p95(归一化含 QJL) | < 0.05 / < 0.1 |
+| 2 | `gqa_decode_b64` | 64 | 8 | 128 | 3 | 同上 | 同上 |
+| 3 | `gqa_prefill_t2048` | 2048 | 8 | 128 | 3 | 同上 | 同上 |
+| 4 | `gqa_mse2_t2048` | 2048 | 8 | 128 | 2 | 同上（bits=2 指标数学不可达，如实上报） | — |
+| 5 | `gqa_mse4_t2048` | 2048 | 8 | 128 | 4 | 同上 | 同上 |
+
+附加精度用例：套件② 的 9 个边界 case（逐字节对拍）；V1 接口契约检查（4 个输出 dtype/shape 与 `case.json` per-case 比对）。
+
+**性能测试 case**（`run_all.sh` 内的计时串：warmup 3 + repeat 10 → 中位数；基线为任务书固定表，只读）
+
+| # | case | 基线 (µs) | ≥10× 门槛 (µs) | 说明 |
+| --- | --- | ---: | ---: | --- |
+| 1 | `gqa_decode_b1` | 1491.676 | 149.2 | GQA decode |
+| 2 | `gqa_decode_b64` | 1552.784 | 155.3 | GQA decode batch |
+| 3 | `gqa_prefill_t2048` | 3855.422 | 385.5 | GQA prefill（余量最紧） |
+| 4 | `gqa_mse2_t2048` | 3607.963 | 360.8 | 2-bit 主编码 + 1-bit QJL |
+| 5 | `gqa_mse4_t2048` | 5286.502 | 528.7 | 4-bit 主编码 + 1-bit QJL |
+
+逐 case 结果落在 `<work>/out/<case>_b<bits>/{run.log,compare.log,v3.log}`；汇总见 `run_all.sh` 末尾列表。
+
 ## 0. 依赖
 
 - CANN 9.1.0+、Ascend 910B（A2）/`ascend910_93`（A3）
