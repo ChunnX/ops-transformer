@@ -604,9 +604,7 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, const Tilin
 static bool CheckTensorFormat(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
-    // 3维及以上NPU输入经torchair入图时，Data节点npu_format默认为NCHW并被FE传播至下游，proto/tiling仅放行ND会导致报错
-    // MC2通信数据为连续排布，非分形格式与ND存储等价，放行NCHW/NHWC等非分形格式
-    // (proto生成器对NCL等格式不支持，故集合与proto FormatList保持一致)
+
     const std::set<ge::Format> nonFractalFormats = {ge::FORMAT_ND, ge::FORMAT_NCHW, ge::FORMAT_NHWC};
     // context->GetInputDesc在CheckTensorDataType函数中已经校验
     auto xDesc = context->GetInputDesc(X_INDEX);
