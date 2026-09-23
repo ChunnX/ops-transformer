@@ -9,6 +9,7 @@
  */
 #ifndef SMLA_BANK_DIAGNOSTIC_H
 #define SMLA_BANK_DIAGNOSTIC_H
+#define SMLA_BANK_DIAGNOSTIC_REVISION 2
 
 #include "kernel_operator.h"
 #include "smla_experiment_config.h"
@@ -67,19 +68,29 @@ class SparseL1BankDiagnostic {
         Fixpipe<Out, float, PFA_CFG_ROW_MAJOR_GM>(dst, src, p);
     }
 
-    __aicore__ static void Cube(GM_ADDR query, GM_ADDR kv, GM_ADDR output, GM_ADDR lse,
-                                uint32_t core, uint32_t mode, uint32_t iterations,
-                                uint32_t transpose, uint32_t writeBase)
+    __aicore__ static void CopyMte2(const LocalTensor<Q> &dst, const GlobalTensor<Q> &src, uint32_t i)
     {
-        GlobalTensor<Q> qGm, kvGm, checkGm;
+        const uint32_t half = i & 1U;
+        CopyToL1Nd2Nz(dst[half * S * S], src[16384 + half * S], S, S, 512);
+    }
+
+    __aicore__ static void Cube(GM_ADDR query, GM_ADDR kv, GM_ADDR writeSource,
+                                GM_ADDR output, GM_ADDR lse,
+                                uint32_t core, uint32_t mode, uint32_t iterations,
+                                uint32_t transpose, uint32_t writeBase, uint32_t readTiles,
+                                uint32_t writerPipe)
+    {
+        GlobalTensor<Q> qGm, kvGm, writeGm, checkGm;
         GlobalTensor<float> resultGm;
         qGm.SetGlobalBuffer(reinterpret_cast<__gm__ Q *>(query));
         kvGm.SetGlobalBuffer(reinterpret_cast<__gm__ Q *>(kv));
+        writeGm.SetGlobalBuffer(reinterpret_cast<__gm__ Q *>(writeSource));
         checkGm.SetGlobalBuffer(reinterpret_cast<__gm__ Q *>(output));
         resultGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(lse));
-        LocalTensor<Q> readL1(TPosition::B1, 0, S * S);
-        LocalTensor<Q> qL1(TPosition::A1, 32 * KIB, M * S);
-        LocalTensor<Q> qSecondL1(TPosition::A1, 36 * KIB, M * S);
+        const uint32_t qBase = readTiles == 2 ? 256 * KIB : 32 * KIB;
+        LocalTensor<Q> readL1(TPosition::B1, 0, readTiles * S * S);
+        LocalTensor<Q> qL1(TPosition::A1, qBase, M * S);
+        LocalTensor<Q> qSecondL1(TPosition::A1, qBase + 4 * KIB, M * S);
         LocalTensor<Q> writeL1(TPosition::B1, writeBase, S * 256);
         LocalTensor<Q> a(TPosition::A2, 0, M * S);
         LocalTensor<Q> b0(TPosition::B2, 0, S * S);
@@ -89,6 +100,9 @@ class SparseL1BankDiagnostic {
         // The diagnostic input has zero query rows 32..159. Initialize unwritten
         // NZ rows too: multiplying uninitialized NaN by a zero selector is unsafe.
         CopyToL1Nd2Nz(readL1, kvGm, S, S, 512);
+        if (readTiles == 2) {
+            CopyToL1Nd2Nz(readL1[S * S], kvGm[S], S, S, 512);
+        }
         CopyToL1Nd2Nz(qL1, qGm, M, S, 512);
         CopyToL1Nd2Nz(qSecondL1, qGm[M * 512], M, S, 512);
         CopyToL1Nd2Nz(writeL1, qGm[32 * 512], S, 256, 512);
@@ -99,7 +113,7 @@ class SparseL1BankDiagnostic {
         MMParam p = {M, S, S, false, transpose != 0};
         LoadDataToL0A(a, qL1, p, 0, S, M);
         LoadDataToL0B(b0, readL1, p, 0, S, S);
-        LoadDataToL0B(b1, readL1, p, 0, S, S);
+        LoadDataToL0B(b1, readL1[(readTiles - 1) * S * S], p, 0, S, S);
         SetFlag<HardEvent::MTE1_M>(2);
         WaitFlag<HardEvent::MTE1_M>(2);
         MmadParams mm;
@@ -113,26 +127,47 @@ class SparseL1BankDiagnostic {
         SetFlag<HardEvent::M_MTE1>(0);
         SetFlag<HardEvent::M_MTE1>(1);
         WaitBoth(0); // Both initial AIV writes have completed.
+        if (writerPipe == 1) {
+            // Transfer W ownership from the initial AIV writers to AIC MTE2.
+            SetFlag<HardEvent::MTE1_MTE2>(3);
+            WaitFlag<HardEvent::MTE1_MTE2>(3);
+        }
         const bool serial = mode == SERIAL || mode == SERIAL_CROSS;
+        const bool writeOnly = mode == WRITE || mode == WRITE_CROSS;
+        const bool repeatedWrite = mode != READ && mode != COMPUTE;
         if (!serial) {
             SetBoth(1);
         }
-        if (mode != WRITE && mode != WRITE_CROSS) {
+        if (!writeOnly) {
             for (uint32_t i = 0; i < iterations; ++i) {
                 const uint32_t slot = i & 1U;
                 LocalTensor<Q> b = slot == 0 ? b0 : b1;
                 WaitFlag<HardEvent::M_MTE1>(slot);
                 if (mode != COMPUTE) {
-                    LoadDataToL0B(b, readL1, p, 0, S, S);
+                    LoadDataToL0B(b, readL1[(readTiles == 2 ? slot : 0) * S * S], p, 0, S, S);
                 }
                 SetFlag<HardEvent::MTE1_M>(slot);
                 WaitFlag<HardEvent::MTE1_M>(slot);
                 Mmad(c, a, b, mm); // Every measured read contributes to the checksum.
                 SetFlag<HardEvent::M_MTE1>(slot);
+                if (writerPipe == 1 && repeatedWrite && !serial) {
+                    CopyMte2(writeL1, writeGm, i);
+                }
             }
         }
         WaitFlag<HardEvent::M_MTE1>(0);
         WaitFlag<HardEvent::M_MTE1>(1);
+        if (writerPipe == 1 && repeatedWrite && (serial || writeOnly)) {
+            SetFlag<HardEvent::MTE1_MTE2>(4);
+            WaitFlag<HardEvent::MTE1_MTE2>(4);
+            for (uint32_t i = 0; i < iterations; ++i) {
+                CopyMte2(writeL1, writeGm, i);
+            }
+        }
+        if (writerPipe == 1) {
+            SetFlag<HardEvent::MTE2_MTE1>(3);
+            WaitFlag<HardEvent::MTE2_MTE1>(3);
+        }
         if (serial) {
             SetBoth(1); // Only now may the AIVs start their repeated writes.
         }
@@ -168,7 +203,8 @@ class SparseL1BankDiagnostic {
     }
 
     __aicore__ static void Vector(GM_ADDR source, uint32_t mode, uint32_t iterations,
-                                  uint32_t writeBase, uint32_t writeMultiplier)
+                                  uint32_t writeBase, uint32_t writeMultiplier,
+                                  uint32_t writerMask, uint32_t writerPipe)
     {
         const uint32_t sub = GetSubBlockIdx();
         GlobalTensor<Q> src;
@@ -188,7 +224,7 @@ class SparseL1BankDiagnostic {
         DataCopy(dst[dstRowOffset], ub, copy);
         CrossCoreSetFlag<4, PIPE_MTE3>(0);
         CrossCoreWaitFlag<4, PIPE_MTE3>(1);
-        if (mode != READ && mode != COMPUTE) {
+        if (writerPipe == 0 && (writerMask & (1U << sub)) != 0 && mode != READ && mode != COMPUTE) {
             for (uint32_t i = 0; i < iterations * writeMultiplier; ++i) {
                 DataCopy(dst[dstRowOffset], ub, copy);
             }
@@ -214,8 +250,14 @@ public:
         const uint32_t transpose = config.GetValue(4);
         const uint32_t offset = config.GetValue(5);
         const uint32_t writeMultiplier = config.GetValue(7);
-        if (mode > SERIAL_CROSS || iterations == 0 || iterations > 16384 || activeCores == 0 ||
+        // Zero extension fields retain the original diagnostic ABI.
+        const uint32_t readTiles = config.GetValue(8) == 0 ? 1 : config.GetValue(8);
+        const uint32_t writerMask = config.GetValue(9) == 0 ? 3 : config.GetValue(9);
+        const uint32_t writerPipe = config.GetValue(10); // 0 AIV MTE3, 1 AIC MTE2.
+        if (mode > SERIAL_CROSS || iterations > 16384 || activeCores == 0 ||
             activeCores > 32 || transpose > 1 || offset > 2 || writeMultiplier == 0 || writeMultiplier > 4 ||
+            readTiles > 2 || writerMask > 3 || writerPipe > 1 ||
+            (writerPipe == 1 && (writeMultiplier != 2 || writerMask != 3)) ||
             lse == nullptr) {
             return true; // Invalid diagnostics must never fall through as attention metadata.
         }
@@ -223,11 +265,12 @@ public:
         const uint32_t writeBase = (64 + offset * 64 + (highWrite ? 256 : 0)) * KIB;
         if ASCEND_IS_AIC {
             if (GetBlockIdx() < activeCores) {
-                Cube(query, kv, output, lse, GetBlockIdx(), mode, iterations, transpose, writeBase);
+                Cube(query, kv, writeSource, output, lse, GetBlockIdx(), mode, iterations, transpose,
+                     writeBase, readTiles, writerPipe);
             }
         } else {
             if ((GetBlockIdx() >> 1) < activeCores) {
-                Vector(writeSource, mode, iterations, writeBase, writeMultiplier);
+                Vector(writeSource, mode, iterations, writeBase, writeMultiplier, writerMask, writerPipe);
             }
         }
         return true;
