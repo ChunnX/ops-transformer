@@ -65,7 +65,7 @@ public:
     // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1KvPBuffers_;
 
-    AscendC::GlobalTensor<uint32_t> fiaMetaDataGm_;
+    const optiling::FiaMetaData *fiaMetaDataPtr_ = nullptr;
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
 
@@ -104,7 +104,8 @@ public:
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                const optiling::FiaMetaData *fiaMetaData,
                                 const optiling::NoQuantTilingArch35 *__restrict tiling, AscendC::TPipe *tPipe)
     {
         this->pipe_ = tPipe;
@@ -113,8 +114,7 @@ public:
         AscendC::GlobalTensor<uint64_t> actualSeqLengthsGmQ;
         AscendC::GlobalTensor<uint64_t> actualSeqLengthsGmKv;
 
-        fiaMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)fiaMetaData,
-                                       NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
+        fiaMetaDataPtr_ = fiaMetaData;
 
         InitConstInfo();
 
@@ -229,27 +229,17 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
 
-        constInfo_.bN2Start = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_START_INDEX));
-        constInfo_.gS1OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_START_INDEX));
-        constInfo_.s2OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_START_INDEX));
-        constInfo_.bN2End = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_END_INDEX));
-        constInfo_.gS1OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_END_INDEX));
-        constInfo_.s2OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_END_INDEX));
+        constInfo_.bN2Start = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_BN2_START_INDEX];
+        constInfo_.gS1OStart = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_M_START_INDEX];
+        constInfo_.s2OStart = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_S2_START_INDEX];
+        constInfo_.bN2End = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_BN2_END_INDEX];
+        constInfo_.gS1OEnd = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_M_END_INDEX];
+        constInfo_.s2OEnd = fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_S2_END_INDEX];
         constInfo_.coreFirstTmpOutWsPos =
-            fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+            fiaMetaDataPtr_->FAMetadata[constInfo_.aicIdx][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX];
         constInfo_.dBasicBlock = AttentionCommon::Align(constInfo_.dSizeV, 64U);
         constInfo_.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
         constInfo_.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
-    }
-
-    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx)
-    {
-        return FA_METADATA_SIZE * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx)
-    {
-        return FA_METADATA_SIZE * NPU_AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -647,14 +637,14 @@ public:
     {
         vecFdBlock_.InitBuffers(this->pipe_);
         AscendC::ICachePreLoad(2);
-        uint32_t fdCoreEnable = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_CORE_ENABLE_INDEX));
-        uint32_t fdBN2Idx = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_BN2_IDX_INDEX));
-        uint32_t fdMIdx = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_M_IDX_INDEX));
-        uint32_t fdS2SplitNum = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_S2_SPLIT_NUM_INDEX));
-        uint32_t mStart = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_M_START_INDEX));
-        uint32_t mLen = fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_M_NUM_INDEX));
+        uint32_t fdCoreEnable = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_CORE_ENABLE_INDEX];
+        uint32_t fdBN2Idx = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_BN2_IDX_INDEX];
+        uint32_t fdMIdx = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_M_IDX_INDEX];
+        uint32_t fdS2SplitNum = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_S2_SPLIT_NUM_INDEX];
+        uint32_t mStart = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_M_START_INDEX];
+        uint32_t mLen = fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_M_NUM_INDEX];
         uint32_t fdWorkspaceIdx =
-            fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_WORKSPACE_IDX_INDEX));
+            fiaMetaDataPtr_->FDMetadata[constInfo_.aivIdx][FD_WORKSPACE_IDX_INDEX];
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock_.AllocEventID();
