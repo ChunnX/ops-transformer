@@ -122,8 +122,9 @@ REGISTER_TILING_DATA_CLASS(GatherPaKvCache_1001, GatherPaKvCacheTilingDataV35);
 REGISTER_TILING_DATA_CLASS(GatherPaKvCache_1000, GatherPaKvCacheTilingDataV35);
 
 struct GatherPaKvCacheCompileInfo {
-    uint64_t coreNum = 0;
-    uint64_t ubSize = 0;
+    uint32_t coreNum;
+    uint64_t ubSize;
+    uint32_t sysWorkspaceSize;
 };
 
 class GatherPaKvCacheTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
