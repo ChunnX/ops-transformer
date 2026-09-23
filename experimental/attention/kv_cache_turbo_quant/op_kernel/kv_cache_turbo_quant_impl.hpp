@@ -28,6 +28,12 @@
  * barrier must not be inserted between the phases (the cube side has to stay in the serving loop).
  * The intermediate matrices live in the user workspace. Everything is computed in fp32; bf16 is
  * produced exactly once, on the store of norm/gamma.
+ *
+ * KCTQ_BATCH_ROWS rows are carried through the whole row pipeline at once. Measured on the
+ * gqa_prefill_t2048 case a single row costs about 8700 AIV cycles while its pure vector work is
+ * only ~900 of them: the rest is per row synchronization (a full pipe drain per store plus the
+ * scalar<->vector handshakes). Batching issues every vector call, barrier and store once per batch
+ * instead of once per row, which is what closes that gap.
  */
 
 #ifndef KV_CACHE_TURBO_QUANT_IMPL_HPP
@@ -43,6 +49,16 @@ using namespace matmul;
 
 constexpr uint32_t KCTQ_D = optiling::KCTQ_HEAD_DIM;
 constexpr uint32_t KCTQ_MM_LOCAL_WS_BYTES = 100U * 1024U;
+
+// Rows per pipeline iteration. The AIV staging buffers are sized for this many rows, and the
+// arena below is shared with the matmul C tile, which is dead while the vector stages run.
+constexpr uint32_t KCTQ_BATCH_ROWS = 8U;
+constexpr uint32_t KCTQ_BATCH_LANES = KCTQ_BATCH_ROWS * KCTQ_D;
+
+// Per row scalars (norm, rho, gamma) are kept 16 fp32 apart. That makes the bf16 downcast of a
+// whole batch land on 32B block boundaries, so one strided DataCopyPad per batch can emit them.
+constexpr uint32_t KCTQ_SCALAR_STRIDE = 16U;
+constexpr uint32_t KCTQ_SCALAR_SLOTS = KCTQ_BATCH_ROWS * KCTQ_SCALAR_STRIDE; // 128 fp32
 
 // Comparisons are expressed with plain vector arithmetic:
 //   stepGt(x) = clamp(x * SCALE - 1, 0, 1)  ==  1[x > 0]
@@ -87,8 +103,6 @@ struct PackCfg {
     static constexpr uint32_t kChunkLanes = (BITS == 1) ? 16U : 8U;
     static constexpr uint32_t kChunkBytes = BITS * kChunkLanes / 8U;
     static constexpr bool kSplitChunk = (BITS == 4);
-    static constexpr uint32_t kChunkSlots = 64;
-    static constexpr uint32_t kHalfSlots = kChunkSlots / 2;
 };
 
 template <uint8_t BITS>
@@ -96,8 +110,21 @@ class KvCacheTurboQuant {
 public:
     static constexpr uint32_t kLevels = 1U << BITS;
     static constexpr uint32_t kIdxBytesPerRow = KCTQ_D * BITS / 8U;
-    static constexpr uint32_t kQjlChunkLanes = 8U;                      // 8 sign bits per packed byte
-    static constexpr uint32_t kQjlChunkCount = KCTQ_D / kQjlChunkLanes; // 16 chunks -> 16 bytes
+    static constexpr uint32_t kChunksPerRow = KCTQ_D / PackCfg<BITS>::kChunkLanes;
+    static constexpr uint32_t kChunksPerBatch = KCTQ_BATCH_ROWS * kChunksPerRow;
+
+    // Arena slices, one KCTQ_BATCH_LANES (= 4KB) each. Slice 0 also holds the matmul C tile.
+    static constexpr uint32_t kSliceRow = 0U;   // x / unit, y, p
+    static constexpr uint32_t kSliceTmp = 1U;   // mask, fold scratch
+    static constexpr uint32_t kSliceIdx = 2U;   // primary index, residual
+    static constexpr uint32_t kSlicePrim = 3U;  // primary value
+    static constexpr uint32_t kSliceWork = 4U;  // reduce work
+    static constexpr uint32_t kSliceCv = 5U;    // folded chunk values
+    static constexpr uint32_t kSliceCi = 6U;    // chunk words as int32
+    static constexpr uint32_t kSliceCvHi = 7U;  // 4bit high halves
+    static constexpr uint32_t kSliceCiHi = 8U;
+    static constexpr uint32_t kSliceDenom = 9U;
+    static constexpr uint32_t kSliceCount = 10U;
 
     __aicore__ inline KvCacheTurboQuant() = default;
 
@@ -151,31 +178,25 @@ public:
                                     static_cast<uint64_t>(rowsToCompute_) * KCTQ_D);
 
         // The matmul framework runs on both sub cores (KFC handshake), so both of them need the
-        // system workspace and the C tile staging buffer.
+        // system workspace and the C tile staging buffer. The C tile staging area and the vector
+        // staging buffers are alive in disjoint phases of the pipeline (Gemm() finishes with a full
+        // drain before the next vector stage starts), so they share one arena instead of each
+        // claiming its own UB.
         SetSysWorkspace(workspace);
-        pipe_.InitBuffer(cTileBuf_,
-                         static_cast<uint64_t>(td->cubeTiling.baseM) * KCTQ_D * sizeof(float));
+        const uint32_t tileLanes = static_cast<uint32_t>(td->cubeTiling.baseM) * KCTQ_D;
+        const uint32_t arenaLanes = (tileLanes > KCTQ_BATCH_LANES * kSliceCount)
+                                        ? tileLanes
+                                        : KCTQ_BATCH_LANES * kSliceCount;
+        pipe_.InitBuffer(arenaBuf_, arenaLanes * sizeof(float));
         pipe_.InitBuffer(mmLocalWsBuf_, KCTQ_MM_LOCAL_WS_BYTES);
 
         if (g_coreType == AIV) {
-            pipe_.InitBuffer(inQue_, 1, KCTQ_D * sizeof(bfloat16_t));
-            pipe_.InitBuffer(xBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(tmpBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(yBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(resBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(primBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(idxBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(workBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(denomBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(scalarBuf_, PackCfg<BITS>::kChunkSlots * sizeof(float));
-            pipe_.InitBuffer(bf16Buf_, 32);
-            pipe_.InitBuffer(weightBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(weightHiBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(qjlWeightBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(redBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(redHiBuf_, KCTQ_D * sizeof(float));
-            pipe_.InitBuffer(redIntBuf_, KCTQ_D * sizeof(int32_t));
-            pipe_.InitBuffer(redIntHiBuf_, KCTQ_D * sizeof(int32_t));
+            pipe_.InitBuffer(inQue_, 1, KCTQ_BATCH_ROWS * KCTQ_D * sizeof(bfloat16_t));
+            pipe_.InitBuffer(scalarBuf_, 512U * sizeof(float));
+            pipe_.InitBuffer(bf16Buf_, KCTQ_SCALAR_SLOTS * sizeof(bfloat16_t));
+            pipe_.InitBuffer(weightBuf_, KCTQ_BATCH_LANES * sizeof(float));
+            pipe_.InitBuffer(weightHiBuf_, KCTQ_BATCH_LANES * sizeof(float));
+            pipe_.InitBuffer(qjlWeightBuf_, KCTQ_BATCH_LANES * sizeof(float));
         }
     }
 
@@ -202,7 +223,11 @@ public:
         }
     }
 
-private:
+    __aicore__ inline LocalTensor<float> Slice(uint32_t index) const
+    {
+        return const_cast<ArenaBuf &>(arenaBuf_).Get<float>()[index * KCTQ_BATCH_LANES];
+    }
+
     // Distances between neighbouring levels; the primary value is rebuilt as
     //   level[0] + sum of selected deltas
     // which reproduces the table lookup of the golden reference up to the final rounding step.
@@ -231,105 +256,132 @@ private:
         LocalTensor<float> w = weightBuf_.Get<float>();
         LocalTensor<float> wh = weightHiBuf_.Get<float>();
         LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
-        for (uint32_t i = 0; i < KCTQ_D; ++i) {
-            const uint32_t lane = i % PackCfg<BITS>::kChunkLanes;
-            wq.SetValue(i, Pow2(lane)); // qjl packs 8 sign bits into one byte
+        // Only one packing group is written by scalar code; the rest of the batch is replicated
+        // with vector copies. Writing all KCTQ_BATCH_LANES lanes scalar would cost more than the
+        // whole per batch pipeline on the small decode cases.
+        constexpr uint32_t kGroup = PackCfg<BITS>::kChunkLanes;
+        for (uint32_t i = 0; i < kGroup; ++i) {
+            wq.SetValue(i, Pow2(i)); // qjl packs 8 sign bits into one byte
             if constexpr (PackCfg<BITS>::kSplitChunk) {
                 // 4bit: low half covers lanes 0..3, high half covers lanes 4..7
-                w.SetValue(i, (lane < 4U) ? Pow2(4U * lane) : 0.0f);
-                wh.SetValue(i, (lane >= 4U) ? Pow2(4U * (lane - 4U)) : 0.0f);
+                w.SetValue(i, (i < 4U) ? Pow2(4U * i) : 0.0f);
+                wh.SetValue(i, (i >= 4U) ? Pow2(4U * (i - 4U)) : 0.0f);
             } else {
-                w.SetValue(i, Pow2(static_cast<uint32_t>(BITS) * lane));
+                w.SetValue(i, Pow2(static_cast<uint32_t>(BITS) * i));
                 wh.SetValue(i, 0.0f);
             }
         }
         SetFlag<HardEvent::S_V>(EVENT_ID2);
         WaitFlag<HardEvent::S_V>(EVENT_ID2);
+        for (uint32_t span = kGroup; span < KCTQ_BATCH_LANES; span *= 2U) {
+            Adds(w[span], w, 0.0f, span);
+            Adds(wh[span], wh, 0.0f, span);
+            Adds(wq[span], wq, 0.0f, span);
+            PipeBarrier<PIPE_V>();
+        }
     }
 
-    // Weighted 8-lane fold of one fp32 vector: dst[c] = sum_l src[8c + l] * 2^(BITS*l).
-    // One repeat is restricted to a single 32B block (mask = 8) and each repeat writes its single
-    // sum one 32B block further (dstRepStride = 1), so chunk c lands at element 8*c. That spread
-    // layout is what the byte-wise store needs: DataCopyPad can only stride in 32B blocks, so the
-    // packed bytes of chunk c have to start on a block boundary.
+    // Weighted 8-lane fold of a whole batch: dst[n*KCTQ_D + 8*c] = sum_l src[n*KCTQ_D + 8c + l]*2^(BITS*l).
+    // One repeat is restricted to a single 32B block (mask = 8) and every repeat writes its single
+    // sum one 32B block further (dstRepStride = 1), so chunk c of row n lands at element
+    // n*KCTQ_D + 8*c. That spread layout is what the byte-wise store needs: DataCopyPad can only
+    // stride in 32B blocks, so the packed bytes of a chunk have to start on a block boundary.
     __aicore__ inline void FoldChunks(const LocalTensor<float> &dst, const LocalTensor<float> &scratch,
-                                      const LocalTensor<float> &src, const LocalTensor<float> &weights)
+                                      const LocalTensor<float> &src, const LocalTensor<float> &weights,
+                                      uint32_t lanes, uint32_t chunks)
     {
-        Mul(scratch, src, weights, KCTQ_D);
+        Mul(scratch, src, weights, lanes);
         PipeBarrier<PIPE_V>();
-        BlockReduceSum<float>(dst, scratch, KCTQ_D / PackCfg<BITS>::kChunkLanes, 8, 1, 1, 1);
+        BlockReduceSum<float>(dst, scratch, static_cast<int32_t>(chunks), 8, 1, 1, 1);
         PipeBarrier<PIPE_V>();
     }
 
-    // Store the packed chunks: nBytes are taken from the head of every 32B block of `src`
-    // (one chunk per block) and appended to the row in gm. `gmOffset` selects which byte of the
-    // chunk each store owns (used by the 4bit low/high halve split), and `gmGap` leaves room for
-    // the bytes the other store owns.
+    // Store the packed chunk bytes: nBytes are taken from the head of every 32B block of `src`
+    // (one chunk per block) and appended to gm. The batch is contiguous in gm as well as one chunk
+    // per 32B block in UB, so a single call stores a whole batch.
     __aicore__ inline void StoreChunks(const GlobalTensor<uint8_t> &gm, uint64_t gmOffset,
                                        const LocalTensor<int32_t> &src, uint32_t nChunks,
-                                       uint32_t nBytes, uint32_t gmGap)
+                                       uint32_t nBytes)
     {
         LocalTensor<uint8_t> bytes = src.ReinterpretCast<uint8_t>();
-        DataCopyExtParams cp{static_cast<uint16_t>(nChunks), nBytes, 0, gmGap, 0};
+        DataCopyExtParams cp{static_cast<uint16_t>(nChunks), nBytes, 0, 0, 0};
         DataCopyPad(gm[gmOffset], bytes, cp);
     }
 
     // ---- AIV: steps 1 and 2 ---------------------------------------------------------------------
+    // One batch at a time: a single strided load, one cast, one division over the whole batch and
+    // two strided stores replace the per row pipeline. The padded rows of the last batch feed the
+    // GEMM tile but are never stored.
     __aicore__ inline void NormalizeRows()
     {
-        for (uint32_t row = rowBegin_; row < rowBegin_ + rowsToCompute_; ++row) {
-            const bool valid = (row < rowEnd_);
-            LocalTensor<float> x = xBuf_.Get<float>();
-            if (valid) {
+        LocalTensor<float> sq = scalarBuf_.Get<float>();                  // ||x||^2 at [16*row]
+        LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS]; // ||x|| at [16*row]
+        LocalTensor<float> denom = Slice(kSliceDenom);
+
+        for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
+            const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
+                                           ? KCTQ_BATCH_ROWS
+                                           : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
+            LocalTensor<float> x = Slice(kSliceRow);
+            if (validRows > 0U) {
                 LocalTensor<bfloat16_t> xBf = inQue_.AllocTensor<bfloat16_t>();
-                DataCopyExtParams cpIn{1, static_cast<uint32_t>(KCTQ_D * sizeof(bfloat16_t)), 0, 0, 0};
+                DataCopyExtParams cpIn{1, static_cast<uint32_t>(validRows * KCTQ_D * sizeof(bfloat16_t)),
+                                       0, 0, 0};
                 DataCopyPadExtParams<bfloat16_t> padIn{false, 0, 0, 0};
-                DataCopyPad(xBf, kvGm_[static_cast<uint64_t>(row) * KCTQ_D], cpIn, padIn);
+                DataCopyPad(xBf, kvGm_[static_cast<uint64_t>(row0) * KCTQ_D], cpIn, padIn);
                 inQue_.EnQue(xBf);
                 xBf = inQue_.DeQue<bfloat16_t>();
-                Cast(x, xBf, RoundMode::CAST_NONE, KCTQ_D);
+                Cast(x, xBf, RoundMode::CAST_NONE, KCTQ_BATCH_LANES);
                 inQue_.FreeTensor(xBf);
-            } else {
-                Duplicate(x, 0.0f, KCTQ_D); // padding rows only have to stay finite
+            }
+            if (validRows < KCTQ_BATCH_ROWS) {
+                Duplicate(x[validRows * KCTQ_D], 0.0f, (KCTQ_BATCH_ROWS - validRows) * KCTQ_D);
             }
 
-            LocalTensor<float> tmp = tmpBuf_.Get<float>();
-            LocalTensor<float> work = workBuf_.Get<float>();
-            LocalTensor<float> sc = scalarBuf_.Get<float>();
-            LocalTensor<float> denom = denomBuf_.Get<float>();
+            LocalTensor<float> tmp = Slice(kSliceTmp);
+            LocalTensor<float> work = Slice(kSliceWork);
+            Mul(tmp, x, x, KCTQ_BATCH_LANES);
+            PipeBarrier<PIPE_V>();
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                ReduceSum<float>(sq[r * KCTQ_SCALAR_STRIDE], tmp[r * KCTQ_D], work,
+                                 static_cast<int32_t>(KCTQ_D));
+            }
+            PipeBarrier<PIPE_V>();
+            Sqrt(norm, sq, KCTQ_SCALAR_SLOTS);
+            PipeBarrier<PIPE_V>();
 
-            Mul(tmp, x, x, KCTQ_D);
-            PipeBarrier<PIPE_V>();
-            ReduceSum<float>(sc, tmp, work, static_cast<int32_t>(KCTQ_D));
-            PipeBarrier<PIPE_V>();
-            Sqrt(sc[8], sc, 1);             // sc[8] = ||x||
-            Maxs(sc[16], sc[8], 1e-30f, 1); // clamp_min(||x||, 1e-30)
-            PipeBarrier<PIPE_V>();
-
+            // Only the clamp stays scalar: it has to reproduce max(norm, 1e-30) exactly, which is
+            // why the divisor is not derived from a reciprocal approximation.
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            const float divisor = sc.GetValue(16);
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                const float n = norm.GetValue(r * KCTQ_SCALAR_STRIDE);
+                div_[r] = (n > 1e-30f) ? n : 1e-30f;
+            }
             SetFlag<HardEvent::S_V>(EVENT_ID0);
             WaitFlag<HardEvent::S_V>(EVENT_ID0);
-
-            Duplicate(denom, divisor, KCTQ_D);
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                Duplicate(denom[r * KCTQ_D], div_[r], KCTQ_D);
+            }
             PipeBarrier<PIPE_V>();
-            Div(x, x, denom, KCTQ_D); // x := unit vector
+            Div(x, x, denom, KCTQ_BATCH_LANES); // x := unit vector
 
             LocalTensor<bfloat16_t> nb = bf16Buf_.Get<bfloat16_t>();
-            Cast(nb, sc[8], RoundMode::CAST_RINT, 1); // norm is rounded to bf16 exactly once
+            Cast(nb, norm, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            if (valid) {
-                DataCopyExtParams cpNorm{1, static_cast<uint32_t>(sizeof(bfloat16_t)), 0, 0, 0};
-                DataCopyPad(normGm_[row], nb, cpNorm);
-                DataCopyExtParams cpNormF{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                DataCopyPad(wsNormGm_[row], sc[8], cpNormF);
+            if (validRows > 0U) {
+                // the valid norms sit on 32B block boundaries, so one call emits the row scalars
+                DataCopyExtParams cpNorm{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
+                DataCopyPad(normGm_[row0], nb, cpNorm);
+                // fp32 norms for the quantize stage: 4 bytes out of every other 32B block
+                DataCopyExtParams cpNormF{static_cast<uint16_t>(KCTQ_BATCH_ROWS), 4U, 1U, 0, 0};
+                DataCopyPad(wsNormGm_[row0], norm, cpNormF);
             }
-            DataCopyExtParams cpU{1, static_cast<uint32_t>(KCTQ_D * sizeof(float)), 0, 0, 0};
-            DataCopyPad(wsUNormGm_[static_cast<uint64_t>(row) * KCTQ_D], x, cpU);
-            // UB -> GM copies are asynchronous: without draining them here the next row would
-            // overwrite xBuf_/inQue_ while the copy that reads them is still in flight.
+            DataCopyExtParams cpU{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
+            DataCopyPad(wsUNormGm_[static_cast<uint64_t>(row0) * KCTQ_D], x, cpU);
+            // UB -> GM copies are asynchronous: without draining them here the next batch would
+            // overwrite the staging buffers while the copies that read them are still in flight.
             PipeBarrier<PIPE_ALL>();
         }
     }
@@ -348,7 +400,7 @@ private:
 
         uint32_t done = 0;
         while (mm_.template Iterate<true>()) {
-            LocalTensor<float> cLocal = cTileBuf_.Get<float>();
+            LocalTensor<float> cLocal = arenaBuf_.Get<float>();
             mm_.template GetTensorC<true>(cLocal, false, true);
             // The framework signals the arrival of the C tile on the vector pipe, so the scalar/MTE3
             // consumers of cLocal have to be ordered behind it explicitly.
@@ -373,175 +425,186 @@ private:
     // ---- AIV: steps 4, 5 and 6 --------------------------------------------------------------------
     __aicore__ inline void QuantizeRows()
     {
-        for (uint32_t row = rowBegin_; row < rowEnd_; ++row) {
-            LocalTensor<float> y = yBuf_.Get<float>();
-            LocalTensor<float> sc = scalarBuf_.Get<float>();
-            DataCopyExtParams cpY{1, static_cast<uint32_t>(KCTQ_D * sizeof(float)), 0, 0, 0};
+        LocalTensor<float> sq = scalarBuf_.Get<float>();                       // rho^2 at [16*row]
+        LocalTensor<float> norm = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS];
+        LocalTensor<float> gamma = scalarBuf_.Get<float>()[KCTQ_SCALAR_SLOTS * 3U];
+        LocalTensor<float> denom = Slice(kSliceDenom);
+
+        for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
+            const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
+                                           ? KCTQ_BATCH_ROWS
+                                           : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
+            const uint64_t base = static_cast<uint64_t>(row0) * KCTQ_D;
+            LocalTensor<float> y = Slice(kSliceRow);
+            DataCopyExtParams cpY{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padY{false, 0, 0, 0};
-            DataCopyPad(y, wsYNormGm_[static_cast<uint64_t>(row) * KCTQ_D], cpY, padY);
-            DataCopyExtParams cpN{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            DataCopyPad(sc[24], wsNormGm_[row], cpN, padY);
+            DataCopyPad(y, wsYNormGm_[base], cpY, padY);
+            // the fp32 norms written by NormalizeRows, spread back onto 32B block boundaries
+            DataCopyExtParams cpN{static_cast<uint16_t>(KCTQ_BATCH_ROWS), 4U, 0, 1U, 0};
+            DataCopyPad(norm, wsNormGm_[row0], cpN, padY);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
-            LocalTensor<float> mask = tmpBuf_.Get<float>();
-            LocalTensor<float> idx = idxBuf_.Get<float>();
-            LocalTensor<float> prim = primBuf_.Get<float>();
-            Duplicate(idx, 0.0f, KCTQ_D);
-            Duplicate(prim, CodeBook<BITS>::kLevel[0], KCTQ_D);
+            LocalTensor<float> mask = Slice(kSliceTmp);
+            LocalTensor<float> idx = Slice(kSliceIdx);
+            LocalTensor<float> prim = Slice(kSlicePrim);
+            Duplicate(idx, 0.0f, KCTQ_BATCH_LANES);
+            Duplicate(prim, CodeBook<BITS>::kLevel[0], KCTQ_BATCH_LANES);
             for (uint32_t k = 1; k < kLevels; ++k) {
                 // boundary = 0.5 * (level[k-1] + level[k]), computed exactly like the reference
                 const float boundary =
                     (CodeBook<BITS>::kLevel[k - 1] + CodeBook<BITS>::kLevel[k]) * 0.5f;
-                Adds(mask, y, -boundary, KCTQ_D);
+                Adds(mask, y, -boundary, KCTQ_BATCH_LANES);
                 PipeBarrier<PIPE_V>();
-                Muls(mask, mask, KCTQ_STEP_SCALE, KCTQ_D);
-                Adds(mask, mask, -1.0f, KCTQ_D);
-                Maxs(mask, mask, 0.0f, KCTQ_D);
-                Mins(mask, mask, 1.0f, KCTQ_D);
+                Muls(mask, mask, KCTQ_STEP_SCALE, KCTQ_BATCH_LANES);
+                Adds(mask, mask, -1.0f, KCTQ_BATCH_LANES);
+                Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
+                Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES);
                 PipeBarrier<PIPE_V>();
-                Add(idx, idx, mask, KCTQ_D);
-                Axpy(prim, mask, Delta(k), KCTQ_D);
+                Add(idx, idx, mask, KCTQ_BATCH_LANES);
+                Axpy(prim, mask, Delta(k), KCTQ_BATCH_LANES);
                 PipeBarrier<PIPE_V>();
             }
-            PackIdx(row, idx);
+            PackIdx(row0, validRows, idx);
 
-            LocalTensor<float> res = resBuf_.Get<float>();
-            LocalTensor<float> work = workBuf_.Get<float>();
-            LocalTensor<float> denom = denomBuf_.Get<float>();
-            Sub(res, y, prim, KCTQ_D);
-            Mul(mask, res, res, KCTQ_D);
+            LocalTensor<float> res = Slice(kSliceIdx);
+            LocalTensor<float> work = Slice(kSliceWork);
+            Sub(res, y, prim, KCTQ_BATCH_LANES);
+            Mul(mask, res, res, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-            ReduceSum<float>(sc[48], mask, work, static_cast<int32_t>(KCTQ_D)); // sc[48] = rho^2
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                ReduceSum<float>(sq[r * KCTQ_SCALAR_STRIDE], mask[r * KCTQ_D], work,
+                                 static_cast<int32_t>(KCTQ_D));
+            }
             PipeBarrier<PIPE_V>();
-            Sqrt(sc[8], sc[48], 1);            // sc[8] = rho
-            Mul(sc[40], sc[8], sc[24], 1);     // gamma = norm * rho
-            Maxs(sc[16], sc[8], 1e-30f, 1);
+            Sqrt(sq, sq, KCTQ_SCALAR_SLOTS);
+            Mul(gamma, sq, norm, KCTQ_SCALAR_SLOTS); // gamma = norm * rho
             PipeBarrier<PIPE_V>();
 
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            const float rho = sc.GetValue(16);
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                const float v = sq.GetValue(r * KCTQ_SCALAR_STRIDE);
+                div_[r] = (v > 1e-30f) ? v : 1e-30f;
+            }
             SetFlag<HardEvent::S_V>(EVENT_ID0);
             WaitFlag<HardEvent::S_V>(EVENT_ID0);
-
-            Duplicate(denom, rho, KCTQ_D);
+            for (uint32_t r = 0; r < KCTQ_BATCH_ROWS; ++r) {
+                Duplicate(denom[r * KCTQ_D], div_[r], KCTQ_D);
+            }
             PipeBarrier<PIPE_V>();
-            Div(res, res, denom, KCTQ_D); // residual unit vector (exactly 0 when the residual is 0)
+            Div(res, res, denom, KCTQ_BATCH_LANES); // residual unit vector (0 when residual is 0)
 
             LocalTensor<bfloat16_t> gb = bf16Buf_.Get<bfloat16_t>();
-            Cast(gb, sc[40], RoundMode::CAST_RINT, 1);
+            Cast(gb, gamma, RoundMode::CAST_RINT, KCTQ_SCALAR_SLOTS);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            DataCopyExtParams cpG{1, static_cast<uint32_t>(sizeof(bfloat16_t)), 0, 0, 0};
-            DataCopyPad(gammaGm_[row], gb, cpG);
-            DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_D * sizeof(float)), 0, 0, 0};
-            DataCopyPad(wsRNormGm_[static_cast<uint64_t>(row) * KCTQ_D], res, cpR);
-            PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses resBuf_
+            if (validRows > 0U) {
+                DataCopyExtParams cpG{static_cast<uint16_t>(validRows), 2U, 0, 0, 0};
+                DataCopyPad(gammaGm_[row0], gb, cpG);
+            }
+            DataCopyExtParams cpR{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
+            DataCopyPad(wsRNormGm_[base], res, cpR);
+            PipeBarrier<PIPE_ALL>(); // drain the copies before the next batch reuses the slices
         }
     }
 
     // ---- AIV: pack the primary indices ------------------------------------------------------------
-    __aicore__ inline void PackIdx(uint32_t row, const LocalTensor<float> &idx)
+    __aicore__ inline void PackIdx(uint32_t row0, uint32_t validRows, const LocalTensor<float> &idx)
     {
         LocalTensor<float> w = weightBuf_.Get<float>();
-        LocalTensor<float> wv = workBuf_.Get<float>();
-        LocalTensor<float> cv = redBuf_.Get<float>();
-        LocalTensor<int32_t> ci = redIntBuf_.Get<int32_t>();
+        LocalTensor<float> wv = Slice(kSliceTmp);
+        LocalTensor<float> cv = Slice(kSliceCv);
+        LocalTensor<float> ciF = Slice(kSliceCi);
+        LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
 
-        FoldChunks(cv, wv, idx, w);
+        FoldChunks(cv, wv, idx, w, KCTQ_BATCH_LANES, kChunksPerBatch);
         if constexpr (PackCfg<BITS>::kSplitChunk) {
             // A 4bit chunk needs 32 bits, which fp32 cannot hold exactly, so the two 16bit halves
             // are folded separately and recombined in the integer domain. The vector shift/or only
-            // acts correctly when the element count is a multiple of 64, hence the full 128 lane
-            // block is always processed.
+            // acts correctly when the element count is a multiple of 64, which the batch always is.
             LocalTensor<float> wh = weightHiBuf_.Get<float>();
-            LocalTensor<float> cvh = redHiBuf_.Get<float>();
-            LocalTensor<float> wvh = resBuf_.Get<float>();
-            LocalTensor<int32_t> cih = redIntHiBuf_.Get<int32_t>();
-            FoldChunks(cvh, wvh, idx, wh);
-            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
-            Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_D);
+            LocalTensor<float> cvh = Slice(kSliceCvHi);
+            LocalTensor<float> wvh = Slice(kSliceWork);
+            LocalTensor<float> cihF = Slice(kSliceCiHi);
+            LocalTensor<int32_t> cih = cihF.ReinterpretCast<int32_t>();
+            FoldChunks(cvh, wvh, idx, wh, KCTQ_BATCH_LANES, kChunksPerBatch);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
+            Cast(cih, cvh, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-            ShiftLeft(cih, cih, 16, KCTQ_D);
+            ShiftLeft(cih, cih, 16, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
-            Add(ci, ci, cih, KCTQ_D);
+            Add(ci, ci, cih, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
         } else {
-            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
         }
         SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        // Every chunk lives at the head of its own 32B block, so one strided store emits exactly
-        // kIdxBytesPerRow packed bytes for the row.
-        StoreChunks(idxGm_, static_cast<uint64_t>(row) * kIdxBytesPerRow, ci,
-                    KCTQ_D / PackCfg<BITS>::kChunkLanes, kIdxBytesPerRow / (KCTQ_D / PackCfg<BITS>::kChunkLanes), 0);
-        PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses the staging buffers
+        if (validRows > 0U) {
+            StoreChunks(idxGm_, static_cast<uint64_t>(row0) * kIdxBytesPerRow, ci,
+                        validRows * kChunksPerRow, kIdxBytesPerRow / kChunksPerRow);
+        }
+        PipeBarrier<PIPE_ALL>(); // drain the copy before the next batch reuses the slices
     }
 
     // ---- AIV: step 8 ------------------------------------------------------------------------------
     __aicore__ inline void QjlRows()
     {
-        for (uint32_t row = rowBegin_; row < rowEnd_; ++row) {
-            LocalTensor<float> p = yBuf_.Get<float>();
-            DataCopyExtParams cpP{1, static_cast<uint32_t>(KCTQ_D * sizeof(float)), 0, 0, 0};
+        LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
+        LocalTensor<float> cv = Slice(kSliceCv);
+        LocalTensor<float> ciF = Slice(kSliceCi);
+        LocalTensor<int32_t> ci = ciF.ReinterpretCast<int32_t>();
+
+        for (uint32_t row0 = rowBegin_; row0 < rowBegin_ + rowsToCompute_; row0 += KCTQ_BATCH_ROWS) {
+            const uint32_t validRows = (row0 + KCTQ_BATCH_ROWS <= rowEnd_)
+                                           ? KCTQ_BATCH_ROWS
+                                           : ((rowEnd_ > row0) ? (rowEnd_ - row0) : 0U);
+            LocalTensor<float> p = Slice(kSliceRow);
+            DataCopyExtParams cpP{1, static_cast<uint32_t>(KCTQ_BATCH_LANES * sizeof(float)), 0, 0, 0};
             DataCopyPadExtParams<float> padP{false, 0, 0, 0};
-            DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(row) * KCTQ_D], cpP, padP);
+            DataCopyPad(p, wsPNormGm_[static_cast<uint64_t>(row0) * KCTQ_D], cpP, padP);
             // The GM -> UB copy is asynchronous: without draining it here the vector ops below
-            // would read the previous row (or the stale buffer content for the first row).
+            // would read the previous batch (or the stale buffer content for the first one).
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
-            LocalTensor<float> mask = tmpBuf_.Get<float>();
-            LocalTensor<float> wv = workBuf_.Get<float>();
-            LocalTensor<float> cv = redBuf_.Get<float>();
-            LocalTensor<int32_t> ci = redIntBuf_.Get<int32_t>();
-            LocalTensor<float> wq = qjlWeightBuf_.Get<float>();
-
-            Muls(mask, p, KCTQ_STEP_SCALE, KCTQ_D);
-            Adds(mask, mask, 1.0f, KCTQ_D);
-            Maxs(mask, mask, 0.0f, KCTQ_D);
-            Mins(mask, mask, 1.0f, KCTQ_D); // 1[p >= 0]
+            LocalTensor<float> mask = Slice(kSliceTmp);
+            LocalTensor<float> wv = Slice(kSliceWork);
+            Muls(mask, p, KCTQ_STEP_SCALE, KCTQ_BATCH_LANES);
+            Adds(mask, mask, 1.0f, KCTQ_BATCH_LANES);
+            Maxs(mask, mask, 0.0f, KCTQ_BATCH_LANES);
+            Mins(mask, mask, 1.0f, KCTQ_BATCH_LANES); // 1[p >= 0]
             PipeBarrier<PIPE_V>();
             // The 8 sign bits of every chunk fold into one byte through the same weighted block
             // reduction the index packer uses, values stay below 2^8 and are exact in fp32.
-            FoldChunks(cv, wv, mask, wq);
-            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_D);
+            FoldChunks(cv, wv, mask, wq, KCTQ_BATCH_LANES, kChunksPerBatch);
+            Cast(ci, cv, RoundMode::CAST_RINT, KCTQ_BATCH_LANES);
             PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            // one packed sign byte per chunk, one chunk per 32B block
-            StoreChunks(qjlOutGm_, static_cast<uint64_t>(row) * td_->qjlBytesPerRow, ci, kQjlChunkCount, 1, 0);
-            PipeBarrier<PIPE_ALL>(); // drain the copy before the next row reuses the staging buffers
+            if (validRows > 0U) {
+                // one packed sign byte per chunk, one chunk per 32B block
+                StoreChunks(qjlOutGm_, static_cast<uint64_t>(row0) * td_->qjlBytesPerRow, ci,
+                            validRows * kChunksPerRow, 1U);
+            }
+            PipeBarrier<PIPE_ALL>(); // drain the copy before the next batch reuses the slices
         }
     }
 
 private:
+    using ArenaBuf = TBuf<TPosition::VECCALC>;
+
     TPipe pipe_;
     TQue<TPosition::VECIN, 1> inQue_;
-
-    TBuf<TPosition::VECCALC> xBuf_;
-    TBuf<TPosition::VECCALC> tmpBuf_;
-    TBuf<TPosition::VECCALC> yBuf_;
-    TBuf<TPosition::VECCALC> resBuf_;
-    TBuf<TPosition::VECCALC> primBuf_;
-    TBuf<TPosition::VECCALC> idxBuf_;
-    TBuf<TPosition::VECCALC> workBuf_;
-    TBuf<TPosition::VECCALC> denomBuf_;
-    TBuf<TPosition::VECCALC> scalarBuf_;
-    TBuf<TPosition::VECCALC> bf16Buf_;
-    // vectorised packing: lane weight tables plus the reduction / integer staging buffers
-    TBuf<TPosition::VECCALC> weightBuf_;
+    ArenaBuf arenaBuf_;                                     // C tile + vector staging, see kSlice*
+    TBuf<TPosition::VECCALC> mmLocalWsBuf_;
+    TBuf<TPosition::VECCALC> scalarBuf_;                    // per row scalars and reduce work
+    TBuf<TPosition::VECCALC> bf16Buf_;                      // norm / gamma store staging
+    TBuf<TPosition::VECCALC> weightBuf_;                    // packing lane weights
     TBuf<TPosition::VECCALC> weightHiBuf_;
     TBuf<TPosition::VECCALC> qjlWeightBuf_;
-    TBuf<TPosition::VECCALC> redBuf_;
-    TBuf<TPosition::VECCALC> redHiBuf_;
-    TBuf<TPosition::VECCALC> redIntBuf_;
-    TBuf<TPosition::VECCALC> redIntHiBuf_;
-
-    TBuf<TPosition::VECCALC> cTileBuf_;
-    TBuf<TPosition::VECCALC> mmLocalWsBuf_;
 
     using aType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
     using bType = MatmulType<TPosition::GM, CubeFormat::ND, float, true>; // matrices are handed transposed
@@ -570,6 +633,7 @@ private:
     uint32_t rowBegin_ = 0;
     uint32_t rowEnd_ = 0;
     uint32_t rowsToCompute_ = 0;
+    float div_[KCTQ_BATCH_ROWS] = {0.0f}; // per row divisors handed between scalar and vector ops
 };
 
 } // namespace NsKvCacheTurboQuant
