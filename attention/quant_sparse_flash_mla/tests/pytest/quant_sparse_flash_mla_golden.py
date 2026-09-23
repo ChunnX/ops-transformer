@@ -57,6 +57,398 @@ def _resolve_descale_range(data_range):
     ]
 
 
+def prepare_fd_params(params, policy="auto"):
+    """配置普通 FD 模式，与确定性批次一致性模式分别处理。"""
+    if policy not in ("auto", "on", "off"):
+        raise ValueError("QSMLA_FD must be auto, on or off")
+    configured = params.get("fd_mode")
+    if configured not in (None, False, True, 0, 1):
+        raise ValueError("fd_mode must be a boolean")
+    enabled = policy == "on" or (policy == "auto" and bool(configured))
+    params["fd_mode"] = enabled
+    if not enabled:
+        return False
+    if params.get("batch_consistency"):
+        raise ValueError(
+            "fd_mode requires batch_consistency=False (deterministic level 0)"
+        )
+    for key, env, default in (
+        ("fd_aic_core_num", "QSMLA_FD_AIC_NUM", 32),
+        ("fd_aiv_core_num", "QSMLA_FD_AIV_NUM", None),
+    ):
+        value = os.environ.get(env, params.get(key))
+        if value is None:
+            value = default if default is not None else 2 * params["fd_aic_core_num"]
+        if isinstance(value, bool) or isinstance(value, float):
+            raise ValueError(f"{key} must be an integer")
+        params[key] = int(value)
+    _validate_fd_cores(
+        params["fd_aic_core_num"], params["fd_aiv_core_num"], params["N1"]
+    )
+    required = params.get("fd_require_split", False)
+    if required not in (None, False, True, 0, 1):
+        raise ValueError("fd_require_split must be a boolean")
+    params["fd_require_split"] = bool(required)
+    params["npu_deterministic_level"] = 0
+    return True
+
+
+def _validate_fd_cores(aic_num, aiv_num, heads):
+    if type(aic_num) is not int or not 1 <= aic_num <= 36:
+        raise ValueError("fd_aic_core_num must be an integer in [1,36]")
+    if type(aiv_num) is not int or not 1 <= aiv_num <= 72:
+        raise ValueError("fd_aiv_core_num must be an integer in [1,72]")
+    if heads > 64 and (aic_num < 2 or aiv_num < 2):
+        raise ValueError("split-G needs at least two AICs and two AIVs")
+
+
+class _MetadataRowCosts:
+    """以固定存储空间表示 ORI、CMP 基本块序列的前缀开销。"""
+
+    __slots__ = ("ori_blocks", "cmp_blocks", "normal", "ori_discount", "cmp_discount")
+
+    def __init__(self, ori_tokens, cmp_tokens, m_cost):
+        self.ori_blocks = (ori_tokens + 127) // 128
+        self.cmp_blocks = (cmp_tokens + 127) // 128
+        self.normal = m_cost + 20
+        self.ori_discount = 10 if 0 < ori_tokens % 128 <= 64 else 0
+        self.cmp_discount = 10 if 0 < cmp_tokens % 128 <= 64 else 0
+
+    def __len__(self):
+        return self.ori_blocks + self.cmp_blocks + 1
+
+    def __getitem__(self, index):
+        if index < 0:
+            index += len(self)
+        if not 0 <= index < len(self):
+            raise IndexError(index)
+        value = index * self.normal
+        if self.ori_blocks and index >= self.ori_blocks:
+            value -= self.ori_discount
+        if self.cmp_blocks and index == len(self) - 1:
+            value -= self.cmp_discount
+        return value
+
+
+def generate_metadata_golden(meta, aic_num=32, aiv_num=None):
+    """用 Python 复现 Ascend950 的普通 FD 调度，返回 int32[1024]。
+
+    对应 CalcS1GCache、AssignByBatch/Row/Block、RecordFDInfo 和 SplitFD 的调度逻辑。
+    FA/FD 存储区大小固定为 36*9 和 72*8，不随请求核数变化。
+    前 900 个元素由 metadata 接口约定定义，其余填充为零。
+    """
+    aiv_num = 2 * aic_num if aiv_num is None else aiv_num
+    heads = int(meta["num_heads_q"])
+    _validate_fd_cores(aic_num, aiv_num, heads)
+    if int(meta["num_heads_kv"]) != 1 or not 1 <= heads <= 128:
+        raise ValueError("QSMLA requires N2=1 and N1 in [1,128]")
+    if meta.get("is_batch_consistency", False):
+        raise ValueError("metadata golden supports ordinary FD only")
+    batch = int(meta["batch_size"])
+    layout_q, layout_kv = meta["layout_q"], meta["layout_kv"]
+    if (
+        batch < 1
+        or layout_q not in ("BSND", "TND")
+        or layout_kv not in ("BSND", "TND", "PA_BBND")
+    ):
+        raise ValueError("Invalid metadata batch or layout")
+    vectors = {}
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
+        value = meta.get(name)
+        if value is None:
+            vectors[name] = None
+            continue
+        tensor = torch.as_tensor(value).detach().cpu().flatten()
+        if not tensor.numel():
+            vectors[name] = None
+            continue
+        if tensor.dtype not in (torch.int32, torch.int64) or bool(
+            ((tensor < 0) | (tensor > 2**31 - 1)).any()
+        ):
+            raise ValueError(f"{name} must contain nonnegative int32 values")
+        values = tensor.tolist()
+        if name.startswith("cu_seqlens"):
+            if (
+                len(values) != batch + 1
+                or values[0] != 0
+                or any(x > y for x, y in zip(values, values[1:]))
+            ):
+                raise ValueError(f"Invalid {name}")
+        elif "topk" not in name and len(values) != batch:
+            raise ValueError(f"{name} must have B elements")
+        vectors[name] = values
+    if layout_q == "TND" and vectors["cu_seqlens_q"] is None:
+        raise ValueError("TND requires cu_seqlens_q")
+    q_physical = (
+        [int(meta["max_seqlen_q"])] * batch
+        if layout_q == "BSND"
+        else [
+            y - x for x, y in zip(vectors["cu_seqlens_q"], vectors["cu_seqlens_q"][1:])
+        ]
+    )
+    q_lengths = vectors["seqused_q"] or q_physical
+    if any(n > capacity for n, capacity in zip(q_lengths, q_physical)):
+        raise ValueError("seqused_q exceeds physical query capacity")
+    ratio = int(meta.get("cmp_ratio") or 1)
+    if ratio < 1:
+        raise ValueError("cmp_ratio must be positive")
+    has = {p: bool(meta.get(f"has_{p}_kv", True)) for p in ("ori", "cmp")}
+    topk = {
+        "ori": int(meta.get("ori_topk") or 0),
+        "cmp": int(meta.get("cmp_topk", meta.get("topk")) or 0),
+    }
+    lengths = {}
+    for p in ("ori", "cmp"):
+        mode = int(meta.get(f"{p}_mask_mode") or 0)
+        if mode not in (0, 3, 4) or topk[p] < 0:
+            raise ValueError(f"Invalid {p} mask mode or top-k")
+        seq, cu = vectors[f"seqused_{p}_kv"], vectors[f"cu_seqlens_{p}_kv"]
+        maximum = int(meta.get(f"max_seqlen_{p}_kv") or 0)
+        lengths[p] = (
+            seq
+            if seq is not None
+            else [y - x for x, y in zip(cu, cu[1:])]
+            if layout_kv == "TND" and cu is not None
+            else [
+                2**32 - 1
+                if topk[p] and (layout_kv == "PA_BBND" or maximum == 0)
+                else maximum
+            ]
+            * batch
+        )
+        tk = vectors[f"{p}_topk_length"]
+        if tk is not None and (
+            len(tk) != sum(q_physical) or any(n > topk[p] for n in tk)
+        ):
+            raise ValueError(f"Invalid {p}_topk_length shape or value")
+    residuals = vectors["cmp_residual_kv"] or [0] * batch
+    if any(n >= ratio for n in residuals):
+        raise ValueError("cmp_residual_kv must be smaller than cmp_ratio")
+
+    def active_tokens(prefix, b, q):
+        if not has[prefix]:
+            return 0
+        length = lengths[prefix][b]
+        restored = length if prefix == "ori" else length * ratio + residuals[b]
+        if restored == 0:
+            return 0
+        mode = int(meta.get(f"{prefix}_mask_mode") or 0)
+        threshold = restored - q_lengths[b] + q
+        left, right = 0, restored - 1
+        if mode in (3, 4):
+            right = threshold
+            if mode == 4:
+                wl, wr = meta.get("ori_win_left"), meta.get("ori_win_right")
+                left = 0 if wl is None or wl < 0 else threshold - int(wl)
+                right = restored - 1 if wr is None or wr < 0 else threshold + int(wr)
+        if left >= restored or right < 0 or right < left:
+            return 0
+        left, right = max(0, left), min(restored - 1, right)
+        if prefix == "cmp":
+            if (right + 1) // ratio == 0:
+                return 0
+            left, right = max(0, (left + 1) // ratio - 1), (right + 1) // ratio - 1
+        count = right - left + 1
+        if topk[prefix]:
+            tk = vectors[f"{prefix}_topk_length"]
+            offset = (
+                vectors["cu_seqlens_q"][b]
+                if layout_q == "TND"
+                else b * int(meta["max_seqlen_q"])
+            )
+            limit = tk[offset + q] if mode == 0 and tk is not None else topk[prefix]
+            count = min(count, limit)
+        return count
+
+    # 每行记录先 ORI 后 CMP 的基本块前缀开销。
+    rows, batch_costs, batch_blocks, batch_last = [], [], [], []
+    m_cost = 6 * ((heads + 15) // 16)
+    for b in range(batch):
+        current = []
+        for q in range(q_lengths[b]):
+            current.append(
+                _MetadataRowCosts(
+                    active_tokens("ori", b, q), active_tokens("cmp", b, q), m_cost
+                )
+            )
+        rows.append(current)
+        batch_costs.append(sum(row[-1] for row in current))
+        batch_blocks.append(sum(len(row) - 1 for row in current))
+        batch_last.append(
+            next((row[-1] - row[-2] for row in reversed(current) if len(row) > 1), 0)
+        )
+
+    metadata = torch.zeros(1024, dtype=torch.int32)
+    fa, fd = metadata[:324].reshape(36, 9), metadata[324:900].reshape(72, 8)
+    split_g = heads > 64
+    cores = aic_num // 2 if split_g else aic_num
+    if not any(batch_blocks):
+        all_kv_zero = not any(
+            q_lengths[b] and any(has[p] and lengths[p][b] for p in has)
+            for b in range(batch)
+        )
+        for core in range(2 if split_g else 1):
+            fa[core, :8] = torch.tensor(
+                [1, 0, 0, 0, batch if all_kv_zero else 0, 0, 0, 0]
+            )
+        return metadata
+    b = q = tile = 0
+    remaining_cost, remaining_blocks = batch_costs[0], batch_blocks[0]
+    unassigned = sum(batch_costs)
+    endpoints, first_slots, tasks, max_loops = [], [], [], 0
+    split_parts, previous_slots = 1, 0
+    for core in range(cores):
+        if b == batch or unassigned <= 0:
+            break
+        limit = unassigned // (cores - core)
+        used_cost = used_blocks = 0
+        first_slots.append(previous_slots + split_parts - 1)
+        while b < batch and (
+            remaining_cost == 0
+            or limit + batch_last[b] // 2 >= used_cost + remaining_cost
+        ):
+            used_cost += remaining_cost
+            used_blocks += remaining_blocks
+            b, q, tile = b + 1, 0, 0
+            if b < batch:
+                remaining_cost, remaining_blocks = batch_costs[b], batch_blocks[b]
+        if b < batch:
+            while q < q_lengths[b]:
+                row = rows[b][q]
+                row_cost, row_blocks = row[-1] - row[tile], len(row) - 1 - tile
+                last = row[-1] - row[-2] if len(row) > 1 else 0
+                if limit + last // 2 < used_cost + row_cost:
+                    break
+                used_cost += row_cost
+                used_blocks += row_blocks
+                remaining_cost -= row_cost
+                remaining_blocks -= row_blocks
+                q, tile = q + 1, 0
+            if q >= q_lengths[b]:
+                raise RuntimeError(
+                    "Metadata row cursor exceeded batch before batch assignment"
+                )
+            row = rows[b][q]
+            while tile + 1 < len(row):
+                cost = row[tile + 1] - row[tile]
+                if limit + cost // 2 < used_cost + cost:
+                    break
+                used_cost += cost
+                used_blocks += 1
+                remaining_cost -= cost
+                remaining_blocks -= 1
+                tile += 1
+            if used_blocks == 0:
+                cost = row[tile + 1] - row[tile]
+                used_cost += cost
+                used_blocks = 1
+                remaining_cost -= cost
+                remaining_blocks -= 1
+                tile += 1
+                if tile == len(row) - 1:
+                    q, tile = q + 1, 0
+                if q == q_lengths[b]:
+                    b, q = b + 1, 0
+                    if b < batch:
+                        remaining_cost, remaining_blocks = (
+                            batch_costs[b],
+                            batch_blocks[b],
+                        )
+        end = (b, q, tile)
+        if core and split_parts > 1 and end[:2] != endpoints[-1][:2]:
+            tasks.append((*endpoints[-1][:2], previous_slots, split_parts, heads))
+            previous_slots += split_parts
+            split_parts = 1
+        if tile > 0:
+            split_parts += 1
+        endpoints.append(end)
+        max_loops = max(max_loops, used_blocks)
+        unassigned -= used_cost
+    if unassigned != 0:
+        raise RuntimeError("Metadata scheduling did not cover all KV tiles")
+    for core, end in enumerate(endpoints):
+        start = endpoints[core - 1] if core else (0, 0, 0)
+        record = torch.tensor(
+            [1, *start, *end, first_slots[core], max_loops if split_g else 0]
+        )
+        fa[2 * core if split_g else core] = record
+        if split_g:
+            fa[2 * core + 1] = record
+    if split_g:
+        fa[: 2 * cores, 8] = max_loops
+    if tasks:
+        load = sum(parts * m for _, _, _, parts, m in tasks)
+        average = (load + aiv_num - 1) // aiv_num
+        vector = 0
+        for bn, query, slot, parts, m in tasks:
+            count = max(1, parts * m // average)
+            per_vector = (m + count - 1) // count
+            count = (m + per_vector - 1) // per_vector
+            for index in range(count):
+                if vector >= aiv_num:
+                    raise ValueError(
+                        "Configured AIV count cannot hold FD tasks; increase fd_aiv_core_num"
+                    )
+                fd[vector, :7] = torch.tensor(
+                    [
+                        1,
+                        bn,
+                        query,
+                        slot,
+                        parts,
+                        index * per_vector,
+                        min(per_vector, m - index * per_vector),
+                    ]
+                )
+                vector += 1
+    return metadata
+
+
+def metadata_fa_ranges(metadata):
+    if metadata.dtype != torch.int32 or metadata.numel() != 1024:
+        raise ValueError("metadata must be int32[1024]")
+    return sorted(
+        {
+            (tuple(map(int, row[1:4])), tuple(map(int, row[4:7])))
+            for row in metadata[:324].reshape(36, 9)
+            if int(row[0])
+        }
+    )
+
+
+def metadata_row_partitions(ranges, row, total_tiles):
+    parts = []
+    for start, end in ranges:
+        if start[:2] <= row and (end[:2] > row or (end[:2] == row and end[2] > 0)):
+            low = start[2] if start[:2] == row else 0
+            high = end[2] if end[:2] == row else total_tiles
+            if high > low:
+                if low < 0 or high > total_tiles:
+                    raise ValueError(f"FA range exceeds row {row}")
+                parts.append((low, high))
+    parts.sort()
+    if (
+        not parts
+        or parts[0][0] != 0
+        or parts[-1][1] != total_tiles
+        or any(left[1] != right[0] for left, right in zip(parts, parts[1:]))
+    ):
+        raise ValueError(
+            f"Incomplete or overlapping FA coverage for row {row}: {parts}"
+        )
+    return parts
+
+
 def restore_cmp_kv_lengths(
     seqused_cmp_kv, cmp_ratio, cmp_residual_kv=None, cmp_mask_mode=3
 ):
@@ -150,6 +542,188 @@ class GeneralizedSFAQuant:
         self.ori_win_right = ori_win_right
         self.template_run_mode = template_run_mode
 
+    @staticmethod
+    def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
+        """Return the S2 reduction-block size used by batch-consistency metadata."""
+        total_s2_size = ori_s2_size + cmp_s2_size
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
+        return max(((raw_reduce_size + 127) // 128) * 128, 128)
+
+    @staticmethod
+    def _update_s2_tile(
+        q_fp32,
+        k_tile,
+        combined_scale,
+        kv_descale,
+        score_max,
+        sumexp,
+        acc_o,
+        hifp8_scale_value=16.0,
+    ):
+        """使用一个 S2 tile 更新 online-softmax 状态。"""
+        v_tile = k_tile.clone()
+        mm1_res = torch.matmul(q_fp32, k_tile.T)
+        scale_res = mm1_res * combined_scale
+
+        score_max_pre = score_max.clone()
+        cur_score_max = scale_res.max(dim=-1)[0]
+        score_max = torch.max(score_max, cur_score_max)
+        score_max_pre = score_max_pre - score_max
+        score_max_pre = torch.exp(score_max_pre)
+
+        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
+        sumexp_i = acc_s.sum(dim=-1)
+        sumexp = sumexp * score_max_pre + sumexp_i
+
+        acc_s_cast = acc_s * hifp8_scale_value
+        acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
+        acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
+
+        mm2_res = torch.matmul(acc_s_cast, v_tile)
+        mm2_res = mm2_res * kv_descale
+        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+        return score_max, sumexp, acc_o
+
+    def _calculate_local_s2_block(
+        self,
+        q_fp32,
+        k_tiles_fp32,
+        initial_score_max,
+        hifp8_scale_value=16.0,
+    ):
+        """Calculate one NPU reduction block and keep its local softmax state."""
+        score_max = initial_score_max.clone()
+        sumexp = torch.ones_like(score_max, dtype=torch.float32)
+        acc_o = torch.zeros(
+            (q_fp32.shape[0], k_tiles_fp32[0][0].shape[-1]), dtype=torch.float32
+        )
+        for k_tile, kv_descale in k_tiles_fp32:
+            combined_scale = self.softmax_scale * self.q_descale_val * kv_descale
+            score_max, sumexp, acc_o = self._update_s2_tile(
+                q_fp32,
+                k_tile,
+                combined_scale,
+                kv_descale,
+                score_max,
+                sumexp,
+                acc_o,
+                hifp8_scale_value,
+            )
+
+        return score_max, sumexp, acc_o / sumexp.unsqueeze(1)
+
+    def _calculate_batch_consistency(
+        self,
+        q_fp32,
+        ori_k_fp32,
+        cmp_k_fp32,
+        sinks,
+    ):
+        """按照 NPU batch-consistency 的 S2 切分和固定 FD 规约顺序计算。"""
+        ori_s2_size = 0 if ori_k_fp32 is None else ori_k_fp32.shape[0]
+        cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
+        reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
+
+        # ORI、CMP 分别划分规约块，每个基本块使用所属分支的反量化系数。
+        blocks = []
+        for k_tensor, kv_descale in (
+            (ori_k_fp32, self.ori_kv_descale_val),
+            (cmp_k_fp32, self.cmp_kv_descale_val),
+        ):
+            if k_tensor is None or k_tensor.shape[0] == 0:
+                continue
+            blocks.extend(
+                [(tile, kv_descale) for tile in block.split(128, dim=0)]
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
+
+        merged_lse = None
+        merged_sum = None
+        merged_o = None
+        for block_id, k_tiles in enumerate(blocks):
+            initial_max = (
+                sinks.clone()
+                if block_id == 0 and sinks is not None
+                else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            local_max, local_sum, local_o = self._calculate_local_s2_block(
+                q_fp32, k_tiles, initial_max
+            )
+            if merged_lse is None:
+                merged_lse = local_max
+                merged_sum = local_sum
+                merged_o = local_o
+                continue
+
+            global_max = torch.max(merged_lse, local_max)
+            prev_weight = torch.exp(merged_lse - global_max) * merged_sum
+            cur_weight = torch.exp(local_max - global_max) * local_sum
+            global_sum = prev_weight + cur_weight
+            merged_o = (
+                merged_o * prev_weight.unsqueeze(1) + local_o * cur_weight.unsqueeze(1)
+            ) / global_sum.unsqueeze(1)
+
+            # Pairwise FD stores the merged state as (LSE, 1, normalized O),
+            # then consumes that state in the next fixed left-fold merge.
+            merged_lse = global_max + torch.log(global_sum)
+            merged_sum = torch.ones_like(global_sum)
+
+        if merged_lse is None:
+            raise ValueError("batch-consistency calculation requires non-empty KV")
+        return merged_o, merged_lse + torch.log(merged_sum)
+
+    def _calculate_fd(self, q, ori, cmp, sinks, batch, head, query):
+        ori_tiles = (ori.shape[0] + 127) // 128
+        cmp_tiles = 0 if cmp is None else (cmp.shape[0] + 127) // 128
+        row = (batch * self.N2 + head, query)
+        parts = metadata_row_partitions(self.fd_ranges, row, ori_tiles + cmp_tiles)
+        states = []
+        for part, (low, high) in enumerate(parts):
+            maximum = (
+                sinks.clone()
+                if part == 0 and sinks is not None
+                else torch.full((q.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            total = torch.ones_like(maximum)
+            accum = torch.zeros((q.shape[0], q.shape[-1]), dtype=torch.float32)
+            for block in range(low, high):
+                is_ori = block < ori_tiles
+                start = (block if is_ori else block - ori_tiles) * 128
+                tile = (ori if is_ori else cmp)[start : start + 128]
+                descale = self.ori_kv_descale_val if is_ori else self.cmp_kv_descale_val
+                maximum, total, accum = self._update_s2_tile(
+                    q,
+                    tile,
+                    self.softmax_scale * self.q_descale_val * descale,
+                    descale,
+                    maximum,
+                    total,
+                    accum,
+                )
+            states.append(
+                (
+                    maximum.double(),
+                    total.double(),
+                    accum.double() / total.double().unsqueeze(-1),
+                )
+            )
+        maxima = torch.stack([state[0] for state in states])
+        global_max = maxima.max(0).values
+        weights = torch.stack([state[1] for state in states]) * torch.exp(
+            maxima - global_max
+        )
+        denominator = weights.sum(0)
+        output = (
+            torch.stack([state[2] for state in states]) * weights.unsqueeze(-1)
+        ).sum(0)
+        self.fd_trace.append(
+            {"row": list(row), "parts": [list(part) for part in parts]}
+        )
+        return (output / denominator.unsqueeze(-1)).float(), (
+            global_max + torch.log(denominator)
+        ).float()
+
     def calculate_by_bnsd(
         self,
         q_bnsd,
@@ -165,6 +739,7 @@ class GeneralizedSFAQuant:
         ori_topk_length_bnsd,
         cmp_topk_length_bnsd,
         return_softmax_lse=False,
+        batch_consistency=False,
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
@@ -336,7 +911,38 @@ class GeneralizedSFAQuant:
                     cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_scale_value = 16.0
-                    score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    if (
+                        batch_consistency
+                        or getattr(self, "fd_ranges", None) is not None
+                    ):
+                        cmp_k_for_reduce = (
+                            None if cmp_s2_loop_time == 0 else cur_cmp_k_fp32
+                        )
+                        if getattr(self, "fd_ranges", None) is not None:
+                            acc_o, final_lse = self._calculate_fd(
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
+                                i_B,
+                                i_N2,
+                                i_S1,
+                            )
+                        else:
+                            acc_o, final_lse = self._calculate_batch_consistency(
+                                q_curr_fp32,
+                                cur_ori_k_bnsd_fp32,
+                                cmp_k_for_reduce,
+                                cur_sinks,
+                            )
+                        acc_o = acc_o / hifp8_scale_value
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            torch.bfloat16
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = final_lse
+                        continue
+
                     score_max = (
                         cur_sinks.clone()
                         if cur_sinks is not None
@@ -371,9 +977,6 @@ class GeneralizedSFAQuant:
                                 k_tile = cur_cmp_k_fp32[
                                     (i_S2 - ori_s2_loop_time) * s2_base_size :, :
                                 ]
-                        v_tile = k_tile.clone()
-                        # MM1
-                        mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
                         # scale过程与NPU一致 保证精度统一
                         is_cmp_tile = i_S2 >= ori_s2_loop_time
                         if is_cmp_tile:
@@ -390,28 +993,16 @@ class GeneralizedSFAQuant:
                                 * self.ori_kv_descale_val
                             )
                             cur_v_descale = self.ori_kv_descale_val
-                        scale_res = mm1_res * combined_scale
-
-                        # 更新 score_max
-                        score_max_pre = score_max.clone()
-                        cur_score_max = scale_res.max(dim=-1)[0]
-                        score_max = torch.max(score_max, cur_score_max)
-                        score_max_pre = score_max_pre - score_max
-                        score_max_pre = torch.exp(score_max_pre)
-
-                        # 计算 acc_s 并做 hif8 量化
-                        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
-                        sumexp_i = acc_s.sum(dim=-1)
-                        sumexp = sumexp * score_max_pre + sumexp_i
-
-                        acc_s_cast = acc_s * hifp8_scale_value
-                        acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
-                        acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
-
-                        # MM2
-                        mm2_res = torch.matmul(acc_s_cast, v_tile)
-                        mm2_res = mm2_res * cur_v_descale
-                        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+                        score_max, sumexp, acc_o = self._update_s2_tile(
+                            q_curr_fp32,
+                            k_tile,
+                            combined_scale,
+                            cur_v_descale,
+                            score_max,
+                            sumexp,
+                            acc_o,
+                            hifp8_scale_value,
+                        )
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
@@ -507,8 +1098,10 @@ class GeneralizedSFAQuant:
             )
         else:
             valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
+        # Read integer indices once; preserve order and the first -1 terminator.
+        topk_values = topk_id.tolist()
         for i_valid in range(valid_count):
-            cur_topk_id = topk_id[i_valid]
+            cur_topk_id = topk_values[i_valid]
 
             if cur_topk_id == -1:
                 break
@@ -680,6 +1273,7 @@ class GeneralizedSFAQuant:
         ori_topk_length,
         cmp_topk_length,
         return_softmax_lse,
+        batch_consistency=False,
     ):
         logging.info("cpu执行中...")
         logging.info(f"template_run_mode = {self.template_run_mode}")
@@ -756,6 +1350,7 @@ class GeneralizedSFAQuant:
             ori_topk_length_bnsd,
             cmp_topk_length_bnsd,
             return_softmax_lse,
+            batch_consistency=batch_consistency,
         )
 
         attn_out = self.trans_bnsd_to_target_layout(
@@ -1353,6 +1948,11 @@ def gen_data(params, generate_golden=True):
     runNpu: 生成完毕后执行npu计算
     return test_data
     """
+    prepare_fd_params(params)
+    seed = 42
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
     Testcase_Name = params["Testcase_Name"]
     layout_q = params["layout_q"]
@@ -1387,6 +1987,7 @@ def gen_data(params, generate_golden=True):
     template_run_mode = params["template_run_mode"]
     topk_value_mode = params.get("topk_value_mode", 1)
     return_softmax_lse = params.get("return_softmax_lse", False)
+    batch_consistency = params.get("batch_consistency", False)
     quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
     return_softmax_lse = params.get("return_softmax_lse", False)
@@ -1652,8 +2253,9 @@ def gen_data(params, generate_golden=True):
         "cmp_sparse_indices": cmp_sparse_indices,
         "sinks": sinks,
         "return_softmax_lse": return_softmax_lse,
+        "batch_consistency": batch_consistency,
     }
-    if generate_golden:
+    if generate_golden and not params.get("fd_mode"):
         generate_cpu_golden({"golden_state": golden_state})
         cpu_result = golden_state["cpu_output"]
         cpu_lse = golden_state["cpu_lse"]
@@ -1694,9 +2296,7 @@ def gen_data(params, generate_golden=True):
     max_seqlen_ori_kv = seqused_ori_kv.max().item()
     max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
 
-    # Sparse templates derive KV lengths from sparse indices and top-k lengths.
-    # Keep the derived values for metadata and CPU Golden, but do not expose them
-    # as direct API inputs when their CSV slots are intentionally absent.
+    # 实际 KV 长度同时传给 metadata、参考计算和算子，保证窗口定位一致。
     cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
@@ -1779,6 +2379,8 @@ def gen_data(params, generate_golden=True):
         "cpu_lse": cpu_lse if return_softmax_lse else None,
     }
 
+    if params.get("fd_mode"):
+        prepare_fd_data(input_data, generate_golden=generate_golden)
     return input_data
 
 
@@ -1822,6 +2424,11 @@ def generate_cpu_golden(input_data):
         ori_kv_descale_val=state["ori_kv_descale_val"],
         cmp_kv_descale_val=state["cmp_kv_descale_val"],
     )
+    if state.get("fd_metadata") is not None:
+        if state["batch_consistency"]:
+            raise ValueError("FD reference cannot use batch-consistency mode")
+        test_qsmla.fd_ranges = metadata_fa_ranges(state["fd_metadata"])
+        test_qsmla.fd_trace = []
     cpu_output, cpu_lse = test_qsmla.forward(
         state["q"],
         state["ori_k_bnsd"],
@@ -1836,9 +2443,64 @@ def generate_cpu_golden(input_data):
         state["ori_topk_length"],
         state["cmp_topk_length"],
         state["return_softmax_lse"],
+        state["batch_consistency"],
     )
     state["cpu_output"] = cpu_output
     state["cpu_lse"] = cpu_lse
     input_data["cpu_output"] = cpu_output
     input_data["cpu_lse"] = cpu_lse
+    if state.get("fd_metadata") is not None:
+        input_data["fd_partition_trace"] = test_qsmla.fd_trace
     return cpu_output, cpu_lse
+
+
+def prepare_fd_data(data, generate_golden=True):
+    """核数变化时，重新生成 metadata 和数值参考结果。"""
+    params = data["params"]
+    if not prepare_fd_params(params):
+        raise ValueError("prepare_fd_data requires fd_mode=True")
+    meta_input = dict(data["metadata_input"])
+    for name in (
+        "cu_seqlens_q",
+        "cu_seqlens_ori_kv",
+        "cu_seqlens_cmp_kv",
+        "seqused_q",
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cmp_residual_kv",
+        "ori_topk_length",
+        "cmp_topk_length",
+    ):
+        meta_input[name] = data["op_input"].get(name)
+    metadata = generate_metadata_golden(
+        meta_input, params["fd_aic_core_num"], params["fd_aiv_core_num"]
+    )
+    actual_fd = bool(metadata[324:900].reshape(72, 8)[:, 0].any())
+    if params.get("fd_require_split") and not actual_fd:
+        raise ValueError(
+            "FD split required but this shape/core configuration has no FD task"
+        )
+    data["golden_metadata"] = metadata
+    data["fd_actual_split"] = actual_fd
+    data["fd_core_config"] = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
+    data["golden_state"]["fd_metadata"] = metadata.clone()
+    data["cpu_output"] = data["cpu_lse"] = None
+    data["golden_state"]["cpu_output"] = data["golden_state"]["cpu_lse"] = None
+    data.pop("fd_partition_trace", None)
+    if generate_golden:
+        generate_cpu_golden(data)
+    return metadata
+
+
+def get_fd_metadata_for_device(data, device):
+    """将 FD 参考计算使用的同一份 CPU 调度方案传给计算内核。"""
+    params = data["params"]
+    expected = (params["fd_aic_core_num"], params["fd_aiv_core_num"])
+    if tuple(data.get("fd_core_config", ())) != expected:
+        raise ValueError("FD core counts changed; regenerate metadata and golden first")
+    metadata = data.get("golden_metadata")
+    if metadata is None or not torch.equal(
+        metadata, data["golden_state"]["fd_metadata"]
+    ):
+        raise ValueError("FD metadata does not match the numerical reference")
+    return metadata.to(device=device)
