@@ -197,8 +197,7 @@ static ge::graphStatus TilingMhcNormPostPreonly(gert::TilingContext *context)
 
     // A5的MIX_AIC_1_2以一个物理AI Core为blockDim单位，并展开两个sibling AIV。
     // 输入能力已在上方统一校验；有足够的物理AI Core时，每个token分配一对sibling AIV。
-    const bool hasSiblingCapacity = totalTokens <= coreNumAiv / 2U;
-    const bool enableDualSibling = hasSiblingCapacity;
+    const bool enableDualSibling = totalTokens <= coreNumAiv / 2U;
     const uint32_t coresPerToken = enableDualSibling ? 2U : 1U;
     const uint32_t usedCoreNum = std::min(totalTokens, enableDualSibling ? (coreNumAiv / 2U) : coreNumAiv);
     uint32_t rowsPerCore = totalTokens / usedCoreNum;
