@@ -1237,6 +1237,70 @@ bool MoeDistributeDispatchV2TilingFuncA5::CheckTensorDataType(const gert::Tiling
     return true;
 }
 
+// 仅 A5：CCU 控制面开关，打桩阶段默认打开（上卡验证期）；开启后 fullmesh_v2 模板的 count 交换走
+// CCU AlltoAll（tiling key 不变）。恢复 env 门控时：删除下方 return true 并还原注释代码
+static bool IsCcuCtrlEnabled()
+{
+    // 打桩：默认打开，直接返回 true
+    return true;
+    // const char *envVal = std::getenv("MOE_DISPATCH_USE_CCU_CTRL");
+    // return (envVal != nullptr) && (std::strcmp(envVal, "1") == 0);
+}
+
+// 仅 A5：CCU 前缀 scan 直写 GM 路径开关（A/B 性能验证，默认关=UB 中转版；env 需全 rank 一致以便对拍）
+// 定版结论：默认走 UB 中转版（SIMT 逐元素 GM 访问延迟劣于 MTE 整块搬运；直写 GM 版保留作 A/B 对照）
+static bool IsCcuScanGmEnabled()
+{
+    const char *envVal = std::getenv("MOE_DISPATCH_CCU_SCAN_GM");
+    return (envVal != nullptr) && (std::strcmp(envVal, "1") == 0);
+}
+
+// 仅 A5：为 fullmesh_v2 模板补填 CCU 控制面 tiling 并在 workspace 尾部追加收发缓冲。
+// 缓冲布局（kernel 侧按同公式寻址）：[ccuSendBuf: W * segWords * 4B][ccuRecvBuf: W * segWords * 4B]，
+// segWords = Ceil(moeExpertNumPerRank, 8) * 8（u32 字数，32B 对齐），段格式 [counts...]。
+static ge::graphStatus SetCcuCtrlTiling(gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
+    auto &info = tilingData->moeDistributeDispatchV2Info;
+    // 弹性降缩路径维持原 MTE count 面，不使能 CCU 控制面
+    if (info.hasElasticInfo) {
+        return ge::GRAPH_SUCCESS;
+    }
+    info.useCcuCtrl = true;
+    // A/B 备选路径：前缀 scan 直写 GM（kernel 侧还会与 useCcuCtrl 相与，弹性/脏缓冲不会误入）
+    info.useCcuScanGm = IsCcuScanGmEnabled();
+
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
+    // 0: groupEp 属性索引，与 DispatchV2Config.attrGroupEpIndex 保持一致
+    const char *groupEp = attrs->GetAttrPointer<char>(0);
+    OP_TILING_CHECK(groupEp == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupEp"), return ge::GRAPH_FAILED);
+
+    const uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL);
+    const std::string algConfig = "AlltoAll=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfig);
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling1);
+
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"), return ge::GRAPH_FAILED);
+    const uint32_t moeExpertRankNum = info.epWorldSize - info.sharedExpertRankNum;
+    OP_TILING_CHECK(moeExpertRankNum == 0, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertRankNum"),
+                    return ge::GRAPH_FAILED);
+    const uint32_t moeExpertNumPerRank = info.moeExpertNum / moeExpertRankNum;
+    const uint32_t segWords = ((moeExpertNumPerRank + 7U) / 8U) * 8U;
+    // CCU 模式（单核 count）下 MTE 基础区整体裁剪：aivNum 份前缀复制区（WSOFF×aivNum²）、cumsum
+    // 前缀/flag 区均无消费者，仅保留系统预留 + CCU 收发缓冲——sendBuf ×1 + recvBuf ×2（跟随
+    // dataState_ 双半区，防相邻两轮 launch 间跨 rank 写读踩踏）；kernel 侧 ccuBaseOffset 同步归零，
+    // 两侧公式必须一致
+    const size_t ccuBufSize = static_cast<size_t>(info.epWorldSize) * segWords * sizeof(uint32_t) * 3U;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + ccuBufSize;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context)
 {
     OP_TILING_CHECK(context == nullptr, OP_LOGE(OP_NAME, "Fail to get tiling context."), return ge::GRAPH_FAILED);
@@ -1299,7 +1363,24 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = false;
     // MTE 调用 A3 tiling 实现
-    return MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
+    ge::graphStatus mteRet = MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
+    if (mteRet != ge::GRAPH_SUCCESS) {
+        return mteRet;
+    }
+    // 仅 A5 fullmesh_v2 且显式开启时配置 CCU 控制面（复用 fullmesh_v2 tiling key，A3 路径不受影响）
+    if (isFullmeshV2 && IsCcuCtrlEnabled()) {
+        OP_TILING_CHECK(SetCcuCtrlTiling(context) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "Set CCU control-plane tiling failed."), return ge::GRAPH_FAILED);
+    } else {
+        // tiling 缓冲不保证清零（该字段前身 reserved1 从未写过）：显式写默认关，
+        // 防脏值让 MTE 路径误入 CCU 分支（workspace 布局不含 CCU 缓冲，会越界）
+        MoeDistributeDispatchV2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchV2TilingData>();
+        OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"),
+                        return ge::GRAPH_FAILED);
+        tilingData->moeDistributeDispatchV2Info.useCcuCtrl = false;
+        tilingData->moeDistributeDispatchV2Info.useCcuScanGm = false; // 同上：防脏值误入
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context)
