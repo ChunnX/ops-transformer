@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_impl_registry.h"
-#include "../grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
+#include "grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #include "grouped_matmul_swiglu_quant_tensor_api_tiling_common.h"
 

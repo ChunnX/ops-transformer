@@ -13,7 +13,7 @@
  * \brief Device-side tiling data for the Ascend 950 MXFP8 weight-NZ V3 path.
  *
  * The field order and types must stay byte-for-byte compatible with
- * op_host/op_tiling/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h.
+ * op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h.
  * This is deliberately a plain POD definition: device compilation cannot
  * depend on the host-side TilingDef registration classes.
  */
