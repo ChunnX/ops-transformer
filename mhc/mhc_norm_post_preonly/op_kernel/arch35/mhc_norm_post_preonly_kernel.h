@@ -174,7 +174,7 @@ public:
 
         for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
             if constexpr (DUAL_SIBLING) {
-                ProcessTokenDualSiblingAiv(t);
+                ProcessTokenDualSiblingAiv<0U>(t);
             } else {
                 ProcessTokenSingleAiv(t);
             }
@@ -191,12 +191,66 @@ public:
         }
     }
 
+    // 四档D均由Host严格校验。双sibling热路径按D实例化，固定展开D轴分块，
+    // 避免每个阶段重复执行tile循环控制、尾块判断和动态偏移计算。
+    template <uint32_t D_VALUE>
+    __aicore__ inline void ProcessStaticD()
+    {
+        static_assert(D_VALUE == 2560U || D_VALUE == 5120U || D_VALUE == 6144U || D_VALUE == 7168U,
+                      "unsupported embed dim");
+        static_assert(DUAL_SIBLING, "static D dispatch is only used by the dual-sibling path");
+        if (tokenStart_ >= tokenEnd_) {
+            return;
+        }
+        if (laneId_ == 0U) {
+            alpha0_ = alpha0Gm_.GetValue(0);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
+        }
+
+        if constexpr (D_VALUE == D_TILE_MAX) {
+            DataCopyExtParams gP = {1, 0, 0, 0, 0};
+            gP.blockLen = D_TILE_MAX * sizeof(float);
+            DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
+            DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
+        }
+
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
+            ProcessTokenDualSiblingAiv<D_VALUE>(t);
+        }
+
+        pipe_.ReleaseEventID<HardEvent::MTE2_V>(evtMte2toV_);
+        pipe_.ReleaseEventID<HardEvent::V_MTE2>(evtVtoMte2_);
+        pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
+        pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
+        pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
+        pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
+        pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
+    }
+
     // =================================================================
     //  各执行路径的方法，实现在独立头文件中
     // =================================================================
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
+    template <uint32_t D_VALUE>
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
+    template <uint32_t D_VALUE, uint32_t TILE_INDEX>
+    __aicore__ inline void AccumulateR1TilesStatic(float &sumSq0);
+    template <uint32_t D_VALUE, uint32_t TILE_INDEX>
+    __aicore__ inline void ProcessR2TilesStatic(uint32_t token, float invRms0, const float (&postVals)[N_MAX],
+                                                float (&midSqHalf)[2], float (&sumSqHalf)[2],
+                                                float (&dotHalf)[2][N_MAX]);
+    template <uint32_t D_VALUE, uint32_t TILE_INDEX>
+    __aicore__ inline void ProcessR3TilesStatic(uint32_t token, float invRmsMid, float (&sumSqHalf)[2],
+                                                float (&dotHalf)[2][N_MAX]);
+    template <uint32_t D_VALUE, uint32_t TILE_INDEX>
+    __aicore__ inline void ProcessR6TilesStatic(float &sumSq1);
+    template <uint32_t D_VALUE, uint32_t TILE_INDEX>
+    __aicore__ inline void ProcessR7TilesStatic(uint32_t token, float invRms1);
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX]);
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
