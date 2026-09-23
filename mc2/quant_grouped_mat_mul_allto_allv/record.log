@@ -1,0 +1,209 @@
+============================================================================
+quant_grouped_mat_mul_allto_allv 算子 MXFP4/MXFP8 切换 apace 模板 —— 开发记录
+============================================================================
+时间：2026-09-21
+开发者：t00947332
+环境：CANN 9.2.0（/home/l00947526/Ascend915/cann-9.2.0）
+      conda: wkc_py310（/root/miniconda3/envs/wkc_py310）
+      4x Ascend950PR NPU，使用 qrun 排队
+参考：线上 PR https://gitcode.com/cann/ops-transformer/pull/12015
+      （GMM 基于 apace 框架：新增 apace 库 grouped_matmul_mx_kernel.h）
+
+---------------------------------------------------------------------------
+1. 任务目标
+---------------------------------------------------------------------------
+将 quant_grouped_mat_mul_allto_allv 算子的 MXFP4/MXFP8（MX 量化）GMM 计算
+路径从原有 UBMEM 实现（mc2_templates 的 QuantGroupedMatmul -> Mc2GmmASWKernel）
+切换为 apace 库模板 GroupedMatmulMxKernel（基于 Blaze block_mmad_qgmm_mx +
+block_scheduler_gmm_swat_with_tail_split）。
+
+---------------------------------------------------------------------------
+2. 代码改动（全部为 quant 算子相关，MX 路径）
+---------------------------------------------------------------------------
+[新增] mc2/common/op_kernel/apace/kernel/matmul/grouped_matmul/
+       grouped_matmul_mx_kernel.h
+   - PR 12015 的 GroupedMatmulMxKernel apace 模板
+   - 本环境编译必须使用 CANN 内置 Blaze（AscendC::Te 大写 API），
+     故对 PR 版本做 API 适配（asc::te -> AscendC::Te）
+   - 支持 GROUP_LIST_TYPE_OFFSET/LENGTH/SPARSE 三种 group list 格式
+   - 支持通过 GroupOffsetTables 传入各 group 的 GM 偏移表（缺省按公式计算）
+
+[新增] mc2/quant_grouped_mat_mul_allto_allv/op_kernel/
+       quant_grouped_mat_mul_allto_allv_mx.h
+   - MX 模式的 GMM 计算适配层，对外接口与 QuantGroupedMatmul 一致
+     （Init/Process/End），内部组装 GroupedMatmulMxKernel 并 Run
+   - workspace 布局：groupList + cGroupOffsetTable(rank-major) +
+     bGroupOffsetTable + scaleBGroupOffsetTable + ptrTable 占位
+   - A/ScaleA 偏移走公式（expert-major 累积，与 A 物理布局一致）
+   - C 走 rank-major 偏移表，B/ScaleB 走 expert 偏移表
+   - FP4 打包偏移处理（每 2 元素 1 字节，偏移右移 1 位）
+
+[修改] mc2/quant_grouped_mat_mul_allto_allv/op_kernel/
+       quant_grouped_mat_mul_allto_allv.cpp
+   - MX_QUANT_MODE 编译期分支：MX 模式 ComputeOpType/SharedGmmExpertOpType
+     切换为 QuantGroupedMatmulMx（apace 模板），TT 模式保持原 QuantGroupedMatmul
+
+[修改] mc2/quant_grouped_mat_mul_allto_allv/op_host/op_tiling/
+       quant_grouped_mat_mul_allto_allv_tiling_common.cpp
+   - SetGmmA2avWorkspaceInfo：MX 模式增加 B/ScaleB 偏移表 workspace
+
+---------------------------------------------------------------------------
+3. 关键设计决策
+---------------------------------------------------------------------------
+a) 布局语义确认：
+   - gmm_x（A）物理布局为 expert-major（(e,r) 段按 expert 顺序、expert 内
+     按 rank 顺序），A 偏移 = 累积 token * K（FP4 右移 1 位）
+   - gmm_y 输出（C）为 rank-major 布局（hccl send 段按 rank 连续），
+     需通过 cGroupOffsetTable 传入 GroupedMatmulMxKernel
+   - gmm_weight（B）/scaleB 按 expert 偏移，通过 bGroupOffsetTable /
+     scaleBGroupOffsetTable 传入（groupIdx=e*ep+r 与 expert 索引不一致）
+b) 接口复用：MM 模板复用 TCubeTiling（GMMQuantTilingData.mmTilingData）的
+   baseM/baseN/baseK/isBias/dbL0C 字段，kernel 侧构造 GMMTiling；
+   kAL1/kBL1/scaleKAL1 填 0 由模板兜底为 baseK（正确性优先）
+c) 编译期 API：本环境 bisheng 强制注入新代 tensor_api（AscendC::Te），
+   ops-tensor 仓旧代（asc::te）不可用，apace 模板按内置 Blaze API 编写
+
+---------------------------------------------------------------------------
+4. 遇到的问题与解决
+---------------------------------------------------------------------------
+[问题1] apace 头文件 include 路径
+  kernel 编译的 include 根（build/binary/ascend950/src/ascendc/common）不含
+  apace，直接 `#include "apace/..."` 编译失败（fatal error: file not found）。
+  解决：quant_grouped_mat_mul_allto_allv_mx.h 改用相对路径
+    `#include "../../common/op_kernel/apace/.../grouped_matmul_mx_kernel.h"`
+  （该相对路径在源码树 mc2/ 与构建树 build/binary/ascend950/src/ 中均成立）
+
+[问题2] kernel 编译报 "Soc version is empty"
+  手动运行 gen/*.sh 时 asc_opc 拿不到 SOC 版本；build.sh 内部设置了
+  ASCEND_CUSTOM_OPP_PATH / HI_PYTHON / TILINGKEY_PAR_COMPILE /
+  BIN_FILENAME_HASHED 等环境。手动重编 kernel 时需补齐这些环境变量。
+
+[问题3] compile_stop.flag 连锁失败
+  build.sh 任一 kernel 编译失败会 touch compile_stop.flag，导致后续 gen 脚本
+  全部 "Stop flag detected" 退出。需在每次重跑前清理该 flag。
+
+[问题4] allto_allv_quant_grouped_mat_mul 算子 kernel 编译失败阻塞整体构建
+  该算子（非本任务）kernel 从未编译成功：build/binary 下其入口
+  AlltoAllvQuantGroupedMatMul.py 缺失、且 src 副本残留一份 apace 半成品
+  apt.cpp（引用 MatmulWithScaleMx + __hif8，static_assert 失败）。
+  解决：1) 按仓库版本恢复 src 副本 apt.cpp；
+       2) 基于 QuantGroupedMatMulAlltoAllv.py 模板生成缺失的
+          AlltoAllvQuantGroupedMatMul.py（适配输入输出/attrs/kernel 源路径），
+          使该算子 12 个 kernel 编译成功，bin 目录非空后 ops_config 通过。
+
+[问题5] kernel 编译被外部 kill（RC=137）
+  bash 工具超时机制会连带杀死后台编译进程组；改用
+  `setsid nohup ... & disown` 脱离会话后后台编译稳定。
+
+[问题6] 编译错误修复
+  - std::max 在 kernel 环境不可用 -> 改三目运算
+  - DOUBLE_BUFFER_COUNT 需限定命名空间 -> Blaze::Gemm::DOUBLE_BUFFER_COUNT
+
+[问题7] build 目录权限
+  build/binary/ascend950/bin/allto_allv_quant_grouped_mat_mul 目录权限异常
+  （d-wxr-xr-T），导致 ops_config 的目录遍历 PermissionError；chmod 修复。
+
+[问题8] 算子安装到 OPP 的权限
+  /home/l00947526/Ascend915/cann-9.2.0/opp/vendors 为 root 所有且 750；
+  使用 sudo 安装 run 包并对 custom_transformer 补 o+rX/755，供当前用户访问。
+
+[问题9] 验证脚本运行时 MC2_OPEN_TIMEOUT（AICPU 通信未初始化）
+  torch_npu 调用 npu_quant_gmm_alltoallv 报 aicpu 异常（errorCode 507018），
+  ascend 日志显示 MC2_OPEN_TIMEOUT（commitCnt=0），原因是缺少
+  HCCL_OP_EXPANSION_MODE="AI_CPU" 环境变量（AI CPU 通信模式）。
+  修复：run_verify.sh 设置 HCCL_OP_EXPANSION_MODE="AI_CPU"。
+
+[问题10] 验证脚本 case 字段问题（迭代修复）
+  - 缺 bin_name/sheet_name -> 补齐
+  - get_hcomm_info 需要 master_ip/master_port -> 补齐
+  - ep_size/tp_size 非空时走 ep/tp 分支导致 default_pg_info=None（hcom 传
+    None 报错）-> 设为 None 走 default 通信域
+
+[问题11] 运行 Mc2ServerKernel 报 "execute kernel param invalid"（errorCode 507018）
+  现象：torch_npu 调用 npu_quant_gmm_alltoallv 时 AICPU KFC 通信 kernel
+  参数校验失败；最小 hccl 测试（all_to_all_single）PASS，排除基础通信问题；
+  在 l00947526/l00946875 两个 CANN 环境均复现，指向算子侧 KFC 任务配置。
+  排查中：对比 HcclA2avOp（allto_allv_quant_grouped_mat_mul）在同一环境的行为，
+  以区分算子系统性问题与算子特定配置问题。
+
+[问题12] allto_allv_quant_grouped_mat_mul 的 kernel 未打进 custom 包
+  build.sh 打包只收集有 CMake target 的算子 kernel；allto_allv 的 kernel 由
+  手动编译（build/binary/.../bin/），未进 custom 包 -> torch_npu 运行时
+  "Failed to stat ...AlltoAllvQuantGroupedMatMul_xxx.o"。
+  解决：手动将 12 个 .o/.json 拷贝到
+  opp/vendors/custom_transformer/op_impl/ai_core/tbe/kernel/ascend950/
+  allto_allv_quant_grouped_mat_mul/。
+
+[问题13] Mc2ServerKernel "execute kernel param invalid" 根因与解决
+  根因：验证脚本调用 torch_npu.npu_quant_gmm_alltoallv 时 gmm_x_dtype 传参错误，
+  导致 kernel 选择与输入 dtype 不匹配（加载了错误的 kernel 二进制），
+  通信任务参数随之无效。
+  - 传 CANN 枚举（如 35=DT_FLOAT8_E5M2）→ torch_npu 接口报 UInt6 无效
+  - 传 None（期望从 tensor 推断）→ 推断异常
+  解决：gmm_x_dtype 必须传 torch_npu 的 dtype 枚举：
+    float8_e4m3fn = 292，float8_e5m2 = 291，float4_e2m1 = 296，float8_e8m0 = 293
+  （torch_npu 无 float8_e4m3fn/float8_e5m2 的 None 推断，需显式传枚举值）
+  修复后算子调用成功（不再 param invalid）。
+
+  诊断过程（排除项）：
+  - 最小 hccl alltoallv PASS：基础通信正常
+  - allto_allv_quant_grouped_mat_mul（HcclA2avOp 先通信）PASS：KFC 引擎正常
+  - quant op TT 模式（后通信基线）PASS：后通信链路正常
+  - MX 模式 GMM 计算完全置空仍 param invalid：与计算无关
+  - hcclInitTiling/a2avCcTiling 在 MX/TT 完全一致：与 host hccl 配置无关
+  - host tiling 增加 [DIAG] dump（hccl/taskTilingInfo/workspace）对比
+
+  最终根因与解决（重要）：
+  - Blaze（BlockMmad）与 AIV/AICPU KFC 通信引擎在同一 kernel 中不共存：
+    只要 kernel 实例化 Blaze 模板（即使不执行计算），AIV 的 Mc2ServerKernel
+    通信任务参数校验就失败（execute kernel param invalid）。
+  - 参考 PR 10588（all_gather_mx_matmul_hcomm_impl.h）的 Hcomm 通算融合模式：
+    通信改在 AIC 核内完成（Hccl AlltoAllV），与 Blaze GMM 计算同核，
+    规避 AIV/AICPU KFC。
+  - 新增 Apace::QuantGmmA2avHcommImpl（common/apace/kernel/fusions/
+    quant_gmm_a2av/quant_gmm_a2av_hcomm_impl.h）：
+      AIC 核 hccl_.InitV2 + SetCcTilingV2 → GMM 计算（QuantGroupedMatmulMx/Blaze）
+      → 核间 SyncAll → 核 0 下发 AlltoAllV（sendBuf=gmmOutputGM, recvBuf=yGM）
+      → Wait → Finalize。
+   - 验证（mc2_test 框架，CPU golden + NPU 三方比对）：
+    mxfp8（fp8_e4m3fn+fp16）4 卡用例 4 rank 全部 PASS，EXIT=0。
+    mxfp4（fp4_e2m1+fp16）4 卡用例 4 rank 全部 PASS，EXIT=0。
+
+[问题14] 验证方式调整（采用 mc2_test 框架）
+  用户建议改用 mc2_test.py 框架做三方比对（CPU golden + NPU），不自行编写验证脚本。
+  流程：
+    1) python3 mc2_test.py --xlsx ... --sheet prof --num N --scene cpu --world_size 4
+       （CPU golden，生成 cpu_out.bin）
+    2) python3 mc2_test.py --xlsx ... --sheet prof --num N --scene npu --world_size 4
+       （NPU 运行，与 CPU golden 三方比对）
+  用小 shape mxfp8/mxfp4 用例（A=64 H1=256 N1=128 E=2 ws=4）。
+  注：构造用例 xlsx 时列需与 prof 表一致（含 comm_mode 列）；op_name 由 xlsx 文件名
+  决定（须为 aclnnQuantGroupedMatMulAlltoAllvV2.xlsx）；QUANT_GMM_ALLTOALLV_V2 的
+  comm_mode 缺省改为 "ai_cpu"（兼容无 comm_mode 列的用例表）。
+
+---------------------------------------------------------------------------
+5. 编译与安装
+---------------------------------------------------------------------------
+- 使用仓内 build.sh 编译（--soc=ascend950 --ops=quant_grouped_mat_mul_allto_allv）
+- quant_grouped_mat_mul_allto_allv 14 个 kernel 变体编译通过（MXFP4/MXFP8/
+  TT 各 dtype 组合）
+- host tiling（libcust_opmaster_rt2.0.so）编译通过
+- 生成安装包 cann-ops-transformer-custom_linux-x86_64.run 并安装到
+  /home/l00947526/Ascend915/cann-9.2.0/opp/vendors/custom_transformer/
+- 运行时需 source vendors/custom_transformer/bin/set_env.bash
+  （设置 ASCEND_CUSTOM_OPP_PATH / LD_LIBRARY_PATH）
+
+---------------------------------------------------------------------------
+6. 验证（已通过）
+---------------------------------------------------------------------------
+- 验证方式：mc2_test 框架三方比对（CPU golden + NPU）
+    1) python3 mc2_test.py --xlsx small_cases/aclnnQuantGroupedMatMulAlltoAllvV2.xlsx
+         --sheet prof --num N --scene cpu --world_size 4   （CPU golden）
+    2) python3 mc2_test.py --xlsx ... --num N --scene npu --world_size 4 （NPU + 比对）
+- 小 shape 用例：A=64 H1=256 N1=128 E=2 world=4
+  - MXFP8（fp8_e4m3fn + fp16）：4 rank 全部 PASS（EXIT=0）
+  - MXFP4（fp4_e2m1 + fp16）：4 rank 全部 PASS（EXIT=0）
+- 日志：build_logs/fw_npu_mxfp8.log、fw_npu_mxfp4.log
+- 运行环境需：ASCEND_CUSTOM_OPP_PATH（custom_transformer）、LD_LIBRARY_PATH
+  （CANN lib64 + custom op_api/lib）、HCCL_OP_EXPANSION_MODE=AI_CPU
+============================================================================
