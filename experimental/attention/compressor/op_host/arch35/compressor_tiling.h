@@ -287,9 +287,9 @@ struct CompressorContext {
 
 class CompressorTiling {
 public:
-    explicit CompressorTiling(CompressorContext *context) : context_(context)
-    {
-    }
+    explicit CompressorTiling(CompressorContext *context)
+        : context_(context)
+    {}
     ~CompressorTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext);

@@ -126,12 +126,13 @@ __aicore__ inline void CompressorBlockCube<COMP>::InitParams(const ConstInfo &co
 }
 
 template <typename COMP>
-__aicore__ inline void
-CompressorBlockCube<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
-                                __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *normWeight,
-                                __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
-                                __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
+__aicore__ inline void CompressorBlockCube<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
+                                                       __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
+                                                       __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
+                                                       __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
+                                                       __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
+                                                       __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
+                                                       __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
     isExistXCache_ = (xCache != nullptr);

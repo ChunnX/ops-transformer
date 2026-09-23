@@ -27,7 +27,6 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
-
 void CompressorTiling::ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext)
 {
     compressorContext.x.desc = context.GetRequiredInputDesc(TOKEN_X_INPUT_INDEX);
@@ -518,9 +517,9 @@ ge::graphStatus CompressorTiling::CheckDtypeSupport(const gert::CompileTimeTenso
             OP_LOGE(context_->opName, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
-        OP_CHECK_IF(std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) ==
-                        expectDtypeList.end(),
-                    LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
+            LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -710,11 +709,11 @@ ge::graphStatus CompressorTiling::CheckSingleParaXCache() const
     const auto &xCacheShape = context_->xCache.shape->GetStorageShape();
     const auto seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     const auto minCacheSize = *context_->cmpRatio + seqSize - 1;
-    OP_CHECK_IF(xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1) < minCacheSize,
-                OP_LOGE(context_->opName,
-                        "x_cache slot size should be at least cmp_ratio + seq_size - 1 (%ld), but got %ld",
-                        minCacheSize, xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1) < minCacheSize,
+        OP_LOGE(context_->opName, "x_cache slot size should be at least cmp_ratio + seq_size - 1 (%ld), but got %ld",
+                minCacheSize, xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -738,11 +737,11 @@ ge::graphStatus CompressorTiling::CheckSingleParaXCacheSlotMapping() const
     const auto &slotMappingShape = context_->xCacheSlotMapping.shape->GetStorageShape();
     const auto seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     if (slotMappingShape.GetDimNum() == COMPRESSOR_DIM_NUM_2) {
-        OP_CHECK_IF(slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1) != seqSize,
-                    OP_LOGE(context_->opName,
-                            "x_cache_slot_mapping second dimension should match x seq size %ld, but got %ld", seqSize,
-                            slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1) != seqSize,
+            OP_LOGE(context_->opName, "x_cache_slot_mapping second dimension should match x seq size %ld, but got %ld",
+                    seqSize, slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(seqSize != 1,
                     OP_LOGE(context_->opName,
@@ -901,25 +900,25 @@ ge::graphStatus CompressorTiling::CheckFeature() const
         OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u", pageAttentionParams_->blockSize),
         return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)) {
-        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::CYCLE), baseParams_->batchSize,
-                            pageAttentionParams_->blockNum),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::CYCLE), COMPRESSOR_DIM_NUM_1,
-                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            pageAttentionParams_->blockNum < baseParams_->batchSize,
+            OP_LOGE(context_->opName,
+                    "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
+                    static_cast<uint8_t>(CACHE_MODE::CYCLE), baseParams_->batchSize, pageAttentionParams_->blockNum),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
+            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
+                    static_cast<uint8_t>(CACHE_MODE::CYCLE), COMPRESSOR_DIM_NUM_1,
+                    context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+            return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::CONTINUOUS), COMPRESSOR_DIM_NUM_2,
-                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
+            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %u",
+                    static_cast<uint8_t>(CACHE_MODE::CONTINUOUS), COMPRESSOR_DIM_NUM_2,
+                    context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1077,12 +1076,12 @@ ge::graphStatus CompressorTiling::CheckScenarioConsistency() const
     std::vector<uint32_t> curScenario{curCmpratio, curCoff, curHeaddim};
     const std::vector<std::vector<uint32_t>> allowdScenarios = {{4, 2, 512}, {4, 2, 128}, {128, 1, 512}};
 
-    OP_CHECK_IF(std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
-                OP_LOGE(context_->opName,
-                        "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512}, \
+    OP_CHECK_IF(
+        std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
+        OP_LOGE(context_->opName, "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512}, \
                         but now cmpratio=%u, coff=%u, headdim=%u",
-                        curCmpratio, curCoff, curHeaddim),
-                return ge::GRAPH_FAILED);
+                curCmpratio, curCoff, curHeaddim),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

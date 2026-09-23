@@ -40,9 +40,7 @@ __aicore__ inline bool CrossesCompressionBoundary(uint32_t startPos, uint32_t se
 template <typename COMP>
 class CompressorTools {
 public:
-    __aicore__ inline CompressorTools()
-    {
-    }
+    __aicore__ inline CompressorTools() {}
 
     __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
 
@@ -176,7 +174,9 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
 // iterator
 struct SliceInfo {
     __aicore__ inline SliceInfo(){};
-    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx) : bIdx(bIdx), sIdx(sIdx){};
+    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : bIdx(bIdx),
+          sIdx(sIdx){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -195,9 +195,9 @@ struct SliceInfo {
 template <typename COMP>
 class CompressorSliceIterator {
 public:
-    __aicore__ inline CompressorSliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline CompressorSliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -360,7 +360,8 @@ __aicore__ inline SliceInfo &CompressorSliceIterator<COMP>::GetSlice()
 
 struct SplitCoreSliceInfo : public SliceInfo {
     __aicore__ inline SplitCoreSliceInfo(){};
-    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
 
     uint32_t preFirstSeqCnt = 0U; // 左边每次迭代基本块的第一个seqCnt大小
 };
@@ -368,9 +369,9 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class CompressorSplitCoreSliceIterator {
 public:
-    __aicore__ inline CompressorSplitCoreSliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline CompressorSplitCoreSliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -582,9 +583,11 @@ __aicore__ inline SplitCoreSliceInfo &CompressorSplitCoreSliceIterator<COMP>::Ge
 
 struct Vec1SliceInfo : public SliceInfo {
     __aicore__ inline Vec1SliceInfo(){};
-    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
     __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt)
-        : SliceInfo(bIdx, sIdx), dealedSeqCnt(dealedSeqCnt){};
+        : SliceInfo(bIdx, sIdx),
+          dealedSeqCnt(dealedSeqCnt){};
 
     uint32_t dealedSeqCnt = 0U;
     uint32_t dealedTcCnt = 0U;
@@ -597,7 +600,9 @@ struct Vec1SliceInfo : public SliceInfo {
 struct StatisticInfo {
     __aicore__ inline StatisticInfo(){};
     __aicore__ inline StatisticInfo(uint32_t actualTcCnt, uint32_t dealSeqCnt, uint32_t compressorScCnt)
-        : actualTcCnt(actualTcCnt), dealSeqCnt(dealSeqCnt), compressorScCnt(compressorScCnt){};
+        : actualTcCnt(actualTcCnt),
+          dealSeqCnt(dealSeqCnt),
+          compressorScCnt(compressorScCnt){};
 
     uint32_t actualTcCnt = 0U;
     uint32_t dealSeqCnt = 0U;
@@ -607,9 +612,9 @@ struct StatisticInfo {
 template <typename COMP>
 class CompressorVec1SliceIterator {
 public:
-    __aicore__ inline CompressorVec1SliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline CompressorVec1SliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t compressoredScCnt);
@@ -749,7 +754,6 @@ __aicore__ inline uint32_t CompressorVec1SliceIterator<COMP>::GetNeedDealTcSize(
     return needDealTcSize_;
 }
 
-
 template <typename COMP>
 __aicore__ inline bool CompressorVec1SliceIterator<COMP>::IsEnd()
 {
@@ -817,9 +821,10 @@ __aicore__ inline StatisticInfo &CompressorVec1SliceIterator<COMP>::FullIterator
 
 struct Vec2SliceInfo {
     __aicore__ inline Vec2SliceInfo(){};
-    __aicore__ inline Vec2SliceInfo(uint32_t bIdx, uint32_t scIdx) : bIdx(bIdx), scIdx(scIdx)
-    {
-    }
+    __aicore__ inline Vec2SliceInfo(uint32_t bIdx, uint32_t scIdx)
+        : bIdx(bIdx),
+          scIdx(scIdx)
+    {}
 
     uint32_t bIdx = 0U;
     uint32_t scIdx = 0U;
@@ -835,13 +840,12 @@ struct Vec2SliceInfo {
     uint32_t loopDealedScCnt = 0U; // 当前迭代已处理的sc数量（Reset刷新）
 };
 
-
 template <typename COMP>
 class CompressorVec2SliceIterator {
 public:
-    __aicore__ inline CompressorVec2SliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline CompressorVec2SliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
+    {}
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t scIdx, uint32_t dealedScCnt);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetNeedDealScSize(uint32_t needDealScSize);
@@ -858,7 +862,6 @@ private:
     uint32_t needDealScSize_ = 0U;
     uint32_t batch_size_ = 0U;
 };
-
 
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t scIdx, uint32_t dealedScCnt)
@@ -886,13 +889,11 @@ __aicore__ inline void CompressorVec2SliceIterator<COMP>::ResetLoopDealedScCnt()
     sliceInfo_.loopDealedScCnt = 0U;
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::SetMaxBatchSize(uint32_t batch_size)
 {
     this->batch_size_ = batch_size;
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorVec2SliceIterator<COMP>::SetNeedDealScSize(uint32_t needDealScSize)
@@ -932,7 +933,6 @@ __aicore__ inline uint32_t CompressorVec2SliceIterator<COMP>::GetNeedDealScSize(
     return needDealScSize_;
 }
 
-
 template <typename COMP>
 __aicore__ inline bool CompressorVec2SliceIterator<COMP>::IsEnd()
 {
@@ -949,7 +949,6 @@ __aicore__ inline Vec2SliceInfo &CompressorVec2SliceIterator<COMP>::GetSlice()
     }
     return sliceInfo_;
 }
-
 
 } // namespace Compressor
 

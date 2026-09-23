@@ -19,17 +19,17 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_compressor.h"
 
-#define CHECK_RET(cond, expr)                                                                                          \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            expr;                                                                                                      \
-        }                                                                                                              \
+#define CHECK_RET(cond, expr) \
+    do { \
+        if (!(cond)) { \
+            expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        std::printf(message, ##__VA_ARGS__);                                                                           \
-        std::fflush(stdout);                                                                                           \
+#define LOG_PRINT(message, ...) \
+    do { \
+        std::printf(message, ##__VA_ARGS__); \
+        std::fflush(stdout); \
     } while (0)
 
 namespace {

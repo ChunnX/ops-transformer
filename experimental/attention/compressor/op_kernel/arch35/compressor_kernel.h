@@ -31,9 +31,9 @@ template <typename COMP>
 class CompressorKernel {
 public:
     __aicore__ inline CompressorKernel(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
-    {
-    }
+        : pipe_(pipe),
+          tilingData_(tilingData)
+    {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *normWeight,
@@ -120,12 +120,11 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void
-CompressorKernel<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
-                             __gm__ uint8_t *ape, __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
-                             __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens,
-                             __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
-                             __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace)
+__aicore__ inline void CompressorKernel<COMP>::Init(
+    __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
+    __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
+    __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
+    __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
@@ -294,7 +293,6 @@ __aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &batch
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo, BatchInfo batchInfo,
                                                               uint32_t &curGroupQuota, uint32_t curDealSeq)
@@ -392,7 +390,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
     }
     return basicBlockInfo;
 }
-
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorKernel<COMP>::GetLoopTimes()
