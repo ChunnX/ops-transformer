@@ -20,6 +20,8 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "lib/hccl/hccl.h"
+#include "simt_api/asc_simt.h"
 #include "adv_api/math/cumsum.h"
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -45,6 +47,14 @@ constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
 // 按32核上限预留前缀和数据区（32*32*32=32KB）
 constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL;
+// CCU 控制面软同步标志位于 per-AIV 状态字（512B 槽）空闲字：状态区启动时清零、跨 launch 持久
+// （workspace 不做初始化清零，依赖零基线的标志不得放 workspace）；word0-7 为 InitWinState 块、8-9 为 HCCL DFX
+constexpr uint32_t CCU_READY_WORD_POS = 10U; // 矩阵就绪字：各核自己槽内，唯一 cumsum 核 Wait 后置 1.0f、本核查后清
+// CCU 控制面前缀 scan 的 SIMT 线程数（sortlib 先例 THREAD_DIM_NUM=1024；矩阵规模 W×localExpertNum
+// 常见 64~1024，取 256 时每线程 1~4 元素；LAUNCH_BOUND 与 dim3 传值保持一致，同 sortlib 用法）
+constexpr uint32_t CCU_SIMT_THREAD_NUM = 256U;
+// count 直方图化：复用 common.h GetExpertFreq（u8 输入 × u16 桶 × 256 桶寄存器直方图，跨 repeat 累加）
+constexpr uint32_t CCU_HIST_BIN_NUM = 256U;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
@@ -61,6 +71,48 @@ constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
+
+// CCU 控制面：count 矩阵 (src 主序) → (expert 主序 × src 次序) 展平全局前缀——SIMT block-scan。
+// 标量双循环在 vector 核标量单元上过慢（W×localMoe 次读改写）；SIMT 每线程独立寻址、跨步免惩罚，
+// 链式依赖按经典两阶段分解：各线程扫自己 chunk（含转置寻址 s*segWords+j）→ syncthreads →
+// 线程 0 对 chunk 小计做排他前缀 → syncthreads → 各线程加偏移写出（输出连续）。
+// 整数加法结合律保证结果与串行标量版逐位一致；asc_vf_call 阻塞调用核直至线程完成（sortlib 先例）。
+template <typename CountT>
+__simt_vf__ LAUNCH_BOUND(CCU_SIMT_THREAD_NUM) __aicore__
+    void CcuPrefixScanSimt(__ubuf__ CountT *mat, __ubuf__ CountT *out, __ubuf__ CountT *chunkOffsets, uint32_t totalNum,
+                           uint32_t worldSize, uint32_t segWords)
+{
+    uint32_t tid = threadIdx.x;
+    uint32_t chunkSize = (totalNum + CCU_SIMT_THREAD_NUM - 1U) / CCU_SIMT_THREAD_NUM;
+    uint32_t begin = tid * chunkSize;
+    uint32_t end = begin + chunkSize;
+    if (end > totalNum) {
+        end = totalNum;
+    }
+    CountT runSum = 0;
+    for (uint32_t i = begin; i < end; ++i) {
+        // 展平序 i = j*W + s（expert 主序 × src 次序）→ src 主序矩阵地址 s*segWords + j
+        uint32_t j = i / worldSize;
+        uint32_t s = i - j * worldSize;
+        runSum += mat[s * segWords + j];
+        out[i] = runSum; // chunk 内局部前缀，阶段三统一加偏移
+    }
+    chunkOffsets[tid] = (begin < totalNum) ? runSum : 0;
+    asc_syncthreads();
+    if (tid == 0U) { // 线程 0 串行做 chunk 小计的排他前缀（T 个数的短标量链）
+        CountT exclusive = 0;
+        for (uint32_t t = 0; t < CCU_SIMT_THREAD_NUM; ++t) {
+            CountT total = chunkOffsets[t];
+            chunkOffsets[t] = exclusive;
+            exclusive += total;
+        }
+    }
+    asc_syncthreads();
+    CountT offset = chunkOffsets[tid];
+    for (uint32_t i = begin; i < end; ++i) {
+        out[i] += offset;
+    }
+}
 template <TemplateMC2A5FullMeshTypeClass>
 class MoeDistributeDispatchV2A5FullMesh {
 public:
@@ -100,10 +152,15 @@ private:
     __aicore__ inline void AllToAllDispatch();
     __aicore__ inline void CalCumSum();
     __aicore__ inline void WaitCumSumFlag();
+    __aicore__ inline void CcuWaitMatrixReady(); // CCU 控制面：自旋等待唯一 cumsum 核（最后核）的 Wait 完成
     __aicore__ inline int32_t CalExpertCnt(uint32_t expertId, uint32_t maskCnt);
     __aicore__ inline void CalAndSendCntByExp();
     __aicore__ inline void CalAndSendCntByRankAndExpert();
     __aicore__ inline void SendExpertCntRange(uint32_t startExpertId, uint32_t endExpertId);
+    __aicore__ inline void CalCntPackAndIssueCcu();     // CCU 控制面：count 组包 + AlltoAll 下发/等待
+    __aicore__ inline void BuildSendCntFromCcuMatrix(); // CCU 控制面：各核自读 count 矩阵建前缀
+    __aicore__ inline void CcuCntRunFlush(GlobalTensor<uint32_t> &ccuSendGlobal, LocalTensor<uint32_t> &packTensor,
+                                          uint32_t dstRankId, uint32_t localExpertId, uint32_t runLen);
     __aicore__ inline void BufferInit();
     __aicore__ inline void WaitDispatchClearStatus();
     __aicore__ inline void GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor,
@@ -141,6 +198,16 @@ private:
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
         return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
+    }
+
+    // per-AIV 状态字（FLAG_FIELD_OFFSET 起每 AIV 一个 512B 槽，启动清零、跨 launch 持久）的 float 视图：
+    // CCU 软同步标志专用（word10+ 空闲段），勿放 workspace——workspace 无初始化清零，首轮脏值可能假命中
+    __aicore__ inline GlobalTensor<float> GetAivStatusFlagTensor(const uint32_t coreId)
+    {
+        GlobalTensor<uint32_t> statusWordTensor;
+        statusWordTensor.SetGlobalBuffer((__gm__ uint32_t *)(statusDataSpaceGM_ + FLAG_FIELD_OFFSET +
+                                                             static_cast<uint64_t>(coreId) * WIN_ADDR_ALIGN));
+        return statusWordTensor.ReinterpretCast<float>();
     }
 
     TPipe *tpipe_{nullptr};
@@ -284,6 +351,14 @@ private:
     // 统一上下文持有器：v2 走 HcclOpParam，v3 走 Mc2MoeContext
     ContextHolder ctx_;
 
+    // ==================== CCU 控制面（useCcuCtrl_ 时激活，count 交换走 AlltoAll）====================
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> ccuHccl_; // 控制面实例，与数据面 context 共存
+    AscendC::HcclHandle ccuCntHandle_{0};
+    GM_ADDR ccuSendBufGM_{nullptr}; // workspace 尾部：本 rank 的 W 段等长行 [counts...]
+    GM_ADDR ccuRecvBufGM_{nullptr}; // workspace 尾部：src 主序全矩阵，Wait 后各核自读
+    uint32_t ccuSegWords_{0};       // 段 u32 字数 = Ceil(moeExpertNumPerRank_, 8) * 8，与 host 同公式
+    bool useCcuCtrl_{false};
+
     DataCopyParams hCopyParams_;
     DataCopyParams dataStateParams_{1U, sizeof(uint32_t), 0U, 0U};
 
@@ -388,6 +463,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
     // 确保每个核至少处理一个状态
     aivUsedCumSum_ = (aivUsedCumSum_ >= rscvStatusNum_) ? rscvStatusNum_ : aivUsedCumSum_;
+    // CCU 控制面：count 面（计算+组包+issue+Wait）收敛单核（唯一 cumsum 核），其余核全部还给 token
+    // 发送；单核串行免去 pack 软同步，且与前台各核的 token 发送天然并行（MTE 路径仍按上方钳位多核）
+    if (tilingData->moeDistributeDispatchV2Info.useCcuCtrl && !hasElasticInfoFlag_) {
+        aivUsedCumSum_ = 1U;
+    }
     aivUsedAllToAll_ = aivNum_ - aivUsedCumSum_;
     if (sharedExpertRankNum_ != 0U) {
         sharedUsedAivNum_ = (aivUsedAllToAll_ * sharedExpertNum_) / (axisK_ + sharedExpertNum_);
@@ -459,6 +539,22 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
     dataStateParams_ = {1U, sizeof(uint32_t), 0U, 0U};
     expertIdsSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+
+    // CCU 控制面初始化（仅 A5 且 tiling 显式开启；弹性降缩路径不使能，维持原 MTE count 面）
+    useCcuCtrl_ = tilingData->moeDistributeDispatchV2Info.useCcuCtrl && (!hasElasticInfoFlag_);
+    if (useCcuCtrl_) {
+        __gm__ HcclCombineOpParam *ccuContext = (__gm__ HcclCombineOpParam *)(GetHcclContext<HCCL_GROUP_ID_0>());
+        ccuHccl_.InitV2((GM_ADDR)ccuContext, tilingData);
+        ccuHccl_.SetCcTilingV2(offsetof(MoeDistributeDispatchV2TilingData, mc2CcTiling1));
+        ccuSegWords_ = ((moeExpertNumPerRank_ + 7U) / 8U) * 8U;
+        // CCU 缓冲自用户 workspace 基址起：host 侧 SetCcuCtrlTiling 已按"系统预留 + CCU 缓冲"整体裁剪
+        // MTE 基础区（单核 count 无 aivNum 份复制区/软同步区消费者），两侧公式必须一致。
+        // [sendBuf: W*segWords*4B][recvBuf 半区0][recvBuf 半区1]——recvBuf 跟随 dataState_ 双缓冲，
+        // 防止相邻两轮 launch 间对端引擎写入与本端读取踩踏（矩阵新鲜度由 Wait 契约保证，双半区防跨轮踩踏）
+        ccuSendBufGM_ = recvCntWorkspaceGM_;
+        uint64_t ccuRecvSize = static_cast<uint64_t>(epWorldSize_) * ccuSegWords_ * sizeof(uint32_t);
+        ccuRecvBufGM_ = ccuSendBufGM_ + ccuRecvSize + dataState_ * ccuRecvSize;
+    }
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -899,6 +995,145 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CcuCntRunFlush(
+    GlobalTensor<uint32_t> &ccuSendGlobal, LocalTensor<uint32_t> &packTensor, uint32_t dstRankId,
+    uint32_t localExpertId, uint32_t runLen)
+{
+    // run 落入段内 counts 区：段为纯 [counts...]（矩阵新鲜度由 Wait 契约 + recvBuf 双半区保证）
+    uint32_t dstWord = dstRankId * ccuSegWords_ + localExpertId;
+    DataCopyExtParams flushParams{1U, runLen * sizeof(uint32_t), 0U, 0U, 0U};
+    DataCopyPad(ccuSendGlobal[dstWord], packTensor, flushParams);
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalCntPackAndIssueCcu()
+{
+    // CCU 模式 aivUsedCumSum_==1：唯一 cumsum 核串行计算全部 (rank, localExpert) 专家计数，直接落入
+    // workspace 的 ccuSendBuf 段槽位（不再逐专家跨卡小写），段写完成后本核直接下发 AlltoAll——
+    // 单核串行免去跨核 pack 软同步，计数与前台各核的 token 发送并行。
+    // 计数来源优先直方图化（O(N) 一次，与专家数解耦）：对 validExpertIdsTensor_ 复用 common.h 的
+    // GetExpertFreq，与数据面逐 token 等值计数同源同定义；门控 E+shared ≤ 255 保证 u8 截断后
+    // 垃圾值（-1 padding → 0xFF、共享 id → 高位桶）只落不读桶、不回绕污染（E>255 档退回逐专家归约）。
+    uint32_t startExpertId, endExpertId, sendExpertNum;
+    SplitToCore(totalExpertNum_, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum, false);
+    if (sendExpertNum == 0) {
+        return;
+    }
+    uint32_t maskCnt = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
+
+    // maskCnt==0（全 mask）时直方图无输入，走原路径（CalExpertCnt 对空区间返回 0）
+    bool useHistCnt = ((moeExpertNum_ + sharedExpertNum_) <= CCU_HIST_BIN_NUM - 1U) && (maskCnt > 0U);
+    TBuf<> ccuHistBuf;
+    LocalTensor<uint16_t> histTensor;
+    if (useHistCnt) {
+        uint32_t idsU8Bytes = Ceil(maskCnt * sizeof(uint8_t), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(ccuHistBuf, idsU8Bytes + CCU_HIST_BIN_NUM * sizeof(uint16_t)); // [idsU8][hist]
+        LocalTensor<uint8_t> idsU8Tensor = ccuHistBuf.Get<uint8_t>();
+        histTensor = ccuHistBuf.GetWithOffset<uint16_t>(CCU_HIST_BIN_NUM, idsU8Bytes);
+        Cast(idsU8Tensor, validExpertIdsTensor_, RoundMode::CAST_NONE, maskCnt); // -1→0xFF 落高位桶
+        GetExpertFreq(histTensor, idsU8Tensor, maskCnt);                         // 内含尾块 mask 与 V 栅栏
+        SyncFunc<AscendC::HardEvent::V_S>();                                     // 桶值对标量读可见
+    }
+
+    uint32_t packBytes = Ceil(moeExpertNumPerRank_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    TBuf<> ccuPackBuf;
+    tpipe_->InitBuffer(ccuPackBuf, packBytes); // packTensor: run 计数（单核串行，无软同步标志位）
+    LocalTensor<uint32_t> packTensor = ccuPackBuf.Get<uint32_t>();
+    GlobalTensor<uint32_t> ccuSendGlobal;
+    ccuSendGlobal.SetGlobalBuffer((__gm__ uint32_t *)ccuSendBufGM_);
+
+    uint32_t runLen = 0;
+    uint32_t runDstRank = 0;
+    uint32_t runLocalExpert = 0;
+    for (uint32_t expertId = startExpertId; expertId < endExpertId; ++expertId) {
+        int32_t expertCnt;
+        if (useHistCnt && (expertId >= sharedExpertRankNum_)) {
+            expertCnt = static_cast<int32_t>(histTensor.GetValue(expertId - sharedExpertRankNum_)); // O(1) 查桶
+        } else {
+            expertCnt = CalExpertCnt(expertId, maskCnt); // 共享专家 O(1)；E>255 档保留逐专家归约
+        }
+        bool isSharedExpert = expertId < sharedExpertRankNum_;
+        uint32_t moeExpertId = isSharedExpert ? 0U : expertId - sharedExpertRankNum_;
+        uint32_t dstRankId = isSharedExpert ? expertId : moeExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+        uint32_t localExpertId = isSharedExpert ? 0U : moeExpertId % moeExpertNumPerRank_;
+        if ((runLen != 0U) && (dstRankId != runDstRank)) {
+            CcuCntRunFlush(ccuSendGlobal, packTensor, runDstRank, runLocalExpert, runLen);
+            runLen = 0U;
+        }
+        if (runLen == 0U) {
+            runDstRank = dstRankId;
+            runLocalExpert = localExpertId;
+        }
+        packTensor.SetValue(runLen, static_cast<uint32_t>(expertCnt));
+        ++runLen;
+    }
+    if (runLen != 0U) {
+        CcuCntRunFlush(ccuSendGlobal, packTensor, runDstRank, runLocalExpert, runLen);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>(); // 本核全部段写完成且全局可见后，方可 issue（单核无跨核同步）
+    // 等长 AlltoAll：每卡发给各对端 ccuSegWords_ 个 u32（纯 counts 段），Wait 后矩阵连续落 recvBuf
+    ccuCntHandle_ =
+        ccuHccl_.template AlltoAll<true>(ccuSendBufGM_, ccuRecvBufGM_, ccuSegWords_, AscendC::HCCL_DATA_TYPE_INT32, 0);
+    ccuHccl_.Wait(ccuCntHandle_); // Wait 语义即"所有源的 count 已到"，替代原 WaitDispatch 轮询
+    // 矩阵就绪扇出：PipeBarrier<PIPE_ALL> 仅排空本核管道、不跨核，其余核无从感知 Wait 已返回——
+    // 向各核状态字 word10 写 1.0f（每核 1 字、各占一行，单写单读），各核在 LocalWindowCopy 自旋自己字
+    TBuf<> ccuReadyBuf;
+    tpipe_->InitBuffer(ccuReadyBuf, UB_ALIGN);
+    LocalTensor<float> ccuReadyTensor = ccuReadyBuf.Get<float>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<float>(ccuReadyTensor, float(1), 1U);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyParams ccuReadyParams{1U, 1U, 0U, 0U};
+    for (uint32_t coreIdx = 0; coreIdx < aivNum_; ++coreIdx) {
+        DataCopy(GetAivStatusFlagTensor(coreIdx)[CCU_READY_WORD_POS], ccuReadyTensor, ccuReadyParams);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::BuildSendCntFromCcuMatrix()
+{
+    // 各核自读 ccuRecvBuf_ 的 count 矩阵（src 主序纯 counts 段），自建 (expert 主序, src 次序)
+    // 展平前缀 sendCntTensor_，并写出本核切片的 epRecvCounts 输出——替代原 workspace 复制 + 软同步链。
+    // 排布说明：矩阵第 s 段第 j 个字 = 源 s 发给本卡第 j 个本地专家的 token 数。
+    uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    uint32_t matWords = epWorldSize_ * ccuSegWords_;
+    TBuf<> ccuMatBuf;
+    tpipe_->InitBuffer(ccuMatBuf, matWords * sizeof(uint32_t)); // segWords 按 8 字对齐，32B 整块可搬
+    LocalTensor<uint32_t> matTensor = ccuMatBuf.Get<uint32_t>();
+    GlobalTensor<uint32_t> ccuRecvGlobal;
+    ccuRecvGlobal.SetGlobalBuffer((__gm__ uint32_t *)ccuRecvBufGM_);
+    // 分段搬入且各核起始段旋转错开（段 (s + aivId_) % W 先发）：全体核同时整块拉同一批 512B 行
+    // 会形成多读一 incast；UB 内落位不变（段 s 仍写第 s 段位），仅发起顺序随核错峰
+    DataCopyParams ccuSegParams{1U, static_cast<uint16_t>(ccuSegWords_), 0U, 0U};
+    for (uint32_t s = 0; s < epWorldSize_; ++s) {
+        uint32_t seg = (s + aivId_) % epWorldSize_;
+        DataCopy(matTensor[seg * ccuSegWords_], ccuRecvGlobal[seg * ccuSegWords_], ccuSegParams);
+    }
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    // SIMT block-scan 建全局前缀（替代标量双循环；两阶段 chunk 分解见 CcuPrefixScanSimt 注释）。
+    // chunkOffsets 为每线程 chunk 小计/偏移 scratch（256 字，独立小 buffer，不与矩阵区共行）
+    TBuf<> ccuScanBuf;
+    tpipe_->InitBuffer(ccuScanBuf, CCU_SIMT_THREAD_NUM * sizeof(uint32_t));
+    LocalTensor<uint32_t> chunkOffsets = ccuScanBuf.Get<uint32_t>();
+    uint32_t totalNum = localExpertNum * epWorldSize_;
+    asc_vf_call<CcuPrefixScanSimt<uint32_t>>(dim3(CCU_SIMT_THREAD_NUM), (__ubuf__ uint32_t *)matTensor.GetPhyAddr(),
+                                             (__ubuf__ uint32_t *)sendCntTensor_.GetPhyAddr(),
+                                             (__ubuf__ uint32_t *)chunkOffsets.GetPhyAddr(), totalNum, epWorldSize_,
+                                             ccuSegWords_);
+    // SIMT(VF 管线)写 UB → MTE3(DataCopyPad)读：取 V_MTE3 依赖；asc_vf_call 按阻塞语义本已含完成等待，
+    // 此处为防御性显式序（S_MTE3 对应标量写路径，S_V 与 SIMT 写无关，均不适用）
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+
+    GlobalTensor<int32_t> sendCountsGlobal;
+    sendCountsGlobal.SetGlobalBuffer((__gm__ int32_t *)sendCountsOutGM_);
+    DataCopyExtParams ccuOutParams{1U, sendNum_ * sizeof(int32_t), 0U, 0U, 0U};
+    DataCopyPad(sendCountsGlobal[startId_], sendCntTensor_[startId_], ccuOutParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalAndSendCntByRankAndExpert()
 {
     uint32_t startExpertId, endExpertId, sendExpertNum;
@@ -1210,6 +1445,13 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     workLocalTensor_ = gatherMaskTBuf_.Get<float>();
     statusTensor_ = statusBuf_.Get<int32_t>();
     ExpIdsCopyAndMaskCal();
+    if (useCcuCtrl_) {
+        // CCU 控制面：count 面收敛单核（aivUsedCumSum_==1），组包后一次 AlltoAll 下发并 Wait；接收侧由
+        // 各核在 LocalWindowCopy 阶段自读矩阵，原 WaitDispatch/CalRecvAndSetFlag 的多 flag 轮询与
+        // workspace 复制链跳过（就绪扇出改由唯一 cumsum 核 Wait 后就绪字广播 + 各核 CcuWaitMatrixReady 自旋）
+        CalCntPackAndIssueCcu();
+        return;
+    }
     if (hasElasticInfoFlag_) {
         CalAndSendCntByExp();
     } else {
@@ -1252,15 +1494,46 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CcuWaitMatrixReady()
+{
+    // CCU 控制面就绪等待：唯一 cumsum 核（aivNum_-1，CCU 控制核）在 Wait 返回后向各核状态字 word10
+    // 写 1.0f，本核自旋自己槽内该字——各核独占一行（控制核写、本核读后清），无共享 cacheline；命中即矩阵已落
+    // recvBuf 且全局可见。标志在状态区（启动清零、跨 launch 持久）而非 workspace（首轮脏值可能假命中）。
+    // PipeBarrier<PIPE_ALL> 仅排空本核管道、不跨核，故不能用 barrier 替代本自旋。
+    GlobalTensor<float> readyWordTensor = GetAivStatusFlagTensor(aivId_);
+    LocalTensor<float> readyTensor = scalarBuf_.Get<float>();
+    DataCopyParams ccuReadyParams{1U, 1U, 0U, 0U};
+    SyncFunc<AscendC::HardEvent::S_V>();
+    while (true) {
+        DataCopy(readyTensor, readyWordTensor[CCU_READY_WORD_POS], ccuReadyParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        if (readyTensor.GetValue(0) == float(1)) {
+            break;
+        }
+    }
+    // 用后清零（防下一轮误判；仅本核读写自己字，清零无竞争）
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<float>(readyTensor, float(0), 1U);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy(readyWordTensor[CCU_READY_WORD_POS], readyTensor, ccuReadyParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SetValidExpertInfo(
     uint32_t expInfoSize, uint32_t &validNum)
 {
     // 获取cumSum
-    GlobalTensor<int32_t> workspaceGlobal;
-    workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(recvCntWorkspaceGM_));
-    DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(rscvStatusNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> copyPadExtParams{false, 0U, 0U, 0U};
-    DataCopyPad(sendCntTensor_, workspaceGlobal[aivId_ * rscvStatusNum_], scalesCopyInParams, copyPadExtParams);
+    if (useCcuCtrl_) {
+        // CCU 控制面：各核自读 ccuRecvBuf_ 矩阵自建前缀（替代 workspace 复制行），并写出本核 epRecvCounts 切片
+        BuildSendCntFromCcuMatrix();
+    } else {
+        GlobalTensor<int32_t> workspaceGlobal;
+        workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(recvCntWorkspaceGM_));
+        DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(rscvStatusNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> copyPadExtParams{false, 0U, 0U, 0U};
+        DataCopyPad(sendCntTensor_, workspaceGlobal[aivId_ * rscvStatusNum_], scalesCopyInParams, copyPadExtParams);
+    }
     PipeBarrier<PIPE_ALL>();
 
     if (aivId_ == 0) {
@@ -1541,8 +1814,12 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
     SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
-    // 软同步
-    WaitCumSumFlag();
+    if (useCcuCtrl_) {
+        // 软同步：等唯一 cumsum 核（最后核）的 AlltoAll Wait 完成扇出（PipeBarrier 不跨核，就绪字自旋）
+        CcuWaitMatrixReady();
+    } else {
+        WaitCumSumFlag();
+    }
     if (sendNum_ == 0) {
         return;
     }
@@ -1553,8 +1830,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     tpipe_->InitBuffer(expertMapBuf, expInfoSize);
     tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
     tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
-    tBufRealSize_ = FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
-                    (expInfoSize * 3);       // 3为expInfoSize大小buffer申请个数
+    tBufRealSize_ =
+        FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
+        (expInfoSize * 3) - // 3为expInfoSize大小buffer申请个数
+        (useCcuCtrl_ ? static_cast<uint32_t>((epWorldSize_ * ccuSegWords_ + CCU_SIMT_THREAD_NUM) * sizeof(uint32_t)) :
+                       0U);
     tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
     expertMapTensor_ = expertMapBuf.Get<uint32_t>();
     expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
@@ -1826,6 +2106,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         // localWindowCopy中包含reset操作，需确保前面操作完成
         PipeBarrier<PIPE_ALL>();
         LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        if (useCcuCtrl_ && (aivId_ == aivUsedAllToAll_)) {
+            ccuHccl_.Finalize(); // 唯一 cumsum 核（控制面 issue/Wait 核）负责释放 CCU 资源
+        }
     }
 }
 
