@@ -1257,25 +1257,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         vStride_ = strides->GetData()[1];
         kOffset_ = offsets->GetData()[0];
         vOffset_ = offsets->GetData()[1];
-        int64_t keyTokens = inputKeyShape_.GetDim(DIM0);
-        int64_t numHead = inputKeyShape_.GetDim(DIM1);
-        int64_t kHeadSize = inputKeyShape_.GetDim(DIM2);
-        if ((keyTokens * kStride_ + kOffset_) > ((keyTokens - 1) * numHead * kHeadSize)) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "kStride, kOffset",
-                (std::to_string(kStride_) + ", " + std::to_string(kOffset_)).c_str(),
-                "calculation offset exceeds the key shape size");
-            return ge::GRAPH_FAILED;
-        }
-        if (inOutMode_ == DUAL_IN_OUT) {
-            int64_t valueTokens = inputValueShape_.GetDim(DIM0);
-            int64_t vHeadSize = inputValueShape_.GetDim(DIM2);
-            if ((valueTokens * vStride_ + vOffset_) > ((valueTokens - 1) * numHead * vHeadSize)) {
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "vStride, vOffset",
-                    (std::to_string(vStride_) + ", " + std::to_string(vOffset_)).c_str(),
-                    "calculation offset exceeds the value shape size");
-                return ge::GRAPH_FAILED;
-            }
-        }
     }
     if (inputKeyDimNum == static_cast<size_t>(DIM3)) {
         return ge::GRAPH_SUCCESS;
