@@ -77,26 +77,22 @@ public:
         computeOp_.Process(startExpertIdx, expertNum);
         // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信
         AscendC::SyncAll();
-        // 通信由 AICPU/CCU 引擎异步执行，不占用 AIC 核：上一批通信已与本批 GMM 重叠推进。
-        // 此处全核等待其完成（多核 Wait 协议：工作核轮询推进、非工作核跟随），并排空
-        // 参数区 datamove 依赖（Wait 在数据搬移管线上记录依赖，标量侧复用参数数组前
-        // 须 PipeBarrier 排空），随后方可复用参数数组提交本批
-        if (submitted_ > 0U) {
-            hccl_.Wait(a2avHandles_[submitted_ - 1U]);
-            AscendC::PipeBarrier<PIPE_ALL>();
-        }
-        // 全核提交（Hccl 内部 workingFlag_ 门控：仅 block0 写参数/敲 doorbell，
-        // 各核获得一致 handle）；提交后本核即刻进入下一批 GMM，通信在引擎侧异步执行
+        // 全核直接提交（非阻塞，无需等待上一批）：通信由 AICPU/CCU 引擎异步执行，
+        // 不占用 AIC 核，各批通信在引擎侧排队执行，与本核后续批次的 GMM 重叠推进；
+        // Hccl 内部 workingFlag_ 门控：仅 block0 写参数/敲 doorbell，各核获得一致 handle
         a2avHandles_[submitted_] = CommitAlltoAllV(startExpertIdx, expertNum);
         submitted_++;
+        // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再进入下一批，
+        // 保证 commParams_ 参数数组被下一批复用时的写入有序
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void End()
     {
-        // 末批等待（全核）→ 核间汇聚 → Finalize（须有提交才可调用，零提交时
-        // Finalize 内部 handleId=-1 越界死循环）
-        if (submitted_ > 0U) {
-            hccl_.Wait(a2avHandles_[submitted_ - 1U]);
+        // 尾部统一等待全部批次完成（全核，按提交顺序）→ 核间汇聚 → Finalize
+        // （须有提交才可调用，零提交时 Finalize 内部 handleId=-1 越界死循环）
+        for (uint32_t i = 0U; i < submitted_; ++i) {
+            hccl_.Wait(a2avHandles_[i]);
         }
         AscendC::SyncAll();
         if (submitted_ > 0U) {

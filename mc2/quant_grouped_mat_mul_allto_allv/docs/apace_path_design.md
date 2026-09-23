@@ -66,10 +66,10 @@ kernel：if constexpr (TILINGKEY_USING_APACE_IMPL) 选路，任务类型全部�
         │   for 批 b: Process(b)        │
         │     ├ GMM(b) Blaze            │
         │     ├ SyncAll(写落GM)        │
-        │     ├ 全核Wait(b-1)+排空     │
-        │     └ 全核提交 AllToAllV(b)   │
-        │   (批b通信∥批b+1GMM,引擎执行) │
-        │   End: Wait末批+Finalize     │
+        │     ├ 全核直接提交 AllToAllV(b)│
+        │     └ PipeBarrier(排空管线)   │
+        │   (各批通信排队执行,∥后续GMM) │
+        │   End: Wait全部+Finalize     │
         │   共享专家 MM(可选)            │
         └──────────────────────────────┘
 ```
