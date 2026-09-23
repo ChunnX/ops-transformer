@@ -19,7 +19,7 @@
 
 namespace ge {
 /**
-* @brief compute init routing for moe (v4, ascend950 only).
+* @brief compute init routing for moe (v4, Ascend 950PR&950DT products only).
 * @par Inputs:
 * @li x: A 2D tensor. Shape is: (B*S, H). Type is:Int8, BFloat16, Float16, Float32, Hif8, FLOAT8_E5M2, FLOAT8_E4M3FN
          or FLOAT4_E2M1. Format support ND.
