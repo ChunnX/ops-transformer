@@ -266,8 +266,18 @@ class ActualInputSemanticOracle:
         ):
             raise InvalidTransformError("sinks changed during transform")
 
+        # Inputs are read-only during this synchronous validation. Keep only the
+        # current batch pair: PA materialization is independent of the Q token,
+        # and retaining every visited batch would grow with the whole mapping.
+        cached_pair = None
+        logical_kv_cache = {}
         checked = []
         for old_batch, old_token, new_batch, new_token in mapping:
+            pair = (old_batch, new_batch)
+            if pair != cached_pair:
+                logical_kv_cache.clear()
+                old_kv = new_kv = None
+                cached_pair = pair
             if not cls._tensor_bits_equal(
                 cls._q_token(baseline, old_batch, old_token),
                 cls._q_token(derived, new_batch, new_token),
@@ -286,8 +296,12 @@ class ActualInputSemanticOracle:
 
             for prefix in ("ori", "cmp"):
                 start, end = old_windows[prefix]
-                old_kv = cls._logical_kv(baseline, prefix, old_batch)
-                new_kv = cls._logical_kv(derived, prefix, new_batch)
+                if prefix not in logical_kv_cache:
+                    logical_kv_cache[prefix] = (
+                        cls._logical_kv(baseline, prefix, old_batch),
+                        cls._logical_kv(derived, prefix, new_batch),
+                    )
+                old_kv, new_kv = logical_kv_cache[prefix]
                 if old_kv is None and new_kv is None:
                     continue
                 if (
@@ -460,8 +474,16 @@ class BatchCaseTransformer:
             metadata["cu_seqlens_q"] = cu_tensor
             params["cu_seqlens_q"] = new_cu_q
         elif self.layout_q == "BSND" and original_cu_q is not None:
-            physical_s1 = int(new_q.shape[1])
-            cu_values = [index * physical_s1 for index in range(new_batch_size + 1)]
+            original_valid = self.tensors.get("seqused_q")
+            if original_valid is None:
+                lengths = [int(new_q.shape[1])] * new_batch_size
+            else:
+                lengths = (
+                    layouts.select_per_batch_vec(original_valid, batch_ids)
+                    .to("cpu", torch.int64)
+                    .tolist()
+                )
+            cu_values = layouts.recompute_cu_seqlens(lengths)
             cu_tensor = self._cu_tensor(cu_values, original_cu_q)
             tensors["cu_seqlens_q"] = cu_tensor
             metadata["cu_seqlens_q"] = cu_tensor
@@ -744,6 +766,23 @@ class BatchCaseTransformer:
             raise InvalidTransformError(
                 "Query prefix resizing currently requires one selected batch"
             )
+        old_valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
+        query_axis = 1 if self.layout_q == "BSND" else 0
+        # 新增 Q 行都是有效查询，需为其复用已有的有效稀疏索引，
+        # 并同时复制对应的 top-k 长度。
+        sparse_templates = {}
+        if target_length > old_valid_length:
+            for name in (
+                "ori_sparse_indices",
+                "cmp_sparse_indices",
+                "ori_topk_length",
+                "cmp_topk_length",
+            ):
+                tensor = tensors.get(name)
+                if tensor is not None:
+                    sparse_templates[name] = tensor.narrow(
+                        query_axis, old_valid_length - 1, 1
+                    ).clone()
         if self.layout_q == "BSND":
             tensors["q"] = self._resize_tensor_axis(tensors["q"], 1, target_length)
             for name in ("ori_sparse_indices", "cmp_sparse_indices"):
@@ -770,6 +809,10 @@ class BatchCaseTransformer:
                     tensors[name] = self._resize_tensor_axis(
                         tensor, 0, target_length, fill_value
                     )
+        for name, template in sparse_templates.items():
+            tensors[name].narrow(
+                query_axis, old_valid_length, target_length - old_valid_length
+            ).copy_(template)
         adapter.sync_query_aligned_fields()
         self._sync_token_lengths(adapter, [list(range(target_length))])
         self._sync_derived_fields(adapter)
@@ -816,6 +859,10 @@ class BatchCaseTransformer:
                 kv, 1, max(target, int(kv.shape[1]))
             )
         elif layout == "TND":
+            if sum(lengths) == 0:
+                raise InvalidTransformError(
+                    f"TND {kv_name} transform would create a zero physical token dimension"
+                )
             cu_name = f"cu_seqlens_{prefix}_kv"
             cu = tensors.get(cu_name)
             if cu is None:
@@ -869,8 +916,13 @@ class BatchCaseTransformer:
             )
             cmp_length, residual = divmod(new_ori_length, ratio)
             self._set_kv_lengths(input_data, "cmp", [cmp_length])
-            reference = tensors.get("cmp_residual_kv")
-            self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
+            # The operator contract rejects cmp_residual_kv for an unmasked
+            # compressed branch and when there is no compression.  Resizing an
+            # ori-position-sensitive case must not synthesize that forbidden
+            # optional input merely because cmp_kv is present.
+            if cmp_mode != 0 and ratio != 1:
+                reference = tensors.get("cmp_residual_kv")
+                self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
         self._sync_derived_fields(adapter)
         schema.check_invariants(input_data)
 
@@ -945,7 +997,10 @@ class BatchCaseTransformer:
         common_tokens: int,
         derived_extra_tokens: int,
     ) -> ConsistencyCase:
-        """Mode 4: change Q shape while comparing an unchanged common prefix."""
+        """模式 4：改变 Q 的形状，并比较保持不变的公共前缀。
+
+        新增有效行复用已有稀疏索引，不使用 -1 填充。
+        """
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
             raise ValueError(
@@ -971,6 +1026,7 @@ class BatchCaseTransformer:
         if self._has_position_sensitive_context() and new_ori_length < 0:
             raise InvalidTransformError("Mode 4 requires a negative aligned KV length")
         self._align_position_sensitive_context(new_data, batch_id, new_ori_length)
+        self._validate_shape_change_sparse_indices(new_data)
 
         mapping = [(batch_id, token, 0, token) for token in range(common_tokens)]
         oracle = ActualInputSemanticOracle.validate_mapped_tokens(
@@ -1000,6 +1056,42 @@ class BatchCaseTransformer:
                 "semantic_oracle": oracle,
             },
         )
+
+    @staticmethod
+    def _validate_shape_change_sparse_indices(input_data: Dict[str, Any]) -> None:
+        """调用 NPU 前检查有效稀疏索引，拒绝其中的负索引。"""
+        adapter = CaseAdapter(input_data)
+        axis = 1 if adapter.get_layout_q() == "BSND" else 0
+        valid_length = schema.get_q_lengths(input_data, valid_only=True)[0]
+        for prefix in ("ori", "cmp"):
+            indices = adapter.tensors.get(f"{prefix}_sparse_indices")
+            if indices is None or adapter.tensors.get(f"{prefix}_kv") is None:
+                continue
+            indices = indices.narrow(axis, 0, valid_length)
+            lengths = adapter.tensors.get(f"{prefix}_topk_length")
+            kv_length = adapter.get_kv_lengths(prefix)[0]
+            width = indices.shape[-1]
+            if adapter.tensors.get(f"{prefix}_mask_mode", 0) != 0:
+                counts = []
+                for token in range(valid_length):
+                    left, right = ActualInputSemanticOracle._windows(
+                        input_data, 0, token
+                    )[prefix]
+                    counts.append(min(width, max(0, right - left)))
+                shape = [1] * indices.dim()
+                shape[axis] = valid_length
+                effective = torch.tensor(counts, device=indices.device).reshape(shape)
+            elif lengths is None:
+                effective = min(width, kv_length)
+            else:
+                effective = lengths.narrow(axis, 0, valid_length).clamp(max=kv_length)
+                effective = effective.unsqueeze(-1)
+            slots = torch.arange(width, device=indices.device)
+            if bool(((slots < effective) & (indices < 0)).any().item()):
+                raise InvalidTransformError(
+                    f"shape-change {prefix}_sparse_indices contains a negative index "
+                    "in the effective top-k range; -1 is only allowed in padding"
+                )
 
     @staticmethod
     def _random_query_values(query: torch.Tensor, seed: int) -> torch.Tensor:

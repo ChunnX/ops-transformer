@@ -473,7 +473,8 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bs
     if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && oriTopkLength_ != nullptr &&
         oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
-        return static_cast<uint32_t>(oriTopkPtr[bsStride]);
+        // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
+        return std::min(static_cast<uint32_t>(oriTopkPtr[bsStride]), static_cast<uint32_t>(oriTopK_));
     }
     // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
@@ -485,7 +486,8 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bs
     if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && cmpTopkLength_ != nullptr &&
         cmpTopkLength_->GetData() != nullptr) {
         const int32_t *cmpTopkPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
-        return static_cast<uint32_t>(cmpTopkPtr[bsStride]);
+        // 规划 FA/FD 任务时，将有效稀疏长度限制到索引宽度，与内核的计算范围保持一致。
+        return std::min(static_cast<uint32_t>(cmpTopkPtr[bsStride]), static_cast<uint32_t>(cmpTopK_));
     }
     // 如果不是 DEFAULT_MASK，使用 cmpTopK_
     return static_cast<uint32_t>(cmpTopK_);
@@ -971,14 +973,16 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, co
     // batch一致性，重新计算规约级切分大小和基本块划分
     if (isBatchConsistency_) {
         // 计算规约级切分大小
-        uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
-        s1GCache.reductionBlockSize =
-            (actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
+        uint64_t actTotalS2Size = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
+        uint64_t rawReductionBlockSize =
+            (actTotalS2Size + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+        s1GCache.reductionBlockSize = (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
         s1GCache.reductionBlockSize = s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
         // 使用规约级切分大小对基本块进行重新划分
         s1GCache.oriS2End =
             s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionBlockSize + 1U;
         s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionBlockSize;
+        s1GCache.cmpS2Start = s1GCache.oriS2End;
         s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0 ?
                                 s1GCache.cmpS2Start :
                                 s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1) / s1GCache.reductionBlockSize + 1U;
@@ -1295,7 +1299,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::IsNeedRecordFDInfo(const AssignC
     return true;
 }
 
-bool MixedQuantSparseFlashMlaMetadataCpuKernel::isFirstReductionBlock(const AssignContext &assignContext,
+bool MixedQuantSparseFlashMlaMetadataCpuKernel::IsFirstReductionBlock(const AssignContext &assignContext,
                                                                       const SplitResult &splitRes)
 {
     // 如果核0的s2终止点落在s2Start和s2End之间，其规约部分一定是首个规约块
@@ -1382,7 +1386,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitCo
     if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
         assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
         if (isBatchConsistency_) {                              // batch一致性场景
-            if (isFirstReductionBlock(assignContext, result)) { // 首个规约切分
+            if (IsFirstReductionBlock(assignContext, result)) { // 首个规约切分
                 assignContext.curKvSplitPart++;
             } else { // 非首个规约切分
                 assignContext.curKvSplitPart +=

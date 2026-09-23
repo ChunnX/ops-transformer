@@ -77,6 +77,8 @@ public:
     ge::graphStatus DoOpTiling(MQSMLATilingInfo *tilingInfo);
 
 private:
+    ge::graphStatus DoTurboQuantTiling(MQSMLATilingInfo *tilingInfo);
+    ge::graphStatus DoCsaTiling(MQSMLATilingInfo *tilingInfo);
     gert::TilingContext *context_ = nullptr;
     QSMLATemplateMode perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     MixedQuantSparseFlashMlaTilingData tilingData_;

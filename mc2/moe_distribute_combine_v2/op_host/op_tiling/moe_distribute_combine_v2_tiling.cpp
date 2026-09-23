@@ -2183,8 +2183,12 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
     winSizeData.reserveA3FullMeshWindowPadding = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
-    OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
+    const bool useRuntimeWinSize =
+        !isLayered && !config.isMc2Context && mc2tiling::GetSocVersion(context) == "Ascend910_93";
+    const auto ret = useRuntimeWinSize ? CalcMinWinSizeA3(context, nodeName, winSizeData) :
+                                         CheckWinSize(context, nodeName, winSizeData);
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE_WITHOUT_REPORT(nodeName, "Get WinSize failed."),
+                    return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
 
     return ge::GRAPH_SUCCESS;

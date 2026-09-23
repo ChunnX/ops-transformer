@@ -46,6 +46,83 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNum);        // max(ceilDiv(maxQSeq, blo
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradFrontTilingData);
 END_TILING_DATA_DEF;
 
+BEGIN_TILING_DATA_DEF(BlockSparseAttentionGradTilingData)
+// 基础参数
+TILING_DATA_FIELD_DEF(uint32_t, batch);
+TILING_DATA_FIELD_DEF(uint32_t, numHeads);
+TILING_DATA_FIELD_DEF(uint32_t, kvHeads);
+TILING_DATA_FIELD_DEF(uint32_t, headDim);
+
+TILING_DATA_FIELD_DEF(uint32_t, totalTaskNum);
+TILING_DATA_FIELD_DEF(uint32_t, maskType);
+TILING_DATA_FIELD_DEF(float, scaleValue);
+TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // T: 所有batch中Q方向切块的总数
+
+// 稀疏分块参数 (blockShapeOptional)
+TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
+TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
+
+// selectIdx相关参数
+
+// Layout: 0=TND, 1=BNSD
+TILING_DATA_FIELD_DEF(uint32_t, inputLayout);
+
+// BNSD格式的最大序列长度（用于计算stride）
+// 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen); // BNSD格式Q的第三维（S维度），或统一的qseqlen值
+// 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen); // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+
+// TilingKey for kernel dispatch (生成在tiling层)
+TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
+TILING_DATA_FIELD_DEF(uint64_t, gradSize);
+
+// Workspace大小
+TILING_DATA_FIELD_DEF(uint64_t, sOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, dPOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, dQOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, dKOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, dVOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, detDkWorkspaceSize);
+TILING_DATA_FIELD_DEF(uint64_t, detDvWorkspaceSize);
+TILING_DATA_FIELD_DEF(uint32_t, aicNumForDet);
+TILING_DATA_FIELD_DEF(uint32_t, groupSizeForDet);
+TILING_DATA_FIELD_DEF(uint8_t, deterministic);
+TILING_DATA_FIELD_DEF(uint32_t, batchSizeForDet);
+TILING_DATA_FIELD_DEF(uint32_t, KForDet);
+
+TILING_DATA_FIELD_DEF(uint32_t, basicQBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, basicKVBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, taskNumPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, tailTaskNum);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 64, preQSeqLengths);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 64, preKVSeqLengths);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 64, beginBatch);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 64, beginHead);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 64, beginQSeqOffset);
+TILING_DATA_FIELD_DEF(uint32_t, usedVecCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, qTotalSeqlen);
+TILING_DATA_FIELD_DEF(uint32_t, kvTotalSeqlen);
+TILING_DATA_FIELD_DEF(uint64_t, dqSize);
+TILING_DATA_FIELD_DEF(uint64_t, dkvSize);
+TILING_DATA_FIELD_DEF(uint64_t, postUbBaseSize);
+TILING_DATA_FIELD_DEF(uint64_t, ubSize);
+TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
+// Arch22 scheduling and prefix-count fields; preserve the serialized field order.
+TILING_DATA_FIELD_DEF(uint32_t, scheduleMode); // 0=legacy, 1=grouped, 2=wide（host 与 kernel 的统一判据）
+TILING_DATA_FIELD_DEF(uint32_t, wideQTasksPerWorkItem);      // wide 逻辑工作项聚合的 Q task 数；0=非 wide
+TILING_DATA_FIELD_DEF(uint32_t, widePacketEdgeCapacity);     // Maximum edges per wide packet.
+TILING_DATA_FIELD_DEF(uint64_t, wideWorkspaceStageElements); // wide 单 stage 元素数（128*128*8）
+TILING_DATA_FIELD_DEF(uint64_t, wideWorkspaceCoreElements);  // wide 单 core 双 stage 元素数
+TILING_DATA_FIELD_DEF(uint64_t, wideRawPlaneBytes);          // BF16 plane 在 sOut/dPOut 内的字节偏移
+TILING_DATA_FIELD_DEF(uint32_t, wideTaskStride);             // =blockDim 启用 cyclic；0=contiguous
+TILING_DATA_FIELD_DEF(uint32_t, wideQOperandCache);          // Q/dO 驻留 L1（residentCacheMode 1/2）
+TILING_DATA_FIELD_DEF(uint32_t, wideFastPipeline);           // fast-cached K/V 搬入
+TILING_DATA_FIELD_DEF(uint32_t, hasPerBlockMask);            // attentionMask 为 int32 4D per-block mask
+TILING_DATA_FIELD_DEF(uint32_t, maxMaskBlocks);              // Physical M in the counts table [B, Nq, M, 2].
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad, BlockSparseAttentionGradTilingData)
+
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1000, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1001, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1002, BlockSparseAttentionGradTilingDataArch35)
@@ -64,6 +141,118 @@ struct BlockSparseAttentionGradCompileInfo {
     uint64_t l1Size = 0;
     uint64_t sysWorkspaceSize = 0;
     platform_ascendc::SocVersion socVersion;
+};
+
+// Input Layout枚举
+enum InputLayout : uint32_t {
+    TND = 0, // [T, N, D] format
+    BNSD = 1 // [B, N, S, D] format
+};
+
+// Values serialized in scheduleMode.
+constexpr uint32_t SCHEDULE_LEGACY = 0;  // Single Q task, contiguous work per core.
+constexpr uint32_t SCHEDULE_GROUPED = 1; // 4-Q 组调度
+constexpr uint32_t SCHEDULE_WIDE = 2;    // 大 Q 逻辑工作项调度
+
+// Tiling类
+class BSAGradTiling {
+public:
+    BSAGradTiling() = default;
+    ~BSAGradTiling() = default;
+
+    ge::graphStatus GetBSAGradTiling(gert::TilingContext *context, BlockSparseAttentionGradTilingData &tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext *context, BlockSparseAttentionGradTilingData &tilingData);
+
+private:
+    ge::graphStatus GetNpuInfo(gert::TilingContext *context);
+    ge::graphStatus ProcessInput(gert::TilingContext *context);
+    ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
+    ge::graphStatus FillTilingData(gert::TilingContext *context);
+
+    ge::graphStatus CalculatePostUbBaseSize(gert::TilingContext *context);
+    ge::graphStatus CalculateSoftmaxGradTiling(gert::TilingContext *context);
+
+    ge::graphStatus ProcessTND(gert::TilingContext *context);
+    ge::graphStatus ProcessBNSD(gert::TilingContext *context);
+    ge::graphStatus ProcessAttrs(gert::TilingContext *context);
+    ge::graphStatus ParseAttnMaskCounts(gert::TilingContext *context);
+    uint32_t SelectSchedule();
+
+    ge::graphStatus AssignCoreTasks(uint32_t numHeads, uint32_t kvHeads, uint32_t blockX, uint32_t coreNum,
+                                    const std::vector<uint32_t> &tasksInBatch,
+                                    const std::vector<uint64_t> &qPrefixTokenSum,
+                                    const std::vector<uint64_t> &kvPrefixTokenSum);
+    ge::graphStatus AssignWideCoreTasks(uint32_t numHeads, uint32_t kvHeads, uint32_t blockX, uint32_t coreNum,
+                                        const std::vector<uint32_t> &tasksInBatch,
+                                        const std::vector<uint32_t> &qWorkItemsPerHead);
+
+    uint64_t GenerateTilingKey();
+
+private:
+    uint32_t taskNumPerCore_ = 0;
+    uint32_t tailTaskNum_ = 0;
+
+    uint32_t batch_ = 0;
+    uint32_t numHeads_ = 0;
+    uint32_t kvHeads_ = 0;
+    uint32_t headDim_ = 0;
+    int64_t blockShapeX_ = 0; // block的x维度
+    int64_t blockShapeY_ = 0; // block的y维度
+    float scaleValue_ = 0.0f;
+    uint32_t maskType_ = 0;
+
+    uint32_t totalQBlocks_ = 0;
+
+    uint32_t totalTaskNum_ = 0;
+
+    const int64_t *qSeqLenList = nullptr;
+    const int64_t *kvSeqLenList = nullptr;
+    const int64_t *blockShapeList = nullptr;
+    bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
+    bool useUniformKvSeqlen_ = false; // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
+
+    uint64_t sOutSize_ = 0;
+    uint64_t dPOutSize_ = 0;
+    uint64_t dQOutSize_ = 0;
+    uint64_t dKOutSize_ = 0;
+    uint64_t dVOutSize_ = 0;
+    uint64_t gradSize_ = 0;
+
+    InputLayout layout_ = InputLayout::TND;
+    uint32_t qTotalSeqlen_ = 0;
+    uint32_t kvTotalSeqlen_ = 0;
+
+    uint32_t blockDim_ = 0;
+    uint32_t usedVecCoreNum_ = 20;
+    uint32_t aivNum_ = 0;
+    uint32_t aicNum_ = 0;
+    uint64_t ubSize_ = 0;
+    uint64_t postUbBaseSize_ = 0;
+    uint64_t workSpaceSize_ = 0;
+    uint64_t libapiSize_ = 0;
+
+    uint64_t dqSize_ = 0;      // dq 元素总量
+    uint64_t dkvSize_ = 0;     // dkv dv元素总量
+    uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
+    uint32_t maxKvSeqlen_ = 0; // BNSD格式KV的第三维（S维度）
+    int64_t totalTokensT_ = 0; // TND格式Q的第一维（T维度，总token数）
+
+    ge::DataType dataType_ = ge::DT_FLOAT16;
+    bool deterministic_ = false;
+
+    uint32_t scheduleMode_ = SCHEDULE_LEGACY; // 0=legacy, 1=grouped, 2=wide
+    bool hasPerBlockMask_ = false;            // attentionMask 为 int32 4D per-block mask
+    uint32_t maxMaskBlocks_ = 0;              // Q/KV 侧块数上限（mask 寻址步长）
+    bool wideEligible_ = false;
+    bool optimizedWide_ = false;              // wideEligible && headDim==128
+    uint32_t wideQTasksPerWorkItem_ = 0;      // wide：2（优化/counts）或 48
+    uint32_t wideWorkItemCount_ = 0;          // wide：ceil(totalTaskNum / wideQTasksPerWorkItem)
+    uint64_t wideWorkspaceStageElements_ = 0; // wide：单 stage 元素数
+    uint64_t wideWorkspaceCoreElements_ = 0;  // wide：单 core 双 stage 元素数
+    uint64_t wideRawPlaneBytes_ = 0;          // wide：FP32 raw 平面字节数
+
+    BlockSparseAttentionGradTilingData *tilingData_ = nullptr;
 };
 
 } // namespace optiling

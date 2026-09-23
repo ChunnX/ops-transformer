@@ -79,7 +79,7 @@ public:
                                 GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
                                 GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2Info *tilingData);
+                                const MoeDistributeDispatchV2Info *tilingData, uint64_t runtimeWinSize = 0);
     __aicore__ inline void Process();
 
 private:
@@ -437,12 +437,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
     GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
     GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2Info *tilingData)
+    const MoeDistributeDispatchV2Info *tilingData, uint64_t runtimeWinSize)
 {
     tpipe_ = pipe;
     tpipe_->InitBuffer(calBeginBuf_, UB_ALIGN);
     aivId_ = GetBlockIdx();
-    totalWinSize_ = static_cast<uint64_t>(tilingData->totalWinSizeEp);
+    totalWinSize_ = runtimeWinSize != 0 ? runtimeWinSize : tilingData->totalWinSizeEp;
     ctx_.InitAndCheck(mc2Context, tilingData->epWorldSize, totalWinSize_, tpipe_, expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);

@@ -175,6 +175,7 @@ def _check_inputs(
 
 
 apply_rotary_pos_emb_grad_op_builder = ApplyRotaryPosEmbGradOpBuilder()
+apply_rotary_pos_emb_grad_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), apply_rotary_pos_emb_grad_op_builder.name, "PrivateUse1")
