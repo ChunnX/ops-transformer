@@ -15,12 +15,18 @@
 
 namespace MegaMoeImpl {
 
-// ============ Combine 去重（非量化，专家粒度独立消费） ============
-// 结构：GMM2 输出本就全量落 workspace（gmm2MmadRes），combine 作为独立阶段按专家升序消费——
-// prepass 保证组成员按专家升序、LAST（合并驱动行）恒为组内最大专家，故处理专家 e 时组内成员
-// 必已落地（WaitWaveGmm2Ready(e) 即隐含成员就绪），无任何跨专家等待标记。行在激活层已带权
-// （去重强制 prefetch 语义），合并 = fp32 整行纯加，一次 Cast 单发到 (token, minTopkIdx) 槽。
-// PLAIN 行复用非量化行环直发流水；SKIP 行零成本跳过；desc 按批一次装载（每批一次 MTE2）。
+// ============================== combine 去重 ==============================
+// 干什么：基线 combine 里，同一 token 在本卡的多个专家输出行要逐行发回源卡、由源卡累加。
+// combine 去重把这些行在本卡先合并成一行再发，发送量从「组内行数」降到 1。
+// 怎么跑：GMM2 的输出本来就全量落在 workspace（gmm2MmadRes）里，combine 作为一个独立
+// 阶段按专家从小到大消费。prepass 建表时保证了组内成员按专家升序、组内最大专家的那行
+// 是 LAST（合并驱动行）——所以轮到专家 e 时，e 组内的其它成员必然已经算完落盘，
+// 等一个 WaitWaveGmm2Ready(e) 就等于成员全就绪，不需要任何跨专家的等待标记。
+// 怎么合：每行在激活层已经乘过自己的权重（去重强制 prefetch 语义），合并就是 fp32 整行
+// 相加，加完一次 Cast、发到 (token, minTopkIdx) 槽。
+// 三类行：PLAIN（不在组里）走基线的行环直发；SKIP（组内非 LAST）直接跳过；LAST 走上面
+// 的合并发送。desc 描述表按批装载，每批只花一次 MTE2。
+// ==========================================================================
 
 // 成员行/累加按段处理：段长固定，缓冲不随 h 增长，避免整行 fp32 双缓冲挤爆 UB。
 constexpr uint32_t WAVE_COMBINE_DEDUP_SEG_ELEMS = 4096U;
@@ -149,7 +155,7 @@ __aicore__ inline void LoadDedupMergeWeightBits(WaveCombineDedupScratch &dedupSc
     WaitFlag<HardEvent::MTE2_S>(mergeEvent);
 }
 
-// 取成员 j 的合并权重：desc 给出该成员的 topkIndex，从整 token 权重段按位取回 float。
+// 取第 memberIdx 个成员的合并权重：desc 给出该成员的 topkIndex，从整 token 权重段按位取回 float。
 __aicore__ inline float GetDedupMemberWeight(const WaveCombineDedupScratch &dedupScratch, const Params &params,
                                              uint32_t descRowBase, uint32_t memberIdx)
 {
