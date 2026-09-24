@@ -20,7 +20,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    if (!UsePipelinedGamma0Cache() && dimLoop_ != 1U) {
+    if (dimLoop_ != 1U) {
         CacheGamma0();
     }
     LoadTokenWeights(token, postVals);
@@ -33,7 +33,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         sumSq0 += ReduceSumSqFromCache(tOff, tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
-    WaitCacheCurrentGamma0(token);
 
     // 第二遍：计算R1/R2和第一处x2低精度边界。完整x2以输出dtype常驻UB，
     // 避免后续两遍从GM回读，同时不分配完整FP32 x2工作空间。
@@ -121,7 +120,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // 第四遍：沿完整D轴计算R7并写最终输出。
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
-    StartCacheNextGamma0(token);
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;

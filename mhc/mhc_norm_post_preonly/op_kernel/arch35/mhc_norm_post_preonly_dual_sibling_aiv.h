@@ -20,9 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    // 4op单分块gamma0由Process预载；5op且D<=5120时，上一token在R7期间
-    // 已把下一份gamma0预取到失效的gamma2缓存，其余路径保持原搬运方式。
-    if (!UsePipelinedGamma0Cache() && (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_))) {
+    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
+    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
+    if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
@@ -36,7 +36,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         sumSq0 += ReduceSumSqFromCache(tOff, tD);
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
-    WaitCacheCurrentGamma0(token);
 
     if constexpr (USE_RMS_MID) {
         // 5op第一遍R2后只使用bufResFp32_的第五行做midSq，前四行暂时空闲。
@@ -59,7 +58,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
             MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, GetGamma0Cache()[tOff], invRms0, tD);
+                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -242,7 +241,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
-    StartCacheNextGamma0(token);
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
