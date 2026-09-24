@@ -162,7 +162,14 @@ class ElasticBufferOpBuilder(OpBuilder):
 
         @impl(get_as_library(), "engram_fetch", "Meta")
         def engram_fetch_meta(
-            context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
+            context,
+            indices,
+            hidden_size,
+            num_entries,
+            dtype,
+            sf_table,
+            fetched_sf,
+            fetch_mode,
         ):
             return torch.empty(
                 (indices.size(0), hidden_size),
@@ -267,7 +274,14 @@ def engram_fetch(
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype, sf_table, fetched_sf, fetch_mode
+        context,
+        indices,
+        hidden_size,
+        num_entries,
+        dtype,
+        sf_table,
+        fetched_sf,
+        fetch_mode,
     )
 
 
@@ -974,7 +988,9 @@ class ElasticBuffer:
             if self._fetch_mode == FETCH_MODE_LOCAL:
                 result = fetched
             else:
-                result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
+                result = torch.ops.cann_ops_transformer.engram_fetch_wait(
+                    context, fetched
+                )
             self._engram_fetch_in_progress = False
             if sf is not None:
                 return result, fetched_sf
