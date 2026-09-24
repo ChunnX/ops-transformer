@@ -1894,11 +1894,12 @@ ge::graphStatus DequantChecker::CheckAntiquantModeForAntiquant(const FiaTilingIn
                     "keyAntiquantMode and valueAntiquantMode must be equal "
                     "when PA_NZ D0=32 antiquant"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvCacheNzD0 == NUM_32 && (keyAntiquantMode != PER_CHANNEL_MODE) && (keyAntiquantMode != PER_TOKEN_MODE)),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                fiaInfo.opName, "keyAntiquantMode", std::to_string(keyAntiquantMode).c_str(),
-                "valueAntiquantMode must be within the range {0, 1} when PA_NZ D0=32 antiquant"),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.kvCacheNzD0 == NUM_32 && (keyAntiquantMode != PER_CHANNEL_MODE) &&
+                 (keyAntiquantMode != PER_TOKEN_MODE)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "keyAntiquantMode", std::to_string(keyAntiquantMode).c_str(),
+                    "valueAntiquantMode must be within the range {0, 1} when PA_NZ D0=32 antiquant"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -3058,7 +3059,7 @@ ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo
 ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo &fiaInfo) const
 {
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-    int64_t keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode
+    int64_t keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t batchSize = fiaInfo.bSize;
     uint32_t numKeyValueHeads = fiaInfo.n2Size;
@@ -3078,11 +3079,11 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo
     if (keyAntiquantMode == PER_TOKEN_MODE) {
         uint64_t seqLengthLimit = fiaInfo.blockSize * fiaInfo.maxBlockNumPerBatch;
         gert::Shape expectedShapeH = gert::Shape({batchSize, seqLength});
-        if (keyAntiquantScaleTensorShape != expectedShapeH || seqLengthLimit >  seqLength) {
+        if (keyAntiquantScaleTensorShape != expectedShapeH || seqLengthLimit > seqLength) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [B(" + std::to_string(batchSize) +
-                                    "), S(" + std::to_string(seqLength) +
-                                    ")] and S >= (maxBlockNumPerBatch * blockSize) (" + std::to_string(seqLengthLimit) +
+            std::string reasonMsg = "The shape of keyAntiquantScale must be [B(" + std::to_string(batchSize) + "), S(" +
+                                    std::to_string(seqLength) + ")] and S >= (maxBlockNumPerBatch * blockSize) (" +
+                                    std::to_string(seqLengthLimit) +
                                     ") when PA_NZ D0=32 antiquant and keyAntiquantMode is per-token mode";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
@@ -3096,9 +3097,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo
         gert::Shape expectedShapeH = gert::Shape({numKeyValueHeads * headDim});
         if (keyAntiquantScaleTensorShape != expectedShapeH) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [H(" +
-                                    std::to_string(numKeyValueHeads * headDim) +
-                                    ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BSH";
+            std::string reasonMsg =
+                "The shape of keyAntiquantScale must be [H(" + std::to_string(numKeyValueHeads * headDim) +
+                ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BSH";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -3109,9 +3110,10 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo
         gert::Shape expectedShapeH = gert::Shape({numKeyValueHeads, 1, headDim});
         if (keyAntiquantScaleTensorShape != expectedShapeH) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) +
-                                    "), 1, D(" + std::to_string(headDim) +
-                                    ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BNSD";
+            std::string reasonMsg =
+                "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) + "), 1, D(" +
+                std::to_string(headDim) +
+                ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BNSD";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -3122,9 +3124,10 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo
         gert::Shape expectedShapeH = gert::Shape({numKeyValueHeads, headDim});
         if (keyAntiquantScaleTensorShape != expectedShapeH) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) +
-                                    "), D(" + std::to_string(headDim) +
-                                    ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BSND";
+            std::string reasonMsg =
+                "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) + "), D(" +
+                std::to_string(headDim) +
+                ")] when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode, layout is BSND";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
             return ge::GRAPH_FAILED;
