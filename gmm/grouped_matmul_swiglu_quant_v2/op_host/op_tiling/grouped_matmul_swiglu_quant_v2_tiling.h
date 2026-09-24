@@ -18,6 +18,7 @@
 #include <set>
 #include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
+#include "../../op_kernel/arch35/grouped_matmul_swiglu_quant_swiglu_params.h"
 
 namespace optiling {
 
@@ -83,9 +84,41 @@ TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantParamsOp, GMMSwigluQuantParams)
 
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantSwigluParamsHost)
+TILING_DATA_FIELD_DEF(int64_t, swigluMode);
+TILING_DATA_FIELD_DEF(float, clampLimit);
+TILING_DATA_FIELD_DEF(float, gluAlpha);
+TILING_DATA_FIELD_DEF(float, gluBias);
+TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
+TILING_DATA_FIELD_DEF(uint8_t, reserved0);
+TILING_DATA_FIELD_DEF(uint16_t, reserved1);
+TILING_DATA_FIELD_DEF(float, dstTypeMax);
+TILING_DATA_FIELD_DEF(uint8_t, roundMode);
+TILING_DATA_FIELD_DEF(uint8_t, reserved2);
+TILING_DATA_FIELD_DEF(uint16_t, reserved3);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(GMMSwigluQuantSwigluParamsOp, GMMSwigluQuantSwigluParamsHost)
+
+inline void SetGMMSwigluQuantSwigluParams(GMMSwigluQuantSwigluParamsHost &target,
+                                          const ::GMMSwigluQuantSwigluParams &source = {})
+{
+    target.set_swigluMode(source.swigluMode);
+    target.set_clampLimit(source.clampLimit);
+    target.set_gluAlpha(source.gluAlpha);
+    target.set_gluBias(source.gluBias);
+    target.set_scaleAlg(source.scaleAlg);
+    target.set_reserved0(source.reserved0);
+    target.set_reserved1(source.reserved1);
+    target.set_dstTypeMax(source.dstTypeMax);
+    target.set_roundMode(source.roundMode);
+    target.set_reserved2(source.reserved2);
+    target.set_reserved3(source.reserved3);
+}
+
 BEGIN_TILING_DATA_DEF(GMMSwigluQuantTilingDataParams)
 TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantParams, gmmSwigluQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantSwigluParamsHost, swigluParams);
 END_TILING_DATA_DEF;
 
 BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2TensorApiQuantParams)
@@ -124,6 +157,7 @@ REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV2TensorApiMMTilingOp, GMMSwigluQuantV2
 BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2TensorApiTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiQuantParams, gmmQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiMMTiling, mmTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantSwigluParamsHost, swigluParams);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_0, GMMSwigluQuantTilingDataParams)
