@@ -35,9 +35,8 @@ TILING_DATA_FIELD_DEF(uint32_t, dimTile);     // 单块元素数
 TILING_DATA_FIELD_DEF(uint32_t, dimLoop);     // 分块数量
 TILING_DATA_FIELD_DEF(uint32_t, lastDimTile); // 尾块元素数，0表示整除
 
-// MHC_Pre参数，pre分支只使用N行
-TILING_DATA_FIELD_DEF(uint32_t, phiRows); // N固定为4
-TILING_DATA_FIELD_DEF(uint32_t, phiCols); // N*D
+// MHC_Pre参数，phi行数固定为N=4，Kernel只需要每行跨度N*D
+TILING_DATA_FIELD_DEF(uint32_t, phiCols);
 
 // 数值稳定项
 TILING_DATA_FIELD_DEF(float, normEps);
@@ -48,13 +47,7 @@ TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(float, invD); // 1.0f / D
 TILING_DATA_FIELD_DEF(float, invK); // 1.0f / (N*D)
 
-// 是否在MHC_Post与MHC_Pre之间执行RMSNorm_mid
-TILING_DATA_FIELD_DEF(uint32_t, useRmsMid); // 0表示关闭，1表示开启
-// A5执行方案。bit2选择双sibling AIV模板，其他组合回退单AIV。
-TILING_DATA_FIELD_DEF(uint32_t, coresPerToken); // 取值为1或2
-
-// 是否返回h_in_f32
-TILING_DATA_FIELD_DEF(int8_t, returnHInF32); // TILING_DATA_FIELD_DEF接口不支持bool
+// useRmsMid、returnHInF32和单双sibling均由TilingKey编译期表达，不重复写入TilingData。
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcNormPostPreonly, MhcNormPostPreonlyTilingData)
@@ -110,7 +103,6 @@ private:
     uint32_t dimTile_{0U};
     uint32_t dimLoop_{0U};
     uint32_t lastDimTile_{0U};
-    uint32_t coresPerToken_{1U};
     float normEps_{1e-6F};
     float mhcPreNormEps_{1e-6F};
     float hcEps_{1e-6F};
