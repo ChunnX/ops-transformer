@@ -28,6 +28,14 @@ if (BUILD_OPEN_PROJECT)  # custom
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
     # apace hcomm 通路（MX 量化实例默认编译）kernel 头（blaze/tensor_api）
     # 经 op_kernel 根与 ops-tensor include 引入
+    # ===== 调试期临时开关（MX 挂死定位）：仅编译 MX 相关代码 =====
+    # 置 1：原通路整体裁剪（TT 实例空编译、全部实例不再实例化 UBMEM/scheduler 模板）
+    # 恢复全量编译：改为 0（TT 用例恢复可用）
+    set(APACE_MX_ONLY_DEBUG 1)
+    if(APACE_MX_ONLY_DEBUG)
+        add_compile_definitions(GMM_A2AV_MX_ONLY)
+    endif()
+
     # 诊断专用实例化开关（默认关）：MC2_APACE_DBG_EXTRA=1 构建时才编译 dbg=11/12 的
     # 额外 Blaze 模板实例（各为一份完整实例化，显著增加编译耗时），仅定位时打开
     set(APACE_DBG_EXTRA_OPTS "")

@@ -175,8 +175,12 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
         return;
     }
 
+#if !defined(GMM_A2AV_MX_ONLY)
     // 原通路（TT 量化实例走此路径；MIX_AIC_1_2 任务类型由 KERNEL_TYPE_SEL 声明，
     // AIC 计算 + AIV 通信，历史行为不变）
+    // 调试期临时裁剪：定义 GMM_A2AV_MX_ONLY 时原通路整体不编译（TT 实例退化为空
+    // kernel、全部实例不再实例化 UBMEM/scheduler 模板），仅用于 MX 挂死定位的
+    // 快速迭代；恢复全量编译需去掉该宏（op_host/CMakeLists.txt 的开关）
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;
     constexpr bool USE_SEND_COUNTS = true;
     constexpr bool IS_SHARED_EXPERT = true;
@@ -215,4 +219,5 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                         sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
     gmmA2avScheduler.Process();
+#endif
 }
