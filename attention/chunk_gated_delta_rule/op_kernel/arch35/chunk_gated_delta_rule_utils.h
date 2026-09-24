@@ -10,7 +10,7 @@
 
 /*!
  * \file chunk_gated_delta_rule_utils.h
- * \brief Common constants for chunk_gated_delta_rule kernels
+ * \brief Common constants and alignment helpers for chunk_gated_delta_rule kernels
  */
 
 #ifndef CHUNK_GATED_DELTA_RULE_UTILS_H__
@@ -22,6 +22,16 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 namespace ChunkGatedDeltaRule {
+// Cube/NZ 布局按 16 个元素分块；行、列对齐单位分别保留名称，供搬运和地址计算使用。
+constexpr uint32_t MM_BLOCK_CUBE = 16;
+constexpr uint32_t MM_NZ_FRACTAL = 16;
+
+// 向上对齐：ceil(value / align) * align，align > 0；参数使用相同单位（元素或字节）。
+__aicore__ inline uint32_t MmAlign(uint32_t value, uint32_t align)
+{
+    return (value + align - 1) / align * align;
+}
+
 // 同步信号
 constexpr uint64_t V_MTE3_EVENT = 0;
 constexpr uint64_t V_S_EVENT = 1;

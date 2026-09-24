@@ -24,119 +24,24 @@ namespace ChunkGatedDeltaRule {
 
 using namespace AscendC;
 
-struct CGDRInitParams {
-    GM_ADDR query;
-    GM_ADDR key;
-    GM_ADDR value;
-    GM_ADDR beta;
-    GM_ADDR initState;
-    GM_ADDR seqlens;
-    GM_ADDR gOptional;
-    GM_ADDR attnOut;
-    GM_ADDR finalState;
-};
-
-// arch35 入口仅绑定输入输出并校验融合路径的约束；原 Stage1/2/3 的 GM 工作区和逐阶段调度已移除。
-template <typename lowType, typename highType, typename stateType = lowType, bool gOptional = false>
+// arch35 入口绑定 TND 输入输出并启动融合调度，shape/类型约束由 host 校验。
+// T=sum(seq_lens)，Nk/Nv 为 QK/V 头数，Dk/Dv 为特征维；每个状态矩阵 S 的方向为 [Dv,Dk]。
+// Q/K/V/beta/O 固定为 BF16，g 固定为 FP32；仅状态类型与 g 是否存在参与模板分发。
+template <typename stateType, bool hasGamma>
 class CGDR {
 public:
-    __aicore__ inline explicit CGDR(const ChunkGatedDeltaRuleTilingData *tilingData)
-    {
-        tiling_ = tilingData;
-    };
-
-    __aicore__ inline void Init(const CGDRInitParams &initParams)
-    {
-        uint64_t dataSize = tiling_->t * tiling_->nk * tiling_->dk;
-        query_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.query), dataSize);
-        key_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.key), dataSize);
-
-        dataSize = tiling_->t * tiling_->nv * tiling_->dv;
-        value_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.value), dataSize);
-        out_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.attnOut), dataSize);
-
-        dataSize = tiling_->t * tiling_->nv;
-        beta_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.beta), dataSize);
-        if constexpr (gOptional) {
-            g_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.gOptional), dataSize);
-        }
-
-        dataSize = tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
-        initState_.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(initParams.initState), dataSize);
-        finalState_.SetGlobalBuffer(reinterpret_cast<__gm__ stateType *>(initParams.finalState), dataSize);
-
-        actualSeqLens_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams.seqlens), tiling_->b);
-    }
+    __aicore__ inline CGDR(const CGDRInitParams &addresses, const ChunkGatedDeltaRuleTilingData &tiling)
+        : context_(addresses, tiling, hasGamma)
+    {}
 
     __aicore__ inline void Process()
     {
         SyncAll<false>();
-        if (!HasValidExactInputs()) {
-            return;
-        }
-        RunExactBatches();
+        FusedStage123Exact<stateType, hasGamma>::Process(context_);
     }
 
 private:
-    __aicore__ inline bool HasValidExactInputs() const
-    {
-        // 固定物理 tile 为 C=64、Dk/Dv=128，逻辑维度可更小；不满足条件时直接返回，不会回退到旧实现。
-        if (tiling_->b <= 0 || tiling_->t <= 0 || tiling_->nk <= 0 || tiling_->nv <= 0 ||
-            tiling_->nv % tiling_->nk != 0 || tiling_->dk <= 0 || tiling_->dk > 128 || tiling_->dv <= 0 ||
-            tiling_->dv > 128 || tiling_->chunkSize != 64 || tiling_->aiCoreNum <= 0 || tiling_->stateStride0 < 0 ||
-            tiling_->stateStride1 < 0) {
-            return false;
-        }
-        const uint64_t targetLength = static_cast<uint64_t>(tiling_->t);
-        uint64_t totalLength = 0;
-        // actualSeqLengths 保存各 batch 的长度而非累积终点；允许空序列，但长度之和必须恰好覆盖 T。
-        // 所有 AIC/AIV 在进入跨核握手前执行相同校验，避免一方提前退出而另一方永久等待。
-        for (int64_t bid = 0; bid < tiling_->b; ++bid) {
-            const int32_t length = actualSeqLens_.GetValue(bid);
-            if (length < 0 || static_cast<uint64_t>(length) > targetLength - totalLength) {
-                return false;
-            }
-            totalLength += static_cast<uint64_t>(length);
-        }
-        return totalLength == targetLength;
-    }
-
-    __aicore__ inline void RunExactBatches()
-    {
-        FusedStage123ExactParams<stateType> params{query_,
-                                                   key_,
-                                                   value_,
-                                                   beta_,
-                                                   g_,
-                                                   initState_,
-                                                   out_,
-                                                   finalState_,
-                                                   actualSeqLens_,
-                                                   tiling_->scale,
-                                                   static_cast<uint32_t>(tiling_->nk),
-                                                   static_cast<uint32_t>(tiling_->nv),
-                                                   static_cast<uint32_t>(tiling_->dk),
-                                                   static_cast<uint32_t>(tiling_->dv),
-                                                   static_cast<uint32_t>(tiling_->aiCoreNum),
-                                                   static_cast<uint64_t>(tiling_->b),
-                                                   static_cast<uint64_t>(tiling_->stateStride0),
-                                                   static_cast<uint64_t>(tiling_->stateStride1)};
-        FusedStage123Exact<stateType, gOptional> op;
-        op.Init(params);
-        op.Process();
-    }
-
-private:
-    const ChunkGatedDeltaRuleTilingData *tiling_;
-    GlobalTensor<lowType> query_;
-    GlobalTensor<lowType> key_;
-    GlobalTensor<lowType> value_;
-    GlobalTensor<lowType> beta_;
-    GlobalTensor<highType> g_;
-    GlobalTensor<lowType> out_;
-    GlobalTensor<stateType> finalState_;
-    GlobalTensor<stateType> initState_;
-    GlobalTensor<int32_t> actualSeqLens_;
+    KernelContext<stateType> context_;
 };
 
 } // namespace ChunkGatedDeltaRule

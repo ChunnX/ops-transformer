@@ -241,7 +241,9 @@ __simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, 
     }
 }
 
-// Dk<=8 时，一个 32 字节 FP32 数据块可容纳一整行状态；将 8 个独立 Dv 行打包进一个寄存器。
+// 优化方案（Dk<=8）：一个 32 字节 FP32 数据块容纳一行，将 8 个独立 Dv 行打包进一个寄存器。
+// state:[rowCount,128]；有效子矩阵 [rowCount,Dk] 打包成寄存器 [8行,8列]，多余 lane 置零。
+// 每行执行 r=beta*(v-exp(g)*dot(S,k))，S=exp(g)*S+r*k，o=dot(S,scale*q)。
 // ReduceDataBlock 按 8 元素分组归约，padding lane 必须排除在乘法和归约之外。
 // 每批 token 内状态保留在寄存器，仅在批首 Gather、批尾 Scatter；搬运步长与通用批处理一致。
 template <bool hasGamma>
@@ -318,10 +320,12 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
 
 /*
  * 通用 Streaming 每次 VF 处理一批 token 和一个 AIV 独立拥有的 Dv 行切片。
- * 状态行之间无依赖，因此先遍历行，再在寄存器中沿 token 递推，减少 UB 状态读写：
+ * UB 物理 shape：S:[rowCount,128]，Q/K/V:[tokenCount,128]，out:[tokenCount,64]；
+ * beta:[tokenCount,16]、g:[tokenCount,8] 为 DMA 对齐布局，每 token 只用首元素。
+ * 优化方案：状态行之间无依赖，先遍历行，再在寄存器中沿 token 递推，减少 UB 状态读写：
  * delta_r=beta*(v_r-alpha*dot(S_r,k))，S_r=alpha*S_r+delta_r*k，out_r=dot(S_r,scale*q)。
  * 两种接口状态类型都以 FP32 持续递推，仅在调用方写出 BF16 finalState 时量化状态。
- * 因而该路径与 BF16 chunk 路径的舍入位置不同，不能将 Exact 理解为逐位相同。
+ * Chunk 路径还会量化 Cube 输入和 BF16 接口的 delta，因此 Exact 不表示两条路径逐位相同。
  */
 template <bool hasGamma>
 __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,

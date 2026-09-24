@@ -15,13 +15,14 @@ import torch
 import torch_npu
 
 # from cann_ops_transformer.ops import chunk_gated_delta_rule
-from chunk_gated_delta_rule_benchmark import chunk_gdn_benchmark_opt
+from chunk_gated_delta_rule_benchmark_fused import chunk_gdn_benchmark_fused, MODEL_REVISION
 from chunk_gated_delta_rule_golden import chunk_gated_delta_rule_npu
 import torch.nn.functional as F
 import numpy as np
 import logging
 import os
 import gc
+from chunk_gated_delta_rule_pt import to_device_preserving_layout
 
 _USE_GRAPH = os.environ.get("USE_GRAPH", "false").lower() in ("true", "1", "yes")
 _ENABLE_PROF = os.environ.get("ENABLE_PROF", "false").lower() in ("true", "1", "yes")
@@ -238,13 +239,14 @@ def cgdr_benchmark(
     dtype = torch.bfloat16
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1])).to(v.device).to(torch.float32)
-    o_bench, state_bench = chunk_gdn_benchmark_opt(
+    logger.info(f"[benchmark] {MODEL_REVISION}, device={q.device}, state_dtype={initial_state.dtype}")
+    o_bench, state_bench = chunk_gdn_benchmark_fused(
         q.to(dtype),
         k.to(dtype),
         v.to(dtype),
         beta.to(dtype),
         scale,
-        initial_state.to(dtype),
+        initial_state,
         actual_seq_lengths,
         g,
         chunk_size=chunk_size,
@@ -415,16 +417,9 @@ def _load_input_pt(
         raise FileNotFoundError(f"[LOAD_PT] pt file not found: {fpath}")
     data = torch.load(fpath, map_location="cpu")
     dev = f"npu:{DEVICE_ID}"
-    loaded = {
-        "q": data["q"].to(dev),
-        "k": data["k"].to(dev),
-        "v": data["v"].to(dev),
-        "beta": data["beta"].to(dev),
-        "scale": data["scale"],
-        "initial_state": data["initial_state"].to(dev),
-        "actual_seq_lengths": data["actual_seq_lengths"].to(dev),
-        "g": None if data["g"] is None else data["g"].to(dev),
-    }
+    loaded = {key: to_device_preserving_layout(data[key], dev)
+              for key in ("q", "k", "v", "beta", "initial_state", "actual_seq_lengths", "g")}
+    loaded["scale"] = data["scale"]
     logger.info(f"[LOAD_PT] loaded input data from {fpath}")
     return loaded
 
