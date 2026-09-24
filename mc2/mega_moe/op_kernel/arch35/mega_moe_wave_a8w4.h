@@ -244,16 +244,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
             bool isFinalCombine = waveRange.end.expertIdx >= commonConfig_.moeExpertPerRank &&
                                   sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
             // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-            // 去重开/关在此一次二分发成编译期参数，之后整条 GMM2/Combine 链路都是静态分支。
-            if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
-                this->template RunGmm2CombineForExpert<true>(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                              sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine,
-                                              pipeline);
-            } else {
-                this->template RunGmm2CombineForExpert<false>(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                               sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine,
-                                               pipeline);
-            }
+            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                    sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine, pipeline);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {

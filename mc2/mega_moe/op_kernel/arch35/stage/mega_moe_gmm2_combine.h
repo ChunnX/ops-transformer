@@ -700,14 +700,21 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
                                             asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // NotifyCombineTileReady 为真即 per-tile credit 握手启用（combine 去重开时调用方实例化为 false）。
-            gmmAddrInfo.gmm2CombineSync->WaitForCombine();
+            // W4 路径的握手保留运行时判断：该链路经成员函数 RunGmm2CombineForExpert 下发，
+            // 将去重开关做成其嵌套模板参数时（template<类参> template<bool>），编译器生成的
+            // AIC 代码在 W4 实例上 scalar 访问 L1 越界（2026-09 实测，源码语义与运行时判断
+            // 逐行等价仍崩）。Generic 路径经自由函数模板下发不受影响，保持编译期分化。
+            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
+                gmmAddrInfo.gmm2CombineSync->WaitForCombine();
+            }
         }
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr (NotifyCombineTileReady && !IsShared) {
             // AIV1 与本 AIC 重放同一 scheduler。FIX 完成后通知 Combine 读取 GM；
             // W4 prologue 仍由 AIV0 独立推进，不参与该一对一完成链路。
-            gmmAddrInfo.gmm2CombineSync->NotifyCombine();
+            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
+                gmmAddrInfo.gmm2CombineSync->NotifyCombine();
+            }
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
@@ -849,10 +856,12 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
         if (GetSubBlockIdx() == 0U) {
             Gmm2Aiv0PrologueA8W4(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
-            // NotifyCombineTileReady 为真时 AIV1 逐 tile 锁步消费（combine 去重路径实例化为 false）。
-            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
-                                                     startLoopIdx, tileNum);
+            // 同上：W4 路径去重开关走运行时判断（嵌套模板参数触发编译器代码生成问题）。
+            if (!IsCombineDedupOn(params->tilingData->dedupMode)) {
+                using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+                CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
+                                                         startLoopIdx, tileNum);
+            }
         }
     }
 }
