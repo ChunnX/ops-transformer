@@ -59,6 +59,7 @@ using namespace AscendC;
 #define HCOMM_INIT_SIZE 512UL
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
+static constexpr uint32_t COMBINE_CHANNEL_COUNT = 2U;
 static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
@@ -208,7 +209,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
         channelsPerRank_ = 1U;
     }
 
-    combineChannelCount_ = channelsPerRank_;
+    combineChannelCount_ =
+        channelsPerRank_ < COMBINE_CHANNEL_COUNT ? channelsPerRank_ : COMBINE_CHANNEL_COUNT;
 
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
