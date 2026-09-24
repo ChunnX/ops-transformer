@@ -31,7 +31,6 @@ constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer �
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
 constexpr uint16_t MID_READY_FLAG = 0;        // R3/RMS_mid平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
-constexpr uint16_t R1_READY_FLAG = 2;         // R1按tile分摊的平方和交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
