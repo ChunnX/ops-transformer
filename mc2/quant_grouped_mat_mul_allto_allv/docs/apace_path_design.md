@@ -69,6 +69,7 @@ kernel：if constexpr (TILINGKEY_USING_APACE_IMPL) 选路，任务类型全部�
         │     ├ 全核直接提交 AllToAllV(b)│
         │     └ PipeBarrier(排空管线)   │
         │   (各批通信排队执行,∥后续GMM) │
+        │   共享专家 MM(∥末批通信)     │
         │   End: Wait全部+Finalize     │
         │   共享专家 MM(可选)            │
         └──────────────────────────────┘
@@ -282,7 +283,10 @@ wScaleGM = wScaleBaseGM + startExpertIdx·N1·scaleK · sizeof(scale)
 | groupListType | `gmmQuantParams.groupListType`（LENGTH） | 与原 tiling 一致 |
 
 **共享专家（isLocal=true）**：单组 groupList[0]=BS，偏移表全空，`Process(0,1)` 单次
-调用；在 `End()`（Finalize）之后执行，输出 mmY 不参与通信。**维度取 MM 维度
+调用；在批循环之后、`End()`（Finalize）**之前**执行，输出 mmY 不参与通信、与末批
+AllToAllV 重叠——全部已验证形态（allto_all_matmul hcomm 的 local matmul 前置、
+2b7026857 的共享 MM 与通信重叠）的 Blaze 计算均在 Finalize 之前；Finalize 之后执行
+Blaze 会挂死（真机实证）。**维度取 MM 维度
 （N2/H2）而非 GMM 维度（N1/H1）**——其 L0 tiling 来自 sharedGmmTiling（按
 {BS, N2, H2} 切分），问题维度与之一致是正确性前提；早期版本误用 n1_/h1_，
 H1≠H2/N1≠N2 时 K/N 循环与 B/scaleB 布局错位，mmad 管线挂死（真机定位：

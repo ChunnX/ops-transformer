@@ -101,8 +101,9 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             const uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
             hcommImpl.Process(start, actualExpertNum);
         }
-        hcommImpl.End();
-        // 共享专家（独立输出，不走通信）
+        // 共享专家（独立输出，不走通信）：必须在 Hccl Finalize 之前执行——全部已验证
+        // 形态的 Blaze 计算均位于 Finalize 之前，且与末批 AllToAllV 通信重叠
+        // （通信由引擎异步执行，不占用 AIC 核）；Finalize 之后执行 Blaze 会挂死（真机实证）
         if constexpr (TILINGKEY_COMPUTE_MATMUL) {
             GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                                mmArrayAddr_, tilingGM);
@@ -111,6 +112,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                 sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
             shareComputeOp.Process(0, 1);
         }
+        hcommImpl.End();
 #else
         // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
         // TILINGKEY_USING_APACE_IMPL=0，该组合不会被选中，空实现仅占位
