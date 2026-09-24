@@ -255,14 +255,9 @@ mkdir -p "$OAT_REPORT_DIR"
 mkdir -p "$OAT_RESULT_DIR"
 
 # ---------------------------------------------------------------------------
-# 5. Build oat command — use OAT.xml if present in repo root
+# 5. Use OAT.xml if present in repo root
 # ---------------------------------------------------------------------------
-_OAT_BASE_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $OAT_REPORT_DIR -n $REPO_NAME -w 1"
-
 _OAT_XML="$REPO_ROOT/OAT.xml"
-if [ -f "$_OAT_XML" ]; then
-    _OAT_BASE_CMD="$_OAT_BASE_CMD -oatconfig $_OAT_XML"
-fi
 
 # ---------------------------------------------------------------------------
 # 6. Run oat scan — batch file list if -f argument exceeds OS single-arg limit
@@ -275,7 +270,13 @@ _BATCH_ISSUES=0
 _run_oat_batch() {
     echo "[OAT] Running compliance scan..."
     set +e
-    eval "$_OAT_BASE_CMD -f $1" >/dev/null 2>&1
+    if [ -f "$_OAT_XML" ]; then
+        "$_PYTHON" -m oat -mode s -s "$REPO_ROOT" -r "$OAT_REPORT_DIR" -n "$REPO_NAME" -w 1 \
+            -oatconfig "$_OAT_XML" -f "$1" >/dev/null 2>&1
+    else
+        "$_PYTHON" -m oat -mode s -s "$REPO_ROOT" -r "$OAT_REPORT_DIR" -n "$REPO_NAME" -w 1 \
+            -f "$1" >/dev/null 2>&1
+    fi
     _OAT_RC=$?
     set -e
     if [ "$_OAT_RC" -ne 0 ] && [ "$_OAT_RC" -ne 1 ]; then
