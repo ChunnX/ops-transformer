@@ -35,6 +35,8 @@ if (BUILD_OPEN_PROJECT)  # custom
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DGMM_A2AV_KLOOP_DEBUG
+                    -I${CMAKE_SOURCE_DIR}/mc2/quant_grouped_mat_mul_allto_allv/op_kernel/blaze_debug
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
