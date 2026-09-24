@@ -628,7 +628,8 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining)
     const char *nodeName = context->GetNodeName();
     bool hasSf = false;
     if (isTraining) {
-        // 训练模式 SF 通过 context(sfAddrList) 传递，无 sf_table 输入，仅按 fetched_sf 输出形态判定
+        // 训练模式 sf_table 输入为本卡 SF 表地址 (1元 int64 张量), hasSf 按
+        // fetched_sf 输出形态判定 (无 SF 时 fetched_sf 为空 1-D 张量)
         auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
         auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
         hasSf = fetchedSfDesc != nullptr && fetchedSfShape != nullptr &&

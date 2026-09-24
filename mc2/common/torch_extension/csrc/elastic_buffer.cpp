@@ -152,7 +152,6 @@ struct EngramCommContext {
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE * 2] = {};
     uint32_t channelsPerRank = 1;
-    uint64_t sfAddrList[HCCL_MAX_RANK_SIZE] = {};
 };
 
 struct MoeCommContext {
@@ -214,7 +213,6 @@ struct EngramContextResources {
     at::Tensor contextTensor;
     void *sfHostBufPtr = nullptr;
     void *sfDeviceBufPtr = nullptr;
-    HcclMemHandle sfMemHandle = nullptr;
     bool sfExternalRegistered = false;
 };
 
@@ -234,7 +232,6 @@ struct EngramSharedBufferEntry {
     EngramCommContext context;
     void *sfHostBufPtr = nullptr;
     void *sfDeviceBufPtr = nullptr;
-    HcclMemHandle sfMemHandle = nullptr;
     bool sfExternalRegistered = false;
 };
 static std::mutex gEngramSharedBufferMutex;
@@ -547,7 +544,6 @@ public:
                 entry.context = resources.context;
                 entry.sfHostBufPtr = resources.sfHostBufPtr;
                 entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
-                entry.sfMemHandle = resources.sfMemHandle;
                 entry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
                 ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
@@ -580,7 +576,6 @@ public:
             resources.contextTensor = CreateCommContextTensor(resources.context);
             resources.sfHostBufPtr = entry.sfHostBufPtr;
             resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
-            resources.sfMemHandle = entry.sfMemHandle;
             resources.sfExternalRegistered = entry.sfExternalRegistered;
             return resources;
         }
@@ -617,7 +612,6 @@ public:
                 poolEntry.context = resources.context;
                 poolEntry.sfHostBufPtr = resources.sfHostBufPtr;
                 poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
-                poolEntry.sfMemHandle = resources.sfMemHandle;
                 poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
                 ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
@@ -653,7 +647,6 @@ public:
         resources.contextTensor = CreateCommContextTensor(resources.context);
         resources.sfHostBufPtr = entry.sfHostBufPtr;
         resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
-        resources.sfMemHandle = entry.sfMemHandle;
         resources.sfExternalRegistered = entry.sfExternalRegistered;
         return resources;
     }
@@ -703,15 +696,15 @@ private:
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
                     ", host memory cannot be mapped to device");
 
-        CommMem mem;
-        mem.type = COMM_MEM_TYPE_DEVICE;
-        mem.addr = devPtr;
-        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
-
-        auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem,
-                                          isSf ? &resources.sfMemHandle : &resources.memHandle);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
-                    ") failed, ret=", hcclRet);
+        if (!isSf) {
+            CommMem mem;
+            mem.type = COMM_MEM_TYPE_DEVICE;
+            mem.addr = devPtr;
+            mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
+            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
+                        ") failed, ret=", hcclRet);
+        }
 
         if (isSf) {
             resources.sfHostBufPtr = hostPtr;
@@ -845,9 +838,7 @@ private:
         }
 
         resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(resources.deviceBufPtr);
-        resources.context.sfAddrList[rankId] = reinterpret_cast<uint64_t>(resources.sfDeviceBufPtr);
 
-        constexpr const char *sfMemTag = "engram_sf_table";
         for (uint32_t i = 0; i < resources.context.rankSize; ++i) {
             if (i == rankId)
                 continue;
@@ -868,10 +859,6 @@ private:
                     ASCEND_LOGI("Get Target Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j,
                                 targetMemAddr);
                     hasTargetMem = true;
-                } else if (memTags[j] != nullptr && std::string(sfMemTag) == memTags[j]) {
-                    resources.context.sfAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
-                    ASCEND_LOGI("Get SF Mem(%s) Success, Mem id is %d, Addr is %lu", sfMemTag, j,
-                                resources.context.sfAddrList[i]);
                 }
             }
             TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
@@ -925,9 +912,7 @@ private:
 
         resources.commBufferSize = static_cast<int64_t>(localBufferSize);
         resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(localBuffer);
-        resources.context.sfAddrList[rankId] = reinterpret_cast<uint64_t>(resources.sfDeviceBufPtr);
 
-        constexpr const char *sfMemTag = "engram_sf_table";
         for (uint32_t i = 0; i < resources.context.rankSize; ++i) {
             if (i == rankId) {
                 continue;
@@ -939,21 +924,6 @@ private:
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetHcclBuffer(peer=", i, ") failed, ret=", hcclRet);
             TORCH_CHECK(remoteBuffer != nullptr, "HCCL remote buffer is null for peer=", i);
             resources.context.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteBuffer);
-
-            uint32_t memNum = 0;
-            CommMem *remoteMems = nullptr;
-            char **memTags = nullptr;
-            auto sfRet = HcclChannelGetRemoteMemsFunc(commHandle, resources.context.hcommHandle[i * channelsPerPeer],
-                                                      &memNum, &remoteMems, &memTags);
-            if (sfRet == HCCL_SUCCESS) {
-                for (uint32_t j = 0; j < memNum; j++) {
-                    if (memTags != nullptr && remoteMems != nullptr && memTags[j] != nullptr &&
-                        std::string(sfMemTag) == memTags[j]) {
-                        resources.context.sfAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
-                        break;
-                    }
-                }
-            }
         }
     }
 
@@ -1761,7 +1731,6 @@ private:
     at::Tensor localSfTableTensor_;     // FP8 device tensor view of HCCL-registered sf table
     void *sfHostBufPtr_ = nullptr;
     void *sfDeviceBufPtr_ = nullptr;
-    HcclMemHandle sfMemHandle_ = nullptr;
     bool sfExternalRegistered_ = false;
     bool engramContextInitialized_ = false;
     bool engramStorageExternal_ = false;
@@ -1842,11 +1811,11 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     engramExternalRegisteredByUs_ = resources.externalRegistered;
     sfHostBufPtr_ = resources.sfHostBufPtr;
     sfDeviceBufPtr_ = resources.sfDeviceBufPtr;
-    sfMemHandle_ = resources.sfMemHandle;
     sfExternalRegistered_ = resources.sfExternalRegistered;
     if (sfDeviceBufPtr_ != nullptr) {
-        auto sfOptions = at::TensorOptions().dtype(at::kByte).device(c10::DeviceType::PrivateUse1);
-        localSfTableTensor_ = at_npu::native::from_blob(sfDeviceBufPtr_, {1}, sfOptions);
+        int64_t sfAddrValue = reinterpret_cast<int64_t>(sfDeviceBufPtr_);
+        auto hostSfAddrTensor = at::full({1}, sfAddrValue, at::TensorOptions().dtype(at::kLong));
+        localSfTableTensor_ = hostSfAddrTensor.to(c10::DeviceType::PrivateUse1);
     }
     engramExternalBytes_ = externalBytes;
     engramBufferPooled_ = (engramHostBufPtr_ != nullptr);
@@ -2006,8 +1975,7 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
         int64_t zero = 0;
-        aclTensor *nullTensor = nullptr;
-        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, nullTensor, fetched, perm, sendCounts,
+        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, sfTableAddr, fetched, perm, sendCounts,
                   recvCounts, recvLocalEntry, numRecv, fetchedSf, hiddenSize, numEntries, numMaxTokensPerRank,
                   commBufferSize, withGrad);
     }
@@ -2135,7 +2103,6 @@ void ElasticBuffer::Destroy()
     // SF 注册内存同样按 tag 入进程级共享池，Destroy 仅解除本实例引用、不释放内存。
     sfHostBufPtr_ = nullptr;
     sfDeviceBufPtr_ = nullptr;
-    sfMemHandle_ = nullptr;
     sfExternalRegistered_ = false;
 
     destroyed_ = true;
