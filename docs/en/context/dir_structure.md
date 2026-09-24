@@ -8,7 +8,8 @@
 > - If the **op_graph** directory is missing, the operator cannot be called in graph mode.
 
 The full project directory structure is as follows:
-```
+
+```text
 ├── cmake                                               # Project build directory
 │   ├── aclnn_ops_math.h.in                             # aclnn summary header file template
 │   └── ...

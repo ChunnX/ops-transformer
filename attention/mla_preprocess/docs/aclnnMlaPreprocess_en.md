@@ -23,7 +23,7 @@
 
 - **Computing flowchart**
 
-![MlaPreprocess](../figures/MlaPreprocess_Calculation_Process.png)
+![MlaPreprocess](../../../docs/en/figures/MlaPreprocess_computation_process.png)
 
 - **Formula**:
 

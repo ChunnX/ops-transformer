@@ -24,7 +24,8 @@ Generally, you need to understand the following broadcasting rules during comput
 - Rule 3: If any dimension of two arrays is not equal and neither is equal to one, an error is reported.
 
 Based on the preceding rules, the broadcasting process first expands dimensions according to Rule 1 and then stretches the shape according to Rule 2. The following is an example:
-```
+
+```text
 Assume that a.shape = (2, 2, 3). The values are as follows:
 [[[1 2 3],[4 5 6]],
  [[1 2 3],[4 5 6]]]
@@ -48,5 +49,5 @@ If the data types of the two inputs a and b meet the broadcast relationship and 
 Condition: After combination of the contiguous axes that need to be broadcast and the contiguous axes that do not need to be broadcast, the number of dimensions must be fewer than 6.
 Example:
 
--   If a.shape=\(5, 1, 5, 1, 5, 1\) and b.shape=\(5, 5, 5, 5, 5, 5\) do not have axes to be combined, the final shape is 6D. In this case, an error is reported.
--   If a.shape=\(5, 1, 5, 5, 1, 1\) and b.shape=\(5, 5, 5, 5, 5, 5\) have the second and third dimensions not to be broadcast but the fourth and fifth dimensions to be broadcast contiguously, the final shape is 4D. In this case, the broadcasting is successful.
+- If a.shape=\(5, 1, 5, 1, 5, 1\) and b.shape=\(5, 5, 5, 5, 5, 5\) do not have axes to be combined, the final shape is 6D. In this case, an error is reported.
+- If a.shape=\(5, 1, 5, 5, 1, 1\) and b.shape=\(5, 5, 5, 5, 5, 5\) have the second and third dimensions not to be broadcast but the fourth and fifth dimensions to be broadcast contiguously, the final shape is 4D. In this case, the broadcasting is successful.

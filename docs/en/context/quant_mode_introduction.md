@@ -47,7 +47,6 @@ The quantization mode (also called quantization granularity) indicates the quant
 
   ![Schematic Diagram](../figures/perblock_quantization.png)
 
-
 ## Common Combined Quantization
 
 - Full quantization: Generally, both the left matrix and right matrix are quantized. The combinations include:

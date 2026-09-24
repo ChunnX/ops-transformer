@@ -1,31 +1,37 @@
 # build Parameters
 
 ## Overview
+
 **build.sh** is the build script of this project, which is stored in the root directory of the project by default. It is used to automatically compile, link, and configure the source code, and finally generate executable files, library files, or other target files that can be installed or directly run. Specifically, different parameters can be configured in the script to implement multiple functions, including building multiple target libraries (such as **libophost_math.so**), compiling operator packages, and executing unit tests.
 
-
 ## Usage
+
 1. **Configuring environment variables**
    
-   Configure environment variables by referring to [Environment Setup](../invocation/quick_op_invocation.md#environment_setup).
+   Configure environment variables by referring to [Environment Setup](../../zh/invocation/quick_op_invocation.md).
+   
    ```bash
    # The following uses the default installation path and the root user as an example.
    source /usr/local/Ascend/set_env.sh
    ```
+
 2. **Build command format**
 
    The following uses the command for building an operator package as an example. In the command, `--vendor_name` and `--ops` are optional in this scenario.
+
    ```bash
    bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}]
    ```
+
    For details about all options, see the "Options" section below. Select appropriate options as required.
 
 ## Options
+
 The **build.sh** script supports multiple functions. You can run the following command to view all function parameters.
+
 ```bash
 bash build.sh --help
 ```
-
 
 | Option            | Mandatory (Yes/No) | Description                                                                     |
 |-----------------|--------|---------------------------------------------------------------------------|
