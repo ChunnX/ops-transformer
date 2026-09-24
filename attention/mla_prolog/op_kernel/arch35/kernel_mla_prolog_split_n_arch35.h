@@ -434,8 +434,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit()
     mmCqParam_.baseK =
         (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
     mmCqParam_.stepK = 4;
-    if ((mmCqParam_.k / mmCqParam_.baseK) % mmCqParam_.stepK != 0) {
-        mmCqParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
+    while ((mmCqParam_.k / mmCqParam_.baseK) % mmCqParam_.stepK != 0) {
+        mmCqParam_.stepK--; // support k = 7680, mmInputType int8, no tail
     }
     mmCqParam_.kScale = mmCqParam_.k / FP8_E4M3_BLOCK_SIZE;
     mmCqParam_.kL1StepSize = mmCqParam_.baseK * mmCqParam_.stepK;
@@ -462,8 +462,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit()
         (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
     mmCkvKrParam_.baseN = 128;
     mmCkvKrParam_.stepK = 4;
-    if ((mmCkvKrParam_.k / mmCkvKrParam_.baseK) % mmCkvKrParam_.stepK != 0) {
-        mmCkvKrParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
+    while ((mmCkvKrParam_.k / mmCkvKrParam_.baseK) % mmCkvKrParam_.stepK != 0) {
+        mmCkvKrParam_.stepK--; // support k = 7680, mmInputType int8, no tail
     }
     mmCkvKrParam_.kL1StepSize = mmCkvKrParam_.baseK * mmCkvKrParam_.stepK;
     mmCkvKrParam_.kScale = mmCkvKrParam_.k / FP8_E4M3_BLOCK_SIZE;
