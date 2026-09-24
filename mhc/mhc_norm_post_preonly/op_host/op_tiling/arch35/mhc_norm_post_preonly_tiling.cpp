@@ -275,7 +275,9 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     // Validate every output shape that is materialized; defer zero-rank placeholders to ACLNN/infer-shape checks.
     if (hInPrime.GetDimNum() != 0U) {
         OP_CHECK_IF(hInPrime.GetDimNum() != hOutDimNum,
-                    OP_LOGE(context_->GetNodeName(), "h_in_prime rank must match h_out"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "h_in_prime rank must match h_out: expected %zu, got %zu",
+                            hOutDimNum, hInPrime.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         for (size_t i = 0; i < hOutDimNum; ++i) {
             OP_CHECK_IF(hInPrime.GetDim(i) != hOut.GetDim(i),
                         OP_LOGE(context_->GetNodeName(), "h_in_prime shape must match h_out"),
@@ -284,7 +286,9 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     }
     if (x2Out.GetDimNum() != 0U) {
         OP_CHECK_IF(x2Out.GetDimNum() != residualDimNum,
-                    OP_LOGE(context_->GetNodeName(), "x_2_out rank must match residual"), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "x_2_out rank must match residual: expected %zu, got %zu",
+                            residualDimNum, x2Out.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         for (size_t i = 0; i < residualDimNum; ++i) {
             OP_CHECK_IF(x2Out.GetDim(i) != residual.GetDim(i),
                         OP_LOGE(context_->GetNodeName(), "x_2_out shape must match residual"),
