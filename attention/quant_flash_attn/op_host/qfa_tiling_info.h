@@ -380,6 +380,101 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 const std::set<ge::Format> FORMAT_SUPPORT_SET = {ge::FORMAT_ND};
 } // namespace arch35QFA
 
+// ============================================================
+// arch92QFA namespace: arch92 侧 tiling 实现使用，
+// 内容与 arch35QFA 一致，两个命名空间并存
+// ============================================================
+
+namespace arch92QFA {
+constexpr uint32_t B_LIMIT = 65536;
+constexpr uint32_t N1_LIMIT = 256;
+constexpr uint32_t N2_LIMIT = 256;
+constexpr uint32_t G_LIMIT = 64;
+constexpr uint32_t D_LIMIT = 512;
+constexpr uint32_t T_LIMIT = 1048576;
+constexpr uint32_t H_LIMIT = 65535;
+constexpr uint32_t S_LIMIT = 20971520;
+
+constexpr uint32_t INPUT_Q_SHAPE_MIN_DIMS = 3;
+constexpr uint32_t INPUT_Q_SHAPE_MAX_DIMS = 4;
+constexpr uint32_t INPUT_KV_SHAPE_MIN_DIMS = 3;
+constexpr uint32_t INPUT_KV_SHAPE_MAX_DIMS = 5;
+
+constexpr uint32_t DIM_NUM_0 = 0;
+constexpr uint32_t DIM_NUM_1 = 1;
+constexpr uint32_t DIM_NUM_2 = 2;
+constexpr uint32_t DIM_NUM_3 = 3;
+constexpr uint32_t DIM_NUM_4 = 4;
+constexpr uint32_t DIM_NUM_5 = 5;
+constexpr uint32_t DIM_NUM_6 = 6;
+
+constexpr uint32_t BLOCK_SIZE_MAX = 512;
+constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
+constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
+
+constexpr uint32_t MASK_DIM_SS = 2;
+constexpr uint32_t MASK_DIM_BSS = 3;
+constexpr uint32_t MASK_DIM_B1SS = 4;
+
+constexpr uint32_t PER_CHANNEL_MODE = 0;
+constexpr uint32_t PER_TOKEN_MODE = 1;
+constexpr uint32_t PER_TENSOR_HEAD_MODE = 2;
+constexpr uint32_t PER_TOKEN_HEAD_MODE = 3;
+constexpr uint32_t PER_TOKEN_PA_MODE = 4;
+constexpr uint32_t PER_TOKEN_HEAD_PA_MODE = 5;
+constexpr uint32_t PER_TOKEN_GROUP_MODE = 6;
+constexpr uint32_t PER_BLOCK_MODE = 7;
+
+constexpr uint32_t BYTE_BLOCK = 32;
+constexpr int64_t SHAPE_PARAMS_CONST = 1;
+constexpr int64_t SHAPE_NUM_ONE = 1;
+
+constexpr uint32_t FLOAT16SIZE = 2;
+constexpr uint32_t BFLOAT16SIZE = 2;
+constexpr uint32_t INT8SIZE = 1;
+constexpr uint32_t FLOAT8SIZE = 1;
+constexpr float INT4SIZE = 0.5f;
+constexpr float FLOAT4SIZE = 0.5f;
+
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
+
+const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDEFINED, "DT_UNDEFINED"},
+                                                                    {ge::DT_FLOAT, "DT_FLOAT"},
+                                                                    {ge::DT_FLOAT16, "DT_FLOAT16"},
+                                                                    {ge::DT_INT8, "DT_INT8"},
+                                                                    {ge::DT_INT16, "DT_INT16"},
+                                                                    {ge::DT_UINT16, "DT_UINT16"},
+                                                                    {ge::DT_UINT8, "DT_UINT8"},
+                                                                    {ge::DT_INT32, "DT_INT32"},
+                                                                    {ge::DT_INT64, "DT_INT64"},
+                                                                    {ge::DT_UINT32, "DT_UINT32"},
+                                                                    {ge::DT_UINT64, "DT_UINT64"},
+                                                                    {ge::DT_BOOL, "DT_BOOL"},
+                                                                    {ge::DT_DOUBLE, "DT_DOUBLE"},
+                                                                    {ge::DT_BF16, "DT_BFLOAT16"},
+                                                                    {ge::DT_INT4, "DT_INT4"},
+                                                                    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
+                                                                    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
+                                                                    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0FN"},
+                                                                    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
+
+const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
+    {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
+    {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
+    {BLOCK_TABLE_NAME, {ge::DT_INT32}},
+    {P_SCALE_NAME, {ge::DT_FLOAT}},
+    {ATTN_MASK_NAME, {ge::DT_INT8}},
+    {ATTN_OUT_NAME, {ge::DT_BF16}},
+    {SOFTMAX_LSE_NAME, {ge::DT_FLOAT}},
+};
+
+const std::set<ge::Format> FORMAT_SUPPORT_SET = {ge::FORMAT_ND};
+} // namespace arch92QFA
+
 } // namespace quant_flash_attn
 } // namespace optiling
 #endif // QUANT_FLASH_ATTN_QFA_TILING_INFO_H
