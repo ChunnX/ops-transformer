@@ -44,8 +44,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
         if constexpr (USE_RMS_MID) {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            LocalTensor<float> out = GetResFp32()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = GetX2Cache();
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
@@ -59,7 +59,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     if constexpr (USE_RMS_MID) {
-        LocalTensor<float> midBuf = bufScalar_.Get<float>();
+        LocalTensor<float> midBuf = GetScalarBuf();
         midBuf.SetValue(0, midSqHalf[laneId_]);
         for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
             midBuf.SetValue(i, 0.0f);
@@ -80,10 +80,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
+            LocalTensor<float> gammaEven = GetGamma2Fp32();
+            LocalTensor<float> gammaOdd = GetGamma0Fp32();
             LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+            LocalTensor<T> x2Cache = GetX2Cache();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
             // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -104,7 +104,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
-    LocalTensor<float> partialBuf = bufScalar_.Get<float>();
+    LocalTensor<float> partialBuf = GetScalarBuf();
     if (laneId_ == 1U) {
         partialBuf.SetValue(0, sumSqHalf[1]);
         for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -140,7 +140,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
     // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    LocalTensor<T> x2Cache = GetX2Cache();
     const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
     if constexpr (USE_RMS_MID) {
         DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
@@ -162,13 +162,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
+    // 提前发起gamma1搬运（到gamma0分段），与下方R6的Vector计算重叠。
     StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
+        LocalTensor<T> x2Cache = GetX2Cache()[tOff];
+        LocalTensor<float> gateBuf = GetScalarBuf()[EXP_DIV_ELEM];
         sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
@@ -177,9 +177,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
+        LocalTensor<float> hIn = GetResFp32()[N_MAX * dimTile_];
+        LocalTensor<T> hInCache = GetX2Cache()[tOff];
+        LocalTensor<float> gamma1 = GetGamma0Fp32();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
