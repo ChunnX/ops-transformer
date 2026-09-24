@@ -1199,8 +1199,14 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
                                                   std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
+        if (enableAntiQuant_ && fiaInfo.n1Size > 256U) {
+            std::string reason = "The value of num_heads must be in the range of [1, 256] when antiquant is enabled";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+                                                  std::to_string(fiaInfo.n1Size).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
         if (enableAntiQuant_ && fiaInfo.n2Size > 256U) {
-            std::string reason = "The value of num_key_value_heads must be less than 256 when antiquant is enabled";
+            std::string reason = "The value of num_key_value_heads must be in the range of [1, 256] when antiquant is enabled";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
                                                   std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
