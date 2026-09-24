@@ -242,8 +242,11 @@ private:
         auto copyL12L0ScaleB = asc::te::make_copy(asc::te::copy_l1_to_l0scaleb{});
         constexpr auto mmadAtom = asc::te::make_mmad(asc::te::mmad_operation{}, Tile::MmadTraitMX{});
         const uint64_t halfL0Size = AscendC::TOTAL_L0A_SIZE / DOUBLE_BUFFER_COUNT;
+        // [临时诊断] 与 Iterate 同款 L0 tile 级进度标记（编码见 RunImpl 处注释）
+        volatile __gm__ uint32_t *dbgMarker = reinterpret_cast<volatile __gm__ uint32_t *>(cBasePtr_);
 
         for (uint64_t kL0Offset = 0; kL0Offset < minGmKL1; kL0Offset += baseK_) {
+            const uint32_t l0Tile = static_cast<uint32_t>(kL0Offset / baseK_);
             uint64_t curKL0 = (kL0Offset + baseK_ > minPadKL1) ? (minPadKL1 - kL0Offset) : baseK_;
             uint64_t absKOffset = absKStartA + kaL1Offset + kL0Offset;
             uint64_t scaleOffsetA = GetScaleOffset(kaL1Offset + kL0Offset);
@@ -252,6 +255,7 @@ private:
             uint64_t l0Offset = halfL0Size * (l0PingPong_ & 1UL);
             uint16_t mte1WaitMFlag = static_cast<uint16_t>((l0PingPong_ & 1UL) + M_MTE1_FLAG_0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
+            *dbgMarker = 0x211U + l0Tile;
 
             auto tensorAL0 = CopyNoBiasAToL0(tensorAL1, tensorBlockScaleAL1, copyL12L0A, copyL12L0ScaleA, curM, curKL0,
                                              curKL0ScaleSpan, scaleOffsetA, kaL1Offset, kL0Offset, l0Offset);
