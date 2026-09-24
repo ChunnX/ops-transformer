@@ -24,7 +24,7 @@
 > [!NOTE]
 >
 > <!-- npu="950" id10 -->
-> <term>Ascend 950PR/Ascend 950DT</term>支持`quant_mode=0`（非量化的float16/bfloat16）、`quant_mode=1`（FP8量化）、`quant_mode=2/3`（MXFP4量化）。
+> <term>Ascend 950PR/Ascend 950DT</term>支持`quant_mode=0`（非量化的float16/bfloat16）、`quant_mode=1`（FP8量化）、`quant_mode=2/3`（MXFP4量化）和`quant_mode=5`（HIF8 per-tensor量化）。
 > <!-- end id10 -->
 > <!-- npu="910b,A3" id11 -->
 > <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持`quant_mode=0`（非量化的float16/bfloat16输入）。
@@ -40,7 +40,8 @@
 
   - **非量化场景**（`quant_mode=0`，默认）：Q/K/V 均为 float16 或 bfloat16；
   - **FP8场景**（`quant_mode=1`）：Q/K/V 均为 float8_e4m3fn，携带 FP32 反量化缩放因子，输出反量化为 float16 或 bfloat16；
-  - **MXFP4场景**（`quant_mode=2/3`）：Q/K/V 为 float4_e2m1fn_x2（以 uint8 传入），携带 float8_e8m0fnu descale 张量，输出反量化为 float16 或 bfloat16。
+  - **MXFP4场景**（`quant_mode=2/3`）：Q/K/V 为 float4_e2m1fn_x2（以 uint8 传入），携带 float8_e8m0fnu descale 张量，输出反量化为 float16 或 bfloat16；
+  - **HIF8场景**（`quant_mode=5`）：Q/K/V 均为 HIFLOAT8，分别提供 FP32 per-tensor 反量化缩放因子；softmax结果P的量化缩放因子可选，输出为 float16 或 bfloat16。
 
 - **计算公式**：
 
@@ -100,9 +101,9 @@ cann_ops_transformer.block_sparse_attention(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| query | Tensor | 必选 | 公式中的query | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tq, Nq, D]</li><li>BNSD: [B, Nq, Sq, D]</li><li>BSND: [B, Sq, Nq, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
-| key | Tensor | 必选 | 公式中的key | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
-| value | Tensor | 必选 | 公式中的value | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
+| query | Tensor | 必选 | 公式中的query | float16/bfloat16/float8_e4m3fn/HIFLOAT8/uint8 | ND | <ul><li>TND: [Tq, Nq, D]</li><li>BNSD: [B, Nq, Sq, D]</li><li>BSND: [B, Sq, Nq, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2；HIF8量化时uint8按HIFLOAT8编码解释） | × |
+| key | Tensor | 必选 | 公式中的key | float16/bfloat16/float8_e4m3fn/HIFLOAT8/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2；HIF8量化时uint8按HIFLOAT8编码解释） | × |
+| value | Tensor | 必选 | 公式中的value | float16/bfloat16/float8_e4m3fn/HIFLOAT8/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2；HIF8量化时uint8按HIFLOAT8编码解释） | × |
 | block_sparse_mask | Tensor | 必选 | 块级稀疏mask，1表示保留该块参与计算，0表示跳过该块 | int8 | ND | [B, N, ceil(Sq/block_x), ceil(Skv/block_y)] | × |
 | block_shape | list[int] | 必选 | 稀疏块形状，必须包含两个元素[block_x, block_y] | int64 | - | 长度为2 | - |
 | q_input_layout | string | 可选 | 输入query张量的数据排布格式，默认"TND" | string | - | - | - |
@@ -114,7 +115,7 @@ cann_ops_transformer.block_sparse_attention(
 | actual_seq_lengths_kv | list[int] | TND时必选/其余可选 | 每个batch对应的key/value实际序列长度 | int64 | - | 长度为B | - |
 | return_softmax_lse | bool | 可选 | 是否使能softmaxLse输出，默认False | BOOL | - | - | - |
 | mask_type | int | 可选 | attention计算中的掩码类型，默认0，当前仅支持0 | int64 | - | - | - |
-| quant_mode | int | 可选 | 量化模式，默认0。取值含义：0-非量化；1-FP8量化，Q/K/V为float8_e4m3fn；2-MXFP4 OCP量化，量化scale向下截断；3-MXFP4 CX量化，自定义量化量程，量化scale向上截断。MXFP4量化公式见「约束说明」 | int64 | - | - | - |
+| quant_mode | int | 可选 | 量化模式，默认0。取值含义：0-非量化；1-FP8量化，Q/K/V为float8_e4m3fn；2-MXFP4 OCP量化，量化scale向下截断；3-MXFP4 CX量化，自定义量化量程，量化scale向上截断；5-HIF8 per-tensor量化，Q/K/V为HIFLOAT8。MXFP4量化公式和HIF8约束见「约束说明」 | int64 | - | - | - |
 | block_size | int | 可选 | PagedAttention的block大小，默认0，当前不支持PagedAttention，仅支持0 | int64 | - | - | - |
 | pre_tokens | int | 可选 | 滑窗attention需要向前包含的token数，默认2147483647，当前仅支持2147483647 | int64 | - | - | - |
 | next_tokens | int | 可选 | 滑窗attention需要向后包含的token数，默认2147483647，当前仅支持2147483647 | int64 | - | - | - |
@@ -124,7 +125,7 @@ cann_ops_transformer.block_sparse_attention(
 | q_dequant_scale | Tensor | 可选 | query的反量化缩放因子 | float32/float8_e8m0fnu | ND | 见「约束说明」 | × |
 | k_dequant_scale | Tensor | 可选 | key的反量化缩放因子 | float32/float8_e8m0fnu | ND | 见「约束说明」 | × |
 | v_dequant_scale | Tensor | 可选 | value的反量化缩放因子 | float32/float8_e8m0fnu | ND | 见「约束说明」 | × |
-| p_quant_scale | Tensor | 可选 | softmax结果p的量化缩放因子，预留参数，当前不支持，必须为None | float32 | ND | - | × |
+| p_quant_scale | Tensor | 可选 | softmax结果P的量化缩放因子。仅`quant_mode=5`支持，可传入float32、shape为[1]的Tensor；传入None时默认使用16.0。其他模式必须为None | float32 | ND | 见「约束说明」 | × |
 | attention_out_dtype | ScalarType | 可选 | attentionOut的数据类型，默认None。quant_mode=0时默认与query一致；quant_mode≠0时必选，仅支持float16/bfloat16 | - | - | - | - |
 
 ## 返回值说明
@@ -137,7 +138,7 @@ cann_ops_transformer.block_sparse_attention(
 ## 约束说明
 
 - q_input_layout与kv_input_layout必须保持一致，且仅支持"TND"、"BNSD"、"BSND"。
-- query、key、value的数据类型必须一致，支持float16和bfloat16；FP8（`quant_mode=1`）时三者必须同时为float8_e4m3fn；MXFP4（`quant_mode=2/3`）时三者必须同时为uint8（float4_e2m1fn_x2伪装，每字节打包2个fp4数值）。
+- query、key、value的数据类型必须一致：`quant_mode=0`支持float16和bfloat16；FP8（`quant_mode=1`）时三者必须同时为float8_e4m3fn；MXFP4（`quant_mode=2/3`）时三者必须同时为uint8（float4_e2m1fn_x2伪装，每字节打包2个fp4数值）；HIF8（`quant_mode=5`）时三者必须同时为HIFLOAT8。
 - query、key、value的D轴当前仅支持64或128。
 - query的头数N1（由query的shape推断，接口不显式传入）与num_key_value_heads（N2）需满足 N1 >= N2 && N1 % N2 == 0。
 - block_shape必须包含两个元素[block_x, block_y]，值必须大于0，各产品倍数约束如下：
@@ -155,12 +156,12 @@ cann_ops_transformer.block_sparse_attention(
   - 1：仅支持query、key、value均为fp16时配置，全部采取fp16数据类型，性能更好但精度较低；
   - 4：混合精度运算，online softmax采取fp16/bf16，rescale采取fp32。
   <!-- npu="950,A3,910b" id9 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>仅支持配置为4；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持配置为0或1。
+  - <term>Ascend 950PR/Ascend 950DT</term>上，float16/bfloat16输入支持配置为0或4，FP8/MXFP4量化（`quant_mode=1/2/3`）仅支持4，HIF8量化（`quant_mode=5`）仅支持0；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持配置为0或1。
   <!-- end id9 -->
 - mask_type当前仅支持0，表示不加mask。
 - block_size当前仅支持0，表示不支持paged cache。
 - pre_tokens和next_tokens当前仅支持2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
-- atten_mask、block_table、p_quant_scale为预留参数，当前必须为None。
+- atten_mask和block_table为预留参数，当前必须为None；`p_quant_scale`仅在HIF8（`quant_mode=5`）时可选，其他模式必须为None。
 - quant_mode=0（非量化）时，q_dequant_scale、k_dequant_scale、v_dequant_scale必须为None，attention_out_dtype默认与query一致。
 - quant_mode≠0（量化）时，attention_out_dtype必选，且仅支持float16或bfloat16。
 
@@ -208,6 +209,18 @@ cann_ops_transformer.block_sparse_attention(
 
 - 暂不支持atten_mask、PagedAttention、softmaxLse等高阶特性。
 
+### quant_mode=5（HIF8 per-tensor量化）相关约束
+
+- 仅<term>Ascend 950PR/Ascend 950DT</term>支持。query、key、value必须均为HIFLOAT8，且HIFLOAT8输入必须使用`quant_mode=5`。
+- q_input_layout与kv_input_layout必须一致，仅支持"TND"、"BNSD"、"BSND"；query、key、value的D轴仅支持64或128。
+- q_dequant_scale、k_dequant_scale、v_dequant_scale必须同时传入，均为float32类型、shape为[1]，分别作为整个query、key、value张量共用的反量化缩放因子；不支持per-token或per-channel缩放因子。
+- p_quant_scale可选；传入时必须为float32类型、shape为[1]，用于softmax结果P的量化。传入None时默认使用16.0。
+- inner_precise必须为0，online softmax和rescale均采用float32计算。
+- block_sparse_mask必须传入；block_x和block_y均须为16的倍数。Q/KV序列长度无需被稀疏块大小整除。
+- mask_type必须为0，atten_mask和block_table必须为None，block_size必须为0，pre_tokens和next_tokens必须为2147483647。
+- attention_out_dtype必须为float16或bfloat16；输出shape与query一致。`return_softmax_lse=True`时可返回float32类型的softmax_lse。
+- dst_type_max在此模式下不参与计算，建议传入0.0。
+
 ## 调用示例
 
 - 基础示例（TND布局，float16非量化）
@@ -242,7 +255,7 @@ cann_ops_transformer.block_sparse_attention(
         kv_input_layout="TND",
         num_key_value_heads=Nkv,
         scale_value=1.0 / (D ** 0.5),
-        inner_precise=4,                 # 950PR/950DT 仅支持 4；不传(默认1)会直接崩溃
+        inner_precise=4,                 # 950PR/950DT的float16/bfloat16场景支持0或4；此例使用4，默认1不支持
         actual_seq_lengths=actual_seq_lengths,
         actual_seq_lengths_kv=actual_seq_lengths_kv,
         return_softmax_lse=True,
