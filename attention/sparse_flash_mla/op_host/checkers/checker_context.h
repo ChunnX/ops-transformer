@@ -18,6 +18,11 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_info.h"
 
+#ifndef OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON
+#define OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, paramName, reason) \
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, paramName, "invalid", reason)
+#endif
+
 namespace optiling {
 namespace sparse_mla_checker {
 
