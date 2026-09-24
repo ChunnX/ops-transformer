@@ -616,7 +616,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantizeT
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantizeLocalTokensToRelay()
 {
-    WorkRange tokenRange = GetBalancedWorkRange(m_, aivCoreIdx_, blockAivNum_);
+    WorkRange tokenRange = GetBalancedWorkRange(m_, {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_});
     uint32_t tokenNumInCore = tokenRange.count;
     uint32_t tokenStart = tokenRange.start;
     if (tokenNumInCore == 0U) {
@@ -1356,7 +1356,13 @@ __aicore__ inline auto MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitShare
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr, xOutSize / sizeof(ActivationType));
     LocalTensor<ActivationType> xOutBuf1 =
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr + xOutSize, xOutSize / sizeof(ActivationType));
-    return {xInBuf0, xInBuf1, xOutBuf0, xOutBuf1, mxTempBuf};
+    QuantProcessScratch<ActivationType> scratch{};
+    scratch.xInTensor0 = xInBuf0;
+    scratch.xInTensor1 = xInBuf1;
+    scratch.xOutTensor0 = xOutBuf0;
+    scratch.xOutTensor1 = xOutBuf1;
+    scratch.mxTempTensor = mxTempBuf;
+    return scratch;
 }
 
 // ===============================================================

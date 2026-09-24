@@ -183,10 +183,10 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, const char *nod
                         "valid group name length"),
                     return false);
     OP_TILING_CHECK(worldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "worldSize"), return false);
-    OP_TILING_CHECK(!CheckAttrShapes(nodeName, tokenInfoTable, tokenData), return false, return false);
+    OP_TILING_CHECK(!CheckAttrShapes(nodeName, tokenInfoTable, tokenData), static_cast<void>(0), return false);
     // 判断是否满足其他限制
     int64_t worldSize = *worldSizePtr;
-    OP_TILING_CHECK(!CheckAttrLimits(nodeName, worldSize, tokenInfoTableShape, tokenDataShape), return false,
+    OP_TILING_CHECK(!CheckAttrLimits(nodeName, worldSize, tokenInfoTableShape, tokenDataShape), static_cast<void>(0),
                     return false);
 
     tilingData.ffnToAttentionInfo.worldSize = *worldSizePtr;
@@ -239,8 +239,8 @@ static bool CheckInputDim0Matches(const char *nodeName, const uint64_t xDim0, co
     return true;
 }
 
-static bool CheckInputDim0Dim1(gert::TilingContext *context, const char *nodeName, FFNToAttentionTilingData &tilingData,
-                               const FFNToAttentionTilingConfig &config)
+static bool CheckInputDim0Dim1(const gert::TilingContext *context, const char *nodeName,
+                               FFNToAttentionTilingData &tilingData, const FFNToAttentionTilingConfig &config)
 {
     const gert::StorageShape *xShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape *sessionIdsShape = context->GetInputShape(config.sessionIdsIndex);
@@ -248,7 +248,6 @@ static bool CheckInputDim0Dim1(gert::TilingContext *context, const char *nodeNam
     const gert::StorageShape *tokenIdsShape = context->GetInputShape(config.tokenIdsIndex);
     const gert::StorageShape *expertOffsetsShape = context->GetInputShape(config.expertOffsetsIndex);
     const gert::StorageShape *actualTokenNumShape = context->GetInputShape(config.actualTokenNumIndex);
-    const gert::StorageShape *attnRankTableShape = context->GetOptionalInputShape(config.attnRankTableIndex);
     // 校验输入x的维度Y和H
     const uint64_t xDim0 = xShape->GetStorageShape().GetDim(INDEX_ZERO);
     const uint64_t xDim1 = xShape->GetStorageShape().GetDim(INDEX_ONE);
@@ -265,7 +264,7 @@ static bool CheckInputDim0Dim1(gert::TilingContext *context, const char *nodeNam
 
     OP_TILING_CHECK(!CheckInputDim0Matches(nodeName, xDim0, sessionIdsShape, microBatchIdsShape, tokenIdsShape,
                                            expertOffsetsShape, actualTokenNumShape),
-                    return false, return false);
+                    static_cast<void>(0), return false);
     tilingData.ffnToAttentionInfo.H = xDim1;
     return true;
 }
@@ -333,7 +332,7 @@ static bool CheckInputDim(gert::TilingContext *context, const char *nodeName, FF
 
     OP_TILING_CHECK(!CheckRequiredInputDims(nodeName, xShape, sessionIdsShape, microBatchIdsShape, tokenIdsShape,
                                             expertOffsetsShape, actualTokenNumShape),
-                    return false, return false);
+                    static_cast<void>(0), return false);
 
     OP_TILING_CHECK(!CheckInputDim0Dim1(context, nodeName, tilingData, config),
                     OP_LOGE(nodeName, "Check Inputsdim0ordim1 failed!"), return false);
@@ -357,7 +356,7 @@ static bool CheckInputDim(gert::TilingContext *context, const char *nodeName, FF
     return true;
 }
 
-static bool CheckTokenIdDataTypes(gert::TilingContext *context, const char *nodeName,
+static bool CheckTokenIdDataTypes(const gert::TilingContext *context, const char *nodeName,
                                   const FFNToAttentionTilingConfig &config)
 {
     auto sessionIdDesc = context->GetInputDesc(config.sessionIdsIndex);
@@ -432,7 +431,7 @@ static bool CheckInputDataType(gert::TilingContext *context, const char *nodeNam
     return true;
 }
 
-static bool CheckTokenIdFormats(gert::TilingContext *context, const char *nodeName,
+static bool CheckTokenIdFormats(const gert::TilingContext *context, const char *nodeName,
                                 const FFNToAttentionTilingConfig &config)
 {
     auto sessionIdDesc = context->GetInputDesc(config.sessionIdsIndex);
@@ -471,7 +470,7 @@ static bool CheckTokenIdFormats(gert::TilingContext *context, const char *nodeNa
     return true;
 }
 
-static bool CheckExpertMetadataFormats(gert::TilingContext *context, const char *nodeName,
+static bool CheckExpertMetadataFormats(const gert::TilingContext *context, const char *nodeName,
                                        const FFNToAttentionTilingConfig &config)
 {
     auto expertOffsetDesc = context->GetInputDesc(config.expertOffsetsIndex);
@@ -600,7 +599,7 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, FFNToAtte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName,
+static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const char *nodeName,
                                        const FFNToAttentionTilingConfig &config)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
@@ -630,8 +629,8 @@ static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckCclBufferSize(gert::TilingContext *context, const char *nodeName, const uint32_t attrIndex,
-                                          const uint64_t neededSize)
+static ge::graphStatus CheckCclBufferSize(const gert::TilingContext *context, const char *nodeName,
+                                          const uint32_t attrIndex, const uint64_t neededSize)
 {
     if (attrIndex != UINT32_MAX) {
         auto attrsPtr = context->GetAttrs();
@@ -672,6 +671,28 @@ static void SetPlatformTilingData(gert::TilingContext *context, const char *node
     OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
 }
 
+static ge::graphStatus CheckFFNWindowSize(gert::TilingContext *context, const char *nodeName,
+                                          FFNToAttentionTilingData *tilingData,
+                                          const FFNToAttentionTilingConfig &config)
+{
+    // Check window Size
+    uint64_t neededSize = 0;
+    uint64_t viableWindowSize = 0;
+    CalWinSize(*tilingData, neededSize, viableWindowSize);
+    OP_TILING_CHECK(
+        neededSize > viableWindowSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "neededSize", (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
+            "The value of neededSize must not be greater than viable window size"),
+        return ge::GRAPH_FAILED);
+
+    // Validate ccl_buffer_size when provided (V2 path)
+    OP_TILING_CHECK(
+        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
+        static_cast<void>(0), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const FFNToAttentionTilingConfig &config)
 {
     FFNToAttentionTilingData *tilingData = context->GetTilingData<FFNToAttentionTilingData>();
@@ -692,26 +713,8 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
     OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
                     OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
 
-    // Check window Size
-    uint64_t neededSize = 0;
-    uint64_t viableWindowSize = 0;
-    CalWinSize(*tilingData, neededSize, viableWindowSize);
-    OP_TILING_CHECK(
-        neededSize > viableWindowSize,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "neededSize", (std::to_string(neededSize) + " > " + std::to_string(viableWindowSize)).c_str(),
-            "The value of neededSize must not be greater than viable window size"),
-        return ge::GRAPH_FAILED);
-
-    // Validate ccl_buffer_size when provided (V2 path)
-    OP_TILING_CHECK(
-        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
-        return ge::GRAPH_FAILED, return ge::GRAPH_FAILED);
-
-    // Validate ccl_buffer_size when provided (V2 path)
-    OP_TILING_CHECK(
-        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
-        return ge::GRAPH_FAILED, return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckFFNWindowSize(context, nodeName, tilingData, config) != ge::GRAPH_SUCCESS,
+                    static_cast<void>(0), return ge::GRAPH_FAILED);
 
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
@@ -742,7 +745,7 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext *context)
 }
 
 struct FFNToAttentionCompileInfo {};
-ge::graphStatus TilingParseForFFNToAttention(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForFFNToAttention(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -750,5 +753,7 @@ ge::graphStatus TilingParseForFFNToAttention(gert::TilingParseContext *context)
 
 IMPL_OP_OPTILING(FFNToAttention)
     .Tiling(FFNToAttentionTilingFunc)
-    .TilingParse<FFNToAttentionCompileInfo>(TilingParseForFFNToAttention);
+    .TilingParse<FFNToAttentionCompileInfo>([](gert::TilingParseContext *context) {
+        return TilingParseForFFNToAttention(context);
+    });
 } // namespace MC2Tiling

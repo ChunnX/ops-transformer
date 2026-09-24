@@ -205,6 +205,17 @@
     <td>AI Cpu</td>
     <td>该算子为stem_indexer算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
   </tr>
+  <tr>
+    <td>minimax_build_k2q_csr</td>
+    <td><a href="./minimax_build_k2q_csr/README.md">文档</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>×</td>
+    <td>AI Core</td>
+    <td>将 q2k 索引转为 k2q CSR。Host 按 Meta → Hist → RowPrefix → TilePrefix → Scatter 串行 launch。<br/>torch 接口见 cann_ops_transformer.k2q_csr。</td>
+  </tr>
 </tbody>
 </table>
 
@@ -219,8 +230,8 @@
     # 如要使用DeepSeek-V4，910c环境编译命令示例如下：
     # bash build.sh --pkg --experimental --soc=ascend910_93 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,sparse_attn_sharedkv,sparse_attn_sharedkv_metadata
 
-    # 如要使用DeepSeek-V4，ascend950环境编译命令示例如下：
-    # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
+    # 如要使用 k2q_csr（q2k → k2q CSR）：
+    # bash build.sh --pkg --experimental --soc=ascend950 --ops=minimax_build_k2q_csr
     ```
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas A2 推理系列产品使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --ops：自定义算子名称，多个自定义算子通过`,`分割。

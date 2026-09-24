@@ -42,6 +42,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_send_completion.h"
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
 #include "moe_ep_combine_epilogue_tiling.h"
@@ -567,6 +568,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     LoadTopkIds();
     MaskCheck();
     RecvPhaseReduce();
+    MoeEpCompletion::DrainChannels(mc2Context_, epWorldSize_, tpipe_);
 }
 
 #endif

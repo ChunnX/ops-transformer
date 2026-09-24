@@ -339,12 +339,16 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeC
     if (tilingData->topoType == TOPO_TYPE_URMA) {
         topoType = TILINGKEY_TPL_URMA;
     }
+    int64_t topkIndexType = TILINGKEY_TOPK_INDEX_INT32;
+    if (topoType == TILINGKEY_TPL_MTE && UseInt16TopkIndex(tilingData->numMaxTokensPerRank, tilingData->topK)) {
+        topkIndexType = TILINGKEY_TOPK_INDEX_INT16;
+    }
 
     return GET_TPL_TILING_KEY(
         static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
         *dispatchQuantModePtr, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
         EXPERT_QUANT_MODE_MAP.at(expertParams.shared.quantOutDtype), static_cast<int64_t>(tilingData->combineQuantMode),
-        topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch));
+        topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch), topkIndexType);
 }
 
 /*
@@ -449,7 +453,7 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填：Ascend 950PR/Ascend 950DT 仅支持大于 0 的有限值。
+ * situglu 的 beta 必填：A5 仅支持大于 0 的有限值。
  * linear_beta 选填，给了就切到 LINEAR 子模式，同样仅支持大于 0 的有限值。
  * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
  * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
@@ -1066,7 +1070,8 @@ static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData
  */
 static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferConfig, uint64_t sendTotalNum,
                                             uint64_t alignedTotalRouteItems, uint32_t fixedBufferBytes,
-                                            uint32_t dispatchSlotBytes, uint32_t availableUbBytes)
+                                            uint32_t dispatchSlotBytes, uint32_t topkIndexTypeBytes,
+                                            uint32_t availableUbBytes)
 {
     // 第一阶段：使用基准 batch 确定 ring 深度。
     bufferConfig.routeItemsPerBatch =
@@ -1074,9 +1079,8 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
     bufferConfig.routeBatchCount =
         static_cast<int32_t>(ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
 
-    // MTE 接收侧只保留一个 int32 topK 有效下标 batch。
-    uint32_t routeIndexBufferBytes =
-        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    // MTE 接收侧只保留一个当前编码宽度的 topK 有效下标 batch。
+    uint32_t routeIndexBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * topkIndexTypeBytes;
     uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + routeIndexBufferBytes;
     // dispatchSlotBudgetBytes 是扣除非 ring tensor 后可用于分配 ring slot 的 UB。
     uint32_t dispatchSlotBudgetBytes =
@@ -1093,7 +1097,7 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
         // routeItemBudgetBytes 是有效下标 tensor 可使用的 UB。
         uint32_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithDispatchSlots ? availableUbBytes - fixedBytesWithDispatchSlots : 0U;
-        uint32_t expandedRouteItems = routeItemBudgetBytes / static_cast<uint32_t>(sizeof(int32_t));
+        uint32_t expandedRouteItems = routeItemBudgetBytes / topkIndexTypeBytes;
         expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
         expandedRouteItems =
             static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
@@ -1121,18 +1125,21 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     uint32_t fixedBufferBytes = CalcDispatchFixedBufferBytes(tilingData);
     // 一个 dispatch ring slot 包含 token/scale copy buffer 和一条 32B triple。
     uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+    uint32_t topkIndexTypeBytes =
+        static_cast<uint32_t>(CalcTopkIndexTypeBytes(tilingData->numMaxTokensPerRank, tilingData->topK));
 
     SelectDispatchRingAndRouteBatch(bufferConfig, sendTotalNum, alignedTotalRouteItems, fixedBufferBytes,
-                                    dispatchSlotBytes, availableUbBytes);
+                                    dispatchSlotBytes, topkIndexTypeBytes, availableUbBytes);
     return bufferConfig;
 }
 
-static uint64_t CalcTopkValidIndexRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK)
+static uint64_t CalcTopkValidIndexRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK, uint32_t topkIndexTypeBytes)
 {
     // batch 可能从某个 token 的 topK 段中间开始，slot 按该 batch 可跨越的 token 数上界预留。
     uint64_t maxMatchedRouteItems =
         ops::CeilDiv(static_cast<uint64_t>(routeItemsPerBatch) + topK - 1U, static_cast<uint64_t>(topK));
-    uint64_t validIndexBytes = ops::CeilAlign(maxMatchedRouteItems * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32));
+    uint64_t validIndexBytes =
+        ops::CeilAlign(maxMatchedRouteItems * topkIndexTypeBytes, static_cast<uint64_t>(ALIGN_32));
     return static_cast<uint64_t>(routeItemsPerBatch) / BITS_PER_BYTE + validIndexBytes;
 }
 
@@ -1147,19 +1154,22 @@ static MegaMoeSendMaskBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeT
     // 发送批网格按 numMaxTokensPerRank * topK 容量上界划分，kernel 再按实际 bs * topK 裁剪。
     uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems = ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
+    uint32_t topkIndexTypeBytes =
+        static_cast<uint32_t>(CalcTopkIndexTypeBytes(tilingData->numMaxTokensPerRank, tilingData->topK));
 
     // 第一阶段：使用基准 batch 确定 route ring 深度。
     bufferConfig.routeItemsPerBatch =
         static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH)));
     bufferConfig.routeBatchCount =
         static_cast<int32_t>(ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
-    bufferConfig.bufferBytes = static_cast<uint32_t>(
-        CalcTopkValidIndexRingSlotBytes(static_cast<uint32_t>(bufferConfig.routeItemsPerBatch), tilingData->topK));
+    bufferConfig.bufferBytes = static_cast<uint32_t>(CalcTopkValidIndexRingSlotBytes(
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch), tilingData->topK, topkIndexTypeBytes));
 
-    // topkIdsTensor 和 gather 输出 tensor 各占一份 int32 route batch。
-    uint32_t routeIndexBufferBytes =
+    // topkIdsTensor 保持 int32；生成及 gather 后发送的 index 根据容量使用 int16 或 int32。
+    uint32_t topkIdsBufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
-    uint32_t bytesWithoutRouteBuffers = fixedBufferBytes + 2U * routeIndexBufferBytes;
+    uint32_t topkIndexBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * topkIndexTypeBytes;
+    uint32_t bytesWithoutRouteBuffers = fixedBufferBytes + topkIdsBufferBytes + topkIndexBufferBytes;
     uint32_t routeBufferBudgetBytes =
         availableUbBytes > bytesWithoutRouteBuffers ? availableUbBytes - bytesWithoutRouteBuffers : 0U;
     bufferConfig.bufferCount = static_cast<int32_t>(routeBufferBudgetBytes / bufferConfig.bufferBytes);
@@ -1175,13 +1185,13 @@ static MegaMoeSendMaskBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeT
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
         uint64_t fixedBytesWithRoutePadding =
             static_cast<uint64_t>(fixedBufferBytes) +
-            static_cast<uint64_t>(bufferConfig.bufferCount) * (ALIGN_32 + 2U * sizeof(int32_t));
+            static_cast<uint64_t>(bufferConfig.bufferCount) * (ALIGN_32 + 2U * topkIndexTypeBytes);
         uint64_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithRoutePadding ? availableUbBytes - fixedBytesWithRoutePadding : 0U;
         uint64_t expandedRouteItems =
             routeItemBudgetBytes * BITS_PER_BYTE /
-            (2U * sizeof(int32_t) * BITS_PER_BYTE + static_cast<uint64_t>(bufferConfig.bufferCount) +
-             ops::CeilDiv(static_cast<uint64_t>(bufferConfig.bufferCount) * sizeof(int32_t) * BITS_PER_BYTE,
+            ((sizeof(int32_t) + topkIndexTypeBytes) * BITS_PER_BYTE + static_cast<uint64_t>(bufferConfig.bufferCount) +
+             ops::CeilDiv(static_cast<uint64_t>(bufferConfig.bufferCount) * topkIndexTypeBytes * BITS_PER_BYTE,
                           static_cast<uint64_t>(tilingData->topK)));
         expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
         expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
@@ -1189,8 +1199,8 @@ static MegaMoeSendMaskBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeT
             bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
             bufferConfig.routeBatchCount = static_cast<int32_t>(
                 ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
-            bufferConfig.bufferBytes = static_cast<uint32_t>(
-                CalcTopkValidIndexRingSlotBytes(static_cast<uint32_t>(expandedRouteItems), tilingData->topK));
+            bufferConfig.bufferBytes = static_cast<uint32_t>(CalcTopkValidIndexRingSlotBytes(
+                static_cast<uint32_t>(expandedRouteItems), tilingData->topK, topkIndexTypeBytes));
         }
     }
     return bufferConfig;
@@ -1370,11 +1380,11 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
 
     uint32_t moeQuantOutputBufferBytes = CalcDispatchCopyBufferBytes(tilingData, moeActivationElementsPerByte);
     uint32_t quantOutputBufferBytes = moeQuantOutputBufferBytes;
-    if (isSharedQuantIndependent == 1U) {
-        // 两侧量化分时复用同一组 xOut UB，按较大的单 token 记录预留；共享专家不存储 topK weight。
+    if (isSharedQuantIndependent) {
+        // 独立共享量化增加一组输出双缓冲，输入和 mxTemp 共用；共享输出不包含 topK weight。
         uint32_t sharedQuantOutputBufferBytes =
             CalcQuantTokenAndScaleBytes(tilingData, sharedActivationElementsPerByte);
-        quantOutputBufferBytes = std::max(moeQuantOutputBufferBytes, sharedQuantOutputBufferBytes);
+        quantOutputBufferBytes += sharedQuantOutputBufferBytes;
     }
 
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
@@ -2574,12 +2584,92 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
 }
 
 /*
+ * A8W4 L1 allocation (512 KiB), computed once on host for all AIC/AIV consumers.
+ * M=N=KTile=256: each A/W8-B slot is 64 KiB. Every 32 K elements share one scale
+ * byte; A/B scales cover the SAME K window, with two buffers for each matrix.
+ * Full tiles determine capacity; M/N/K tails use the same slots and smaller copies.
+ *
+ * Physical layout, increasing addresses:
+ * [ A0 ... A(a-1) ][ B physical slots 0 ... b-1 ][ scA0 ][ scB0 ][ scA1 ][ scB1 ]
+ * | a * 64 KiB   | b * 64 KiB                  | 2 * (scaleABytes+scaleBBytes) |
+ * A rotates linearly. B alternates between two halves: b=4 -> physical 0,2,1,3.
+ *
+ * Example max(GMM1 K, GMM2 K)=7168, all offsets below in KiB:
+ * [0] A0 [64] A1 [128] A2 [192] B0 [256] B2 [320] B1 [384] B3
+ * [448] scA0 [464] scB0 [480] scA1 [496] scB1 [512]
+ * a=3, b=4, each scale slot=16 KiB, common scale K window=2048.
+ *
+ * 1. Reserve one full-K scale pair to estimate equal A/B counts, then retain A count.
+ * 2. Reserve only two minimal scale pairs (one KTile each); give remaining slots to B.
+ * 3. Allocate remaining space to two scale pairs, rounding coverage DOWN to KTile.
+ *    The full-K budget in step 1 does not mean all K scales stay resident.
+ * 4. Write every offset here; the device only reads the resulting layout.
+ */
+static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
+{
+    constexpr uint64_t L1_BYTES = 512 * 1024;
+    constexpr uint64_t TILE_M = 256;
+    constexpr uint64_t TILE_N = 256;
+    constexpr uint64_t TILE_K = 256;
+    constexpr uint64_t SCALE_BUFFER_NUM = 2;
+    constexpr uint64_t K_PER_SCALE_BYTE = 32;
+    constexpr uint64_t A_BYTES = TILE_M * TILE_K;
+    constexpr uint64_t B_BYTES = TILE_N * TILE_K;
+    constexpr uint64_t MIN_SCALE_A_BYTES = TILE_M * (TILE_K / K_PER_SCALE_BYTE);
+    constexpr uint64_t MIN_SCALE_B_BYTES = TILE_N * (TILE_K / K_PER_SCALE_BYTE);
+    constexpr uint64_t MIN_SCALE_TOTAL_BYTES = SCALE_BUFFER_NUM * (MIN_SCALE_A_BYTES + MIN_SCALE_B_BYTES);
+
+    // Step 1: scale hardware stores K64 pairs (two scale bytes per row).
+    // M/N and tile byte sizes are already aligned; no padding calculations are needed.
+    const uint64_t fullKScaleBytesPerRow = (maxGmmK + 63) / 64 * 2;
+    const uint64_t fullKScalePairBytes = (TILE_M + TILE_N) * fullKScaleBytesPerRow;
+    MegaMoeL1Layout layout{};
+    layout.aBufferNum = fullKScalePairBytes < L1_BYTES ? (L1_BYTES - fullKScalePairBytes) / (A_BYTES + B_BYTES) : 1;
+    layout.aBufferNum = std::max(uint64_t{1}, std::min(layout.aBufferNum, MegaMoeL1Layout::MAX_A_BUFFER_NUM));
+
+    // Step 2: A count is fixed; reserve two minimal scale pairs before assigning B.
+    layout.bBufferNum = (L1_BYTES - layout.aBufferNum * A_BYTES - MIN_SCALE_TOTAL_BYTES) / B_BYTES;
+    layout.bBufferNum = std::min(layout.bBufferNum, MegaMoeL1Layout::MAX_B_BUFFER_NUM);
+
+    // Step 3: both scale matrices cover the same number of K tiles; each has two slots.
+    const uint64_t scaleBudgetBytes = L1_BYTES - layout.aBufferNum * A_BYTES - layout.bBufferNum * B_BYTES;
+    const uint64_t requiredKTiles = std::max(uint64_t{1}, (maxGmmK + TILE_K - 1) / TILE_K);
+    const uint64_t scaleKTiles = std::min(scaleBudgetBytes / MIN_SCALE_TOTAL_BYTES, requiredKTiles);
+    layout.tileK = TILE_K;
+    layout.scaleK = scaleKTiles * TILE_K;
+    layout.aSlotBytes = A_BYTES;
+    layout.bSlotBytes = B_BYTES;
+    layout.scaleASlotBytes = scaleKTiles * MIN_SCALE_A_BYTES;
+    layout.scaleBSlotBytes = scaleKTiles * MIN_SCALE_B_BYTES;
+
+    // Step 4: pack A, interleaved B and the two scale pairs without overlap.
+    for (uint64_t slot = 0; slot < layout.aBufferNum; ++slot) {
+        layout.aOffsets[slot] = slot * A_BYTES;
+    }
+    const uint64_t bBase = layout.aBufferNum * A_BYTES;
+    for (uint64_t slot = 0; slot < layout.bBufferNum; ++slot) {
+        const uint64_t physicalSlot = (slot & 1) * ((layout.bBufferNum + 1) / 2) + slot / 2;
+        layout.bOffsets[slot] = bBase + physicalSlot * B_BYTES;
+    }
+    const uint64_t scaleBase = bBase + layout.bBufferNum * B_BYTES;
+    for (uint64_t slot = 0; slot < SCALE_BUFFER_NUM; ++slot) {
+        layout.scaleAOffsets[slot] = scaleBase + slot * (layout.scaleASlotBytes + layout.scaleBSlotBytes);
+        layout.scaleBOffsets[slot] = layout.scaleAOffsets[slot] + layout.scaleASlotBytes;
+    }
+    return layout;
+}
+
+/*
  * 在所有校验和资源规划完成后，统一提交 workspace、block dim、tiling key 及诊断信息。
  */
 static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const MegaMoeConfig &config,
                                           const MegaMoeExpertParams &expertParams, MegaMoeTilingData *tilingData,
                                           const char *nodeName)
 {
+    // Shared and routed experts have the same validated H/hiddenDim dimensions.
+    tilingData->a8w4L1Layout =
+        CalcMegaMoeL1Layout(std::max(uint64_t{tilingData->h}, uint64_t{tilingData->hiddenDim / 2U}));
+
     WorkspaceLayout workspaceLayout(tilingData);
     OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
@@ -2587,7 +2677,7 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(
         ascendcPlatform.CalcTschBlockDim(tilingData->blockAivNum, tilingData->aicNum, tilingData->blockAivNum));
-    context->SetScheduleMode(1); // batch model, all cores start at the same time
+    context->SetScheduleMode(1);
     uint64_t tilingKey = CalcTilingKey(context, config, expertParams, tilingData);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);

@@ -1245,25 +1245,25 @@ sym_buffer.update_group(group) -> None
      **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
     ```text
-    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4Byte
 
     // winIn
     offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     // winOut
     offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetC              = max_recv_token_num × hidden × 2B
+    offsetC              = max_recv_token_num × hidden × 2Byte
     winOutTensorSize     = offsetA + offsetC
 
     offsetTensor         = max(winInTensorSize, winOutTensorSize)
-                        + (quant ? max_recv_token_num × 4B : 0)
+                        + (quant ? max_recv_token_num × 4Byte : 0)
 
     // sync flags
-    offsetFlag           = ep_world_size × 512B
-                        + ep_world_size × maxExpertPerRank × 64B
-                        + ep_world_size × 64B
+    offsetFlag           = ep_world_size × 512Byte
+                        + ep_world_size × maxExpertPerRank × 64Byte
+                        + ep_world_size × 64Byte
     ```
     <!-- end id11 -->
 
@@ -1271,19 +1271,19 @@ sym_buffer.update_group(group) -> None
      **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
     ```text
-    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4Byte
 
     // winIn（仅winIn，无winOut）
     offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     offsetTensor         = winInTensorSize
-                        + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
+                        + (quant ? num_max_tokens_per_rank × num_topk × 4Byte : 0)
 
     // sync flags
     syncStateReservedSize = 512KB
-    offsetFlag            = max(ep_world_size × 512B, syncStateReservedSize)
+    offsetFlag            = max(ep_world_size × 512Byte, syncStateReservedSize)
     ```
     <!-- end id12 -->
 
@@ -1319,7 +1319,7 @@ sym_buffer.update_group(group) -> None
     - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)`。
     - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
     - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
-    - `intermediate_hidden`：取值范围为 `512 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 512 == 0`。
+    - `intermediate_hidden`：取值范围为 `512 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 256 == 0`。
     - `dispatch_quant_mode`：取值范围为 `0`（非量化）、`2`（pertoken量化）。
     - `dispatch_quant_out_dtype`：取值为 `torch.int8`。
     - 支持三种计算场景（A16W16、A8W8-INT、A8W4-INT），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。

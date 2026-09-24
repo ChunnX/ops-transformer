@@ -53,6 +53,7 @@ constexpr size_t DIM_THREE = 3;
 // 量化模式
 constexpr uint32_t TG_QUANT_MOD = 1;
 constexpr uint32_t MX_QUANT_MOD = 2;
+constexpr uint32_t PT_QUANT_MOD = 3;
 constexpr uint64_t TG_QUANT_NUMBER = 128UL;
 constexpr uint64_t MX_QUANT_NUMBER = 64UL;
 // MX量化模式下scales的最后一维一定是2，比如(bs, h/64, 2)

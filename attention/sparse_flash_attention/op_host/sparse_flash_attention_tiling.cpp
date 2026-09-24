@@ -999,20 +999,19 @@ ge::graphStatus SFATilingCheck::CheckParaExistence()
     return CheckParaExistenceMla();
 }
 
-static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &name,
+static ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, const std::string &name,
                                            const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(), name + " must be provided");
         return ge::GRAPH_FAILED;
     }
-    int64_t sfaShapeSize = tensor->GetShapeSize();
-    if (sfaShapeSize <= 0) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(sfaShapeSize).c_str(),
+    size = tensor->GetShapeSize();
+    if (size <= 0) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(size).c_str(),
                                                   "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(sfaShapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1363,7 +1362,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQShape()
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    uint32_t sfaShapeSize = 0;
+    int64_t sfaShapeSize = 0;
     if (GetActualSeqLenSize(sfaShapeSize, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query", opName_) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1417,7 +1416,7 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensShape()
     if (opParamInfo_.actualSeqLengths.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    uint32_t sfaShapeSizeKv = 0;
+    int64_t sfaShapeSizeKv = 0;
     if (GetActualSeqLenSize(sfaShapeSizeKv, opParamInfo_.actualSeqLengths.tensor, "actual_seq_lengths_kv", opName_) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1805,7 +1804,7 @@ ge::graphStatus SFAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query", opName_);
 }
@@ -2023,9 +2022,11 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(
-        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
-                                              "When return_softmax_lse is true, layout_kv does not support PA_BSND"),
+        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND && !isA5_,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
+            "When return_softmax_lse is true, layout_kv does not support PA_BSND, it is only supported on Ascend "
+            "950PR/Ascend 950DT"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2194,7 +2195,7 @@ ge::graphStatus SFAInfoParser::GetGSize()
 
 ge::graphStatus SFAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     if (opParamInfo_.actualSeqLengths.tensor != nullptr) {
         actualLenDimsKV_ = opParamInfo_.actualSeqLengths.tensor->GetShapeSize();
     }
@@ -2282,7 +2283,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
         if ((keyStride0_ != 0) && (n2Size_ != 0) && (qkHeadDim_ != 0)) {
             sfaInfo.keyStride0 = keyStride0_ / (n2Size_ * qkHeadDim_);
         } else if (kvLayout_ == SFALayout::PA_BSND) {
-            sfaInfo.keyStride0 = blockSize_;
+            sfaInfo.keyStride0 = static_cast<uint32_t>(blockSize_);
         } else {
             sfaInfo.keyStride0 = 0; // 非PA无需使用stride
         }

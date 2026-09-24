@@ -8,19 +8,19 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import logging
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
 from ..common import CommChannelBuilderManager
 
 _logger = logging.getLogger(__name__)
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
     5: torch.float16,
-    6: torch.float32,
     15: torch.bfloat16,
 }
 
@@ -75,9 +75,15 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             m_per_rank = x1.size(0)
             k = x1.size(1)
             n = x2.size(1)
-            out_dtype = torch.bfloat16
-            if y_dtype is not None:
-                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
+            if y_dtype is None:
+                out_dtype = torch.bfloat16
+            else:
+                torch._check(
+                    y_dtype in _ACL_DTYPE_TO_TORCH_DTYPE,
+                    lambda: f"y_dtype only supports 15 (BF16) / 5 (FP16) ACL dtype enum, "
+                    f"but got {y_dtype}, {ops_error(ErrCode.VALUE)}.",
+                )
+                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE[y_dtype]
             y = x1.new_empty(tuple([m_per_rank * rank_size, n]), dtype=out_dtype)
             gather_out = x1.new_empty(
                 tuple([m_per_rank * rank_size, k]), dtype=x1.dtype
@@ -87,7 +93,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
 
 
 _all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
-_op_module = _all_gather_quant_matmul_op_builder.load()
+_all_gather_quant_matmul_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
@@ -109,7 +115,8 @@ def _npu_all_gather_quant_matmul(
     y_dtype=None,
     comm_mode=None,
 ):
-    result = _op_module.npu_all_gather_quant_matmul(
+    op_module = _all_gather_quant_matmul_op_builder.load()
+    result = op_module.npu_all_gather_quant_matmul(
         context,
         x1,
         x2,
@@ -124,7 +131,7 @@ def _npu_all_gather_quant_matmul(
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        y_dtype,
+        y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode if comm_mode is not None else "aiv_urma",
     )
     return result
@@ -155,6 +162,16 @@ def _check_params(
             f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
             f"Please pass comm_mode='aiv_urma' explicitly."
         )
+    if x1_dtype is not None and not isinstance(x1_dtype, (int, torch.dtype)):
+        raise ValueError(
+            f"x1_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x1_dtype).__name__}."
+        )
+    if x2_dtype is not None and not isinstance(x2_dtype, (int, torch.dtype)):
+        raise ValueError(
+            f"x2_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x2_dtype).__name__}."
+        )
     fp4_dtype_enums = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
         raise ValueError(
@@ -167,6 +184,20 @@ def _check_params(
             f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1)."
         )
     fp8_e8m0_dtype_enum = 293
+    if x1_scale_dtype is not None and not isinstance(
+        x1_scale_dtype, (int, torch.dtype)
+    ):
+        raise ValueError(
+            f"x1_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x1_scale_dtype).__name__}."
+        )
+    if x2_scale_dtype is not None and not isinstance(
+        x2_scale_dtype, (int, torch.dtype)
+    ):
+        raise ValueError(
+            f"x2_scale_dtype must be an int (ACL dtype enum), a torch.dtype, or None, "
+            f"but got {type(x2_scale_dtype).__name__}."
+        )
     if (
         x1_scale is not None
         and x1_scale.dtype == torch.uint8
@@ -329,7 +360,7 @@ def all_gather_quant_matmul(
         x2_dtype=x2_dtype,
         x1_scale_dtype=x1_scale_dtype,
         x2_scale_dtype=x2_scale_dtype,
-        y_dtype=y_dtype,
+        y_dtype=y_dtype if y_dtype is not None else 15,  # ACL BF16
         comm_mode=comm_mode,
     )
     _logger.info("rank=%s, npu_all_gather_quant_matmul returned", rank_id)
