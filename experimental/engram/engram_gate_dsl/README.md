@@ -3,12 +3,12 @@
 `engram_gate` 是 Engram（DSV4.x 系列模型）残差门算子：融合双路 RMS 归一化、
 加权点积、signed-sqrt sigmoid 门控与残差更新，为单融合 kernel（纯单机向量计算，
 无通信）。本算子与 mc2 目录下的
-[engram_fetch](../../mc2/engram_fetch)/[engram_fetch_grad](../../mc2/engram_fetch_grad)
+[engram_fetch](../../../mc2/engram_fetch)/[engram_fetch_grad](../../../mc2/engram_fetch_grad)
 等通信算子同属 Engram 机制：fetch 从分布式 Engram 存储取回 key/value，本算子
 在其后完成门控残差计算。
 
-Kernel 与 NPU host 在 `cannbot-arena-ds41` 的 `net/ops/engram_gate.py`，通过
-`@register("engram_gate")` 打进 net wheel（`cannbot-arena-net-ops`）。本目录
+Kernel 与 NPU host 由 net wheel（`cannbot-arena-net-ops`）的
+`ops/engram_gate.py` 提供，经 `@register("engram_gate")` 注册构建。本目录
 `torch_extension` 只做 `torch.library.custom_op` 算子边界注册，再
 `from ops.engram_gate import engram_gate`。调用前必须安装包含
 `ops.engram_gate` 的 net wheel。
@@ -98,7 +98,7 @@ EngramGate(eps=1e-6, clamp_value=1e-6).run.compile(
 ## 实现说明与性能
 
 经 Ascend950DT_9574（CANN 9.2.0-beta.1）性能调优交付，机制：image_mask select
-融入单融合 kernel、fp32 向量累加 + 权重 UB 驻留 + 56 核行级映射、跨行流水装载
+融入单融合 kernel、fp32 向量累加 + 权重 UB 驻留 + 核数自适应行级映射、跨行流水装载
 提前、out ping-pong + 输入三缓冲旋转。公开 API 与数值契约（BF16 输入、FP32 累
 加、golden 阈值 atol=rtol=2e-2）在调优前后保持不变。
 
@@ -120,9 +120,9 @@ out = engram_gate_torch(x, key, value, weight)          # 与 engram_gate 语义
 ## 运行测试
 
 ```bash
-bash experimental/mc2/engram_gate_dsl/tests/test.sh
+bash experimental/engram/engram_gate_dsl/tests/test.sh
 # 或
-pytest -q experimental/mc2/engram_gate_dsl/tests/
+pytest -q experimental/engram/engram_gate_dsl/tests/
 ```
 
 覆盖：默认形状编译、模型形状精度（含 image_mask 位级一致）、任意 dim（尾部掩码）、
