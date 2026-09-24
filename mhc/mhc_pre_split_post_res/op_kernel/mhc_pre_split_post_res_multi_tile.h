@@ -14,10 +14,12 @@
  *
  * 每个 token 由 coresPerToken（1 或 2）个核并行处理（T < coreNum/2 时双核），
  * phi 行按 phiRowMid 对半分：core0 处理 [0, phiRowMid)，core1 处理 [phiRowMid, phiRows)。
- * 每个 token 分两轮遍历 dimTile：
- *   Phase A：逐 tile CopyIn x 并 Cast，累加平方和，循环结束后计算 invRms（双核各自全量，冗余可接受）
- *   Phase B：再次逐 tile CopyIn x 并 Cast，对本核负责的 phi 行做双缓冲流水 dot 计算
- *            （Phase A 的 xFp32 未持久化，Phase B 需从 xGm_ 重读；双核下每核只算一半 phi 行）
+ * 每个 token 分两轮遍历 dimTile（Phase A 累加平方和求 invRms → Phase B 对本核负责的
+ * phi 行做双缓冲流水 dot；双核下每核只算一半 phi 行，Phase A 双核各自全量冗余可接受）：
+ *   [RegBase-native] arch35（ascend950 主路径）：Phase A Cast 按 tile 偏移拼接持久化整 token
+ *     xFp32（Regbase 归约只读不覆盖），Phase B 直接切片复用、无 GM 重读。
+ *   [compat] 910b（Membase 保留形态，本算子未注册该平台）：AccumSumSq 原地 Mul 写毁 xFp32，
+ *     Phase B 需重新 CopyIn x + Cast 两遍遍历。
  *
  * xHat 本地下标规则（phiRowStart 由调用方传入）：
  *   row < n_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）

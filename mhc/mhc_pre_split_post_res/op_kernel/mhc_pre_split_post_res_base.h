@@ -32,7 +32,6 @@ using namespace AscendC;
 // 路径使用；[RegBase-native] 仅 ascend950（arch35）Regbase 路径使用。
 constexpr int64_t FP32_BYTES = 4;           // [general] float 单元素字节数
 constexpr int64_t FP32_ALIGN_ELEM = 8;      // [general] 向量操作最小对齐单位：32B / 4B = 8 个 float
-constexpr int64_t DATACOPY_MIN_BYTES = 32;  // [general] DataCopy 硬件要求最小块大小
 
 // [compat] 910b 二叉树累加需要：float 下每 repeat 最多处理 256B/4B = 64 个元素
 constexpr uint32_t ONE_REP_FLOAT = 64u;

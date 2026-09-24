@@ -33,7 +33,6 @@ static constexpr int64_t MHC_ALPHA_INDEX = 2;
 static constexpr int64_t MHC_BIAS_INDEX = 3;
 
 // Outputs Index
-static constexpr int64_t MHC_H_POST_INDEX = 0;
 static constexpr int64_t MHC_H_RES_INDEX = 1;
 
 // Attr Index
@@ -306,7 +305,8 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
     const int64_t alignedPhiRows = ((phiRows_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) *
                                    MIN_FP32_ALIGN_ELEM_SIZE;
     const int64_t xTileElemsUb = n_ * dimTile_;
-    const int64_t alignedN = ((n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
+    const int64_t alignedN =
+        ((n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
     const int64_t alignedNN =
         ((n_ * n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
     // fixedUbBytes 逐项镜像 kernel InitCommonBuffers 固定分配（arch35/ascend950 形态，本算子仅注册 950）：

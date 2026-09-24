@@ -16,14 +16,14 @@
 namespace l0op {
 
 bool MhcPreSplitPostRes(
-    const aclTensor* x,
-    const aclTensor* phi,
-    const aclTensor* alpha,
-    const aclTensor* bias,
+    const aclTensor *x,
+    const aclTensor *phi,
+    const aclTensor *alpha,
+    const aclTensor *bias,
     float normEps,
-    const aclTensor* hPostOut,
-    const aclTensor* hResOut,
-    aclOpExecutor* executor);
+    const aclTensor *hPostOut,
+    const aclTensor *hResOut,
+    aclOpExecutor *executor);
 
 }  // namespace l0op
 
