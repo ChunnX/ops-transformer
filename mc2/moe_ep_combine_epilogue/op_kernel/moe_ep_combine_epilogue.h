@@ -57,6 +57,7 @@ using namespace AscendC;
 #define TemplateMoeEpCombineEpilogueTypeFunc XType, HasTopkWeight
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
+static constexpr uint32_t COMBINE_CHANNEL_COUNT = 2U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
@@ -201,6 +202,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     rankId_ = mc2Context_->epRankId;
     combineChannelCount_ = mc2Context_->channelsPerRank;
     combineChannelCount_ = combineChannelCount_ == 0U ? 1U : combineChannelCount_;
+    combineChannelCount_ =
+        combineChannelCount_ < COMBINE_CHANNEL_COUNT ? combineChannelCount_ : COMBINE_CHANNEL_COUNT;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
