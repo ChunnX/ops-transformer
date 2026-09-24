@@ -175,7 +175,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口在参数校验及内部Tiling过程中，出现以下场景时报错：
   <table>
   <tr>
   <td align="center" style="width:169px;">返回值</td>
@@ -187,23 +187,17 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   <td align="left">161001</td>
   <td align="left">传入的xRef、cos或sin是空指针。</td>
   </tr>
-<tr>
-    <td>ACLNN_ERR_PARAM_INVALID</td>
-    <td>161002</td>
-    <td>传入的xRef、cos、sin的数据类型不在支持范围内，或cos与sin的数据类型不一致，或精度组合不满足要求。</td>
+  <tr>
+  <td align="left">ACLNN_ERR_PARAM_INVALID</td>
+  <td align="left">161002</td>
+  <td align="left">传入的xRef、cos、sin的数据类型不在支持范围内，或cos与sin的数据类型不一致，或精度组合不满足要求。</td>
   </tr>
   <tr>
-    <td rowspan="3">ACLNN_ERR_INNER_TILING_ERROR</td>
-    <td rowspan="3">561002</td>
-    <td>Tiling阶段校验失败：传入的rotary_mode不为1，当前仅支持interleave模式。</td>
+  <td align="left">ACLNN_ERR_INNER_TILING_ERROR</td>
+  <td align="left">561002</td>
+  <td align="left">Tiling阶段校验失败：传入的rotary_mode、partialSlice或输入张量形状不满足约束，具体参见“约束说明”。</td>
   </tr>
-  <tr>
-    <td>Tiling阶段校验失败：传入的partialSlice非空时元素个数不为2，或切片范围不满足约束，或切片长度不是2的倍数。</td>
-  </tr>
-  <tr>
-    <td>Tiling阶段校验失败：传入的xRef、cos、sin的形状不满足约束，包括输入维度不为4、cos与sin形状不一致、xRef最后一维大小超过1024或不是2的倍数、cos/sin最后一维大小不等于切片长度，或cos/sin与xRef的形状不满足当前产品支持的广播及排布约束。</td>
-  </tr>
-</table>
+  </table>
 
 ## aclnnInplacePartialRotaryMul
 
