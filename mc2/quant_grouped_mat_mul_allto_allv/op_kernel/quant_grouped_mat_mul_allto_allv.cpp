@@ -74,9 +74,12 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
     if constexpr (TILINGKEY_USING_APACE_IMPL) {
 #if MX_QUANT_MODE
-        // MX(FP4/FP8) 量化路径（AIC_ONLY 任务类型由 tiling key KERNEL_TYPE_SEL 声明，
-        // 无 AIV 参与，无需核型守卫）：GMM 计算切换 apace 模板 GroupedMatmulMxKernel，
-        // 通信采用 AIC 核内 AllToAllV（Hccl），规避 Blaze 与 AIV 通信引擎的共存问题
+        // MX(FP4/FP8) 量化路径：GMM 计算切换 apace 模板 GroupedMatmulMxKernel，
+        // 通信采用 AIC 核内 AllToAllV（Hccl），规避 Blaze 与 AIV 通信引擎的共存问题。
+        // 诊断实验：apace SEL 组合临时由 AIC_ONLY 改为 MIX_AIC_1_2——AIC_ONLY 下共享
+        // 专家 Blaze 一切参数变体挂死（路由专家同栈正常），唯一跑通先例（历史 SWAT 版）
+        // 为 MIX，本实验裁决任务类型是否为根因；MIX 下 AIV 进入本分支必须空退
+        // （BlockMmad 构造/核内事件均为 AIC 语义，AIV 误入即崩）
         using SharedGmmExpertOpType =
             Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
                                         DTYPE_MM_X_SCALE, DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true,
@@ -85,6 +88,10 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
                                          DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
                                          TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
+        if ASCEND_IS_AIV {
+            // MIX 诊断实验：AIV 不参与 apace 路径（通信已改 AIC 核内），直接退出
+            return;
+        }
         // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
         // （通信成功后该值被 recv 数据覆盖，不影响结果）
         if (AscendC::GetBlockIdx() == 0) {
