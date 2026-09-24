@@ -304,40 +304,6 @@ __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTe
     }
 }
 
-// R4/R5首行在一个VF内同时生成平方和与dot0，共享两路x2的寄存加载。
-__aicore__ inline void VFPairSquareAndMulAdd(const LocalTensor<float> &squareDst, const LocalTensor<float> &dotDst,
-                                             const LocalTensor<float> &src0, const LocalTensor<float> &src1,
-                                             const LocalTensor<float> &phi0, const LocalTensor<float> &phi1,
-                                             uint32_t count)
-{
-    __local_mem__ float *squareDstAddr = (__local_mem__ float *)squareDst.GetPhyAddr();
-    __local_mem__ float *dotDstAddr = (__local_mem__ float *)dotDst.GetPhyAddr();
-    __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
-    __local_mem__ float *src1Addr = (__local_mem__ float *)src1.GetPhyAddr();
-    __local_mem__ float *phi0Addr = (__local_mem__ float *)phi0.GetPhyAddr();
-    __local_mem__ float *phi1Addr = (__local_mem__ float *)phi1.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<float> src0Reg, src1Reg, phi0Reg, phi1Reg, squareReg, dotReg;
-        Reg::MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = Reg::UpdateMask<float>(remain);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi0Reg, phi0Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi1Reg, phi1Addr + i * VL_FP32);
-            Reg::Mul(squareReg, src0Reg, src0Reg, mask);
-            Reg::MulAddDst(squareReg, src1Reg, src1Reg, mask);
-            Reg::Mul(dotReg, src0Reg, phi0Reg, mask);
-            Reg::MulAddDst(dotReg, src1Reg, phi1Reg, mask);
-            Reg::StoreAlign(squareDstAddr + i * VL_FP32, squareReg, mask);
-            Reg::StoreAlign(dotDstAddr + i * VL_FP32, dotReg, mask);
-        }
-    }
-}
-
 __aicore__ inline void VFMuls(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar,
                               uint32_t count)
 {
