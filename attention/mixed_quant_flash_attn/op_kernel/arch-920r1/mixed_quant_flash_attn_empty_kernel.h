@@ -38,7 +38,7 @@ __aicore__ inline uint64_t GetSeqLen(GlobalTensor<int32_t> &seqLenGm, uint32_t s
 template <uint8_t IN_OUT_LAYOUT>
 __aicore__ inline void InitEmptyKvSinkLse(
     __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *sinks,
-    __gm__ uint8_t *softmaxLse, const optiling::MixedQuantFlashAttnTiling *tilingData)
+    __gm__ uint8_t *softmaxLse, __tiling_data_ptr__ optiling::MixedQuantFlashAttnTiling *tilingData)
 {
     if ASCEND_IS_AIV {
         const auto &baseParams = tilingData->mixedQuantFlashAttnBaseParams;
@@ -106,7 +106,7 @@ public:
     __aicore__ inline void Init(
         __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *cuSeqLensQ,
         __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *sinks,
-        const optiling::MixedQuantFlashAttnTiling *tilingData)
+        __tiling_data_ptr__ optiling::MixedQuantFlashAttnTiling *tilingData)
     {
         attnOut_ = attnOut;
         softmaxLse_ = softmaxLse;
@@ -148,7 +148,7 @@ private:
     __gm__ uint8_t *seqUsedQ_ = nullptr;
     __gm__ uint8_t *seqUsedKv_ = nullptr;
     __gm__ uint8_t *sinks_ = nullptr;
-    const optiling::MixedQuantFlashAttnTiling *tilingData_ = nullptr;
+    __tiling_data_ptr__ optiling::MixedQuantFlashAttnTiling *tilingData_ = nullptr;
 };
 
 } // namespace MixedQuantFlashAttnEmpty
