@@ -44,11 +44,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            const uint32_t h0 = laneId_ * 2U;
-            const uint32_t h1 = h0 + 1U;
-            MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
-            PipeBarrier<PIPE_V>();
-            midSqHalf[laneId_] += ReduceSumPrecise(out, tD);
+            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
+                const uint32_t h0 = half * 2U;
+                const uint32_t h1 = h0 + 1;
+                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[half] += ReduceSumPrecise(out, tD);
+            }
         } else {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
