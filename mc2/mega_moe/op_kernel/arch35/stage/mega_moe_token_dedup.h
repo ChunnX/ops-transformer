@@ -351,9 +351,9 @@ __aicore__ inline void DedupStoreGroupRowDesc(DedupPrepassWorker<TopkIndexType> 
         // 标量拼装从每 token s 次降到至多 2 次。不得取消该复用：desc 落盘曾是 prepass 的第一大头。
         if (m < 2) {
             asmHalf.SetValue(1U, fullMinK);
-            for (int32_t j = 0; j < survivorCount; ++j) {
-                const uint32_t srcBase = memberBase + static_cast<uint32_t>(j) * 3U;
-                const uint32_t dstBase = DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(j) * 3U;
+            for (int32_t survivorIdx = 0; survivorIdx < survivorCount; ++survivorIdx) {
+                const uint32_t srcBase = memberBase + static_cast<uint32_t>(survivorIdx) * 3U;
+                const uint32_t dstBase = DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(survivorIdx) * 3U;
                 asmHalf.SetValue(dstBase, worker.memberTensor.GetValue(srcBase));
                 asmHalf.SetValue(dstBase + 1U, worker.memberTensor.GetValue(srcBase + 1U));
                 asmHalf.SetValue(dstBase + 2U, worker.memberTensor.GetValue(srcBase + 2U));

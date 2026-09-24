@@ -231,12 +231,12 @@ __aicore__ inline int32_t CompactDedupActiveEntries(
     DedupDispatchViews<TopkIndexType, ActivationType, QuantScaleType> &views, uint32_t strideInt32, int32_t batchCount)
 {
     int32_t activeCount = 0;
-    for (int32_t i = 0; i < batchCount; ++i) {
-        int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+    for (int32_t batchEntryIdx = 0; batchEntryIdx < batchCount; ++batchEntryIdx) {
+        int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(batchEntryIdx) * strideInt32);
         if ((flags & DEDUP_ROW_FLAG_GROUP) != 0 && (flags & DEDUP_ROW_FLAG_FIRST) == 0) {
             continue;
         }
-        views.activeListTensor.SetValue(static_cast<uint32_t>(activeCount), i);
+        views.activeListTensor.SetValue(static_cast<uint32_t>(activeCount), batchEntryIdx);
         ++activeCount;
     }
     return activeCount;
@@ -296,19 +296,19 @@ __aicore__ inline void PublishDedupTileReadyRuns(
     int32_t expertGlobalRowBegin, int32_t batchRowBegin, uint32_t strideInt32, int32_t batchCount)
 {
     int32_t runBegin = -1;
-    for (int32_t i = 0; i <= batchCount; ++i) {
+    for (int32_t batchEntryIdx = 0; batchEntryIdx <= batchCount; ++batchEntryIdx) {
         bool written = false;
-        if (i < batchCount) {
-            int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+        if (batchEntryIdx < batchCount) {
+            int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(batchEntryIdx) * strideInt32);
             written = ((flags & DEDUP_ROW_FLAG_GROUP) == 0) || ((flags & DEDUP_ROW_FLAG_FIRST) != 0);
         }
         if (written) {
-            runBegin = runBegin < 0 ? i : runBegin;
+            runBegin = runBegin < 0 ? batchEntryIdx : runBegin;
             continue;
         }
         if (runBegin >= 0) {
             int32_t segRowBegin = batchRowBegin - expertGlobalRowBegin + runBegin;
-            int32_t segRowEnd = batchRowBegin - expertGlobalRowBegin + i;
+            int32_t segRowEnd = batchRowBegin - expertGlobalRowBegin + batchEntryIdx;
             PublishGmm1TileReady(syncLayout, params, localExpertId, static_cast<int32_t>(PipelineTileM), segRowBegin,
                                  segRowEnd);
             runBegin = -1;
@@ -325,15 +325,15 @@ __aicore__ inline void PublishDedupFanoutMembers(
 {
     __gm__ int32_t *flagBaseAll = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr);
     bool memberSyncDone = false;
-    for (int32_t i = 0; i < batchCount; ++i) {
-        int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(i) * strideInt32);
+    for (int32_t batchEntryIdx = 0; batchEntryIdx < batchCount; ++batchEntryIdx) {
+        int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(batchEntryIdx) * strideInt32);
         if ((flags & DEDUP_ROW_FLAG_FIRST) == 0) {
             continue;
         }
         int32_t memberCount = flags & DEDUP_ROW_MEMBER_COUNT_MASK;
-        for (int32_t j = 1; j < memberCount; ++j) {
+        for (int32_t memberIdx = 1; memberIdx < memberCount; ++memberIdx) {
             int32_t flagSlotOffset = views.descBatchTensor.GetValue(
-                static_cast<uint32_t>(i) * strideInt32 + DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(j) * 3U +
+                static_cast<uint32_t>(batchEntryIdx) * strideInt32 + DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(memberIdx) * 3U +
                 2U);
             if (!memberSyncDone) {
                 SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
