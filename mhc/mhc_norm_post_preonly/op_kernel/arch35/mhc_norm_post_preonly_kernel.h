@@ -247,8 +247,9 @@ private:
     {
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_ + tOff;
-        DataCopyExtParams copyParams = {2U, tD * sizeof(T), (D_ - tD) * sizeof(T),
-                                        (D_ - tD) * sizeof(T), 0};
+        DataCopyExtParams copyParams = {static_cast<uint16_t>(2U), static_cast<uint32_t>(tD * sizeof(T)),
+                                        static_cast<int64_t>((D_ - tD) * sizeof(T)),
+                                        static_cast<int64_t>((D_ - tD) * sizeof(T)), 0};
         DataCopyPadExtParams<T> copyPad = {false, 0, 0, 0};
         DataCopyPad(x2Cache[2U * D_ + tOff], x2OutGm_[followerHeadOffset], copyParams, copyPad);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
