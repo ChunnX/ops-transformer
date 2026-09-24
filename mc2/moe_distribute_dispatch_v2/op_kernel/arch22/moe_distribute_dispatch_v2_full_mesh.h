@@ -383,6 +383,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     hOutSize_ = copyOutAxisH_ * sizeof(XOutType);
     quantInst_.QuantInit(hAlignSize_, hOutSize_, scaleInBytes_, tokenQuantAlign_, hOutSizeAlign_, scaleOutBytes_,
                          axisH_);
+    quantInst_.SetDynamicScalesOutSize(static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.a) *
+                                       scaleOutBytes_);
     // 因为与V2中预留给三元组的大小不一致，需要重新计算
     hOutSizeAlign_ = tokenQuantAlign_ * sizeof(int32_t) + UB_ALIGN;
     if (hasExpertScalesFlag_) {
