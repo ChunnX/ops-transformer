@@ -20,7 +20,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    if (dimLoop_ != 1U) {
+    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
+    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
+    if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
@@ -59,10 +61,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     if constexpr (USE_RMS_MID) {
-        // R2结束后bufResFp32_暂时空闲：整段预取本lane第一个gamma2 head，
+        // R2结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
         // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
-        // R3先完成全部tile，再允许R4/R5复用该缓冲作为归约输入。
-        LocalTensor<float> gammaEvenCache = bufResFp32_.Get<float>();
+        LocalTensor<float> gammaEvenCache = bufGamma0Fp32_.Get<float>();
         FenceVToMte2();
         LoadGammaInto(gammaEvenCache, gamma2Gm_, headBegin * D_, D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -104,11 +105,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
-        }
-
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
             CacheX2TileForLane(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
