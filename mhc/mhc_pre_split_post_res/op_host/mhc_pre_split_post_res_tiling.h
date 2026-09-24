@@ -50,7 +50,6 @@ TILING_DATA_FIELD_DEF(int64_t, baseT);           // 每（组）核处理的toke
 TILING_DATA_FIELD_DEF(int64_t, tailT);           // 最后一（组）核处理的token数
 TILING_DATA_FIELD_DEF(int64_t, coreTAct);        // T轴实际分组数
 TILING_DATA_FIELD_DEF(float, normEps);           // RmsNorm epsilon
-TILING_DATA_FIELD_DEF(int64_t, reduceWorkSize);  // ReduceSum work tensor大小（float元素数）
 TILING_DATA_FIELD_DEF(float, invK);              // 1.0f/(N*D)，RmsNorm均值系数
 END_TILING_DATA_DEF;
 
@@ -104,7 +103,6 @@ protected:
     int64_t  baseT_         = 0;
     int64_t  tailT_         = 0;
     int64_t  coreTAct_      = 0;
-    int64_t  reduceWorkSize_  = 0;   // ReduceSum work tensor大小（float元素数）
     float    invK_            = 0.0f; // 1.0f/(N*D)
 
     float    normEps_     = MHC_DEFAULT_NORM_EPS;

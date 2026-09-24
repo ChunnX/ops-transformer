@@ -39,7 +39,6 @@ struct MhcPreSplitPostResTilingData {
     int64_t tailT;           // 最后一（组）核处理的token数
     int64_t coreTAct;        // T轴实际分组数
     float normEps;           // RmsNorm epsilon
-    int64_t reduceWorkSize;  // ReduceSum work tensor大小（float元素数）
     float invK;              // 1.0f/(N*D)，RmsNorm均值系数
 };
 

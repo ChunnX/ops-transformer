@@ -49,9 +49,6 @@ constexpr int64_t MHC_DIM_ONE = 1;
 constexpr int64_t MHC_DIM_TWO = 2;
 constexpr int64_t MHC_DIM_THREE = 3;
 
-// ReduceSum 每 repeat 的 float 元素数（256B / 4B，与 kernel 侧 base.h ONE_REP_FLOAT 同语义）
-constexpr int64_t MHC_ELEMS_PER_REPEAT_FLOAT = 64;
-
 // FP32 向量操作最小对齐单位（32B / 4B = 8 个 float）
 constexpr int64_t MIN_FP32_ALIGN_ELEM_SIZE = 8;
 

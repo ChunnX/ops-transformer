@@ -276,22 +276,9 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CalcTokenGrouping()
 
 ge::graphStatus MhcPreSplitPostResInfoParser::CalcReduceParams()
 {
-    // ReduceSum work tensor 大小（float），仅 910b kernel 路径消费（arch35 Regbase 归约不用 work 段）：
-    //   xTileElems = n * dimTile
-    //   workNeed = RoundUp(xTileElems / MHC_ELEMS_PER_REPEAT_FLOAT, MIN_FP32_ALIGN_ELEM_SIZE)
-    //             * MIN_FP32_ALIGN_ELEM_SIZE
-    int64_t xTileElems = n_ * dimTile_;
-    int64_t workNeed = ((xTileElems / MHC_ELEMS_PER_REPEAT_FLOAT + MIN_FP32_ALIGN_ELEM_SIZE - 1) /
-                        MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
-    if (workNeed < MIN_FP32_ALIGN_ELEM_SIZE) {
-        workNeed = MIN_FP32_ALIGN_ELEM_SIZE;
-    }
-    reduceWorkSize_ = workNeed;
-
     // invK = 1/(N*D)，RmsNorm 均值系数；host 侧浮点运算，无 aicore 类型限制
     invK_ = 1.0f / static_cast<float>(n_ * d_);
 
-    OP_LOGD(context_->GetNodeName(), "reduceWorkSize: %ld (xTileElems=%ld)", reduceWorkSize_, xTileElems);
     OP_LOGD(context_->GetNodeName(), "invK: %f (N=%ld, D=%ld)", invK_, n_, d_);
     return ge::GRAPH_SUCCESS;
 }
@@ -428,7 +415,6 @@ ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
     tilingData_.set_tailT(tailT_);
     tilingData_.set_coreTAct(coreTAct_);
     tilingData_.set_normEps(normEps_);
-    tilingData_.set_reduceWorkSize(reduceWorkSize_);
     tilingData_.set_invK(invK_);
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
@@ -450,7 +436,6 @@ ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
     OP_LOGD(context_->GetNodeName(), "coreTAct: %ld", coreTAct_);
     OP_LOGD(context_->GetNodeName(), "normEps: %f", normEps_);
     OP_LOGD(context_->GetNodeName(), "invK: %f", invK_);
-    OP_LOGD(context_->GetNodeName(), "reduceWorkSize: %ld", reduceWorkSize_);
     OP_LOGD(context_->GetNodeName(), "tilingKey: %lu", tilingKey_);
     return ge::GRAPH_SUCCESS;
 }

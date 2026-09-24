@@ -91,8 +91,7 @@ protected:
 
         // sumSqBuf_：存放 ReduceSum(x^2) 的累加结果，大小 FP32_ALIGN_ELEM 个 float。
         // sumSqDotBuf_ / dotBuf_：仅结果槽（FP32_ALIGN_ELEM float）——Regbase 归约在寄存器内
-        // 完成，只经 DIST_FIRST_ELEMENT_B32 落结果槽 [0]，无 work 段需求
-        // （tiling 的 reduceWorkSize 字段已不被 kernel 使用，仅 host 侧维护）。
+        // 完成，只经 DIST_FIRST_ELEMENT_B32 落结果槽 [0]，无 work 段需求。
         int64_t reduceBufElems = FP32_ALIGN_ELEM;
         pipe->InitBuffer(sumSqBuf_, static_cast<uint32_t>(FP32_ALIGN_ELEM * FP32_BYTES));
         pipe->InitBuffer(dotBuf_, static_cast<uint32_t>(reduceBufElems * FP32_BYTES));
