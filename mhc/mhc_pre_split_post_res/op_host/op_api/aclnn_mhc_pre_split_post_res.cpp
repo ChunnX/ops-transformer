@@ -9,6 +9,7 @@
 */
 
 #include <cmath>
+#include <vector>
 
 #include "log/log.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -32,12 +33,17 @@ extern "C" {
 
 namespace {
 
-constexpr size_t DIM_NUM_3 = 3;
-constexpr size_t DIM_NUM_4 = 4;
-constexpr size_t DIM_NUM_1 = 1;
-constexpr size_t DIM_NUM_2 = 2;
 // n 固定值与 D 白名单统一来自 mhc_pre_split_post_res_const.h（与 tiling 单一事实来源）
 using optiling::MHC_N_VALUE;
+// 维度数（秩）与维度下标统一来自共享常量头，本文件不再自定义 DIM 常量
+using optiling::MHC_DIM_NUM_1;
+using optiling::MHC_DIM_NUM_2;
+using optiling::MHC_DIM_NUM_3;
+using optiling::MHC_DIM_NUM_4;
+using optiling::MHC_DIM_ZERO;
+using optiling::MHC_DIM_ONE;
+using optiling::MHC_DIM_TWO;
+using optiling::MHC_DIM_THREE;
 
 static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const char *reason)
 {
@@ -91,7 +97,7 @@ static bool CheckTensorDtype(const aclTensor *tensor, const char *name, DataType
     return true;
 }
 
-static bool CheckTensorShape(const aclTensor *tensor, const char *name, std::initializer_list<int64_t> expected)
+static bool CheckTensorShape(const aclTensor *tensor, const char *name, const std::vector<int64_t> &expected)
 {
     auto shape = tensor->GetViewShape();
     if (shape.GetDimNum() != expected.size()) {
@@ -151,27 +157,33 @@ static bool CheckOutputShape(const aclTensor *x, const aclTensor *phi, const acl
                              const aclTensor *hResOut)
 {
     auto xShape = x->GetViewShape();
-    auto phiShape = phi->GetViewShape();
     size_t xRank = xShape.GetDimNum();
-    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_TWO) : xShape.GetDim(optiling::MHC_DIM_ONE);
-    int64_t t = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_ZERO) * xShape.GetDim(optiling::MHC_DIM_ONE)
-                                  : xShape.GetDim(optiling::MHC_DIM_ZERO);
-    int64_t phiRows = phiShape.GetDim(0);
-    if (xRank == DIM_NUM_4) {
-        if (!CheckTensorShape(hPostOut, "hPostOut", {xShape.GetDim(0), xShape.GetDim(1), n})) {
+    int64_t n = xRank == MHC_DIM_NUM_4 ? xShape.GetDim(MHC_DIM_TWO) : xShape.GetDim(MHC_DIM_ONE);
+    int64_t t = xRank == MHC_DIM_NUM_4 ? xShape.GetDim(MHC_DIM_ZERO) * xShape.GetDim(MHC_DIM_ONE)
+                                  : xShape.GetDim(MHC_DIM_ZERO);
+    int64_t phiRows = phi->GetViewShape().GetDim(MHC_DIM_ZERO);
+    // 输出前导维：4 维为 [B,S]，3 维为 [T]；h_post 期望 shape = 前导 + [n]
+    std::vector<int64_t> expected = (xRank == MHC_DIM_NUM_4)
+        ? std::vector<int64_t>{xShape.GetDim(MHC_DIM_ZERO), xShape.GetDim(MHC_DIM_ONE)}
+        : std::vector<int64_t>{t};
+    expected.push_back(n);
+    if (!CheckTensorShape(hPostOut, "hPostOut", expected)) {
+        return false;
+    }
+    // 完整形态（phiRows == n*n+n）：h_res 期望 shape = 前导 + [n, n]
+    if (phiRows == n * n + n) {
+        if (hResOut == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hResOut must not be nullptr when phi has n*n+n rows.");
             return false;
         }
-        if (phiRows == n * n + n) {
-            return hResOut != nullptr && CheckTensorShape(hResOut, "hResOut",
-                                                           {xShape.GetDim(0), xShape.GetDim(1), n, n});
-        }
-    } else {
-        if (!CheckTensorShape(hPostOut, "hPostOut", {t, n})) {
-            return false;
-        }
-        if (phiRows == n * n + n) {
-            return hResOut != nullptr && CheckTensorShape(hResOut, "hResOut", {t, n, n});
-        }
+        expected.push_back(n);
+        return CheckTensorShape(hResOut, "hResOut", expected);
+    }
+    // 仅 post 形态（phiRows == n）：hResOut 允许 nullptr（L0 层会分配 dummy 占位），
+    // 传入时必须为 0 元素 Tensor（与 InferShape 该形态输出 0 元素的契约一致）
+    if (hResOut != nullptr && !hResOut->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hResOut must be nullptr or an empty tensor when phi has only n rows.");
+        return false;
     }
     return true;
 }
@@ -191,15 +203,15 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const a
     CHECK_RET(CheckOutputExecutor(executor, "executor"), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(std::isfinite(normEps) && normEps > 0.0f, ACLNN_ERR_PARAM_INVALID);
     const size_t xRank = x->GetViewShape().GetDimNum();
-    CHECK_RET(xRank == DIM_NUM_3 || xRank == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorRank(phi, "phi", DIM_NUM_2) && CheckTensorRank(alpha, "alpha", DIM_NUM_1) &&
-                  CheckTensorRank(bias, "bias", DIM_NUM_1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(xRank == MHC_DIM_NUM_3 || xRank == MHC_DIM_NUM_4, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTensorRank(phi, "phi", MHC_DIM_NUM_2) && CheckTensorRank(alpha, "alpha", MHC_DIM_NUM_1) &&
+                  CheckTensorRank(bias, "bias", MHC_DIM_NUM_1), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckNonEmptyTensor(x, "x") && CheckNonEmptyTensor(phi, "phi") &&
                   CheckNonEmptyTensor(alpha, "alpha") && CheckNonEmptyTensor(bias, "bias"),
               ACLNN_ERR_PARAM_INVALID);
     auto xShape = x->GetViewShape();
-    int64_t n = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_TWO) : xShape.GetDim(optiling::MHC_DIM_ONE);
-    int64_t d = xRank == DIM_NUM_4 ? xShape.GetDim(optiling::MHC_DIM_THREE) : xShape.GetDim(optiling::MHC_DIM_TWO);
+    int64_t n = xRank == MHC_DIM_NUM_4 ? xShape.GetDim(MHC_DIM_TWO) : xShape.GetDim(MHC_DIM_ONE);
+    int64_t d = xRank == MHC_DIM_NUM_4 ? xShape.GetDim(MHC_DIM_THREE) : xShape.GetDim(MHC_DIM_TWO);
     CHECK_RET(n == MHC_N_VALUE && IsSupportedD(d), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckTensorDtype(x, "x", DataType::DT_BF16) || CheckTensorDtype(x, "x", DataType::DT_FLOAT16),
               ACLNN_ERR_PARAM_INVALID);
@@ -221,10 +233,10 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const a
         CHECK_RET(CheckOutputContiguous(hResOut, "hResOut"), ACLNN_ERR_PARAM_INVALID);
     }
     auto phiShape = phi->GetViewShape();
-    int64_t phiRows = phiShape.GetDim(0);
-    CHECK_RET((phiRows == n || phiRows == n * n + n) && phiShape.GetDim(1) == n * d,
+    int64_t phiRows = phiShape.GetDim(MHC_DIM_ZERO);
+    CHECK_RET((phiRows == n || phiRows == n * n + n) && phiShape.GetDim(MHC_DIM_ONE) == n * d,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(bias->GetViewShape().GetDim(0) == phiRows && CheckOutputShape(x, phi, hPostOut, hResOut),
+    CHECK_RET(bias->GetViewShape().GetDim(MHC_DIM_ZERO) == phiRows && CheckOutputShape(x, phi, hPostOut, hResOut),
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -255,8 +267,10 @@ aclnnStatus MhcPreSplitPostResCommonProcess(const aclTensor *x, const aclTensor 
 
     // h_res 可选输出由 phi 行数决定：N^2+N（完整形态）时必选，N（仅 post 形态）时忽略
     // （形态 B 传 nullptr 或空 tensor 均可，kernel 按 phiRows 跳过 res 段）
-    const int64_t nValue = x->GetViewShape().GetDim(x->GetViewShape().GetDimNum() - 2);
-    if (phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
+    const size_t xRank = x->GetViewShape().GetDimNum();
+    const int64_t nValue = (xRank == MHC_DIM_NUM_4) ? x->GetViewShape().GetDim(MHC_DIM_TWO)
+                                                     : x->GetViewShape().GetDim(MHC_DIM_ONE);
+    if (phi->GetViewShape().GetDim(MHC_DIM_ZERO) == nValue * nValue + nValue) {
         CHECK_COND(hResOut != nullptr, ACLNN_ERR_PARAM_INVALID,
                    "h_res output is required when the number of phi rows is N^2+N (%ld).", nValue * nValue + nValue);
     } else if (hResOut != nullptr) {

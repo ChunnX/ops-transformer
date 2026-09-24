@@ -26,8 +26,7 @@
 #include "kernel_operator_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-// 910b/arch35 共享的算法头；__CCE_AICORE__==310 时 base.h 内部引入
-// arch35/mhc_pre_split_post_res_tiling_data.h 的手写 tiling 结构
+// 算法头（base.h 无条件引入 arch35 手写 tiling 结构，本算子仅注册 ascend950）
 #include "mhc_pre_split_post_res_multi_tile.h"
 // schMode 模板参数与 TilingKey 的映射声明（APT 链路，Host 侧同用）
 #include "arch35/mhc_pre_split_post_res_tiling_key.h"

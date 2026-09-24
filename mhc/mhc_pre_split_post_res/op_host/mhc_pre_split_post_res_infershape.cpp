@@ -22,6 +22,7 @@
 #include "register/op_impl_registry.h"
 #include "log/log.h"
 #include "err/ops_err.h"
+#include "mhc_pre_split_post_res_const.h"
 
 using namespace gert;
 using namespace ge;
@@ -38,12 +39,7 @@ const constexpr int64_t BIAS_INDEX = 3;
 const constexpr int64_t OUT_H_POST_INDEX = 0;
 const constexpr int64_t OUT_H_RES_INDEX = 1;
 
-// Supported input ranks.
-const constexpr int64_t BSND_DIM_NUM = 4;
-const constexpr int64_t TND_DIM_NUM = 3;
-const constexpr int64_t PHI_DIM_NUM = 2;
-const constexpr int64_t ALPHA_DIM_NUM = 1;
-const constexpr int64_t BIAS_DIM_NUM = 1;
+// Supported input ranks：维度数统一引用共享常量头（optiling::MHC_DIM_NUM_*）。
 const constexpr int64_t ALPHA_SIZE = 2;
 
 static void SetShape1D(gert::Shape *shape, int64_t d0)
@@ -88,29 +84,29 @@ static ge::graphStatus InferShape4MhcPreSplitPostRes(InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, alphaShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, biasShape);
 
-    const int64_t xDim = xShape->GetDimNum();
-    const int64_t phiDim = phiShape->GetDimNum();
-    OP_CHECK_IF(xDim != BSND_DIM_NUM && xDim != TND_DIM_NUM,
+    const size_t xDim = xShape->GetDimNum();
+    const size_t phiDim = phiShape->GetDimNum();
+    OP_CHECK_IF(xDim != optiling::MHC_DIM_NUM_4 && xDim != optiling::MHC_DIM_NUM_3,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim).c_str(), "3 or 4"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(phiDim != PHI_DIM_NUM,
+    OP_CHECK_IF(phiDim != optiling::MHC_DIM_NUM_2,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "phi", std::to_string(phiDim).c_str(), "2"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(alphaShape->GetDimNum() != ALPHA_DIM_NUM,
+    OP_CHECK_IF(alphaShape->GetDimNum() != optiling::MHC_DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "alpha",
                                              std::to_string(alphaShape->GetDimNum()).c_str(), "1"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(alphaShape->GetDim(0) != ALPHA_SIZE,
+    OP_CHECK_IF(alphaShape->GetDim(optiling::MHC_DIM_ZERO) != ALPHA_SIZE,
                 OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "alpha",
                                           Ops::Base::ToString(*alphaShape).c_str(), "[2]"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(biasShape->GetDimNum() != BIAS_DIM_NUM,
+    OP_CHECK_IF(biasShape->GetDimNum() != optiling::MHC_DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "bias",
                                              std::to_string(biasShape->GetDimNum()).c_str(), "1"),
                 return GRAPH_FAILED);
 
-    const int64_t n = (xDim == BSND_DIM_NUM) ? xShape->GetDim(2) : xShape->GetDim(1);
-    const int64_t phiDim0 = phiShape->GetDim(0);
+    const int64_t n = (xDim == optiling::MHC_DIM_NUM_4) ? xShape->GetDim(optiling::MHC_DIM_TWO) : xShape->GetDim(optiling::MHC_DIM_ONE);
+    const int64_t phiDim0 = phiShape->GetDim(optiling::MHC_DIM_ZERO);
     // phi 双形态：N^2+N 行（完整形态，输出 h_res=[.,N,N]）或 N 行（仅 post 形态，h_res 为 0 元素）
     const bool fullForm = (phiDim0 == n * n + n);
     OP_CHECK_IF(!fullForm && phiDim0 != n,
@@ -118,7 +114,7 @@ static ge::graphStatus InferShape4MhcPreSplitPostRes(InferShapeContext *context)
                                                       Ops::Base::ToString(*phiShape).c_str(),
                                                       "phi dim0 must be n^2+n or n"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(biasShape->GetDim(0) != phiDim0,
+    OP_CHECK_IF(biasShape->GetDim(optiling::MHC_DIM_ZERO) != phiDim0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "bias",
                                                       Ops::Base::ToString(*biasShape).c_str(),
                                                       "bias dim0 must equal phi dim0"),
@@ -129,9 +125,9 @@ static ge::graphStatus InferShape4MhcPreSplitPostRes(InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, hPostShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, hResShape);
 
-    if (xDim == BSND_DIM_NUM) {
-        const int64_t b = xShape->GetDim(0);
-        const int64_t s = xShape->GetDim(1);
+    if (xDim == optiling::MHC_DIM_NUM_4) {
+        const int64_t b = xShape->GetDim(optiling::MHC_DIM_ZERO);
+        const int64_t s = xShape->GetDim(optiling::MHC_DIM_ONE);
         SetShape3D(hPostShape, b, s, n);
         if (fullForm) {
             SetShape4D(hResShape, b, s, n, n);
@@ -139,7 +135,7 @@ static ge::graphStatus InferShape4MhcPreSplitPostRes(InferShapeContext *context)
             SetShape1D(hResShape, 0);
         }
     } else {
-        const int64_t t = xShape->GetDim(0);
+        const int64_t t = xShape->GetDim(optiling::MHC_DIM_ZERO);
         SetShape2D(hPostShape, t, n);
         if (fullForm) {
             SetShape3D(hResShape, t, n, n);

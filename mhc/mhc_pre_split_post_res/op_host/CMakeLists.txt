@@ -13,28 +13,18 @@ if (BUILD_OPEN_PROJECT)
         mhc_pre_split_post_res_def.cpp
     )
 
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME MhcPreSplitPostRes
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-                    -mllvm -cce-aicore-hoist-movemask=false
-                    --op_relocatable_kernel_binary=true
-                    -O2
-                    -mllvm -cce-aicore-dcci-before-kernel-end=false
-        )
-    else()
-        add_ops_compile_options(
-            OP_NAME MhcPreSplitPostRes
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-                    -mllvm -cce-aicore-hoist-movemask=false
-                    --op_relocatable_kernel_binary=true
-                    -O2
-        )
-    endif()
+    # 本算子仅支持 ascend950（def 仅注册 ascend950，tiling 平台白名单仅 ASCEND950），
+    # 无需按 ASCEND_COMPUTE_UNIT 分支，dcci 选项为 950（arch35）专属
+    add_ops_compile_options(
+        OP_NAME MhcPreSplitPostRes
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+                -mllvm -cce-aicore-hoist-movemask=false
+                --op_relocatable_kernel_binary=true
+                -O2
+                -mllvm -cce-aicore-dcci-before-kernel-end=false
+    )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

@@ -19,31 +19,18 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 // ascend950（arch35）APT 编译链路不为 op_host 侧 BEGIN_TILING_DATA_DEF 宏生成 kernel 侧
-// MhcPreSplitPostResTilingData 定义，此处条件引入 arch35 手写版（namespace 内声明，
-// 使下方 kernel 类的 tiling 形参解析到手写结构）；910b 链路仍用宏生成版。
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+// MhcPreSplitPostResTilingData 定义，引入 arch35 手写版（namespace 内声明，使下方 kernel
+// 类的 tiling 形参解析到手写结构）。本算子仅注册 ascend950，无条件引入。
 #include "arch35/mhc_pre_split_post_res_tiling_data.h"
-#endif
 
 namespace MhcPreSplitPostRes {
 using namespace AscendC;
 
-// 常量架构归属标注（RegBase 专项 RB-5）：[general] 两代际通用；[compat] 仅 910b（Membase）
-// 路径使用；[RegBase-native] 仅 ascend950（arch35）Regbase 路径使用。
-constexpr int64_t FP32_BYTES = 4;           // [general] float 单元素字节数
-constexpr int64_t FP32_ALIGN_ELEM = 8;      // [general] 向量操作最小对齐单位：32B / 4B = 8 个 float
+constexpr int64_t FP32_BYTES = 4;           // float 单元素字节数
+constexpr int64_t FP32_ALIGN_ELEM = 8;      // 向量操作最小对齐单位：32B / 4B = 8 个 float
 
-// [compat] 910b 二叉树累加需要：float 下每 repeat 最多处理 256B/4B = 64 个元素
-constexpr uint32_t ONE_REP_FLOAT = 64u;
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-// [RegBase-native] ascend950（arch35）Regbase：一条向量指令的 fp32 lane 数（寄存器宽度 256B）
+// ascend950（arch35）Regbase：一条向量指令的 fp32 lane 数（寄存器宽度 256B）
 constexpr uint32_t REG_VL_FP32 = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(sizeof(float));
-#endif
-// [compat] 910b WholeReduceSum/BinaryRepeatParams 参数（arch35 Regbase 路径不使用）
-constexpr uint32_t DEFAULT_BLK_STRIDE = 1u;
-constexpr uint32_t DEFAULT_REP_STRIDE = 8u;
-constexpr uint32_t SIXTEEN_U = 16u;
-constexpr uint32_t EIGHT_U = 8u;
 
 constexpr float FLOAT_ZERO = 0.0f;
 constexpr float FLOAT_ONE = 1.0f;
@@ -71,21 +58,6 @@ protected:
         return ((n + FP32_ALIGN_ELEM - 1) / FP32_ALIGN_ELEM) * FP32_ALIGN_ELEM;
     }
 
-    // 功能：将输入 tensor 进行二叉树折叠，直到元素数量 ≤ ONE_REP_FLOAT
-    // 输出：折叠后的总元素数 totalNum
-    __aicore__ inline uint32_t BinaryTreeFold(LocalTensor<float> &srcTmp, uint32_t totalNum)
-    {
-        while (totalNum > ONE_REP_FLOAT) {
-            uint32_t halfNum = DivCeil(totalNum, SIXTEEN_U) * EIGHT_U;
-            SetVectorMask<uint8_t, MaskMode::COUNTER>(0, totalNum - halfNum);
-            BinaryRepeatParams bp;
-            Add<float, false>(srcTmp, srcTmp, srcTmp[halfNum], MASK_PLACEHOLDER, 1, bp);
-            PipeBarrier<PIPE_V>();
-            totalNum = halfNum;
-        }
-        return totalNum;
-    }
-
     __aicore__ inline void InitGM(
         GM_ADDR xAddr, GM_ADDR phiAddr, GM_ADDR alphaAddr, GM_ADDR biasAddr, GM_ADDR hPostAddr, GM_ADDR hResAddr)
     {
@@ -97,24 +69,17 @@ protected:
         hResGm_.SetGlobalBuffer((__gm__ float *)hResAddr, static_cast<uint64_t>(totalLength_) * n_ * n_);
     }
 
-    // doubleBufferX=false（默认，SINGLE_TILE）：xInQueue_ depth=1，squareBuf_ 正常初始化。
-    // doubleBufferX=true（MULTI_TILE）：xInQueue_ depth=2，MTE2 CopyIn 与 Cast/AccumSumSq 重叠；
-    //   squareBuf_ 跳过 InitBuffer（不占 UB），AccumSumSq 改为原地 Mul 到 xFp32，净省 UB。
-    __aicore__ inline void InitCommonBuffers(
-        TPipe *pipe, int64_t dimTile, int64_t reduceWorkSize, bool doubleBufferX = false)
+    // doubleBufferX=false（默认，SINGLE_TILE）：xInQueue_ depth=1。
+    // doubleBufferX=true（MULTI_TILE）：xInQueue_ depth=2，MTE2 CopyIn 与 Cast/AccumSumSq 重叠。
+    __aicore__ inline void InitCommonBuffers(TPipe *pipe, int64_t dimTile, bool doubleBufferX = false)
     {
         int64_t xTileElems = n_ * dimTile;
         // xInQueue_ depth：SINGLE_TILE=1，MULTI_TILE=2（双缓冲）
         pipe->InitBuffer(xInQueue_, doubleBufferX ? NUM_TWO : NUM_ONE, static_cast<uint32_t>(xTileElems * sizeof(T)));
-        // xFp32Buf_：arch35（ascend950）扩为整 token 全量 n*d 并按 tile 拼接布局
-        // （tile d 存于偏移 d*xTileElems）——Regbase 归约对 xFp32 只读不覆盖，Phase B 直接
-        // 复用持久化数据，免除 x 的 GM 重读（PERF-6）；910b 路径 AccumSumSq 原地写毁 xFp32，
-        // 维持 n*dimTile 逐 tile 复用 + 两遍遍历。
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+        // xFp32Buf_：整 token 全量 n*d 并按 tile 拼接布局（tile d 存于偏移 d*xTileElems）——
+        // Regbase 归约对 xFp32 只读不覆盖，MULTI 的 Phase B 直接复用持久化数据，
+        // 免除 x 的 GM 重读（PERF-6）。
         int64_t xFp32Elems = n_ * d_;
-#else
-        int64_t xFp32Elems = xTileElems;
-#endif
         pipe->InitBuffer(xFp32Buf_, static_cast<uint32_t>(xFp32Elems * FP32_BYTES));
         // phiRowQue_ 深度 2：一个 tile 在 MTE2 传输，同时另一个 tile 在向量计算
         pipe->InitBuffer(phiRowQue_, NUM_TWO, static_cast<uint32_t>(xTileElems * FP32_BYTES));
@@ -124,23 +89,12 @@ protected:
         pipe->InitBuffer(xHatBuf_, static_cast<uint32_t>(xHatAligned * FP32_BYTES));
         pipe->InitBuffer(biasBuf_, static_cast<uint32_t>(xHatAligned * FP32_BYTES));
 
-        // sumSqBuf_：存放 ReduceSum(x^2) 的累加结果，大小 FP32_ALIGN_ELEM 个 float
-        // squareBuf_：存放 x^2 的中间结果，仅 910b 路径需要（MULTI_TILE 跳过，改用原地 Mul；
-        //   arch35 Regbase 在寄存器内完成平方与归约、xFp32 只读，SINGLE 也不分配）
-        // sumSqDotBuf_ / dotBuf_：布局为 [result(FP32_ALIGN_ELEM float) | work(reduceWorkSize float)]，
-        //   work 段仅 910b WholeReduceSum 需要；arch35 Regbase 归约只访问结果槽 [0]，不分配 work 段。
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+        // sumSqBuf_：存放 ReduceSum(x^2) 的累加结果，大小 FP32_ALIGN_ELEM 个 float。
+        // sumSqDotBuf_ / dotBuf_：仅结果槽（FP32_ALIGN_ELEM float）——Regbase 归约在寄存器内
+        // 完成，只经 DIST_FIRST_ELEMENT_B32 落结果槽 [0]，无 work 段需求
+        // （tiling 的 reduceWorkSize 字段已不被 kernel 使用，仅 host 侧维护）。
         int64_t reduceBufElems = FP32_ALIGN_ELEM;
-#else
-        int64_t reduceBufElems = FP32_ALIGN_ELEM + reduceWorkSize;
-#endif
         pipe->InitBuffer(sumSqBuf_, static_cast<uint32_t>(FP32_ALIGN_ELEM * FP32_BYTES));
-#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 310)
-        if (!doubleBufferX) {
-            // SINGLE_TILE（910b）：AccumSumSq 需要 squareBuf_ 暂存 x^2（xFp32 在后续 ComputePhiDot 中仍需使用）
-            pipe->InitBuffer(squareBuf_, static_cast<uint32_t>(xTileElems * FP32_BYTES));
-        }
-#endif
         pipe->InitBuffer(dotBuf_, static_cast<uint32_t>(reduceBufElems * FP32_BYTES));
         pipe->InitBuffer(sumSqDotBuf_, static_cast<uint32_t>(reduceBufElems * FP32_BYTES));
 
@@ -177,21 +131,13 @@ protected:
         xInQueue_.EnQue(xLocal);
     }
 
-    // 计算 xFp32 的元素平方和并累加到 sumSq[0]（处理当前 dimTile，N×copyD 个元素）
-    //
-    // inPlace=false（默认，SINGLE_TILE）：将 x^2 写入 squareBuf_，xFp32 内容保持不变，
-    //   供后续 ComputePhiDot 复用。
-    // inPlace=true（MULTI_TILE Phase A）：将 x^2 原地写回 xFp32（squareBuf_ 未初始化，不可用）。
-    //   调用方在此之后立即 FreeTensor(xLocal) 并不再读 xFp32，原地覆盖安全。
-    //
-    // ascend950（arch35）走 Regbase 实现：Reg 内 Mul(x,x) + ReduceSum 段折叠 + 段间 Add 链，
-    // 段内二叉、段间固定顺序的确定性归约；xFp32 只读不覆盖，
-    // INPLACE 模板参数仅为兼容调用点保留。N×copyD 恒为 VL 的整数倍（N=4 × 白名单 D 均 128 对齐），无尾块。
-    template <bool INPLACE>
+    // 计算 xFp32 的元素平方和并累加到 sumSq[0]（处理当前 dimTile，N×copyD 个元素）。
+    // Regbase 实现：Reg 内 Mul(x,x) + ReduceSum 段折叠 + 段间 Add 链——段内二叉、
+    // 段间固定顺序的确定性归约，xFp32 只读不覆盖。N×copyD 恒为 VL 的整数倍
+    // （N=4 × 白名单 D 均 128 对齐），无尾块。
     __aicore__ inline void AccumSumSq(LocalTensor<float> &xFp32, LocalTensor<float> &sumSq, int64_t copyD, TPipe *pipe)
     {
         LocalTensor<float> sqDot = sumSqDotBuf_.Get<float>();
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
         auto srcAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)sqDot.GetPhyAddr();
         const uint32_t elemCount = static_cast<uint32_t>(n_ * copyD);
@@ -226,38 +172,6 @@ protected:
         SetWaitFlag<HardEvent::V_S>(pipe);
         // GetValue/SetValue 是标量读写，不发 V 指令，无需 PipeBarrier
         sumSq.SetValue(0, sumSq.GetValue(0) + sqDot.GetValue(0));
-#else
-        uint32_t totalNum = static_cast<uint32_t>(n_ * copyD);
-        LocalTensor<float> srcTmp;
-        if constexpr (!INPLACE) {
-            // SINGLE_TILE：用 squareBuf_ 暂存 x^2，保留 xFp32 原始值
-            LocalTensor<float> square = squareBuf_.Get<float>();
-            Mul(square, xFp32, xFp32, static_cast<uint32_t>(n_ * copyD));
-            PipeBarrier<PIPE_V>();
-            // 二叉树折叠 + WholeReduceSum，与 ComputePhiDot 保持一致
-            SetMaskCount();
-            srcTmp = square;
-            // 调用通用二叉树折叠
-            totalNum = BinaryTreeFold(srcTmp, totalNum);
-        } else {
-            // MULTI_TILE Phase A：原地 Mul，xFp32 被覆盖为 x^2；squareBuf_ 不访问
-            Mul(xFp32, xFp32, xFp32, static_cast<uint32_t>(n_ * copyD));
-            PipeBarrier<PIPE_V>();
-            // 二叉树折叠 + WholeReduceSum，与 ComputePhiDot 保持一致
-            SetMaskCount();
-            srcTmp = xFp32;
-            // 调用通用二叉树折叠
-            totalNum = BinaryTreeFold(srcTmp, totalNum);
-        }
-        SetVectorMask<uint8_t, MaskMode::COUNTER>(0, totalNum);
-        WholeReduceSum<float, false>(
-            sqDot, srcTmp, MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE, DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
-        SetWaitFlag<HardEvent::V_S>(pipe);
-        ResetMask();
-        SetMaskNorm();
-        // GetValue/SetValue 是标量读写，不发 V 指令，无需 PipeBarrier
-        sumSq.SetValue(0, sumSq.GetValue(0) + sqDot.GetValue(0));
-#endif
     }
 
     // 发起 phi[row] 第 dimOff 列起 copyD 列的 MTE2 搬入，结果入队 phiRowQue_（不等待）
@@ -274,16 +188,14 @@ protected:
         phiRowQue_.EnQue(phiRow);
     }
 
-    // 从 phiRowQue_ 取出 phi 行，与 xFp32 逐元素乘后 ReduceSum，结果累加到 xHat[localIdx]
-    // 910b：二叉树折叠 + WholeReduceSum，全程二叉树累加，规避顺序累加的精度误差。
-    // ascend950（arch35）Regbase：Reg 内 Mul + ReduceSum 段折叠 + 段间 Add 链（段内二叉、
-    // 段间固定顺序的确定性归约）；phi 行 UB 数据只读，不再原地覆盖。
+    // 从 phiRowQue_ 取出 phi 行，与 xFp32 逐元素乘后 ReduceSum，结果累加到 xHat[localIdx]。
+    // Regbase：Reg 内 Mul + ReduceSum 段折叠 + 段间 Add 链（段内二叉、段间固定顺序的
+    // 确定性归约）；phi 行 UB 数据只读，不原地覆盖。
     __aicore__ inline void ComputePhiDot(
         const LocalTensor<float> &xFp32, LocalTensor<float> &xHat, int64_t localIdx, int64_t copyD, TPipe *pipe)
     {
         LocalTensor<float> phiRow = phiRowQue_.DeQue<float>();
         LocalTensor<float> dot = dotBuf_.Get<float>();
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
         auto xAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
         auto phiAddr = (__ubuf__ float *)phiRow.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)dot.GetPhyAddr();
@@ -322,30 +234,6 @@ protected:
         // GetValue/SetValue 是标量读写，不发 V 指令；无需 PipeBarrier
         xHat.SetValue(localIdx, xHat.GetValue(localIdx) + dot.GetValue(0));
         phiRowQue_.FreeTensor(phiRow);
-#else
-        Mul(phiRow, phiRow, xFp32, static_cast<uint32_t>(n_ * copyD));
-        PipeBarrier<PIPE_V>();
-
-        // 二叉树折叠：每轮将后半段加到前半段，直至剩余 ≤ ONE_REP_FLOAT 个元素
-        // phiRow 空间 = n_*D floats（由 phiRowQue_ 保证），原地操作安全
-        SetMaskCount();
-        uint32_t totalNum = static_cast<uint32_t>(n_ * copyD);
-        LocalTensor<float> srcTmp = phiRow;
-        // 调用通用二叉树折叠
-        totalNum = BinaryTreeFold(srcTmp, totalNum);
-
-        // 最后一轮：≤ 64 个元素，WholeReduceSum 一次收尾（全二叉树）
-        SetVectorMask<uint8_t, MaskMode::COUNTER>(0, totalNum);
-        WholeReduceSum<float, false>(
-            dot, srcTmp, MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE, DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
-        SetWaitFlag<HardEvent::V_S>(pipe);
-        ResetMask();
-        SetMaskNorm();
-
-        // GetValue/SetValue 是标量读写，不发 V 指令；无需 PipeBarrier
-        xHat.SetValue(localIdx, xHat.GetValue(localIdx) + dot.GetValue(0));
-        phiRowQue_.FreeTensor(phiRow);
-#endif
     }
 
     // 搬入 count bias 到 biasLocal，
@@ -433,7 +321,6 @@ protected:
     TQue<TPosition::VECIN, NUM_TWO> phiRowQue_;
     TBuf<TPosition::VECCALC> xHatBuf_;
     TBuf<TPosition::VECCALC> sumSqBuf_;
-    TBuf<TPosition::VECCALC> squareBuf_;
     TBuf<TPosition::VECCALC> dotBuf_;
     TBuf<TPosition::VECCALC> sumSqDotBuf_;
     TBuf<TPosition::VECCALC> biasBuf_;

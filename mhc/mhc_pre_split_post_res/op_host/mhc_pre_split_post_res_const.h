@@ -37,6 +37,12 @@ constexpr int64_t MHC_D_7168 = 7168;
 // kernel 侧 base.h 成员默认值因编译环境隔离保留字面量，注释锚定本常量
 constexpr float MHC_DEFAULT_NORM_EPS = 1e-6f;
 
+// shape 维度数（秩）
+constexpr size_t MHC_DIM_NUM_1 = 1;
+constexpr size_t MHC_DIM_NUM_2 = 2;
+constexpr size_t MHC_DIM_NUM_3 = 3;
+constexpr size_t MHC_DIM_NUM_4 = 4;
+
 // shape 维度下标
 constexpr int64_t MHC_DIM_ZERO = 0;
 constexpr int64_t MHC_DIM_ONE = 1;

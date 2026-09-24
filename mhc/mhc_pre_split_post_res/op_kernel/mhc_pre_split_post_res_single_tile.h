@@ -79,7 +79,7 @@ public:
 
         InitGM(xAddr, phiAddr, alphaAddr, biasAddr, hPostAddr, hResAddr);
         // dimTile 传入 d_，表示全量 D 一次搬入，无 dimLoop 循环
-        InitCommonBuffers(pipe, d_, tiling->reduceWorkSize);
+        InitCommonBuffers(pipe, d_);
     }
 
     __aicore__ inline void Process()
@@ -135,7 +135,7 @@ private:
         LocalTensor<float> sumSq = this->sumSqBuf_.template Get<float>();
         Duplicate(sumSq, FLOAT_ZERO, static_cast<uint32_t>(FP32_ALIGN_ELEM));
         PipeBarrier<PIPE_V>();
-        this->template AccumSumSq<false>(xFp32, sumSq, copyD, pipe_);
+        this->AccumSumSq(xFp32, sumSq, copyD, pipe_);
         float invRms = FLOAT_ONE / sqrt(sumSq.GetValue(NUM_ZERO) * invK_ + normEps_);
 
         // 对本核负责的 phi 行做双缓冲流水：预取 row+1 与计算 row 重叠

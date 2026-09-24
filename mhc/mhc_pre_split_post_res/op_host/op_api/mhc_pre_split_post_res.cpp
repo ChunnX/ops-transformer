@@ -20,6 +20,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "../mhc_pre_split_post_res_const.h"
 
 using namespace op;
 
@@ -43,8 +44,9 @@ bool MhcPreSplitPostRes(const aclTensor *x, const aclTensor *phi, const aclTenso
     // 完整形态（phi 行数 N^2+N）必须提供 h_res：dummy 无 shape，kernel 会写 res 段导致越界。
     // （aclnn 层已拦此组合，此处为绕过 aclnn 直调 L0 的防御双保险。）
     const size_t xRank = x->GetViewShape().GetDimNum();
-    const int64_t nValue = x->GetViewShape().GetDim(xRank - 2);
-    if (hResOut == nullptr && phi->GetViewShape().GetDim(0) == nValue * nValue + nValue) {
+    const int64_t nValue = (xRank == optiling::MHC_DIM_NUM_4) ? x->GetViewShape().GetDim(optiling::MHC_DIM_TWO)
+                                                                : x->GetViewShape().GetDim(optiling::MHC_DIM_ONE);
+    if (hResOut == nullptr && phi->GetViewShape().GetDim(optiling::MHC_DIM_ZERO) == nValue * nValue + nValue) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "MhcPreSplitPostRes h_res output is required when the number of phi rows is N^2+N (%ld).",
                 nValue * nValue + nValue);

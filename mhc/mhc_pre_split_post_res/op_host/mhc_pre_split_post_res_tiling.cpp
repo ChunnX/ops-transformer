@@ -42,8 +42,6 @@ static constexpr int64_t MHC_NORM_EPS_INDEX = 0;
 static constexpr int64_t MHC_NUM_ZERO = 0;
 static constexpr int64_t MHC_NUM_ONE = 1;
 static constexpr int64_t MHC_NUM_TWO = 2;
-static constexpr int64_t MHC_NUM_THREE = 3;
-static constexpr int64_t MHC_NUM_FOUR = 4;
 
 // 规格常量（MHC_N_VALUE/D 白名单/MHC_DIM_* 等）统一来自 mhc_pre_split_post_res_const.h
 
@@ -125,12 +123,12 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckXValid()
     OP_CHECK_IF(
         xShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "x InputShape is nullptr."), return ge::GRAPH_FAILED);
 
-    int64_t xDimNum = static_cast<int64_t>(xShapePtr->GetStorageShape().GetDimNum());
-    OP_CHECK_IF(xDimNum != MHC_NUM_THREE && xDimNum != MHC_NUM_FOUR,
+    size_t xDimNum = xShapePtr->GetStorageShape().GetDimNum();
+    OP_CHECK_IF(xDimNum != MHC_DIM_NUM_3 && xDimNum != MHC_DIM_NUM_4,
         OP_LOGE(context_->GetNodeName(), "x: number of dimensions must be 3 (TND) or 4 (BSND)."),
         return ge::GRAPH_FAILED);
 
-    if (xDimNum == MHC_NUM_FOUR) {
+    if (xDimNum == MHC_DIM_NUM_4) {
         // BSND: [B, S, N, D]
         int64_t batchSize = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO);
         int64_t seqLen = xShapePtr->GetStorageShape().GetDim(MHC_DIM_ONE);
@@ -174,7 +172,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckPhiValid()
     OP_CHECK_IF(phiShapePtr == nullptr,
         OP_LOGE(context_->GetNodeName(), "phi InputShape is nullptr."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(phiShapePtr->GetStorageShape().GetDimNum() != MHC_NUM_TWO,
+    OP_CHECK_IF(phiShapePtr->GetStorageShape().GetDimNum() != MHC_DIM_NUM_2,
         OP_LOGE(context_->GetNodeName(), "phi: number of dimensions must be 2."),
         return ge::GRAPH_FAILED);
 
@@ -214,7 +212,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckAlphaValid()
     OP_CHECK_IF(alphaShapePtr == nullptr,
         OP_LOGE(context_->GetNodeName(), "alpha InputShape is nullptr."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(alphaShapePtr->GetStorageShape().GetDimNum() != MHC_NUM_ONE,
+    OP_CHECK_IF(alphaShapePtr->GetStorageShape().GetDimNum() != MHC_DIM_NUM_1,
         OP_LOGE(context_->GetNodeName(), "alpha: number of dimensions must be 1."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(alphaShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO) != MHC_NUM_TWO,
@@ -238,7 +236,7 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckBiasValid()
     OP_CHECK_IF(biasShapePtr == nullptr,
         OP_LOGE(context_->GetNodeName(), "bias InputShape is nullptr."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(biasShapePtr->GetStorageShape().GetDimNum() != MHC_NUM_ONE,
+    OP_CHECK_IF(biasShapePtr->GetStorageShape().GetDimNum() != MHC_DIM_NUM_1,
         OP_LOGE(context_->GetNodeName(), "bias: number of dimensions must be 1."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(biasShapePtr->GetStorageShape().GetDim(MHC_DIM_ZERO) != phiRows_,

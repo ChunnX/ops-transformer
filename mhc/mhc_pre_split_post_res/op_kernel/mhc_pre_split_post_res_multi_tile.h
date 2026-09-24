@@ -12,14 +12,12 @@
  * \file mhc_pre_split_post_res_multi_tile.h
  * \brief KernelMhcMultiTile<T>：MULTI_TILE 路径（dimLoop>1，D 分多个 dimTile 处理）
  *
- * 每个 token 由 coresPerToken（1 或 2）个核并行处理（T < coreNum/2 时双核），
+ * 每个 token 由 coresPerToken（1 或 2）个核并行处理（T×2 ≤ coreNum 时双核），
  * phi 行按 phiRowMid 对半分：core0 处理 [0, phiRowMid)，core1 处理 [phiRowMid, phiRows)。
  * 每个 token 分两轮遍历 dimTile（Phase A 累加平方和求 invRms → Phase B 对本核负责的
- * phi 行做双缓冲流水 dot；双核下每核只算一半 phi 行，Phase A 双核各自全量冗余可接受）：
- *   [RegBase-native] arch35（ascend950 主路径）：Phase A Cast 按 tile 偏移拼接持久化整 token
- *     xFp32（Regbase 归约只读不覆盖），Phase B 直接切片复用、无 GM 重读。
- *   [compat] 910b（Membase 保留形态，本算子未注册该平台）：AccumSumSq 原地 Mul 写毁 xFp32，
- *     Phase B 需重新 CopyIn x + Cast 两遍遍历。
+ * phi 行做双缓冲流水 dot；双核下每核只算一半 phi 行，Phase A 双核各自全量冗余可接受）。
+ * Phase A 的 Cast 按 tile 偏移拼接持久化整 token xFp32（Regbase 归约只读不覆盖），
+ * Phase B 直接切片复用、无 GM 重读（PERF-6）。
  *
  * xHat 本地下标规则（phiRowStart 由调用方传入）：
  *   row < n_  → row - phiRowStart          （core0 的 h_post 段，phiRowStart==0）
@@ -85,9 +83,8 @@ public:
         coreTAct_ = tiling->coreTAct;
 
         InitGM(xAddr, phiAddr, alphaAddr, biasAddr, hPostAddr, hResAddr);
-        // doubleBufferX=true：xInQueue_ depth=2，MTE2 CopyIn(tile d+1) 与
-        // Cast+AccumSumSq(tile d) 重叠；squareBuf_ 跳过 InitBuffer（原地 Mul 替代）
-        InitCommonBuffers(pipe, dimTile_, tiling->reduceWorkSize, true);
+        // doubleBufferX=true：xInQueue_ depth=2，MTE2 CopyIn(tile d+1) 与 Cast+AccumSumSq(tile d) 重叠
+        InitCommonBuffers(pipe, dimTile_, true);
     }
 
     __aicore__ inline void Process()
@@ -163,53 +160,41 @@ private:
             // 先发下一个 tile 的 MTE2（与当前 tile 的向量计算重叠）
             CopyInXTile(xTokenOff, (d + 1) * dimTile_, copyDNext);
 
-            // 等待当前 tile 就绪，Cast → AccumSumSq（原地 Mul）
-            // arch35：Cast 写入 tile 偏移 d*n*dimTile（整 token 拼接持久化，供 Phase B 复用）；
-            // 910b：写偏移 0（xFp32 逐 tile 复用，AccumSumSq 原地写毁数据）
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+            // 等待当前 tile 就绪，Cast → AccumSumSq；Cast 写入 tile 偏移 d*n*dimTile
+            // （整 token 拼接持久化，供 Phase B 复用）
             LocalTensor<float> xFp32 = xFp32Base[d * dimTile_ * n_];
-#else
-            LocalTensor<float> xFp32 = xFp32Base;
-#endif
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
             Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
             // AccumSumSq 末尾已无 PipeBarrier，sumSq.SetValue 是标量写，
             // 下一次循环的 CopyInXTile 不依赖 V 流水，无需额外屏障
-            this->template AccumSumSq<true>(xFp32, sumSq, copyD, pipe_);
+            this->AccumSumSq(xFp32, sumSq, copyD, pipe_);
         }
 
         // 收尾：处理最后一个 tile（已由上一轮或首次预取发出）
         {
             int64_t copyD = TileCopyD(dimLoop_ - 1);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
             LocalTensor<float> xFp32 = xFp32Base[(dimLoop_ - 1) * dimTile_ * n_];
-#else
-            LocalTensor<float> xFp32 = xFp32Base;
-#endif
             LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
             Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
             PipeBarrier<PIPE_V>();
             this->xInQueue_.FreeTensor(xLocal);
             // sumSq.GetValue(0) 是标量读，不依赖 V 流水，无需 PipeBarrier
-            this->template AccumSumSq<true>(xFp32, sumSq, copyD, pipe_);
+            this->AccumSumSq(xFp32, sumSq, copyD, pipe_);
         }
 
         float invRms = FLOAT_ONE / sqrt(sumSq.GetValue(NUM_ZERO) * invK_ + normEps_);
 
         // ── Phase B：双缓冲流水计算 xHat ─────────────────────────────
         //
-        // arch35：Phase A 已将整 token 的 xFp32 按 tile 拼接持久化（Regbase 归约对 xFp32
-        // 只读不覆盖），此处直接按偏移切片复用，免除 x 的 GM 重读（PERF-6：每 token 省一遍
+        // Phase A 已将整 token 的 xFp32 按 tile 拼接持久化（Regbase 归约对 xFp32 只读
+        // 不覆盖），此处直接按偏移切片复用，免除 x 的 GM 重读（PERF-6：每 token 省一遍
         // x 搬运）；tile 内 phiRowQue_（depth=2）对 phi 行做双缓冲。
-        // 910b：AccumSumSq 原地写毁 xFp32，维持两遍遍历（重新 CopyInXTile + Cast，
-        // 流水时序同 Phase A：先 prefetch d+1 再处理 d，外层对 x tile 的 MTE2 加一层重叠）。
         LocalTensor<float> xHat = this->xHatBuf_.template Get<float>();
         Duplicate(xHat, FLOAT_ZERO, static_cast<uint32_t>(AlignUp(phiRows_)));
         PipeBarrier<PIPE_V>();
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
         for (int64_t d = 0; d < dimLoop_; d++) {
             int64_t dimOff = d * dimTile_;
             int64_t copyD = TileCopyD(d);
@@ -222,51 +207,6 @@ private:
             }
             ComputePhiDot(xFp32, xHat, LocalIdxOf(phiRowEnd - 1, phiRowStart), copyD, pipe_);
         }
-#else
-        // 预取 tile 0
-        CopyInXTile(xTokenOff, 0, TileCopyD(0));
-
-        for (int64_t d = 0; d < dimLoop_ - 1; d++) {
-            int64_t dimOff = d * dimTile_;
-            int64_t copyD = TileCopyD(d);
-            int64_t copyDNext = TileCopyD(d + 1);
-
-            // 先发下一个 tile 的 MTE2
-            CopyInXTile(xTokenOff, (d + 1) * dimTile_, copyDNext);
-
-            // 等待当前 tile 就绪，Cast → phi 行双缓冲流水
-            LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
-            LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
-            PipeBarrier<PIPE_V>();
-            this->xInQueue_.FreeTensor(xLocal);
-
-            PrefetchPhiRow(phiRowStart, dimOff, copyD);
-            for (int64_t row = phiRowStart; row < phiRowEnd - 1; row++) {
-                PrefetchPhiRow(row + 1, dimOff, copyD);
-                ComputePhiDot(xFp32, xHat, LocalIdxOf(row, phiRowStart), copyD, pipe_);
-            }
-            ComputePhiDot(xFp32, xHat, LocalIdxOf(phiRowEnd - 1, phiRowStart), copyD, pipe_);
-        }
-
-        // 收尾：处理最后一个 tile
-        {
-            int64_t dimOff = (dimLoop_ - 1) * dimTile_;
-            int64_t copyD = TileCopyD(dimLoop_ - 1);
-            LocalTensor<T> xLocal = this->xInQueue_.template DeQue<T>();
-            LocalTensor<float> xFp32 = this->xFp32Buf_.template Get<float>();
-            Cast(xFp32, xLocal, RoundMode::CAST_NONE, static_cast<uint32_t>(n_ * copyD));
-            PipeBarrier<PIPE_V>();
-            this->xInQueue_.FreeTensor(xLocal);
-
-            PrefetchPhiRow(phiRowStart, dimOff, copyD);
-            for (int64_t row = phiRowStart; row < phiRowEnd - 1; row++) {
-                PrefetchPhiRow(row + 1, dimOff, copyD);
-                ComputePhiDot(xFp32, xHat, LocalIdxOf(row, phiRowStart), copyD, pipe_);
-            }
-            ComputePhiDot(xFp32, xHat, LocalIdxOf(phiRowEnd - 1, phiRowStart), copyD, pipe_);
-        }
-#endif
         // ComputePhiDot 末尾是 SetValue（标量写）+ FreeTensor，不发 V 指令，
         // Muls 不需要等待 V 流水 drain，无需 PipeBarrier
 

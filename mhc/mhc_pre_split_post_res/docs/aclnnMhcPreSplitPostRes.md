@@ -239,7 +239,7 @@ aclnnStatus aclnnMhcPreSplitPostRes(
               <td>x、phi、alpha、bias、hPostOut、hResOut的数据类型不在支持的范围内。</td>
           </tr>
           <tr>
-              <td>x、phi、alpha、bias、hPostOut、hResOut的shape维度不在支持的范围内（如n不等于4、D不在白名单{2560,5120,6144,7168}、phi行数非n或n^2+n、完整形态下hResOut为空）。</td>
+              <td>x、phi、alpha、bias、hPostOut、hResOut的shape维度不在支持的范围内（如n不等于4、D不在白名单{2560,5120,6144,7168}、phi行数非n或n^2+n、完整形态下hResOut为空、仅post形态下hResOut传入非0元素Tensor）。</td>
           </tr>
           <tr>
               <td>normEps不大于0。</td>
