@@ -1,11 +1,7 @@
 # engram_gate_dsl
 
-`engram_gate` 是 Engram（DSV4.x 系列模型）残差门算子：融合双路 RMS 归一化、
-加权点积、signed-sqrt sigmoid 门控与残差更新，为单融合 kernel（纯单机向量计算，
-无通信）。本算子与 mc2 目录下的
-[engram_fetch](../../../mc2/engram_fetch)/[engram_fetch_grad](../../../mc2/engram_fetch_grad)
-等通信算子同属 Engram 机制：fetch 从分布式 Engram 存储取回 key/value，本算子
-在其后完成门控残差计算。
+`engram_gate` 是 Engram 残差门算子：融合双路 RMS 归一化、加权点积、
+signed-sqrt sigmoid 门控与残差更新，为单融合 kernel（纯单机向量计算，无通信）。
 
 Kernel 与 NPU host 由 net wheel（`cannbot-arena-net-ops`）的
 `ops/engram_gate.py` 提供，经 `@register("engram_gate")` 注册构建。本目录
@@ -94,17 +90,6 @@ EngramGate(eps=1e-6, clamp_value=1e-6).run.compile(
     cannbotdsl.TensorSpec((72, 4, 5120), cannbotdsl.dtypes.bfloat16),
 )
 ```
-
-## 实现说明与性能
-
-经 Ascend950DT_9574（CANN 9.2.0-beta.1）性能调优交付，机制：image_mask select
-融入单融合 kernel、fp32 向量累加 + 权重 UB 驻留 + 核数自适应行级映射、跨行流水装载
-提前、out ping-pong + 输入三缓冲旋转。公开 API 与数值契约（BF16 输入、FP32 累
-加、golden 阈值 atol=rtol=2e-2）在调优前后保持不变。
-
-- 10 case 冻结全集（T=1…8192，msprof 10 组 warmup→target 中位）相对基线实现：
-  10/10 有效提升、0 有效回退，几何加速比 **3.42×**
-- 参考形状 T=72, hc_mult=4, dim=5120：kernel 耗时 14.33 → **6.60 us（2.17×）**
 
 ## torch_extension（图模式接入）
 
