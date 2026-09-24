@@ -500,8 +500,8 @@ bool IsFAIRoutingCandidate(const aclTensor* query, const aclTensorList* key, con
         const int64_t blockSize = keyShape.GetDim(DIM_2);
         const int64_t keyHeadDim = keyShape.GetDim(DIM_3);
         const int64_t valueHeadDim = valueShape.GetDim(DIM_3);
-        const bool headDimSupported =
-            queryHeadDim > 0 && queryHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
+        const bool headDimSupported = queryHeadDim > 0 && queryHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim &&
+                                      queryHeadDim == valueHeadDim;
         return headDimSupported && blockSize > 0 && blockSize % BLOCK_SIZE_ALIGNMENT == 0 &&
                blockSize <= MAX_BLOCK_SIZE;
     }
