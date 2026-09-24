@@ -33,6 +33,7 @@ protected:
 
 namespace {
 constexpr uint64_t SKIP_TILING_KEY = UINT64_MAX;
+constexpr uint64_t TOPK_OFFSET_CSA_TILING_KEY = 83903554U;
 constexpr int64_t kBatchSize = 4;
 constexpr int64_t kNumHeadsKv = 1;
 constexpr int64_t kMetadataSize = optiling::SMLA_META_SIZE;
@@ -72,6 +73,7 @@ struct MQSmlaCase {
     std::string socVersion = "Ascend950";
     uint32_t coreNum = 56;
     uint64_t ubSize = 262144;
+    int64_t topkValueMode = 1;
 };
 
 gert::StorageShape ToStorageShape(const std::vector<int64_t> &dims)
@@ -135,7 +137,7 @@ void RunMQSmlaTilingCase(const MQSmlaCase &c, ge::graphStatus expect, uint64_t e
          {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(c.oriWinRight)},
          {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(c.layoutQ)},
          {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(c.layoutKv)},
-         {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(c.topkValueMode)},
          {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, c.socVersion, c.coreNum, c.ubSize);
     ExecuteTestCase(tilingContextPara, expect, expectTilingKey);
@@ -183,6 +185,21 @@ TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_tnd_p
     c.cmpRatio = 4;
     c.cmpMaskMode = 3;
     RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+// Sparse indices are physical token offsets when topk_value_mode=2.
+TEST_F(MixedQuantSparseFlashMlaTiling, test_tiling_csa_topk_offset_mode_success)
+{
+    MQSmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 608};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.cmpBlockTableShape = {4, 8};
+    c.sequsedCmpKvShape = {4};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.topkValueMode = 2;
+    RunMQSmlaTilingCase(c, ge::GRAPH_SUCCESS, TOPK_OFFSET_CSA_TILING_KEY);
 }
 
 // TND q + TND ori_kv success
