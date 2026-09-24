@@ -78,12 +78,17 @@ The format supports ND. The y is two dimensions, for example (M/rank_size, N).
 * @li amax_out: A matrix tensor. The type supports float32. The format supports ND. The amax_out is 1 dimension and only
 one element, for example (1,). The amax_out only supports nullptr in current version. \n
 */
+// A6 (ascend910_96) 专属增量：x1/x2 均为 HiFP4，scale 均为 HiFP4_SCALE。
+// x1 不转置；x2/scale 支持 NN、NT；bias 必须为空，输出仅 FP16/BF16。
+// HiFP4 scale 为 [M,ceil(K/64),1] 及 NT:[N,ceil(K/64),1] / NN:[ceil(K/64),N,1]。
+// 分组不要求 K%64==0；group_size 的默认分组为 [1,1,64]。
+// 具体平台组合由 OpDef 注册，其他平台不新增 HiFP4 签名。
 REG_OP(MatmulReduceScatterV2)
-    .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8, DT_FLOAT4_E2M1}))
-    .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8, DT_FLOAT4_E2M1}))
+    .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_HIFLOAT4}))
+    .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_HIFLOAT4}))
     .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
-    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0}))
-    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0}))
+    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0, DT_HIFLOAT4_SCALE}))
+    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0, DT_HIFLOAT4_SCALE}))
     .OPTIONAL_INPUT(quant_scale, TensorType({DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
     .OUTPUT(amax_out, TensorType({DT_FLOAT}))
