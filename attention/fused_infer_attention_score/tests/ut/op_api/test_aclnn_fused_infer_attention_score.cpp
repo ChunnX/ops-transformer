@@ -41,7 +41,8 @@ BnbdDescs MakeBnbdDescs(const vector<int64_t> &qShape, const vector<int64_t> &kS
     return {TensorDesc(qShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1),
             TensorListDesc({TensorDesc(kShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)}),
             TensorListDesc({TensorDesc(vShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)}),
-            TensorDesc(blockTableShape, ACL_INT32, ACL_FORMAT_ND), IntArrayDesc(vector<int64_t>{4}),
+            TensorDesc(blockTableShape, ACL_INT32, ACL_FORMAT_ND),
+            IntArrayDesc(vector<int64_t>{4}),
             IntArrayDesc(vector<int64_t>{256})};
 }
 } // namespace
