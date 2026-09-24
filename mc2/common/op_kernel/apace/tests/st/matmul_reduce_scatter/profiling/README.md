@@ -7,15 +7,12 @@
 
 ## 报告索引
 
-| 报告 | 位置 | 版本 | 内容 |
-|---|---|---|---|
-| **★ 全量 v5 vs v8 对比** | [reports/full_suite_v5_vs_v8_report.md](reports/full_suite_v5_vs_v8_report.md) | v8 | **101/101 用例** v5/v8 同日同机交替 A/B，v8 优化收益与归因分析 |
-| 性能对比（外部基线） | [reports/comparison_report.md](reports/comparison_report.md) | v1 | 97 用例 ST vs 级联基线 vs MC2 融合算子完整对比 + 劣势专项分析 |
-| 深入分析 | [reports/deep_analysis_report.md](reports/deep_analysis_report.md) | v1 | Bound 判定（R 值）、多维加速比分布、通信效率、rank2/4 配对分析 |
-| 隔离测试 | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) | v1 | 12 代表用例四分量分解、加速比与掩盖率（修正口径）、负值验证 |
-| v6 单 barrier 化 | [reports/sync_barrier_opt_v6_report.md](reports/sync_barrier_opt_v6_report.md) | v6 | 每轮 SyncAll 3→1 消减，fence 移出关键路径的 A/B 验证 |
-| v7 fence 重叠化 + P0/P1-b | [reports/p1_pipeline_v7_p0_probe_report.md](reports/p1_pipeline_v7_p0_probe_report.md) | v7 | fence 移入 PUT 传输窗口 + 本地轮询 A/B，P0 多通道探针否定结论，P1-b tile 策略 |
-| v8 reduceSum 优化 | [reports/p2_rs_optimization_report.md](reports/p2_rs_optimization_report.md) | v8 | 尾声批量加载 + UB 分区竞态修复 A/B，P3 复评关闭，优化方向收官 |
+| 报告 | 位置 | 内容 |
+|---|---|---|
+| **★ 全量 v5 vs v8 对比** | [reports/full_suite_v5_vs_v8_report.md](reports/full_suite_v5_vs_v8_report.md) | **101/101 用例** v5/v8 同日同机交替 A/B；优化收益归因、机制要点、已验证不可行/关闭方向 (P0/P3/P2-AIC) |
+
+> v1 期外部基线对比 (97 用例 vs 级联/MC2 融合)、v6/v7/v8 分轮专项 A/B 报告已移除:
+> 核心结论分别保留于本文件「v1 期外部基线结论」小节与 full_suite 报告第三/四节, 明细可查 git 历史。
 
 ## 当前版本性能总览 (v8, 2026-09-23)
 
@@ -45,8 +42,8 @@
 
 ## v1 期外部基线结论（历史参考，2026-09-12）
 
-> 以下为 v1 版本 (ed7d74662) 的 97 用例对比数据。v8 在此基础上全量提升 5.7%+（v5→v8），
-> 外部相对优势进一步扩大。
+> 以下为 v1 版本 (ed7d74662) 的 97 用例对比数据结论（报告明细已移除, git 历史可查）。
+> v8 在此基础上全量提升 5.7%+（v5→v8），外部相对优势进一步扩大。
 
 | 对比维度 | 结果 |
 |---|---|
@@ -72,15 +69,9 @@
 
 ```
 profiling/
-├── README.md                             # 本文件（总览入口）
-└── reports/                              # 📊 分析报告（读者入口）
-    ├── full_suite_v5_vs_v8_report.md     #   ★ v8 全量 101 case A/B + 归因 (最新)
-    ├── comparison_report.md              #   v1 期 97 用例外部基线对比（历史参考）
-    ├── deep_analysis_report.md           #   v1 期深入分析（历史参考）
-    ├── isolation_metrics_report.md       #   v1 期隔离测试（历史参考）
-    ├── sync_barrier_opt_v6_report.md     #   v6 单 barrier 化验证
-    ├── p1_pipeline_v7_p0_probe_report.md #   v7 fence 重叠化 + P0 多通道探针 + P1-b tile 策略
-    └── p2_rs_optimization_report.md      #   v8 reduceSum 优化验证 + P3 复评关闭
+├── README.md                             # 本文件（总览入口 + v1 期外部基线结论留存）
+└── reports/
+    └── full_suite_v5_vs_v8_report.md     # ★ v8 全量 101 case A/B + 归因 + 机制要点 + 已关闭方向
 ```
 
 > **数据口径**: v8 报告采用同日同机交替双二进制 A/B (v5 md5=1883722f / v8 md5=7abed458)，

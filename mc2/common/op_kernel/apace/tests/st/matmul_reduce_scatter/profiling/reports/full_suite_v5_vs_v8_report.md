@@ -68,12 +68,36 @@
 
 注: 各项收益非线性叠加 (相互掩盖), 上表为各自 A/B 窗口的单项实测; 全量累计 -5.7% 为净效果。
 
+### 机制要点
+
+- **v6**: 每轮 SyncAll 3→1 (3T→T+1), fence 移出串行关键路径。收益有限 (-0.3%) 根因:
+  v5 的 #2/#3 barrier 大部分本不在关键路径 (稳态下 AIV 链短于 AIC 生产者链, 删除的是
+  非关键路径), 硬件 SyncAll (ffts) 为亚微秒级
+- **v7**: fence(t-1) 移入 PUT(t) 传输窗口 (对端上轮 Drain 已完成, 握手快速通过);
+  计算核本地轮询 teamSyncCounter 计数槽 (R 槽扫描 2~4us) 替代经全核 barrier 传播;
+  尾声零额外 barrier。10/10 提升
+- **P1-b**: tile 字节数决定最优轮次 T — 小 N (640) 每 tile 仅 160KB~2.5MB, 逐轮固定开销
+  (WQE+drain+fence+barrier) 占比过高, 减轮次净收益为正 (row17 单 tile -16.4% / row16 -7.1% /
+  row47 T=4 甜点 -9.4%); 均衡 case 默认 T=4 已最优 (row10 强制 T=1 恶化 +32%)
+- **v8**: reduceSum 双模式 — 在途 (与 PUT 并发) 逐 rank 串行 + 逐 rank V_MTE2 排空, 为并发
+  PUT 让出 GM/互连带宽 (全量批量实测与 PUT 争抢带宽, T≥4 通信并发场景回退 +2.6~5.7%);
+  尾声 (PUT 已 drain) rankDim 份全量批量交叠加载延迟。附带修复 v7 潜伏的 fence 轮询 buffer
+  与 RS slot UB 重叠竞态 (RsParams.ubReservedBytes 显式分区根除)
+
+### 已验证不可行 / 关闭的方向
+
+| 方向 | 结论 |
+|---|---|
+| P0 多通道 PUT 带宽扩展 | 本机不可行: 每 rank pair 仅 1 条 UBC_CTP link; 共享队列可建第二 channel 但共享同一 jetty, 单 pair ~40GB/s 为链路物理上限 (双通道探针 6 case 实测 ±0.6% 噪声级) |
+| P3 fence 协议本地化 | 已关闭: v7 已将 fence 重叠化 + RS 路径本地轮询; 通信 bound case 关键路径为链路带宽 (v8 op_summary idle 60~67% 由带宽决定), 残余同步压缩无收益 |
+| P2-AIC Blaze tiling | 递延: 安全旋钮仅 SetMaxBaseM / EnableBaseMHalving (baseK/stepK/scaleKL1 与 L1 深度耦合不可后补); 大 K 族 (K=5472/6144, vs 库算子 matmul 效率差 ~10%) 建议经 aiss-tiling-solver 专项调优 |
+
 ## 四、与既有外部基线的关系
 
-09-12 报告 (comparison_report.md) 的级联基线/MC2 融合数据为跨日测量 (环境安装路径不同, 实测
-row17 漂移达 29%), 不作直接对比; 本报告采用同日 v5/v8 交替测量消除环境漂移。原 97 case 中
-apace ST 已 93 case 优于级联基线 (中位 1.23x), 本轮 101 case 在 v5 基础上再 uniformly 提升
-5.7%, 外部相对优势进一步扩大。
+09-12 v1 期测量的级联基线/MC2 融合数据为跨日测量 (环境安装路径不同, 实测 row17 漂移达 29%),
+不作直接对比; 本报告采用同日 v5/v8 交替测量消除环境漂移。v1 期 97 case 中 apace ST 已
+93 case 优于级联基线 (中位 1.23x)、88 case 优于 MC2 融合算子 (中位 1.14x, 结论保留于
+README), 本轮 101 case 在 v5 基础上再全量提升 5.7%, 外部相对优势进一步扩大。
 
 ## 五、全量明细 (101 case)
 
@@ -185,8 +209,8 @@ apace ST 已 93 case 优于级联基线 (中位 1.23x), 本轮 101 case 在 v5 �
 
 | 项 | 位置 |
 |---|---|
-| 各轮专项报告 | `sync_barrier_opt_v6_report.md`, `p1_pipeline_v7_p0_probe_report.md`, `p2_rs_optimization_report.md` |
 | 复现路径 | `../scripts/gen_data.py` 生成输入 → `../run.sh` + msprof task-based 采集 → `../scripts/parse_prof.py` 解析 |
+| 历史专项报告 | 已移除 (v1 外部基线对比 / v6 / v7+P0 探针 / v8 分轮 A/B 明细), 核心结论已并入本报告与 README, 明细可查 git 历史
 
 原始 msprof PROF 数据 (v5/v8 交替各 101 case × 4 rank, 12 批次) 体积较大不入库, 本报告表格
 为同日 A/B 最终汇总; A/B 双二进制同源同环境编译 (v5 md5=1883722f / v8 md5=7abed458)。
