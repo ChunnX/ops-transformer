@@ -20,15 +20,11 @@
 #include "../allto_allv_quant_grouped_mat_mul_tiling_key.h"
 #include "../allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../mc2_templates/mc2_templates.h"
-#include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_tiling_data.h"
 #include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_hcomm_impl.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
-
-static_assert(sizeof(QuantAlltoAllvGroupedMatmulTilingData) >= sizeof(Apace::hcommA2avQuantGmmTilingData),
-              "APACE tiling must fit in the registered tiling buffer");
 
 #if (((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
@@ -63,16 +59,16 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     REGISTER_TILING_DEFAULT(QuantAlltoAllvGroupedMatmulTilingData);
     if constexpr (TILINGKEY_USING_APACE_IMPL) {
 #if A2AV_GMM_APACE_DTYPE_SUPPORTED
-        GET_TILING_DATA_WITH_STRUCT(Apace::hcommA2avQuantGmmTilingData, tilingData, tilingGM);
+        GET_TILING_DATA_WITH_STRUCT(QuantAlltoAllvGroupedMatmulTilingData, tilingData, tilingGM);
         constexpr HcclServerType serverType = TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
-        Apace::AllToAllvQuantGmmHcommImpl<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_Y,
+        Apace::AllToAllvQuantGmmHcommImpl<QuantAlltoAllvGroupedMatmulTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                          DTYPE_GMM_Y,
                                           TILINGKEY_GMM_WEIGHT_TRANSPOSE, TILINGKEY_MM_WEIGHT_TRANSPOSE, serverType>
             op(&tilingData);
         op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM,
-                mmweightOptionalGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace,
-                tilingGM);
+                mmweightOptionalGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace);
         op.Run();
 #endif
         return;

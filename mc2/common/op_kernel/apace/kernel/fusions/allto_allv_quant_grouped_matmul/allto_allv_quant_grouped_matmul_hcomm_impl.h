@@ -20,7 +20,7 @@
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "../../matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
-#include "allto_allv_quant_grouped_matmul_tiling_data.h"
+#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
 namespace Apace {
 
@@ -36,17 +36,17 @@ constexpr AscendC::HcclDataType GetA2avGmmHcclDataType()
     }
 }
 
-template <typename AType, typename BType, typename CType, bool TransB, bool TransMmB,
+template <typename TilingDataType, typename AType, typename BType, typename CType, bool TransB, bool TransMmB,
           AscendC::HcclServerType ServerType>
 class AllToAllvQuantGmmHcommImpl {
 public:
-    explicit __aicore__ inline AllToAllvQuantGmmHcommImpl(hcommA2avQuantGmmTilingData *tilingData)
+    explicit __aicore__ inline AllToAllvQuantGmmHcommImpl(const TilingDataType *tilingData)
         : tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(GM_ADDR gmmX, GM_ADDR gmmXScale, GM_ADDR gmmWeight, GM_ADDR gmmWeightScale,
                                 GM_ADDR mmX, GM_ADDR mmXScale, GM_ADDR mmWeight, GM_ADDR mmWeightScale,
-                                GM_ADDR gmmY, GM_ADDR mmY, GM_ADDR permuteOut, GM_ADDR workspace, GM_ADDR tilingGM)
+                                GM_ADDR gmmY, GM_ADDR mmY, GM_ADDR permuteOut, GM_ADDR workspace)
     {
         xGM_ = gmmX;
         xScaleGM_ = gmmXScale;
@@ -58,25 +58,28 @@ public:
         mmWeightGM_ = mmWeight;
         mmWeightScaleGM_ = mmWeightScale;
         mmYGM_ = mmY;
-        dataRecvGM_ = tilingData_->hasPermuteOut != 0U ? permuteOut : workspace + tilingData_->dataRecvOffset;
-        scaleRecvGM_ = workspace + tilingData_->scaleRecvOffset;
-        sparseGroupListGM_ = tilingGM + offsetof(hcommA2avQuantGmmTilingData, sparseGroupList);
-        mmGroupListGM_ = tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList);
+        dataRecvGM_ = tilingData_->isPermuteOut ? permuteOut : workspace;
+        scaleRecvGM_ = workspace + tilingData_->workspaceInfo.wsDataRecvSize;
+        sparseGroupListGM_ = scaleRecvGM_ + tilingData_->workspaceInfo.wsScaleRecvSize;
+        mmGroupListGM_ = sparseGroupListGM_ + RankSize() * ExpertNum() * 2U * sizeof(int64_t);
+        BuildGroupLists();
 
-        hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->mc2InitTiling);
-        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
+        hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->hcclA2avTilingInfo.hcclInitTiling);
+        hccl_.SetCcTilingV2(
+            static_cast<uint64_t>(offsetof(TilingDataType, hcclA2avTilingInfo)) +
+            static_cast<uint64_t>(offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling)));
     }
 
     __aicore__ inline void Run()
     {
         SubmitExpert(0U);
-        if (tilingData_->localMatmul != 0U) {
+        if (tilingData_->isNeedMM) {
             RunLocalMatmul();
         }
 
-        for (uint32_t expertIdx = 0U; expertIdx < tilingData_->expertNum; ++expertIdx) {
+        for (uint32_t expertIdx = 0U; expertIdx < ExpertNum(); ++expertIdx) {
             WaitExpert();
-            if (expertIdx + 1U < tilingData_->expertNum) {
+            if (expertIdx + 1U < ExpertNum()) {
                 SubmitExpert(expertIdx + 1U);
             }
             RunExpertMatmul(expertIdx);
@@ -87,6 +90,8 @@ public:
     }
 
 private:
+    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = MC2KernelTemplate::MAX_EXPERT_SIZE;
+    static constexpr uint32_t MX_BASIC_FACTOR = 64U;
     static constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
     static constexpr uint8_t GROUP_LIST_TYPE_SPARSE = 2U;
     static constexpr AscendC::HcclDataType X_HCCL_DATA_TYPE = GetA2avGmmHcclDataType<AType>();
@@ -111,17 +116,53 @@ private:
                                                       LayoutC, float, LayoutBias>;
     using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
 
+    __aicore__ inline uint32_t RankSize() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
+    }
+
+    __aicore__ inline uint32_t ExpertNum() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+    }
+
+    __aicore__ inline uint32_t GetSendRows(uint32_t expertIdx, uint32_t peer) const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.sendCnt[peer * ExpertNum() + expertIdx]);
+    }
+
     __aicore__ inline uint32_t GetRecvRows(uint32_t expertIdx, uint32_t peer) const
     {
-        const uint32_t segment = expertIdx * tilingData_->rankSize + peer;
-        return static_cast<uint32_t>(tilingData_->sparseGroupList[segment * 2U + 1U]);
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.recvCnt[peer * ExpertNum() + expertIdx]);
+    }
+
+    __aicore__ inline uint32_t ScaleKLen() const
+    {
+        return static_cast<uint32_t>((tilingData_->taskTilingInfo.H1 + MX_BASIC_FACTOR - 1U) / MX_BASIC_FACTOR * 2U);
+    }
+
+    __aicore__ inline void BuildGroupLists()
+    {
+        if (AscendC::GetBlockIdx() == 0U) {
+            __gm__ int64_t *sparseGroupList = reinterpret_cast<__gm__ int64_t *>(sparseGroupListGM_);
+            for (uint32_t expert = 0U; expert < ExpertNum(); ++expert) {
+                for (uint32_t peer = 0U; peer < RankSize(); ++peer) {
+                    const uint32_t segment = expert * RankSize() + peer;
+                    sparseGroupList[segment * 2U] = static_cast<int64_t>(expert);
+                    sparseGroupList[segment * 2U + 1U] = static_cast<int64_t>(GetRecvRows(expert, peer));
+                }
+            }
+            *reinterpret_cast<__gm__ int64_t *>(mmGroupListGM_) =
+                static_cast<int64_t>(tilingData_->taskTilingInfo.BS);
+        }
+        AscendC::SyncAll();
     }
 
     __aicore__ inline uint64_t GetExpertStartRow(uint32_t expertIdx) const
     {
         uint64_t rows = 0U;
         for (uint32_t previous = 0U; previous < expertIdx; ++previous) {
-            for (uint32_t peer = 0U; peer < tilingData_->rankSize; ++peer) {
+            for (uint32_t peer = 0U; peer < RankSize(); ++peer) {
                 rows += GetRecvRows(previous, peer);
             }
         }
@@ -130,26 +171,24 @@ private:
 
     __aicore__ inline void PrepareExpertCommunication(uint32_t expertIdx)
     {
-        const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ?
-                                      (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U :
-                                      static_cast<uint64_t>(tilingData_->k);
-        const uint64_t scaleAxis = tilingData_->scaleKLen;
+        const uint64_t k = tilingData_->taskTilingInfo.H1;
+        const uint64_t dataAxis = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ? (k + 1U) / 2U : k;
+        const uint64_t scaleAxis = ScaleKLen();
         uint64_t sendPeerBaseRow = 0U;
         uint64_t recvRowOffset = GetExpertStartRow(expertIdx);
 
-        for (uint32_t peer = 0U; peer < tilingData_->rankSize; ++peer) {
-            const uint32_t segment = expertIdx * tilingData_->rankSize + peer;
+        for (uint32_t peer = 0U; peer < RankSize(); ++peer) {
             uint64_t sendExpertOffset = 0U;
             uint64_t sendPeerRows = 0U;
-            for (uint32_t e = 0U; e < tilingData_->expertNum; ++e) {
-                const uint64_t rows = tilingData_->segmentSendRows[e * tilingData_->rankSize + peer];
+            for (uint32_t e = 0U; e < ExpertNum(); ++e) {
+                const uint64_t rows = GetSendRows(e, peer);
                 if (e < expertIdx) {
                     sendExpertOffset += rows;
                 }
                 sendPeerRows += rows;
             }
 
-            const uint64_t sendRows = tilingData_->segmentSendRows[segment];
+            const uint64_t sendRows = GetSendRows(expertIdx, peer);
             const uint64_t recvRows = GetRecvRows(expertIdx, peer);
             dataSendCount_[peer] = sendRows * dataAxis;
             dataSendOffset_[peer] = (sendPeerBaseRow + sendExpertOffset) * dataAxis;
@@ -187,7 +226,7 @@ private:
     __aicore__ inline void RunExpertMatmul(uint32_t expertIdx)
     {
         int64_t expertRows = 0;
-        for (uint32_t peer = 0U; peer < tilingData_->rankSize; ++peer) {
+        for (uint32_t peer = 0U; peer < RankSize(); ++peer) {
             expertRows += static_cast<int64_t>(GetRecvRows(expertIdx, peer));
         }
         if (expertRows == 0) {
@@ -195,23 +234,22 @@ private:
         }
 
         const uint64_t expertStartRow = GetExpertStartRow(expertIdx);
-        const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ?
-                                      (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U :
-                                      static_cast<uint64_t>(tilingData_->k);
+        const uint64_t k = tilingData_->taskTilingInfo.H1;
+        const uint64_t n = tilingData_->taskTilingInfo.N1;
+        const uint64_t dataAxis = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ? (k + 1U) / 2U : k;
         typename GmmKernel::GMMTiling gmmTiling{};
-        FillGmmTiling(gmmTiling, tilingData_->gmmTiling, tilingData_->rankSize, expertRows, tilingData_->n,
-                      tilingData_->k, GROUP_LIST_TYPE_SPARSE);
+        FillGmmTiling(gmmTiling, tilingData_->gmmQuantTilingData, RankSize(), expertRows, n, k,
+                      GROUP_LIST_TYPE_SPARSE);
 
         typename GmmKernel::Params params{};
-        params.problemShape = ProblemShape{expertRows, static_cast<int64_t>(tilingData_->n),
-                                           static_cast<int64_t>(tilingData_->k), 0};
+        params.problemShape = ProblemShape{expertRows, static_cast<int64_t>(n), static_cast<int64_t>(k), 0};
         params.mmadParams.aGmAddr = dataRecvGM_ + expertStartRow * dataAxis;
-        params.mmadParams.scaleAGmAddr = scaleRecvGM_ + expertStartRow * tilingData_->scaleKLen;
+        params.mmadParams.scaleAGmAddr = scaleRecvGM_ + expertStartRow * ScaleKLen();
         params.mmadParams.bGmAddr = weightGM_;
         params.mmadParams.scaleBGmAddr = weightScaleGM_;
-        params.mmadParams.cGmAddr = yGM_ + expertStartRow * tilingData_->n * sizeof(CType);
+        params.mmadParams.cGmAddr = yGM_ + expertStartRow * n * sizeof(CType);
         params.mmadParams.biasGmAddr = nullptr;
-        params.groupListGmAddr = sparseGroupListGM_ + expertIdx * tilingData_->rankSize * 2U * sizeof(int64_t);
+        params.groupListGmAddr = sparseGroupListGM_ + expertIdx * RankSize() * 2U * sizeof(int64_t);
         params.gmmParams = gmmTiling;
         params.groupOffsetTables = {};
 
@@ -226,13 +264,14 @@ private:
     __aicore__ inline void RunLocalMatmul()
     {
         typename MmKernel::GMMTiling mmTiling{};
-        FillGmmTiling(mmTiling, tilingData_->mmTiling, 1U, tilingData_->mmM, tilingData_->mmN, tilingData_->mmK,
-                      GROUP_LIST_TYPE_OFFSET);
+        const uint64_t m = tilingData_->taskTilingInfo.BS;
+        const uint64_t n = tilingData_->taskTilingInfo.N2;
+        const uint64_t k = tilingData_->taskTilingInfo.H2;
+        FillGmmTiling(mmTiling, tilingData_->mmQuantTilingData, 1U, m, n, k, GROUP_LIST_TYPE_OFFSET);
 
         typename MmKernel::Params params{};
-        params.problemShape = ProblemShape{static_cast<int64_t>(tilingData_->mmM),
-                                           static_cast<int64_t>(tilingData_->mmN),
-                                           static_cast<int64_t>(tilingData_->mmK), 0};
+        params.problemShape = ProblemShape{static_cast<int64_t>(m), static_cast<int64_t>(n),
+                                           static_cast<int64_t>(k), 0};
         params.mmadParams.aGmAddr = mmXGM_;
         params.mmadParams.scaleAGmAddr = mmXScaleGM_;
         params.mmadParams.bGmAddr = mmWeightGM_;
@@ -252,27 +291,30 @@ private:
     }
 
     template <typename GmmTiling>
-    __aicore__ inline void FillGmmTiling(GmmTiling &out, const A2avGmmMxTiling &in, uint32_t groupNum, int64_t m,
-                                         int64_t n, int64_t k, uint8_t groupListType)
+    __aicore__ inline void FillGmmTiling(GmmTiling &out,
+                                         const Mc2GroupedMatmulTilingData::GMMQuantTilingData &in,
+                                         uint32_t groupNum, int64_t m, int64_t n, int64_t k,
+                                         uint8_t groupListType)
     {
+        const auto &mmTiling = in.mmTilingData;
         out.groupNum = groupNum;
         out.m = m;
         out.n = n;
         out.k = k;
-        out.baseM = in.baseM;
-        out.baseN = in.baseN;
-        out.baseK = in.baseK;
-        out.kAL1 = in.kAL1;
-        out.kBL1 = in.kBL1;
-        out.scaleKAL1 = in.scaleKAL1;
+        out.baseM = static_cast<uint32_t>(mmTiling.baseM);
+        out.baseN = static_cast<uint32_t>(mmTiling.baseN);
+        out.baseK = static_cast<uint32_t>(mmTiling.baseK);
+        out.kAL1 = static_cast<uint32_t>(mmTiling.stepKa * mmTiling.baseK);
+        out.kBL1 = static_cast<uint32_t>(mmTiling.stepKb * mmTiling.baseK);
+        out.scaleKAL1 = out.kAL1;
         out.isBias = 0U;
-        out.dbL0C = in.dbL0C;
-        out.l1BufferStage = in.l1BufferStage;
+        out.dbL0C = static_cast<uint8_t>(mmTiling.dbL0C);
+        out.l1BufferStage = 2U;
         out.groupListType = groupListType;
     }
 
 private:
-    hcommA2avQuantGmmTilingData *tilingData_{nullptr};
+    const TilingDataType *tilingData_{nullptr};
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle scaleHandle_{0};
     AscendC::HcclHandle dataHandle_{0};

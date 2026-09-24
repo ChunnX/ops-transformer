@@ -167,6 +167,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
     tilingData->taskTilingInfo.tailLoopExpertNum = (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
     tilingData->taskTilingInfo.totalLoopCount = static_cast<uint32_t>((e_ + expertNum - 1) / expertNum);
+    tilingData->workspaceInfo.wsDataRecvSize = permuteOutSize_;
+    tilingData->workspaceInfo.wsScaleRecvSize = permuteScaleOutSize_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
