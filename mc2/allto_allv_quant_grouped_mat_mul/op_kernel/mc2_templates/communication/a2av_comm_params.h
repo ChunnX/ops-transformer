@@ -25,9 +25,10 @@ struct A2avCommParams {
     uint64_t recvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
 
-__aicore__ inline void CalcBatchSendRecvCounts(A2avCommParams &params, const uint64_t *rawSendCounts,
-                                               const uint64_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
-                                               uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis)
+__aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const uint64_t *rawSendCounts,
+                                                const uint64_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
+                                                uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
+                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;
@@ -37,14 +38,6 @@ __aicore__ inline void CalcBatchSendRecvCounts(A2avCommParams &params, const uin
             params.recvCnt[i] += static_cast<uint64_t>(rawRecvCounts[expertIdx + i * e]) * axis;
         }
     }
-}
-
-__aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const uint64_t *rawSendCounts,
-                                                const uint64_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
-                                                uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
-                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
-{
-    CalcBatchSendRecvCounts(params, rawSendCounts, rawRecvCounts, rankDim, e, startExpertIdx, expertNum, axis);
 
     params.sendOffset[0] = 0UL;
     for (uint32_t j = 0U; j < startExpertIdx; j++) {
@@ -78,7 +71,14 @@ __aicore__ inline void CalcA2avCommAfterParams(A2avCommParams &params, const uin
                                                uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
-    CalcBatchSendRecvCounts(params, rawSendCounts, rawRecvCounts, rankDim, e, startExpertIdx, expertNum, axis);
+    for (uint64_t i = 0UL; i < rankDim; i++) {
+        params.sendCnt[i] = 0UL;
+        params.recvCnt[i] = 0UL;
+        for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
+            params.sendCnt[i] += static_cast<uint64_t>(rawSendCounts[expertIdx + i * e]) * axis;
+            params.recvCnt[i] += static_cast<uint64_t>(rawRecvCounts[expertIdx + i * e]) * axis;
+        }
+    }
 
     uint64_t batchStartOffset = 0UL;
     for (uint64_t i = 0UL; i < startExpertIdx; i++) {
