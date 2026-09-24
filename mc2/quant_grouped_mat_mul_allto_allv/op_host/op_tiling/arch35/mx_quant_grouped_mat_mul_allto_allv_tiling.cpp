@@ -728,6 +728,32 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
             "ApaceMXPath selected: tilingKey=%lu, e=%lu, ep=%lu, A=%lu, BSK=%lu, N1=%lu, H1=%lu, hasSharedMm=%d.",
             tilingKey, localParams_.ep, localParams_.epWorldSize, localParams_.A, localParams_.BsK, localParams_.N1,
             localParams_.H1, localParams_.hasSharedMm);
+    // GMM 参数级诊断（ERROR 确保现场可见）：路由/共享两组 tiling 的全部 Blaze 消费字段，
+    // 用于与已验证形态做数值级对账（共享专家挂死定位）
+    uint64_t mMaxSize = 0;
+    for (uint64_t expertIdx = 0; expertIdx < localParams_.ep; expertIdx++) {
+        uint64_t mSize = 0;
+        for (uint64_t i = 0; i < localParams_.epWorldSize; i++) {
+            mSize += static_cast<uint64_t>(localTilingData_.taskTilingInfo.sendCnt[i * localParams_.ep + expertIdx]);
+        }
+        mMaxSize = std::max(mSize, mMaxSize);
+    }
+    const auto &gmmMm = localTilingData_.gmmBaseTiling.mmTilingData;
+    const auto &shMm = localTilingData_.sharedGmmTiling.mmTilingData;
+    const auto &gmmQp = localTilingData_.gmmBaseTiling.gmmQuantParams;
+    const auto &shQp = localTilingData_.sharedGmmTiling.gmmQuantParams;
+    OP_LOGE(opName_,
+            "ApaceMXPath gmmParams: routed[baseM=%d baseN=%d baseK=%d dbL0C=%d stepKa=%d stepKb=%d depthA1=%d "
+            "depthB1=%d usedCoreNum=%d groupListType=%u | mMax=%lu N1=%lu H1=%lu transB=%d] shared[baseM=%d baseN=%d "
+            "baseK=%d dbL0C=%d stepKa=%d stepKb=%d depthA1=%d depthB1=%d usedCoreNum=%d groupListType=%u | BS=%lu "
+            "N2=%lu H2=%lu transB=%d] quantMode[gmmX=%ld gmmW=%ld mmX=%ld mmW=%ld] dtype[x=%d w=%d mmXScale=%d].",
+            gmmMm.baseM, gmmMm.baseN, gmmMm.baseK, gmmMm.dbL0C, gmmMm.stepKa, gmmMm.stepKb, gmmMm.depthA1,
+            gmmMm.depthB1, gmmMm.usedCoreNum, gmmQp.groupListType, mMaxSize, localParams_.N1, localParams_.H1,
+            localParams_.isGmmWeightTrans, shMm.baseM, shMm.baseN, shMm.baseK, shMm.dbL0C, shMm.stepKa, shMm.stepKb,
+            shMm.depthA1, shMm.depthB1, shMm.usedCoreNum, shQp.groupListType, localParams_.Bs, localParams_.N2,
+            localParams_.H2, localParams_.isMmWeightTrans, localParams_.gmmXQuantMode, localParams_.gmmWeightQuantMode,
+            localParams_.mmXQuantMode, localParams_.mmWeightQuantMode, localParams_.gmmXDtype,
+            localParams_.gmmWeightDtype, localParams_.mmXScaleDtype);
     return tilingKey;
 }
 
