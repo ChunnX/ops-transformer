@@ -1029,9 +1029,6 @@ __aicore__ inline void CompressorV2BlockVectorFullLoad<COMP>::ComputeVec1()
         }
 
         inputQue1.FreeTensor(scoreUb);
-        if (curLoopCompressedCnt == 0) {
-            continue;
-        }
         vec1SplitInfo_.curBStart += curLoopBatchNum;
         vec1SplitInfo_.dealSeqStartIdx += curLoopBatchNum * constInfo_.sSize;
         vec1SplitInfo_.preCompressedCnt += curLoopCompressedCnt;
