@@ -22,6 +22,8 @@
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_kernel/mc2_tiling_struct.h"
+#include "op_kernel/apace/tiling/quant_matmul_tiling_swat.h"
+#include "op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_tiling_data.h"
 
 namespace optiling {
 
@@ -81,6 +83,10 @@ protected:
 #if MC2_DFX_ENABLE
     ge::graphStatus BuildQuantWorkspaceLayout();
 #endif
+    ge::graphStatus DoApaceMxTiling();
+    void AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const;
+    bool HiF4SceneParamCheck(const gert::StorageShape *x1ScaleShape,
+                            const gert::StorageShape *x2ScaleShape) const;
     ge::graphStatus DoAdaptSlidWindowTiling();
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus CheckInput() override;
@@ -100,6 +106,9 @@ private:
     Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData *quantBmmMatmulReducescatterTilingData_;
     uint64_t myWorkSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMode_{mc2tiling::Mc2QuantMode::DEFAULT};
+    bool usingApaceImpl_{false};
+    bool isHiF4_{false};
+    hcommMatmulReduceScatterV2TilingData apaceTilingData_{};
     bool isMxfp4_{false}; // MXFP4场景标志位
 };
 

@@ -42,11 +42,13 @@ using ABL1FullLoadExtraCondFunc = bool (*)(uint64_t, uint64_t);
 
 const static std::map<NpuArch, ABL1FullLoadExtraCondFunc> ABL1FullLoadExtraCondFuncMap = {
     {Ops::Base::DAV_3510, ABL1FullLoadExtraCond91095},
+    {Ops::Base::DAV_9201, ABL1FullLoadExtraCond91095},
 };
 
 using CheckBL1FullLoadFunc = bool (Mc2MatMulV3AswFullLoadTiling::*)(bool &, uint64_t, uint64_t);
 const static std::map<NpuArch, CheckBL1FullLoadFunc> CheckBL1FullLoadMap = {
     {Ops::Base::DAV_3510, &Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095},
+    {Ops::Base::DAV_9201, &Mc2MatMulV3AswFullLoadTiling::CheckBL1FullLoad91095},
 };
 
 // ------------------------------ GetStepSmallK -------------------------------------------//
@@ -89,6 +91,7 @@ using GetStepSmallKFunc = uint64_t (*)(const Mc2MatMulV3Args &, const Mc2MatMulV
 
 const static std::map<NpuArch, GetStepSmallKFunc> GetStepSmallKFuncMap = {
     {Ops::Base::DAV_3510, GetStepSmallK91095},
+    {Ops::Base::DAV_9201, GetStepSmallK91095},
 };
 
 void ResetLoadBalance(Mc2MatMulV3RunInfo &runInfo)
@@ -106,6 +109,8 @@ namespace mc2_matmul_v3_advanced {
 using namespace strategy;
 
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, DAV_3510, FULL_LOAD_BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswFullLoadTiling, DAV_9201, FULL_LOAD_BASE);
+
 
 void Mc2MatMulV3AswFullLoadTiling::FullLoadPre()
 {

@@ -12,6 +12,8 @@
  * \file matmul_reduce_scatter_v2.cpp
  * \brief
  */
+#include <initializer_list>
+#include <vector>
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -50,9 +52,9 @@ public:
     explicit MatmulReduceScatterV2(const char *name)
         : OpDef(name)
     {
-        DefineRequiredInputs();
-        DefineOptionalInputs();
-        DefineOutputs();
+        DefineRequiredInputs(*this);
+        DefineOptionalInputs(*this);
+        DefineOutputs(*this);
         DefineAttributes();
 
         OpAICoreConfig aicore_config;
@@ -67,7 +69,23 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
         this->AICore().AddConfig("ascend950", aicore_config);
+        OpAICoreConfig aicore_config_910_96;
+        DefineRequiredInputs(aicore_config_910_96, true);
+        DefineOptionalInputs(aicore_config_910_96, true);
+        DefineOutputs(aicore_config_910_96, true);
+        aicore_config_910_96.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("jitCompile.flag", "static_false")
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
+            .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
+        this->AICore().AddConfig("ascend910_96", aicore_config_910_96);
         this->MC2().HcclGroup("group");
+        this->MC2().HcclServerType(HcclServerType::AICPU, "ascend910_96");
 
         OpAICoreConfig aicore_config_910b;
         DefineAicoreConfig910bRequiredInputs(aicore_config_910b);
@@ -89,64 +107,81 @@ public:
     }
 
 private:
-    void DefineRequiredInputs()
+    // 保留主线的类型组合，仅为 A6 追加 HiFP4 的 FP16/BF16 两列。
+    static std::vector<ge::DataType> WithHiF4Types(std::vector<ge::DataType> types, bool enableHiF4,
+                                                 std::initializer_list<ge::DataType> extra)
     {
-        this->Input("x1")
+        if (enableHiF4) {
+            types.insert(types.end(), extra.begin(), extra.end());
+        }
+        return types;
+    }
+
+    template <typename Config>
+    void DefineRequiredInputs(Config &config, bool enableHiF4 = false)
+    {
+        config.Input("x1")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+            .DataType(WithHiF4Types({ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
                        ge::DT_HIFLOAT8,      ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1},
+                enableHiF4, {ge::DT_HIFLOAT4, ge::DT_HIFLOAT4}))
             .FormatList({ge::FORMAT_ND});
-        this->Input("x2")
+        config.Input("x2")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+            .DataType(WithHiF4Types({ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
                        ge::DT_HIFLOAT8,      ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1},
+                enableHiF4, {ge::DT_HIFLOAT4, ge::DT_HIFLOAT4}))
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
     }
 
-    void DefineOptionalInputs()
+    template <typename Config>
+    void DefineOptionalInputs(Config &config, bool enableHiF4 = false)
     {
-        this->Input("bias")
+        config.Input("bias")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16,  ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+            .DataType(WithHiF4Types({ge::DT_BF16,  ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT,   ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-                       ge::DT_FLOAT, ge::DT_FLOAT})
+                       ge::DT_FLOAT, ge::DT_FLOAT},
+                enableHiF4, {ge::DT_FLOAT, ge::DT_FLOAT}))
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("x1_scale").ParamType(OPTIONAL).DataType(scaleDtypes950).FormatList({ge::FORMAT_ND});
+        config.Input("x1_scale").ParamType(OPTIONAL).DataType(WithHiF4Types(scaleDtypes950, enableHiF4, {ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})).FormatList({ge::FORMAT_ND});
 
-        this->Input("x2_scale").ParamType(OPTIONAL).DataType(scaleDtypes950).FormatList({ge::FORMAT_ND});
-        this->Input("quant_scale").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        config.Input("x2_scale").ParamType(OPTIONAL).DataType(WithHiF4Types(scaleDtypes950, enableHiF4, {ge::DT_HIFLOAT4_SCALE, ge::DT_HIFLOAT4_SCALE})).FormatList({ge::FORMAT_ND});
+        config.Input("quant_scale").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
     }
 
-    void DefineOutputs()
+    template <typename Config>
+    void DefineOutputs(Config &config, bool enableHiF4 = false)
     {
-        this->Output("y")
+        config.Output("y")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
+            .DataType(WithHiF4Types({ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16,
                        ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT, ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_FLOAT})
+                       ge::DT_BF16,    ge::DT_FLOAT},
+                enableHiF4, {ge::DT_FLOAT16, ge::DT_BF16}))
             .FormatList({ge::FORMAT_ND});
 
-        this->Output("amax_out").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        config.Output("amax_out").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
     }
 
     void DefineAttributes()

@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID 99cc37f124b1b2521f96cb1b03dd143a41ddfa3a)
+set(OPTENSOR_TAG_ID 88970a817ccd23653c69e7fc06a648dbf81dfecb)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -20,57 +20,7 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 
-  execute_process(
-    COMMAND git fetch origin ${OPTENSOR_TAG_ID} --depth=1
-    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-    TIMEOUT 20
-    RESULT_VARIABLE FETCH_RESULT
-    ERROR_VARIABLE FETCH_ERROR
-    OUTPUT_QUIET
-  )
-
-  if(FETCH_RESULT EQUAL 0)
-    set(CHECKOUT_REF "FETCH_HEAD")
-    message(STATUS "ops-tensor fetched ${OPTENSOR_TAG_ID}")
-  else()
-    set(CHECKOUT_REF "${OPTENSOR_TAG_ID}")
-    message(WARNING "Git fetch failed (network unavailable?), checkout to cached ${OPTENSOR_TAG_ID}")
-  endif()
-
-  execute_process(
-    COMMAND git checkout ${CHECKOUT_REF}
-    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-    RESULT_VARIABLE CHECKOUT_RESULT
-    ERROR_VARIABLE CHECKOUT_ERROR
-    OUTPUT_QUIET
-  )
-  if(NOT CHECKOUT_RESULT EQUAL 0)
-    message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
-  endif()
-
-  # Submodule: try local cache first (offline-friendly), fall back to network
-  execute_process(
-    COMMAND git submodule update --init --recursive --no-fetch
-    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-    RESULT_VARIABLE SUBMODULE_RESULT
-    OUTPUT_QUIET ERROR_QUIET
-  )
-  if(NOT SUBMODULE_RESULT EQUAL 0)
-    message(STATUS "ops-tensor submodule: local cache insufficient, fetching from remote")
-    execute_process(
-      COMMAND git submodule update --init --recursive
-      WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
-      TIMEOUT 20
-      RESULT_VARIABLE SUBMODULE_RESULT
-      ERROR_VARIABLE SUBMODULE_ERROR
-      OUTPUT_QUIET
-    )
-    if(NOT SUBMODULE_RESULT EQUAL 0)
-      message(WARNING "ops-tensor submodule update failed: ${SUBMODULE_ERROR}")
-    else()
-      message(STATUS "ops-tensor submodule update")
-    endif()
-  endif()
+  # Use the local source as-is; do not fetch, checkout or update submodules.
   get_filename_component(TENSOR_API
                          ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 else()
@@ -133,4 +83,10 @@ else()
                            ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
   endif()
 
+endif()
+
+# 部分 ops-tensor 版本不附带 Tensor API，沿用 CANN 安装目录中的接口。
+if(NOT IS_DIRECTORY "${TENSOR_API}/impl/tensor_api")
+  get_filename_component(TENSOR_API
+                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
 endif()

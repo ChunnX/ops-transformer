@@ -41,6 +41,11 @@ constexpr uint32_t DTYPE_ENUM_FLOAT = 0;
 constexpr uint32_t DTYPE_ENUM_FLOAT16 = 1;
 constexpr uint32_t DTYPE_ENUM_BF16 = 27;
 constexpr uint64_t PERBLOCK_SIZE = 128;
+constexpr uint64_t HIF4_GROUP_SIZE = 64;
+constexpr uint64_t HIF4_SCALE_LAST_DIM = 1;
+constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 64;
+constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
+constexpr uint64_t APACE_RS_PER_RANK_BASE_M = 256;
 constexpr uint64_t MXFP8_SIZE = 32;
 constexpr uint64_t MXFP8_SIZE_K = 32;
 constexpr uint64_t MXFP8_SIZE_M = 1;
@@ -81,12 +86,44 @@ constexpr uint32_t COMMMODE_INDEX = 10;
 // DataType
 constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8,
-    ge::DataType::DT_FLOAT4_E2M1};
+    ge::DataType::DT_FLOAT4_E2M1, ge::DataType::DT_HIFLOAT4};
+void ConfigureApaceFormulaModel(MMPlusReduceScatter &formulaTiling, bool isMxfp4)
+{
+    // Keep all APACE calibration in the APACE caller.  The shared
+    // MMPlusReduceScatter class and every legacy constructor remain unchanged.
+    if (isMxfp4) {
+        formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+        formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+        formulaTiling.matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+        formulaTiling.matmulPerf_.mmShapeInfo_.computesPerCycle =
+            APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
+        formulaTiling.clusterInfo_.inMatrixADtypeSize =
+            formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixADtypeSize;
+        formulaTiling.clusterInfo_.inMatrixBDtypeSize =
+            formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize;
+        formulaTiling.clusterInfo_.computesPerCycle =
+            formulaTiling.matmulPerf_.mmShapeInfo_.computesPerCycle;
+    }
+
+    const uint64_t perRankBaseM = APACE_RS_PER_RANK_BASE_M;
+    formulaTiling.matmulPerf_.mmShapeInfo_.baseM = perRankBaseM;
+    formulaTiling.clusterInfo_.baseM = perRankBaseM;
+    formulaTiling.tilingM_.SetAlignLength(perRankBaseM);
+
+    // The base constructor calculated minTileLen for the legacy model. Reset
+    // that value to the APACE base and rebuild the two thresholds after the
+    // APACE-only model fields have been calibrated.
+    formulaTiling.rankTileNum_ = formulaTiling.commPerf_.GetRankTileNum();
+    formulaTiling.tilingM_.SetMinLenByMin(perRankBaseM);
+    formulaTiling.tilingM_.SetMinLenByMax(formulaTiling.commPerf_.GetLinearThresholdLen());
+    formulaTiling.tilingM_.SetMinLenByMax(
+        formulaTiling.matmulPerf_.GetLinearThresholdLen(formulaTiling.rankTileNum_));
+}
 } // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (npuArch_ != Ops::Base::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510 && npuArch_ != Ops::Base::DAV_9201) { // A6复用A5 tiling路径
         OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
         return false;
     }
@@ -138,6 +175,15 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckGroupSize() const
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+    if (isHiF4_) {
+        // HiFP4 的固定分组在算子内部解析，不改变公共 MXFP 推导。
+        groupSizeM = groupSizeM == 0 ? 1 : groupSizeM;
+        groupSizeN = groupSizeN == 0 ? 1 : groupSizeN;
+        groupSizeK = groupSizeK == 0 ? HIF4_GROUP_SIZE : groupSizeK;
+        OP_TILING_CHECK(groupSizeM != 1 || groupSizeN != 1 || groupSizeK != HIF4_GROUP_SIZE,
+                       OP_LOGE(opName_, "HiFP4 groupSize must be [1,1,64]"), return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     if (quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) {
         shapeInfo.isMxfp = true;
         OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
@@ -318,6 +364,9 @@ bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageSha
 bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape *x1ScaleShape,
                                                       const gert::StorageShape *x2ScaleShape)
 {
+    if (isHiF4_) {
+        return HiF4SceneParamCheck(x1ScaleShape, x2ScaleShape);
+    }
     OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, MXDTYPE_SUPPORT_LIST) ||
                         !mc2tiling::CheckDataTypeVaild(args_.geBType, MXDTYPE_SUPPORT_LIST),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -374,6 +423,50 @@ bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape *
     return true;
 }
 
+bool QuantBmmReduceScatterTiling::HiF4SceneParamCheck(const gert::StorageShape *x1ScaleShape,
+                                                     const gert::StorageShape *x2ScaleShape) const
+{
+    OP_TILING_CHECK(args_.geAType != ge::DT_HIFLOAT4 || args_.geBType != ge::DT_HIFLOAT4,
+        OP_LOGE(opName_, "HiFP4 requires both x1 and x2 to be DT_HIFLOAT4"), return false);
+    const auto *biasShape = context_->GetOptionalInputShape(BIAS_INDEX);
+    bool hasNonEmptyBias = biasShape != nullptr;
+    if (hasNonEmptyBias) {
+        const auto &shape = biasShape->GetStorageShape();
+        for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+            if (shape.GetDim(i) <= 0) {
+                hasNonEmptyBias = false;
+                break;
+            }
+        }
+    }
+    OP_TILING_CHECK(hasNonEmptyBias,
+        OP_LOGE(opName_, "HiFP4 does not support a non-empty bias"), return false);
+    OP_TILING_CHECK(args_.geCType != ge::DT_FLOAT16 && args_.geCType != ge::DT_BF16,
+        OP_LOGE(opName_, "HiFP4 only supports float16 or bfloat16 output"), return false);
+    OP_TILING_CHECK(args_.isATrans,
+        OP_LOGE(opName_, "HiFP4 requires non-transposed x1"), return false);
+    // 4bit 数据沿连续轴每两个元素打包；这是字节对齐要求，不是 K 的量化组整除要求。
+    OP_TILING_CHECK(args_.kValue % EVEN_ALIGN != 0 || (!args_.isBTrans && args_.nValue % EVEN_ALIGN != 0),
+        OP_LOGE(opName_, "HiFP4 requires even K and, for non-transposed x2, even N; got K=%lu, N=%lu",
+                              args_.kValue, args_.nValue), return false);
+    const auto &aScale = x1ScaleShape->GetStorageShape();
+    const auto &bScale = x2ScaleShape->GetStorageShape();
+    const uint64_t scaleK = Ops::Base::CeilDiv(args_.kValue, HIF4_GROUP_SIZE);
+    const uint64_t bScaleDim0 = args_.isBTrans ? args_.nValue : scaleK;
+    const uint64_t bScaleDim1 = args_.isBTrans ? scaleK : args_.nValue;
+    OP_TILING_CHECK(aScale.GetDimNum() != MX_SCALE_DIM || bScale.GetDimNum() != MX_SCALE_DIM,
+        OP_LOGE(opName_, "HiFP4 x1Scale and x2Scale must both be 3-dimensional"), return false);
+    OP_TILING_CHECK(aScale.GetDim(0) != static_cast<int64_t>(args_.orgMValue) ||
+                    aScale.GetDim(1) != static_cast<int64_t>(scaleK) ||
+                    aScale.GetDim(2) != HIF4_SCALE_LAST_DIM ||
+                    bScale.GetDim(0) != static_cast<int64_t>(bScaleDim0) ||
+                    bScale.GetDim(1) != static_cast<int64_t>(bScaleDim1) ||
+                    bScale.GetDim(2) != HIF4_SCALE_LAST_DIM,
+        OP_LOGE(opName_, "HiFP4 scale shapes must be x1Scale=[%lu,%lu,1], x2Scale=[%lu,%lu,1]",
+                              args_.orgMValue, scaleK, bScaleDim0, bScaleDim1), return false);
+    return true;
+}
+
 ge::graphStatus QuantBmmReduceScatterTiling::CheckScale() const
 {
     // x1scale x2scale判空
@@ -395,13 +488,14 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckScale() const
     OP_TILING_CHECK(((x1ScaleDesc->GetDataType() != ge::DataType::DT_FLOAT) &&
                      (x2ScaleDesc->GetDataType() != ge::DataType::DT_FLOAT)) &&
                         ((x1ScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0) &&
-                         (x2ScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)),
+                         (x2ScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) &&
+                        (x1ScaleDesc->GetDataType() != ge::DT_HIFLOAT4_SCALE),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                         opName_, "x1Scale/x2Scale",
                         (std::string(Ops::Base::ToString(x1ScaleDesc->GetDataType()).c_str()) + "/" +
                          std::string(Ops::Base::ToString(x2ScaleDesc->GetDataType()).c_str()))
                             .c_str(),
-                        "The dtype of x1Scale and x2Scale must be float32 or float8_e8m0"),
+                        "The dtype of x1Scale and x2Scale must be float32, float8_e8m0 or hifloat4_scale"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x1ScaleDesc->GetDataType() != x2ScaleDesc->GetDataType()),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -412,6 +506,14 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckScale() const
                         "The dtype of x1Scale and x2Scale must be the same"),
                     return ge::GRAPH_FAILED);
 
+    const bool hasHiF4Input = args_.geAType == ge::DT_HIFLOAT4 || args_.geBType == ge::DT_HIFLOAT4;
+    const bool hasHiF4Scale = x1ScaleDesc->GetDataType() == ge::DT_HIFLOAT4_SCALE;
+    OP_TILING_CHECK(hasHiF4Input != hasHiF4Scale,
+                   OP_LOGE(opName_, "HiFP4 inputs and HiFP4_SCALE scales must be paired"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hasHiF4Input &&
+                       (x1ScaleShape->GetStorageShape().GetDimNum() != MX_SCALE_DIM ||
+                        x2ScaleShape->GetStorageShape().GetDimNum() != MX_SCALE_DIM),
+                   OP_LOGE(opName_, "HiFP4 requires two 3-D scale tensors"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -517,6 +619,7 @@ void QuantBmmReduceScatterTiling::SetScene()
 {
     quantMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
     isMxfp4_ = false; // 初始化为false
+    isHiF4_ = false;
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     auto x1ScaleDesc = context_->GetOptionalInputDesc(X1SCALE_INDEX);
@@ -533,7 +636,11 @@ void QuantBmmReduceScatterTiling::SetScene()
                         "PerBlock scenario: [x1Scale=2D, x2Scale=2D]; MXFP scenario: [x1Scale=3D, x2Scale=3D])"),
                     return);
 
-    if ((x1ScaleShape->GetStorageShape().GetDimNum() == PERTENSOR_SCALE_DIM) &&
+    if (x1ScaleDesc->GetDataType() == ge::DT_HIFLOAT4_SCALE &&
+        x2ScaleDesc->GetDataType() == ge::DT_HIFLOAT4_SCALE) {
+        quantMode_ = mc2tiling::Mc2QuantMode::MXFP_MODE;
+        isHiF4_ = true;
+    } else if ((x1ScaleShape->GetStorageShape().GetDimNum() == PERTENSOR_SCALE_DIM) &&
         (x2ScaleShape->GetStorageShape().GetDimNum() == PERTENSOR_SCALE_DIM)) {
         quantMode_ = mc2tiling::Mc2QuantMode::PERTENSOR_MODE;
     } else if ((x1ScaleShape->GetStorageShape().GetDimNum() == MX_SCALE_DIM) &&
@@ -562,8 +669,21 @@ bool QuantBmmReduceScatterTiling::CheckPerblockM()
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
-    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
+    // 只增加 A6 的 MX APACE 路径；A5、CCU、peer-only 及旧量化路径保持主线选择。
+    const bool isMxFp8 = (args_.geAType == ge::DT_FLOAT8_E4M3FN || args_.geAType == ge::DT_FLOAT8_E5M2) &&
+                         (args_.geBType == ge::DT_FLOAT8_E4M3FN || args_.geBType == ge::DT_FLOAT8_E5M2);
+    usingApaceImpl_ = (isHiF4_ || isMxfp4_ || isMxFp8) && npuArch_ == Ops::Base::DAV_9201 && commMode_ == TPL_AICPU_COMM_MODE &&
+                      quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE &&
+                      !args_.isATrans && args_.rankDim <= APACE_IMPL_MAX_RANK_DIM &&
+                      mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    OP_TILING_CHECK(isHiF4_ && !usingApaceImpl_,
+                   OP_LOGE(opName_, "HiFP4 requires A6 APACE, ai_cpu and debugMode=0"), return ge::GRAPH_FAILED);
+    if (usingApaceImpl_) {
+        isA2APath_ = false;
+    } else {
+        MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    }
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
                     return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
@@ -574,7 +694,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
         MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingDataA5()));
     }
     MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
-    MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+    if (usingApaceImpl_) {
+        MC2_CHECK_LOG_RET(opName_, DoApaceMxTiling());
+        myWorkSpaceSize_ = libApiWorkSpaceSize_;
+    } else {
+        MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+    }
     if ((GetQuantMode() == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (MutableRCSTilingDataA5().tileCnt == 0) &&
         (MutableRCSTilingDataA5().tailCnt == 0)) {
         MutableRCSTilingDataA5().tileCnt = 1;
@@ -604,12 +729,14 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     if ((x1ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) &&
         (x2ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         scaleType = static_cast<uint8_t>(1);
+    } else if (isHiF4_) {
+        scaleType = TPL_X1_X2_DTYPE_IS_HIF4_SCALE;
     } else {
         scaleType = static_cast<uint8_t>(0);
     }
 
     // MXFP4场景设置inputType为INPUT_TYPE_IS_FP4
-    uint8_t inputType = INPUT_TYPE_IS_FP8;
+    uint8_t inputType = isHiF4_ ? INPUT_TYPE_IS_HIF4 : INPUT_TYPE_IS_FP8;
     if (isMxfp4_) {
         inputType = INPUT_TYPE_IS_FP4;
         OP_LOGD(opName_, "MXFP4 scene detected, setting inputType to INPUT_TYPE_IS_FP4 (2)");
@@ -619,7 +746,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     uint8_t commAlg =
         isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY : (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
-                                            scaleType, commAlg, commMode_);
+                                            scaleType, commAlg, commMode_, usingApaceImpl_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
     OP_LOGD(opName_, "inputType, outputType, scaleType is: [%u, %u, %u]", inputType, outputType, scaleType);
     return tilingKey;
@@ -758,6 +885,22 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
+    if (usingApaceImpl_) {
+        auto raw = context_->GetRawTilingData();
+        OP_TILING_CHECK(raw == nullptr || raw->GetCapacity() < sizeof(apaceTilingData_),
+                       OP_LOGE(opName_, "Insufficient APACE tiling buffer"), return ge::GRAPH_FAILED);
+        apaceTilingData_.mc2InitTiling = quantBmmMatmulReducescatterTilingData_->mc2InitTiling;
+        apaceTilingData_.mc2CcTiling = quantBmmMatmulReducescatterTilingData_->mc2CcTiling;
+        auto out = context_->GetTilingData<hcommMatmulReduceScatterV2TilingData>();
+        OP_TILING_CHECK(out == nullptr, OP_LOGE(opName_, "APACE tiling data is null"), return ge::GRAPH_FAILED);
+        *out = apaceTilingData_;
+        raw->SetDataSize(sizeof(apaceTilingData_));
+        context_->SetBlockDim(std::max(apaceTilingData_.tileQbmmTilingData.usedCoreNum,
+                                      apaceTilingData_.tailQbmmTilingData.usedCoreNum));
+        context_->SetScheduleMode(1);
+        return ge::GRAPH_SUCCESS;
+    }
+
 #if MC2_DFX_ENABLE
     quantBmmMatmulReducescatterTilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
 #endif
@@ -875,6 +1018,76 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
     if (forceMxNNoSplit) {
         quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.adaptiveSlidingWin.nTailTile = 1;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
+{
+    auto &cfg = MutableRCSTilingDataA5();
+    OP_TILING_CHECK(cfg.rankDim == 0 || cfg.tileCnt == 0 || cfg.rankM % cfg.rankDim != 0,
+                    OP_LOGE(opName_, "invalid APACE MX split: rankM=%u, rankDim=%u, tileCnt=%u", cfg.rankM,
+                            cfg.rankDim, cfg.tileCnt),
+                    return ge::GRAPH_FAILED);
+
+    const uint64_t perRankM = static_cast<uint64_t>(cfg.rankM) / cfg.rankDim;
+    // APACE consumes the exact formulaic split. Do not derive tileM again by
+    // integer division, otherwise an inconsistent cut could be truncated and
+    // silently leave rows uncomputed.
+    const uint64_t tileM = tileMValue_;
+    const uint64_t tailM = cfg.tailCnt > 0 ? tailMValue_ : 0;
+    OP_TILING_CHECK(std::max(tileM, tailM) * args_.nValue * args_.outputDtypeSize >
+                       mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+                   OP_LOGE(opName_, "APACE communication slice exceeds 256 MiB"), return ge::GRAPH_FAILED);
+    const uint64_t coveredM = tileM * cfg.tileCnt + tailM * cfg.tailCnt;
+    OP_TILING_CHECK(tileM == 0 || (cfg.tailCnt > 0 && cfg.tailM != tailM) || coveredM != perRankM,
+                    OP_LOGE(opName_,
+                            "invalid APACE MX formulaic split: perRankM=%lu, tileM=%lu x %u, "
+                            "tailM=%lu x %u, cfgTailM=%u, coveredM=%lu",
+                            perRankM, tileM, cfg.tileCnt, tailM, cfg.tailCnt, cfg.tailM, coveredM),
+                    return ge::GRAPH_FAILED);
+    auto &commTiling = apaceTilingData_.commTilingData;
+    commTiling.splitAxisTileSize = tileM;
+    commTiling.splitAxisTileCnt = cfg.tileCnt;
+    commTiling.splitAxisTailSize = tailM;
+    commTiling.splitAxisTailCnt = cfg.tailCnt;
+    commTiling.nonSplitAxisSize = args_.nValue;
+    auto &tileTiling = apaceTilingData_.tileQbmmTilingData;
+    auto &tailTiling = apaceTilingData_.tailQbmmTilingData;
+    // One APACE QBMM launch covers the same local-M slice from every rank.
+    // Generate tiling for that assembled logical M so the block scheduler can
+    // distribute work from different rank fragments across all AIC cores.
+    const uint64_t tileLogicalM = tileM * cfg.rankDim;
+    const uint64_t tailLogicalM = tailM * cfg.rankDim;
+
+    if (isMxfp4_ || isHiF4_) {
+        // 复用 MXFP4 分块，HiFP4 的 scale 容量由公共 Tiling 统一计算。
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT> tilingSwat;
+        tilingSwat.SetHiF4Enable(isHiF4_);
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(args_.isBias);
+        tilingSwat.GetTilingData(tileLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
+    } else {
+        // E4M3 and E5M2 have the same B8 storage and share the APACE tiling strategy.
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT> tilingSwat;
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(args_.isBias);
+        tilingSwat.GetTilingData(tileLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
+    }
+    OP_LOGD(opName_,
+            "APACE MX pipelined tiling: rankM=%u, perRankM=%lu, tileM=%lu x %u, logicalTileM=%lu, "
+            "tileBase=[%u,%u,%u], tileUsedCore=%u, tailM=%u x %u, logicalTailM=%lu, "
+            "tailBase=[%u,%u,%u], tailUsedCore=%u, N=%lu, K=%lu",
+            cfg.rankM, perRankM, tileM, cfg.tileCnt, tileLogicalM,
+            tileTiling.baseM, tileTiling.baseN, tileTiling.baseK, tileTiling.usedCoreNum,
+            cfg.tailM, cfg.tailCnt, tailLogicalM,
+            tailTiling.baseM, tailTiling.baseN, tailTiling.baseK, tailTiling.usedCoreNum,
+            args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1070,6 +1283,14 @@ QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTi
 
 CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 {
+    if (usingApaceImpl_) {
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false, true);
+        ConfigureApaceFormulaModel(scatterTiling, isMxfp4_ || isHiF4_);
+        scatterTiling.GetTiling();
+        CutResult cutRes = scatterTiling.tilingM_.cutRes;
+        AlignCutResForApace(cutRes, args_.mValue);
+        return cutRes;
+    }
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
                                                               TopoType::STANDARD_CARD,
@@ -1086,9 +1307,48 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
         return quantBmmScatterTiling.tilingM_.cutRes;
     }
 }
+
+void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const
+{
+    // The QBMM scheduler sees rankDim fragments concatenated in logical M, but
+    // its standard BlockMmad must not be fed tiny sub-M fragments every time a
+    // scheduler block crosses a rank boundary. Align the per-rank slice to 256
+    // (the same granularity used by the AllToAll APACE path), so normal head
+    // blocks stay inside one rank fragment. Only a possible tail remains small.
+    constexpr uint64_t APACE_PER_RANK_M_ALIGN = 256;
+    if (cutRes.longTileLen == 0 || mValue == 0) {
+        OP_LOGD(opName_, "AlignCutResForApace skip: longTileLen=%lu, mValue=%lu", cutRes.longTileLen, mValue);
+        return;
+    }
+    const uint64_t rankDim = std::max(static_cast<uint64_t>(args_.rankDim), uint64_t{1});
+    const uint64_t perRankAlign = APACE_PER_RANK_M_ALIGN;
+    const bool shortTileAtBack = cutRes.shortTileAtBack;
+    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
+    if (longTile >= mValue) {
+        cutRes.longTileLen = mValue;
+        cutRes.numLongTile = 1;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
+    } else {
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        cutRes.shortTileLen = mValue % longTile;
+        cutRes.numShortTile = cutRes.shortTileLen > 0 ? 1 : 0;
+    }
+    // MMRS has independent QBMM tilings for both groups, so it can preserve
+    // the formula model's compute/communication-balanced head/tail order.
+    cutRes.shortTileAtBack = shortTileAtBack;
+    cutRes.totalTileCnt = cutRes.numLongTile + cutRes.numShortTile;
+    OP_LOGD(opName_,
+            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, "
+            "long=%lu x %lu, short=%lu x %lu, shortAtBack=%d",
+            mValue, rankDim, perRankAlign, cutRes.longTileLen, cutRes.numLongTile,
+            cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
+}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(
+    MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
+    std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)}), 1);
 } // namespace optiling
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

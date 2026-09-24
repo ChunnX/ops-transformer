@@ -86,7 +86,8 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType co
     }
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+               GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6无CCU，commMode已在入口拒绝ccu
         switch (commModeEnum) {
             case CommType::AI_CPU:
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
@@ -125,14 +126,14 @@ enum class CaseOption {
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
     op::DataType::DT_BF16,        op::DataType::DT_FLOAT16,  op::DataType::DT_FLOAT8_E4M3FN,
-    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1, op::DataType::DT_HIFLOAT4};
 static const std::initializer_list<op::DataType> BIAS_OUTPUT_SUPPORT_TYPE = {
     op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_HIGH_ACCURACY = {op::DataType::DT_FLOAT16,
                                                                                      op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_LOW_ACCURACY = {
     op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_HIFLOAT8,
-    op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_FLOAT4_E2M1, op::DataType::DT_HIFLOAT4};
 
 static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *output)
 {
@@ -140,6 +141,23 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(output, BIAS_OUTPUT_SUPPORT_TYPE, return false);
+    if (x1->GetDataType() == op::DataType::DT_HIFLOAT4 || x2->GetDataType() == op::DataType::DT_HIFLOAT4) {
+        OP_API_CHECK(op::GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_9201, {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "HiFP4 only supports ascend910_96.");
+            return false;
+        });
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+        // HiFP4 禁止非空 bias；nullptr 或空 Tensor 均表示未启用 bias。
+        OP_API_CHECK(bias != nullptr && !bias->IsEmpty(), {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "HiFP4 does not support a non-empty bias.");
+            return false;
+        });
+        OP_API_CHECK(output->GetDataType() != op::DataType::DT_FLOAT16 &&
+                     output->GetDataType() != op::DataType::DT_BF16, {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "HiFP4 only supports float16 or bfloat16 output.");
+            return false;
+        });
+    }
     // 检查bias的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, BIAS_OUTPUT_SUPPORT_TYPE, return false);
@@ -310,6 +328,18 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor *x1, const aclTensor
     if (!CheckEmptyTensor(x1Scale, "x1Scale") || !CheckEmptyTensor(x2Scale, "x2Scale")) {
         return CaseOption::INVALID;
     }
+    if (x1->GetDataType() == op::DataType::DT_HIFLOAT4 ||
+        x2->GetDataType() == op::DataType::DT_HIFLOAT4) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
+        if (x1Scale->GetDataType() != op::DataType::DT_HIFLOAT4_SCALE ||
+            x2Scale->GetDataType() != op::DataType::DT_HIFLOAT4_SCALE ||
+            x1Scale->GetViewShape().GetDimNum() != DIM_NUM_THREE ||
+            x2Scale->GetViewShape().GetDimNum() != DIM_NUM_THREE) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "HiFP4 requires two 3-D HIFLOAT4_SCALE tensors.");
+            return CaseOption::INVALID;
+        }
+        return CaseOption::LOW_ACCURACY_PER_TENSOR_WITH_QUANT_AMAX;
+    }
     if ((x1Scale->GetViewShape().GetDimNum() == DIM_NUM_ONE) ||
         ((x1Scale->GetViewShape().GetDimNum() == DIM_NUM_THREE) && (x1Scale->GetDataType() == ge::DT_FLOAT8_E8M0))) {
         return CaseOption::LOW_ACCURACY_PER_TENSOR_WITH_QUANT_AMAX;
@@ -398,6 +428,11 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
     CommType commModeEnum = CommType::INVALID;
     auto retCommmode = CheckAndSetCommMode(commMode, commModeEnum);
     CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201 && commModeEnum == CommType::CCU) {
+        // A6(ascend910_96)无CCU引擎，仅支持ai_cpu
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[MatmulReduceScatterV2] A6 only support commMode \"ai_cpu\".");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (std::strcmp(commMode, "ai_cpu") != 0 && std::strcmp(commMode, "ccu") != 0 &&
         std::strcmp(commMode, GRAPH_CCU_MODE) != 0) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
@@ -541,7 +576,8 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor *x1, cons
                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     aclnnStatus ret = ACLNN_ERR_INNER;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用A5路径
         ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                       reduceOp, commTurn, streamMode, groupSize, commMode, output,
                                                       amaxOutOptional, workspaceSize, executor);
@@ -568,7 +604,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(void *workspace, uint64_t workspaceSize, 
     }
 
     CommType commModeEnum = CommType::INVALID;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用A5路径(ccu已在入口拒绝)
         void *arg = NnopbaseGetUserHandle(executor);
         uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
         commModeEnum = static_cast<CommType>(handleVal);

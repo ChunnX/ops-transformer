@@ -27,6 +27,11 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
+    void SetHiF4Enable(bool enable)
+    {
+        isHiF4_ = enable;
+    }
+
     void EnableBaseMHalving(bool enable)
     {
         enableBaseMHalving_ = enable;
@@ -79,6 +84,7 @@ private:
     bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
     bool hasBias_{false};
+    bool isHiF4_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -198,10 +204,12 @@ private:
         uint64_t baseASize = GetSizeWithDataType<aDataType>(runInfo_.baseM * runInfo_.baseK);
         uint64_t baseBSize = GetSizeWithDataType<bDataType>(runInfo_.baseN * runInfo_.baseK);
 
-        uint64_t baseScaleASize =
-            Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseM;
-        uint64_t baseScaleBSize =
-            Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
+        // HiFP4 每 64 个元素使用 4 字节 scale，后续深度及复用窗口沿用主线算法。
+        const uint64_t scaleBytesPerRow = isHiF4_ ?
+            CeilDiv(runInfo_.baseK, uint64_t{64}) * sizeof(uint32_t) :
+            Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE);
+        uint64_t baseScaleASize = scaleBytesPerRow * runInfo_.baseM;
+        uint64_t baseScaleBSize = scaleBytesPerRow * runInfo_.baseN;
         // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
         runInfo_.biasL1Size =
             hasBias_ ? DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() : 0UL;
