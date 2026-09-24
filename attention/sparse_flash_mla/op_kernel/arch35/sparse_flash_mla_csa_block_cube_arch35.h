@@ -74,6 +74,7 @@ public:
     static constexpr bool PHASED_KV = SPLIT_SPARSE_KV_L1 && SMLA_L1_PHASE_MODE == 1;
     static constexpr bool QBP_REUSE = SPLIT_SPARSE_KV_L1 && SMLA_L0A_QBP_MODE != 0;
     static constexpr bool QBP_PREFETCH = QBP_REUSE && SMLA_L0A_QBP_PREFETCH != 0;
+    static constexpr uint32_t QBP_SHARED_QUARTER = SMLA_L0A_QBP_SHARED_QUARTER;
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = SPLIT_SPARSE_KV_L1 ? ActiveSparseKvL1Layout::S2_ROWS : 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -220,9 +221,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1B
         }
         if constexpr (QBP_REUSE) {
             static_assert(sizeof(Q_T) == 2 && s1BaseSize == 64 && s2BaseSize == 128 && dBaseSize == 512,
-                          "Qb/P sharing requires four 16 KiB Q quarters and P <= 16 KiB");
-            // [Qa][Qb/P][Qc][Qd]. A addresses are explicit; B retains its two-slot ring.
-            l0ResidentP = LocalTensor<Q_T>(TPosition::A2, L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
+                          "Q/P sharing requires four 16 KiB Q quarters and P <= 16 KiB");
+            // Q stays at [Qa][Qb][Qc][Qd]; only the selected quarter aliases P.
+            // B retains its two-slot ring independently of the shared A quarter.
+            l0ResidentP = LocalTensor<Q_T>(TPosition::A2,
+                QBP_SHARED_QUARTER * L0A_ELEM_PER_BUF * sizeof(Q_T), L0A_ELEM_PER_BUF);
         }
         SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
         if constexpr (DIRECT_SPARSE_KV_L1) {
@@ -263,7 +266,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulQbpQuarter(
     // Every QK/PV has four MMADs, so Qa/Qc use B0, Qb/Qd B1. On a new
     // query these credits also dominate the previous query's resident-Q reads.
     WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(bBuf.idx));
-    if constexpr (Quarter == 1) {
+    if constexpr (Quarter == QBP_SHARED_QUARTER) {
         WaitFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
         LoadDataToL0A(qL0, qL1, param, 0, param.singleK, param.singleM);
         SetFlag<HardEvent::MTE1_M>(l0ResidentPEventId);
@@ -273,7 +276,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulQbpQuarter(
     LoadDataToL0B(bBuf.tensor, kL1, param, 0, param.singleK, param.singleN, 1);
     SetFlag<HardEvent::MTE1_M>(INNERCORE_L0AB(bBuf.idx));
     WaitFlag<HardEvent::MTE1_M>(INNERCORE_L0AB(bBuf.idx));
-    if constexpr (Quarter == 1) {
+    if constexpr (Quarter == QBP_SHARED_QUARTER) {
         WaitFlag<HardEvent::MTE1_M>(l0ResidentPEventId);
     }
     MmadParams mm;
@@ -287,8 +290,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::MatmulQbpQuarter(
     mm.cmatrixSource = false;
     mm.unitFlag = param.unitFlag;
     Mmad(cL0, qL0, bBuf.tensor, mm);
-    if constexpr (Quarter == 1) {
-        // Only Qb's MMAD owns X here: Qc and Qd never use or release X.
+    if constexpr (Quarter == QBP_SHARED_QUARTER) {
+        // Only the selected quarter's MMAD owns X; resident quarters never release it.
         SetFlag<HardEvent::M_MTE1>(l0ResidentPEventId);
     }
     SetFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(bBuf.idx));
@@ -793,7 +796,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer
         0,                                         // isLeftTranspose
         0                                          // isRightTranspose
     };
-    // M_FIX orders FIX only. Event2 protects resident P, or the shared Qb/P
+    // M_FIX orders FIX only. Event2 protects resident P, or the selected shared Q/P
     // region in QBP mode; it cannot be replaced with the L0C completion event.
     if constexpr (QBP_REUSE) {
         if (qbpPrefetchedTask != runInfo.taskId) {

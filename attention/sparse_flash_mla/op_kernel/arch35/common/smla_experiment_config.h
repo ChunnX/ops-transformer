@@ -52,10 +52,15 @@
 #define SMLA_P_EARLY_LOAD 0
 #endif
 
-// Plan19: 0 off; 1 layout/event control (only Qa resident); 2 Qa/Qc/Qd resident.
-// Both enabled modes keep two L0B slots and time-share Qb/P at [16,32) KiB.
+// 0 off; 1 layout/event control (only Qa resident); 2 all non-shared Q quarters resident.
+// Both enabled modes keep two L0B slots and share one Q quarter with P.
 #ifndef SMLA_L0A_QBP_MODE
 #define SMLA_L0A_QBP_MODE 0
+#endif
+
+// 1: Qb/P at [16,32) KiB; 2: Qc/P at [32,48) KiB. Q quarter addresses stay fixed.
+#ifndef SMLA_L0A_QBP_SHARED_QUARTER
+#define SMLA_L0A_QBP_SHARED_QUARTER 1
 #endif
 
 // Independent candidate: load the preceding task's P after issuing all four QK quarters.

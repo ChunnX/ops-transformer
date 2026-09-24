@@ -34,8 +34,12 @@ static_assert(SMLA_L1_PHASE_MODE == 0 || SMLA_L1_SYNC_MODE == 1,
               "KV phase gate requires unified READY and whole-slot FREE");
 
 static_assert(SMLA_L0A_QBP_MODE >= 0 && SMLA_L0A_QBP_MODE <= 2, "Unsupported Qb/P policy");
+static_assert(SMLA_L0A_QBP_SHARED_QUARTER == 1 || SMLA_L0A_QBP_SHARED_QUARTER == 2,
+              "P may share only the Qb or Qc quarter");
 static_assert(SMLA_L0A_QBP_PREFETCH == 0 || SMLA_L0A_QBP_PREFETCH == 1, "Unsupported P prefetch policy");
 static_assert(!SMLA_L0A_QBP_PREFETCH || SMLA_L0A_QBP_MODE == 2, "P prefetch requires three resident Q quarters");
+static_assert(!SMLA_L0A_QBP_PREFETCH || SMLA_L0A_QBP_SHARED_QUARTER == 1,
+              "Qc/P experiment keeps cross-QK P prefetch disabled");
 static_assert(SMLA_L0A_QBP_MODE == 0 ||
               (SMLA_L1_LAYOUT_MODE == 3 && SMLA_L1_SYNC_MODE == 0 && SMLA_L1_PHASE_MODE == 0 &&
                SMLA_L0A_MODE == 0 && !SMLA_P_EARLY_LOAD && !SMLA_ATTENTION_ABLATION &&
