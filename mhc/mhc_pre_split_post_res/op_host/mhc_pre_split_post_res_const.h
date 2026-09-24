@@ -16,6 +16,7 @@
 #ifndef MHC_PRE_SPLIT_POST_RES_CONST_H_
 #define MHC_PRE_SPLIT_POST_RES_CONST_H_
 
+#include <cstddef>
 #include <stdint.h>
 
 namespace optiling {
