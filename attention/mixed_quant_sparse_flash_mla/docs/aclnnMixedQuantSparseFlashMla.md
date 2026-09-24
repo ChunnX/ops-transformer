@@ -677,7 +677,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - attnOutOut：tensor类型，公式中的输出。数据类型支持FLOAT16、BFLOAT16，数据格式支持ND，shape和dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
-  - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。不支持其他非连续。
+  - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续，非连续Tensor的每一维的stride均不能为0。不支持其他非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
 
 ### 产品差异化约束
