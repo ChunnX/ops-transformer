@@ -90,83 +90,102 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
         if (AscendC::GetBlockIdx() == 0) {
             *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
         }
-        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
-                                           gmmArrayAddr_, tilingGM);
-        HcommImpl hcommImpl;
-        hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM,
-                       tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
-        const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
-        const uint32_t expertNum = tilingData_->taskTilingInfo.expertNum;
-        for (uint32_t start = 0; start < e; start += expertNum) {
-            const uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
-            hcommImpl.Process(start, actualExpertNum);
-        }
-        // 共享专家（独立输出，不走通信）：必须在 Hccl Finalize 之前执行——全部已验证
-        // 形态的 Blaze 计算均位于 Finalize 之前，且与末批 AllToAllV 通信重叠
-        // （通信由引擎异步执行，不占用 AIC 核）；Finalize 之后执行 Blaze 会挂死（真机实证）
-        if constexpr (TILINGKEY_COMPUTE_MATMUL) {
-            GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
-                                               mmArrayAddr_, tilingGM);
-            SharedGmmExpertOpType shareComputeOp;
-            // 诊断档位 6：共享专家改用 gmm 侧张量地址（sendBuf 充当 C 出口，尺寸足够），
-            // 判别挂死是否源于 mm 张量的 GM 地址/映射属性（形状 stride 与 gmm 侧一致）
-            if (tilingData_->taskTilingInfo.ubSize == 6UL) {
-                shareComputeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM,
-                                    sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
-                                    &pipe);
-            } else {
+        // 诊断档位 8：完全跳过 hcommImpl（其 BlockMmad 实例构造后未 Run），
+        // 使共享专家成为 kernel 内唯一 BlockMmad 实例——判别挂死是否源于
+        // 未执行 Run 的前一 BlockMmad 实例（构造期 SetFlag/布局变换）的状态残留
+        const bool skipHcommForDbg = (tilingData_->taskTilingInfo.ubSize == 8UL);
+        if (!skipHcommForDbg) {
+            GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                               gmmArrayAddr_, tilingGM);
+            HcommImpl hcommImpl;
+            hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM,
+                           tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+            const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+            const uint32_t expertNum = tilingData_->taskTilingInfo.expertNum;
+            for (uint32_t start = 0; start < e; start += expertNum) {
+                const uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+                hcommImpl.Process(start, actualExpertNum);
+            }
+            // 共享专家（独立输出，不走通信）：必须在 Hccl Finalize 之前执行——全部已验证
+            // 形态的 Blaze 计算均位于 Finalize 之前，且与末批 AllToAllV 通信重叠
+            // （通信由引擎异步执行，不占用 AIC 核）；Finalize 之后执行 Blaze 会挂死（真机实证）
+            if constexpr (TILINGKEY_COMPUTE_MATMUL) {
+                // 共享专家（独立输出，不走通信）：必须在 Hccl Finalize 之前执行——全部已验证
+                // 形态的 Blaze 计算均位于 Finalize 之前，且与末批 AllToAllV 通信重叠
+                // （通信由引擎异步执行，不占用 AIC 核）；Finalize 之后执行 Blaze 会挂死（真机实证）
+                if constexpr (TILINGKEY_COMPUTE_MATMUL) {
+                    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling,
+                                                       gmmArray, mmArrayAddr_, tilingGM);
+                    SharedGmmExpertOpType shareComputeOp;
+                    // 诊断档位 6：共享专家改用 gmm 侧张量地址（sendBuf 充当 C 出口，尺寸足够），
+                    // 判别挂死是否源于 mm 张量的 GM 地址/映射属性（形状 stride 与 gmm 侧一致）
+                    if (tilingData_->taskTilingInfo.ubSize == 6UL) {
+                        shareComputeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM,
+                                            sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling,
+                                            mmArrayAddr_, &pipe);
+                    } else {
+                        shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM,
+                                            mmyOptionalGM, sharedGmmComputeWSGM, tilingData_,
+                                            &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+                    }
+                    shareComputeOp.Process(0, 1);
+                }
+                hcommImpl.End();
+            } else if (TILINGKEY_COMPUTE_MATMUL) {
+                // dbg=8：仅共享专家（全维度，mm 张量地址），无 hcommImpl 实例
+                GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling,
+                                                   gmmArray, mmArrayAddr_, tilingGM);
+                SharedGmmExpertOpType shareComputeOp;
                 shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                     sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
                                     &pipe);
+                shareComputeOp.Process(0, 1);
             }
-            shareComputeOp.Process(0, 1);
-        }
-        hcommImpl.End();
 #else
         // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
         // TILINGKEY_USING_APACE_IMPL=0，该组合不会被选中，空实现仅占位
 #endif
-        return;
-    }
+            return;
+        }
 
-    // 原通路（TT 量化实例走此路径；MIX_AIC_1_2 任务类型由 KERNEL_TYPE_SEL 声明，
-    // AIC 计算 + AIV 通信，历史行为不变）
-    constexpr CubeFormat W_FORMAT = CubeFormat::ND;
-    constexpr bool USE_SEND_COUNTS = true;
-    constexpr bool IS_SHARED_EXPERT = true;
-    constexpr bool IS_NOT_SHARED_EXPERT = false;
-    using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
-    using GmmASWKernelType =
-        Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMM_X_SCALE, DTYPE_Y, W_FORMAT,
-                                          TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
-    using ComputeOpType =
-        QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE,
-                           DTYPE_Y, CubeFormat::ND, false, TILINGKEY_GROUPED_MATMUL_TRANS, false, false>;
-    using SharedGmmExpertOpType =
-        QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_MM_X_SCALE,
-                           DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true, false>;
-    using GmmA2avSchedulerType =
-        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
-    const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
-                                  offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
-    // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
-    GM_ADDR sendBufferAddr = gmmOutputGM;
-    HcclOpType hcclOp;
-    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
-                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
-    // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
-                                       gmmArrayAddr_, tilingGM);
-    ComputeOpType computeOp;
-    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
-                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
-    // sharedmm
-    GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
-                                       mmArrayAddr_, tilingGM);
-    SharedGmmExpertOpType shareComputeOp;
-    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                        sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-    GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
-    gmmA2avScheduler.Process();
-}
+        // 原通路（TT 量化实例走此路径；MIX_AIC_1_2 任务类型由 KERNEL_TYPE_SEL 声明，
+        // AIC 计算 + AIV 通信，历史行为不变）
+        constexpr CubeFormat W_FORMAT = CubeFormat::ND;
+        constexpr bool USE_SEND_COUNTS = true;
+        constexpr bool IS_SHARED_EXPERT = true;
+        constexpr bool IS_NOT_SHARED_EXPERT = false;
+        using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
+        using GmmASWKernelType =
+            Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMM_X_SCALE, DTYPE_Y,
+                                              W_FORMAT, TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
+        using ComputeOpType = QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X,
+                                                 DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
+                                                 TILINGKEY_GROUPED_MATMUL_TRANS, false, false>;
+        using SharedGmmExpertOpType =
+            QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                               DTYPE_MM_X_SCALE, DTYPE_Y, CubeFormat::ND, false, TILINGKEY_MATMUL_TRANS, true, false>;
+        using GmmA2avSchedulerType =
+            GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
+        const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
+        uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
+                                      offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
+        // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
+        GM_ADDR sendBufferAddr = gmmOutputGM;
+        HcclOpType hcclOp;
+        hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
+                    static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+        // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                           gmmArrayAddr_, tilingGM);
+        ComputeOpType computeOp;
+        computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
+                       &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+        // sharedmm
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
+                                           mmArrayAddr_, tilingGM);
+        SharedGmmExpertOpType shareComputeOp;
+        shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                            sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+        GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
+        gmmA2avScheduler.Process();
+    }
