@@ -300,3 +300,4 @@
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_qkv_rms_norm_rope_cache](examples/test_aclnn_qkv_rms_norm_rope_cache.cpp) | 通过[aclnnQkvRmsNormRopeCache](docs/aclnnQkvRmsNormRopeCache.md)接口方式调用QkvRmsNormRopeCache算子。 |
+| 图模式 | [test_geir_qkv_rms_norm_rope_cache](examples/test_geir_qkv_rms_norm_rope_cache.cpp)  | 通过[算子IR](op_graph/qkv_rms_norm_rope_cache_proto.h)构图方式调用QkvRmsNormRopeCache算子。         |

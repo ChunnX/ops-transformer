@@ -271,6 +271,7 @@ private:
         numHeadK_ = tiling_->numHeadK;
         numHeadV_ = tiling_->numHeadV;
         blockSize_ = tiling_->blockSize;
+        blockNum_ = tiling_->blockNum;
         epsilon_ = tiling_->epsilon;
         reciprocal_ = tiling_->reciprocal;
         isOutputQkv_ = tiling_->isOutputQkv;
@@ -552,8 +553,11 @@ private:
         LocalTensor<T_V_CACHE> vOut = outQueueV_.DeQue<T_V_CACHE>();
         for (int64_t t = 0; t < numTokens; ++t) {
             const int64_t pageOffset = indexGm_.GetValue(tokenStart + t);
-            if (pageOffset < 0) {
-                continue; // index = -1: 跳过该 token 的 cache 更新
+            // index 的合法值域是 [-1, blockNum_*blockSize_);越界即散射写越过 cache 张量。
+            // index 是设备张量,取值 host 读不到、无法在 tiling 阶段拦截,只能在这里判上界。
+            // 实测越界量小时是静默踩内存(写进设备内存池里别的缓冲),大到出池则直接 VEC_ERROR。
+            if (pageOffset < 0 || pageOffset >= blockNum_ * blockSize_) {
+                continue; // index = -1(跳过)或越界(拒绝写)
             }
             const int64_t pageId = pageOffset / blockSize_;
             const int64_t tokenInPage = pageOffset - pageId * blockSize_;
@@ -622,7 +626,7 @@ private:
     TBuf<TPosition::VECCALC> gammaBuf_, quantBuf_;
 
     int64_t numHead_{0}, qkvDim_{0}, numHeadQ_{0}, numHeadK_{0}, numHeadV_{0};
-    int64_t blockSize_{0}, tokenStride_{0};
+    int64_t blockSize_{0}, blockNum_{0}, tokenStride_{0};
     int64_t blockFactor_{1}, ubFactor_{1};
     int64_t inUbBytes_{0}, cosSinUbBytes_{0}, qOutUbBytes_{0}, kProtoUbBytes_{0}, vProtoUbBytes_{0};
     int64_t kCacheUbBytes_{0}, vCacheUbBytes_{0}, gammaUbBytes_{0}, quantUbBytes_{0};
