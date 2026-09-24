@@ -582,8 +582,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
 #if QLIV2_HIF4_DEBUG_DUMP
     // Dump one deterministic AIV/tile. Descriptor IDs:
-    // 6101 = QK UB ([G, 256] BF16; first 128 columns valid),
-    // 6102 = weight UB (first G FP32 values valid).
+    // 6101 = first half of QK UB rows ([ceil(G / 2), 256] BF16; first 128 columns valid),
+    // 6102 = second half of QK UB rows ([floor(G / 2), 256] BF16; first 128 columns valid).
     if constexpr (IS_HIFLOAT4) {
         bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
                            info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
@@ -591,8 +591,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                            info.s2Idx == QLIV2_HIF4_DEBUG_S2_BLOCK &&
                            blockId_ % CVRATIO == 0;
         if (isDebugTile) {
-            AscendC::DumpTensor(qkBase, 6101, gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
-            AscendC::DumpTensor(weightBase, 6102, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T));
+            uint32_t qkRowStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
+            uint32_t firstDumpRows = (gSize_ + 1U) / 2U;
+            uint32_t secondDumpRows = gSize_ - firstDumpRows;
+            AscendC::DumpTensor(qkBase, 6101, firstDumpRows * qkRowStride);
+            if (secondDumpRows > 0U) {
+                AscendC::DumpTensor(qkBase[firstDumpRows * qkRowStride], 6102, secondDumpRows * qkRowStride);
+            }
         }
     }
 #endif

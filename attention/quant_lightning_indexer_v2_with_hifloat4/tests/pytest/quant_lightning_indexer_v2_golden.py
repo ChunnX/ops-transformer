@@ -1082,24 +1082,27 @@ class GeneralizedQLIV2:
         debug_enabled = os.environ.get("QLIV2_DEBUG_HIF4_UB", "1") == "1"
         debug_batch = int(os.environ.get("QLIV2_HIF4_DEBUG_BATCH", "0"))
         if debug_enabled and b_idx == debug_batch and not self.hif4_vector_debug_dumped:
-            # Match device descriptors 6101/6102/6103 for the first S1 row and
-            # first 128-wide S2 tile. Device 6101 has a physical stride of 256
-            # BF16 values per G row; qk_valid omits those padding elements.
+            # Match device descriptors 6101/6102/6103 for the first S1 row
+            # and first 128-wide S2 tile. Device 6101 and 6102 split the G rows
+            # into two dumps with a physical stride of 256 BF16 values per row;
+            # qk_valid omits those padding elements.
             tile_s2 = min(128, qk_matrix.shape[-1])
             qk_valid = qk_matrix[0, : self.group_size, :tile_s2]
-            weight_valid = weight_fp32_matrix[0, 0, : self.group_size]
-            weight_bf16 = weight_matrix[0, 0, : self.group_size]
+            first_dump_rows = (self.group_size + 1) // 2
             reduce_bf16 = brc_vmul_matrix[0, 0, :tile_s2]
             reduce_key = bf16_to_qliv2_sortable_key(reduce_bf16)
             print(
                 "[QLIV2_HIF4_GOLDEN] device_map: "
-                "6101=qk_valid (device row stride=256 BF16), "
-                "6102=weight_valid (device row stride=128 FP32), "
+                "6101=qk_valid first G rows, 6102=qk_valid remaining G rows "
+                "(device row stride=256 BF16), "
                 "6103=reduce_sortable_key"
             )
-            print_hif4_vector_golden_stage("6101_qk_valid", qk_valid)
-            print_hif4_vector_golden_stage("6102_weight_valid", weight_valid)
-            print_hif4_vector_golden_stage("weight_bf16_used_by_vector", weight_bf16)
+            print_hif4_vector_golden_stage(
+                "6101_qk_valid_first_g_rows", qk_valid[:first_dump_rows]
+            )
+            print_hif4_vector_golden_stage(
+                "6102_qk_valid_remaining_g_rows", qk_valid[first_dump_rows:]
+            )
             print_hif4_vector_golden_stage("reduce_bf16_before_key", reduce_bf16)
             print_hif4_vector_golden_stage("6103_reduce_sortable_key", reduce_key)
             self.hif4_vector_debug_dumped = True
