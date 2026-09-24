@@ -83,14 +83,14 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0); // 0: 默认值，无mask
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0); //  0: 默认值
-        OpAICoreConfig aicore_config;
+        OpAICoreConfig aicore_config; // QLI V2: mask config.
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910b", aicore_config); // QLI V2: tile config (ascend910b).
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
         OpAICoreConfig aicore_config_95;
@@ -174,7 +174,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend950", aicore_config_95); // QLI V2: tile config (ascend950).
     }
 };
 OP_ADD(QuantLightningIndexerV2);

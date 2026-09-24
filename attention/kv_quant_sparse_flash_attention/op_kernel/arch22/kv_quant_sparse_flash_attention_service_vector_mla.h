@@ -204,7 +204,7 @@ private:
     TBuf<> softmaxSumDefaultBuff; // 1K
 
     LocalTensor<T> softmaxMaxDefaultUb;
-    LocalTensor<T> softmaxSumDefaultUb;
+    LocalTensor<T> softmaxSumDefaultUb; // KV-SFA: softmax state.
 
     LocalTensor<T> softmaxMaxUb;
     LocalTensor<T> softmaxSumUb;
@@ -1317,7 +1317,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &inf
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
-            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
+            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM; // KV-SFA: pipeline sync.
         }
         CrossCoreWaitFlag(constInfo.syncC2V2);
         ProcessVec2SingleBuf(info, mSplitInfo);
@@ -1374,7 +1374,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
-    DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
+    DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount); // KV-SFA: output matmul.
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
@@ -1404,7 +1404,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunI
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
-    dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
+    dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T); // KV-SFA: output layout.
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[info.attenOutOffset + wsMStart * actualColumnCount], attenOutUb, dataCopyParams);

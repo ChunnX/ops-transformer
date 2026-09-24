@@ -404,7 +404,7 @@ void SMLAInfoParser::GetOptionalInputParaInfo()
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_SPARSE_INDICES_INDEX, opParamInfo_.cmpSparseIndices);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_BLOCK_TABLE_INDEX, opParamInfo_.oriBlockTable);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_BLOCK_TABLE_INDEX, opParamInfo_.cmpBlockTable);
-    sparse_mla_checker::PopulateOptionalTensorParam(context_, SINKS_INDEX, opParamInfo_.sinks);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, SINKS_INDEX, opParamInfo_.sinks); // SMLA: inputs.
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_Q_INDEX, opParamInfo_.cuSeqLensQ);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_ORI_KV_INDEX, opParamInfo_.cuSeqLensOriKv);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_CMP_KV_INDEX, opParamInfo_.cuSeqLensCmpKv);
@@ -513,7 +513,7 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
     if (opParamInfo_.oriKv.desc != nullptr) {
-        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType();
+        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType(); // SMLA: compressed-KV descriptors (oriKvType_).
     }
     if (opParamInfo_.cmpKv.desc != nullptr) {
         cmpKvType_ = opParamInfo_.cmpKv.desc->GetDataType();
@@ -872,7 +872,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
-    if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
+    if (opParamInfo_.cmpBlockTable.tensor != nullptr) { // SMLA: compressed-KV descriptors (tensor).
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),

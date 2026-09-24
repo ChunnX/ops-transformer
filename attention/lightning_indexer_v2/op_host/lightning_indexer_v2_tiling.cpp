@@ -123,7 +123,7 @@ ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(
         opParamInfo_.attenOut.desc == nullptr,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "The desc of sparse_indices is nullptr"),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED); // LI V2: tile descriptors (GRAPH_FAILED).
 
     return ge::GRAPH_SUCCESS;
 }
@@ -548,7 +548,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                             "The dtype of cu_seqlens_q only supports int32"),
                         return ge::GRAPH_FAILED);
             // seqused_q 可选 - 仅校验数据类型
-            if (opParamInfo_.sequsedQ.tensor != nullptr) {
+            if (opParamInfo_.sequsedQ.tensor != nullptr) { // LI V2: tile descriptors (tensor).
                 OP_CHECK_IF(opParamInfo_.sequsedQ.desc->GetDataType() != ge::DT_INT32,
                             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                                 opName_, "seqused_q",
@@ -570,7 +570,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                                 opName_, "seqused_q",
                                 LIV2DataTypeToSerialString(opParamInfo_.sequsedQ.desc->GetDataType()).c_str(),
                                 "The dtype of seqused_q only supports int32"),
-                            return ge::GRAPH_FAILED);
+                            return ge::GRAPH_FAILED); // LI V2: tile descriptors (GRAPH_FAILED).
             }
         }
     }
@@ -683,7 +683,7 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
-        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) { // LI V2: KV descriptors.
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(3), 1};
         } else if (kLayout_ == DataLayout::TND) {
@@ -755,7 +755,7 @@ ge::graphStatus LIV2InfoParser::GetGSize()
                                                "The head num of q must be a multiple of the head num of k");
     }
     gSize_ = n1Size_ / n2Size_;
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == NpuArch::DAV_3510) { // LI V2: query descriptors (npuArch_).
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q and k",
@@ -934,7 +934,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            opName_, "q and output_idx_offset",
+                            opName_, "q and output_idx_offset", // LI V2: query descriptors (output_idx_offset).
                             Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                                 Ops::Base::ToString(opParamInfo_.outputIdxOffset.tensor->GetStorageShape()),
                             "TND case q and output_idx_offset dim 0 are " + std::to_string(qTsize) + " and " +
@@ -990,7 +990,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "q, w and sparse_indices",
+                    opName_, "q, w and sparse_indices", // LI V2: query descriptors (GetStorageShape).
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                         Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),

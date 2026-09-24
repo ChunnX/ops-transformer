@@ -83,7 +83,7 @@ __aicore__ inline T1 Max(T1 a, T2 b)
 template <typename T>
 __aicore__ inline size_t BlockAlign(size_t s)
 {
-    if constexpr (IsSameType<T, int4b_t>::value) {
+    if constexpr (IsSameType<T, int4b_t>::value) { // MQSMLA: tile params.
         return (s + 63) / 64 * 64;
     }
     size_t n = (32 / sizeof(T));
@@ -112,7 +112,7 @@ struct Position {
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
-template <typename T>
+template <typename T> // MQSMLA: query layout.
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,       // D
@@ -144,7 +144,7 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   const PAShape &shape,     // blockSize, headNum, headDim
                                   const Position &startPos) // bacthIdx nIdx curSeqIdx
 {
-    uint32_t copyFinishRowCnt = 0;
+    uint32_t copyFinishRowCnt = 0; // MQSMLA: paged-KV addresses.
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Idx;
     uint32_t blockElementCnt = 32 / sizeof(T);
@@ -253,11 +253,11 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
     static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048; // MQSMLA: tile state (BUFFER_SIZE_BYTE_2K).
     static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768; // MQSMLA: tile state (BUFFER_SIZE_BYTE_32K).
     // FP32的0值和极大值
     static constexpr float FLOAT_ZERO = 0;
     static constexpr float FLOAT_MAX = 3.402823466e+38F;

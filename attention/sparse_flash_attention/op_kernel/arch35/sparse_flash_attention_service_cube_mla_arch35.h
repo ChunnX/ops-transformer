@@ -68,7 +68,7 @@ public:
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline void IterateBmm2(
+    __aicore__ inline void IterateBmm2( // SFA: output matmul (IterateBmm2).
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
@@ -248,8 +248,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) { // SFA: query matmul.
+        inputLeftBuf.Set<HardEvent::MTE1_MTE2>();               // 释放L1A
     }
 
     mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
@@ -373,10 +373,10 @@ public:
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
         ConstInfo &constInfo)
-    {}
+    {} // SFA: output matmul.
 };
 
-template <typename T>
+template <typename T>   // SFA: tile matmul.
 struct CubeBlockTraits; // 声明
 
 /* 生成CubeBlockTraits */
@@ -384,8 +384,8 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT /* SFA: tile matmul (TEMPLATES_DEF_NO_DEFAULT). */ \
+        struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }

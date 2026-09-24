@@ -181,7 +181,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                 WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                 QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT); // LI: query sync.
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             } else {
                 queryL1Mte1BufIdx_ =
@@ -421,10 +421,10 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1); // LI: pipeline sync (QUERY_MTE1_MTE2_EVENT).
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
+    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1); // LI: pipeline sync (M_MTE1_EVENT).
 
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
@@ -441,7 +441,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
+    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0); // LI: pipeline sync (M_MTE1_EVENT).
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);

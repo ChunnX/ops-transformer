@@ -404,10 +404,10 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1); // LI V2: pipeline sync (QUERY_MTE1_MTE2_EVENT).
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
+    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1); // LI V2: pipeline sync (M_MTE1_EVENT).
 
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
@@ -424,7 +424,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
+    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0); // LI V2: pipeline sync (M_MTE1_EVENT).
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);

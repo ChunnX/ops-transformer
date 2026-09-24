@@ -39,13 +39,13 @@ public:
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
     {
-        this->topK = topK;
+        this->topK = topK; // LI V2: tile candidates (topK).
         this->trunkLen = trunkLen;
     }
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal; // LI V2: tile candidates (hisIndexLocal1).
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
@@ -131,7 +131,7 @@ private:
     LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
     LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
-    uint32_t topK = 512;
+    uint32_t topK = 512;                    // LI V2: top-k candidates.
     uint32_t trunkLen = 8192;
 };
 } // namespace liV2Topk

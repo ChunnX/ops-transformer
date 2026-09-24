@@ -40,7 +40,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cmp_sparse_indices")
+        this->Input("cmp_sparse_indices") // MQSMLA: tile config.
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -110,7 +110,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("attn_out")
+        this->Output("attn_out") // MQSMLA: output config.
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
@@ -132,7 +132,7 @@ public:
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
+        aicore_config.DynamicCompileStaticFlag(true) // MQSMLA: softmax config.
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)

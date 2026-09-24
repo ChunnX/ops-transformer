@@ -103,7 +103,7 @@ protected:
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
     uint64_t queryL1Mte1BufIdx_ = 0;
-    uint64_t l0BufIdx_ = 0;
+    uint64_t l0BufIdx_ = 0; // QLI: query matmul.
 
     bool isKeyCacheValid_ = false; // L1中是否有可复用的数据
     uint64_t keyGmStart_ = 0;      // L1数据对应的GM S2偏移
@@ -186,7 +186,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
-                    queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
+                    queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_; // QLI: query sync (queryL1Mte1BufIdx_).
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -263,7 +263,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
-                    queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
+                    queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_; // QLI: query sync (queryL1Mte1BufIdx_).
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -485,7 +485,7 @@ __aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1); // QLI: pipeline sync (QUERY_MTE1_MTE2_EVENT).
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
@@ -505,7 +505,7 @@ __aicore__ inline void QLIMatmul<QLIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
+    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0); // QLI: pipeline sync (M_MTE1_EVENT).
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);

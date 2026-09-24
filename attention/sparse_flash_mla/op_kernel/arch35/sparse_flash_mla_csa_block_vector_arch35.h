@@ -56,8 +56,8 @@ struct PhyAddrValidInfo {
     int64_t cmpBase = 0;      // restoredSize - actualS1Size + 1
 };
 
-TEMPLATES_DEF
-class CSABlockVec {
+TEMPLATES_DEF // SMLA: compressed-window map.
+    class CSABlockVec {
 public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
@@ -132,7 +132,7 @@ public:
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
     {
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
-        intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
+        intraCoreCombineGm = intraCoreCombine.template GetTensor<float>(); // SMLA: paged-KV addresses.
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = crossCoreCombine.template GetTensor<float>();
         fdStagingBase = crossCoreCombineBase;
@@ -141,17 +141,15 @@ public:
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
-                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
-                                        bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
-                                        GlobalTensor<int32_t> actualSeqOriKvlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensOriKvGm, GlobalTensor<int32_t> oriTopkLengthGm,
-                                        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
-                                        GlobalTensor<int32_t> actualSeqCmpKvlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
-                                        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
-                                        ConstInfo &constInfo);
+    __aicore__ inline void GetKVPhyAddr(
+        uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
+        bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
+        GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
+        GlobalTensor<int32_t> oriTopkLengthGm, // SMLA: compressed-KV bounds (oriTopkLengthGm).
+        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv, GlobalTensor<int32_t> actualSeqCmpKvlenGm,
+        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
+        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
+        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &constInfo);
     __aicore__ inline void FreeEvent(ConstInfo &constInfo);
 
 private:
@@ -197,7 +195,7 @@ private:
     {
         uint32_t coreIdx;
         if constexpr (IS_SPLIT_G) {
-            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
+            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U); // SMLA: workspace slots.
         } else {
             coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
         }
@@ -941,7 +939,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     uint32_t crossWorkspaceIdx =
         static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
+    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor; // SMLA: LSE workspace.
     LocalTensor<float> blockMaxUb = tmpUb;
     LocalTensor<float> blockSumUb = tmpUb[256];
     LocalTensor<float> lseBroadcastUb = tmpUb[512];
@@ -958,7 +956,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     while (startRow < runInfo.vec2MRealSize) {
         int64_t dealRowCount = intraLayout.chunkRows;
         if (startRow + dealRowCount > runInfo.vec2MRealSize) {
-            dealRowCount = runInfo.vec2MRealSize - startRow;
+            dealRowCount = runInfo.vec2MRealSize - startRow; // SMLA: tile state.
         }
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
@@ -980,7 +978,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
             lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
             lseParams.blockLen = sizeof(float);
             lseParams.srcStride = 0;
-            lseParams.dstStride = 0;
+            lseParams.dstStride = 0; // SMLA: LSE state.
             SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
             WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
             DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + startRow], lseBroadcastUb, lseParams);
@@ -1046,7 +1044,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
-                if constexpr (IS_BATCH_CONSISTENCY) {
+                if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: softmax state (IS_BATCH_CONSISTENCY).
                     smlaSumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
                     smlaSumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
@@ -1066,7 +1064,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
-                if constexpr (IS_BATCH_CONSISTENCY) {
+                if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: softmax state (IS_BATCH_CONSISTENCY).
                     smlaSumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
                     smlaSumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
@@ -1252,7 +1250,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &
                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
-    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize); // SMLA: output matmul.
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1444,7 +1442,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) {
+    if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: pipeline sync (IS_BATCH_CONSISTENCY).
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }
@@ -1467,7 +1465,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInf
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) {
+    if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: pipeline sync (IS_BATCH_CONSISTENCY).
         WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }
@@ -1484,7 +1482,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
                                                                 GlobalTensor<int32_t> &actualSeqGm,
                                                                 GlobalTensor<int32_t> &cuSeqlensGm, int64_t defaultSize)
 {
-    if (hasActualSeq) {
+    if (hasActualSeq) { // SMLA: batch lengths.
         return actualSeqGm.GetValue(bIdx);
     } else if (hasCuSeqlens) {
         return cuSeqlensGm.GetValue(bIdx + 1) - cuSeqlensGm.GetValue(bIdx);
@@ -1492,12 +1490,10 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
         return defaultSize;
     }
 }
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
-                                                                                    int32_t actualOriS2Size,
-                                                                                    int64_t restoredSize,
-                                                                                    ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT // SMLA: sparse-window bounds.
+    __aicore__ inline PhyAddrValidInfo
+    CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
+                                                     int64_t restoredSize, ConstInfo &constInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
     PhyAddrValidInfo validInfo;
@@ -1510,7 +1506,7 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
             } else if (constInfo.oriMaskMode == 3U) {
                 validInfo.oriRightBias = 0;
             } else {
-                validInfo.oriLeftBias =
+                validInfo.oriLeftBias = // SMLA: original-KV addresses.
                     (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
                 validInfo.oriRightBias =
                     (constInfo.oriWinRight == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinRight;
@@ -1575,7 +1571,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bI
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType( // SMLA: original-KV bounds.
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
     bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
     GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
@@ -1793,7 +1789,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr( // SMLA: compressed-KV bounds (cuSeqlensOriKvGm).
     uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
     bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
     GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,

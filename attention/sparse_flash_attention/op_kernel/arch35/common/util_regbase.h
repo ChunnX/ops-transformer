@@ -25,7 +25,7 @@ namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 enum class VselrIndexEnum {
     GT_64_AND_LTE_128_INDEX = 0,
-    GT_0_AND_LTE_64_INDEX = 1
+    GT_0_AND_LTE_64_INDEX = 1 // SFA: run-param layout (GT_0_AND_LTE_64_INDEX).
 };
 
 #define COMMON_RUN_PARAM \
@@ -41,7 +41,7 @@ enum class VselrIndexEnum {
     uint32_t s1RealSize; \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
-    uint32_t mRealSize; \
+    uint32_t mRealSize; /* SFA: sequence bounds. */ \
     uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \
@@ -74,12 +74,12 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
-    int64_t s2LoopLimit; \
-    int64_t s1oIdx = 0; /* s1轴的index */ \
-    int64_t loop = 0;   /* for v0 perload loop */ \
-    int64_t boIdx = 0;  /* b轴的index */ \
-    int64_t n2oIdx = 0; /* n2轴的index */ \
-    int64_t goIdx = 0;  /* g轴的index */ \
+    int64_t s2LoopLimit; /* SFA: run-param layout (s2LoopLimit). */ \
+    int64_t s1oIdx = 0;  /* s1轴的index */ \
+    int64_t loop = 0;    /* for v0 perload loop */ \
+    int64_t boIdx = 0;   /* b轴的index */ \
+    int64_t n2oIdx = 0;  /* n2轴的index */ \
+    int64_t goIdx = 0;   /* g轴的index */ \
     int32_t s1RealSize; \
     int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */ \
     int32_t \

@@ -100,7 +100,7 @@ ge::graphStatus LIInfoParser::CheckTensorShapes() const
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The shape of query is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, // LI: query descriptors (shape).
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The shape of key is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
@@ -125,7 +125,7 @@ ge::graphStatus LIInfoParser::CheckTensorDescriptions() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The desc of key is nullptr"),
-                return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED); // LI: query descriptors (GRAPH_FAILED).
     OP_CHECK_IF(opParamInfo_.weights.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "weights", "The desc of weights is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -167,7 +167,7 @@ ge::graphStatus LIInfoParser::CheckRequiredAttrExistence() const
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key", "Layout_key is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr,
+    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, // LI: query descriptors (sparseCount).
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count", "Sparse_count is nullptr"),
                 return ge::GRAPH_FAILED);
 
@@ -276,7 +276,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     if (opParamInfo_.layOutKey != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_key is:%s", opParamInfo_.layOutKey);
     }
-    if (opParamInfo_.sparseCount != nullptr) {
+    if (opParamInfo_.sparseCount != nullptr) { // LI: KV descriptors.
         OP_LOGI(context_->GetNodeName(), "selscted count is:%d", *opParamInfo_.sparseCount);
     }
     if (opParamInfo_.sparseMode != nullptr) {
@@ -460,7 +460,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "actual_seq_lengths_query",
                         "When layout_query is TND, actual_seq_lengths_query must not be null"),
-                    return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED); // LI: sequence descriptors (GRAPH_FAILED).
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
@@ -897,7 +897,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQbsnd()
                         Ops::Base::ToString(opParamInfo_.actualSeqLengthsQ.tensor->GetStorageShape()),
                     "BSND case query, actual_seq_lengths_query dim 0 are " + std::to_string(bSize_) + ", " +
                         std::to_string(opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize()) +
-                        " respectively, they must be same"),
+                        " respectively, they must be same"), // LI: sequence descriptors (same).
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_) ||
