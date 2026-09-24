@@ -20,10 +20,19 @@
 #include "../allto_allv_quant_grouped_mat_mul_tiling_key.h"
 #include "../allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../mc2_templates/mc2_templates.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_hcomm_impl.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
+
+#if (((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)) && \
+     ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
+    ((ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1) && (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1))
+#define A2AV_GMM_APACE_DTYPE_SUPPORTED 1
+#else
+#define A2AV_GMM_APACE_DTYPE_SUPPORTED 0
+#endif
 
 #define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL() \
     do { \
@@ -33,7 +42,8 @@ using namespace Mc2GroupedMatmulTilingData;
         op.Process(); \
     } while (0)
 
-template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
+template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE,
+          bool TILINGKEY_USING_APACE_IMPL>
 __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
     GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
@@ -45,9 +55,27 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     if (userWorkspace == nullptr) {
         return;
     }
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     REGISTER_TILING_DEFAULT(QuantAlltoAllvGroupedMatmulTilingData);
+    if constexpr (TILINGKEY_USING_APACE_IMPL) {
+#if A2AV_GMM_APACE_DTYPE_SUPPORTED
+        GET_TILING_DATA_WITH_STRUCT(QuantAlltoAllvGroupedMatmulTilingData, tilingData, tilingGM);
+        constexpr HcclServerType serverType = TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU ?
+                                                  HcclServerType::HCCL_SERVER_TYPE_CCU :
+                                                  HcclServerType::HCCL_SERVER_TYPE_AICPU;
+        Apace::AllToAllvQuantGmmHcommImpl<QuantAlltoAllvGroupedMatmulTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                          DTYPE_GMM_Y,
+                                          TILINGKEY_GMM_WEIGHT_TRANSPOSE, TILINGKEY_MM_WEIGHT_TRANSPOSE, serverType>
+            op(&tilingData);
+        op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM,
+                mmweightOptionalGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace);
+        op.Run();
+#endif
+        return;
+    }
+
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    GET_TILING_DATA_WITH_STRUCT(QuantAlltoAllvGroupedMatmulTilingData, tilingData, tilingGM);
     using ComputeOpType =
         QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
                            DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false,

@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
+#include <algorithm>
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
 #include "../../../op_kernel/allto_allv_quant_grouped_mat_mul_tiling_key.h"
@@ -23,6 +24,33 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
+{
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo());
+    usingApaceImpl_ = CheckApaceImplCapable();
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul MX implementation: %s.",
+            usingApaceImpl_ ? "APACE AIC-only HCCL+Blaze" : "legacy");
+    return ge::GRAPH_SUCCESS;
+}
+
+bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
+{
+    if (epWorldSize_ == 0U || epWorldSize_ > MC2KernelTemplate::MAX_EXPERT_SIZE || e_ == 0U ||
+        e_ * epWorldSize_ > MC2KernelTemplate::MAX_EXPERT_SIZE) {
+        return false;
+    }
+
+    const bool xSupported = gmmXDataType_ == ge::DT_FLOAT8_E5M2 || gmmXDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                            gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightSupported = gmmWeightDataType_ == ge::DT_FLOAT8_E5M2 ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool xIsFp4 = gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightIsFp4 = gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    return xSupported && weightSupported && xIsFp4 == weightIsFp4;
+}
+
 bool AlltoAllvMXQuantGmmTiling::IsCapable()
 {
     // support fp8_e5m2 or fp8_e4m3
@@ -44,8 +72,20 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode, usingApaceImpl_);
     return tilingKey;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::PostTiling()
+{
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::PostTiling());
+    if (!usingApaceImpl_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    context_->SetScheduleMode(1);
+    context_->SetBlockDim(aicCoreNum_);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckInputDtype() const
@@ -127,7 +167,14 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        gmmHelper.SetGroupNum(gmmGroupNum);
+        // APACE consumes only the base tile parameters from this helper and obtains the actual
+        // group count from taskTilingInfo. Keep the helper within its 128-entry tensor-list capacity.
+        uint32_t helperGroupNum = gmmGroupNum;
+        if (usingApaceImpl_) {
+            helperGroupNum =
+                std::min(helperGroupNum, static_cast<uint32_t>(optiling::Mc2GroupedMatmul::MAX_TENSOR_CONT));
+        }
+        gmmHelper.SetGroupNum(helperGroupNum);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
