@@ -368,8 +368,7 @@ def pack_descale_pa_bbnd(descale_logical, layout, block_table, block_num, block_
                 cache[blockId, :s_end - s_start] = cur
     else:
         s_groups = src.shape[-1]
-        group_size = s // s_groups
-        sg_per_block = block_size // group_size
+        sg_per_block = block_size // 64
         cache = np.zeros((block_num, n, d, sg_per_block), dtype=descale_logical.dtype)
         for bIdx in range(b):
             num_blocks = int((block_table[bIdx] >= 0).sum().item()) if isinstance(block_table, torch.Tensor) else int(np.sum(block_table[bIdx] >= 0))
@@ -410,7 +409,7 @@ def pack_descale_pa_bnbd(descale_logical, layout, block_table, block_num, block_
                 cache[blockId, :, :s_end - s_start] = cur
     else:
         s_groups = src.shape[-1]
-        sg_per_block = block_size * s_groups // s
+        sg_per_block = block_size // 64
         cache = np.zeros((block_num, n, d, sg_per_block), dtype=descale_logical.dtype)
         for bIdx in range(b):
             num_blocks = int((block_table[bIdx] >= 0).sum().item()) if isinstance(block_table, torch.Tensor) else int(np.sum(block_table[bIdx] >= 0))
@@ -481,6 +480,12 @@ def pack_descale_pa_nz(descale_logical, layout, block_table, block_num, block_si
 
 def generate_torch_data(data_range, shape, dtype):
     torch_dtype = get_torch_dtype(dtype)
+    if math.prod(shape) == 0:
+        if dtype in ("fp4_e2m1", "fp4_e1m2"):
+            packed_shape = list(shape)
+            packed_shape[-1] = packed_shape[-1] >> 1
+            return torch.empty(tuple(packed_shape), dtype=torch.uint8)
+        return torch.empty(shape, dtype=torch_dtype)
     if dtype in ("fp4_e2m1", "fp4_e1m2"):
         encoded = generate_fp4_tensor(shape, dtype)
         pack_shape = list(shape)
@@ -515,6 +520,35 @@ def parse_quant_compute_mode(quant_compute_mode):
     else:
         raise NotImplementedError(f'unsupported quant_compute_mode: {quant_compute_mode}')
     return kv_dtype_str, kv_descale_dtype_str, kv_descale_range
+
+
+def generate_sinks(sinks, num_heads_q, data_range=(-1.0, 1.0)):
+    """Normalize the optional attention sink to a 1-D FP32 tensor."""
+    if sinks is None or sinks is False:
+        return None
+    if sinks is True:
+        result = torch.empty((num_heads_q,), dtype=torch.float32).uniform_(*data_range)
+    elif isinstance(sinks, str):
+        if sinks.lower() != "empty":
+            raise ValueError(f"unsupported sinks mode: {sinks}")
+        result = torch.empty((0,), dtype=torch.float32)
+    elif torch.is_tensor(sinks):
+        result = sinks.detach().cpu().to(torch.float32)
+    elif isinstance(sinks, np.ndarray):
+        result = torch.from_numpy(sinks.copy()).to(torch.float32)
+    elif isinstance(sinks, (list, tuple)):
+        result = torch.tensor(sinks, dtype=torch.float32)
+    else:
+        raise TypeError(f"unsupported sinks type: {type(sinks).__name__}")
+
+    if result.dim() != 1:
+        raise ValueError(f"sinks must be 1-D, but got shape {tuple(result.shape)}")
+    if result.numel() not in (0, num_heads_q):
+        raise ValueError(
+            f"sinks length must be 0 or num_heads_q({num_heads_q}), but got {result.numel()}"
+        )
+    return result.contiguous()
+
 
 def generate_inputs(params, seed=42):
     rng = torch.Generator(device="cpu")
@@ -559,6 +593,7 @@ def generate_inputs(params, seed=42):
 
     # sinks
     sinks = params.get("sinks", None)
+    sinks_range = tuple(params.get("sinks_range", (-1.0, 1.0)))
 
     softmax_scale = params.get("softmax_scale", 1.0 / (d ** 0.5))
 
@@ -573,7 +608,11 @@ def generate_inputs(params, seed=42):
     kv_range = params.get("kv_range", (-10.0, 10.0))
     kv_descale_range = params.get("kv_descale_range", kv_descale_range_default)
 
-    q_shape = generate_input_shape(b, n1, s1, d, layout_q)
+    if isinstance(cu_seqlens_q, torch.Tensor):
+        cu_seqlens_q_for_shape = cu_seqlens_q.tolist()
+    else:
+        cu_seqlens_q_for_shape = cu_seqlens_q
+    q_shape = generate_input_shape(b, n1, s1, d, layout_q, cu_seqlen=cu_seqlens_q_for_shape)
 
     tensors = {"q": None, "k": None, "v": None, "k_descale": None, "v_descale": None, "block_table": None,
                "cu_seqlens_q": None,"seqused_q": None, "seqused_kv": None, "sinks": None, "attn_mask": None,
@@ -582,23 +621,30 @@ def generate_inputs(params, seed=42):
                "layout_q": None, "layout_kv": None, "layout_attn_out": None, "return_softmax_lse": None, 
                "batch_size": b, "num_heads_q": n1, "num_heads_kv": n2, "head_dim": d}
     if 'PA' in layout_kv:
+        if seqused_kv is None:
+            seqused_kv = [s2] * b
+        seq_kv_values = seqused_kv.tolist() if isinstance(seqused_kv, torch.Tensor) else list(seqused_kv)
+        seq_kv_values = [int(value) for value in seq_kv_values]
         if block_num <= 0:
-            block_num = sum([math.ceil(x / block_size) for x in seqused_kv])
+            block_num = sum(math.ceil(value / block_size) for value in seq_kv_values)
         if block_table is None:
-            max_block_num_per_batch = math.ceil(max(seqused_kv) / block_size)
+            max_block_num_per_batch = math.ceil(max(seq_kv_values, default=0) / block_size)
             block_table = torch.ones(b, max_block_num_per_batch, dtype=torch.int32) * -1
             global_block_offset = 0
             for bIdx in range(b):
-                kvs_cur_batch = seqused_kv[bIdx]
+                kvs_cur_batch = seq_kv_values[bIdx]
                 num_blocks = math.ceil(kvs_cur_batch / block_size)
                 start_id = global_block_offset
                 end_id = global_block_offset + num_blocks
                 block_id_list = list(range(start_id, end_id))
                 random.shuffle(block_id_list)
                 # block_num 偏小时循环复用，保证 id < block_num 不越界
-                block_ids_tensor = torch.tensor(block_id_list, dtype=torch.int32) % block_num
-                block_table[bIdx][:num_blocks] = torch.tensor(block_ids_tensor)
+                if num_blocks > 0:
+                    block_ids_tensor = torch.tensor(block_id_list, dtype=torch.int32) % block_num
+                    block_table[bIdx][:num_blocks] = block_ids_tensor
                 global_block_offset += num_blocks
+        elif not isinstance(block_table, torch.Tensor):
+            block_table = torch.tensor(block_table, dtype=torch.int32)
         kv_shape = generate_input_shape(block_num, n2, block_size, d, layout_kv, quant_compute_mode=quant_compute_mode, dtype=kv_dtype_str)
         k_descale_shape = generate_input_shape(block_num, n2, block_size, d, layout_kv, quant_compute_mode=quant_compute_mode, dtype=kv_descale_dtype_str, isKey=True)
         v_descale_shape = generate_input_shape(block_num, n2, block_size, d, layout_kv, quant_compute_mode=quant_compute_mode, dtype=kv_descale_dtype_str, isKey=False)
@@ -615,7 +661,7 @@ def generate_inputs(params, seed=42):
     tensors["k"] = generate_torch_data(kv_range, kv_shape, kv_dtype_str)
     tensors["v"] = generate_torch_data(kv_range, kv_shape, kv_dtype_str)
 
-    if 'PA' in layout_kv and quant_compute_mode == 2:
+    if 'PA' in layout_kv and quant_compute_mode == 2 and block_num > 0:
         logical_layout = "BNSD" if layout_q == "BNSD" else "BSND"
         k_descale_logical_shape = generate_input_shape(b, n2, s2, d, logical_layout,
                                                         quant_compute_mode=quant_compute_mode, dtype=kv_descale_dtype_str, isKey=True)
@@ -649,7 +695,7 @@ def generate_inputs(params, seed=42):
     tensors["cu_seqlens_q"] = torch.tensor(cu_seqlens_q, dtype=torch.int32) if isinstance(cu_seqlens_q, list) else cu_seqlens_q
     tensors["seqused_q"] = torch.tensor(seqused_q, dtype=torch.int32) if isinstance(seqused_q, list) else seqused_q
     tensors["seqused_kv"] = torch.tensor(seqused_kv, dtype=torch.int32) if isinstance(seqused_kv, list) else seqused_kv
-    tensors["sinks"] = sinks
+    tensors["sinks"] = generate_sinks(sinks, n1, sinks_range)
     tensors["attn_mask"] = attn_mask
     tensors["metadata"] = None
     tensors["quant_compute_mode"] = quant_compute_mode

@@ -66,7 +66,7 @@ public:
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
-    GlobalTensor<Q_T> sinkGm;
+    GlobalTensor<float> sinkGm;
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -171,15 +171,14 @@ public:
                 // }
             }
 
+            if (constInfo.learnableSinkFlag) {
+                sinkGm.SetGlobalBuffer((__gm__ float *)learnableSink);
+                vecFdBlock.InitLearnableSinkGm(sinkGm);
+            }
             if (isFd) {
                 vecFdBlock.InitParams();
-                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm, this->vecFaBlock.accumOutGm, 
+                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm, this->vecFaBlock.accumOutGm,
                                             this->vecFaBlock.attentionOutGm, this->seqUsedGmQ, this->seqUsedGmKv, keyPtr);
-                if (learnableSink != nullptr) {
-                    sinkGm.SetGlobalBuffer((__gm__ Q_T *)learnableSink);
-                    constInfo.learnableSinkFlag = true;
-                    vecFdBlock.InitLearnableSinkGm(sinkGm);
-                }
                 if (constInfo.isSoftmaxLseEnable) {
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
@@ -234,6 +233,7 @@ public:
         const auto &attenMaskParams = this->tilingData->mixedQuantFlashAttnAttenMaskParams;
         const auto &workspaceParams = this->tilingData->mixedQuantFlashAttnWorkspaceParams;
         const auto &pageAttentionParams = this->tilingData->mixedQuantFlashAttnPageAttentionParams;
+        constInfo.learnableSinkFlag = baseParams.hasSink;
         // 必须先设置核号，后续 GetFAMetaDataIndex(constInfo.aicIdx,...) 依赖它
         //spilit param
         if ASCEND_IS_AIC {

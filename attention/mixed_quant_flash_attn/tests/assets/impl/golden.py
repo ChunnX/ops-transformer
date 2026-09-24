@@ -24,7 +24,7 @@ __golden__ = {
 import numpy as np
 import torch
 
-from core.cpu import tforward
+from core.cpu import run_cpu_golden
 
 
 def _to_torch(val, dtype=None):
@@ -69,7 +69,7 @@ def cpu_mixed_quant_flash_attn(
         "cu_seqlens_q": _to_torch(cu_seqlens_q, torch.int32),
         "seqused_q": _to_torch(seqused_q, torch.int32),
         "seqused_kv": _to_torch(seqused_kv, torch.int32),
-        "sinks": _to_torch(sinks),
+        "sinks": _to_torch(sinks, torch.float32),
         "attn_mask": _to_torch(attn_mask, torch.int8),
         "quant_compute_mode": int(quant_compute_mode),
         "softmax_scale": float(softmax_scale),
@@ -84,23 +84,7 @@ def cpu_mixed_quant_flash_attn(
         "return_softmax_lse": bool(return_softmax_lse),
     }
 
-    # tforward 内部会调 unpack_int4(k/v) 把 uint8 解包为逻辑 fp4
-    sinner = int(kwargs.get("sinner", 512))
-    souter = int(kwargs.get("souter", 32))
-    out_cpu, x_max, x_sum = tforward(sinner=sinner, souter=souter, **input_kwargs)
-    lse = torch.log(x_sum) + x_max
-    if seqused_q is not None or seqused_kv is not None:
-        batch = lse.shape[0]
-        for b in range(batch):
-            if seqused_kv is not None and int(seqused_kv[b]) == 0 and layout_q in ("BNSD", "BSND"):
-                lse[b, :, :] = float('inf')
-                continue
-            if seqused_q is not None:
-                s_used = seqused_q[b] if isinstance(seqused_q, torch.Tensor) else seqused_q[b]
-                lse[b, :, s_used:] = float('inf')
-
-    # 算子返回 (attn_out, softmax_lse)
-    # return_softmax_lse=False 时 NPU 输出 softmax_lse 为空，golden 也应返回空
-    if return_softmax_lse:
-        return out_cpu, lse
-    return out_cpu, torch.tensor([], dtype=torch.float32)
+    input_kwargs["sinner"] = int(kwargs.get("sinner", 512))
+    input_kwargs["souter"] = int(kwargs.get("souter", 32))
+    result = run_cpu_golden(input_kwargs)
+    return result["attn_out"], result["softmax_lse"]

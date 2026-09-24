@@ -36,7 +36,7 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
         }
         for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
             if (shape->GetStorageShape().GetDim(i) == 0) {
-                OP_LOGE(opName_, "Tensor %s has empty dimension at axis %zu, size is 0.", name.c_str(), i);
+                OP_LOGI(opName_, "Tensor %s has empty dimension at axis %zu, size is 0.", name.c_str(), i);
                 return true;
             }
         }
@@ -585,7 +585,39 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
+    sinksFlag_ = opParamInfo_.sinks.tensor != nullptr;
+    if (sinksFlag_) {
+        const auto &sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
+        sinksFlag_ = !(sinksShape.GetDimNum() == 1U && sinksShape.GetDim(0) == 0);
+    }
     if (emptyTensorFlag_) {
+        SetFaShape();
+        if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetN1Size() ||
+            (layoutQ_ != FaLayout::TND && ge::GRAPH_SUCCESS != GetS1Size())) {
+            return ge::GRAPH_FAILED;
+        }
+        GetQueryTSize();
+        GetActualSeqInfo();
+        softmaxLseFlag_ = opParamInfo_.returnSoftMaxLse != nullptr && *opParamInfo_.returnSoftMaxLse;
+
+        faInfo.opName = opName_;
+        faInfo.platformInfo = platformInfo_;
+        faInfo.opParamInfo = opParamInfo_;
+        faInfo.emptyTensorFlag = true;
+        faInfo.sinksFlag = sinksFlag_;
+        faInfo.softmaxLseFlag = softmaxLseFlag_;
+        faInfo.bSize = bSize_;
+        faInfo.n1Size = n1Size_;
+        faInfo.s1Size = s1Size_;
+        faInfo.qTSize = queryTSize_;
+        faInfo.seqUsedQSize = seqUsedQSize_;
+        faInfo.seqUsedKvSize = seqUsedKvSize_;
+        faInfo.cuSeqLensQSize = cuSeqLensQSize_;
+        faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
+        faInfo.totalLseSize = opParamInfo_.lseOut.shape == nullptr ?
+                                  0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
+        GenerateDtypeInfo(faInfo);
+        GenerateLayoutInfo(faInfo);
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
@@ -636,8 +668,6 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     if (ge::GRAPH_SUCCESS != GetActualSeqInfo()) {
         return ge::GRAPH_FAILED;
     }
-
-    sinksFlag_ = (opParamInfo_.sinks.tensor != nullptr);
 
     returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? false : *opParamInfo_.returnSoftMaxLse;
     softmaxLseFlag_ = returnSoftmaxLse_;

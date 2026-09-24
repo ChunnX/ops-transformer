@@ -55,7 +55,7 @@ mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tenso
     }
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {
-            softmaxOutSize = {nSize, tSize};
+            softmaxOutSize = {tSize, nSize};
         } else {
             softmaxOutSize = {bSize, nSize, sSize};
         }

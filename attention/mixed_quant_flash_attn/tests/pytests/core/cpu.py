@@ -12,7 +12,6 @@
 import os
 import sys
 import torch
-import torch_npu
 import math
 import numpy as np
 import ctypes
@@ -75,7 +74,10 @@ def get_axis_from_tensor(q, k, cu_seqlens_q, seqused_q, seqused_kv, max_seqlen_k
         if cu_seqlens_q is None:
             raise ValueError("cu_seqlens_q cannot be None when layout_q is TND")
         b = len(cu_seqlens_q) - 1
-        s1 = max(max(seqused_q), max([cu_seqlens_q[i+1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) -1)]))
+        q_lengths = [int(cu_seqlens_q[i + 1] - cu_seqlens_q[i]) for i in range(b)]
+        if seqused_q is not None:
+            q_lengths.extend(int(value) for value in seqused_q)
+        s1 = max(q_lengths, default=0)
         n1 = q.shape[1]
         d = q.shape[2]
     else:
@@ -83,7 +85,8 @@ def get_axis_from_tensor(q, k, cu_seqlens_q, seqused_q, seqused_kv, max_seqlen_k
     if "PA" in layout_kv:
         if seqused_kv is None and max_seqlen_kv == -1:
             raise ValueError(f"seqused_kv or max_seqlen_kv must be valid when layout_kv is {layout_kv}")
-        s2 = max(seqused_kv) if seqused_kv is not None else max_seqlen_kv
+        # Empty batches have an empty seqused_kv tensor; fall back to the declared maximum.
+        s2 = max(seqused_kv) if seqused_kv is not None and len(seqused_kv) > 0 else max_seqlen_kv
         if max_seqlen_kv > -1:
             s2 = max(max_seqlen_kv, s2)
     if layout_kv == "PA_NZ":
@@ -267,9 +270,11 @@ def softmax_flash(x, block_sum, block_max, block_exp, is_first):
         block_exp = block_exp
     else:
         block_exp = torch.exp(pre_max - block_max)
+        both_empty = torch.isneginf(pre_max) & torch.isneginf(block_max)
+        block_exp = torch.where(both_empty, 1.0, block_exp)
     x_sub = x - block_max
-    mask = torch.isposinf(x) & torch.isposinf(block_max)
-    x_sub = torch.where(mask, 0, x_sub)
+    both_masked = torch.isneginf(x) & torch.isneginf(block_max)
+    x_sub = torch.where(both_masked, -torch.inf, x_sub)
     y = torch.exp(x_sub)
     x_sum = y.sum(axis=-1, keepdims=True)
     if is_first:
@@ -278,6 +283,17 @@ def softmax_flash(x, block_sum, block_max, block_exp, is_first):
         block_sum *= block_exp
         block_sum += x_sum
     return y, block_sum, block_max, block_exp
+
+
+def get_sink_values_for_block(sinks, n2_idx, g, valid_qs, block_start, block_size, gs_flag):
+    if sinks is None or sinks.numel() == 0:
+        return None
+    row_indices = torch.arange(block_start, block_start + block_size, dtype=torch.int64)
+    if gs_flag:
+        g_indices = torch.div(row_indices, valid_qs, rounding_mode="floor")
+    else:
+        g_indices = torch.remainder(row_indices, g)
+    return sinks.to(torch.float32)[n2_idx * g + g_indices].reshape(-1, 1)
 
 
 def unpack_int4(src):
@@ -334,7 +350,7 @@ def trans_tensor_e6m2e1e16_to_bf16(tensor):
         for x in it:
             E6M2_1 = (x & 0xFF)
 
-            e6m2_e = E6M2_1 >> 2
+            e6m2_e = int(E6M2_1 >> 2)
             e6m2_m0 = E6M2_1 & 0x1
             e6m2_m1 = (E6M2_1 & 0x3) >> 1
 
@@ -597,6 +613,15 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
 
     batch, n1, n2, s1, s2, d, block_num, block_size = get_axis_from_tensor(q, k, cu_seqlens_q, seqused_q, seqused_kv, max_seqlen_kv, layout_q, layout_kv)
 
+    if sinks is not None:
+        sinks = torch.as_tensor(sinks, dtype=torch.float32)
+        if sinks.dim() != 1:
+            raise ValueError(f"sinks must be 1-D, but got shape {tuple(sinks.shape)}")
+        if sinks.numel() == 0:
+            sinks = None
+        elif sinks.numel() != n1:
+            raise ValueError(f"sinks length must equal num_heads_q({n1}), but got {sinks.numel()}")
+
     if layout_q == layout_attn_out:
         attn_out = torch.zeros_like(q)
     else:
@@ -626,7 +651,8 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     else:
         raise NotImplementedError(f"unsupported layout_q({layout_q})")
 
-    if block_table is not None:
+    has_kv_work = s2 > 0 and k.numel() > 0 and v.numel() > 0
+    if block_table is not None and has_kv_work:
         k, k_descale_no_pa = trans_pa_to_no_pa(batch, n2, s2, d, layout_kv, k, k_descale, block_table, block_num, block_size, quant_compute_mode, gs_flag, True)
         v, v_descale_no_pa = trans_pa_to_no_pa(batch, n2, s2, d, layout_kv, v, v_descale, block_table, block_num, block_size, quant_compute_mode, gs_flag, False)
     else:
@@ -634,8 +660,9 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
         v_descale_no_pa = v_descale
 
     v0_block = None
-    k = antiquant_data(k, q.dtype, quant_compute_mode, k_descale_no_pa, gs_flag, True)
-    v = antiquant_data(v, q.dtype, quant_compute_mode, v_descale_no_pa, gs_flag, False)
+    if has_kv_work:
+        k = antiquant_data(k, q.dtype, quant_compute_mode, k_descale_no_pa, gs_flag, True)
+        v = antiquant_data(v, q.dtype, quant_compute_mode, v_descale_no_pa, gs_flag, False)
     print(f"batch: {batch}, n2: {n2}, g: {g}")
     for b_idx in range(batch):
         kvs_cur_batch = s2
@@ -649,7 +676,9 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
         valid_qs_cur_batch = qs_cur_batch
         if layout_q == "TND" and seqused_q is not None:
             valid_qs_cur_batch = seqused_q[b_idx]
-        if kvs_cur_batch == 0 or valid_qs_cur_batch == 0:
+        kvs_cur_batch = int(kvs_cur_batch)
+        valid_qs_cur_batch = int(valid_qs_cur_batch)
+        if valid_qs_cur_batch == 0:
             continue
         print(f"kvs_cur_batch: {kvs_cur_batch}, valid_qs_cur_batch: {valid_qs_cur_batch}")
         for n2_idx in range(n2):
@@ -663,12 +692,21 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                 block_sum = torch.zeros((souter_actual, 1), dtype=torch.float32)
                 block_max = torch.ones((souter_actual, 1), dtype=torch.float32) * (-float('inf'))
                 block_exp = torch.ones((souter_actual, 1), dtype=torch.float32)
+                sink_values = get_sink_values_for_block(
+                    sinks, n2_idx, g, valid_qs_cur_batch, souter_idx * souter, souter_actual, gs_flag
+                )
+                if sink_values is not None:
+                    block_max = sink_values
+                    block_sum.fill_(1.0)
                 if gs_flag:
                     q_block = q[b_idx, n2_idx][:, :valid_qs_cur_batch].reshape(-1, d)[
                               souter_idx * souter: souter_idx * souter + souter_actual]
                 else:
                     if layout_q == "TND":
-                        q_block = q[:valid_qs_cur_batch, n2_idx].reshape(-1, d)[souter_idx * souter: souter_idx * souter + souter_actual]
+                        q_start = int(cu_seqlens_q[b_idx])
+                        q_block = q[q_start:q_start + valid_qs_cur_batch, n2_idx].reshape(-1, d)[
+                            souter_idx * souter:souter_idx * souter + souter_actual
+                        ]
                     else:
                         q_block = q[b_idx, :valid_qs_cur_batch, n2_idx].reshape(-1, d)[
                               souter_idx * souter: souter_idx * souter + souter_actual]
@@ -708,7 +746,10 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                         mm1 = torch.matmul(q_block.to(torch.float32), k_block.to(torch.float32).transpose(1, 0))
                     if mask_block is not None:
                         mm1 = mm1 + torch.where(mask_block.to(torch.bool), -torch.inf, 0.0).to(torch.float32)
-                    p_block, block_sum, block_max, block_exp = softmax_flash(mm1 * softmax_scale, block_sum, block_max, block_exp, sinner_idx == 0)
+                    p_block, block_sum, block_max, block_exp = softmax_flash(
+                        mm1 * softmax_scale, block_sum, block_max, block_exp,
+                        sinner_idx == 0 and sink_values is None
+                    )
                     if use_npu:
                         mm2 = npu_batch_matmul_fp32(p_block.to(q.dtype), v_block.contiguous())
                     else:
@@ -725,8 +766,14 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                         if s1_idx <  (valid_qs_cur_batch - kvs_cur_batch):
                             out_block[m_idx] = 0
                 if layout_q == "TND":
-                    x_max[cu_seqlens_q[b_idx]:cu_seqlens_q[b_idx+1], n2_idx][souter_idx * souter: souter_idx * souter + souter_actual] = block_max
-                    x_sum[cu_seqlens_q[b_idx]:cu_seqlens_q[b_idx+1], n2_idx][souter_idx * souter: souter_idx * souter + souter_actual] = block_sum
+                    q_start = int(cu_seqlens_q[b_idx])
+                    for m_idx in range(souter_idx * souter, souter_idx * souter + souter_actual):
+                        s1_idx = m_idx // g
+                        g_idx = m_idx % g
+                        n1_idx = n2_idx * g + g_idx
+                        block_idx = m_idx - souter_idx * souter
+                        x_max[q_start + s1_idx, n1_idx] = block_max[block_idx]
+                        x_sum[q_start + s1_idx, n1_idx] = block_sum[block_idx]
                 else:
                     if layout_q == "BNSD":
                         for m_idx in range(souter_idx * souter, souter_idx * souter + souter_actual):
@@ -749,7 +796,9 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
                 else:
                     if layout_attn_out == "TND":
                         for m_idx in range(souter_idx * souter, souter_idx * souter + souter_actual):
-                            t_idx = cu_seqlens_q[b_idx]+ m_idx
+                            s1_idx = m_idx // g
+                            g_idx = m_idx % g
+                            t_idx = int(cu_seqlens_q[b_idx]) + s1_idx
                             attn_out[t_idx, n2_idx, g_idx] = out_block[m_idx - souter_idx * souter]
                     else:
                         for m_idx in range(souter_idx * souter, souter_idx * souter + souter_actual):
@@ -760,6 +809,39 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     return attn_out, x_max, x_sum
 
 
+def finalize_softmax_lse(lse, input_data):
+    seqused_q = input_data.get("seqused_q")
+    seqused_kv = input_data.get("seqused_kv")
+    sinks = input_data.get("sinks")
+    layout_q = input_data.get("layout_q")
+    has_sink = sinks is not None and torch.as_tensor(sinks).numel() > 0
+
+    if layout_q in ("BNSD", "BSND"):
+        for batch_idx in range(lse.shape[0]):
+            if seqused_kv is not None and int(seqused_kv[batch_idx]) == 0 and not has_sink:
+                lse[batch_idx, :, :] = float("inf")
+                continue
+            if seqused_q is not None:
+                used_q = int(seqused_q[batch_idx])
+                lse[batch_idx, :, used_q:] = float("inf")
+        return lse
+
+    if layout_q == "TND":
+        cu_seqlens_q = input_data.get("cu_seqlens_q")
+        if cu_seqlens_q is None:
+            return lse
+        for batch_idx in range(len(cu_seqlens_q) - 1):
+            start = int(cu_seqlens_q[batch_idx])
+            end = int(cu_seqlens_q[batch_idx + 1])
+            if seqused_kv is not None and int(seqused_kv[batch_idx]) == 0 and not has_sink:
+                lse[start:end, :] = float("inf")
+                continue
+            if seqused_q is not None:
+                used_q = int(seqused_q[batch_idx])
+                lse[start + used_q:end, :] = float("inf")
+    return lse
+
+
 def run_cpu_golden(input_data):
     sinner = input_data.get("sinner", 512)
     souter = input_data.get("souter", 32)
@@ -767,18 +849,11 @@ def run_cpu_golden(input_data):
     input_data = {k: v for k, v in input_data.items() if k not in ("sinner", "souter", "use_npu")}
     out_cpu, x_max, x_sum = tforward(sinner, souter, use_npu=use_npu, **input_data)
     lse = torch.log(x_sum) + x_max
-    seqused_q = input_data.get("seqused_q")
-    seqused_kv = input_data.get("seqused_kv")
-    layout_q = input_data.get("layout_q")
-    if seqused_q is not None or seqused_kv is not None:
-        batch = lse.shape[0]
-        for b in range(batch):
-            if seqused_kv is not None and int(seqused_kv[b]) == 0 and layout_q in ("BNSD", "BSND"):
-                lse[b, :, :] = float('inf')
-                continue
-            if seqused_q is not None:
-                s_used = seqused_q[b] if isinstance(seqused_q, torch.Tensor) else seqused_q[b]
-                lse[b, :, s_used:] = float('inf')
+    # No softmax term exists for an empty/invalid row. FIA exposes that state as +inf.
+    lse = torch.where(x_sum == 0, torch.full_like(lse, float("inf")), lse)
+    lse = finalize_softmax_lse(lse, input_data)
+    if not input_data.get("return_softmax_lse", False):
+        lse = torch.empty((0,), dtype=torch.float32)
     return {"attn_out": out_cpu, "softmax_lse": lse}
 
 
@@ -817,4 +892,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

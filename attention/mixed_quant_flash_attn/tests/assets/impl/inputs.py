@@ -157,9 +157,14 @@ def generate_mixed_quant_inputs(
     if input_ranges and len(input_ranges) >= 3:
         _q_range = tuple(input_ranges[0])
         _kv_range = tuple(input_ranges[1])
+        _sinks_range = tuple(input_ranges[9]) if len(input_ranges) > 9 else (-1.0, 1.0)
     else:
         _q_range = tuple(float(x) for x in os.environ.get("MQFA_Q_RANGE", "-1.0,1.0").split(","))
         _kv_range = tuple(float(x) for x in os.environ.get("MQFA_KV_RANGE", "-10.0,10.0").split(","))
+        _sinks_range = tuple(float(x) for x in os.environ.get("MQFA_SINKS_RANGE", "-1.0,1.0").split(","))
+
+    sink_numel = 0 if sinks is None else int(np.prod(sinks.shape))
+    sinks_mode = None if sinks is None else ("empty" if sink_numel == 0 else True)
 
     params = {
         "B": batch_size, "N1": n1, "N2": n2, "S1": s1, "S2": s2, "D": head_dim,
@@ -176,6 +181,8 @@ def generate_mixed_quant_inputs(
         "cu_seqlens_q": _to_int_list(cu_seqlens_q),
         "q_range": _q_range,
         "kv_range": _kv_range,
+        "sinks": sinks_mode,
+        "sinks_range": _sinks_range,
         "q_dtype": _to_q_dtype(q),
     }
 

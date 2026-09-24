@@ -606,13 +606,12 @@ __aicore__ inline void SinkSubExpAddVF(const LocalTensor<T> &softmaxSumTensor, c
 }
 
 template <typename T, typename SINK_T>
-__simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ uint16_t *sinkUb,
+__simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ SINK_T *sinkUb,
                                                const uint32_t dealCount)
 {
     Reg::RegTensor<T> vregSum;
     Reg::RegTensor<T> vregMax;
     Reg::RegTensor<T> vregRes;
-    Reg::RegTensor<SINK_T> vregSink;
     Reg::RegTensor<T> vregSinkCast;
 
     constexpr uint32_t floatRepSize = 64;
@@ -624,10 +623,16 @@ __simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T 
     // mask
     Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
     Reg::MaskReg pregTail = Reg::UpdateMask<T>(pltTail);
-    Reg::MaskReg pregSinkAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
 
-    Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregSink, sinkUb);
-    Reg::Cast<T, SINK_T, castTraitFp16_32_update>(vregSinkCast, vregSink, pregSinkAll);
+    if constexpr (IsSameType<SINK_T, T>::value) {
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregSinkCast, (__ubuf__ T *)sinkUb);
+    } else {
+        Reg::RegTensor<SINK_T> vregSink;
+        Reg::MaskReg pregSinkAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>(
+            (Reg::RegTensor<uint16_t> &)vregSink, (__ubuf__ uint16_t *)sinkUb);
+        Reg::Cast<T, SINK_T, castTraitFp16_32_update>(vregSinkCast, vregSink, pregSinkAll);
+    }
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
         Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregSum, srcSumUb + (i * floatRepSize));
@@ -659,7 +664,7 @@ __aicore__ inline void SinkSubExpAddGSFusedVF(const LocalTensor<SINK_T> &dstTens
 {
     __ubuf__ T *srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
     __ubuf__ T *srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
-    __ubuf__ uint16_t *dstUb = (__ubuf__ uint16_t *)dstTensor.GetPhyAddr();
+    __ubuf__ SINK_T *dstUb = (__ubuf__ SINK_T *)dstTensor.GetPhyAddr();
 
     SinkSubExpAddGSFusedVF<T, SINK_T>(srcSumUb, srcMaxUb, dstUb, dealCount);
 }

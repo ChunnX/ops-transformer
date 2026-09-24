@@ -62,7 +62,7 @@ public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
-    using SINK_T = typename MQFA_T::qType;
+    using SINK_T = float;
     using OUTPUT_T = typename MQFA_T::outType;
     using T = float;
     static constexpr LayOutTypeEnum layout = MQFA_T::layoutQ;
@@ -470,25 +470,20 @@ protected:
     {
         LocalTensor<SINK_T> sinkCopyInBuf =
             fdSinkCopyInBuf[(cntM % 2) * BUFFER_SIZE_BYTE_1K].ReinterpretCast<SINK_T>();
-        uint32_t copySize = Align(static_cast<uint32_t>(constInfo.gSize), static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T))); // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处32
-                                                                                                        // byte对齐
         uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
-        DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
+        DataCopyExtParams sinkCopyParams{1, static_cast<uint32_t>(constInfo.gSize * sizeof(SINK_T)), 0, 0, 0};
+        DataCopyPadExtParams<SINK_T> sinkPadParams{};
+        DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
 
-        LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf.ReinterpretCast<T>();
-        Cast(tmpSinkCastBuf, sinkCopyInBuf, AscendC::RoundMode::CAST_NONE, constInfo.gSize);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
-
         LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.ReinterpretCast<T>();
-        Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
+        Brcb(sinkBrcbBuf, sinkCopyInBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
              {1, BLOCK_ELEMENT_NUM});
         AscendC::PipeBarrier<PIPE_V>();
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
     }
     __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
     {

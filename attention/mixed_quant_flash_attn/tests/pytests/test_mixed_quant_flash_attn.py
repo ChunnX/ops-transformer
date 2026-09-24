@@ -42,10 +42,14 @@ def _load_cases_for_modules(module_names, case_id_arg):
     run_cases = resolve_case_ids(case_id_arg, all_cases)
     valid_cases = []
     for name in run_cases:
+        raw_params = all_cases[name]
+        block_size = raw_params.get("block_size")
+        if block_size is not None and block_size <= 0:
+            continue
         params = normalize_params(all_cases[name])
         n1 = params.get("N1", 1)
         n2 = params.get("N2", n1)
-        if n1 >= n2 and n1 % n2 == 0:
+        if n2 > 0 and n1 >= n2 and n1 % n2 == 0:
             valid_cases.append(name)
     return valid_cases
 

@@ -130,7 +130,7 @@ public:
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
-    GlobalTensor<Q_T> sinkGm;
+    GlobalTensor<float> sinkGm;
 
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qActSeqLensParser;  // TODO parser待修改
 
@@ -183,6 +183,8 @@ public:
     static constexpr TEventID MTE2_V_VSCALE = static_cast<TEventID>(1);
     static constexpr TEventID MTE2_V_MASK = static_cast<TEventID>(2);
     static constexpr TEventID V_MTE2_MASK = static_cast<TEventID>(2);
+    static constexpr TEventID MTE2_V_SINK = static_cast<TEventID>(3);
+    static constexpr TEventID V_MTE2_SINK = static_cast<TEventID>(3);
     static constexpr TEventID V_2_S = static_cast<TEventID>(0);
 
     static constexpr uint32_t SOFTMAX_BUF_BYTES = 64 * sizeof(T);
@@ -231,8 +233,8 @@ public:
             attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
         }
 
-        if (learnableSink != nullptr) {
-            sinkGm.SetGlobalBuffer((__gm__ Q_T *)learnableSink);
+        if (constInfo.learnableSinkFlag) {
+            sinkGm.SetGlobalBuffer((__gm__ float *)learnableSink);
         }
 
         if (constInfo.isFd) {
@@ -257,6 +259,9 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_0);
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_1);
         WaitFlag<HardEvent::V_MTE2>(V_MTE2_MASK);
+        if (constInfo.learnableSinkFlag) {
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
+        }
     }
 
     __aicore__ inline void InitQuant(__gm__ uint8_t* keyScale, __gm__ uint8_t* valueScale) {
@@ -510,39 +515,58 @@ public:
     __aicore__ inline void Vec1SinkCompute(RunInfoX &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         int64_t sinkOffset = runInfo.n2Idx * constInfo.gSize + runInfo.gIdx;
-        auto sinkRaw = this->sinkGm.GetValue(sinkOffset);
-        float sinkValue;
-        if constexpr (IsSameType<decltype(sinkRaw), half>::value) {
-            sinkValue = static_cast<float>(sinkRaw);
-        } else {
-            sinkValue = ToFloat(sinkRaw);
-        }
+        float sinkValue = this->sinkGm.GetValue(sinkOffset);
         SinkSubExpAddVF<float>(sumUb, maxUb, sinkValue, runInfo.actVecMSize);
     }
 
     __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
-         // TODO  适配GS1 合轴
         CopySinkIn(runInfo);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_LSE);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_LSE);
-        LocalTensor<MM_OUT_T> sinkUb = sinkBuf.template ReinterpretCast<MM_OUT_T>();
-        // SinkSubExpAddGSFusedVF<float, Q_T>(sinkUb, sumUb, maxUb, runInfo.actVecMSize);
+        LocalTensor<float> sinkUb = sinkBuf.template ReinterpretCast<float>();
+        SinkSubExpAddGSFusedVF<float, float>(sinkUb, sumUb, maxUb, runInfo.actVecMSize);
+        SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
     }
 
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
     {
-        LocalTensor<Q_T> sinkUbBf16 = sinkBuf.template ReinterpretCast<Q_T>();
-        int64_t sinkOffset = runInfo.n2Idx * constInfo.gSize + constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize);
+        LocalTensor<float> sinkUbFp32 = sinkBuf.template ReinterpretCast<float>();
         DataCopyExtParams sinkCopyParams;
-        sinkCopyParams.blockCount = 1U;                                      // 进行一次连续拷贝
-        sinkCopyParams.blockLen = runInfo.actVecMSize * sizeof(Q_T); // 实际需要拷贝的字节数
-        sinkCopyParams.srcStride = 0U;                                       // 源地址连续
-        sinkCopyParams.dstStride = 0U;                                       // 目的地址连续
+        DataCopyPadExtParams<float> sinkCopyPadParams{};
+        uint32_t copyOffset = 0;
+        uint64_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int64_t sinkBaseOffset = runInfo.n2Idx * constInfo.gSize;
+        sinkCopyParams.blockCount = 1;
+        sinkCopyParams.srcStride = 0;
+        sinkCopyParams.dstStride = 0;
 
-        DataCopyPadExtParams<Q_T> sinkCopyPadParams{};
-        DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
+        WaitFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
+            uint32_t gOffset = static_cast<uint32_t>(gs1Start % constInfo.gSize);
+            while (copyOffset < runInfo.actVecMSize) {
+                uint32_t copyLen = runInfo.actVecMSize - copyOffset;
+                uint32_t gRemain = constInfo.gSize - gOffset;
+                copyLen = copyLen < gRemain ? copyLen : gRemain;
+                sinkCopyParams.blockLen = copyLen * sizeof(float);
+                DataCopyPad(sinkUbFp32[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
+                            sinkCopyPadParams);
+                copyOffset += copyLen;
+                gOffset = 0;
+            }
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
+        } else {
+            while (copyOffset < runInfo.actVecMSize) {
+                uint64_t gs1Offset = gs1Start + copyOffset;
+                uint32_t gOffset = static_cast<uint32_t>((gs1Offset / runInfo.actS1Size) % constInfo.gSize);
+                uint32_t s1Remain = static_cast<uint32_t>(runInfo.actS1Size - gs1Offset % runInfo.actS1Size);
+                uint32_t copyLen = runInfo.actVecMSize - copyOffset;
+                copyLen = copyLen < s1Remain ? copyLen : s1Remain;
+                Duplicate(sinkUbFp32[copyOffset], this->sinkGm.GetValue(sinkBaseOffset + gOffset), copyLen);
+                copyOffset += copyLen;
+            }
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
@@ -1056,6 +1080,9 @@ public:
         SetFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_0);
         SetFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_1);
         SetFlag<HardEvent::V_MTE2>(V_MTE2_MASK);
+        if (constInfo.learnableSinkFlag) {
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
+        }
     }
 
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar)

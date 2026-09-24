@@ -18,6 +18,7 @@
 #include "mixed_quant_flash_attn_template_tiling_key.h"
 #include "mixed_quant_flash_attn_tiling_data.h"
 #include "arch-920r1/mixed_quant_flash_attn_kernel_gqa.h"
+#include "arch-920r1/mixed_quant_flash_attn_empty_kernel.h"
 
 using namespace AscendC;
 
@@ -31,21 +32,9 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
                        __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::MixedQuantFlashAttnTilingData);
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 
-    // dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedQ), 0);
-    dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedKv), 0);
-    // dc_preload(reinterpret_cast<__gm__ uint64_t*>(tiling), 0);
-    // if ASCEND_IS_AIC {
-    //     uint32_t aicIdx = GetBlockIdx();
-        // dc_preload(reinterpret_cast<__gm__ uint64_t*>(metadata), 4*(16+16*aicIdx));
-    // }
-        
-    fa_base_matmul::idCounterNum = 0;
-
     GET_TILING_DATA_PTR_WITH_STRUCT(optiling::MixedQuantFlashAttnTilingData, tilingData, tiling);
-
     AscendC::InitSocState();
 
 #if (ORIG_DTYPE_Q == DT_BF16)
@@ -55,6 +44,27 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
     using Q_T = half;
     using OUT_T = half;
 #endif
+
+    if (tilingData->baseTiling.mixedQuantFlashAttnBaseParams.emptyTensor) {
+        using EmptyKernel = MixedQuantFlashAttnEmpty::MixedQuantFlashAttnEmptyKernel<OUT_T, inOutLayoutType>;
+        EmptyKernel op;
+        op.Init(attnOut, softmaxLse, cuSeqLensQ, seqUsedQ, seqUsedKv, sinks, &tilingData->baseTiling);
+        op.Process();
+        return;
+    }
+
+    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+
+    // dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedQ), 0);
+    dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedKv), 0);
+    // dc_preload(reinterpret_cast<__gm__ uint64_t*>(tiling), 0);
+    // if ASCEND_IS_AIC {
+    //     uint32_t aicIdx = GetBlockIdx();
+        // dc_preload(reinterpret_cast<__gm__ uint64_t*>(metadata), 4*(16+16*aicIdx));
+    // }
+
+    fa_base_matmul::idCounterNum = 0;
+
     constexpr LayOutTypeEnum qLayout = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outLayout = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
 
@@ -87,6 +97,8 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
     // printf("ly debug 004\n");
     op.Init(query, key, value, kDescale, vDescale, blockTable, cuSeqLensQ, nullptr, //cuSeqLenskv placeholder
             seqUsedQ, seqUsedKv, sinks, attnMask, attnOut, softmaxLse, user, metadata, &tilingData->baseTiling);
+    MixedQuantFlashAttnEmpty::InitEmptyKvSinkLse<inOutLayoutType>(
+        cuSeqLensQ, seqUsedQ, seqUsedKv, sinks, softmaxLse, &tilingData->baseTiling);
     op.Process();
 
     AscendC::PipeBarrier<PIPE_ALL>();
