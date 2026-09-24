@@ -341,7 +341,7 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     gmmParams.l1BufferStage = Blaze::Gemm::DOUBLE_BUFFER_COUNT;
     // 共享专家单组用 OFFSET 格式（groupList 存终点偏移，单组值 = BS），
     // 与参考实现一致；路由专家沿用 tiling 的 LENGTH 格式
-    gmmParams.groupListType = isLocal ? Apace::GMM_A2AV_GROUP_LIST_TYPE_OFFSET : gmmQuantParams->groupListType;
+    gmmParams.groupListType = isLocal ? GMM_A2AV_GROUP_LIST_TYPE_OFFSET : gmmQuantParams->groupListType;
 
     typename MxApaceKernel::BlockMmadParams mmadParams;
     mmadParams.aGmAddr = xGM_;
