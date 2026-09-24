@@ -898,41 +898,52 @@ bool LightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
 bool LightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::LiV2Metadata *metadataPtr = static_cast<optiling::detail::LiV2Metadata *>(metadata_->GetData());
-    *metadataPtr = {};
+    // aicpu编译期无__NPU_ARCH__，metadata布局按soc运行时确定，与kernel读侧GetAttrAbsIndex对齐:
+    // 960dt(A6/DAV_9201): AIC/AIV各80, LD区基址8*80=640; 910B/950: AIC 36, AIV 72, LD区基址8*36=288
+    bool isAscend960 = (ProcessSocVersion() == ValidSocVersion::ASCEND960);
+    uint32_t aicCoreMax = isAscend960 ? 80 : 36;
+    uint32_t aivCoreMax = isAscend960 ? 80 : 72;
+    uint32_t *metadataBase = static_cast<uint32_t *>(metadata_->GetData());
+    // 清零kernel会读取的完整区域（LI区[0, aicMax*8) + LD区[aicMax*8, (aicMax+aivMax)*8)）
+    size_t metadataUint32Num = static_cast<size_t>(aicCoreMax + aivCoreMax) * LI_V2_METADATA_SIZE;
+    for (size_t idx = 0; idx < metadataUint32Num; ++idx) {
+        metadataBase[idx] = 0U;
+    }
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
+        uint32_t *liRow = metadataBase + i * LI_V2_METADATA_SIZE;
         if (i >= splitRes.usedCoreNum) {
-            metadataPtr->liV2Metadata[i][LI_V2_CORE_ENABLE_INDEX] = 0; // AIC disenable
+            liRow[LI_V2_CORE_ENABLE_INDEX] = 0; // AIC disenable
             continue;
         }
-        metadataPtr->liV2Metadata[i][LI_V2_CORE_ENABLE_INDEX] = 1; // AIC enable
+        liRow[LI_V2_CORE_ENABLE_INDEX] = 1; // AIC enable
         // FA START
-        metadataPtr->liV2Metadata[i][LI_V2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i - 1];
-        metadataPtr->liV2Metadata[i][LI_V2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i - 1];
-        metadataPtr->liV2Metadata[i][LI_V2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i - 1];
+        liRow[LI_V2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i - 1];
+        liRow[LI_V2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i - 1];
+        liRow[LI_V2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i - 1];
         // FA END
-        metadataPtr->liV2Metadata[i][LI_V2_BN2_END_INDEX] = splitRes.bN2End[i];
-        metadataPtr->liV2Metadata[i][LI_V2_M_END_INDEX] = splitRes.gS1End[i];
-        metadataPtr->liV2Metadata[i][LI_V2_S2_END_INDEX] = splitRes.s2End[i];
+        liRow[LI_V2_BN2_END_INDEX] = splitRes.bN2End[i];
+        liRow[LI_V2_M_END_INDEX] = splitRes.gS1End[i];
+        liRow[LI_V2_S2_END_INDEX] = splitRes.s2End[i];
         //
-        metadataPtr->liV2Metadata[i][LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+        liRow[LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
     }
 
     // LD Metadata Generate
     for (size_t i = 0; i < aivCoreNum_; ++i) {
+        uint32_t *ldRow = metadataBase + aicCoreMax * LI_V2_METADATA_SIZE + i * LD_V2_METADATA_SIZE;
         if (i >= splitRes.fdRes.fdUsedVecNum) {
-            metadataPtr->ldV2Metadata[i][LD_V2_CORE_ENABLE_INDEX] = 0; // AIV disenable
+            ldRow[LD_V2_CORE_ENABLE_INDEX] = 0; // AIV disenable
             continue;
         }
-        metadataPtr->ldV2Metadata[i][LD_V2_CORE_ENABLE_INDEX] = 1; // AIV enable
+        ldRow[LD_V2_CORE_ENABLE_INDEX] = 1; // AIV enable
         uint32_t curFdIdx = splitRes.fdRes.fdIdx[i];
-        metadataPtr->ldV2Metadata[i][LD_V2_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
-        metadataPtr->ldV2Metadata[i][LD_V2_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
-        metadataPtr->ldV2Metadata[i][LD_V2_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
-        metadataPtr->ldV2Metadata[i][LD_V2_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
-        metadataPtr->ldV2Metadata[i][LD_V2_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
-        metadataPtr->ldV2Metadata[i][LD_V2_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
+        ldRow[LD_V2_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
+        ldRow[LD_V2_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
+        ldRow[LD_V2_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
+        ldRow[LD_V2_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
+        ldRow[LD_V2_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
+        ldRow[LD_V2_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
     }
     return true;
 }
