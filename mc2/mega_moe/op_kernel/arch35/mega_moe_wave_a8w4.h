@@ -69,7 +69,6 @@ private:
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
     using MegaMoeBase::waveCombineDedupScratch_;
-    using MegaMoeBase::waveCombineDedupState_;
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
@@ -221,6 +220,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
     WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence, const BlockContext &pipeline)
 {
+    // 去重 combine：进 wave 前预挂事件（与函数尾的 Drain 配对，条件逐字一致）。
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
+            ArmWaveCombineDedupEvents();
+        }
+    }
     uint32_t waveGmm2ExpertEndExclusive = waveRange.end.expertIdx + (waveRange.end.tokenIndexInExpert == 0U ? 0U : 1U);
     for (uint32_t expertIdx = waveRange.begin.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
         uint32_t sliceTokenStartIndexInExpert =
@@ -246,7 +251,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
-        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount, waveCombineDedupState_);
+        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount);
     }
 }
 

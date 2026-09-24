@@ -42,11 +42,20 @@ struct WaveCombineDedupScratch {
     LocalTensor<int32_t> weightTensor;       // tkw=0：LAST 行整 token 权重段装载（行内自闭环）
 };
 
-// 跨行存活的事件武装状态：armed 的事件必须在排空时消费，否则悬挂标志会毒化后续同 id 同步。
-struct WaveCombineDedupState {
-    bool memberArmed[2] = {false, false}; // V_MTE2：成员半区上次 Cast 完成
-    bool mergeSendArmed = false;          // MTE3_V：上一合并行发送完成
-};
+// 成员乒乓（V_MTE2 事件 6/7）与合并发送（MTE3_V 事件 6）走「先挂再等」协议：进 wave 前先
+// Set 一次（本函数），之后每次复写缓冲前无条件 Wait、用完再 Set，wave 结束由
+// DrainCombineRowBuffersDedup 无条件 Wait 收尾。这样任何时刻每个事件 id 上恰有一个在途
+// Set：首轮 Wait 等到的是这里预挂的 Set（不死等），结束时全部被 Drain 消费（无悬挂残留）。
+// 调用本函数的开关条件必须与调用 Drain 的条件完全一致，否则一边挂一边不收，直接死等。
+__aicore__ inline void ArmWaveCombineDedupEvents()
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    SetFlag<HardEvent::V_MTE2>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE));
+    SetFlag<HardEvent::V_MTE2>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE + 1));
+    SetFlag<HardEvent::MTE3_V>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MERGE_EVENT));
+}
 
 // 在行环之后依次落位去重各 UB 段：合并发送整行 → 成员乒乓 → fp32 转换 → 累加 → desc 批区 → 权重区。
 __aicore__ inline void LayoutWaveCombineDedupScratch(WaveCombineDedupScratch &dedupScratch, uint32_t addr,
@@ -144,9 +153,8 @@ __aicore__ inline float GetDedupMemberWeight(const WaveCombineDedupScratch &dedu
 }
 
 // 对一个 h 段读齐组内全部成员并 fp32 累加进 accumTensor（tkw=0 先按成员权重乘）。
-// 成员乒乓事件跨行存活：armed 状态由 dedupState 记账，排空时统一消费。
+// 成员乒乓事件跨行存活：ArmWaveCombineDedupEvents 已预挂首轮 Set，此处直接 Wait。
 __aicore__ inline void AccumulateDedupMemberSegment(WaveCombineDedupScratch &dedupScratch,
-                                                    WaveCombineDedupState &dedupState,
                                                     GlobalTensor<bfloat16_t> &gmm2AbsGm, const Params &params,
                                                     uint32_t descRowBase, uint32_t memberCount, bool mulWeights,
                                                     uint32_t h, uint32_t segBase, uint32_t segLen)
@@ -158,10 +166,8 @@ __aicore__ inline void AccumulateDedupMemberSegment(WaveCombineDedupScratch &ded
             dedupScratch.descTensor.GetValue(descRowBase + DEDUP_ROW_DESC_HEADER_INT32 + j * 3U)));
         const uint32_t buf = j & 1U;
         TEventID memberEvent = static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE + static_cast<int32_t>(buf));
-        if (dedupState.memberArmed[buf]) {
-            WaitFlag<HardEvent::V_MTE2>(memberEvent);
-            dedupState.memberArmed[buf] = false;
-        }
+        // 等上一次用这个半区的 Cast 读完（首轮等到的是预挂 Set），才能复写半区。
+        WaitFlag<HardEvent::V_MTE2>(memberEvent);
         LocalTensor<bfloat16_t> memberUb = dedupScratch.memberTensor[buf * WAVE_COMBINE_DEDUP_SEG_ELEMS];
         DataCopyPad(memberUb, gmm2AbsGm[memberRow * h + segBase], segGm2UbParams, segPad);
         SetFlag<HardEvent::MTE2_V>(memberEvent);
@@ -185,7 +191,6 @@ __aicore__ inline void AccumulateDedupMemberSegment(WaveCombineDedupScratch &ded
         }
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(memberEvent);
-        dedupState.memberArmed[buf] = true;
     }
 }
 
@@ -195,8 +200,7 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
                                                       WaveCombineDedupScratch &dedupScratch, const Params &params,
                                                       GlobalTensor<bfloat16_t> &gmm2AbsGm,
                                                       uint64_t gmRemoteBaseOffset,
-                                                      LocalTensor<int32_t> &tokenMetaInfo, uint32_t descRowBase,
-                                                      WaveCombineDedupState &dedupState)
+                                                      LocalTensor<int32_t> &tokenMetaInfo, uint32_t descRowBase)
 {
     const uint32_t h = common.tokenHiddenDim;
     const int32_t flags = dedupScratch.descTensor.GetValue(descRowBase);
@@ -210,18 +214,15 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
         (static_cast<uint64_t>(route.tokenIdx) * params.tilingData->topK + static_cast<uint64_t>(minTopkIdx)) * h;
 
     constexpr TEventID mergeEvent = static_cast<TEventID>(WAVE_COMBINE_DEDUP_MERGE_EVENT);
-    // 上一合并行发送（MTE3 读 mergeSend）完成后，本行 V 才能复写发送缓冲。
-    if (dedupState.mergeSendArmed) {
-        WaitFlag<HardEvent::MTE3_V>(mergeEvent);
-        dedupState.mergeSendArmed = false;
-    }
+    // 等上一合并行发送（MTE3 读 mergeSend）完成（首轮等到的是预挂 Set），才能复写发送缓冲。
+    WaitFlag<HardEvent::MTE3_V>(mergeEvent);
     const bool mulWeights = params.tilingData->topkWeightsPrefetch == 0;
     if (mulWeights) {
         LoadDedupMergeWeightBits(dedupScratch, params, descRowBase, memberCount, mergeEvent);
     }
     for (uint32_t segBase = 0U; segBase < h; segBase += WAVE_COMBINE_DEDUP_SEG_ELEMS) {
         const uint32_t segLen = h - segBase < WAVE_COMBINE_DEDUP_SEG_ELEMS ? h - segBase : WAVE_COMBINE_DEDUP_SEG_ELEMS;
-        AccumulateDedupMemberSegment(dedupScratch, dedupState, gmm2AbsGm, params, descRowBase, memberCount, mulWeights,
+        AccumulateDedupMemberSegment(dedupScratch, gmm2AbsGm, params, descRowBase, memberCount, mulWeights,
                                      h, segBase, segLen);
         Cast(dedupScratch.mergeSendTensor[segBase], dedupScratch.accumTensor, RoundMode::CAST_RINT, segLen);
         PipeBarrier<PIPE_V>(); // 下一段的累加 Cast 复写 accum 前，本段回写 Cast 已读完
@@ -236,25 +237,19 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
     DataCopyExtParams ub2GmParams{1U, h * static_cast<uint32_t>(sizeof(bfloat16_t)), 0U, 0U, 0U};
     DataCopyPad(gmRemoteD[gmDstRowOffset], dedupScratch.mergeSendTensor, ub2GmParams);
     SetFlag<HardEvent::MTE3_V>(mergeEvent);
-    dedupState.mergeSendArmed = true;
 }
 
 // 排空去重 combine 的全部在途事件：行环 slot（复用基础 Drain）+ 成员乒乓 + 合并发送。
-__aicore__ inline void DrainCombineRowBuffersDedup(uint32_t &issuedRowCount, uint32_t rowBufferCount,
-                                                   WaveCombineDedupState &dedupState)
+// 与 ArmWaveCombineDedupEvents 严格配对：每个事件 id 无条件 Wait 掉最后一个在途 Set。
+__aicore__ inline void DrainCombineRowBuffersDedup(uint32_t &issuedRowCount, uint32_t rowBufferCount)
 {
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
     DrainCombineRowBuffers(issuedRowCount, rowBufferCount);
-    for (uint32_t buf = 0U; buf < 2U; ++buf) {
-        if (dedupState.memberArmed[buf]) {
-            WaitFlag<HardEvent::V_MTE2>(
-                static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE + static_cast<int32_t>(buf)));
-            dedupState.memberArmed[buf] = false;
-        }
-    }
-    if (dedupState.mergeSendArmed) {
-        WaitFlag<HardEvent::MTE3_V>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MERGE_EVENT));
-        dedupState.mergeSendArmed = false;
-    }
+    WaitFlag<HardEvent::V_MTE2>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE));
+    WaitFlag<HardEvent::V_MTE2>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE + 1));
+    WaitFlag<HardEvent::MTE3_V>(static_cast<TEventID>(WAVE_COMBINE_DEDUP_MERGE_EVENT));
 }
 
 // prepass 槽 0（done 计数：AIV1 低 16 位、AIV0 参与档另有高 16 位）到齐后整张 desc 表方可读；
@@ -299,8 +294,7 @@ __aicore__ inline void ProcessWaveCombineDedupBatch(const MoeStageCommonConfig &
                                                     GlobalTensor<bfloat16_t> &gmm2OutGm,
                                                     GlobalTensor<bfloat16_t> &gmm2AbsGm, uint64_t gmRemoteBaseOffset,
                                                     uint32_t strideInt32, uint32_t batchTokenNum,
-                                                    uint32_t batchTokenLocalBase, uint32_t &rowSequence,
-                                                    WaveCombineDedupState &dedupState)
+                                                    uint32_t batchTokenLocalBase, uint32_t &rowSequence)
 {
     for (uint32_t i = 0U; i < batchTokenNum; ++i) {
         const int32_t flags = dedupScratch.descTensor.GetValue(i * strideInt32);
@@ -323,7 +317,7 @@ __aicore__ inline void ProcessWaveCombineDedupBatch(const MoeStageCommonConfig &
             continue;
         }
         SendWaveCombineTokenDedupMerge(common, dedupScratch, params, gmm2AbsGm, gmRemoteBaseOffset, tokenMetaInfo,
-                                       i * strideInt32, dedupState);
+                                       i * strideInt32);
     }
 }
 
@@ -334,8 +328,7 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
                                                 const WaveCombineBufferConfig &bufferConfig,
                                                 WaveCombineScratch &scratch, WaveCombineDedupScratch &dedupScratch,
                                                 const Params &params, const ExpertLoopState &state,
-                                                uint32_t expertIdx, uint32_t &rowSequence,
-                                                WaveCombineDedupState &dedupState)
+                                                uint32_t expertIdx, uint32_t &rowSequence)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -372,8 +365,7 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
         const uint32_t batchTokenLocalBase = currentCoreTokenRange.start + processedTokenNum;
         ProcessWaveCombineDedupBatch(common, bufferConfig, scratch, dedupScratch, params, gmm2OutGm, gmm2AbsGm,
-                                     gmRemoteBaseOffset, strideInt32, batchTokenNum, batchTokenLocalBase, rowSequence,
-                                     dedupState);
+                                     gmRemoteBaseOffset, strideInt32, batchTokenNum, batchTokenLocalBase, rowSequence);
         processedTokenNum += batchTokenNum;
     }
 }

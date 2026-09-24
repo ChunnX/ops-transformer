@@ -184,7 +184,6 @@ protected:
     WaveCombineScratch waveCombineScratch_;
     // 非量化 combine 去重的追加 UB 视图与跨行事件武装状态（排空时消费）。
     WaveCombineDedupScratch waveCombineDedupScratch_;
-    WaveCombineDedupState waveCombineDedupState_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
     __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
@@ -752,11 +751,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
                                                                             waveCombineDedupScratch_);
                     RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                    waveCombineScratch_, waveCombineDedupScratch_, params_, state,
-                                                   state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                                                   state.expertIdx, combineRowSequence);
                 } else {
                     RunWaveCombineStageDedup<false>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                     waveCombineScratch_, waveCombineDedupScratch_, params_, state,
-                                                    state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                                                    state.expertIdx, combineRowSequence);
                 }
             }
             return;

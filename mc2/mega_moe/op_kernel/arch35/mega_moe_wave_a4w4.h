@@ -67,7 +67,6 @@ private:
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
     using MegaMoeBase::waveCombineDedupScratch_;
-    using MegaMoeBase::waveCombineDedupState_;
     using MegaMoeBase::syncWorkspaceLayout_;
 
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
@@ -251,6 +250,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
     WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence)
 {
+    // 去重 combine：进 wave 前预挂事件（与函数尾的 Drain 配对，条件逐字一致）。
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
+            ArmWaveCombineDedupEvents();
+        }
+    }
     // GMM2 调度与 Combine 量化模式无关：统一按当前 WAVE 覆盖的专家 slice 顺序推进。
     using Config =
         GmmKernel::Config<true, 0, typename MoeQuantConfig::ActivationQuantOutType, MoeWeightType, bfloat16_t,
@@ -265,7 +270,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
-        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount, waveCombineDedupState_);
+        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount);
     }
 }
 

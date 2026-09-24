@@ -76,7 +76,6 @@ private:
     using MegaMoeBase::waveCombineJob_;
     using MegaMoeBase::waveCombineScratch_;
     using MegaMoeBase::waveCombineDedupScratch_;
-    using MegaMoeBase::waveCombineDedupState_;
 
     struct DispatchWaveState {
         ExpertTokenPosition position{};
@@ -538,17 +537,21 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (allCoreCombineExpertIndex < expertBegin || allCoreCombineExpertIndex >= expertEnd) {
             return;
         }
+        // 预挂去重事件（必须在上面的 early return 之后：不干活的 wave 不挂，挂了没人收）。
+        ArmWaveCombineDedupEvents();
         CombineBufferConfig activeBufferConfig =
             InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
         uint32_t rowSequence = 0U;
         RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_,
                                        waveCombineDedupScratch_, params_, allCoreCombineExpertState,
-                                       allCoreCombineExpertIndex, rowSequence, waveCombineDedupState_);
-        DrainCombineRowBuffersDedup(rowSequence, activeBufferConfig.rowBufferCount, waveCombineDedupState_);
+                                       allCoreCombineExpertIndex, rowSequence);
+        DrainCombineRowBuffersDedup(rowSequence, activeBufferConfig.rowBufferCount);
         return;
     }
 
     uint32_t rowSequence = 0U;
+    // 预挂去重事件（与循环尾的 Drain 配对）。
+    ArmWaveCombineDedupEvents();
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRecvTokenCountPtr,
                                                                      countWorkspace_, moeExpertPerRank_, expertIdx);
@@ -559,14 +562,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (expertIdx == allCoreCombineExpertIndex) {
             RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, bufferConfig, waveCombineScratch_,
                                            waveCombineDedupScratch_, params_, combineState, combineState.expertIdx,
-                                           rowSequence, waveCombineDedupState_);
+                                           rowSequence);
         } else {
             RunWaveCombineStageDedup<false>(commonConfig_, waveCombineJob_, bufferConfig, waveCombineScratch_,
                                             waveCombineDedupScratch_, params_, combineState, combineState.expertIdx,
-                                            rowSequence, waveCombineDedupState_);
+                                            rowSequence);
         }
     }
-    DrainCombineRowBuffersDedup(rowSequence, bufferConfig.rowBufferCount, waveCombineDedupState_);
+    DrainCombineRowBuffersDedup(rowSequence, bufferConfig.rowBufferCount);
 }
 
 // 按 combine 形态初始化行环缓冲：量化走量化布局，非量化去重走去重布局，基线路径零缓冲。
