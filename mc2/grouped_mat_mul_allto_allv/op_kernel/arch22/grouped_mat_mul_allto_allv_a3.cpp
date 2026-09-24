@@ -11,8 +11,8 @@
 /*!
  * \file grouped_mat_mul_allto_allv_a3.cpp
  */
-#include "arch22/grouped_mat_mul_allto_allv_mte_tiling_key.h"
-#include "arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
+#include "grouped_mat_mul_allto_allv_mte_tiling_key.h"
+#include "grouped_mat_mul_allto_allv_mte_tiling.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -20,9 +20,9 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
-#include "arch22/grouped_mat_mul_allto_allv_mte.h"
-#include "arch22/grouped_mat_mul_allto_allv_mte_catlass.h"
+#include "../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#include "grouped_mat_mul_allto_allv_mte.h"
+#include "grouped_mat_mul_allto_allv_mte_catlass.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
