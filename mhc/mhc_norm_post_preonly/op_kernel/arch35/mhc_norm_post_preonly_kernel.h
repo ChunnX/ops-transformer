@@ -152,13 +152,10 @@ public:
             }
         }
 
-        // 仅单分块路径提前加载gamma
-        if (dimLoop_ == 1) {
-            DataCopyExtParams gP = {1, 0, 0, 0, 0};
-            gP.blockLen = dimTile_ * sizeof(float);
-            DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
-            DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
-            // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
+        // 单分块路径仍在token循环外加载gamma0。5op且D<=5120时，复用完整D大小的
+        // gamma2缓存保存gamma0，并在后续token的R7期间预取下一份，避免token开头串行搬运。
+        if (dimLoop_ == 1U || UsePipelinedGamma0Cache()) {
+            CacheGamma0();
         }
 
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -241,14 +238,48 @@ private:
         DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     }
 
-    /// 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
+    /// 5op且D<=5120时，gamma2缓存可在R2之前复用为完整gamma0缓存。
+    __aicore__ inline bool UsePipelinedGamma0Cache() const
+    {
+        return USE_RMS_MID && D_ <= GAMMA1_CACHE_MAX_D;
+    }
+
+    __aicore__ inline LocalTensor<float> GetGamma0Cache()
+    {
+        if constexpr (USE_RMS_MID) {
+            if (D_ <= GAMMA1_CACHE_MAX_D) {
+                return bufGamma2Fp32_.Get<float>();
+            }
+        }
+        return bufGamma0Fp32_.Get<float>();
+    }
+
+    /// 搬运完整gamma0；流水化路径写入gamma2缓存，其他路径保持原缓存。
     __aicore__ inline void CacheGamma0()
     {
-        LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
+        LocalTensor<float> gamma0 = GetGamma0Cache();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
         params.blockLen = D_ * sizeof(float);
         DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
         DataCopyPad(gamma0, gamma0Gm_, params, pad);
+    }
+
+    /// 当前token的R6平方缓存失效后，预取下一token复用的gamma0，与R7重叠。
+    __aicore__ inline void StartCacheNextGamma0(uint32_t token)
+    {
+        if (!UsePipelinedGamma0Cache() || token + 1U >= tokenEnd_) {
+            return;
+        }
+        CacheGamma0();
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
+
+    /// 下一token完成R1后、首次消费gamma0前回收预取事件。
+    __aicore__ inline void WaitCacheCurrentGamma0(uint32_t token)
+    {
+        if (UsePipelinedGamma0Cache() && token != tokenStart_) {
+            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+        }
     }
 
     /// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
@@ -432,7 +463,7 @@ private:
     {
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, GetGamma0Cache()[tOff], invRms0,
                                                           tD);
         PipeBarrier<PIPE_V>();
 
@@ -455,7 +486,7 @@ private:
         }
         bufResidualBf16_.EnQue(residual);
 
-        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, GetGamma0Cache()[tOff], invRms0,
                                                           tD);
         PipeBarrier<PIPE_V>();
 
