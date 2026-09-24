@@ -35,7 +35,7 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增对INT4类型weight矩阵的支持，支持tuningConfigOptional调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：新增Pertoken-perchannel、静态pertensor-perchannel、MxA8W4、MXFP8和MXFP4量化场景；MXFP8和MXFP4场景支持输出BFLOAT16。相关信息参考[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)。
+- <term>Ascend 950PR/Ascend 950DT</term>：新增Pertoken-perchannel、静态pertensor-perchannel、MxA8W4、MXFP8和MXFP4量化场景；MXFP8和MXFP4场景支持输出BFLOAT16；dtype支持取0；Ascend 950PR/Ascend 950DT的MX量化场景满足BFLOAT16输出约束时支持取2；不支持取1。相关信息参考[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)。
 
 <!-- end id8 -->
 
