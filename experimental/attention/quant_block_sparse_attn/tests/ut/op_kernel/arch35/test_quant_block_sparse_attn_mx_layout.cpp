@@ -62,6 +62,30 @@ TEST(QbsaMxQueryLayout, PackedTndAndWideOffsets)
     EXPECT_EQ(regbasemx::MxQuerySlot<QBSALayout::BNSD>(base, 7, 3, 8, 129), base * 8 + 3 * 129 + 7);
 }
 
+TEST(QbsaMxQueryLayout, D64AndD256UseLayoutSpecificRowOffsets)
+{
+    constexpr uint32_t batch = 1U;
+    constexpr uint32_t heads = 8U;
+    constexpr uint32_t sq = 129U;
+    constexpr uint32_t head = 3U;
+    constexpr uint32_t sequence = 17U;
+    constexpr uint32_t rows = 32U;
+    constexpr uint64_t tokenBase = batch * sq;
+    for (const uint32_t headDim : {64U, 256U}) {
+        const uint64_t bsndBegin =
+            regbasemx::MxQuerySlot<QBSALayout::BSND>(tokenBase, sequence, head, heads, sq) * headDim;
+        const uint64_t bsndEnd =
+            regbasemx::MxQuerySlot<QBSALayout::BSND>(tokenBase, sequence + rows, head, heads, sq) * headDim;
+        EXPECT_EQ(bsndEnd - bsndBegin, static_cast<uint64_t>(rows) * heads * headDim);
+
+        const uint64_t bnsdBegin =
+            regbasemx::MxQuerySlot<QBSALayout::BNSD>(tokenBase, sequence, head, heads, sq) * headDim;
+        const uint64_t bnsdEnd =
+            regbasemx::MxQuerySlot<QBSALayout::BNSD>(tokenBase, sequence + rows, head, heads, sq) * headDim;
+        EXPECT_EQ(bnsdEnd - bnsdBegin, static_cast<uint64_t>(rows) * headDim);
+    }
+}
+
 TEST(QbsaMxQueryLayout, MetadataEndsAreClippedToPhysicalQuery)
 {
     EXPECT_EQ(regbasemx::MxS1LoopEnd(129, 64, 0), 3U);

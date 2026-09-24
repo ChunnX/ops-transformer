@@ -33,6 +33,16 @@ $$
 
 其中 `K`、`V` 由 `block_table` 和 `sparse_indices` 从 PageAttention KV Cache 中按块寻址获得。`q_descale`、`k_descale`、`v_descale` 均为 `FLOAT8_E8M0` 格式，每 32 个数据元素对应一个 scale 值（Q/K 沿 D 轴分组，V 沿 S 轴分组）。`p_scale` 为 per-tensor，支持 `FLOAT8_E8M0` 或 `FLOAT32` 数据类型。`mask_mode=0` 表示不加 mask，`mask_mode=3` 表示 causal mask。
 
+MXFP8 路径支持 `D = D_v = 64、128、256`。三种 D 均支持 `TND`、`BSND`、`BNSD` Query/输出布局，KV 布局均为 `PA_BNBD`；`layout_out` 必须与 `layout_q` 相同。`sparse_q_block_size` 与 `sparse_kv_block_size` 均可取 64 或 128，但二者必须相等。内部基本块大小由 tiling 选择，不是接口输入：
+
+| D = D_v | 内部 S1 基本块 | 内部 S2 基本块 | Q/K descale 的 D 轴 scale 对数（D/64） |
+| :---: | :---: | :---: | :---: |
+| 64 | 128 | 512 | 1 |
+| 128 | 128 | 512 | 2 |
+| 256 | 128 | 256 | 4 |
+
+上述 D 泛化只适用于 `quant_mode=2`；`quant_mode=1` 的 FP8 路径仍要求 `D = D_v = 128`。
+
 ## 接口说明
 
 该算子通过 PyTorch 扩展注册为 `torch.ops.custom.npu_quant_block_sparse_attn`，与 `quant_mode=1` 共用同一接口签名，通过显式传入 `quant_mode=2` 选择 MXFP8 全量化路径。PyTorch 入口会创建输出 Tensor，并调用底层算子接口。
@@ -82,8 +92,8 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 - `N1`：Query head 数。
 - `N2`：KV head 数。
 - `G`：GQA 分组数，`G = N1 / N2`。
-- `D`：Q/K head dim，当前实现固定为 128。
-- `D_v`：V head dim，当前实现固定为 128。
+- `D`：Q/K head dim，MXFP8 路径支持 64、128、256。
+- `D_v`：V head dim，MXFP8 路径必须与 `D` 相等。
 - `max_Qb`：Query block 最大数量，对应 `sparse_indices` 第 3 维和 `sparse_seq_len` 第 3 维。
 - `max_Kb`：每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 4 维。
 - `max_block_num_per_batch`：每个 batch 在 `block_table` 中可索引的最大逻辑 KV block 数，对应 `block_table` 第 2 维。
@@ -567,8 +577,8 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 | N1 | Query head 数，对应 `query` 的 N 轴和 `sparse_indices` 的第 2 维。 |
 | N2 | KV head 数，对应 `key`、`value` 的 N 轴。 |
 | G | GQA 分组数，`G = N1 / N2`。 |
-| D | Query/Key head dim，当前固定为 128。 |
-| D_v | Value head dim，当前固定为 128。 |
+| D | Query/Key head dim，MXFP8 支持 64、128、256。 |
+| D_v | Value head dim，MXFP8 要求与 D 相等。 |
 | max_Qb | Query block 最大数量，对应 `sparse_indices` 第 3 维和 `sparse_seq_len` 第 3 维。 |
 | max_Kb | 每个 Query block 最多保存的稀疏 KV block 索引数量，对应 `sparse_indices` 第 4 维。 |
 | block_num | PA KV Cache 物理 block 总数，对应 4D `key` 第 1 维。 |
@@ -585,9 +595,9 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
   - `query`、`key`、`value` 数据类型仅支持 `FLOAT8_E4M3FN`，数据格式仅支持 ND。
   - `query` 支持 3D TND `(QueryTokenNum,N1,D)`、4D BSND `(B,Sq,N1,D)` 和 4D BNSD `(B,N1,Sq,D)`；BSND/BNSD 的所有 batch 均使用完整 Sq。
-  - `query` 不支持空 Tensor，且 `D` 当前固定为 128。
-  - `key` 仅支持 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D)`，其中 `D` 固定为 128，`pa_block_size` 必须为 `sparse_kv_block_size` 的正整数倍且不超过 1024。
-  - `value` 仅支持与 `key` 对应的 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D_v)`，其中 `D_v` 固定为 128，`pa_block_size` 必须与 `key` 第 3 维一致。
+  - `query` 不支持空 Tensor，MXFP8 路径的 `D` 支持 64、128、256。
+  - `key` 仅支持 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D)`，其中 `D` 必须与 `query` 相同，`pa_block_size` 必须为 `sparse_kv_block_size` 的正整数倍且不超过 1024。
+  - `value` 仅支持与 `key` 对应的 4D PA 形态，shape 为 `(block_num, N2, pa_block_size, D_v)`，其中 `D_v` 必须与 `D` 相等，`pa_block_size` 必须与 `key` 第 3 维一致。
   - `attention_out` 数据类型为 `BFLOAT16`，数据格式为 ND。输出布局与 Q 相同，最后一维为 D_v。
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 各支持 64 或 128，且二者必须相等。
   - `layout_q` 支持 `TND`、`BSND`、`BNSD`。
@@ -608,7 +618,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `block_table` 必须按 `(BatchSize, max_block_num_per_batch)` 传入。主算子使用 `sparse_indices.shape[2]` 作为 `max_Qb`，使用 `block_table.shape[1]` 作为 `max_block_num_per_batch`，二者均必须大于 0。
   - `BatchSize`、`N1`、`N2`、`G` 均必须大于 0。`BatchSize`<= `65536`，`N1` <= `128`，`N2` <= `8`，`G` <= `16`。
   - `S1`、`S2` 均小于 `20M` ，不拦截。
-  - `D` 和 `D_v` 必须均为 128。
+  - MXFP8 路径的 `D` 必须属于 `{64, 128, 256}`，且 `D_v = D`；FP8 路径仍要求二者均为 128。
 
 - 特性交叉约束
 
@@ -759,7 +769,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 - 一致性约束
 
   - 如传入 `metadata`，则必须由与主算子相同的 `sparse_seq_len`、`num_heads_q`、`num_heads_kv`、`head_dim`、`sparse_block_size_q`、`sparse_block_size_k`、`quant_mode`、`mask_mode`、`layout_q`、`layout_kv`、`layout_sparse_indices` 生成。
-  - 用于主算子的 metadata 生成参数中，`head_dim` 应为 128，`sparse_block_size_q`、`sparse_block_size_k` 均应为 64 或 128，`quant_mode` 应为 2，`mask_mode` 应为 0 或 3，`layout_sparse_indices` 应为 `B_N_Qb_Kb`。
+  - 用于主算子的 metadata 生成参数中，`head_dim` 必须与当前 Query 的 `D` 一致，可为 64、128 或 256；`sparse_block_size_q`、`sparse_block_size_k` 均应为 64 或 128，`quant_mode` 应为 2，`mask_mode` 应为 0 或 3，`layout_sparse_indices` 应为 `B_N_Qb_Kb`。
   - BSND/BNSD 场景下，metadata 生成接口与主算子的两处调用均须传入 `cu_seqlens_q=None`、`seqused_q=None`。
 
 - 特性交叉约束
@@ -903,3 +913,16 @@ print("[INFO] 算子执行成功")
 print("[INFO] attn_out:       shape =", tuple(attn_out.shape), "dtype =", attn_out.dtype)
 print("[INFO] softmax_lse:    shape =", tuple(softmax_lse.shape), "dtype =", softmax_lse.dtype)
 ```
+
+### 更换 D 与 Query 布局
+
+以上示例使用 `D=128`、`layout_q=layout_out="TND"`。更换 D 时，`query`、`key`、`value` 的末维和 metadata 生成接口的 `head_dim` 必须同步更改；`q_descale`、`k_descale` 的 D 轴维度为 `D/64`，`v_descale` 的通道维度为 `D_v=D`。`softmax_scale` 可相应设为 `1/sqrt(D)`。例如保持示例中的 `B=1`、`Sq=256`、`N1=N2=1`、`block_num=4`、`pa_block_size=128` 时：
+
+| D | `layout_q=layout_out` | `query` | `q_descale` | `k_descale` | `v_descale` |
+| :---: | :---: | :--- | :--- | :--- | :--- |
+| 64 | TND | `(256,1,64)` | `(256,1,1,2)` | `(4,1,128,1,2)` | `(4,1,2,64,2)` |
+| 256 | TND | `(256,1,256)` | `(256,1,4,2)` | `(4,1,128,4,2)` | `(4,1,2,256,2)` |
+| 256 | BSND | `(1,256,1,256)` | `(1,256,1,4,2)` | `(4,1,128,4,2)` | `(4,1,2,256,2)` |
+| 256 | BNSD | `(1,1,256,256)` | `(1,1,256,4,2)` | `(4,1,128,4,2)` | `(4,1,2,256,2)` |
+
+使用 BSND/BNSD 时，metadata 生成接口和主算子均应设置相同的 `layout_q`，主算子还应将 `layout_out` 设为相同值；两处均传入 `cu_seqlens_q=None`、`seqused_q=None`，继续传入 `seqused_kv`。开启 LSE 时，这两种布局的 LSE shape 均为 `(B,N1,Sq)`。

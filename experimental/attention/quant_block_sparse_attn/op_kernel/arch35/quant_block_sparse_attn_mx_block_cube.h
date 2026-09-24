@@ -46,14 +46,15 @@ public:
     static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
-    static constexpr uint32_t S2_SPLIT = 256U;
+    static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
     static_assert((LAYOUT == QBSALayout::TND || LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) &&
                       KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX cube currently supports TND/BSND/BNSD query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
+    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
+                      (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                  "MX cube requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -116,7 +117,7 @@ public:
                                              Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1,
                                              MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
+        // Both C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
         IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
         IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
     }
@@ -125,7 +126,7 @@ public:
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        // C2: P[128,512] x V[512,DV]，P/V 均携带 e8m0 scale。
+        // C2: P[128,S2_BASE] x V[S2_BASE,DV]，P/V 均携带 e8m0 scale。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
         constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
@@ -192,7 +193,7 @@ private:
                                            MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
-        // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
+        // C1: K[S2_SPLIT,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
         const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
 
         Buffer<BufferType::L1> qBuf;
