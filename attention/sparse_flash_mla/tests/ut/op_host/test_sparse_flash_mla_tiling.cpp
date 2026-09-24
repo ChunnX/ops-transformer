@@ -849,6 +849,11 @@ TEST(SparseFlashMlaChecker, RejectsInvalidCompressionParams)
     {
         CheckContext context = MakeSparseContext();
         context.topkValueMode = 2;
+        EXPECT_EQ(compressionChecker.CheckSinglePara(context), ge::GRAPH_SUCCESS);
+    }
+    {
+        CheckContext context = MakeSparseContext();
+        context.topkValueMode = 3;
         EXPECT_EQ(compressionChecker.CheckSinglePara(context), ge::GRAPH_FAILED);
     }
     {
