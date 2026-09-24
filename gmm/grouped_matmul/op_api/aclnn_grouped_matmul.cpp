@@ -3132,7 +3132,8 @@ static aclnnStatus PrepareGmmParams(gmm::GroupedMatmulParams &gmmParams, const a
         // Check elements before reading scale dtype or normalizing empty optional inputs.
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.biasOptional, "bias"), "Invalid bias tensor list.");
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.scaleOptional, "scale"), "Invalid scale tensor list.");
-        CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.offsetOptional, "offset"), "Invalid offset tensor list.");
+        CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.offsetOptional, "offset"),
+                       "Invalid offset tensor list.");
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.antiquantScaleOptional, "antiquantScale"),
                        "Invalid antiquantScale tensor list.");
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.antiquantOffsetOptional, "antiquantOffset"),
