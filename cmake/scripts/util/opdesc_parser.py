@@ -33,7 +33,6 @@ SOC_TO_SHORT_SOC_MAP = {
     "ascend910_9392": "ascend910_93",
     "ascend910_9382": "ascend910_93",
     "ascend910_9362": "ascend910_93",
-    "ascend910_96": "ascend910_96",
     "ascend310p1": "ascend310p",
     "ascend310p3": "ascend310p",
     "ascend310p5": "ascend310p",
@@ -46,6 +45,7 @@ SOC_TO_SHORT_SOC_MAP = {
     "bs9sx1aa": "bs9sx1a",
     "ascend610lite": "ascend610lite",
     "ascend950pr_9599": "ascend950",
+    "ascend910_9691": "ascend910_96",
     "ascend350_355e": "ascend350",
     "ascend5162a": "ascend5162a",
 }
