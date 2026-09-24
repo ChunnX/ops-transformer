@@ -457,20 +457,24 @@ __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float
     }
 }
 
-// R3在一个VF内完成恢复与缩放后直接写回低精度缓存，保留第二次量化边界。
+// R3在一个VF内完成恢复、缩放、第二次量化和量化后恢复。
+// 同时产出低精度x2_out缓存与后续R4/R5使用的FP32值，避免再次从UB加载低精度缓存做独立Cast VF。
 template <typename T>
-__aicore__ inline void VFCastB16ScaleAndMulGammaToB16(const LocalTensor<T> &dst, const LocalTensor<T> &src,
-                                                      const LocalTensor<float> &gamma, float scale, uint32_t count)
+__aicore__ inline void VFRmsMidNormalizeQuantizeRestore(const LocalTensor<T> &dstB16,
+                                                        const LocalTensor<float> &dstFp32,
+                                                        const LocalTensor<T> &srcB16,
+                                                        const LocalTensor<float> &gamma, float scale, uint32_t count)
 {
-    __local_mem__ T *dstAddr = (__local_mem__ T *)dst.GetPhyAddr();
-    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ T *dstB16Addr = (__local_mem__ T *)dstB16.GetPhyAddr();
+    __local_mem__ float *dstFp32Addr = (__local_mem__ float *)dstFp32.GetPhyAddr();
+    __local_mem__ T *srcAddr = (__local_mem__ T *)srcB16.GetPhyAddr();
     __local_mem__ float *gammaAddr = (__local_mem__ float *)gamma.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> srcReg, dstReg;
-        Reg::RegTensor<float> srcFp32Reg, gammaReg, scaledReg;
+        Reg::RegTensor<float> srcFp32Reg, gammaReg, scaledReg, restoredReg;
         Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
@@ -484,7 +488,9 @@ __aicore__ inline void VFCastB16ScaleAndMulGammaToB16(const LocalTensor<T> &dst,
             } else {
                 Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, scaledReg, mask);
             }
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(restoredReg, dstReg, mask);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstB16Addr + i * VL_FP32, dstReg, mask);
+            Reg::StoreAlign(dstFp32Addr + i * VL_FP32, restoredReg, mask);
         }
     }
 }
