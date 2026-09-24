@@ -172,6 +172,23 @@ def execute_test(params, mode, cdir=None):
             cpu_out, act_seqused_q, compare_layout
         )
 
+    # per-batch seqused（2026-09-24）：行 [seqused_q[b], S1) 对本批无效——kernel 不写
+    # （DEAL_ZERO 清零为 TODO）、golden 置 0，对比前对 NPU 输出同步清零。
+    # 掩码统一在 CPU 侧做（check_result 本就 .cpu()；device 上 zeros_like 会触发
+    # 本环境缺 binary 的 ZerosLike NPU 算子）。
+    # 全满用例（每批 seqused==S1）掩码全真，零开销零影响
+    seq_q_mask = golden._get_seqused_q()
+    if seq_q_mask is not None and len(seq_q_mask) == npu_out.shape[0]:
+        s_total = npu_out.shape[2]
+        seq_q_arr = [min(int(x), s_total) for x in seq_q_mask]
+        if max(seq_q_arr) < s_total or min(seq_q_arr) != max(seq_q_arr):
+            row_idx = torch.arange(s_total)
+            valid = torch.as_tensor(seq_q_arr)
+            mask4d = (row_idx.unsqueeze(0) < valid.unsqueeze(1))[:, None, :, None]   # [B,1,S1,1]
+            cpu_cmp = torch.where(mask4d, cpu_cmp, torch.zeros_like(cpu_cmp))
+            npu_cpu = npu_out.detach().cpu()
+            npu_out = torch.where(mask4d, npu_cpu, torch.zeros_like(npu_cpu))
+
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
