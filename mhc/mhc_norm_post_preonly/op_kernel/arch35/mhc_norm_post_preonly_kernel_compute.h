@@ -132,8 +132,8 @@ __aicore__ inline void VFPairSquareB16ReduceSum(const LocalTensor<float> &dst, c
         Reg::RegTensor<T> src0Reg, src1Reg;
         Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, squareReg, sumReg, partialReg;
         Reg::MaskReg mask;
-        Reg::MaskReg fullMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::Duplicate(sumReg, 0.0f, fullMask);
+        Reg::MaskReg fullMask = Reg::CreateMask<float>();
+        Reg::Duplicate(sumReg, 0.0f);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
