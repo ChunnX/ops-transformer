@@ -26,6 +26,7 @@
 #include "../utils/mixed_quant_flash_attn_utils.h"
 #include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/vector_common.h"
+#include "../utils/mixed_quant_flash_attn_sink_gs1.h"
 #include "memory_copy_arch35_mixed_quant_flash_attn.h"
 #include "init_output.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
@@ -195,7 +196,9 @@ public:
     static constexpr uint32_t MASK_BUF_NUM = (mBaseSize == 48) ? 1 : 2; // 48x512 1块 32/64x512 2块
     static constexpr uint32_t UB_MM2RES_BYTE = mBaseSize * dBaseSize * sizeof(MM_OUT_T);  //TODO: mBaseSize+1
     static constexpr uint32_t UB_MM1RES_BYTE = mBaseSize * s2BaseSize * sizeof(MM_OUT_T);
-    static constexpr uint32_t SINK_BUF_BYTE = 256;
+    // Keep aligned source space for sink expansion and a separate 64-float output space.
+    static constexpr uint32_t SINK_EXPANDED_OFFSET = 128;
+    static constexpr uint32_t SINK_BUF_BYTE = 1024;
     static constexpr uint32_t INIT_BUF_BYTE = 8192;
     static constexpr uint32_t VEC1_RES_BYTE = (mBaseSize + 1) * s2BaseSize * sizeof(Q_T);   // +1解bank冲突
     static constexpr uint32_t VEC2_RES_BYTE = mBaseSize * dTemplateAlign64 * sizeof(T);
@@ -523,50 +526,38 @@ public:
                                                   LocalTensor<float> &maxUb)
     {
         CopySinkIn(runInfo);
-        LocalTensor<float> sinkUb = sinkBuf.template ReinterpretCast<float>();
-        SinkSubExpAddGSFusedVF<float, float>(sinkUb, sumUb, maxUb, runInfo.actVecMSize);
+        LocalTensor<float> sinkInput = sinkBuf.template ReinterpretCast<float>();
+        LocalTensor<float> sinkExpanded = sinkInput[SINK_EXPANDED_OFFSET];
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+            MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, true>(
+                sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize,
+                runInfo.actS1Size, constInfo.gSize);
+        } else {
+            MixedQuantFlashAttnSink::SinkExpandMaxVf<float, float, false>(
+                sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize,
+                runInfo.actS1Size, constInfo.gSize);
+        }
+        SinkSubExpAddGSFusedVF<float, float>(sinkExpanded, sumUb, maxUb, runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
     }
 
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
     {
-        LocalTensor<float> sinkUbFp32 = sinkBuf.template ReinterpretCast<float>();
-        DataCopyExtParams sinkCopyParams;
-        DataCopyPadExtParams<float> sinkCopyPadParams{};
-        uint32_t copyOffset = 0;
+        LocalTensor<float> sinkInput = sinkBuf.template ReinterpretCast<float>();
         uint64_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
-        int64_t sinkBaseOffset = runInfo.n2Idx * constInfo.gSize;
-        sinkCopyParams.blockCount = 1;
-        sinkCopyParams.srcStride = 0;
-        sinkCopyParams.dstStride = 0;
 
         WaitFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
-            uint32_t gOffset = static_cast<uint32_t>(gs1Start % constInfo.gSize);
-            while (copyOffset < runInfo.actVecMSize) {
-                uint32_t copyLen = runInfo.actVecMSize - copyOffset;
-                uint32_t gRemain = constInfo.gSize - gOffset;
-                copyLen = copyLen < gRemain ? copyLen : gRemain;
-                sinkCopyParams.blockLen = copyLen * sizeof(float);
-                DataCopyPad(sinkUbFp32[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
-                            sinkCopyPadParams);
-                copyOffset += copyLen;
-                gOffset = 0;
-            }
-            SetFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
-            WaitFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
+            MixedQuantFlashAttnSink::SinkCopyInS1G(
+                sinkInput, this->sinkGm, static_cast<uint32_t>(gs1Start), runInfo.actVecMSize,
+                runInfo.actS1Size, runInfo.n2Idx, constInfo.gSize);
         } else {
-            while (copyOffset < runInfo.actVecMSize) {
-                uint64_t gs1Offset = gs1Start + copyOffset;
-                uint32_t gOffset = static_cast<uint32_t>((gs1Offset / runInfo.actS1Size) % constInfo.gSize);
-                uint32_t s1Remain = static_cast<uint32_t>(runInfo.actS1Size - gs1Offset % runInfo.actS1Size);
-                uint32_t copyLen = runInfo.actVecMSize - copyOffset;
-                copyLen = copyLen < s1Remain ? copyLen : s1Remain;
-                Duplicate(sinkUbFp32[copyOffset], this->sinkGm.GetValue(sinkBaseOffset + gOffset), copyLen);
-                copyOffset += copyLen;
-            }
-            PipeBarrier<PIPE_V>();
+            MixedQuantFlashAttnSink::SinkCopyInGS1(
+                sinkInput, this->sinkGm, static_cast<uint32_t>(gs1Start), runInfo.actVecMSize,
+                runInfo.actS1Size, runInfo.n2Idx, constInfo.gSize);
         }
+        SetFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
+        WaitFlag<HardEvent::MTE2_V>(MTE2_V_SINK);
     }
 
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
