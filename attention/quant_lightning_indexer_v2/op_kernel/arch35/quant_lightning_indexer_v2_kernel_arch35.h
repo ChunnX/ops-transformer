@@ -119,6 +119,7 @@ protected:
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
     bool hasCuSeqlensQ = false;
+    // Q、K 分别记录 CU 序列是否有效。
     bool hasCuSeqlensK = false;
     bool hasSequsedQ = false;
     bool hasSequsedK = false;
@@ -141,6 +142,7 @@ protected:
     GlobalTensor<uint32_t> cuSeqlensKGm;
     GlobalTensor<uint32_t> sequsedQGm;
     GlobalTensor<uint32_t> sequsedKGm;
+    // 压缩残差与序列输入一并缓存。
     GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
@@ -239,6 +241,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
                                                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                                               __gm__ uint8_t *cmpResidualK)
 {
+    // Bind the four variable-length inputs and residual K when provided.
     if (cuSeqlensQ != nullptr) {
         cuSeqlensQGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ);
         hasCuSeqlensQ = true;
@@ -255,6 +258,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
         sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK);
         hasSequsedK = true;
     }
+    // Residual K belongs to the compressed path and is optional independently.
     if (cmpResidualK != nullptr) {
         cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
         hasCmpResidualK = true;
@@ -448,6 +452,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
+        // cube block 直接映射为 AIC 索引。
         aiCoreIdx = tmpBlockIdx;
     }
 
@@ -472,6 +477,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
     // vec 存储需要LD的s1对应的s2的score与index，
     // 大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
     GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
+    // LD score 紧随主 score workspace 分配。
     ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
     offset += static_cast<uint64_t>(GetBlockNum()) * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
     GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
@@ -706,6 +712,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessMain()
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
+        // 当前 batch 完成后复位 S1 循环起点。
         splitCoreInfo.gS1Start = 0;
     }
 
@@ -751,6 +758,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessDecode()
         ICachePreLoad(LD_PREFETCH_LEN);
         SyncAll();
         if (ldInfo.isLdCoreEnable) {
+            // 各核 score 就绪后执行 LD 归并。
             vectorService.ProcessLD();
         }
     }

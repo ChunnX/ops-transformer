@@ -32,6 +32,7 @@ using AscendC::CrossCoreWaitFlag;
 
 // 由于S2循环前，RunInfo还没有赋值，使用Bngs1Param临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
+    // 每个核独立维护 BN2 与 GS1 游标。
     uint32_t bn2IdxInCurCore = 0;
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
@@ -336,6 +337,7 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetSparseActualSeqLen(uint32_t bIdx, uint32_t s1Idx,
                                                                             uint32_t n2Idx)
 {
+    // Query rows excluded by the window do not enter the MLA loop.
     if (tempLoopInfo.nextTokensPerBatch < 0 && s1Idx < (-tempLoopInfo.nextTokensPerBatch)) { // 存在行无效
         tempLoopInfo.curActualSeqLen = 0;
         return;
@@ -362,6 +364,7 @@ __aicore__ inline uint32_t SparseFlashAttentionMla<SFAT>::GetActualSeqLenKV(uint
         }
     } else {
         if (constInfo.actualLenDimsKV == 0) {
+            // 未提供实际长度时使用 tiling 中的 KV 长度。
             return constInfo.kvSeqSize;
         } else if (constInfo.actualLenDimsKV == 1) {
             return actualSeqLengthsKVGm.GetValue(0);
@@ -516,6 +519,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
         matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
+        // Page-attention addressing is configured after all backing tensors are bound.
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
                                             constInfo.maxBlockNumPerBatch);
     }
@@ -879,6 +883,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(constInfo.syncV0C1);
             }
+            // 先执行当前槽的 MM1，再推进 vector 流水。
             ComputeMm1(extraInfo0);
         } else {
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
@@ -890,6 +895,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
     }
     if (extraInfo2.isValid) {
         if ASCEND_IS_AIV {
+            // Vec1 使用延迟两拍的运行参数。
             vectorService.ProcessVec1L(extraInfo2);
         }
         if ASCEND_IS_AIC {
@@ -901,6 +907,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
     }
     if (extraInfo1.isValid) {
         if ASCEND_IS_AIV {
+            // Vec2 完成输出后才能复用流水槽。
             vectorService.ProcessVec2L(extraInfo1);
         }
         extraInfo1.isValid = false;
@@ -942,6 +949,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetAxisStartIdx(uint32_t b
 
     constInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
+        // 前一核完成 GS1 后从零开始当前核区间。
         constInfo.gS1Start = 0;
         constInfo.bN2Start++;
     } else {
