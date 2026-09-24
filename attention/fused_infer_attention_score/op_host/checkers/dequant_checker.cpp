@@ -2899,9 +2899,10 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
     uint32_t headDim = fiaInfo.qkHeadDim;
     uint32_t batchSize = fiaInfo.bSize;
     uint64_t seqLength = fiaInfo.s2Size;
-    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE &&  fiaInfo.kvCacheNzD0 == NUM_32) {
-        //kv cache排布为NZ且最后一维D0为32下，scaleshape存在以下约束
-        //perchannel：inputLayout为BSH时为[H]，inputLayout为BNSD时为[N,1,D]，inputLayout为BSND时为[N,D]
+    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE &&
+        fiaInfo.kvCacheNzD0 == NUM_32) {
+        // kv cache排布为NZ且最后一维D0为32下，scaleshape存在以下约束
+        // perchannel：inputLayout为BSH时为[H]，inputLayout为BNSD时为[N,1,D]，inputLayout为BSND时为[N,D]
         if (ge::GRAPH_SUCCESS != CheckKScaleShapeForKvCacheNzPerChannelMode(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
@@ -3054,7 +3055,7 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNzPerChannelMode(const
         std::string reasonMsg = "keyAntiquantMode is not support per-tensor mode "
                                 "when PA_NZ D0=32 antiquant";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
-                                                reasonMsg.c_str());
+                                              reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     const std::string &inputLayout = fiaInfo.opParamInfo.layOut;
@@ -3075,9 +3076,8 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNzPerChannelMode(const
         gert::Shape expectedShapeH = gert::Shape({numKeyValueHeads, 1, headDim});
         if (keyAntiquantScaleTensorShape != expectedShapeH) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + 
-                                    std::to_string(numKeyValueHeads) + "), 1, D(" +
-                                    std::to_string(headDim) +
+            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) +
+                                    "), 1, D(" + std::to_string(headDim) +
                                     ")] when PA_NZ D0=32 antiquant and layout is BNSD";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
@@ -3089,9 +3089,8 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNzPerChannelMode(const
         gert::Shape expectedShapeH = gert::Shape({numKeyValueHeads, headDim});
         if (keyAntiquantScaleTensorShape != expectedShapeH) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + 
-                                    std::to_string(numKeyValueHeads) + "), D(" +
-                                    std::to_string(headDim) +
+            std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" + std::to_string(numKeyValueHeads) +
+                                    "), D(" + std::to_string(headDim) +
                                     ")] when PA_NZ D0=32 antiquant and layout is BSND";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                                   reasonMsg.c_str());
@@ -3100,7 +3099,8 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNzPerChannelMode(const
         return ge::GRAPH_SUCCESS;
     }
     std::string shpeStr = inputLayout;
-    std::string reasonMsg = "The layout must be BSH BNSD BSND when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode";
+    std::string reasonMsg =
+        "The layout must be BSH BNSD BSND when PA_NZ D0=32 antiquant and keyAntiquantMode is per-channel mode";
     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shpeStr.c_str(), reasonMsg);
     return ge::GRAPH_FAILED;
 }
