@@ -42,16 +42,14 @@
 namespace Apace {
 
 // CCU 直调版通信等待策略（注入 AllToAllQbmmMxKernel 的 CommPolicy 位）：
-// tileIdx==0 前置等待 scale 轮（eventVa[1]），随后等待 data 轮 tileIdx（eventVa[tileIdx+2]）
+// 等待 data 轮 tileIdx done（eventVa[tileIdx+1]）——轮 0 已含 tile0 所需的
+// scale 全量（整块随轮 0 搭载），无需单独等待 scale
 struct CcuCommWaitPolicy {
     const CcuMappedAddrs *mappedAddrs_{nullptr};
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
-        if (tileIdx == 0) {
-            WaitCcuCommDone(mappedAddrs_->eventVa[1]);
-        }
-        WaitCcuCommDone(mappedAddrs_->eventVa[tileIdx + 2]);
+        WaitCcuCommDone(mappedAddrs_->eventVa[tileIdx + 1]);
     }
 };
 

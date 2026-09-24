@@ -14,12 +14,12 @@
  *
  * 编排函数：ValidateAllToAllMatmulParams（check，不触碰 CCU 资源）→
  * PrepareCcuCommResources（prepare，经 core/ccu_comm 分配 CCU 资源并填充 tiling 资源字段）→
- * RefreshCcuCommStage（每次调用，通信参数刷入 GM staging）→
+ * RefreshCcuCommStage（每次调用，通信参数刷入 kernelArg->stage）→
  * AllToAllMatmulCustom（见 all_to_all_ccu_kernel_impl.asc，双流 launch）→
  * ReleaseAllToAllMatmulContext（释放，调用方在迭代循环外统一调用一次）。
  * tiling 填充分工：main 构造 comm.tileM + matmul 全部字段 → Validate 填 comm 形状/轮次
- * → Prepare 填 comm 资源字段 → Refresh 每次调用刷通信地址并整体拷入 GM staging
- * （CCU kernel 自读，matmul 部分仍随 AIC kernel 的 <<<>>> 按值入参）。
+ * → Prepare 填 comm 资源字段 → Refresh 每次调用刷通信地址并整体抄入 kernelArg->stage
+ * （随 CCU kernel launch 按值直达，matmul 部分仍随 AIC kernel 的 <<<>>> 按值入参）。
  *
  * 位置说明：本文件是融合专属 host 编排（形状校验/切分计算/双流 launch 编排），
  * 与 device 侧文件同置于 kernel/fusions/ 目录；通信服务在 core/ccu_comm/
@@ -35,7 +35,7 @@ struct AllToAllMatmulContext {
     // asc-comm 调度描述符（numBlocks/reserved/phyDieMask/binaryCacheTag）
     asccomm_ccu_schd schd;
     CcuInsHandle insHandle{0};
-    // 单组 kernelArg（管理 dataCommTurn+2 个 Event；通信参数随 kernelArg->stage 按值直达 CCU）
+    // 单组 kernelArg（管理 dataCommTurn+1 个 Event；通信参数随 kernelArg->stage 按值直达 CCU）
     std::shared_ptr<CcuKernelArgAllToAllMesh1D> kernelArg;
     // 统一 tiling：matmul 由 Custom 入参拷入；comm 由 Validate（形状）+ Prepare（资源）填充，
     // 每次调用整体刷入 staging
@@ -133,7 +133,7 @@ inline HcclResult ValidateAllToAllMatmulParams(void *x1, void *workspace, void *
         return HCCL_E_PARA;
     }
 
-    // scale 全量 1 轮
+    // scale 整块（每对端一个 Write，不拆分）随 data 轮 0 搭载
     ctx.scaleInputSize = static_cast<uint64_t>(M) * scaleKLen;
     if (scaleCount != ctx.scaleInputSize) {
         return HCCL_E_PARA;
@@ -143,7 +143,11 @@ inline HcclResult ValidateAllToAllMatmulParams(void *x1, void *workspace, void *
     }
     ctx.tiling.comm.params.scaleSliceSize = ctx.scaleInputSize / rankSize;
     ctx.tiling.comm.params.scaleSrcStride = ctx.tiling.comm.params.scaleSliceSize;
-    ctx.tiling.comm.params.scaleDstOffset = static_cast<uint64_t>(ctx.tiling.comm.rankId)
+    // scale 目的偏移（相对对端发布的 recvBuf 地址）：region 偏移（recvScale 紧邻
+    // recvData，workspace 布局全组一致，= workspaceScaleOffset = inputSize）+
+    // rankId 块内偏移，host 烘焙——CCU 侧从发布值闭式派生，无需第二组通道槽位
+    ctx.tiling.comm.params.scaleDstOffset = ctx.inputSize
+                                          + static_cast<uint64_t>(ctx.tiling.comm.rankId)
                                           * ctx.tiling.comm.params.scaleSliceSize;
 
     // workspace [recvData | recvScale]
@@ -199,7 +203,6 @@ inline HcclResult RefreshCcuCommStage(void *x1, void *x1Scale, void *workspace,
     params.x1Addr = reinterpret_cast<uint64_t>(x1);
     params.x1ScaleAddr = reinterpret_cast<uint64_t>(x1Scale);
     params.recvBufAddr = reinterpret_cast<uint64_t>(workspace);
-    params.recvScaleBufAddr = reinterpret_cast<uint64_t>(workspace) + ctx.tiling.comm.workspaceScaleOffset;
     ctx.kernelArg->stage = params;
     return HCCL_SUCCESS;
 }
@@ -218,8 +221,8 @@ inline HcclResult PrepareCcuCommResources(void *x1, void *x1Scale,
 {
     if (ctx.insHandle != 0) {
         const uint32_t turn = ctx.tiling.comm.dataCommTurn;
-        if (ctx.kernelArg->commTurn != turn + 1 ||
-            ctx.kernelArg->eventNum != turn + 2) {
+        if (ctx.kernelArg->commTurn != turn ||
+            ctx.kernelArg->eventNum != turn + 1) {
             return HCCL_E_PARA;
         }
         return HCCL_SUCCESS;
@@ -232,7 +235,8 @@ inline HcclResult PrepareCcuCommResources(void *x1, void *x1Scale,
     HCCLCHECK(AllocAllToAllRegion(ctx.insHandle, ctx.dieId, ctx.tiling.comm, kernelChannels, ctx.kernelArg));
 
     // token 按"一段内存区域(VA+size)"签发，一次调用只覆盖一个 region：x1 与 x1Scale
-    // 独立分配、地址不连续，须各取各的（分别供 data 轮 / scale 轮读源）
+    // 独立分配、地址不连续，须各取各的（分别供 data 块 / scale 块读源；scale 源侧
+    // 令牌仅用于本端读 x1Scale，对端写目的侧统一用发布的 token）
     HCCLCHECK(HcommCcuGetMemToken(reinterpret_cast<uint64_t>(x1), ctx.inputSize,
                                   &ctx.tiling.comm.params.token));
     HCCLCHECK(HcommCcuGetMemToken(reinterpret_cast<uint64_t>(x1Scale), ctx.scaleInputSize,

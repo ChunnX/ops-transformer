@@ -236,7 +236,7 @@ int RunAllToAllMatmul(ThreadContext &ctx)
                   << ", M=" << M << ", blockRows=" << blockRows
                   << ", K=" << K << ", N=" << N
                   << ", tileM=" << tileM << ", dataCommTurn=" << dataCommTurn
-                  << " (+" << 1 << " scale round)"
+                  << " (scale 随轮 0 搭载)"
                   << ", usedCoreNum=" << tilingData.matmul.usedCoreNum
                   << ", x1=" << (sendSize / 1024) << "KB"
                   << ", workspace=" << ((sendSize + sendScaleSize) / 1024) << "KB";

@@ -148,7 +148,7 @@ constexpr uint32_t MAX_COMMTURN = 16;
 
 // CKE 事件槽位到 MMIO 映射地址的映射表（AIC 清扫/commit/逐 tile 轮询用）
 struct CcuMappedAddrs {
-    // dataCommTurn+2 个 Event：[0]=wake，[1]=scale 轮 done，[t+2]=data 轮 t done
+    // dataCommTurn+1 个 Event：[0]=wake，[t+1]=data 轮 t done（轮 0 含搭载的 scale 整块）
     uint64_t eventVa[MAX_COMMTURN + 2];
 };
 
@@ -197,16 +197,21 @@ struct CcuCommStageParams {
     uint64_t blockSize{0};
     uint64_t subBytes{0};
     uint64_t srcStride{0};
-    // scale 轮标量
+    // scale 整块（随 data 轮 0 搭载，不拆分）闭式派生源标量：dst = 对端发布地址
+    // (recvBuf) + scaleDstOffset——scaleDstOffset 由 host 烘焙 region 偏移
+    // （recvScale 紧邻 recvData：recvScale = recvBuf + inputSize，workspace 布局
+    // 全组一致）+ rankId*scaleSliceSize，CCU 侧从发布值闭式派生（单类发布）
     uint64_t scaleSliceSize{0};
     uint64_t scaleSrcStride{0};
     uint64_t scaleDstOffset{0};
-    // 通信地址（帧可变：输入/接收 buffer 可能换址）
+    // 通信地址（帧可变：输入/接收 buffer 可能换址）。recvScale 基址不再单独下发——
+    // scale 目的地址由发布值 + scaleDstOffset 派生
     uint64_t x1Addr{0};
     uint64_t x1ScaleAddr{0};
     uint64_t recvBufAddr{0};
-    uint64_t recvScaleBufAddr{0};
-    // CCU 内存访问令牌（data / scale 两 buffer 各一）
+    // CCU 内存访问令牌（data / scale 两 buffer 源侧各一）。对端发布的仅为 token：
+    // 远端写 data 与 scale 两个目的区共用同一令牌（实证令牌对远端写目的 region
+    // 宽松——现状两类令牌本就都用于写对端同一 workspace）
     uint64_t token{0};
     uint64_t scaleToken{0};
     // 本地拷贝 loop 参数（data / scale 各一）
@@ -226,31 +231,42 @@ struct CcuKernelArgAllToAllMesh1D {
     CcuCommStageParams stage;  // 通信参数（host 每次调用刷新，CCU 唤醒后自读）
 };
 
-// 对端路由：每对端 2 个通道槽位句柄（output+token 成对，单槽位复用 + r==1 重发布）
+// 对端路由：每对端 2 个通道槽位句柄（output+token 成对；单类发布，全帧一组值，
+// scale 目的地址由对端从 output 值闭式派生，槽位不再中途覆写）
 struct PeerRoute {
     ccu::Variable output;
     ccu::Variable token;
+};
+
+// 单货类换块传输的轮参数（data 轮 / scale 块共用同一传输模式；LoadRoundArgs 从
+// stage 闭式派生后 imm 赋值进寄存器）
+struct AllToAllBlockParams {
+    ccu::Variable input;       // 发送侧基址（x1Addr / x1ScaleAddr）
+    ccu::Variable srcOffset;   // 轮级源偏移
+    ccu::Variable srcToken;    // 发送侧访问令牌（x1 / x1Scale 各自的源侧 token）
+    ccu::Variable dstOffset;   // 目的偏移（相对对端发布地址；scale 已含 region 偏移）
+    ccu::Variable sliceSize;   // 本轮子段字节数
+    ccu::Variable srcStride;   // 块间距字节数（均匀 AllToAll 紧邻切分）
+    GroupOpSizeVars goSize;    // 本地拷贝 loop 参数
 };
 
 // CCU kernel 工作上下文（传输引擎的运行态）
 struct AllToAllMesh1DContext {
     const CcuKernelArgAllToAllMesh1D *arg;
 
-    // 本 rank 轮参数物化（LoadRoundArgs 从 stage 闭式派生后 imm 赋值进寄存器）
-    ccu::Variable input;
-    ccu::Variable srcOffset;
-    ccu::Variable dstOffset;
-    ccu::Variable sliceSize;
-    ccu::Variable srcStride;
-    // 本 rank self output/token（轮类切换的 PreSync 从 stage 重新物化：scale 类 / data 类）
+    // 本 rank 轮参数（data 轮 t；scale 整块仅随轮 0 搭载，其余轮不装载不消费）
+    AllToAllBlockParams data;
+    AllToAllBlockParams scale;
+    // 本 rank self output/token（帧首单类发布一次：recvBuf + token；localDst 同源）
     ccu::Variable selfOutput;
     ccu::Variable selfToken;
-    // 对端路由（按 rankId 索引；self 槽位未用。沿用 vector 而非定长数组：
+    // 对端路由（live 绑定通道槽位——对端发布后即为本帧值；沿用 vector 而非定长数组：
     // Variable 默认构造即分配寄存器槽，定长数组会为未用 rank 空配 16×2 槽）
     std::vector<PeerRoute> routing;
+    // Write 完成事件：完成位仅由 ccu::Write 置位收集；轮内不再有 Event 掩码屏障
+    // （round-done 的落地确认走 PostSync 通道握手，见 _kernel.asc）
     ccu::Event event;
 
-    GroupOpSizeVars goSize;
     LoopGroupConfig moConfig;
     LoopGroupResource moRes;
     bool resourceAllocated = false;

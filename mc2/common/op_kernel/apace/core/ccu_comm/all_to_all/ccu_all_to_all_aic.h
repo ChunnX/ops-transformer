@@ -42,8 +42,9 @@ __aicore__ inline void AllToAllProcess(const CcuCommTilingData &comm)
         return;
     }
 
-    const uint32_t totalRounds = comm.dataCommTurn + 1;
-    for (uint32_t i = 0; i <= totalRounds; i++) {
+    // events: [0]=wake, [t+1]=data 轮 t done（轮 0 含其搭载的 scale 整块）
+    const uint32_t totalEventNum = comm.dataCommTurn + 1;
+    for (uint32_t i = 0; i < totalEventNum; i++) {
         __gm__ uint64_t *evAddr =
             reinterpret_cast<__gm__ uint64_t *>(comm.mappedAddrs.eventVa[i]);
         AscendC::WriteGmByPassDCache<uint64_t>(evAddr, 0);

@@ -34,7 +34,8 @@ inline HcclResult AllocAllToAllRegion(CcuInsHandle insHandle, uint32_t dieId, Cc
 {
     const uint8_t ccuDieId = static_cast<uint8_t>(dieId);
 
-    const uint32_t totalEventNum = comm.dataCommTurn + 2;
+    // events: [0]=wake，[t+1]=data 轮 t done（轮 0 含搭载的 scale 整块）
+    const uint32_t totalEventNum = comm.dataCommTurn + 1;
     CcuEventHandle eventHandle{0};
     HCCLCHECK(HcommCcuEventAlloc(insHandle, ccuDieId, totalEventNum, &eventHandle));
     for (uint32_t i = 0; i < totalEventNum; i++) {
@@ -47,8 +48,8 @@ inline HcclResult AllocAllToAllRegion(CcuInsHandle insHandle, uint32_t dieId, Cc
     kernelArg->channelCount = static_cast<uint32_t>(kernelChannels.size());
     kernelArg->eventHandle = eventHandle;
     kernelArg->eventNum = totalEventNum;
-    // CCU kernel 循环次数 = dataCommTurn + 1（round 0 = scale A2A，round 1..c = data 轮）
-    kernelArg->commTurn = comm.dataCommTurn + 1;
+    // CCU kernel 循环次数 = dataCommTurn（轮 0 = data 块 0 + scale 整块搭载）
+    kernelArg->commTurn = comm.dataCommTurn;
     // kernelArg->stage 由消费方 host 每次调用经 RefreshCcuCommStage 刷新（通信参数随参直达）
     for (uint32_t i = 0; i < kernelChannels.size(); ++i) {
         kernelArg->channels[i] = kernelChannels[i];
