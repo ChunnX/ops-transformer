@@ -60,7 +60,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-            constexpr bool WRITE_R45_FP32_CACHE = IsSameT<T, bfloat16_t>::value;
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
             // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
@@ -82,7 +81,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcNormRegBase::VFCastB16ScaleGammaQuantizeR3<T, WRITE_R45_FP32_CACHE>(
+                MhcNormRegBase::VFCastB16ScaleGammaQuantizeToB16AndFp32(
                     x2Cache[n * D_ + tOff], x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
@@ -90,7 +89,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                     FenceVToMte2();
                 }
             }
-            CacheX2Tile(token, tOff, tD, true, false, !WRITE_R45_FP32_CACHE);
+            CacheX2Tile(token, tOff, tD, true, false, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
