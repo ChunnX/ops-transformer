@@ -78,14 +78,12 @@ public:
             blockIndex = slotmappingValue / blockSize;
             blockOffset = slotmappingValue % blockSize;
             if (kCacheBlockStride > 0) {
-                keycacheOutGmOffset =
-                    blockIndex * numHead * blockSize * kHeadSize * kCacheBlockStride + blockOffset * kHeadSize;
+                keycacheOutGmOffset = blockIndex * kCacheBlockStride + blockOffset * kHeadSize;
             } else {
                 keycacheOutGmOffset = blockIndex * numHead * blockSize * kHeadSize + blockOffset * kHeadSize;
             }
             if (vCacheBlockStride > 0) {
-                valuecacheOutGmOffset =
-                    blockIndex * numHead * blockSize * vHeadSize * vCacheBlockStride + blockOffset * vHeadSize;
+                valuecacheOutGmOffset = blockIndex * vCacheBlockStride + blockOffset * vHeadSize;
             } else {
                 valuecacheOutGmOffset = blockIndex * numHead * blockSize * vHeadSize + blockOffset * vHeadSize;
             }
