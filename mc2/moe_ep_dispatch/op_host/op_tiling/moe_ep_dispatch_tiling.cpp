@@ -82,6 +82,17 @@ constexpr int64_t SCALES_ALIGN_EVEN = 2; // fp8 align 2
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint32_t META_BUFFER_NUM = 2U;
+constexpr uint32_t META_COPY_MAX_BYTES = 65535U;
+constexpr uint32_t SEND_PHASE_GROUP_BYTES = 32U * 1024U;
+constexpr uint32_t SEND_PHASE_CACHE_BUFFER_BYTES = 160U * 1024U;
+constexpr uint32_t SEND_PHASE_HCOMM_BUFFER_BYTES = 512U;
+constexpr uint32_t SEND_PHASE_DATA_ALIGN = 256U;
+constexpr uint32_t BITS_PER_BYTE = 8U;
+constexpr uint32_t SEND_PHASE_CACHE_MASK_BUFFER_NUM = 2U;
+constexpr uint32_t SEND_PHASE_PER_GROUP_BUFFER_NUM = 5U; // topkIds(2) + temp(1) + dstExp(2)
+constexpr uint32_t SEND_PHASE_MASK_BUFFER_NUM = 3U;
+constexpr uint32_t SEND_PHASE_RECV_EXPERT_BUFFER_NUM = 2U;
 
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
@@ -99,6 +110,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "topK is %u.", info.cfg.topK);
     OP_LOGD(nodeName, "numMaxTokensPerRank is %u.", info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes is %u.", info.perSlotBytes);
+    OP_LOGD(nodeName, "metaBatch is %u.", info.metaBatch);
     OP_LOGD(nodeName, "expertAlignment is %u.", info.cfg.expertAlignment);
     OP_LOGD(nodeName, "doCpuSync is %u.", info.doCpuSync);
     OP_LOGD(nodeName, "isCached is %u.", info.isCached);
@@ -764,6 +776,59 @@ static uint64_t AlignUpUb(const uint64_t data)
     return (data + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
 }
 
+static uint64_t AlignUpLEN256(const uint64_t data, const uint64_t align)
+{
+    return (data + align - 1UL) / align * align;
+}
+
+static ge::graphStatus SetMetaBatch(MoeEpDispatchInfo &info, const char *nodeName)
+{
+    info.metaBatch = 1U;
+    if (info.networkMode != NETWORK_DIRECT || info.metaSlotBytes == 0U) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t totalUbSize = info.totalUbSize;
+    uint64_t fixedUbBytes = 0UL;
+    if (info.isCached) {
+        uint64_t cachedTokenCount = SEND_PHASE_CACHE_BUFFER_BYTES / sizeof(int32_t);
+        uint64_t maskBytes = AlignUpUb((cachedTokenCount + BITS_PER_BYTE - 1UL) / BITS_PER_BYTE);
+        fixedUbBytes = SEND_PHASE_CACHE_BUFFER_BYTES + SEND_PHASE_CACHE_MASK_BUFFER_NUM * maskBytes;
+    } else {
+        uint64_t perGroupTokenNum = SEND_PHASE_GROUP_BYTES / sizeof(int16_t) / info.cfg.topK;
+        uint64_t perGroupBytes =
+            AlignUpLEN256(perGroupTokenNum * info.cfg.topK * sizeof(int16_t), SEND_PHASE_DATA_ALIGN);
+        uint64_t maskElementCount = perGroupBytes / sizeof(int16_t);
+        uint64_t maskBytes = AlignUpUb((maskElementCount + BITS_PER_BYTE - 1UL) / BITS_PER_BYTE);
+        uint64_t sendCntRankBytes =
+            AlignUpLEN256(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), SEND_PHASE_DATA_ALIGN);
+        uint64_t sendCntExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numExperts) * sizeof(int32_t));
+        uint64_t numRecvPerExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t));
+        uint64_t numRecvPerRankBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t));
+        fixedUbBytes = SEND_PHASE_PER_GROUP_BUFFER_NUM * perGroupBytes + SEND_PHASE_MASK_BUFFER_NUM * maskBytes +
+                       sendCntRankBytes + sendCntExpertBytes + numRecvPerRankBytes +
+                       SEND_PHASE_RECV_EXPERT_BUFFER_NUM * numRecvPerExpertBytes;
+    }
+
+    fixedUbBytes += (MOE_EP_META_SCATTER_UB_BYTES + SEND_PHASE_HCOMM_BUFFER_BYTES);
+    uint64_t minMetaQueueBytes = static_cast<uint64_t>(META_BUFFER_NUM) * info.metaSlotBytes;
+    OP_TILING_CHECK(fixedUbBytes + minMetaQueueBytes > totalUbSize,
+                    OP_LOGE(nodeName, "Insufficient UB: fixed=%lu, one-batch queue=%lu, available=%lu.", fixedUbBytes,
+                            minMetaQueueBytes, totalUbSize),
+                    return ge::GRAPH_FAILED);
+
+    uint64_t availableUbBytes = totalUbSize - fixedUbBytes;
+    uint64_t maxBatchByUb = availableUbBytes / minMetaQueueBytes;
+    uint64_t maxBatchByCopy = META_COPY_MAX_BYTES / info.metaSlotBytes;
+    uint64_t tokenCountPerAiv = (static_cast<uint64_t>(info.cfg.numTokens) + info.aivNum - 1UL) / info.aivNum;
+    uint64_t metaBatch = std::min(std::min(maxBatchByUb, maxBatchByCopy),
+                                  std::min(tokenCountPerAiv, static_cast<uint64_t>(MOE_EP_META_BATCH_MAX)));
+    info.metaBatch = static_cast<uint32_t>(std::max(metaBatch, 1UL));
+    OP_LOGD(nodeName, "meta batch: fixedUb=%lu, availableUb=%lu, maxByUb=%lu, maxByCopy=%lu, selected=%u.",
+            fixedUbBytes, availableUbBytes, maxBatchByUb, maxBatchByCopy, info.metaBatch);
+    return ge::GRAPH_SUCCESS;
+}
+
 static void SetSendEntryLayout(MoeEpDispatchInfo &info)
 {
     uint64_t tokenRangeCapacity =
@@ -891,7 +956,8 @@ static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached, 
     return GET_TPL_TILING_KEY(cpuSyncMode, CachedMode, topkWeightsMode, mxQuantMode, static_cast<uint8_t>(networkMode));
 }
 
-static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
+static ge::graphStatus SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info,
+                                                 const char *nodeName)
 {
     info.hybrid.scaleoutAivNum = 0U;
     info.hybrid.scaleupAivNum = 0U;
@@ -899,6 +965,8 @@ static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatc
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    OP_TILING_CHECK(aivNum == 0U, OP_LOGE(nodeName, "Platform reports aiv_num=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(ubSize == 0UL, OP_LOGE(nodeName, "Platform reports ub_size=0."), return ge::GRAPH_FAILED);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
@@ -930,6 +998,7 @@ static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatc
     context->SetBlockDim(blockDim);
     context->SetScheduleMode(1U);
     OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
@@ -949,7 +1018,11 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(CheckOutputTensor(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check output tensor failed."), return ge::GRAPH_FAILED);
 
-    SetPlatformAndNetworkInfo(context, info, nodeName);
+    OP_TILING_CHECK(SetPlatformAndNetworkInfo(context, info, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "Set platform and network info failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetMetaBatch(info, nodeName) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Set meta batch failed."),
+                    return ge::GRAPH_FAILED);
+
     if (info.networkMode == NETWORK_HYBRID) {
         SetSendEntryLayout(info);
     } else {
