@@ -118,12 +118,18 @@ HOST_DEVICE int64_t CalcExpertCountRecvSize(int64_t moeExpertPerRank, int64_t ep
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
 }
 
-// 记录布局是否携带 topk 权重段：prefetch 语义（tkw=1，权重在激活层消费）之外，tkw=0 且
-// combine 去重使能时也携带——合并阶段在发送端乘权，权重需经记录尾段随 token 下发。
-// host（tiling 校验/UB 预算）与 kernel（记录拼装/解析）的布局判定统一走本式，两侧不得各写一份。
-HOST_DEVICE bool MegaMoeRecordHasTopkWeights(const MegaMoeTilingData *tilingData)
+// dedupMode 的值就是门控后实际开启的去重模式：
+// 0 = dispatch 关、combine 关；1 = dispatch 关、combine 开；
+// 2 = dispatch 开、combine 关；3 = dispatch 开、combine 开。
+// 下面两个判断函数是唯一入口，host 和 kernel 都用它们，不要在别处自己写数值比较。
+HOST_DEVICE constexpr bool IsDispatchDedupOn(int32_t dedupMode)
 {
-    return tilingData->topkWeightsPrefetch == 1 || (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+    return dedupMode == 2 || dedupMode == 3;
+}
+
+HOST_DEVICE constexpr bool IsCombineDedupOn(int32_t dedupMode)
+{
+    return dedupMode == 1 || dedupMode == 3;
 }
 
 // 单 token 的量化记录字节数 = 量化数据 + mx scale（prefetch 场景再拼 topk 权重），按 32B 对齐。
@@ -260,7 +266,7 @@ struct PeermemInfo {
         params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
         params.yDtypeSize = static_cast<int64_t>(sizeof(bfloat16_t));
         params.elemsPerByte = elemsPerByte;
-        params.topkWeightsPrefetch = MegaMoeRecordHasTopkWeights(tilingData);
+        params.topkWeightsPrefetch = (tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(tilingData->dedupMode));
         params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
         params.topoType = tilingData->topoType;
         params.serverNum = static_cast<int64_t>(serverNum);

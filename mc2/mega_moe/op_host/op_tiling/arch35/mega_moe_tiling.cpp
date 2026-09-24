@@ -311,7 +311,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
     params.yDtypeSize = SIZE_BF_16;
     params.elemsPerByte = IsA4W4GmmMode(tilingData->moeGmmMode) ? 2U : 1U;
-    params.topkWeightsPrefetch = MegaMoeRecordHasTopkWeights(tilingData);
+    params.topkWeightsPrefetch = (tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(tilingData->dedupMode));
     params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
     params.topoType = tilingData->topoType;
     params.serverNum =
@@ -326,11 +326,12 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 }
 
 /*
- * 去重请求位：dispatch 位恒请求（真开假开由后续收益门按形状裁决）；combine 位完全由
- * combine_comm_mode 属性决定（1=强制开启、0=强制关闭，与门控无关）。非 MTE 拓扑不具备
- * 去重能力：自动请求位在此静默关位回落（门控语义；ccm=1 显式请求撞非 MTE 由
- * CheckDedupRequestAttrs 报错在前）。comm_alg 属性与去重判定无关（Ascend950 不读取）。
- * 返回位掩码 bit0=dispatch bit1=combine；无效值返回 -1，由 CheckDedupRequestAttrs 拦截。
+ * 算去重的请求模式，取值含义与 tilingData->dedupMode 相同：
+ * 0=全关，1=仅 combine 开，2=仅 dispatch 开，3=双开。
+ * dispatch 恒先请求（这个形状开了是否划算，由后面的收益门决定）；combine 完全听
+ * combine_comm_mode 属性（1=强制开、0=强制关，门控无权改）。非 MTE 拓扑没有去重能力，
+ * 直接返回 0（客户显式给 ccm=1 撞非 MTE 时由 CheckDedupRequestAttrs 报错）。
+ * comm_alg 属性与去重无关（Ascend950 不读取）。无效值返回 -1，由 CheckDedupRequestAttrs 拦截。
  */
 static int64_t GetDedupMode(const gert::TilingContext *context, const MegaMoeConfig &config)
 {
@@ -344,7 +345,7 @@ static int64_t GetDedupMode(const gert::TilingContext *context, const MegaMoeCon
     if (combineCommMode != 0 && combineCommMode != 1) {
         return -1;
     }
-    return DEDUP_MODE_DISPATCH | (combineCommMode == 1 ? DEDUP_MODE_COMBINE : 0);
+    return combineCommMode == 1 ? 3 : 2;  // dispatch 恒请求：ccm=1 双开(3)，否则仅 dispatch(2)
 }
 
 /*
@@ -603,7 +604,7 @@ static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context
     // combine 去重当前只实现非量化 combine 路径；量化 combine 直接报错，不做静默降级。
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>(config.attrCombineQuantModeIndex);
     int64_t combineQuantMode = combineQuantModePtr == nullptr ? COMBINE_QUANT_OUT_TYPE_NO_QUANT : *combineQuantModePtr;
-    OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 && combineQuantMode != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
+    OP_TILING_CHECK(IsCombineDedupOn(dedupMode) && combineQuantMode != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "combine_comm_mode", "1",
                                               "combine dedup requires combineQuantMode=0 (no-quant) for now"),
                     return ge::GRAPH_FAILED);
@@ -611,13 +612,13 @@ static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context
     // combine 去重要靠记录尾段的权重在发送端乘权，该路径尚未接入——放行会得到权重全 0 的静默错误结果。
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
     const bool isPreQuantizedX = IsPreQuantizedXType(context->GetInputDesc(config.xIndex)->GetDataType());
-    OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 && topkWeightsType == 0 && isPreQuantizedX,
+    OP_TILING_CHECK(IsCombineDedupOn(dedupMode) && topkWeightsType == 0 && isPreQuantizedX,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "combine_comm_mode", "1",
                                               "combine dedup with topk_weights_type=0 does not support pre-quantized x"),
                     return ge::GRAPH_FAILED);
     // 去重请求位落库。combine 去重两种权重语义并存：tkw=1 沿用 prefetch（激活层乘权、合并与
     // unpermute 纯加）；tkw=0 时合并阶段在发送端按成员权重乘加，权重经记录尾段下发（布局判定
-    // 统一走 MegaMoeRecordHasTopkWeights，prefetch 位保持 attr 原值不强拉——强拉会偏离 tkw=0
+    // 统一按「tkw=1 或 combine 去重开」判定，prefetch 位保持 attr 原值不强拉——强拉会偏离 tkw=0
     // golden 的乘权位置语义）。
     tilingData->dedupMode = static_cast<int32_t>(dedupMode);
     return ge::GRAPH_SUCCESS;
@@ -992,7 +993,7 @@ static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context
     // 落库的原始请求位，按其算下界偏保守（门只会关位、实际需求只小不大），安全。
     const int64_t dedupModeForLayout = static_cast<int64_t>(tilingData->dedupMode);
     const bool recordHasWeights = tilingData->topkWeightsPrefetch == 1 ||
-                                  (dedupModeForLayout > 0 && (dedupModeForLayout & DEDUP_MODE_COMBINE) != 0);
+                                  (dedupModeForLayout > 0 && IsCombineDedupOn(dedupModeForLayout));
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
                                                         yDtypeSize, tilingData, recordHasWeights);
     int64_t cclBufferSize = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex)));
@@ -1104,12 +1105,13 @@ static uint32_t CalcQuantTokenAndScaleBytes(const MegaMoeTilingData *tilingData,
 }
 
 /*
- * 计算每个 dispatch ring slot 的量化 token 与 scale 拷贝区字节数（记录带权重段时再追加，判定统一走 MegaMoeRecordHasTopkWeights）。
+ * 计算每个 dispatch ring slot 的量化 token 与 scale 拷贝区字节数。记录带权重段（tkw=1 或 combine
+ * 去重开）时再追加，该判定式 host 与 kernel 各用点必须保持同式，否则记录布局两侧错位。
  */
 static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte)
 {
     uint32_t copyBufferBytes = CalcQuantTokenAndScaleBytes(tilingData, activationElementsPerByte);
-    if (MegaMoeRecordHasTopkWeights(tilingData)) {
+    if (tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(tilingData->dedupMode)) {
         uint32_t weightBytes =
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
         copyBufferBytes += weightBytes;
@@ -2756,7 +2758,7 @@ static ge::graphStatus ApplyDedupPrepassChunkGuard(MegaMoeTilingData *tilingData
     if (floorChunk <= chunkUbCap) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_TILING_CHECK((tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0,
+    OP_TILING_CHECK(IsCombineDedupOn(tilingData->dedupMode),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "combine_comm_mode", "1",
                                               "combine dedup prepass exceeds UB chunk capacity for this shape "
                                               "(topK/num_max_tokens_per_rank too large), set combine_comm_mode=0"),
@@ -2777,7 +2779,7 @@ static ge::graphStatus ApplyDedupPrepassChunkGuard(MegaMoeTilingData *tilingData
  */
 static void ApplyDedupBenefitGate(MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    if ((tilingData->dedupMode & DEDUP_MODE_DISPATCH) != 0) {
+    if (IsDispatchDedupOn(tilingData->dedupMode)) {
         double world = static_cast<double>(tilingData->epWorldSize);
         double topKf = static_cast<double>(tilingData->topK);
         // 重复率取均匀路由模型 E[distinct ranks] = world*(1-(1-1/world)^topK)，是真实路由的保守下界。
@@ -2817,7 +2819,8 @@ static void ApplyDedupBenefitGate(MegaMoeTilingData *tilingData, const char *nod
                     "world=%u, savedBytes=%.0f), disable dispatch dedup for this shape",
                     gateValue, requiredValue, tilingData->numMaxTokensPerRank, tilingData->topK, tilingData->h,
                     tilingData->hiddenDim, tilingData->moeExpertPerRank, tilingData->epWorldSize, savedBytes);
-            tilingData->dedupMode &= ~DEDUP_MODE_DISPATCH;
+            // 关掉 dispatch 去重、保留 combine 的客户指定值：3(双开)->1(仅combine)，2(仅dispatch)->0(全关)。
+            tilingData->dedupMode = IsCombineDedupOn(tilingData->dedupMode) ? 1 : 0;
         }
     }
 }
@@ -2827,7 +2830,7 @@ static void ApplyDedupBenefitGate(MegaMoeTilingData *tilingData, const char *nod
 // combine 位是客户显式请求，超界显式报错、不静默降级。
 static ge::graphStatus ApplyDedupCombineCapacityGate(MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    if ((tilingData->dedupMode & DEDUP_MODE_COMBINE) == 0) {
+    if (!IsCombineDedupOn(tilingData->dedupMode)) {
         return ge::GRAPH_SUCCESS;
     }
     constexpr int64_t DEDUP_COMBINE_MAX_H = 10240;

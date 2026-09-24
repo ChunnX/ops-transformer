@@ -358,7 +358,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Advance
                 }
             }
             NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
-        } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
             // 非量化 combine 去重：独立 combine 阶段按 per-expert 标记推进；末专家状态供 AIV0 参战。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 0U && gmm2Position.expertIdx == allCoreCombineExpertIndex) {
@@ -466,7 +466,7 @@ __aicore__ inline uint32_t MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Fin
     if constexpr (g_coreType == AIV) {
         // 量化 combine 或运行时开启的非量化 combine 去重都需要选定末专家全核参战。
         if (CombineQuantMode != COMBINE_NO_QUANT ||
-            (params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            IsCombineDedupOn(params_.tilingData->dedupMode)) {
             for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
                 uint32_t expertIdx = expertEnd - 1U;
                 uint64_t countOffset =
@@ -515,7 +515,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                               state.combineAddrInfo, combineBufferConfig, state.allCoreCombineExpertIndex,
                               state.allCoreCombineExpertState);
         state.combineBeginExpertIndex = waveEndPosition.expertIdx;
-    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+    } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
         // 非量化 combine 去重：与量化路径同构的专家粒度消费；缓冲配置在 pipeline 起始按 dedup 初始化。
         ProcessCombineExpertsDedup(state.combineBeginExpertIndex, waveEndPosition.expertIdx, state.combineExpertState,
                                    combineBufferConfig, state.allCoreCombineExpertIndex,
@@ -616,7 +616,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     DispatchBuffInit();
     // 非量化 combine 去重复用量化 combine 的专家粒度独立消费形态（tiling 已保证两者互斥）。
     const bool dedupCombineActive =
-        CombineQuantMode == COMBINE_NO_QUANT && (params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+        CombineQuantMode == COMBINE_NO_QUANT && IsCombineDedupOn(params_.tilingData->dedupMode);
     CombineBufferConfig combineBufferConfig = InitMoeCombineBufferConfig(dedupCombineActive);
     PrepareMoeCountAndDedupTables();
 

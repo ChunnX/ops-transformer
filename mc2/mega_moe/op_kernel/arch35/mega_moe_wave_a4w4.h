@@ -264,7 +264,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
-    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+    } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
         DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount, waveCombineDedupState_);
     }
 }
@@ -298,7 +298,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     WaveCombineBufferConfig combineBufferConfig{};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
-    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+    } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
         // 非量化 combine 去重：专家粒度独立消费（基类 RunGmm2CombineForExpert 内接入）。
         combineBufferConfig =
             InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
@@ -314,7 +314,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         // 去重 combine：专家粒度独立消费，不参与 per-tile credit 握手（挂上会因 AIV1 缺 ACK 而挂死）。
-        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) == 0) {
+        if (!IsCombineDedupOn(params_.tilingData->dedupMode)) {
             gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
         }
     }

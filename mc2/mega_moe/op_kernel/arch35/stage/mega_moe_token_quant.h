@@ -48,7 +48,7 @@ __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHidd
     // 布局与 host 同式：prefetch 或 tkw=0 的 combine 去重（发送端乘权）都携带权重段。
     // 权重段只属于 MoE 通信记录：共享专家独立量化的记录不参与 combine，DedupWeightsEligible=false
     // 时与上游同为编译期判定，host 也只按无权重段给它分配（InitializeMteSharedExpertInput）。
-    if (TopkWeightsPrefetch || (DedupWeightsEligible && MegaMoeRecordHasTopkWeights(params.tilingData))) {
+    if (TopkWeightsPrefetch || (DedupWeightsEligible && (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode)))) {
         uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
                                                          static_cast<uint32_t>(ALIGN_32));
         quantTokenScaleAlignBytes += weightAlignBytes;

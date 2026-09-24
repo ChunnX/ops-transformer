@@ -116,9 +116,9 @@ constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t ACTIVATION_N_HALF = 2U;
 
-// ============ MTE 通信去重（tilingData->dedupMode，host 由 attr comm_alg 转译）============
-constexpr int32_t DEDUP_MODE_DISPATCH = 0x1; // dispatch 拉取去重（同一源 token 每卡只跨片拉一次，数值恒等）
-constexpr int32_t DEDUP_MODE_COMBINE = 0x2;
+// ============ MTE 通信去重 ============
+// 开关的唯一真源是 tilingData->dedupMode（0=全关 1=仅combine开 2=仅dispatch开 3=双开），
+// 判断统一用 mega_moe_peermem.h 的 IsDispatchDedupOn/IsCombineDedupOn。
 // prepass 工作项 chunk 数上限：flag 区按 worldSize*MAX_CHUNKS 上界分配；
 // CalcDedupPrepassChunkTokens 的 floor-clamp 保证实际 chunkCount 不超此值。
 constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;

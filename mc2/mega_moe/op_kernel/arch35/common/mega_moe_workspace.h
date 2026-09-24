@@ -119,7 +119,7 @@ private:
         // tkw=0 且 combine 去重：dispatch 把 LAST 行整 token 权重段落 revWeights 区、merge 读回乘权，
         // MTE 同样依赖本区。漏分配则 dispatchRevWeightsPtr 为 nullptr，首 launch 即 MTE invalid GM。
         // tkw=1 与去重关闭态在 MTE 下不使用本区，保持既有布局不变。
-        if (tilingData->topkWeightsPrefetch == 0 && (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        if (tilingData->topkWeightsPrefetch == 0 && IsCombineDedupOn(tilingData->dedupMode)) {
             InitializeDispatchRevWeights(tilingData);
         }
         // Stride per AIC, measured in int32_t elements.
@@ -187,7 +187,7 @@ private:
         // tkw=1 的权重预取；tkw=0 且 combine 去重——dispatch 侧把 LAST 行
         // 整 token 的 topK 权重段落在这里，merge 一次连续读取后按成员 topkIndex 乘权。
         const bool dedupCombineWeights = tilingData->topkWeightsPrefetch == 0 &&
-                                         (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+                                         IsCombineDedupOn(tilingData->dedupMode);
         if (tilingData->topkWeightsPrefetch == 1 || dedupCombineWeights) {
             dispatchRevWeightsOffset = workspaceSize;
             uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
@@ -255,7 +255,7 @@ private:
         // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记；combine 去重下非量化路径的
         // 合并驱动行也要等组内成员所在专家的 GMM2 全部落地，同样需要该 per-expert 标记区。
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT ||
-            (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            IsCombineDedupOn(tilingData->dedupMode)) {
             gmm2ReadyOffset = workspaceSize;
             workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }

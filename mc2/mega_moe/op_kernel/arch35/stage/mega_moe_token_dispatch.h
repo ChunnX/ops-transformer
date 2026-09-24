@@ -109,7 +109,7 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
         TOPK_INDEX, topkIndex % static_cast<int32_t>(params.tilingData->topK));
     // 事件分叉与 Store 侧的消费条件同式：记录带权重段（prefetch 或 tkw=0 combine 去重）时
     // Store 要标量读权重，走 MTE2_S；否则直接放行 S_MTE3。
-    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
+    if (TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
         SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
     } else {
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
@@ -132,7 +132,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
-    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
+    if (TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
@@ -144,7 +144,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
         // dc 单开（combine 去重 + dispatch 去重关）时本路径是唯一落地入口：每行把整 token
         // 权重段落到自己的 revWeights 槽，供 merge 在 LAST 行一次连续读回乘权。
         if constexpr (!TopkWeightsPrefetch) {
-            if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            if (IsCombineDedupOn(params.tilingData->dedupMode)) {
                 const uint32_t topK = params.tilingData->topK;
                 const uint32_t weightAlignInt32 =
                     Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)),
@@ -195,7 +195,7 @@ __aicore__ inline DispatchCopyTargets<ActivationType, QuantScaleType> CreateDisp
     // 整 token 权重段写到自己的 revWeights 槽（merge 在 LAST 行上读，LAST 行也经本路径写过）。
     // full 模式走 DispatchOwnedExpertRowsDedup/StoreDedupEntry，由那边写 LAST 槽，与此互斥。
     if constexpr (!TopkWeightsPrefetch) {
-        if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        if (IsCombineDedupOn(params.tilingData->dedupMode)) {
             uint32_t weightAlignInt32 =
                 Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK) *
                                          static_cast<uint32_t>(sizeof(float)),

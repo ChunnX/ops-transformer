@@ -796,7 +796,7 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         // combine 去重时 AIV1 不走 per-tile 锁步消费：合并需要跨专家整行读取，去重 combine 在
         // GMM2 之外按专家粒度独立消费（RunWaveCombineStageDedup）。此时 wave 侧按运行时开关不挂
         // gmm2CombineSync（AIC credit 握手同步旁路），数据就绪由 NotifyWaveGmm2Ready 的 FIX 排空保证。
-        if (GetSubBlockIdx() == 1U && (params->tilingData->dedupMode & DEDUP_MODE_COMBINE) == 0) {
+        if (GetSubBlockIdx() == 1U && !IsCombineDedupOn(params->tilingData->dedupMode)) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
                                                      startLoopIdx, tileNum);
@@ -859,7 +859,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
             Gmm2Aiv0PrologueA8W4(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
             // 去重 combine 时 AIV1 改走专家粒度独立消费（同 Generic 路径注释）；AIV0 prologue 不受影响。
-            if ((params->tilingData->dedupMode & DEDUP_MODE_COMBINE) == 0) {
+            if (!IsCombineDedupOn(params->tilingData->dedupMode)) {
                 using MakeLayoutC = typename KernelConfig::MakeLayoutC;
                 CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
                                                          startLoopIdx, tileNum);

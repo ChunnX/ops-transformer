@@ -70,7 +70,7 @@ __aicore__ inline uint32_t CalcDedupPrepassChunkTokens(uint32_t numTokens, uint3
 struct DedupConfig {
     GM_ADDR rowDescPtr = nullptr;      // workspace rowDesc 表基址
     GM_ADDR prepassReadyPtr = nullptr; // prepass 完成标记区（槽0=每核done计数，槽1+item=项ready；随 launch 清零）
-    int32_t dedupMode = 0;             // DEDUP_MODE_* 位掩码，0 = 关闭
+    int32_t dedupMode = 0;             // 同 tilingData->dedupMode（0=全关 1=仅combine 2=仅dispatch 3=双开）
     uint32_t rowDescStrideInt32 = 0;   // 每行描述符 int32 数（CalcDedupRowDescStrideInt32）
     uint32_t prepassChunkTokens = 1;   // 工作项 token 切片宽（CalcDedupPrepassChunkTokens 单源）
     uint32_t prepassChunkCount = 1;    // 每 srcRank 的 chunk 数 = ceil(numTokens/chunkTokens)

@@ -736,7 +736,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
             // combine 去重：跨 WAVE 的专家等最后一个 slice 完成后按专家粒度独立消费（与量化路径
             // 同构；AIC 被跳过 problem 的情形也会到达本分支，per-expert 标记不漏发）。
             if (tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {

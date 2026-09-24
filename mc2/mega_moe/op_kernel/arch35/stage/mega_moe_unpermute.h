@@ -161,7 +161,7 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
                                                     const GlobalTensor<bfloat16_t> &expandedX,
                                                     const MegaMoeUnpermuteBufferConfig &bufferConfig)
 {
-    const bool dedupCombineActive = (params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+    const bool dedupCombineActive = IsCombineDedupOn(params.tilingData->dedupMode);
     int32_t expertRanks[32];
     if (dedupCombineActive) {
         LoadTokenExpertRanks(common, params, tokenIdx, expertRanks);

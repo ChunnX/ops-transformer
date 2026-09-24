@@ -131,7 +131,7 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
     // 与 Fetch 侧事件分叉同条件：记录带权重段（prefetch 或 tkw=0 combine 去重）走 MTE2_S。
-    const bool recordHasWeights = TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData);
+    const bool recordHasWeights = TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode));
     LocalTensor<int32_t> weightBitsTensor;
     if (recordHasWeights) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
@@ -457,7 +457,7 @@ __aicore__ inline void DispatchOwnedExpertRowsRouted(const TokenDispatchConfig &
                                                      TokenDispatchScratch<ActivationType, TopkIndexType> &scratch,
                                                      uint32_t expertIdx, const ExpertDispatchCoreRange &expertRange)
 {
-    if ((context.dedup.dedupMode & DEDUP_MODE_DISPATCH) != 0) {
+    if (IsDispatchDedupOn(context.dedup.dedupMode)) {
         DispatchOwnedExpertRowsDedup<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM,
                                      TopkWeightsPrefetch>(context, common, syncLayout, params, winRankAddr, scratch,
                                                           expertIdx, expertRange);

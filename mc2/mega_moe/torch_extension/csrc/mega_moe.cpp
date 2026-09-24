@@ -620,7 +620,7 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         return CalcUrmaCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden,
                                        combineQuantMode, topkWeightsType, serverNum);
     }
-    // 与 arch35 host/kernel 的 MegaMoeRecordHasTopkWeights 同式：tkw=1 或 comm_alg 含 combine
+    // 与 arch35 host/kernel 的记录带权重段判定同式：tkw=1 或 combine 去重开
     // 去重位（"dedup"/"dedup_combine"）时记录尾携带 topk 权重段（tkw=0 的 combine 去重在发送端乘权）。
     int64_t layoutTopkWeights =
         (topkWeightsType == 1 || combineCommMode == 1 || commAlg == "dedup" || commAlg == "dedup_combine") ? 1 : 0;
