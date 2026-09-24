@@ -31,6 +31,17 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context) {
         return ge::GRAPH_FAILED;
     }
 
+    constexpr int32_t MAX_HEAD_NUM = 32;    // kernel UB 槽按 64*32*4B=8KB 分配，headNum>32 时单组超容量
+    constexpr int32_t MAX_CHUNK_SIZE = 64;  // kernel 侧 UB 槽与扫描逻辑均按 64 设计
+    if (headNum > MAX_HEAD_NUM) {
+        OP_LOGE("MIChunkLocalCumsumV4", "headNum %d exceeds max supported %d.", headNum, MAX_HEAD_NUM);
+        return ge::GRAPH_FAILED;
+    }
+    if (chunkSize > MAX_CHUNK_SIZE) {
+        OP_LOGE("MIChunkLocalCumsumV4", "chunkSize %d exceeds max supported %d.", chunkSize, MAX_CHUNK_SIZE);
+        return ge::GRAPH_FAILED;
+    }
+
     if (headNum > 16) {
         context->SetTilingKey(1);
     } else if (headNum > 8) {

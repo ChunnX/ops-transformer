@@ -75,9 +75,9 @@ __aicore__ inline void ChunkLocalCumsum::Init(GM_ADDR input, GM_ADDR cu_seqlens,
 
     // UB
     GetTPipePtr()->InitBuffer(inputQ, 2,
-                              MAX_CHUNK_SIZE * MAX_HEAD_NUM * sizeof(float));  // 64*128*2 = 16k
+                              MAX_CHUNK_SIZE * MAX_HEAD_NUM * sizeof(float));  // 64*32*4B = 8KB
     GetTPipePtr()->InitBuffer(outputQ, 2,
-                              MAX_CHUNK_SIZE * MAX_HEAD_NUM * sizeof(float));  // 64*128*2 = 16k
+                              MAX_CHUNK_SIZE * MAX_HEAD_NUM * sizeof(float));  // 64*32*4B = 8KB
 }
 
 __aicore__ inline bool ChunkLocalCumsum::NeedHeadPadding() const {
@@ -181,7 +181,8 @@ __aicore__ inline void ChunkLocalCumsum::ProcessChunkGroup(const ChunkInfo (&chu
 
             const int32_t chunkBase = i * m_chunkSize * headStride;
             int32_t loop_count = compute_lens[i] > m_ratio ? compute_lens[i] / 2 : compute_lens[i];
-            for (int stride = 1; stride < loop_count; stride *= 2) {
+            // Hillis-Steele 扫描：stride 需覆盖到最大小于 n 的 2 的幂（n=64 需要 stride=32）
+            for (int stride = 1; stride <= loop_count; stride *= 2) {
                 Add(outLocal[chunkBase + stride * headStride],
                     outLocal[chunkBase],
                     outLocal[chunkBase + stride * headStride],
@@ -243,7 +244,7 @@ __aicore__ inline void ChunkLocalCumsum::ProcessChunkGroup(const ChunkInfo (&chu
         
             // 执行cumsum计算
             int32_t loop_count = compute_lens[i] > m_ratio ? compute_lens[i] / 2 : compute_lens[i];
-            for (int stride = 1; stride < loop_count; stride *= 2) {
+            for (int stride = 1; stride <= loop_count; stride *= 2) {
                 Add(outLocal[i*m_chunkSize*m_headNum+stride * m_headNum], outLocal[i*m_chunkSize*m_headNum], 
                     outLocal[i*m_chunkSize*m_headNum+stride * m_headNum], 
                     (compute_lens[i] - stride) * m_headNum);
