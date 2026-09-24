@@ -166,13 +166,9 @@ public:
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
-        half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
-        half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
-
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, NEG_LOG2_CX);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
-        EpilogueComputePScale epilogueComputePScale(resource, LOG2_CX_CEIL);
+        EpilogueComputePScale epilogueComputePScale(resource);
         EpilogueRescaleO epilogueRescaleO(resource);
 #endif
 
@@ -442,8 +438,6 @@ public:
         blockShapeX_ = bsaTilingData->blockShapeX;
         blockShapeY_ = bsaTilingData->blockShapeY;
         scaleValue_ = bsaTilingData->scaleValue;
-        log2Cx_ = bsaTilingData->log2Cx;
-        log2CxCeil_ = bsaTilingData->log2CxCeil;
         // mask2idx tile info
         xBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.xBlockNumAligned;
         yBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.yBlockNumAligned;
@@ -862,8 +856,6 @@ private:
     uint32_t blockShapeX_;
     uint32_t blockShapeY_;
     float scaleValue_;
-    float log2Cx_;
-    float log2CxCeil_;
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
     uint32_t yBlockNumAligned_;
