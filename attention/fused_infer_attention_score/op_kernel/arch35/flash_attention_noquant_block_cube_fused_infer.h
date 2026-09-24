@@ -108,9 +108,9 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8, bool optionalDn>
+template <uint32_t s1BaseSize>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<((useDn && isFp8) || optionalDn),
+    using Type = std::conditional_t<(ArchInfo::CV_RATIO == 1 && s1BaseSize > 64),
                                     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
@@ -141,8 +141,8 @@ public:
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
                       UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
-                                              s1BaseSize == 64),
-                      (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant, false, optionalDn);
+                                              s1BaseSize == 32 * ArchInfo::CV_RATIO),
+                      (s2BaseSize == 256 && s1BaseSize == 32 * ArchInfo::CV_RATIO), isMlaFullQuant, false, optionalDn);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr uint32_t l1BaseD =
@@ -155,6 +155,7 @@ public:
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
                                          __gm__ uint8_t *keyRope);
+    __aicore__ inline void UnInitCubeBlock();
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                          CVSharedParams<isInfer, isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
                                          __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
@@ -171,6 +172,7 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void UnInitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams, __gm__ int64_t *actualSeqQlenAddr,
                                         __gm__ int64_t *actualSeqKvlenAddr);
     __aicore__ inline void CalcS1Coord(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
@@ -400,6 +402,23 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
             mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
         }
     }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::UnInitCubeBlock()
+{
+    UnInitLocalBuffer();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::UnInitLocalBuffer()
+{
+    l1QBuffers.Uninit(*l1BufferManagerPtr);
+    l1KBuffers.Uninit(*l1BufferManagerPtr);
+    l1VBuffers.Uninit(*l1BufferManagerPtr);
+    mmL0ABuffers.Uninit(l0aBufferManager);
+    mmL0BBuffers.Uninit(l0bBufferManager);
+    mmL0CBuffers.Uninit(l0cBufferManager);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -703,7 +722,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(
         } else {
             fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
         }
-        fixpipeParams.dualDstCtl = 1;
+        if constexpr (ArchInfo::CV_RATIO == 2) {
+            fixpipeParams.dualDstCtl = 1;
+        } else {
+            fixpipeParams.dualDstCtl = 0;
+        }
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -865,7 +888,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(
             } else {
                 fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
             }
-            fixpipeParams.dualDstCtl = 1;
+            if constexpr (ArchInfo::CV_RATIO == 2) {
+                fixpipeParams.dualDstCtl = 1;
+            } else {
+                fixpipeParams.dualDstCtl = 0;
+            }
+
             fixpipeParams.params.srcNdStride = 0;
             fixpipeParams.params.ndNum = 1;
             Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(),
@@ -964,7 +992,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::FixpipeBmm1NdToUb(
     fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
     fixpipeParams.dstStride = s2BaseSize;
-    fixpipeParams.dualDstCtl = 1;
+    if constexpr (ArchInfo::CV_RATIO == 2) {
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    } else {
+        fixpipeParams.dualDstCtl = 0; // 单目标模式
+    }
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -1296,10 +1328,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) *
                               16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔),
                                   // 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
-    fixpipeParams.dstStride =
-        fixpipeParams.nSize /
-        2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    if constexpr (ArchInfo::CV_RATIO == 2) {
+        fixpipeParams.dstStride =
+            fixpipeParams.nSize /
+            2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
+        fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    } else {
+        fixpipeParams.dstStride = s1BaseSize;
+        fixpipeParams.dualDstCtl = 0; // 单目标模式
+    }
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -1548,7 +1585,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(
     } else {
         fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
     }
-    fixpipeParams.dualDstCtl = 1;
+    if constexpr (ArchInfo::CV_RATIO == 2) {
+        fixpipeParams.dualDstCtl = 1;
+    } else {
+        fixpipeParams.dualDstCtl = 0;
+    }
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -1983,15 +2024,19 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     } else {
         fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
     }
-    if constexpr (useDn && isFp8) {
-        fixpipeParams.dstStride = 64;
+    if constexpr (ArchInfo::CV_RATIO == 2) {
+        if constexpr (useDn && isFp8) {
+            fixpipeParams.dstStride = 64;
+        } else {
+            fixpipeParams.dstStride =
+                fixpipeParams.nSize / 2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到,
+                                         // ND方案(S1*S2)时脏数据用mask剔除
+        }
+        fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     } else {
-        fixpipeParams.dstStride =
-            fixpipeParams.nSize /
-            2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
+        fixpipeParams.dstStride = s1BaseSize;
+        fixpipeParams.dualDstCtl = 0; // 单目标模式
     }
-
-    fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
