@@ -44,8 +44,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttn(gert::TilingContext *conte
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510 ||
-        ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510 || ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
         if (IsEmptyInput(context)) {
             return ge::GRAPH_SUCCESS;
         }

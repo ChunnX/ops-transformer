@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_block_vec_mxfp8.h
@@ -14,7 +14,6 @@
  */
 #ifndef QUANT_FLASH_ATTN_BLOCK_VEC_MXFP8_H_
 #define QUANT_FLASH_ATTN_BLOCK_VEC_MXFP8_H_
-
 
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
@@ -71,8 +70,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false, bool isDAligned = true>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false, bool isDAligned = true>
 class QuantFlashAttnBlockVecMxfp8 {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -105,8 +104,7 @@ public:
 
     static constexpr bool USE_DN = useDn;
     static constexpr UbFormat OUT_UB_FORMAT = UbFormat::S1_ONLY;
-    using OutGmCoord =
-        std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
+    using OutGmCoord = std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
@@ -234,7 +232,7 @@ public:
             accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
             softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
             softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
-                                           constInfo_.logSumExpSize);
+                                            constInfo_.logSumExpSize);
         }
     }
 
@@ -268,7 +266,7 @@ public:
         }
     }
 
-    __aicore__ inline bool IsInitAttentionOutGm() 
+    __aicore__ inline bool IsInitAttentionOutGm()
     {
         return constInfo_.needInitOutput;
     }
@@ -284,8 +282,7 @@ public:
         if constexpr (POST_QUANT) {
             totalOutputSize /= 2;
         }
-        int64_t singleCoreSize =
-            (totalOutputSize + constInfo_.coreNum - 1) / constInfo_.coreNum;
+        int64_t singleCoreSize = (totalOutputSize + constInfo_.coreNum - 1) / constInfo_.coreNum;
         int64_t tailSize = totalOutputSize - constInfo_.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -294,7 +291,8 @@ public:
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm_.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize, 0);
+                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize,
+                                         0);
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm_[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             }
@@ -310,8 +308,7 @@ public:
             tSize = qActSeqLensParser_->GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfo_.realN2Size * constInfo_.realGSize;
-        int64_t singleCoreSize =
-            (totalOutputSize + constInfo_.coreNum - 1) / constInfo_.coreNum; // 2 means c:v = 1:2
+        int64_t singleCoreSize = (totalOutputSize + constInfo_.coreNum - 1) / constInfo_.coreNum; // 2 means c:v = 1:2
         int64_t tailSize = totalOutputSize - constInfo_.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -427,8 +424,7 @@ public:
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {2, s2BaseSizeCur / 2, stage1SrcStride32B, 0});
             DataCopy(mm2AL1Tensor[dstOffset + s2BaseSizeCur * singleProcessSOuterSize],
-                     stage1CastTensor[srcOffset + stage1Lane1Offset],
-                     {2, s2BaseSizeCur / 2, stage1SrcStride32B, 0});
+                     stage1CastTensor[srcOffset + stage1Lane1Offset], {2, s2BaseSizeCur / 2, stage1SrcStride32B, 0});
         }
         //-----------------------------------------------------------------
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -495,8 +491,7 @@ public:
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset =
-                runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
+            uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
                                                                      gmDealRowCount, constInfo_);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -688,18 +683,15 @@ public:
     {
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
         FaUbTensor<OUTPUT_T, !isDAligned> ubTensor{
-            .tensor = attenOutUb,
-            .rowCount = dealRowCount,
-            .colCount = dTemplateAlign64
-        };
+            .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
         // DN分支下realGSize=1，gS1Idx即s1Idx，gIdx恒为0
         OutGmCoord gmCoord{.bIdx = info.bIdx,
-                            .n2Idx = info.realN2Idx,
-                            .gIdx = 0,
-                            .s1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                            .dIdx = 0,
-                            .s1DealSize = gmDealRowCount,
-                            .dDealSize = (uint32_t)constInfo_.dSizeV};
+                           .n2Idx = info.realN2Idx,
+                           .gIdx = 0,
+                           .s1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                           .dIdx = 0,
+                           .s1DealSize = gmDealRowCount,
+                           .dDealSize = (uint32_t)constInfo_.dSizeV};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
@@ -812,13 +804,13 @@ public:
         tPipe_->InitBuffer(softmaxExpBuf_[1], 512); // [128, 1]
         tPipe_->InitBuffer(softmaxExpBuf_[2], 512); // [128, 1]
 
-        tPipe_->InitBuffer(preLoopMaxBuf_, 512); // [128, 1]
-        tPipe_->InitBuffer(preLoopSumBuf_, 512); // [128, 1]
+        tPipe_->InitBuffer(preLoopMaxBuf_, 512);   // [128, 1]
+        tPipe_->InitBuffer(preLoopSumBuf_, 512);   // [128, 1]
         tPipe_->InitBuffer(firstLoopSumBuf_, 512); // [128, 1]
 
         if constexpr (FLASH_DECODE) {
-            tPipe_->InitBuffer(maxBrdcst_, 1, 4096);    // [128, 8]
-            tPipe_->InitBuffer(sumBrdcst_, 1, 4096);    // [128, 8]
+            tPipe_->InitBuffer(maxBrdcst_, 1, 4096); // [128, 8]
+            tPipe_->InitBuffer(sumBrdcst_, 1, 4096); // [128, 8]
         }
     }
 
@@ -915,8 +907,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false>
 class QuantFlashAttnBlockVecMxfp8Dummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;

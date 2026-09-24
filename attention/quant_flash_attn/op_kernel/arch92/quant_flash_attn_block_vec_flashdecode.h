@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_block_vec_flashdecode.h
@@ -42,8 +42,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool useDn = false>
 class QuantFlashAttnBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
@@ -169,13 +169,19 @@ public:
         this->kvActSeqLensParser_ = &kvParser;
     }
 
-    __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm) { this->softmaxLseGm_ = softmaxLseGm; }
+    __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
+    {
+        this->softmaxLseGm_ = softmaxLseGm;
+    }
     __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink)
     {
         learnableSinkFlag_ = true;
         this->sinkGm_ = learnableSink;
     }
-    __aicore__ inline void InitParams() { this->dSizeV_Align_ = this->Align(constInfo_.dSizeV, FP32_REPEAT_ELEMENT_NUM); }
+    __aicore__ inline void InitParams()
+    {
+        this->dSizeV_Align_ = this->Align(constInfo_.dSizeV, FP32_REPEAT_ELEMENT_NUM);
+    }
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
         if ASCEND_IS_AIV {
@@ -297,11 +303,11 @@ protected:
             .colCount = columnCount,
         };
         GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
-                        .n2Idx = taskInfo_.n2Idx,
-                        .gS1Idx = taskInfo_.gS1Idx + startRow,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
+                                .n2Idx = taskInfo_.n2Idx,
+                                .gS1Idx = taskInfo_.gS1Idx + startRow,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo_.dSizeV};
 
         if (constInfo_.outputLayout == FA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -323,14 +329,16 @@ protected:
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
-            outGmTensor.offsetCalculator.Init(constInfo_.n2Size, constInfo_.gSize, constInfo_.dSizeV, *qActSeqLensParser_);
+            outGmTensor.offsetCalculator.Init(constInfo_.n2Size, constInfo_.gSize, constInfo_.dSizeV,
+                                              *qActSeqLensParser_);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo_.outputLayout == FA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
-            outGmTensor.offsetCalculator.Init(constInfo_.n2Size, constInfo_.gSize, constInfo_.dSizeV, *qActSeqLensParser_);
+            outGmTensor.offsetCalculator.Init(constInfo_.n2Size, constInfo_.gSize, constInfo_.dSizeV,
+                                              *qActSeqLensParser_);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -352,7 +360,8 @@ protected:
         uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo_.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
-            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align_);
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
+                 dealRowCount * this->dSizeV_Align_);
         } else {
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
                  dealRowCount * this->dSizeV_Align_);
@@ -369,7 +378,8 @@ protected:
         int64_t safePreToken = constInfo_.preTokens;
         int64_t safeNextToken = constInfo_.nextTokens;
 
-        fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, safePreToken, safeNextToken, constInfo_.sparseMode);
+        fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, safePreToken, safeNextToken,
+                                        constInfo_.sparseMode);
 
         if (constInfo_.sparseMode == BAND) {
             preTokensPerBatch_ = safePreToken;
@@ -585,8 +595,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool useDn = false>
 class QuantFlashAttnBlockVecFlashDecodeDummy {
 public:
     using ConstInfoX = ConstInfo_t;

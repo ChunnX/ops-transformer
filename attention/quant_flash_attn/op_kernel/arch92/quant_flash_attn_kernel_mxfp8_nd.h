@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_kernel_mxfp8_nd.h
@@ -66,7 +66,6 @@ public:
     static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 5;
     static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 4;
     static constexpr uint16_t CROSS_CORE_SYNC_P_C2[3] = {1, 2, 3};
-
 
     using INPUT_T = typename CubeBlockType::Q_T;
     using T = typename CubeBlockType::MM_T;
@@ -145,7 +144,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline QuantFlashAttnKernelMxfp8Nd()
-        : cubeBlock_(constInfo_), vecFaBlock_(constInfo_), vecFdBlock_(constInfo_){};
+        : cubeBlock_(constInfo_),
+          vecFaBlock_(constInfo_),
+          vecFdBlock_(constInfo_){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *cuSeqLensQ,
                                 __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *blockTable,
@@ -186,8 +187,7 @@ public:
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock_.InitVecBlock(cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut,
-                                        workspace);
+                vecFaBlock_.InitVecBlock(cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qCuSeqLensParser_);
             } else {
                 vecFaBlock_.InitVecBlock(sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
@@ -198,11 +198,11 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey,
+                                         dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
             } else {
-                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey,
+                                         dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
             }
         }
 
@@ -214,7 +214,7 @@ public:
                     sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                            this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
+                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
                 if (constInfo_.isSoftmaxLseEnable) {
                     softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
@@ -228,23 +228,24 @@ public:
         }
     }
 
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t* &workspace)
+    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
         // L1
         uint32_t addrL1Start = 0;
         pL1Tensor = LocalTensor<INPUT_T>(TPosition::A1, addrL1Start, L1_P_SIZE * L1_P_BUFCNT); // 64 * 512 *3 -> 96K
 
         addrL1Start += L1_P_SIZE * L1_P_BUFCNT * sizeof(fp8_e4m3fn_t);
-        pScaleL1Tensor = LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_P_SCALE_SIZE * L1_P_BUFCNT); // 64 * 512 / 32 * 3 -> 3k
+        pScaleL1Tensor =
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_P_SCALE_SIZE * L1_P_BUFCNT); // 64 * 512 / 32 * 3 -> 3k
 
-        //UB
+        // UB
         uint32_t addrUBStart = 0;
         mm1ResTensor = LocalTensor<float>(TPosition::VECCALC, addrUBStart, UB_MM1_SIZE * UB_MM1_BUFCNT);
-        addrUBStart += UB_MM1_SIZE * UB_MM1_BUFCNT * sizeof(float) ;
+        addrUBStart += UB_MM1_SIZE * UB_MM1_BUFCNT * sizeof(float);
         mm2ResTensor = LocalTensor<float>(TPosition::VECCALC, addrUBStart, UB_MM2_SIZE);
     }
 
-        __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -328,7 +329,7 @@ public:
     {
         if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(cuSeqLensKvPtr, constInfo_.cuSeqLensKVSize + 1, sequsedKvPtr,
-                                   constInfo_.seqUsedKvSize);
+                                    constInfo_.seqUsedKvSize);
         } else if constexpr (PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(sequsedKvPtr, constInfo_.seqUsedKvSize, constInfo_.s2Size);
         } else {
@@ -581,12 +582,12 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, s2SplitSize);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
-                bmm1_id ++;
+                bmm1_id++;
                 if ASCEND_IS_AIC {
                     ComputeMm1(runInfo0, subLoop);
                 } else {
@@ -617,12 +618,14 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo, uint64_t loop)
     {
-        cubeBlock_.IterateBmm2(mm2ResTensor, pL1Tensor[((loop - 2) % 3)* L1_P_SIZE], pScaleL1Tensor[((loop - 2) % 3) * L1_P_SCALE_SIZE], runInfo);
+        cubeBlock_.IterateBmm2(mm2ResTensor, pL1Tensor[((loop - 2) % 3) * L1_P_SIZE],
+                               pScaleL1Tensor[((loop - 2) % 3) * L1_P_SCALE_SIZE], runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint64_t loop, uint32_t subLoop)
     {
-            vecFaBlock_.ProcessVec1(pL1Tensor[(loop % 3) * L1_P_SIZE], pScaleL1Tensor[(loop % 3) * L1_P_SCALE_SIZE], mm1ResTensor[(bmm1_id % 2) * UB_MM1_SIZE], runInfo, subLoop);
+        vecFaBlock_.ProcessVec1(pL1Tensor[(loop % 3) * L1_P_SIZE], pScaleL1Tensor[(loop % 3) * L1_P_SCALE_SIZE],
+                                mm1ResTensor[(bmm1_id % 2) * UB_MM1_SIZE], runInfo, subLoop);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
@@ -667,8 +670,8 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
+        info.actSingleLoopS2SizeAlign = AttentionCommon::Align(
+            (uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
 
         info.isChangeBatch = false;
 

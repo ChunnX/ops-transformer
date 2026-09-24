@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_block_cube_mxfp8.h
@@ -60,8 +60,8 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
-          bool useDn = false, bool isDAligned = true>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
+          bool isDAligned = true>
 class QuantFlashAttnBlockCubeMxfp8 {
 public:
     /* ============确定L0A的类型============= */
@@ -196,7 +196,8 @@ public:
     const ConstInfoX &constInfo_;
 
     /*============================================================================== */
-    __aicore__ inline QuantFlashAttnBlockCubeMxfp8(ConstInfoX &constInfo) : constInfo_(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockCubeMxfp8(ConstInfoX &constInfo)
+        : constInfo_(constInfo){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
@@ -380,12 +381,12 @@ public:
 
         // DN分支下realGSize=1，gS1Idx即s1Idx，gIdx恒为0
         GmCoordS1Only gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.realN2Idx,
-                            .gIdx = 0,
-                            .s1Idx = runInfo.gS1Idx,
-                            .dIdx = dOffset,
-                            .s1DealSize = runInfo.actMSize,
-                            .dDealSize = nopeDealSize};
+                              .n2Idx = runInfo.realN2Idx,
+                              .gIdx = 0,
+                              .s1Idx = runInfo.gS1Idx,
+                              .dIdx = dOffset,
+                              .s1DealSize = runInfo.actMSize,
+                              .dDealSize = nopeDealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 
@@ -402,11 +403,11 @@ public:
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+                                .n2Idx = runInfo.realN2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = dRealSize};
         copyQueryScaleGmToL1_(l1Tensor, queryScaleGm_, gmCoord);
     }
 
@@ -548,8 +549,8 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 0; // 单目标模式
-        fixpipeParams.subBlockId = 0; // 单目标模式。需要指定的目标UB的编号
+        fixpipeParams.dualDstCtl = 0;          // 单目标模式
+        fixpipeParams.subBlockId = 0;          // 单目标模式。需要指定的目标UB的编号
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -569,8 +570,8 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         fixpipeParams.dstStride = 128U; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 0; // 单目标模式
-        fixpipeParams.subBlockId = 0; // 单目标模式。需要指定的目标UB的编号
+        fixpipeParams.dualDstCtl = 0;   // 单目标模式
+        fixpipeParams.subBlockId = 0;   // 单目标模式。需要指定的目标UB的编号
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -863,8 +864,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
-          bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false>
 class QuantFlashAttnBlockCubeMxfp8Dummy {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;

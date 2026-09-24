@@ -119,11 +119,10 @@ void QuantFlashAttnTilingArch92::InitImplParam()
 
 void QuantFlashAttnTilingArch92::SplitPolicy()
 {
-    qfa_tiling_util::AdjustSinnerAndSouterArch92(qfaInfo_->vHeadDim, qfaInfo_->maxSeqQ, qfaInfo_->maxSeqKv,
-                                                    static_cast<int32_t>(qfaInfo_->maskMode), qfaInfo_->winLeft,
-                                                    qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
-                                                    static_cast<uint32_t>(qfaInfo_->quantMode),
-                                                    decodeS1GMerge_, sOuterFactor_, sInnerFactor_);
+    qfa_tiling_util::AdjustSinnerAndSouterArch92(
+        qfaInfo_->vHeadDim, qfaInfo_->maxSeqQ, qfaInfo_->maxSeqKv, static_cast<int32_t>(qfaInfo_->maskMode),
+        qfaInfo_->winLeft, qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
+        static_cast<uint32_t>(qfaInfo_->quantMode), decodeS1GMerge_, sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }

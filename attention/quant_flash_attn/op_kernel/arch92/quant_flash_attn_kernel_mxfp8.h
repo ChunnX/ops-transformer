@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_kernel_mxfp8.h
@@ -184,7 +184,7 @@ public:
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut,
-                                        workspace);
+                                         workspace);
                 vecFaBlock_.SetCuSeqLensParser(qCuSeqLensParser_);
             } else {
                 vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
@@ -196,10 +196,10 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
             } else {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -210,7 +210,7 @@ public:
                     sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                            this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
+                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
                 if (constInfo_.isSoftmaxLseEnable) {
                     softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
@@ -324,7 +324,7 @@ public:
     {
         if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(cuSeqLensKvPtr, constInfo_.cuSeqLensKVSize + 1, sequsedKvPtr,
-                                   constInfo_.seqUsedKvSize);
+                                    constInfo_.seqUsedKvSize);
         } else if constexpr (PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(sequsedKvPtr, constInfo_.seqUsedKvSize, constInfo_.s2Size);
         } else {
@@ -669,8 +669,8 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
+        info.actSingleLoopS2SizeAlign = AttentionCommon::Align(
+            (uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
 
         info.isChangeBatch = false;
 

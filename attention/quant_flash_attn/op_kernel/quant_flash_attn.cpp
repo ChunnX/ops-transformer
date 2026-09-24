@@ -63,24 +63,27 @@ __aicore__ inline void quant_flash_attn_mxfp8_dn(
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
+                                              dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn, isDAligned>;
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType,
+                                             isFdConst, useDn, isDAligned>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                   hasAttenMask, KvLayoutType, useDn>;
 
     using CubeBlockDummy =
         BaseApi::QuantFlashAttnBlockCubeMxfp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+                                                   dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecMxfp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-            hasAttenMask, KvLayoutType, isFdConst, useDn>;
+                                                  s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                  hasAttenMask, KvLayoutType, isFdConst, useDn>;
     using VecFdBlockDummy =
         BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                        hasAttenMask, KvLayoutType, useDn>;
 
 #ifdef __DAV_CUBE__
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
@@ -89,7 +92,7 @@ __aicore__ inline void quant_flash_attn_mxfp8_dn(
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
-    (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+        (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
 
     TPipe tPipe;
     Kernel op;
@@ -130,24 +133,27 @@ __aicore__ inline void quant_flash_attn_mxfp8_nd(
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8Nd<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
+                                                dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8Nd<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn, isDAligned>;
+                                               s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask,
+                                               KvLayoutType, isFdConst, useDn, isDAligned>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                   hasAttenMask, KvLayoutType, useDn>;
 
     using CubeBlockDummy =
         BaseApi::QuantFlashAttnBlockCubeMxfp8NdDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+                                                     dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecMxfp8NdDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-            hasAttenMask, KvLayoutType, isFdConst, useDn>;
+                                                    s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                    hasAttenMask, KvLayoutType, isFdConst, useDn>;
     using VecFdBlockDummy =
         BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                        hasAttenMask, KvLayoutType, useDn>;
 
 #ifdef __DAV_CUBE__
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8Nd<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
@@ -156,12 +162,11 @@ __aicore__ inline void quant_flash_attn_mxfp8_nd(
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
-    (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+        (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
 
     Kernel op;
     op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
-            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData
-            );
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData);
     op.Process();
 }
 
