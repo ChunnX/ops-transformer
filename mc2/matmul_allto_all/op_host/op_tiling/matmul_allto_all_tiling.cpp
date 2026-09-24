@@ -27,7 +27,8 @@ static ge::graphStatus MatmulAlltoAllTilingFunc(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == Ops::Base::DAV_3510) {
+    // DAV_9201(A6): 仅注册了MX量化tiling, fp/kc输入会被dtype校验拒绝
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);

@@ -147,12 +147,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
-    // Keep the same supported rank range as AllToAllMatmul's production Apace path.
-    // Larger rank counts continue to use the original arch35 implementation.
+    // Apace path is reserved for A6 (DAV_9201); A5 (DAV_3510) keeps the legacy arch35 behavior.
+    // Rank counts above APACE_IMPL_MAX_RANK_DIM fall back to the original arch35 implementation.
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    usingApaceImpl_ = contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
-    OP_LOGI(opName_, "MatmulAlltoAll MX implementation: %s, rankDim=%lu.",
-            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", contextInfo.args_.rankDim);
+    usingApaceImpl_ = (npuArch_ == Ops::Base::DAV_9201) && contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
+    OP_LOGI(opName_, "MatmulAlltoAll MX implementation: %s, npuArch=%u, rankDim=%lu.",
+            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", static_cast<uint32_t>(npuArch_),
+            contextInfo.args_.rankDim);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1151,8 +1152,10 @@ MxQuantMatmulAllToAllTilingBase::MxQuantMatmulAllToAllTilingBase(gert::TilingCon
     : MatmulAllToAllTilingBase(context)
 {}
 
-// 注册tiling类
+// 注册tiling类: A5(DAV_3510)保持原有行为; A6(DAV_9201)仅开放MX量化(前置Apace路径)
+static const std::vector<int32_t> MX_QUANT_MATMUL_ALLTO_ALL_ARCHS = {
+    static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)};
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, MxQuantMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
+                                   MX_QUANT_MATMUL_ALLTO_ALL_ARCHS, 2);
 
 } // namespace MC2Tiling
