@@ -242,7 +242,11 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
                 OP_LOGE(context_->GetNodeName(), "bias must be [4]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(gamma0.GetDimNum() != 1U || gamma0.GetDim(0) != embedDim_ || gamma1.GetDimNum() != 1U ||
                     gamma1.GetDim(0) != embedDim_,
-                OP_LOGE(context_->GetNodeName(), "gamma_0 and gamma_1 must both be [D]"),
+                OP_LOGE(context_->GetNodeName(),
+                        "gamma_0 and gamma_1 must both be [D=%u], got gamma_0 rank=%zu dim0=%ld, "
+                        "gamma_1 rank=%zu dim0=%ld",
+                        embedDim_, gamma0.GetDimNum(), gamma0.GetDimNum() == 0U ? -1L : gamma0.GetDim(0),
+                        gamma1.GetDimNum(), gamma1.GetDimNum() == 0U ? -1L : gamma1.GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (gamma2Shape != nullptr) {
         const auto &gamma2 = gamma2Shape->GetStorageShape();
