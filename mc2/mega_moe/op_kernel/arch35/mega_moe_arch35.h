@@ -28,9 +28,9 @@
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
-#include "stage/mega_moe_token_dispatch.h"
+#include "stage/mega_moe_token_dispatch_dedup.h"
 #include "stage/mega_moe_gmm1_activation.h"
-#include "stage/mega_moe_gmm2_combine.h"
+#include "stage/mega_moe_gmm2_combine_dedup.h"
 #include "stage/mega_moe_unpermute.h"
 #include "../../../common/op_kernel/quantize_functions.h"
 
