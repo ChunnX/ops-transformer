@@ -26,7 +26,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
-    LoadTokenWeights(token, postVals, headBegin);
+    LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
@@ -44,10 +44,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         LocalTensor<T> firstResidual = bufResidualBf16_.AllocTensor<T>();
         const uint32_t firstTD = GetTileD(0U);
         const uint64_t firstBaseOffset = (uint64_t)token * N_ * D_;
-        DataCopy(firstResidual[0U * dimTile_], residualGm_[firstBaseOffset + 0U * D_], firstTD);
-        DataCopy(firstResidual[1U * dimTile_], residualGm_[firstBaseOffset + 1U * D_], firstTD);
-        DataCopy(firstResidual[2U * dimTile_], residualGm_[firstBaseOffset + 2U * D_], firstTD);
-        DataCopy(firstResidual[3U * dimTile_], residualGm_[firstBaseOffset + 3U * D_], firstTD);
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(firstResidual[n * dimTile_], residualGm_[firstBaseOffset + (uint64_t)n * D_], firstTD);
+        }
         bufResidualBf16_.EnQue(firstResidual);
     }
 
@@ -78,17 +77,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 const uint64_t nextBaseOffset = (uint64_t)token * N_ * D_ + nextTOff;
                 if (residualFromQueue) {
                     LocalTensor<T> nextResidual = bufResFp32_.Get<T>();
-                    DataCopy(nextResidual[0U * dimTile_], residualGm_[nextBaseOffset + 0U * D_], nextTD);
-                    DataCopy(nextResidual[1U * dimTile_], residualGm_[nextBaseOffset + 1U * D_], nextTD);
-                    DataCopy(nextResidual[2U * dimTile_], residualGm_[nextBaseOffset + 2U * D_], nextTD);
-                    DataCopy(nextResidual[3U * dimTile_], residualGm_[nextBaseOffset + 3U * D_], nextTD);
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
                     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 } else {
                     LocalTensor<T> nextResidual = bufResidualBf16_.AllocTensor<T>();
-                    DataCopy(nextResidual[0U * dimTile_], residualGm_[nextBaseOffset + 0U * D_], nextTD);
-                    DataCopy(nextResidual[1U * dimTile_], residualGm_[nextBaseOffset + 1U * D_], nextTD);
-                    DataCopy(nextResidual[2U * dimTile_], residualGm_[nextBaseOffset + 2U * D_], nextTD);
-                    DataCopy(nextResidual[3U * dimTile_], residualGm_[nextBaseOffset + 3U * D_], nextTD);
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
                     bufResidualBf16_.EnQue(nextResidual);
                 }
             }
@@ -111,12 +108,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            const uint32_t half = laneId_;
-            const uint32_t h0 = half * 2U;
-            const uint32_t h1 = h0 + 1U;
-            MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
-            PipeBarrier<PIPE_V>();
-            midSqHalf[half] += ReduceSumPrecise(out, tD);
+            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
+                const uint32_t h0 = half * 2U;
+                const uint32_t h1 = h0 + 1;
+                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[half] += ReduceSumPrecise(out, tD);
+            }
         } else {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
@@ -132,13 +130,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
-        midBuf.SetValue(1, 0.0f);
-        midBuf.SetValue(2, 0.0f);
-        midBuf.SetValue(3, 0.0f);
-        midBuf.SetValue(4, 0.0f);
-        midBuf.SetValue(5, 0.0f);
-        midBuf.SetValue(6, 0.0f);
-        midBuf.SetValue(7, 0.0f);
+        for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            midBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
@@ -180,13 +174,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     LocalTensor<float> partialBuf = bufScalar_.Get<float>();
     if (laneId_ == 1U) {
         partialBuf.SetValue(0, sumSqHalf[1]);
-        partialBuf.SetValue(1, dotHalf[1][0]);
-        partialBuf.SetValue(2, dotHalf[1][1]);
-        partialBuf.SetValue(3, dotHalf[1][2]);
-        partialBuf.SetValue(4, dotHalf[1][3]);
-        partialBuf.SetValue(5, 0.0f);
-        partialBuf.SetValue(6, 0.0f);
-        partialBuf.SetValue(7, 0.0f);
+        for (uint32_t o = 0; o < N_MAX; ++o) {
+            partialBuf.SetValue(o + 1U, dotHalf[1][o]);
+        }
+        for (uint32_t i = N_MAX + 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
+            partialBuf.SetValue(i, 0.0f);
+        }
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
@@ -208,10 +201,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     sumSqHalf[1] = partialBuf.GetValue(0);
-    dotHalf[1][0] = partialBuf.GetValue(1);
-    dotHalf[1][1] = partialBuf.GetValue(2);
-    dotHalf[1][2] = partialBuf.GetValue(3);
-    dotHalf[1][3] = partialBuf.GetValue(4);
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        dotHalf[1][o] = partialBuf.GetValue(o + 1U);
+    }
 
     // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
     // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
@@ -224,10 +216,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
-    xHatVals[0] = dotHalf[0][0] + dotHalf[1][0];
-    xHatVals[1] = dotHalf[0][1] + dotHalf[1][1];
-    xHatVals[2] = dotHalf[0][2] + dotHalf[1][2];
-    xHatVals[3] = dotHalf[0][3] + dotHalf[1][3];
+    for (uint32_t o = 0; o < N_MAX; ++o) {
+        xHatVals[o] = dotHalf[0][o] + dotHalf[1][o];
+    }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。

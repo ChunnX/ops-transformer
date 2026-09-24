@@ -142,16 +142,14 @@ public:
         // 双AIV的follower在会合后退出，不参与gate计算，省去五次无效标量GM读取。
         if constexpr (!DUAL_SIBLING) {
             alpha0_ = alpha0Gm_.GetValue(0);
-            biasCache_[0] = biasGm_.GetValue(0);
-            biasCache_[1] = biasGm_.GetValue(1);
-            biasCache_[2] = biasGm_.GetValue(2);
-            biasCache_[3] = biasGm_.GetValue(3);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
         } else if (laneId_ == 0U) {
             alpha0_ = alpha0Gm_.GetValue(0);
-            biasCache_[0] = biasGm_.GetValue(0);
-            biasCache_[1] = biasGm_.GetValue(1);
-            biasCache_[2] = biasGm_.GetValue(2);
-            biasCache_[3] = biasGm_.GetValue(3);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
         }
 
         // 仅单分块路径提前加载gamma
@@ -211,7 +209,8 @@ private:
     // 数据加载
 
     /// 加载一个token的h_post[N]和h_res[N*N]。
-    __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U)
+    __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
+                                            uint32_t headEnd = N_MAX)
     {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
@@ -230,16 +229,9 @@ private:
             DataCopyPad(hResUb, hResGm_[(uint64_t)token * N * N], cp, cpad);
         }
         PipeBarrier<PIPE_ALL>();
-        // 固定head数在编译期展开，避免热路径上的Scalar循环控制。
-        if constexpr (DUAL_SIBLING) {
-            postVals[headBegin] = hPostUb.GetValue(headBegin);
-            postVals[headBegin + 1U] = hPostUb.GetValue(headBegin + 1U);
-        } else {
-            postVals[0] = hPostUb.GetValue(0);
-            postVals[1] = hPostUb.GetValue(1);
-            postVals[2] = hPostUb.GetValue(2);
-            postVals[3] = hPostUb.GetValue(3);
-        }
+        // 双AIV每条lane只消费自己负责的两个post标量，避免无效UB到Scalar回读。
+        for (uint32_t i = headBegin; i < headEnd; ++i)
+            postVals[i] = hPostUb.GetValue(i);
     }
 
     /// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
@@ -370,17 +362,14 @@ private:
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
         float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
-        xHatVals[0] *= invRmsPre;
-        xHatVals[1] *= invRmsPre;
-        xHatVals[2] *= invRmsPre;
-        xHatVals[3] *= invRmsPre;
+        for (uint32_t o = 0; o < N; ++o)
+            xHatVals[o] *= invRmsPre;
 
         LocalTensor<float> scBuf = bufScalar_.Get<float>();
-        scBuf.SetValue(0, -(alpha0_ * xHatVals[0] + biasCache_[0]));
-        scBuf.SetValue(1, -(alpha0_ * xHatVals[1] + biasCache_[1]));
-        scBuf.SetValue(2, -(alpha0_ * xHatVals[2] + biasCache_[2]));
-        scBuf.SetValue(3, -(alpha0_ * xHatVals[3] + biasCache_[3]));
+        for (uint32_t i = 0; i < N; ++i)
+            scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
         LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
+        // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
         MhcNormRegBase::VFSigmoidAddEps(gateBuf, scBuf, hcEps_, N);
         PipeBarrier<PIPE_V>();
     }
@@ -528,9 +517,9 @@ private:
         if (writeOutput) {
             SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            DataCopy(x2OutGm_[outBase + (uint64_t)headBegin * D_], x2Cache[headBegin * D_ + tOff], tD);
-            DataCopy(x2OutGm_[outBase + (uint64_t)(headBegin + 1U) * D_],
-                     x2Cache[(headBegin + 1U) * D_ + tOff], tD);
+            for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
+                DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+            }
         }
     }
 
