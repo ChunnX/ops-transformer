@@ -409,6 +409,11 @@ public:
                 }
             } else {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                // [SK兼容] CV配比1:1时无AIV1: AIC恒等id1_与id1_+16两个flag, 缺AIV1的+16
+                // 置位会死等。AIV0补发第二个; 1:2下GetSubBlockNum()==2不补发。
+                if (GetSubBlockNum() == 1) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_ + AIV0_AIV1_OFFSET);
+                }
             }
         } else if constexpr (bufferType == BufferType::UB || bufferType == BufferType::GM) {
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
@@ -420,8 +425,15 @@ public:
             } else {
                 if constexpr (isReuse) {
                     CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
+                    // [SK兼容] 同上: 1:1时AIV0补发第二个flag
+                    if (GetSubBlockNum() == 1) {
+                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_ + AIV0_AIV1_OFFSET);
+                    }
                 } else {
                     CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_);
+                    if (GetSubBlockNum() == 1) {
+                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(id1_ + AIV0_AIV1_OFFSET);
+                    }
                 }
             }
         } else if constexpr (bufferType == BufferType::L1) {
@@ -435,6 +447,10 @@ public:
                 }
             } else {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
+                // [SK兼容] 同上: 1:1时AIV0补发第二个flag(对齐AIC的id0_+16等待)
+                if (GetSubBlockNum() == 1) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_ + AIV0_AIV1_OFFSET);
+                }
             }
         }
     }

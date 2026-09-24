@@ -82,7 +82,7 @@ public:
 
     ConstInfoX constInfo_;
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
+    __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -140,7 +140,7 @@ public:
                                 __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace, __gm__ uint8_t *metadata, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *sequsedKv, const __gm__ QuantFlashAttnTilingData *__restrict tiling,
+                                __gm__ uint8_t *sequsedKv, __tiling_data_ptr__ QuantFlashAttnTilingData *tiling,
                                 TPipe *tPipe)
     {
         this->pipe_ = tPipe;
@@ -629,16 +629,24 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
 
-        if constexpr (USE_DN) {
+        // [SK兼容] CV配比1:1时无sub1: AIV0(GetSubBlockNum()==1)承担全部M。
+        // 1:2(含现行950布局)走原半区逻辑不变。actVecMSize仅vec侧消费, AIC不受影响。
+        if (GetSubBlockNum() == 1) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            info.actVecMSize = info.actMSize;
+            info.vecMbaseIdx = 0;
         } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo_.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
+            if constexpr (USE_DN) {
+                info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+                info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            } else {
+                info.actVecMSize = (info.actMSize + 1) >> 1;
+            }
+            info.vecMbaseIdx = 0;
+            if (constInfo_.subBlockIdx == 1) {
+                info.vecMbaseIdx = info.actVecMSize;
+                info.actVecMSize = info.actMSize - info.actVecMSize;
+            }
         }
 
         if ((bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_)) {
