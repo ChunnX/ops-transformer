@@ -48,6 +48,7 @@ constexpr char kPackType[] = "Pack";
 constexpr char kTestCsvFile[] = "test_grouped_matmul_transpose_fusion_pass.csv";
 constexpr size_t kCaseFieldNum = 26;
 bool gVersionKeyValid = false;
+int32_t gGeCompilerVersion = kGraphFusionSupportVersion;
 #ifndef GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV_PATH
 #define GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_CSV_PATH ""
 #endif
@@ -633,14 +634,26 @@ std::string TestName(const testing::TestParamInfo<GroupedMatmulTransposeFusionPa
 
 extern "C" aclError aclsysGetVersionNum(char *name, int32_t *version)
 {
-    gVersionKeyValid = name != nullptr && std::strcmp(name, "ge_compiler") == 0;
+    gVersionKeyValid = name != nullptr && std::strcmp(name, "ge-compiler") == 0;
     if (version != nullptr) {
-        *version = kGraphFusionSupportVersion;
+        *version = gGeCompilerVersion;
     }
     return ACL_SUCCESS;
 }
 
 class GroupedMatmulTransposeFusionPassTest : public testing::TestWithParam<GroupedMatmulTransposeFusionPassParam> {};
+
+TEST(GroupedMatmulTransposeFusionPassVersionTest, SkipUnsupportedRuntime)
+{
+    GraphPtr graph = nullptr;
+    CustomPassContext passContext;
+    TestGroupedMatmulTransposeFusionPass pass;
+    gGeCompilerVersion = kGraphFusionSupportVersion - 1;
+
+    EXPECT_EQ(pass.RunForTest(graph, passContext), GRAPH_NOT_CHANGED);
+
+    gGeCompilerVersion = kGraphFusionSupportVersion;
+}
 
 TEST_P(GroupedMatmulTransposeFusionPassTest, RunFusionPass)
 {
