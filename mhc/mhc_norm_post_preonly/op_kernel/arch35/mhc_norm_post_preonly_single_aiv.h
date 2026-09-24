@@ -121,6 +121,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
@@ -130,10 +131,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         } else {
             gamma1 = gamma1[tOff];
         }
-        WriteHInPrimeTile(hInCache, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
+        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }
+        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 

@@ -404,6 +404,11 @@ private:
 
     // 输入输出与本核流水同步辅助函数。
 
+    __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
+    {
+        MhcNormRegBase::VFCastFp32ToB16(dst, src, count);
+    }
+
     __aicore__ inline void FenceMte3ToV()
     {
         SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
@@ -416,21 +421,24 @@ private:
         WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
     }
 
-    __aicore__ inline void WriteHInPrimeTile(LocalTensor<T> src, LocalTensor<float> gamma, float scale,
-                                             uint64_t gmOffset, uint32_t count)
+    __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
+                                                 uint32_t count)
     {
-        LocalTensor<T> hInPrime = bufHInPrimeBf16_.AllocTensor<T>();
-        LocalTensor<float> hInFp32 = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        MhcNormRegBase::VFCastB16ScaleMulGammaToOutputs<T, RETURN_H_IN_F32>(hInPrime, hInFp32, src, gamma, scale,
-                                                                           count);
-        bufHInPrimeBf16_.EnQue(hInPrime);
-        hInPrime = bufHInPrimeBf16_.DeQue<T>();
-        DataCopy(hInPrimeGm_[gmOffset], hInPrime, count);
-        bufHInPrimeBf16_.FreeTensor(hInPrime);
+        LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
+        CastToIO(tmp, src, count);
+        bufHInPrimeBf16_.EnQue(tmp);
+        tmp = bufHInPrimeBf16_.DeQue<T>();
+        DataCopy(dst[gmOffset], tmp, count);
+        bufHInPrimeBf16_.FreeTensor(tmp);
+    }
+
+    __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
+    {
+        WriteLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
         if constexpr (RETURN_H_IN_F32) {
             SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-            DataCopy(hInF32Gm_[gmOffset], hInFp32, count);
+            DataCopy(hInF32Gm_[gmOffset], src, count);
             FenceMte3ToV();
         }
     }
