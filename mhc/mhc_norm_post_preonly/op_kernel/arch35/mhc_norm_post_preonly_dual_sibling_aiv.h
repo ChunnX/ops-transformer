@@ -47,7 +47,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::PairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
                 PipeBarrier<PIPE_V>();
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
@@ -87,13 +87,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
-            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff], x2Cache[headBegin * D_ + tOff],
-                                                         gammaEven, invRmsMid, tD);
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
+                                                           x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
 
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            MhcNormRegBase::CastB16ScaleAndMulGammaToB16(
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true, false);
@@ -185,7 +185,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::CastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
         PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();

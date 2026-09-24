@@ -28,9 +28,6 @@ class KernelMhcNormPostPreonly {
 public:
     __aicore__ inline KernelMhcNormPostPreonly() {}
 
-    // =====================================================================
-    //  Init: 解析 tiling, 设置 GM buffer, 分配 UB
-    // =====================================================================
     __aicore__ inline void Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
                                 GM_ADDR phi_gm, GM_ADDR alpha_gm, GM_ADDR bias_gm, GM_ADDR pre_mix_gm,
                                 GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm,
@@ -39,7 +36,7 @@ public:
     {
         GET_TILING_DATA(td, tiling);
 
-        // pre_mix 为接口预留的可选输入，h_pre 为接口预留的可选输出，当前版本均不参与计算。
+        // pre_mix 为接口预留的可选输入，h_pre 为接口预留的可选输出，当前均不参与计算。
         (void)pre_mix_gm;
         (void)h_pre_gm;
 
@@ -64,8 +61,7 @@ public:
         coresPerToken_ = td.coresPerToken;
 
         const uint32_t aivIdx = GetBlockIdx();
-        // MIX_AIC_1_2在A5上按每个物理AI Core展开两个连续AIV。
-        // 该映射与同平台算子保持一致，只在双sibling模板中使用。
+        // MIX_AIC_1_2按每个物理AI Core展开两个连续AIV。
         laneId_ = DUAL_SIBLING ? (aivIdx & 1U) : 0U;
         const uint32_t blockIdx = DUAL_SIBLING ? (aivIdx >> 1U) : aivIdx;
         if (blockIdx >= usedCoreNum_) {
@@ -254,7 +250,7 @@ private:
     {
         LocalTensor<T> hBf16 = bufHOutBf16_.DeQue<T>();
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        MhcNormRegBase::CastB16ToFp32(hOut, hBf16, tD);
+        MhcNormRegBase::VFCastB16ToFp32(hOut, hBf16, tD);
         PipeBarrier<PIPE_V>();
         bufHOutBf16_.FreeTensor(hBf16);
     }
@@ -337,7 +333,7 @@ private:
     {
         // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-        MhcNormRegBase::Mul(sqBuf, src, src, tD);
+        MhcNormRegBase::VFMul(sqBuf, src, src, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
     }
@@ -347,7 +343,7 @@ private:
     {
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-        MhcNormRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
+        MhcNormRegBase::VFCastB16ToFp32Square(sqBuf, hOutCache, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
     }
@@ -377,9 +373,9 @@ private:
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
         for (uint32_t h = 0; h < N; h += 2U) {
-            MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
-                                                   residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
-                                                   tD);
+            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+                                                     residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                     tD);
         }
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
@@ -402,7 +398,7 @@ private:
             scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
         LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
         // TODO：后续单独评估固定四元素循环展开，本轮保持通用VF循环。
-        MhcNormRegBase::SigmoidAddEps(gateBuf, scBuf, hcEps_, N);
+        MhcNormRegBase::VFSigmoidAddEps(gateBuf, scBuf, hcEps_, N);
         PipeBarrier<PIPE_V>();
     }
 
@@ -410,7 +406,7 @@ private:
 
     __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
     {
-        MhcNormRegBase::CastFp32ToB16(dst, src, count);
+        MhcNormRegBase::VFCastFp32ToB16(dst, src, count);
     }
 
     __aicore__ inline void FenceMte3ToV()
@@ -464,8 +460,8 @@ private:
     {
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-        MhcNormRegBase::CastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
-                                                        tD);
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
         PipeBarrier<PIPE_V>();
 
         ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
@@ -487,16 +483,16 @@ private:
         }
         bufResidualBf16_.EnQue(residual);
 
-        MhcNormRegBase::CastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
-                                                        tD);
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
         PipeBarrier<PIPE_V>();
 
         residual = bufResidualBf16_.DeQue<T>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-        MhcNormRegBase::ComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
-                                               hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
-                                               postVals[headBegin + 1U], tD);
+        MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
+                                                 hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
+                                                 postVals[headBegin + 1U], tD);
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
     }
@@ -512,8 +508,8 @@ private:
         // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
         if (quantizeInput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
-                MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
             }
             PipeBarrier<PIPE_V>();
         }
@@ -521,8 +517,8 @@ private:
         // 保证后续R4/R5仍使用低精度往返后的x2。
         if (!USE_RMS_MID || writeOutput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
-                MhcNormRegBase::CastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
-                                                  x2Cache[(n + 1U) * D_ + tOff], tD);
+                MhcNormRegBase::VFCastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
+                                                    x2Cache[(n + 1U) * D_ + tOff], tD);
             }
             PipeBarrier<PIPE_V>();
         }
@@ -550,15 +546,15 @@ private:
 
         if (quantizeInput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
-                MhcNormRegBase::CastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
-                                                  x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
             }
             PipeBarrier<PIPE_V>();
         }
         if (!USE_RMS_MID || writeOutput) {
             // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
-            MhcNormRegBase::CastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
-                                              x2Cache[(headBegin + 1U) * D_ + tOff], tD);
+            MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
+                                                x2Cache[(headBegin + 1U) * D_ + tOff], tD);
             PipeBarrier<PIPE_V>();
         }
 
@@ -578,7 +574,7 @@ private:
     {
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-        MhcNormRegBase::GateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
+        MhcNormRegBase::VFGateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
     }
@@ -606,7 +602,7 @@ private:
                 const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
                 const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-                MhcNormRegBase::PairSquareAdd(out, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+                MhcNormRegBase::VFPairSquareAdd(out, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
                 PipeBarrier<PIPE_V>();
                 sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
@@ -620,7 +616,7 @@ private:
                     bufPhiFp32_.EnQue(phi1);
                     phi0 = bufPhiFp32_.DeQue<float>();
                     phi1 = bufPhiFp32_.DeQue<float>();
-                    MhcNormRegBase::PairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi1, tD);
+                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi1, tD);
                     PipeBarrier<PIPE_V>();
                     bufPhiFp32_.FreeTensor(phi0);
                     bufPhiFp32_.FreeTensor(phi1);
@@ -638,7 +634,7 @@ private:
 
             // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-            MhcNormRegBase::PairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+            MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
 
             // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
             LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
@@ -666,7 +662,7 @@ private:
                 LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
                 curPhi0 = bufPhiFp32_.DeQue<float>();
                 curPhi1 = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::PairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
+                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
                 bufPhiFp32_.FreeTensor(curPhi0);
                 bufPhiFp32_.FreeTensor(curPhi1);
 
