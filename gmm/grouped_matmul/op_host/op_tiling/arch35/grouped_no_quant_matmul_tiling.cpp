@@ -302,25 +302,61 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     weightDtype_ = w0Desc->GetDataType();
     auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
     weightNzFlag_ = wFormat0 == ge::FORMAT_FRACTAL_NZ;
-    if (!CheckNoQuantGroupListType(context)) {
+    if (!CheckNoQuantGroupList(context)) {
         return false;
     }
     return true;
 }
 
-bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingContext *context) const
+bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupList(const gert::TilingContext *context) const
 {
-    // Keep the sparse grouplist restriction in the no-quant 950 tiling path so the
-    // common API check does not need extra quant-state parameters just to distinguish
-    // no-quant from weight-quant cases.
-    OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupListType",
-                    Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
-                                                        "groupListType", "{0, 1}")
-                        .c_str()),
-                return false);
+    OP_CHECK_IF(
+        groupListType_ != GroupedMatmul::GROUPLIST_TYPE_CUMSUM &&
+            groupListType_ != GroupedMatmul::GROUPLIST_TYPE_COUNT &&
+            groupListType_ != GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupListType", Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
+            Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
+                                                "groupListType", "{0, 1, 2}")
+                .c_str()),
+        return false);
+    // Sparse groupList ([E, 2], non-zero groups front-loaded) only splits the M axis.
+    OP_CHECK_IF(
+        groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M && groupType_ != SPLIT_M,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupListType", Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
+            Ops::Transformer::Gmm::FormatString("In %s case, %s %s only supports %s %s", "no-quant", "groupListType",
+                                                "2(sparse)", "groupType", "0(split-M)")
+                .c_str()),
+        return false);
+    auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
+    if (groupListTensor == nullptr) {
+        return true; // The optional groupList presence is enforced later by the split paths and the kernel.
+    }
+    gert::Shape groupListShape = groupListTensor->GetStorageShape();
+    size_t groupListDimNum = groupListShape.GetDimNum();
+    // groupListType 0(cumsum)/1(count): groupList is 1D; groupListType 2(sparse): groupList is 2D [E, 2].
+    if (groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M) {
+        OP_CHECK_IF(
+            groupListDimNum != DIM_TWO,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "groupList",
+                                         Ops::Transformer::Gmm::FormatString("%zu", groupListDimNum).c_str(), "2"),
+            return false);
+        OP_CHECK_IF(
+            groupListShape.GetDim(1) != DIM_TWO,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context->GetNodeName(), "groupList", Ops::Base::ToString(groupListShape).c_str(),
+                Ops::Transformer::Gmm::FormatString("The %s of %s must be equal to %s when %s is %s", "2nd dimension",
+                                                    "groupList", "2", "groupListType", "2(sparse)")
+                    .c_str()),
+            return false);
+    } else {
+        OP_CHECK_IF(
+            groupListDimNum != DIM_ONE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "groupList",
+                                         Ops::Transformer::Gmm::FormatString("%zu", groupListDimNum).c_str(), "1"),
+            return false);
+    }
     return true;
 }
 
