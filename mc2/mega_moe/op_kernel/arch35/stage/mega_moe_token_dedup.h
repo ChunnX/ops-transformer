@@ -51,6 +51,52 @@ constexpr uint32_t DEDUP_ACTIVE_LIST_UB_BYTES = 8U * 1024U;
 // canonical 槽一致（退化语义与基线截断对齐——被裁行的贡献丢失、幸存行保留）。
 constexpr int32_t DEDUP_PACK_INIT = 0x00FF0000;
 
+// ---------- 去重结构体（集中定义；各字段用途见行内注释） ----------
+
+struct DedupConfig {
+    GM_ADDR rowDescPtr = nullptr;      // workspace rowDesc 表基址
+    GM_ADDR prepassReadyPtr = nullptr; // prepass 完成标记区（槽0=每核done计数，槽1+item=项ready；随 launch 清零）
+    int32_t dedupMode = 0;             // 同 tilingData->dedupMode（0=全关 1=仅combine 2=仅dispatch 3=双开）
+    uint32_t rowDescStrideInt32 = 0;   // 每行描述符 int32 数（CalcDedupRowDescStrideInt32）
+    uint32_t prepassChunkTokens = 1;   // 工作项 token 切片宽（CalcDedupPrepassChunkTokens 单源）
+    uint32_t prepassChunkCount = 1;    // 每 srcRank 的 chunk 数 = ceil(numTokens/chunkTokens)
+};
+
+// 本工作项的 token 窗口：本段负责的源 token 起点，以及 route 值域上下界 [targetLo, targetHi)。
+struct DedupChunkWindow {
+    int32_t tokenLo = 0;
+    int32_t targetLo = 0;
+    int32_t targetHi = 0;
+};
+
+// prepass 工人上下文：UB 视图、GM 视图与跨工作项常量/状态，一次构造、各流水段共用。
+template <typename TopkIndexType>
+struct DedupPrepassWorker {
+    static constexpr int32_t ROUTE_HALF_ITEMS =
+        static_cast<int32_t>(DEDUP_ROUTE_LOAD_UB_BYTES / 2U / sizeof(TopkIndexType));
+    static constexpr uint32_t DESC_ASM_HALF_INT32 = DEDUP_DESC_ASM_UB_BYTES / 2U / sizeof(int32_t);
+
+    LocalTensor<TopkIndexType> routeLoadTensor; // route 槽装载区（两半双缓冲）
+    LocalTensor<int32_t> countTensor;           // 逐 token 打包状态字（DEDUP_PACK_INIT 语义）
+    LocalTensor<int32_t> memberTensor;          // 逐 token 成员三元组 (row, topkIndex, flagSlotOffset)
+    LocalTensor<int32_t> descAsmTensor;         // desc 拼装区（两半乒乓）
+    GlobalTensor<int32_t> rowDescGm;            // workspace rowDesc 表
+    uint32_t topK = 0;
+    uint32_t strideInt32 = 0;
+    uint32_t maxOutputSize = 0;
+    int32_t dispatchFlagSlotCountPerExpert = 0;
+    uint32_t descHalf = 0; // desc 乒乓半区，跨工作项持续轮转
+};
+
+// 槽间双缓冲的在途槽：装载已发起、扫描尚未执行。expertIdx < 0 表示无在途。
+struct DedupPendingSlot {
+    int32_t expertIdx = -1;
+    int32_t rowBase = 0;
+    int32_t slotCount = 0;
+    int32_t expertRowBegin = 0;
+    uint32_t half = 0;
+};
+
 /*
  * prepass 工作项的 token 切片宽度（prepass 建表与 dispatch 按需等待两侧必须用同一公式）。
  * 三重约束：①UB 容量硬上限（member/count/route 三区装得下）②负载目标 = 工作项数 ≈ 2×AIV1 数
@@ -74,15 +120,6 @@ __aicore__ inline uint32_t CalcDedupPrepassChunkTokens(uint32_t numTokens, uint3
     chunk = chunk < floorChunk ? floorChunk : chunk;
     return chunk == 0U ? 1U : chunk;
 }
-
-struct DedupConfig {
-    GM_ADDR rowDescPtr = nullptr;      // workspace rowDesc 表基址
-    GM_ADDR prepassReadyPtr = nullptr; // prepass 完成标记区（槽0=每核done计数，槽1+item=项ready；随 launch 清零）
-    int32_t dedupMode = 0;             // 同 tilingData->dedupMode（0=全关 1=仅combine 2=仅dispatch 3=双开）
-    uint32_t rowDescStrideInt32 = 0;   // 每行描述符 int32 数（CalcDedupRowDescStrideInt32）
-    uint32_t prepassChunkTokens = 1;   // 工作项 token 切片宽（CalcDedupPrepassChunkTokens 单源）
-    uint32_t prepassChunkCount = 1;    // 每 srcRank 的 chunk 数 = ceil(numTokens/chunkTokens)
-};
 
 __aicore__ inline DedupConfig CreateDedupConfig(const Params &params)
 {
@@ -113,32 +150,6 @@ __aicore__ inline TEventID DedupDescHalfEvent(uint32_t half)
 {
     return static_cast<TEventID>(half == 0U ? SYNC_EVENT_ID3 : SYNC_EVENT_ID5);
 }
-
-// 本工作项的 token 窗口：本段负责的源 token 起点，以及 route 值域上下界 [targetLo, targetHi)。
-struct DedupChunkWindow {
-    int32_t tokenLo = 0;
-    int32_t targetLo = 0;
-    int32_t targetHi = 0;
-};
-
-// prepass 工人上下文：UB 视图、GM 视图与跨工作项常量/状态，一次构造、各流水段共用。
-template <typename TopkIndexType>
-struct DedupPrepassWorker {
-    static constexpr int32_t ROUTE_HALF_ITEMS =
-        static_cast<int32_t>(DEDUP_ROUTE_LOAD_UB_BYTES / 2U / sizeof(TopkIndexType));
-    static constexpr uint32_t DESC_ASM_HALF_INT32 = DEDUP_DESC_ASM_UB_BYTES / 2U / sizeof(int32_t);
-
-    LocalTensor<TopkIndexType> routeLoadTensor; // route 槽装载区（两半双缓冲）
-    LocalTensor<int32_t> countTensor;           // 逐 token 打包状态字（DEDUP_PACK_INIT 语义）
-    LocalTensor<int32_t> memberTensor;          // 逐 token 成员三元组 (row, topkIndex, flagSlotOffset)
-    LocalTensor<int32_t> descAsmTensor;         // desc 拼装区（两半乒乓）
-    GlobalTensor<int32_t> rowDescGm;            // workspace rowDesc 表
-    uint32_t topK = 0;
-    uint32_t strideInt32 = 0;
-    uint32_t maxOutputSize = 0;
-    int32_t dispatchFlagSlotCountPerExpert = 0;
-    uint32_t descHalf = 0; // desc 乒乓半区，跨工作项持续轮转
-};
 
 // 在去重 UB 暂存段上建立 prepass 工人视图。route 槽元素类型与基线 dispatch 同源
 // （int16/int32 由 UseInt16TopkIndex 选定）；UB 字节预算不变，条数随元素宽度变。
@@ -207,15 +218,6 @@ __aicore__ inline void DedupPrepassScanSlot(DedupPrepassWorker<TopkIndexType> &w
         worker.countTensor.SetValue(localToken, survivorCount | (fullCount << 8) | (fullMinK << 16));
     }
 }
-
-// 槽间双缓冲的在途槽：装载已发起、扫描尚未执行。expertIdx < 0 表示无在途。
-struct DedupPendingSlot {
-    int32_t expertIdx = -1;
-    int32_t rowBase = 0;
-    int32_t slotCount = 0;
-    int32_t expertRowBegin = 0;
-    uint32_t half = 0;
-};
 
 // 扫描在途槽并释放其半区（等装载完成 → 扫描 → 武装"可复写"）。无在途时为空操作。
 template <typename TopkIndexType>
