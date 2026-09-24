@@ -21,6 +21,7 @@
 namespace vector1 {
 using liV2Vector1::BroadcastLane;
 using liV2Vector1::DuplicateZero;
+// LI keeps KV state for the index-selection path.
 using liV2Vector1::FloatSortConstCtx;
 using liV2Vector1::FloatSortTraits;
 using liV2Vector1::FloatToSortableKey;

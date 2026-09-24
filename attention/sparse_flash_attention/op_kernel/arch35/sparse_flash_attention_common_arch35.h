@@ -47,6 +47,7 @@ enum class SFATemplateMode {
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)
 {
+    // SFA selects tile parameters for the sparse-attention template in Align2Func.
     return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2
 }
 
@@ -60,6 +61,7 @@ __aicore__ constexpr uint64_t Align16Func(uint64_t data)
     return (data + 15UL) >> 4UL << 4UL; // 向上16对齐, +15移位4
 }
 
+// SFA selects tile parameters for the sparse-attention template during the fourth pipeline stage.
 __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 {
     return (data + 63UL) >> 6UL << 6UL; // 向上64对齐, +63移位6
@@ -98,11 +100,13 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 
 /* 2. 生成不带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
+// SFA expands the type and constant parameters of its sparse-attention template.
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
+// SFA selects tile parameters for the sparse-attention template during the fifth pipeline stage.
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \

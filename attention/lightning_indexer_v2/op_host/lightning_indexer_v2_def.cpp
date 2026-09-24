@@ -89,6 +89,7 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);
+        // LI V2 registers vector-mask attributes and formats for the V2 index-selection operator.
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

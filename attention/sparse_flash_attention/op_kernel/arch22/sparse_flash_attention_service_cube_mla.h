@@ -43,6 +43,7 @@ struct Position {
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
+// SFA moves query data using the layout required by sparse-attention.
 template <typename T>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
@@ -168,6 +169,7 @@ private:
     static constexpr uint32_t L1_EVENT0 = EVENT_ID2;
     static constexpr uint32_t L1_EVENT1 = EVENT_ID3;
     static constexpr uint32_t L1_EVENT2 = EVENT_ID4;
+    // SFA orders tile producers and consumers in the sparse-attention pipeline during the second pipeline stage.
     static constexpr uint32_t L1_EVENT3 = EVENT_ID5;
     static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
     static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
@@ -179,6 +181,7 @@ private:
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
+    // SFA orders tile producers and consumers in the sparse-attention pipeline during the third pipeline stage.
     static constexpr uint32_t mte21KVIds[3] = {L1_EVENT4, L1_EVENT5, L1_EVENT6};
 
     uint32_t kvCacheBlockSize = 0;
@@ -296,6 +299,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::InitPageAttentionInfo(const Globa
                                                                      uint32_t maxBlockNumPerBatch)
 {
     this->blockTableGm = blockTableGm;
+    // SFA maps paged-cache positions to the cache addresses used by sparse-attention in InitPageAttentionInfo.
     this->topKGm = topKGm;
     this->kvCacheBlockSize = blockSize;
     this->maxBlockNumPerBatch = maxBlockNumPerBatch;
@@ -312,6 +316,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::InitBuffers(TPipe *pipe)
 
     // L0A
     pipe->InitBuffer(tmpBufL0A, L0A_PP_SIZE * 2); // 64K
+    // SFA reserves query storage for the sparse-attention pipeline.
     aL0TensorPingPong = tmpBufL0A.Get<KV_T>();
     // L0B
     pipe->InitBuffer(tmpBufL0B, L0B_PP_SIZE * 2); // 64K
@@ -340,6 +345,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
+    // SFA orders tile producers and consumers in the sparse-attention pipeline in AllocEventID.
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
@@ -354,6 +360,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
+    // SFA orders tile producers and consumers in the sparse-attention pipeline in FreeEventID.
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
@@ -370,6 +377,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::CopyGmToL1(LocalTensor<KV_T> &l1T
     nd2nzPara.nValue = srcN; // 行数
     nd2nzPara.dValue = srcD;
     nd2nzPara.srcDValue = srcDstride;
+    // SFA moves tile data using the layout required by sparse-attention in CopyGmToL1.
     nd2nzPara.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
@@ -488,6 +496,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::LoadDataMm1B(LocalTensor<KV_T> &l
     LocalTensor<KV_T> srcTensor = l1Tensor[nSize * kSplitSize * idx];
 
     LoadData2DParams loadData2DParams;
+    // SFA moves KV data using the layout required by sparse-attention in LoadDataMm1B.
     loadData2DParams.startIndex = 0;
     loadData2DParams.repeatTimes = (nSize + 15) / 16 * kSize / (32 / sizeof(KV_T));
     loadData2DParams.srcStride = 1;
@@ -831,6 +840,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                     nd2nzPara.ndNum = 1;
                     nd2nzPara.nValue = nL1Size;                // 行数
                     nd2nzPara.dValue = constInfo.headDim >> 1; // constInfo.headDim;
+                    // SFA derives tile offsets for the sparse-attention tile in ComputeMm1.
                     nd2nzPara.srcDValue = constInfo.headDim;
                     nd2nzPara.dstNzC0Stride = nL1SizeAlign;
                     nd2nzPara.dstNzNStride = 1;
@@ -1012,6 +1022,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
+                    // SFA configures the tile matrix stage for sparse-attention during the first pipeline stage.
                     abL0BufIter++;
                 }
 
@@ -1034,6 +1045,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                                      (mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE) *
                                          info.actualSingleProcessSInnerSizeAlign],
                             cL0Tensor, fixParams);
+                    // The MM1 fixpipe writes its ND tile before the L0 slot can be reused.
                 }
                 if (mL1Loops == 2) {
                     cL0BufIter++;
@@ -1041,6 +1053,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
             }
             SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]); // 反向同步, 表示L1已经被mte1消费完
         }
+        // SFA orders tile producers and consumers in the sparse-attention pipeline during the sixth pipeline stage.
         if (mL1Loops == 1) {
             cL0BufIter++;
         }
@@ -1057,6 +1070,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
     uint32_t mL1SizeAlign = M_SPLIT_SIZE; // 16对齐
     uint32_t mL1Size = M_SPLIT_SIZE;      // m的实际大小
 
+    // SFA keeps KV state for the sparse-attention path.
     uint32_t nSize = BlockAlign<KV_T>(constInfo.headDim);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
     uint32_t nL1SizeAlign = N_SPLIT_SIZE; // 16对齐
@@ -1073,6 +1087,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
     LocalTensor<KV_T> subvTensor;
 
     // ka表示左矩阵4buf选择哪一块buf, kb表示右矩阵3buf选择哪一块buf
+    // SFA reserves KV storage for the sparse-attention pipeline.
     uint32_t ka = 0, kb = 0;
     uint32_t mBaseIdx = qpL1BufIter;
     for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) { // n切L1
@@ -1102,6 +1117,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
             uint32_t kOffset = k1 * kL0Loops;
+            // SFA orders KV producers and consumers in the sparse-attention pipeline.
             kL0Size = 128;
             // 此处必须先初始化kL0Size, 再求kL0Loops, 否则由于循环会改变kL0Size大小, 导致kL0Loops错误
             kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
@@ -1121,6 +1137,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     nd2nzPara.nValue = kL0Size;      // 行数
                     nd2nzPara.dValue = N_SPLIT_SIZE; // constInfo.headDim;
                     nd2nzPara.srcDValue = constInfo.headDim;
+                    // SFA moves tile data using the layout required by sparse-attention in ComputeMm2.
                     nd2nzPara.dstNzC0Stride = kL0SizeAlign;
                     nd2nzPara.dstNzNStride = 1;
                     nd2nzPara.srcNdMatrixStride = 0;
@@ -1212,7 +1229,8 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(abL0BufIter % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
                     LoadData3DParamsV2<KV_T> loadData3DParamsForB;
                     loadData3DParamsForB.l1H = kL0SizeAlign / 16; // 源操作数height
-                    loadData3DParamsForB.l1W = 16;                // 源操作数weight=16，目的height=l1H*L1W
+                    // SFA moves KV data using the layout required by sparse-attention during the second pipeline stage.
+                    loadData3DParamsForB.l1W = 16; // 源操作数weight=16，目的height=l1H*L1W
                     loadData3DParamsForB.padList[0] = 0;
                     loadData3DParamsForB.padList[1] = 0;
                     loadData3DParamsForB.padList[2] = 0;
@@ -1268,6 +1286,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
                     MmadParams mmadParams;
+                    // SFA configures the KV matrix stage for sparse-attention.
                     mmadParams.m = mL1SizeAlign;
                     mmadParams.n = nL1SizeAlign;
                     mmadParams.k = kL0Size;
@@ -1313,6 +1332,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     cL0BufIter++;
                 }
             }
+            // SFA releases the consumed KV tile for the next sparse-attention iteration.
             SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]); // 反向同步, 表示L1已经被mte1消费完
         }
         // cL0BufIter已经不在使用

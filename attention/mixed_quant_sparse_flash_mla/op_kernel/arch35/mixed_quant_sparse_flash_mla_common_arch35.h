@@ -80,6 +80,7 @@ using AttentionCommon::Align64Func;
     X(Q_T) \
     X(KV_T) \
     X(T) \
+    /* MQSMLA selects query parameters for the mixed-quant dual-KV template. */ \
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
@@ -104,11 +105,13 @@ using AttentionCommon::Align64Func;
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
+// MQSMLA expands the type and constant parameters of its mixed-quant dual-KV template.
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
+// MQSMLA selects tile parameters for the mixed-quant dual-KV template during the third pipeline stage.
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \

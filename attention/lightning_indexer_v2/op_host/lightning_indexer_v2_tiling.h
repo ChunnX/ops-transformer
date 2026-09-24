@@ -32,6 +32,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
+// LI V2 selects tiling parameters for the V2 index-selection template.
 struct TilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
@@ -151,6 +152,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
+    // LI V2 maps paged-cache positions to the cache addresses used by V2 index-selection in TILING_DATA_FIELD_DEF.
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // PageAttention

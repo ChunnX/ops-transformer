@@ -44,6 +44,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
 
     Reg::RegTensor<uint8_t> vreg0;
     Reg::RegTensor<uint8_t> vreg1;
+    // LI V2 updates tile candidates for the V2 index-selection pass in HistogramsFirstVFImpl.
     Reg::RegTensor<uint8_t> vreg2;
     Reg::RegTensor<uint8_t> vreg3;
 
@@ -100,6 +101,7 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf
     Reg::RegTensor<uint8_t> liV2Vreg0;
     Reg::RegTensor<uint8_t> liV2Vreg1;
     Reg::RegTensor<uint8_t> liV2Vreg2;
+    // LI V2 updates tile candidates for the V2 index-selection pass in HistogramsSecondVFImpl.
     Reg::RegTensor<uint8_t> liV2Vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
@@ -164,6 +166,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
 
     Reg::RegTensor<uint8_t> vreg0;
     Reg::RegTensor<uint8_t> vreg1;
+    // LI V2 updates tile candidates for the V2 index-selection pass in HistogramsThirdVFImpl.
     Reg::RegTensor<uint8_t> vreg2;
     Reg::RegTensor<uint8_t> vreg3;
 
@@ -235,6 +238,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     Reg::RegTensor<uint8_t> liV2Vreg0;
     Reg::RegTensor<uint8_t> liV2Vreg1;
     Reg::RegTensor<uint8_t> liV2Vreg2;
+    // LI V2 updates tile candidates for the V2 index-selection pass in HistogramsLastVFImpl.
     Reg::RegTensor<uint8_t> liV2Vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {

@@ -33,6 +33,7 @@
 using matmul::MatmulType;
 using namespace AscendC;
 using namespace optiling;
+// SMLA reuses shared tiling helpers in its dual-KV sparse-MLA kernel during the second pipeline stage.
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -134,6 +135,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
         this->tilingData = tiling;
     } else {
         constInfo.aivIdx = GetBlockIdx();
+        // SMLA configures the metadata matrix stage for dual-KV sparse-MLA.
         this->aicIdx = constInfo.aivIdx >> 1;
         this->tilingData = tiling;
     }
@@ -411,6 +413,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                     case 1:
                         notLast = false;
                         notLastTwoLoop = false;
+                        // SMLA keeps tile state for the dual-KV sparse-MLA path in ProcessMainLoop.
                         break;
                     default:
                         break;
@@ -458,6 +461,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
             } else {
                 s2LoopLimit = 0;
             }
+            // SMLA keeps original-KV state for the dual-KV sparse-MLA path.
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =

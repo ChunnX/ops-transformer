@@ -32,6 +32,8 @@ using AscendC::CrossCoreWaitFlag;
 
 // 由于S2循环前，RunInfo还没有赋值，使用Bngs1Param临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
+    // KV-quant SFA resolves variable-length sequence bounds for the quantized KV-cache path during the first pipeline
+    // stage.
     uint32_t bn2IdxInCurCore = 0;
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
@@ -307,6 +309,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::GetSparseActualSeq
 {
     if (tempLoopInfo.nextTokensPerBatch < 0 && s1Idx < (-tempLoopInfo.nextTokensPerBatch)) { // 存在行无效
         tempLoopInfo.curActualSeqLen = 0;
+        // KV-quant SFA resolves variable-length sequence bounds for the quantized KV-cache path in
+        // GetSparseActualSeqLen.
         return;
     }
     int64_t threshold = tempLoopInfo.curActualSeqLenOri;
@@ -366,6 +370,8 @@ __aicore__ inline uint32_t KvQuantSparseFlashAttentionMla<QSFAT>::GetActualSeqLe
         }
     } else {
         if (constInfo.actualLenDimsKV == 0) {
+            // KV-quant SFA resolves variable-length sequence bounds for the quantized KV-cache path in
+            // GetActualSeqLenKV.
             return constInfo.kvSeqSize;
         } else if (constInfo.actualLenDimsKV == 1) {
             return actualSeqLengthsKVGm.GetValue(0);
@@ -524,6 +530,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
     if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
+        // KV-quant SFA maps paged-cache positions to the cache addresses used by quantized KV-cache in GetBlockIdx.
         matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
                                             constInfo.maxBlockNumPerBatch);
@@ -895,6 +902,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(constInfo.syncV0C1);
             }
+            // KV-quant SFA orders tile producers and consumers in the quantized KV-cache pipeline in CalcParams.
             ComputeMm1(extraInfo0);
         } else {
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
@@ -906,6 +914,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
     }
     if (extraInfo2.isValid) {
         if ASCEND_IS_AIV {
+            // KV-quant SFA selects tile parameters for the quantized KV-cache template in CalcParams.
             vectorService.ProcessVec1L(extraInfo2);
         }
         if ASCEND_IS_AIC {
@@ -917,6 +926,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
     }
     if (extraInfo1.isValid) {
         if ASCEND_IS_AIV {
+            // KV-quant SFA keeps tile state for the quantized KV-cache path in CalcParams.
             vectorService.ProcessVec2L(extraInfo1);
         }
         extraInfo1.isValid = false;

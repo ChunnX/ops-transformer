@@ -91,11 +91,13 @@ using AttentionCommon::Align64Func;
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
+// SMLA expands the type and constant parameters of its dual-KV sparse-MLA template.
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
+// SMLA selects tile parameters for the dual-KV sparse-MLA template.
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \

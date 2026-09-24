@@ -72,6 +72,7 @@ __aicore__ inline T QSFAAlign(T num, T rnd)
 template <typename T>
 __aicore__ inline size_t BlockAlign(size_t s)
 {
+    // KV-quant SFA selects tile parameters for the quantized KV-cache template in BlockAlign.
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;
     }
@@ -112,6 +113,7 @@ struct RunInfo {
     uint32_t s2Size;
     uint32_t mSize;
     uint32_t mSizeV;
+    // KV-quant SFA configures the output matrix stage for quantized KV-cache in Min.
     uint32_t mSizeVStart;
     uint32_t tndIsS2SplitCore;
     uint32_t tndCoreStartKVSplitPos;

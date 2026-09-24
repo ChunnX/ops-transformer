@@ -403,6 +403,7 @@ void SMLAInfoParser::GetOptionalInputParaInfo()
     sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_SPARSE_INDICES_INDEX, opParamInfo_.oriSparseIndices);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_SPARSE_INDICES_INDEX, opParamInfo_.cmpSparseIndices);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_BLOCK_TABLE_INDEX, opParamInfo_.oriBlockTable);
+    // SMLA resolves compressed-KV sequence bounds for the dual-KV sparse-MLA path in GetOptionalInputParaInfo.
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_BLOCK_TABLE_INDEX, opParamInfo_.cmpBlockTable);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, SINKS_INDEX, opParamInfo_.sinks);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_Q_INDEX, opParamInfo_.cuSeqLensQ);
@@ -513,6 +514,7 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
     if (opParamInfo_.oriKv.desc != nullptr) {
+        // SMLA validates compressed-KV descriptors for its dual-KV sparse-MLA contract in GetInOutDataType.
         oriKvType_ = opParamInfo_.oriKv.desc->GetDataType();
     }
     if (opParamInfo_.cmpKv.desc != nullptr) {
@@ -873,6 +875,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
     if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
+        // SMLA validates compressed-KV descriptors for its dual-KV sparse-MLA contract in GetMaxBlockNumPerBatch.
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),

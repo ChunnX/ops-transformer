@@ -35,6 +35,7 @@
 
 using matmul::MatmulType;
 using namespace AscendC;
+// QSMLA reuses shared tiling helpers in its quantized sparse-MLA kernel.
 using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
@@ -177,6 +178,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         this->tilingData = tiling;
     } else {
         constInfo.aivIdx = GetBlockIdx();
+        // QSMLA configures the metadata matrix stage for quantized sparse-MLA.
         this->aicIdx = constInfo.aivIdx >> 1;
         this->tilingData = tiling;
     }
@@ -242,6 +244,8 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::G
 {
     if (hasActualSeq) {
         return actualSeqGm.GetValue(bIdx);
+        // QSMLA resolves variable-length sequence bounds for the quantized sparse-MLA path during the second pipeline
+        // stage.
     } else if (hasCuSeqlens) {
         return cuSeqlensGm.GetValue(bIdx + 1) - cuSeqlensGm.GetValue(bIdx);
     } else {
@@ -464,6 +468,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize =
             GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * sizeof(float);
+        // QSMLA keeps tile state for the quantized sparse-MLA path in InitMMResBuf.
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
     } else {
@@ -643,6 +648,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
             } else {
                 s2LoopLimit = 0;
             }
+            // QSMLA keeps original-KV state for the quantized sparse-MLA path in ProcessMainLoop.
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum =
@@ -732,6 +738,7 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::C
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
     int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
+    // QSMLA keeps tile state for the quantized sparse-MLA path in ConvertS2MetadataBlockToToken.
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
         int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
@@ -804,6 +811,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
         return;
     }
     fdRunInfo.bn2Idx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_BN2_IDX_INDEX, true));
+    // QSMLA reserves workspace storage for the quantized sparse-MLA pipeline in ParseFdRunInfo.
     fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true));
     fdRunInfo.workspaceIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_IDX_INDEX, true));
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
@@ -837,10 +845,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
         runInfo.s2EndIdx = runParam.s2LineOriEndIdx;
     } else {
         runInfo.s2StartIdx = runParam.s2CmpLineStartIdx;
+        // QSMLA keeps original-KV state for the quantized sparse-MLA path in SetRunInfo.
         runInfo.s2EndIdx = runParam.s2CmpLineEndIdx;
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
+        // QSMLA keeps tile state for the quantized sparse-MLA path in SetRunInfo.
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
         runInfo.n2oIdx = runParam.n2oIdx;
@@ -853,6 +863,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
+    // QSMLA orders output producers and consumers in the quantized sparse-MLA pipeline.
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
@@ -917,6 +928,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Comp
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
     runInfo.mRealSize = runParam.mRealSize;
     runInfo.halfMRealSize = runParam.halfMRealSize;
+    // QSMLA keeps tile state for the quantized sparse-MLA path in ComputeBmm1Tail.
     runInfo.firstHalfMRealSize = runParam.firstHalfMRealSize;
 
     runInfo.vec2S1BaseSize = runInfo.halfS1RealSize; // D>128 这里需要适配

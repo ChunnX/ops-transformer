@@ -83,6 +83,7 @@ public:
     static constexpr uint32_t M_BASE_SIZE = 256;
     static constexpr uint32_t S1_BASE_SIZE = 4;
     static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
+    // LI keeps tile state for the index-selection path.
     static constexpr uint32_t S2_BASE_SIZE = 128;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
@@ -364,6 +365,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Init(__gm__ uint8_t *query, 
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
+        // LI resolves variable-length sequence bounds for the index-selection path in GetBlockIdx.
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
         aiCoreIdx = tmpBlockIdx;
     }
@@ -538,6 +540,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessMain()
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
+        // LI resolves variable-length sequence bounds for the index-selection path in ProcessMain.
         splitCoreInfo.gS1Start = 0;
     }
 

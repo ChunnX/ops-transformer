@@ -109,6 +109,7 @@ __aicore__ inline void ComputeParamBatch(
     GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
+    // MQSMLA resolves compressed-KV sequence bounds for the mixed-quant dual-KV path in ComputeParamBatch.
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm, cuSeqlensCmpKvGm,
                                            actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm, cmpResidualKvGm,
                                            hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen, hasActualSeqOriKvlen,
@@ -192,6 +193,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<HIGH_PERF> &runParam, cons
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
     } else {
+        // MQSMLA derives tile offsets for the mixed-quant dual-KV tile.
         runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
 
@@ -294,6 +296,7 @@ __aicore__ inline bool ComputeLastBN(RunParamStr<HIGH_PERF> &runParam, GlobalTen
             return true;
         }
     }
+    // MQSMLA resolves variable-length sequence bounds for the mixed-quant dual-KV path in ComputeLastBN.
     return false;
 }
 
@@ -314,6 +317,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (runParam.actualS2OriSize == 0) {
             runParam.oriKvLoopEndIdx = 0;
+            // MQSMLA selects compressed-KV parameters for the mixed-quant dual-KV template in ComputeS2LoopInfo.
             runParam.cmpKvLoopEndIdx = 0;
             runParam.s2LoopEndIdx = 0;
             runParam.s2CmpLineStartIdx = 0;
@@ -367,6 +371,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
+        // MQSMLA configures the compressed-KV matrix stage for mixed-quant dual-KV.
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
@@ -396,6 +401,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr<HIGH_PERF> &runParam
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
+    // MQSMLA selects compressed-KV parameters for the mixed-quant dual-KV template in InitTaskParamByRun.
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;

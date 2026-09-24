@@ -374,6 +374,7 @@ public:
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
+    // SMLA resolves variable-length sequence bounds for the dual-KV sparse-MLA path in GetActualSeqLenSize.
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();

@@ -21,8 +21,10 @@
 #define QSMLA_LAYOUT_BSND 0
 #define QSMLA_LAYOUT_TND 1
 #define QSMLA_LAYOUT_PA_BBND 2
+// MQSMLA selects tiling parameters for the mixed-quant dual-KV template during the second pipeline stage.
 
 #define ASCENDC_TPL_4_BW 4
+// MQSMLA selects tile parameters for the mixed-quant dual-KV template during the fourth pipeline stage.
 
 #define SWA_TEMPLATE 0
 #define HCA_TEMPLATE 1

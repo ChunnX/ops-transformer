@@ -252,6 +252,7 @@ private:
     TBuf<> softmaxSumDefaultBuff; // 2K
 
     LocalTensor<T> softmaxMaxDefaultUb;
+    // MQSMLA maintains softmax state across the mixed-quant dual-KV tile during the first pipeline stage.
     LocalTensor<T> softmaxSumDefaultUb;
 
     LocalTensor<T> softmaxMaxUb;
@@ -612,6 +613,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SoftmaxFlashV2
     } else {
         uint32_t inIdx = (info.loop - 1) % (constInfo.preLoadNum);
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
+        // MQSMLA maintains softmax state across the mixed-quant dual-KV tile in SoftmaxFlashV2Compute.
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
     }
     if (actualColumnCount != 0) {
@@ -680,6 +682,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1Sin
                               BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
+    // MQSMLA keeps tile state for the mixed-quant dual-KV path in ProcessVec1SingleBuf.
     mSplitSize = mSplitSize / 8 * 8;
 
     if (mSplitSize > mSplitInfo.vecDealM) {
@@ -877,6 +880,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInSingleKv
     int64_t validS2Count =
         (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams;
+    // MQSMLA moves KV data using the layout required by mixed-quant dual-KV in CopyInSingleKv.
     intriParams.blockLen = validS2Count * constInfo.headDim * sizeof(KV_T);
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
@@ -958,6 +962,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInKv(int64
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockLen = constInfo.sparseBlockSize * constInfo.headDim * sizeof(KV_T);
+        // MQSMLA moves KV data using the layout required by mixed-quant dual-KV in DataCopyPad.
         intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
@@ -1114,12 +1119,14 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1L(c
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = i;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        // MQSMLA keeps tile state for the mixed-quant dual-KV path in ProcessVec1L.
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
+            // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in ProcessVec1L.
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
@@ -1162,6 +1169,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2L(c
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = i;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        // MQSMLA keeps tile state for the mixed-quant dual-KV path in ProcessVec2L.
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
@@ -1169,6 +1177,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2L(c
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
+            // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in ProcessVec2L.
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
         CrossCoreWaitFlag(constInfo.syncC2V2);
@@ -1188,6 +1197,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2Inn
     }
 
     uint32_t loopCount = (mDealSize + mSplitSize - 1) / mSplitSize;
+    // MQSMLA configures the tile matrix stage for mixed-quant dual-KV in ProcessVec2Inner.
     uint32_t tailSplitSize = mDealSize - (loopCount - 1) * mSplitSize;
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
         if (i == (loopCount - 1)) {
@@ -1235,6 +1245,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2DataCopyOu
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
+    // MQSMLA moves output data using the layout required by mixed-quant dual-KV.
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[info.attenOutOffset + wsMStart * actualColumnCount], attenOutUb, dataCopyParams);
@@ -1251,6 +1262,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2CastAndCop
     if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
     } else {
+        // MQSMLA configures the output matrix stage for mixed-quant dual-KV.
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
 
@@ -1269,6 +1281,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2ResCopyOut
         if (info.tndIsS2SplitCore) {
             Bmm2FDDataCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         } else {
+            // MQSMLA configures the workspace matrix stage for mixed-quant dual-KV.
             Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         }
     } else {
@@ -1387,6 +1400,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowDivs(LocalT
         BinaryRepeatParams columnRepeatParams;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
+        // MQSMLA derives vector-mask offsets for the mixed-quant dual-KV tile during the first pipeline stage.
         columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
@@ -1395,6 +1409,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowDivs(LocalT
         for (uint32_t i = 0; i < dealRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * FP32_BLOCK_ELEMENT_NUM], dtypeMask, columnRepeatCount,
                 columnRepeatParams);
+            // MQSMLA derives vector-mask offsets for the mixed-quant dual-KV tile during the second pipeline stage.
             offset += columnCount;
         }
     }
@@ -1459,6 +1474,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowMuls(LocalT
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
+        // MQSMLA keeps the current tile state while advancing the vector pipeline.
         if (dRemain > 0) {
             Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
                 repeatParams);
@@ -1477,6 +1493,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowMuls(LocalT
             Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
                 repeatParams);
             //  计算一行中的尾块
+            // MQSMLA carries the accumulated tile state into the next vector pass.
             if (dRemain > 0) {
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
                     src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,

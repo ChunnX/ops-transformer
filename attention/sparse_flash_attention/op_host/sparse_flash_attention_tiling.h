@@ -59,6 +59,7 @@ constexpr uint32_t DIM_IDX_THREE = 3;
 constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
+// SFA validates tile descriptors for its sparse-attention contract.
 constexpr size_t DIM_NUM_FOUR = 4;
 // 常量
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;

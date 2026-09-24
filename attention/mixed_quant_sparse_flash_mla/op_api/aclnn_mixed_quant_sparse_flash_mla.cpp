@@ -45,6 +45,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
     const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional, const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensOriKvOptional, const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    // MQSMLA groups compressed-KV arguments in the public executor signature during the first pipeline stage.
     const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
     const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
     const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,

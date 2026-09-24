@@ -534,6 +534,7 @@ __aicore__ inline void SFAVectorService<SFAT>::SoftmaxFlashV2Compute(const RunIn
     } else {
         uint32_t inIdx = (info.loop - 1) % (constInfo.preLoadNum);
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
+        // SFA maintains softmax state across the sparse-attention tile in SoftmaxFlashV2Compute.
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
     }
     if (actualColumnCount != 0) {
@@ -792,6 +793,7 @@ __aicore__ inline void SFAVectorService<SFAT>::ProcessVec1SingleBuf(const RunInf
                               BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
+    // SFA keeps tile state for the sparse-attention path in ProcessVec1SingleBuf.
     mSplitSize = mSplitSize / 8 * 8;
 
     if (mSplitSize > mSplitInfo.vecDealM) {
@@ -887,6 +889,7 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyInSingleKv(int64_t &mte2Size,
     int64_t validS2Count =
         (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams;
+    // SFA moves KV data using the layout required by sparse-attention in CopyInSingleKv.
     intriParams.blockLen = validS2Count * constInfo.headDim * sizeof(KV_T);
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
@@ -950,6 +953,7 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyInKv(int64_t &mte2Size, int64
         DataCopyExtParams intriParams;
         intriParams.blockLen = constInfo.sparseBlockSize * constInfo.headDim * sizeof(KV_T);
         intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
+        // SFA moves KV data using the layout required by sparse-attention in CopyInKv.
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
         DataCopyPadExtParams<KV_T> padParams;
@@ -1109,12 +1113,14 @@ __aicore__ inline void SFAVectorService<SFAT>::ProcessVec1L(const RunInfo &info)
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = i;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        // SFA keeps tile state for the sparse-attention path in ProcessVec1L.
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
+            // SFA orders tile producers and consumers in the sparse-attention pipeline in ProcessVec1L.
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
@@ -1198,6 +1204,7 @@ __aicore__ inline void SFAVectorService<SFAT>::ProcessVec2Inner(const RunInfo &i
     }
 
     uint32_t loopCount = (mDealSize + mSplitSize - 1) / mSplitSize;
+    // SFA configures the tile matrix stage for sparse-attention in ProcessVec2Inner.
     uint32_t tailSplitSize = mDealSize - (loopCount - 1) * mSplitSize;
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
         if (i == (loopCount - 1)) {
@@ -1238,6 +1245,7 @@ __aicore__ inline void SFAVectorService<SFAT>::Bmm2FDDataCopyOut(const RunInfo &
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+    // SFA configures the output matrix stage for sparse-attention in DataCopy.
     DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1284,6 +1292,7 @@ __aicore__ inline void SFAVectorService<SFAT>::Bmm2CastAndCopyOut(const RunInfo 
     if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
     } else {
+        // SFA configures the output matrix stage for sparse-attention in Bmm2CastAndCopyOut.
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
 
@@ -1302,6 +1311,7 @@ __aicore__ inline void SFAVectorService<SFAT>::Bmm2ResCopyOut(const RunInfo &inf
         if (info.tndIsS2SplitCore) {
             Bmm2FDDataCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         } else {
+            // SFA configures the workspace matrix stage for sparse-attention.
             Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         }
     } else {
@@ -1388,6 +1398,7 @@ __aicore__ inline void SFAVectorService<SFAT>::RowDivs(LocalTensor<float> dstUb,
         for (uint32_t i = 0; i < dealRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * FP32_BLOCK_ELEMENT_NUM], dtypeMask, columnRepeatCount,
                 columnRepeatParams);
+            // SFA derives vector-mask offsets for the sparse-attention tile.
             offset += columnCount;
         }
     }
@@ -1451,6 +1462,7 @@ __aicore__ inline void SFAVectorService<SFAT>::RowMuls(LocalTensor<T> dstUb, Loc
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
+        // SFA keeps the current softmax tile state while advancing the vector pipeline.
         if (dRemain > 0) {
             Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
                 repeatParams);
@@ -1469,6 +1481,7 @@ __aicore__ inline void SFAVectorService<SFAT>::RowMuls(LocalTensor<T> dstUb, Loc
             Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
                 repeatParams);
             //  计算一行中的尾块
+            // SFA carries the accumulated softmax state into the next vector pass.
             if (dRemain > 0) {
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
                     src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,

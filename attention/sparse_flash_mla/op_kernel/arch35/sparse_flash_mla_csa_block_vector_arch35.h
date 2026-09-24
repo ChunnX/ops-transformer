@@ -54,6 +54,7 @@ struct PhyAddrValidInfo {
     bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
     bool cmpTopkMode = true;  // cmpMaskMode==0: 走topkLength语义(保持原行为)
     int64_t cmpBase = 0;      // restoredSize - actualS1Size + 1
+    // SMLA uses cmpBase to map restored compressed positions back to the active sparse window.
 };
 
 TEMPLATES_DEF
@@ -131,6 +132,7 @@ public:
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
     {
+        // SMLA maps paged-cache positions to the cache addresses used by dual-KV sparse-MLA in InitS2SplitStaging.
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
@@ -141,17 +143,16 @@ public:
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
-                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
-                                        bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
-                                        GlobalTensor<int32_t> actualSeqOriKvlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensOriKvGm, GlobalTensor<int32_t> oriTopkLengthGm,
-                                        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
-                                        GlobalTensor<int32_t> actualSeqCmpKvlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
-                                        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
-                                        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
-                                        ConstInfo &constInfo);
+    __aicore__ inline void GetKVPhyAddr(
+        uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
+        bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
+        GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
+        GlobalTensor<int32_t> oriTopkLengthGm,
+        // SMLA resolves compressed-KV sequence bounds for the dual-KV sparse-MLA path during the second pipeline stage.
+        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv, GlobalTensor<int32_t> actualSeqCmpKvlenGm,
+        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
+        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
+        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &constInfo);
     __aicore__ inline void FreeEvent(ConstInfo &constInfo);
 
 private:
@@ -197,6 +198,7 @@ private:
     {
         uint32_t coreIdx;
         if constexpr (IS_SPLIT_G) {
+            // SMLA reserves workspace storage for the dual-KV sparse-MLA pipeline in GetIntraCoreWorkspaceIdx.
             coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
         } else {
             coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
@@ -941,6 +943,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     uint32_t crossWorkspaceIdx =
         static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+    // SMLA reserves LSE storage for the dual-KV sparse-MLA pipeline.
     LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
     LocalTensor<float> blockMaxUb = tmpUb;
     LocalTensor<float> blockSumUb = tmpUb[256];
@@ -958,6 +961,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     while (startRow < runInfo.vec2MRealSize) {
         int64_t dealRowCount = intraLayout.chunkRows;
         if (startRow + dealRowCount > runInfo.vec2MRealSize) {
+            // SMLA maintains tile state across the dual-KV sparse-MLA tile.
             dealRowCount = runInfo.vec2MRealSize - startRow;
         }
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
@@ -980,6 +984,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
             lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
             lseParams.blockLen = sizeof(float);
             lseParams.srcStride = 0;
+            // SMLA maintains LSE state across the dual-KV sparse-MLA tile.
             lseParams.dstStride = 0;
             SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
             WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
@@ -1046,6 +1051,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
+                // SMLA maintains softmax state across the dual-KV sparse-MLA tile during the first pipeline stage.
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     smlaSumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
@@ -1066,6 +1072,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
+                // SMLA maintains softmax state across the dual-KV sparse-MLA tile during the second pipeline stage.
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     smlaSumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
@@ -1252,6 +1259,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &
                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
+    // SMLA configures the output matrix stage for dual-KV sparse-MLA.
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
 }
 
@@ -1444,6 +1452,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    // SMLA orders tile producers and consumers in the dual-KV sparse-MLA pipeline in InitLocalBuffer.
     if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
@@ -1467,6 +1476,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInf
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    // SMLA orders tile producers and consumers in the dual-KV sparse-MLA pipeline in FreeEvent.
     if constexpr (IS_BATCH_CONSISTENCY) {
         WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
@@ -1484,6 +1494,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
                                                                 GlobalTensor<int32_t> &actualSeqGm,
                                                                 GlobalTensor<int32_t> &cuSeqlensGm, int64_t defaultSize)
 {
+    // SMLA resolves each batch length from explicit or cumulative-sequence metadata.
     if (hasActualSeq) {
         return actualSeqGm.GetValue(bIdx);
     } else if (hasCuSeqlens) {
@@ -1492,7 +1503,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
         return defaultSize;
     }
 }
-
+// SMLA derives original and compressed sparse-window bounds from the resolved sequence lengths.
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
                                                                                     int32_t actualOriS2Size,
@@ -1510,6 +1521,7 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
             } else if (constInfo.oriMaskMode == 3U) {
                 validInfo.oriRightBias = 0;
             } else {
+                // SMLA maps original-KV positions to the cache addresses used by dual-KV sparse-MLA.
                 validInfo.oriLeftBias =
                     (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
                 validInfo.oriRightBias =
@@ -1578,6 +1590,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
     bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
+    // SMLA resolves original-KV sequence bounds for the dual-KV sparse-MLA path in GetKVPhyAddrForKvType.
     GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
     GlobalTensor<int32_t> topkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, ConstInfo &constInfo,
     GlobalTensor<int32_t> &blockTableGm, GlobalTensor<int32_t> &sparseIndicesGm, GlobalTensor<uint32_t> &phyAddrGm,
@@ -1795,6 +1808,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
+    // SMLA resolves compressed-KV sequence bounds for the dual-KV sparse-MLA path during the third pipeline stage.
     bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
     GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
     GlobalTensor<int32_t> oriTopkLengthGm, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,

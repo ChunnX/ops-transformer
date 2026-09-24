@@ -68,6 +68,7 @@ public:
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        RunInfo &runInfo, ConstInfo &constInfo);
 
+    // SFA configures the output matrix stage for sparse-attention during the fourth pipeline stage.
     __aicore__ inline void IterateBmm2(
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
@@ -249,6 +250,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+        // SFA configures the query matrix stage for sparse-attention in IterateBmm1SFA.
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
 
@@ -373,15 +375,18 @@ public:
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
         ConstInfo &constInfo)
+    // SFA configures the output matrix stage for sparse-attention during the fifth pipeline stage.
     {}
 };
 
 template <typename T>
 struct CubeBlockTraits; // 声明
 
+// SFA configures the tile matrix stage for sparse-attention during the fifth pipeline stage.
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+// SFA configures the tile matrix stage for sparse-attention during the sixth pipeline stage.
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \

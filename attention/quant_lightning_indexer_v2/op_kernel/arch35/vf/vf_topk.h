@@ -44,6 +44,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __
     Reg::RegTensor<uint32_t> qliV2Vreg0U16;
     // 32bit 低16bit
     Reg::RegTensor<uint32_t> qliV2Vreg1U16;
+    // QLI V2 updates tile candidates for the V2 quantized index-selection pass in HistogramsFirstVFImpl.
     Reg::RegTensor<uint32_t> qliV2Vreg2U16;
     Reg::RegTensor<uint32_t> qliV2Vreg3U16;
 
@@ -54,6 +55,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __
                                                                  qliV2InputBuf + (qliV2I * 256) + 128);
 
         Reg::DeInterleave(qliV2Vreg1, qliV2Vreg0, (Reg::RegTensor<uint8_t> &)qliV2Vreg0U16,
+                          // QLI V2 updates tile candidates for the V2 quantized index-selection pass in DeInterleave.
                           (Reg::RegTensor<uint8_t> &)qliV2Vreg2U16);
 
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
@@ -105,6 +107,7 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, _
     Reg::RegTensor<uint8_t> qliV2Vreg1;
     Reg::RegTensor<uint8_t> qliV2Vreg2;
     Reg::RegTensor<uint8_t> qliV2Vreg3;
+    // QLI V2 updates tile candidates for the V2 quantized index-selection pass in HistogramsSecondVFImpl.
 
     for (uint16_t qliV2I = 0; qliV2I < qliV2VfLoop; ++qliV2I) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2Vreg1U16, qliV2Vreg0U16,
@@ -170,6 +173,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __
     Reg::RegTensor<uint32_t> qliV2Vreg1U16;
     Reg::RegTensor<uint32_t> qliV2Vreg2U16;
     Reg::RegTensor<uint32_t> qliV2Vreg3U16;
+    // QLI V2 updates tile candidates for the V2 quantized index-selection pass in HistogramsThirdVFImpl.
 
     for (uint16_t qliV2I = 0; qliV2I < qliV2VfLoop; ++qliV2I) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2Vreg1U16, qliV2Vreg0U16,
@@ -177,6 +181,8 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2Vreg3U16, qliV2Vreg2U16,
                                                                  qliV2InputBuf + (qliV2I * 256) + 128);
 
+        // QLI V2 updates vector-mask candidates for the V2 quantized index-selection pass during the first pipeline
+        // stage.
         Reg::DeInterleave(qliV2Vreg1, qliV2Vreg0, (Reg::RegTensor<uint8_t> &)qliV2Vreg0U16,
                           (Reg::RegTensor<uint8_t> &)qliV2Vreg2U16);
         Reg::DeInterleave(qliV2Vreg3, qliV2Vreg2, (Reg::RegTensor<uint8_t> &)qliV2Vreg1U16,
@@ -243,6 +249,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __u
     Reg::RegTensor<uint8_t> qliV2Vreg1;
     Reg::RegTensor<uint8_t> qliV2Vreg2;
     Reg::RegTensor<uint8_t> qliV2Vreg3;
+    // QLI V2 updates tile candidates for the V2 quantized index-selection pass in HistogramsLastVFImpl.
 
     for (uint16_t qliV2I = 0; qliV2I < qliV2VfLoop; ++qliV2I) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2Vreg1U16, qliV2Vreg0U16,
@@ -250,6 +257,8 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *qliV2HistogramsBuf, __u
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2Vreg3U16, qliV2Vreg2U16,
                                                                  qliV2InputBuf + (qliV2I * 256) + 128);
 
+        // QLI V2 updates vector-mask candidates for the V2 quantized index-selection pass during the second pipeline
+        // stage.
         Reg::DeInterleave(qliV2Vreg1, qliV2Vreg0, (Reg::RegTensor<uint8_t> &)qliV2Vreg0U16,
                           (Reg::RegTensor<uint8_t> &)qliV2Vreg2U16);
         Reg::DeInterleave(qliV2Vreg3, qliV2Vreg2, (Reg::RegTensor<uint8_t> &)qliV2Vreg1U16,

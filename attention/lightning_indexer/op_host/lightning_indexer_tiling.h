@@ -90,6 +90,7 @@ TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
 TILING_DATA_FIELD_DEF(uint32_t, s2Size)
+// LI validates tile descriptors for its index-selection contract.
 TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)

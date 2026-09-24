@@ -44,6 +44,7 @@ TEMPLATES_DEF
 class CSABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
+    // MQSMLA configures the tile matrix stage for mixed-quant dual-KV in GetQueryGmFormat.
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -336,9 +337,11 @@ public:
 template <typename T>
 struct CubeBlockTraits; // 声明
 
+// MQSMLA configures the tile matrix stage for mixed-quant dual-KV during the sixth pipeline stage.
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+// MQSMLA configures the compressed-KV matrix stage for the mixed-quant path.
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \

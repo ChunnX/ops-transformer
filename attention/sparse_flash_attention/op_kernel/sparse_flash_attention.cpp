@@ -34,6 +34,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::SFAMatmulServiceDummy<__VA_ARGS__>>::type; \
+        /* SFA configures the tiling matrix stage for sparse-attention during the first pipeline stage. */ \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::SFAVectorService<__VA_ARGS__>>::type; \
@@ -49,6 +50,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::SFAMatmulServiceDummy<__VA_ARGS__>>::type; \
+        /* SFA configures the tiling matrix stage for sparse-attention during the second pipeline stage. */ \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::SFAVectorService<__VA_ARGS__>>::type; \

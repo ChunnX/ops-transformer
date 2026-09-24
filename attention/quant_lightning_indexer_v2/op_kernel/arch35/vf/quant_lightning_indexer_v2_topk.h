@@ -27,6 +27,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
+    // QLI V2 updates top-k candidates for the V2 quantized index-selection pass in operator.
     {}
 };
 
@@ -107,6 +108,7 @@ public:
         this->trunkLen = trunkLen;
     }
 
+    // QLI V2 updates tile candidates for the V2 quantized index-selection pass in InitBuffers.
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;

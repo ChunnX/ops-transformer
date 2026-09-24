@@ -75,6 +75,7 @@ private:
     static constexpr uint32_t L1_EVENT0 = EVENT_ID2;
     static constexpr uint32_t L1_EVENT1 = EVENT_ID3;
     static constexpr uint32_t L1_EVENT2 = EVENT_ID4;
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline during the first pipeline stage.
     static constexpr uint32_t L1_EVENT3 = EVENT_ID5;
     static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
     static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
@@ -86,6 +87,7 @@ private:
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};                    // isSetFMatrix isSetPadding
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline during the second pipeline stage.
     static constexpr uint32_t mte21KVIds[3] = {L1_EVENT4, L1_EVENT5, L1_EVENT6};
 
     ConstInfo constInfo{};
@@ -202,6 +204,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::InitBuffers(TPip
 
     // L0A
     pipe->InitBuffer(tmpBufL0A, L0A_PP_SIZE * 2); // 64K
+    // MQSMLA reserves query storage for the mixed-quant dual-KV pipeline.
     aL0TensorPingPong = tmpBufL0A.Get<KV_T>();
     // L0B
     pipe->InitBuffer(tmpBufL0B, L0B_PP_SIZE * 2); // 64K
@@ -218,6 +221,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in AllocEventID.
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
@@ -232,6 +236,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in FreeEventID.
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
@@ -250,6 +255,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::CopyGmToL1(Local
     nd2nzPara.nValue = srcN; // 行数
     nd2nzPara.dValue = srcD;
     nd2nzPara.srcDValue = srcDstride;
+    // MQSMLA moves tile data using the layout required by mixed-quant dual-KV in CopyGmToL1.
     nd2nzPara.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
@@ -281,6 +287,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::LoadDataMm1A(Loc
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
     loadData3DParams.padList[2] = 0;
+    // MQSMLA keeps tile state for the mixed-quant dual-KV path in LoadDataMm1A.
     loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
@@ -312,6 +319,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::LoadDataMm1B(Loc
     LocalTensor<KV_T> srcTensor = l1Tensor[nSize * kSplitSize * idx];
 
     LoadData2DParams loadData2DParams;
+    // MQSMLA moves KV data using the layout required by mixed-quant dual-KV in LoadDataMm1B.
     loadData2DParams.startIndex = 0;
     loadData2DParams.repeatTimes = (nSize + 15) / 16 * kSize / (32 / sizeof(KV_T));
     loadData2DParams.srcStride = 1;
@@ -431,6 +439,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         nd2nzPara.ndNum = 1;
                         nd2nzPara.nValue = nL1Size;
                         nd2nzPara.dValue = constInfo.headDim >> 1;
+                        // MQSMLA moves original-KV data using the layout required by mixed-quant dual-KV during the
+                        // first pipeline stage.
                         nd2nzPara.srcDValue = constInfo.headDim;
                         nd2nzPara.dstNzC0Stride = nL1SizeAlign;
                         nd2nzPara.dstNzNStride = 1;
@@ -444,6 +454,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         Nd2NzParams nd2nzPara;
                         nd2nzPara.ndNum = 1;
                         nd2nzPara.nValue = nL1Size;
+                        // MQSMLA moves original-KV data using the layout required by mixed-quant dual-KV during the
+                        // second pipeline stage.
                         nd2nzPara.dValue = constInfo.headDim >> 1;
                         nd2nzPara.srcDValue = constInfo.headDim;
                         nd2nzPara.dstNzC0Stride = nL1SizeAlign;
@@ -462,6 +474,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                     nd2nzPara.ndNum = 1;
                     nd2nzPara.nValue = nL1Size;
                     nd2nzPara.dValue = constInfo.headDim >> 1;
+                    // MQSMLA moves KV data using the layout required by mixed-quant dual-KV during the second pipeline
+                    // stage.
                     nd2nzPara.srcDValue = constInfo.headDim;
                     nd2nzPara.dstNzC0Stride = nL1SizeAlign;
                     nd2nzPara.dstNzNStride = 1;
@@ -475,6 +489,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                     Nd2NzParams nd2nzPara;
                     nd2nzPara.ndNum = 1;
                     nd2nzPara.nValue = nL1Size;
+                    // MQSMLA moves KV data using the layout required by mixed-quant dual-KV during the third pipeline
+                    // stage.
                     nd2nzPara.dValue = constInfo.headDim >> 1;
                     nd2nzPara.srcDValue = constInfo.headDim;
                     nd2nzPara.dstNzC0Stride = nL1SizeAlign;
@@ -540,6 +556,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
+                    // MQSMLA configures the tile matrix stage for mixed-quant dual-KV during the first pipeline stage.
                     abL0BufIter++;
                 }
 
@@ -562,6 +579,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                                          info.actualSingleProcessSInnerSizeAlign],
                             cL0Tensor, fixParams);
                 }
+                // MQSMLA configures the tile matrix stage for mixed-quant dual-KV during the second pipeline stage.
                 if (mL1Loops == 2) {
                     cL0BufIter++;
                 }
@@ -569,6 +587,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
 
             SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]); // 反向同步, 表示L1已经被mte1消费完
         }
+        // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline during the fifth pipeline
+        // stage.
         if (mL1Loops == 1) {
             cL0BufIter++;
         }
@@ -586,6 +606,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
     uint32_t mL1SizeAlign = M_SPLIT_SIZE; // 16对齐
     uint32_t mL1Size = M_SPLIT_SIZE;      // m的实际大小
 
+    // MQSMLA keeps KV state for the mixed-quant dual-KV path in ComputeMm2.
     uint32_t nSize = BlockAlign<KV_T>(constInfo.headDim);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
     uint32_t nL1SizeAlign = N_SPLIT_SIZE; // 16对齐
@@ -602,6 +623,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
     LocalTensor<KV_T> subvTensor;
 
     // ka表示左矩阵4buf选择哪一块buf, kb表示右矩阵3buf选择哪一块buf
+    // MQSMLA reserves KV storage for the mixed-quant dual-KV pipeline.
     uint32_t ka = 0, kb = 0;
     uint32_t mBaseIdx = qpL1BufIter;
     for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) { // n切L1 -> D
@@ -626,6 +648,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
             uint32_t kOffset = k1 * kL0Loops;
+            // MQSMLA orders KV producers and consumers in the mixed-quant dual-KV pipeline.
             kL0Size = 128;
             // 此处必须先初始化kL0Size, 再求kL0Loops, 否则由于循环会改变kL0Size大小, 导致kL0Loops错误
             kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
@@ -697,6 +720,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                         nd2nzPara.nValue = kL0Size;      // 行数
                         nd2nzPara.dValue = N_SPLIT_SIZE; // constInfo.headDim;
                         nd2nzPara.srcDValue = constInfo.headDim;
+                        // MQSMLA moves tile data using the layout required by mixed-quant dual-KV during the second
+                        // pipeline stage.
                         nd2nzPara.dstNzC0Stride = kL0SizeAlign;
                         nd2nzPara.dstNzNStride = 1;
                         nd2nzPara.srcNdMatrixStride = 0;
@@ -712,6 +737,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     nd2nzPara.nValue = kL0Size;      // 行数
                     nd2nzPara.dValue = N_SPLIT_SIZE; // constInfo.headDim;
                     nd2nzPara.srcDValue = constInfo.headDim;
+                    // MQSMLA moves tile data using the layout required by mixed-quant dual-KV during the third pipeline
+                    // stage.
                     nd2nzPara.dstNzC0Stride = kL0SizeAlign;
                     nd2nzPara.dstNzNStride = 1;
                     nd2nzPara.srcNdMatrixStride = 0;
@@ -760,10 +787,13 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(abL0BufIter % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
                     LoadData3DParamsV2<KV_T> loadData3DParamsForB;
                     loadData3DParamsForB.l1H = kL0SizeAlign / 16; // 源操作数height
-                    loadData3DParamsForB.l1W = 16;                // 源操作数weight=16，目的height=l1H*L1W
+                    // MQSMLA moves KV data using the layout required by mixed-quant dual-KV during the fourth pipeline
+                    // stage.
+                    loadData3DParamsForB.l1W = 16; // 源操作数weight=16，目的height=l1H*L1W
                     loadData3DParamsForB.padList[0] = 0;
                     loadData3DParamsForB.padList[1] = 0;
                     loadData3DParamsForB.padList[2] = 0;
+                    // MQSMLA keeps tile state for the mixed-quant dual-KV path during the fourth pipeline stage.
                     loadData3DParamsForB.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
                     loadData3DParamsForB.mExtension = kL0SizeAlign; // 在目的操作数height维度的传输长度
@@ -816,6 +846,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
                     MmadParams mmadParams;
+                    // MQSMLA configures the KV matrix stage for mixed-quant dual-KV.
                     mmadParams.m = mL1SizeAlign;
                     mmadParams.n = nL1SizeAlign;
                     mmadParams.k = kL0Size;
@@ -828,6 +859,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
+                    // MQSMLA configures the tile matrix stage for mixed-quant dual-KV during the third pipeline stage.
                     abL0BufIter++;
                 }
 
@@ -854,6 +886,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     cL0BufIter++;
                 }
             }
+            // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline during the sixth pipeline
+            // stage.
             SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]); // 反向同步, 表示L1已经被mte1消费完
         }
         // cL0BufIter已经不在使用

@@ -62,6 +62,7 @@ TEMPLATES_DEF
 class CSABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
+    // SMLA configures the tile matrix stage for dual-KV sparse-MLA in GetKvGmFormat.
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
@@ -524,9 +525,11 @@ public:
 template <typename T>
 struct CubeBlockTraits; // 声明
 
+// SMLA configures the tile matrix stage for dual-KV sparse-MLA during the second pipeline stage.
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+// SMLA configures the tile matrix stage for dual-KV sparse-MLA during the third pipeline stage.
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \

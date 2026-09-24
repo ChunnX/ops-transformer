@@ -327,6 +327,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     // 将matmul结果从L0C搬运到UB
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
+    // QSMLA configures the output matrix stage for quantized sparse-MLA in IterateBmm1CSA.
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
     outputBuf.SetCrossCore();
@@ -374,6 +375,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     qsmlaFixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
+    // QSMLA configures the output matrix stage for quantized sparse-MLA in IterateBmm2CSA.
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
 
@@ -395,9 +397,11 @@ public:
 template <typename T>
 struct CubeBlockTraits; // 声明
 
+// QSMLA configures the tile matrix stage for quantized sparse-MLA during the first pipeline stage.
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+// QSMLA configures the tile matrix stage for quantized sparse-MLA during the second pipeline stage.
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \

@@ -41,6 +41,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockCube<__VA_ARGS__>, \
                                       BaseApi::CSABlockCubeDummy<__VA_ARGS__>>::type; \
+        /* MQSMLA configures the tiling matrix stage for mixed-quant dual-KV. */ \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockVecDummy<__VA_ARGS__>, \
                                       BaseApi::CSABlockVec<__VA_ARGS__>>::type; \

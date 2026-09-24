@@ -404,9 +404,11 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
+    // LI V2 orders tile producers and consumers in the V2 index-selection pipeline during the first pipeline stage.
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
+    // LI V2 orders tile producers and consumers in the V2 index-selection pipeline during the second pipeline stage.
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
@@ -424,6 +426,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
+    // LI V2 orders tile producers and consumers in the V2 index-selection pipeline in FreeEventID.
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 

@@ -115,6 +115,7 @@ struct QSMLAParaInfo {
     const int64_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
+    // QSMLA updates compressed-KV candidates for the quantized sparse-MLA pass.
     const int64_t *oriWinLeft = nullptr;
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
@@ -137,6 +138,7 @@ public:
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
+    // QSMLA validates tile descriptors for its quantized sparse-MLA contract.
     int64_t s2Size = 0;
     int64_t cmpS2Size = 0;
     uint32_t gSize = 0;
@@ -287,6 +289,7 @@ public:
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
+    // QSMLA resolves compressed-KV sequence bounds for the quantized sparse-MLA path in GetActualSeqLenSize.
     ge::DataType oriKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpSparseIndicesType_ = ge::DT_INT32;
@@ -300,6 +303,7 @@ public:
 
     gert::Shape qShape_{};
     gert::Shape oriKvShape_{};
+    // QSMLA validates compressed-KV descriptors for its quantized sparse-MLA contract in GetActualSeqLenSize.
     gert::Shape cmpKvShape_{};
     gert::Shape oriSparseIndicesShape_{};
     gert::Shape cmpSparseIndicesShape_{};

@@ -40,6 +40,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // SMLA registers tile attributes and formats for the dual-KV sparse-MLA operator.
         this->Input("cmp_sparse_indices")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -110,6 +111,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // SMLA registers output attributes and formats for the dual-KV sparse-MLA operator.
         this->Output("attn_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -124,12 +126,14 @@ public:
         this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0); // cmp_mask_mode默认值0
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
+        // SMLA registers softmax attributes and formats for the dual-KV sparse-MLA operator during the first pipeline stage.
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
+        // SMLA registers softmax attributes and formats for the dual-KV sparse-MLA operator during the second pipeline stage.
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

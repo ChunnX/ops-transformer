@@ -185,6 +185,7 @@ private:
     TBuf<> softmaxSumDefaultBuff; // 1K
 
     LocalTensor<T> softmaxMaxDefaultUb;
+    // KV-quant SFA maintains softmax state across the quantized KV-cache tile in GetConfusionTransposeTiling.
     LocalTensor<T> softmaxSumDefaultUb;
 
     LocalTensor<T> softmaxMaxUb;
@@ -1042,6 +1043,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &inf
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
+            // KV-quant SFA orders tile producers and consumers in the quantized KV-cache pipeline in ProcessVec2L.
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
         CrossCoreWaitFlag(constInfo.syncC2V2);
@@ -1099,6 +1101,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+    // KV-quant SFA configures the output matrix stage for quantized KV-cache in DataCopy.
     DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1130,6 +1133,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunI
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
+    // KV-quant SFA moves output data using the layout required by quantized KV-cache.
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[info.attenOutOffset + wsMStart * actualColumnCount], attenOutUb, dataCopyParams);

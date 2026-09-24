@@ -139,6 +139,8 @@ ge::graphStatus QLIV2InfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(
         opParamInfo_.attenOut.shape == nullptr,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "The shape of sparse_indices is nullptr"),
+        // QLI V2 validates tile descriptors for its V2 quantized index-selection contract in
+        // CheckRequiredInOutExistence.
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         opParamInfo_.attenOut.desc == nullptr,
@@ -292,6 +294,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOutQuery);
     }
     if (opParamInfo_.layOutKey != nullptr) {
+        // QLI V2 validates query descriptors for its V2 quantized index-selection contract in GetAttrParaInfo.
         OP_LOGI(context_->GetNodeName(), "layout_key is:%s", opParamInfo_.layOutKey);
     }
     if (opParamInfo_.sparseCount != nullptr) {
@@ -416,6 +419,7 @@ ge::graphStatus QLIV2InfoParser::GetOpParaInfo()
     GetInputParaInfo();
     GetOutputParaInfo();
     if (ge::GRAPH_SUCCESS != GetAttrParaInfo()) {
+        // QLI V2 validates output descriptors for its V2 quantized index-selection contract.
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckAttrParaInfo()) {
@@ -848,6 +852,7 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     }
     gSize_ = n1Size_ / n2Size_;
 
+    // QLI V2 validates query descriptors for its V2 quantized index-selection contract in GetGSize.
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1082,6 +1087,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                 OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                                 opName_, "q and output_idx_offset",
+                                // QLI V2 validates query descriptors for its V2 quantized index-selection contract in
+                                // ValidateInputShapesMatch.
                                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                                     Ops::Base::ToString(opParamInfo_.outputIdxOffset.tensor->GetStorageShape()),
                                 "TND case q and output_idx_offset dim 0 are " + std::to_string(qTsize) + " and " +
@@ -1145,6 +1152,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                         (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q, w and sparse_indices",
+                        // QLI V2 validates query descriptors for its V2 quantized index-selection contract during the
+                        // fifth pipeline stage.
                         Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
                             Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + " and " +
                             Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
@@ -1390,6 +1399,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
+        // QLI V2 validates KV descriptors for its V2 quantized index-selection contract.
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(3), 1};

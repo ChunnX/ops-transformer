@@ -1631,6 +1631,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
         return status;
     }
 
+    // KV-quant SFA validates tile descriptors for its quantized KV-cache contract in CheckRequiredInOutExistence.
     status = CheckTensorDescriptions();
     if (status != ge::GRAPH_SUCCESS) {
         return status;

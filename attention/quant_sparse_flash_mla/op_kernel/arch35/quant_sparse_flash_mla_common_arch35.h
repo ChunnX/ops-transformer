@@ -44,6 +44,7 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
     X(Q_T) \
     X(KV_T) \
     X(T) \
+    /* QSMLA selects query parameters for the quantized sparse-MLA template. */ \
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
@@ -66,11 +67,13 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
+// QSMLA expands the type and constant parameters of its quantized sparse-MLA template.
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
+// QSMLA selects tile parameters for the quantized sparse-MLA template in Align32Func.
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \

@@ -178,6 +178,7 @@ ge::graphStatus QSMLAInfoParser::GetInOutDataType()
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
     if (opParamInfo_.oriKv.desc != nullptr) {
+        // QSMLA validates compressed-KV descriptors for its quantized sparse-MLA contract in GetInOutDataType.
         oriKvType_ = opParamInfo_.oriKv.desc->GetDataType();
     }
     if (opParamInfo_.cmpKv.desc != nullptr) {
@@ -266,6 +267,7 @@ void QSMLAInfoParser::SetQSMLAShape()
         oriKvShape_ = opParamInfo_.oriKv.tensor->GetStorageShape();
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
+        // QSMLA validates compressed-KV descriptors for its quantized sparse-MLA contract in SetQSMLAShape.
         cmpKvShape_ = opParamInfo_.cmpKv.tensor->GetStorageShape();
     }
     if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
@@ -391,6 +393,7 @@ ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
     if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
+        // QSMLA validates compressed-KV descriptors for its quantized sparse-MLA contract in GetMaxBlockNumPerBatch.
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),
@@ -581,6 +584,7 @@ ge::graphStatus QSMLAInfoParser::Parse(QSMLATilingInfo &qsmlaInfo)
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+        // QSMLA validates query descriptors for its quantized sparse-MLA contract.
         return ge::GRAPH_FAILED;
     }
 
@@ -719,6 +723,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
     tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
+    // QSMLA reserves compressed-KV storage for the quantized sparse-MLA pipeline.
     tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
     tilingData_.baseParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);

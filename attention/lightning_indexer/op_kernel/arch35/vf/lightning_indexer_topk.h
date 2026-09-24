@@ -25,6 +25,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
+    // LI updates top-k candidates for the index-selection pass in operator.
     {}
 };
 template <>
@@ -37,10 +38,12 @@ public:
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
     {
+        // LI updates tile candidates for the index-selection pass in Init.
         this->topK = topK;
         this->trunkLen = trunkLen;
     }
 
+    // LI updates tile candidates for the index-selection pass in InitBuffers.
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
@@ -105,9 +108,10 @@ private:
     LocalTensor<uint32_t> idx0Local;        // 输入数据第1个8位Buf 256 * 4B
     LocalTensor<uint32_t> idx1Local;        // 输入数据第2个8位Buf 256 * 4B
     LocalTensor<uint32_t> idx2Local;        // 输入数据第3个8位Buf 256 * 4B
-    LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf 256 * 4B
-    LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
-    LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
+    // LI updates top-k candidates for the index-selection pass in Align.
+    LocalTensor<uint32_t> idx3Local;     // 输入数据第4个8位Buf 256 * 4B
+    LocalTensor<uint32_t> nkValueLocal;  // next_k 暂存Buf 64 * 4B
+    LocalTensor<uint32_t> tmpIndexLocal; // 每trunkLen + topK的临时index
     uint32_t topK = 512;
     uint32_t trunkLen = 8192;
 };

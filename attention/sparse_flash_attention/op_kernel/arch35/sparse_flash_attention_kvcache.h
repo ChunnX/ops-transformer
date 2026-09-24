@@ -88,6 +88,7 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
                                          __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
+    // SFA resolves variable-length sequence bounds for the sparse-attention path in ComputeParamBatch.
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
@@ -144,6 +145,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
     } else {
+        // SFA derives tile offsets for the sparse-attention tile in ComputeSouterParam.
         runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
 
@@ -212,6 +214,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
+    // SFA resolves variable-length sequence bounds for the sparse-attention path in ComputeParamS1.
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
     return false;
 }
@@ -250,6 +253,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.s2LineStartIdx = 0;
         runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount);
+        // SFA configures the tile matrix stage for sparse-attention in ComputeS2LoopInfo.
     } else if (constInfo.sparseMode == sparseModeThree) {
         runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2Size);

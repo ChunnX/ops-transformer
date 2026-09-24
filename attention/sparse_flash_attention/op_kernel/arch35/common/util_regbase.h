@@ -25,6 +25,7 @@ namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 enum class VselrIndexEnum {
     GT_64_AND_LTE_128_INDEX = 0,
+    // SFA keeps the shared tile layout compatible with the sparse-attention path during the first pipeline stage.
     GT_0_AND_LTE_64_INDEX = 1
 };
 
@@ -41,6 +42,7 @@ enum class VselrIndexEnum {
     uint32_t s1RealSize; \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
+    /* SFA resolves variable-length sequence bounds for the sparse-attention path during the fourth pipeline stage. */ \
     uint32_t mRealSize; \
     uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
@@ -74,6 +76,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
+    /* SFA keeps the shared tile layout compatible with the sparse-attention path during the second pipeline stage. */ \
     int64_t s2LoopLimit; \
     int64_t s1oIdx = 0; /* s1轴的index */ \
     int64_t loop = 0;   /* for v0 perload loop */ \

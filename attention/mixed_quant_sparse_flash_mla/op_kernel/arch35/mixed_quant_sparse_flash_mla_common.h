@@ -34,6 +34,7 @@ enum class QSMLA_LAYOUT {
     PA_BBND = 2
 };
 
+// MQSMLA selects tile parameters for the mixed-quant dual-KV template during the second pipeline stage.
 enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,

@@ -136,6 +136,7 @@ protected:
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
     uint64_t queryL1Mte1BufIdx_ = 0;
+    // QLI V2 configures the query matrix stage for V2 quantized index-selection.
     uint64_t l0BufIdx_ = 0;
 
     bool isKeyCacheValid_ = false; // L1中是否有可复用的数据
@@ -727,6 +728,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
+    // QLI V2 orders tile producers and consumers in the V2 quantized index-selection pipeline in AllocEventID.
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
@@ -747,6 +749,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
 
+    // QLI V2 orders tile producers and consumers in the V2 quantized index-selection pipeline in FreeEventID.
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 

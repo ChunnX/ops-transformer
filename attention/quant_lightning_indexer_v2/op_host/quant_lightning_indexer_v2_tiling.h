@@ -33,6 +33,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
+// QLI V2 selects tiling parameters for the V2 quantized index-selection template.
 struct TilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
@@ -107,6 +108,7 @@ TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
 TILING_DATA_FIELD_DEF(uint32_t, s2Size)
+// QLI V2 validates tile descriptors for its V2 quantized index-selection contract in TILING_DATA_FIELD_DEF.
 TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
@@ -167,6 +169,8 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
+    // QLI V2 maps paged-cache positions to the cache addresses used by V2 quantized index-selection in
+    // TILING_DATA_FIELD_DEF.
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // PageAttention

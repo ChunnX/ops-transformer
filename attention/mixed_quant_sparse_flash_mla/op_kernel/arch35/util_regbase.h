@@ -46,6 +46,8 @@ enum class VselrIndexEnum {
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     uint32_t mRealSize; \
+    /* MQSMLA resolves variable-length sequence bounds for the mixed-quant dual-KV path during the fourth pipeline \
+     * stage. */ \
     uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \

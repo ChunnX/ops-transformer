@@ -34,6 +34,7 @@ enum class QSMLA_LAYOUT {
     PA_BBND = 2
 };
 
+// QSMLA selects tile parameters for the quantized sparse-MLA template during the second pipeline stage.
 enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,

@@ -72,6 +72,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // LI registers KV attributes and formats for the index-selection operator.
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
@@ -87,6 +88,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // LI registers tile attributes and formats for the index-selection operator.
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };

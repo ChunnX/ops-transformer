@@ -61,6 +61,7 @@ __aicore__ inline T1 Min(T1 a, T2 b)
 template <typename T>
 __aicore__ inline size_t BlockAlign(size_t s)
 {
+    // SFA selects tile parameters for the sparse-attention template in BlockAlign.
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;
     }
@@ -95,6 +96,7 @@ struct RunInfo {
     uint32_t s2Size;
     uint32_t mSize;
     uint32_t mSizeV;
+    // SFA configures the output matrix stage for sparse-attention in BlockAlign.
     uint32_t mSizeVStart;
     uint32_t tndIsS2SplitCore;
     uint32_t tndCoreStartKVSplitPos;
@@ -124,10 +126,12 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
     static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+    // SFA keeps tile state for the sparse-attention path during the first pipeline stage.
     static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
     static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
+    // SFA keeps tile state for the sparse-attention path during the second pipeline stage.
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // FP32的0值和极大值
     static constexpr float FLOAT_ZERO = 0;

@@ -50,6 +50,8 @@ namespace BaseApi {
 // 统一窗口公式
 struct PhyAddrValidInfo {
     static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
+    // 原始 KV 与压缩 KV 分别计算有效窗口。
+    // QSMLA maps softmax positions to the cache addresses used by quantized sparse-MLA during the first pipeline stage.
     int64_t oriLeftBias = BIAS_UNBOUND;
     int64_t oriRightBias = BIAS_UNBOUND;
     int32_t oriS2Act = 0;
@@ -59,7 +61,10 @@ struct PhyAddrValidInfo {
 };
 
 TEMPLATES_DEF
+// 量化 CSA vector block 负责稀疏 KV 搬运与 softmax。
 class CSABlockVec {
+    // QSMLA maps softmax positions to the cache addresses used by quantized sparse-MLA during the second pipeline
+    // stage.
 public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
@@ -123,6 +128,7 @@ public:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging)
     {
+        // FD staging stores intermediate results from the quantized reduction.
         fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
@@ -133,6 +139,7 @@ public:
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = crossCoreCombine.template GetTensor<float>();
+        // 核间合并区同时作为 FD staging 使用。
         fdStagingBase = crossCoreCombineBase;
         stagingOutGm = crossCoreCombineGm;
     }
@@ -150,6 +157,8 @@ public:
                                         bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
                                         GlobalTensor<int32_t> actualSeqOriKvlenGm,
                                         GlobalTensor<int32_t> cuSeqlensOriKvGm, GlobalTensor<int32_t> oriTopkLengthGm,
+                                        // QSMLA resolves compressed-KV sequence bounds for the quantized sparse-MLA
+                                        // path during the second pipeline stage.
                                         bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
                                         GlobalTensor<int32_t> actualSeqCmpKvlenGm,
                                         GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
@@ -188,9 +197,11 @@ private:
         return workspaceIdx;
     }
 
+    // 核内 workspace 根据 G 切分方式选择 AIV 索引。
     __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(const RunInfo &runInfo, const ConstInfo &constInfo) const
     {
         uint32_t coreIdx;
+        // QSMLA reserves workspace storage for the quantized sparse-MLA pipeline in GetIntraCoreWorkspaceIdx.
         if constexpr (IS_SPLIT_G) {
             coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
         } else {
@@ -216,6 +227,7 @@ private:
                                               const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalProcessSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetKeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
+    // 稀疏 KV 地址由逻辑 S2 映射为实际存储地址。
     __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &runInfo,
                                            ConstInfo &constInfo);
     __aicore__ inline void GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &runInfo,
@@ -328,6 +340,7 @@ private:
     TBuf<> outLseBuf[2];
     TBuf<> vselrIndexesBuf[2];
     AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
+    // vector 搬运使用独立的 ping-pong 槽。
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -681,6 +694,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
         int64_t qsmlaPaBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         while (qsmlaCopyFinishElmenCnt < v0ProcessSize) {
             uint64_t blockIdOffset = qsmlaCurSequence / blockSize;
+            // 单次搬运不得跨越 PA block 边界。
             uint64_t remainElmenCnt = qsmlaCurSequence % blockSize;
             uint64_t idInBlockTable = blockTableGm.GetValue(qsmlaBlockTableBaseOffset + blockIdOffset);
             uint32_t copyElmenCnt = blockSize - remainElmenCnt;
@@ -900,6 +914,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         if (isFirstSoftmaxBase && isSinks) {
             bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
             if constexpr (IS_BATCH_CONSISTENCY) {
+                // QSMLA maintains softmax state across the quantized sparse-MLA tile in ProcessVec1.
                 includeSink = includeSink && runInfo.reduceBlockId == 0;
             }
             if (includeSink) {
@@ -952,6 +967,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     outputBuf.SetCrossCore();
     // ======================================================
     if (!isFirstSoftmaxBase || isSinks) {
+        // Merge the current base into the running softmax state.
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
 
@@ -1019,6 +1035,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         copyOutLse = copyOutLse && !runInfo.isCrossCoreSplit && !runInfo.needReduce;
     }
     if (copyOutLse) {
+        // Emit LSE only after the final local softmax state is complete.
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
         DataCopyExtParams lseParams;
         lseParams.blockCount = 1;
@@ -1039,6 +1056,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
                                                                             LocalTensor<T> &vec2ResUb,
                                                                             LocalTensor<T> &partialTmpUb)
 {
+    // Intra-core reduction merges LSE before staging partial output.
     AttentionCommon::S2SplitFdStagingLayout intraLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(true),
                                                            AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                            AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1070,6 +1088,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     while (startRow < runInfo.vec2MRealSize) {
         int64_t dealRowCount = intraLayout.chunkRows;
         if (startRow + dealRowCount > runInfo.vec2MRealSize) {
+            // QSMLA maintains tile state across the quantized sparse-MLA tile.
             dealRowCount = runInfo.vec2MRealSize - startRow;
         }
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
@@ -1122,6 +1141,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
+    // Vec2 applies the dequantization scale selected for the current KV path.
     bmm2ResBuf.WaitCrossCore();
     if (unlikely(runInfo.vec2MBaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
@@ -1153,6 +1173,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     if (unlikely(isFirstVec2Base)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
+        // Subsequent bases rescale the accumulated output before adding MM2 results.
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
         if constexpr (IS_BATCH_CONSISTENCY) {
             if (!runInfo.isLastBase) {
@@ -1160,6 +1181,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
                         vDescalePre);
+                    // QSMLA maintains softmax state across the quantized sparse-MLA tile during the second pipeline
+                    // stage.
                 } else {
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
                                                                                      expUb, runInfo.vec2MRealSize,
@@ -1171,7 +1194,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64,
                         vDescale, vDescalePre);
+                    // QSMLA maintains softmax state across the quantized sparse-MLA tile during the third pipeline
+                    // stage.
                 } else {
+                    // The last base finishes accumulation and normalization together.
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64,
                         vDescale, 1.0);
@@ -1183,7 +1209,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
                         vDescalePre);
+                    // QSMLA maintains softmax state across the quantized sparse-MLA tile during the fourth pipeline
+                    // stage.
                 } else {
+                    // 非末个 base 仅累积当前输出。
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
                                                                                      expUb, runInfo.vec2MRealSize,
                                                                                      dTemplateAlign64, vDescale, 1.0);
@@ -1194,6 +1223,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64,
                         vDescale, vDescalePre);
+                    // QSMLA maintains softmax state across the quantized sparse-MLA tile during the fifth pipeline
+                    // stage.
                 } else {
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64,
@@ -1233,6 +1264,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 if (runInfo.isCrossCoreSplit &&
                     (!runInfo.isFirstS2SplitCore || (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
                                                      runInfo.s2LoopCount == runInfo.s2LoopLimit))) {
+                    // Cross-core S2 splits stage partial output for the final reduction.
                     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
                         constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false),
                         AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1306,6 +1338,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
         WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
         if constexpr (IS_BATCH_CONSISTENCY) {
             WaitFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
+            // Consistency mode reduces paired FD partitions in a fixed order.
             AttentionCommon::ReducePairwiseWithLse<T, dTemplateAlign64>(
                 stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
                 static_cast<int64_t>(fdRunInfo.mStartIdx) + startRow, dealRowCount,
@@ -1367,6 +1400,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &
                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
+    // QSMLA configures the output matrix stage for quantized sparse-MLA in Bmm2DataCopyOut.
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
 }
 
@@ -1395,6 +1429,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         }
     }
     if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid) {
+        // LSE follows the logical output layout rather than the packed KV layout.
         uint64_t totalLseSize = 0;
         if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
             totalLseSize = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s1Size;
@@ -1405,6 +1440,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
             uint64_t singleCoreLse = (totalLseSize + (CV_RATIO * qsmlaCoreNum) - 1) / (CV_RATIO * qsmlaCoreNum);
             uint64_t tailLse = totalLseSize - constInfo.aivIdx * singleCoreLse;
             uint64_t singleInitLse = tailLse < singleCoreLse ? tailLse : singleCoreLse;
+            // 各 AIV 只初始化负责的 LSE 区间。
             if (constInfo.aivIdx * singleCoreLse < totalLseSize && singleInitLse > 0) {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreLse], singleInitLse, 0);
@@ -1415,6 +1451,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
     SyncAll();
 }
 
+// Bind output storage before initializing attention and optional LSE.
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                                                ConstInfo &constInfo)
@@ -1438,6 +1475,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
                                                                 GlobalTensor<int32_t> &actualSeqGm,
                                                                 GlobalTensor<int32_t> &cuSeqlensGm, int64_t defaultSize)
 {
+    // QSMLA resolves each batch length from explicit or cumulative-sequence metadata.
     if (hasActualSeq) {
         return actualSeqGm.GetValue(bIdx);
     } else if (hasCuSeqlens) {
@@ -1446,7 +1484,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
         return defaultSize;
     }
 }
-
+// QSMLA derives original and compressed sparse-window bounds from the resolved sequence lengths.
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
                                                                                     int32_t actualOriS2Size,
@@ -1532,6 +1570,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
     bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
+    // QSMLA resolves original-KV sequence bounds for the quantized sparse-MLA path in GetKVPhyAddrForKvType.
     GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
     GlobalTensor<int32_t> topkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, ConstInfo &constInfo,
     GlobalTensor<int32_t> &blockTableGm, GlobalTensor<int32_t> &sparseIndicesGm, GlobalTensor<uint32_t> &phyAddrGm,
@@ -1551,6 +1590,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
 
     TBuf<> blkTableBuf;
     TBuf<> sparseIdxBuf;
+    // 物理地址计算使用独立的页表和索引临时区。
     TBuf<> kvPhyAddrBuf;
     tPipe->InitBuffer(blkTableBuf, maxBlockNumPerBatch * sizeof(int32_t));
     tPipe->InitBuffer(sparseIdxBuf, alignedSparseBlockCount * sizeof(int32_t));
@@ -1725,6 +1765,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
     GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
     GlobalTensor<int32_t> oriTopkLengthGm, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
+    // QSMLA resolves compressed-KV sequence bounds for the quantized sparse-MLA path during the third pipeline stage.
     GlobalTensor<int32_t> actualSeqCmpKvlenGm, GlobalTensor<int32_t> cuSeqlensCmpKvGm,
     GlobalTensor<int32_t> cmpTopkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
     GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &constInfo)

@@ -60,6 +60,7 @@ __aicore__ inline int64_t ConvertS2MetadataBlockToToken(const RunParamStr &runPa
     int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
+        // SMLA keeps tile state for the dual-KV sparse-MLA path in ConvertS2MetadataBlockToToken.
         int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
         return oriToken < oriLen ? oriToken : oriLen;
     }
@@ -80,6 +81,7 @@ __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &co
 
     int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
     int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
+    // SMLA keeps compressed-KV state for the dual-KV sparse-MLA path.
     rangeStart = rangeStart < 0 ? 0 : rangeStart;
     rangeStart = rangeStart < totalLen ? rangeStart : totalLen;
     int64_t rangeEnd = isLastS2RangeTask ? effectiveS2EndPoint : totalLen;
@@ -152,6 +154,7 @@ __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo, const ConstInfo &con
         return;
     }
     fdRunInfo.bn2Idx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_BN2_IDX_INDEX, true));
+    // SMLA reserves workspace storage for the dual-KV sparse-MLA pipeline in GetValue.
     fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true));
     fdRunInfo.workspaceIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_IDX_INDEX, true));
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
@@ -217,6 +220,7 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
+        // SMLA keeps tile state for the dual-KV sparse-MLA path in SetRunInfo.
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
         runInfo.n2oIdx = runParam.n2oIdx;
@@ -229,6 +233,7 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3; // 3：同上
+    // SMLA orders output producers and consumers in the dual-KV sparse-MLA pipeline.
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;

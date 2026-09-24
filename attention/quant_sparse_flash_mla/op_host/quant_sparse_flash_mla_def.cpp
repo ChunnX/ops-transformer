@@ -140,6 +140,7 @@ public:
         this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0); // 默认值为0
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
+        // QSMLA registers softmax attributes and formats for the quantized sparse-MLA operator.
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);

@@ -21,6 +21,7 @@
 #define QSMLA_LAYOUT_BSND 0
 #define QSMLA_LAYOUT_TND 1
 #define QSMLA_LAYOUT_PA_BBND 2
+// MQSMLA declares the compile-time bandwidth key used by its mixed-quant dual-KV templates.
 #define ASCENDC_TPL_4_BW 4
 #define SWA_TEMPLATE 0
 #define HCA_TEMPLATE 1

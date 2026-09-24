@@ -93,6 +93,7 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
+        // Attention common derives vector-mask offsets for the shared attention tile in VecMulMat.
         repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
@@ -229,6 +230,7 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
+        // Attention common derives vector-mask offsets for the shared attention tile in VecAddMat.
         repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
@@ -307,6 +309,7 @@ __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         BinaryRepeatParams columnRepeatParams;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
+        // Attention common derives vector-mask offsets for the shared attention tile in RowDivs.
         columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
@@ -375,6 +378,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
+        // Attention common keeps tile state for the shared attention path during the first pipeline stage.
         if (dRemain > 0) {
             Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
                 repeatParams);
@@ -393,6 +397,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
             Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
                 repeatParams);
             //  计算一行中的尾块
+            // Attention common keeps tile state for the shared attention path during the second pipeline stage.
             if (dRemain > 0) {
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
                     src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
@@ -481,6 +486,7 @@ __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, Local
             validLen = copyLen;
         }
 
+        // Attention common moves tile data using the layout required by shared attention in sum.
         for (uint32_t i = 0; i < dealRowCount; i++) {
             DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();
@@ -562,6 +568,7 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
             validLen = copyLen;
         }
 
+        // Attention common moves tile data using the layout required by shared attention in max.
         for (uint32_t i = 0; i < dealRowCount; i++) {
             DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();

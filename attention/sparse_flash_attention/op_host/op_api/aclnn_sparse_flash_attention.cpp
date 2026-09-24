@@ -18,11 +18,13 @@
 #include "opdev/op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
+// SFA ACLNN wrapper uses opdev logging, shape, and executor helpers during the first pipeline stage.
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
+// SFA groups tile arguments in the public executor signature.
 
 using namespace op;
 
@@ -30,6 +32,7 @@ using namespace op;
 extern "C" {
 #endif
 
+// SFA keeps its inner executor declarations private to this wrapper during the first pipeline stage.
 namespace {
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
@@ -41,8 +44,10 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     bool returnSoftmaxLse, const aclTensor *attentionOut, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerSparseFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  const aclrtStream stream);
+extern aclnnStatus aclnnInnerSparseFlashAttention(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+    // SFA groups LSE arguments in the public executor signature during the first pipeline stage.
+    const aclrtStream stream);
 
 class TensorHolder {
 public:
@@ -117,6 +122,8 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
             }
             if (softmaxSum == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxSum!");
+                // SFA rejects incomplete softmax output-holder construction in
+                // aclnnSparseFlashAttentionGetWorkspaceSize.
                 return ge::GRAPH_FAILED;
             }
         }

@@ -406,6 +406,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::Init(
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
+        // MQSMLA selects tiling parameters for the mixed-quant dual-KV template in GetBlockIdx.
         aiCoreIdx = tmpBlockIdx;
     }
 

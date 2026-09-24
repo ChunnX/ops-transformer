@@ -28,6 +28,7 @@ struct ConstInfoCommon {
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
     static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+    // LI V2 keeps tile state for the V2 index-selection path during the first pipeline stage.
     static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
     static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;

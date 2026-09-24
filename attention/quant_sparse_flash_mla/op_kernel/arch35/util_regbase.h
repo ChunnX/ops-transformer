@@ -26,10 +26,13 @@ namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 enum class VselrIndexEnum {
     GT_64_AND_LTE_128_INDEX = 0,
+    // QSMLA keeps the shared tile layout compatible with the quantized sparse-MLA path during the first pipeline stage.
     GT_0_AND_LTE_64_INDEX = 1
 };
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
+    /* QSMLA keeps the shared tile layout compatible with the quantized sparse-MLA path during the second pipeline \
+     * stage. */ \
     int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
@@ -45,13 +48,16 @@ enum class VselrIndexEnum {
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     uint32_t mRealSize; \
+    /* QSMLA resolves variable-length sequence bounds for the quantized sparse-MLA path during the sixth pipeline \
+     * stage. */ \
     uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \
     int32_t actualS1Size;       /* Q的actualSeqLength */ \
     int32_t actualS2OriSize;    /* ori_kv的真实使用长度 */ \
     int32_t actualS2CmpSize;    /* cmp_kv的真实使用长度 */ \
-    int32_t cmpResidual         /* cmp的余数，用于mask计算 */
+    /* QSMLA resolves residual-KV sequence bounds for the quantized sparse-MLA path. */ \
+    int32_t cmpResidual /* cmp的余数，用于mask计算 */
 
 struct RunParamStr { // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;

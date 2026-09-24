@@ -86,6 +86,7 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
                                          __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
+    // KV-quant SFA resolves variable-length sequence bounds for the quantized KV-cache path in ComputeParamBatch.
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
@@ -207,6 +208,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
     }
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
+    // KV-quant SFA resolves variable-length sequence bounds for the quantized KV-cache path in ComputeParamS1.
     return false;
 }
 
@@ -244,6 +246,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.s2LineStartIdx = 0;
         runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount);
+        // KV-quant SFA configures the tile matrix stage for quantized KV-cache in ComputeS2LoopInfo.
     } else if (constInfo.sparseMode == sparseModeThree) {
         runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2Size);

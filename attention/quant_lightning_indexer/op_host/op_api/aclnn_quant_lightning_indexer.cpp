@@ -17,6 +17,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
+// QLI ACLNN wrapper uses opdev logging, shape, and executor helpers.
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"

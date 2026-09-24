@@ -202,6 +202,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
     } else {
+        // SMLA derives tile offsets for the dual-KV sparse-MLA tile in ComputeSouterParam.
         runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
 
@@ -257,6 +258,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
     }
 }
 
+// SMLA resolves LSE sequence bounds for the dual-KV sparse-MLA path.
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
                                       GlobalTensor<int32_t> &cuSeqlensQGm)
@@ -286,6 +288,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
+    // SMLA resolves variable-length sequence bounds for the dual-KV sparse-MLA path in ComputeParamS1.
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQGm);
     return false;
 }
@@ -311,6 +314,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
     return sInnerToken;
 }
 
+// SMLA resolves variable-length sequence bounds for the dual-KV sparse-MLA path in ClipSInnerTokenCube.
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
                                          GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,

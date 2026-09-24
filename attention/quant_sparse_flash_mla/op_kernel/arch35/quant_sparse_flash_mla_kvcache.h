@@ -110,6 +110,7 @@ __aicore__ inline void ComputeParamBatch(
     GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
+    // QSMLA resolves compressed-KV sequence bounds for the quantized sparse-MLA path in ComputeParamBatch.
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm, cuSeqlensCmpKvGm,
                                            actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm, cmpResidualKvGm,
                                            hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen, hasActualSeqOriKvlen,
@@ -191,6 +192,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
     } else {
+        // QSMLA derives tile offsets for the quantized sparse-MLA tile.
         runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
 
@@ -249,6 +251,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
     }
 }
 
+// QSMLA resolves LSE sequence bounds for the quantized sparse-MLA path.
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
                                       GlobalTensor<int32_t> &cuSeqlensQGm)
@@ -278,6 +281,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
+    // QSMLA resolves variable-length sequence bounds for the quantized sparse-MLA path in ComputeParamS1.
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQGm);
     return false;
 }
@@ -291,6 +295,7 @@ __aicore__ inline bool ComputeLastBN(RunParamStr &runParam, GlobalTensor<int32_t
             return true;
         }
     }
+    // QSMLA resolves variable-length sequence bounds for the quantized sparse-MLA path in ComputeLastBN.
     return false;
 }
 
@@ -302,6 +307,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
     return sInnerToken;
 }
 
+// QSMLA resolves variable-length sequence bounds for the quantized sparse-MLA path in ClipSInnerTokenCube.
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
                                          GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
@@ -311,6 +317,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (runParam.actualS2OriSize == 0) {
             runParam.oriKvLoopEndIdx = 0;
+            // QSMLA selects compressed-KV parameters for the quantized sparse-MLA template in ComputeS2LoopInfo.
             runParam.cmpKvLoopEndIdx = 0;
             runParam.s2LoopEndIdx = 0;
             runParam.s2CmpLineStartIdx = 0;
@@ -357,6 +364,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
+        // QSMLA configures the compressed-KV matrix stage for quantized sparse-MLA.
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
@@ -386,6 +394,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
+    // QSMLA selects compressed-KV parameters for the quantized sparse-MLA template in InitTaskParamByRun.
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;

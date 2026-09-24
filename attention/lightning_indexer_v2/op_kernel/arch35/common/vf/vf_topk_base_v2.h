@@ -118,6 +118,7 @@ __aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t> &indicesOutL
 {
     __ubuf__ uint32_t *indicesOutBuf = (__ubuf__ uint32_t *)indicesOutLocal.GetPhyAddr();
     const uint16_t repeatSize32 = 64;
+    // LI V2 updates top-k candidates for the V2 index-selection pass in GetPhyAddr.
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
     IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
 }

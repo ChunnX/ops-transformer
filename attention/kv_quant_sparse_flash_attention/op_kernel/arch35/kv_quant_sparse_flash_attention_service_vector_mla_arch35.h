@@ -485,6 +485,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
     dataCopyParams.blockLen = dealRow;
+    // KV-quant SFA moves query data using the layout required by quantized KV-cache in CopyOutKvUb2Gm.
     dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
     dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
@@ -676,6 +677,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispa
     LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (runInfo.s2LoopCount == 0 && !isSinks) {
+        // KV-quant SFA maintains softmax state across the quantized KV-cache tile during the second pipeline stage.
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -709,6 +711,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispa
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
                 runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+            // KV-quant SFA maintains softmax state across the quantized KV-cache tile during the third pipeline stage.
         } else if (runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -898,6 +901,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // KV-quant SFA orders output producers and consumers in the quantized KV-cache pipeline in SetGlobalBuffer.
             GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -930,6 +934,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // KV-quant SFA orders output producers and consumers in the quantized KV-cache pipeline in CleanOutput.
             GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -1173,6 +1178,7 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
     Reg::RegTensor<uint32_t> vreg_pa_blk_idx_2;
     Reg::RegTensor<uint32_t> vreg_pa_tmp_1;
     Reg::RegTensor<uint32_t> vreg_pa_tmp_2;
+    // KV-quant SFA derives tile offsets for the quantized KV-cache tile.
     Reg::RegTensor<uint32_t> vreg_pa_offset_1;
     Reg::RegTensor<uint32_t> vreg_pa_offset_2;
     Reg::RegTensor<uint32_t> vreg_phy_offset_1;
@@ -1214,6 +1220,8 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
             Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_all_b32);
             Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_all_b32);
             // offset
+            // KV-quant SFA moves KV data using the layout required by quantized KV-cache during the first pipeline
+            // stage.
             Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_all_b32);
             Reg::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_all_b32);
             // 物理页内offset
@@ -1272,6 +1280,7 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
         Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_tail_1_b32);
         Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_tail_2_b32);
         // offset
+        // KV-quant SFA moves KV data using the layout required by quantized KV-cache during the second pipeline stage.
         Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_tail_1_b32);
         Reg::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_tail_2_b32);
         // 物理页内offset

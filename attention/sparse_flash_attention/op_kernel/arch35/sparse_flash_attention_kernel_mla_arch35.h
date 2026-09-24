@@ -309,6 +309,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 
     constInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
+        // SFA advances the sparse-attention tile after the current core finishes its work.
         constInfo.gS1Start = 0;
         constInfo.bN2Start++;
     } else {
@@ -350,6 +351,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    // SFA configures the query matrix stage for sparse-attention in InitMMResBuf.
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
@@ -553,6 +555,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                     case 1:
                         notLast = false;
                         notLastTwoLoop = false;
+                        // SFA keeps tile state for the sparse-attention path in ProcessMainLoop.
                         break;
                     default:
                         break;
@@ -615,6 +618,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                 }
                 ++taskId;
             }
+            // SFA advances the multi-core tile index after the current split completes.
             ++multiCoreInnerIdx;
         }
         gS1StartIdx = 0;
@@ -696,6 +700,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
     runInfo.mRealSize = runParam.mRealSize;
     runInfo.halfMRealSize = runParam.halfMRealSize;
+    // SFA keeps tile state for the sparse-attention path in ComputeBmm1Tail.
     runInfo.firstHalfMRealSize = runParam.firstHalfMRealSize;
 
     runInfo.vec2S1BaseSize = runInfo.halfS1RealSize;

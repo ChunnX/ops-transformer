@@ -71,6 +71,7 @@ public:
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        RunInfo &runInfo, ConstInfo &constInfo);
 
+    // KV-quant SFA configures the output matrix stage for quantized KV-cache during the third pipeline stage.
     __aicore__ inline void IterateBmm2(
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
@@ -263,6 +264,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
+    // KV-quant SFA configures the query matrix stage for quantized KV-cache in IterateBmm1QSFA.
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
@@ -375,6 +377,7 @@ public:
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
+        // KV-quant SFA configures the output matrix stage for quantized KV-cache during the fourth pipeline stage.
         ConstInfo &constInfo)
     {}
 };

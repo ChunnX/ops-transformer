@@ -40,6 +40,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // MQSMLA registers tile attributes and formats for the mixed-quant dual-KV operator.
         this->Input("cmp_sparse_indices")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -110,6 +111,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // MQSMLA registers output attributes and formats for the mixed-quant dual-KV operator.
         this->Output("attn_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -132,6 +134,7 @@ public:
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
+        // MQSMLA registers softmax attributes and formats for the mixed-quant dual-KV operator.
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

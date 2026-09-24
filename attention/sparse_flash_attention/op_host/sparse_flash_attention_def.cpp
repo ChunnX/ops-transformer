@@ -98,6 +98,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // SFA registers KV attributes and formats for the sparse-attention operator.
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
@@ -123,6 +124,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // SFA registers tile attributes and formats for the sparse-attention operator.
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };

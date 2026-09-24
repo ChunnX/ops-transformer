@@ -35,6 +35,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     static const uint16_t out_offset_per_loop = 256;
     static const uint16_t out_offset_per_reg = 128;
     static const uint32_t invalid_value = 0xFFFFFFFF;
+    // SMLA derives vector-mask offsets for the dual-KV sparse-MLA tile in GetKVPhyAddrVFPaImpl.
     Reg::MaskReg preg_all_b32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg add_carry_l_1;
     Reg::MaskReg add_carry_h_1;
@@ -52,6 +53,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     Reg::RegTensor<uint32_t> vreg_pa_blk_idx_2;
     Reg::RegTensor<uint32_t> vreg_pa_tmp_1;
     Reg::RegTensor<uint32_t> vreg_pa_tmp_2;
+    // SMLA derives tile offsets for the dual-KV sparse-MLA tile in GetKVPhyAddrVFPaImpl.
     Reg::RegTensor<uint32_t> vreg_pa_offset_1;
     Reg::RegTensor<uint32_t> vreg_pa_offset_2;
     Reg::RegTensor<uint32_t> vreg_phy_offset_1;
@@ -92,6 +94,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
             Reg::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_all_b32);
 
             Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_all_b32);
+            // SMLA moves KV data using the layout required by dual-KV sparse-MLA during the first pipeline stage.
             Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_all_b32);
             // offset
             Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_all_b32);
@@ -102,6 +105,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
 
             // int32 paBlockId -> 物理id
             DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_all_b32);
+            // SMLA moves KV data using the layout required by dual-KV sparse-MLA during the second pipeline stage.
             DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_all_b32);
 
             // 分高低32位计算int64物理地址 -- 乘 stride
@@ -127,6 +131,8 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
                 kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
                 vreg_total_offset_h_2, preg_all_b32);
         }
+        // SMLA maps paged-cache positions to the cache addresses used by dual-KV sparse-MLA during the first pipeline
+        // stage.
         break;
     }
 
@@ -149,6 +155,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
         Reg::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_tail_2_b32);
 
         Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_tail_1_b32);
+        // SMLA moves KV data using the layout required by dual-KV sparse-MLA during the third pipeline stage.
         Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_tail_2_b32);
         // offset
         Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_tail_1_b32);
@@ -159,6 +166,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
 
         // int32 paBlockId -> 物理id
         DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_tail_1_b32);
+        // SMLA moves KV data using the layout required by dual-KV sparse-MLA during the fourth pipeline stage.
         DataCopyGather(vreg_phy_blk_idx_2, blkTableUb, vreg_pa_blk_idx_2, preg_tail_2_b32);
 
         // 分高低32位计算int64物理地址 -- 乘 stride
@@ -180,6 +188,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
         // 无效值填充-1(0xFFFFFFFF)
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
                                                               preg_tail_neg_1_b32);
+        // SMLA moves vector-mask data using the layout required by dual-KV sparse-MLA during the first pipeline stage.
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
                                                               preg_tail_neg_1_b32);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
@@ -318,6 +327,7 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__
     static const uint16_t out_offset_per_loop = 256;
     static const uint16_t out_offset_per_reg = 128;
     static const uint32_t invalid_value = 0xFFFFFFFF;
+    // SMLA derives vector-mask offsets for the dual-KV sparse-MLA tile in GetKVPhyAddrVFBsndImpl.
     Reg::MaskReg preg_all_b32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg add_carry_l_1;
     Reg::MaskReg add_carry_h_1;
@@ -372,6 +382,8 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__
                 kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
                 vreg_total_offset_h_2, preg_all_b32);
         }
+        // SMLA maps paged-cache positions to the cache addresses used by dual-KV sparse-MLA during the second pipeline
+        // stage.
         break;
     }
 
@@ -406,6 +418,8 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
                                                               preg_tail_neg_2_b32);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
+                                                              // SMLA moves vector-mask data using the layout required
+                                                              // by dual-KV sparse-MLA during the second pipeline stage.
                                                               preg_tail_neg_2_b32);
         Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
             kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);

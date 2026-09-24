@@ -401,6 +401,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
+    // KV-quant SFA configures the query matrix stage for quantized KV-cache in InitMMResBuf.
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
@@ -693,6 +694,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
                 }
                 ++taskId;
             }
+            // KV-quant SFA keeps tile state for the quantized KV-cache path during the fourth pipeline stage.
             ++multiCoreInnerIdx;
         }
         gS1StartIdx = 0;

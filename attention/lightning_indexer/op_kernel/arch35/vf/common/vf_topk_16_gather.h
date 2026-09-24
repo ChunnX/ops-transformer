@@ -64,6 +64,7 @@ __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_EVEN>(coutReg0U32Even, coutReg0, maskRegB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg0U32Odd, coutReg0, maskRegB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_EVEN>(coutReg1U32Even, coutReg1, maskRegB16);
+    // LI updates top-k candidates for the index-selection pass in HistogramsHighVFImpl.
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg1U32Odd, coutReg1, maskRegB16);
 
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf, coutReg0U32Even, coutReg0U32Odd,
@@ -86,6 +87,7 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__
     Reg::RegTensor<uint32_t> btmK;
     Reg::Duplicate(btmK, bottomK);
 
+    // LI updates top-k candidates for the index-selection pass in FindHighTargetBinVFImpl.
     Reg::RegTensor<int32_t> idxC;
     Reg::RegTensor<uint32_t> cout;
     Reg::RegTensor<uint32_t> sqzIdxHigh;
@@ -176,6 +178,7 @@ __simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_EVEN>(coutReg0U32Even, coutReg0, maskRegB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg0U32Odd, coutReg0, maskRegB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_EVEN>(coutReg1U32Even, coutReg1, maskRegB16);
+    // LI updates top-k candidates for the index-selection pass in HistogramsLowVFImpl.
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg1U32Odd, coutReg1, maskRegB16);
 
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf, coutReg0U32Even, coutReg0U32Odd,
@@ -199,6 +202,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
     Reg::RegTensor<uint32_t> btmK;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(btmK, kValue);
 
+    // LI updates top-k candidates for the index-selection pass in FindKthVFImpl.
     Reg::RegTensor<int32_t> idxC;
     Reg::RegTensor<uint32_t> cout;
     Reg::RegTensor<uint32_t> sqzIdxLow;
@@ -217,6 +221,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
+    // LI updates vector-mask candidates for the index-selection pass in FindKthVFImpl.
     Reg::RegTensor<uint32_t> idxHigh;
     Reg::RegTensor<uint32_t> idxLow;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(idxHigh, idxHighBuf);

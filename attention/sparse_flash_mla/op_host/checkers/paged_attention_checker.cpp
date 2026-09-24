@@ -14,6 +14,7 @@
 namespace optiling {
 namespace sparse_mla_checker {
 constexpr int64_t TURBO_QUANT_MODE = 3;
+// SMLA validates tiling descriptors for its dual-KV sparse-MLA contract during the first pipeline stage.
 namespace {
 const char *Op(const CheckContext &context)
 {

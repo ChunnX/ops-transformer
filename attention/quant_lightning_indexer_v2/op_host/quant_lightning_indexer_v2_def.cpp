@@ -83,6 +83,7 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0); // 0: 默认值，无mask
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0); //  0: 默认值
+        // QLI V2 registers vector-mask attributes and formats for the V2 quantized index-selection operator.
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -90,6 +91,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // QLI V2 registers tile attributes and formats for the V2 quantized index-selection operator during the first pipeline stage.
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
@@ -174,6 +176,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // QLI V2 registers tile attributes and formats for the V2 quantized index-selection operator during the second pipeline stage.
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
 };

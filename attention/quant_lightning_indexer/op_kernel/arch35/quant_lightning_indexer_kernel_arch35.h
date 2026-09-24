@@ -363,6 +363,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::Init(
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
+        // QLI resolves variable-length sequence bounds for the quantized index-selection path in GetBlockIdx.
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
         aiCoreIdx = tmpBlockIdx;
     }
@@ -557,6 +558,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
+        // QLI resolves variable-length sequence bounds for the quantized index-selection path in ProcessMain.
         splitCoreInfo.gS1Start = 0;
     }
 

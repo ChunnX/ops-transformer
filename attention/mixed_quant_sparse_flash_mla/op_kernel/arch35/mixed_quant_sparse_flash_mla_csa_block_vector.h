@@ -54,7 +54,9 @@ namespace BaseApi {
 // 统一窗口公式
 struct PhyAddrValidInfo {
     static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
+    // MQSMLA maps top-k positions to the cache addresses used by mixed-quant dual-KV during the first pipeline stage.
     int64_t oriLeftBias = BIAS_UNBOUND;
+    // 原始 KV 与压缩 KV 分别计算有效窗口。
     int64_t oriRightBias = BIAS_UNBOUND;
     int32_t oriS2Act = 0;
     bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
@@ -64,6 +66,8 @@ struct PhyAddrValidInfo {
 
 TEMPLATES_DEF
 class CSABlockVec {
+    // 混合量化 vector block 同时处理原始 KV 和压缩 KV。
+    // MQSMLA maps top-k positions to the cache addresses used by mixed-quant dual-KV during the second pipeline stage.
 public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
@@ -144,6 +148,8 @@ public:
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
     {
+        // Bind the intra-core and cross-core reduction buffers used by vector staging.
+        // MQSMLA maps paged-cache positions to the cache addresses used by mixed-quant dual-KV in InitS2SplitStaging.
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
@@ -304,6 +310,7 @@ private:
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> cuSeqlensKvGm;
+    // Q、原始 KV、压缩 KV 分别维护 CU 序列。
     GlobalTensor<int32_t> cuSeqlensOriKvGm;
     GlobalTensor<int32_t> cuSeqlensCmpKvGm;
     GlobalTensor<int32_t> actualSeqOriKvGm;
@@ -529,7 +536,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV
         DataCopyPadExtParams<KV_T> scalePadParams;
         scaleParams.blockCount = 1;
         scaleParams.blockLen = scaleBytes;
+        // MQSMLA moves quantization data using the layout required by mixed-quant dual-KV in CopyInSingleKv.
         scaleParams.srcStride = 0;
+        // 原始 KV 使用对应的反量化 scale。
         scaleParams.dstStride = 0;
         scalePadParams.isPad = false;
         scalePadParams.leftPadding = 0;
@@ -634,7 +643,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
                 DataCopyPadExtParams<KV_T> scalePadParams;
                 scaleParams.blockCount = 1;
                 scaleParams.blockLen = scaleBytes;
+                // MQSMLA moves quantization data using the layout required by mixed-quant dual-KV in CopyInKvSparse.
                 scaleParams.srcStride = 0;
+                // 压缩 KV 使用对应的反量化 scale。
                 scaleParams.dstStride = 0;
                 scalePadParams.isPad = false;
                 scalePadParams.leftPadding = 0;
@@ -664,18 +675,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
     }
 }
 
-// fp8->fp32
-static constexpr Reg::CastTrait castTraitFp8_1 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-// fp8->fp32
-static constexpr Reg::CastTrait castTraitFp8_2 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-// fp32->fp16
-static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-// fp32->fp16
-static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+// FP8 lanes are widened independently before scaling.
+static constexpr Reg::CastTrait castTraitFp8EvenToFp32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+static constexpr Reg::CastTrait castTraitFp8OddToFp32 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+// RINT conversion preserves the even/odd FP16 lane layout.
+static constexpr Reg::CastTrait castTraitFp32ToFp16Even = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+static constexpr Reg::CastTrait castTraitFp32ToFp16Odd = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 template <typename Q_T, typename KV_T>
 __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrcAddr, uint32_t dealRowCount)
 {
@@ -691,8 +700,8 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
             (Reg::RegTensor<int8_t> &)vScale0, ubScaleSrcAddrTemp, 608);
 
-        Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
-        Reg::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
+        Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8EvenToFp32>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
+        Reg::Cast<float, bfloat16_t, castTraitFp8EvenToFp32>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
 
         Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vScalefp32Res0, 64, bf16TypeMaskAll);
     }
@@ -757,11 +766,11 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
             Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale1Bf16,
                                                                     ubScaleSrcAddrTemp + 1 + i * (combineDim / 2));
 
-            Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
-            Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
+            Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
+            Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res1, vKvData1, fp32MaskAll);
 
-            Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, fp16MaskAll);
-            Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes1, vCastFp32Res1, fp16MaskAll);
+            Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes0, vCastFp32Res0, fp16MaskAll);
+            Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes1, vCastFp32Res1, fp16MaskAll);
 
             Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes0, vCastRes0, vScale0Bf16, fp16MaskAll);
             Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes1, vCastRes1, vScale1Bf16, fp16MaskAll);
@@ -786,8 +795,8 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
             (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, combineDim);
         Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale0Bf16,
                                                                 ubScaleSrcAddrTemp + i * (combineDim / 2));
-        Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
-        Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, fp16MaskAll);
+        Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
+        Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes0, vCastFp32Res0, fp16MaskAll);
         Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes0, vCastRes0, vScale0Bf16, fp16MaskAll);
         Reg::DeInterleave(vCastResPack0, vCastResPack1, vMulRes0, vCastRes1);
 
@@ -861,14 +870,14 @@ __simd_vf__ void AntiquantVFImplFp8D448_FloatScale(__ubuf__ Q_T *ubKRopeNzAddr, 
             Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
                 (Reg::RegTensor<float> &)vScale1, ubScaleSrcAddrTemp, tileSize - 1);
 
-            Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
-            Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
+            Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
+            Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res1, vKvData1, fp32MaskAll);
 
             Reg::Mul<float, Reg::MaskMergeMode::ZEROING>(vMulRes0, vCastFp32Res0, vScale0, fp32MaskAll);
             Reg::Mul<float, Reg::MaskMergeMode::ZEROING>(vMulRes1, vCastFp32Res1, vScale1, fp32MaskAll);
 
-            Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vMulRes0, fp32MaskAll);
-            Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes1, vMulRes1, fp32MaskAll);
+            Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes0, vMulRes0, fp32MaskAll);
+            Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes1, vMulRes1, fp32MaskAll);
 
             Reg::DeInterleave(vCastResPack0, vCastResPack1, vCastRes0, vCastRes1);
 
@@ -889,9 +898,9 @@ __simd_vf__ void AntiquantVFImplFp8D448_FloatScale(__ubuf__ Q_T *ubKRopeNzAddr, 
             (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, combineDim);
         Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
             (Reg::RegTensor<float> &)vScale0, ubScaleSrcAddrTemp, tileSize);
-        Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
+        Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
         Reg::Mul<float, Reg::MaskMergeMode::ZEROING>(vMulRes0, vCastFp32Res0, vScale0, fp32MaskAll);
-        Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vMulRes0, fp32MaskAll);
+        Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes0, vMulRes0, fp32MaskAll);
         Reg::DeInterleave(vCastResPack0, vCastResPack1, vCastRes0, vCastRes1);
 
         Reg::StoreAlign<Q_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
@@ -944,7 +953,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     uint64_t blockElementNum = 16;
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
+    // MQSMLA moves query data using the layout required by mixed-quant dual-KV in CopyOutKvUb2Gm.
     dataCopyParams.blockLen = dealRow;
+    // 每处理一组行后推进下一次搬运窗口。
     dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
     dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
@@ -1149,6 +1160,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     } else {
         keyGm = oriKVGm;
         if constexpr (isPa) {
+            // PA 场景选择原始 KV 的页表和物理地址表。
             blockTableGm = oriBlockTableGm;
             blockSize = constInfo.oriBlockSize;
             maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
@@ -1303,6 +1315,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
         if (isFirstSoftmaxBase && isSinks) {
             bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
             if constexpr (IS_BATCH_CONSISTENCY) {
+                // MQSMLA maintains softmax state across the mixed-quant dual-KV tile in ProcessVec1.
                 includeSink = includeSink && runInfo.reduceBlockId == 0;
             }
             if (includeSink) {
@@ -1464,7 +1477,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     uint32_t intraWorkspaceIdx = GetIntraCoreWorkspaceIdx(runInfo, constInfo);
     // s2SplitIdx advances across all reduce blocks handled by this core. Move back
     // to the first slot of the current intra-core reduce group before staging it.
+    // The first FD workspace and split offset select the cross-core reduction slot.
     uint32_t crossWorkspaceIdx =
+        // MQSMLA reserves LSE storage for the mixed-quant dual-KV pipeline.
         static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
     LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
@@ -1512,9 +1527,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
         if constexpr (!HIGH_PERF) {
             if (copyOutMergedLse) {
                 DataCopyExtParams lseParams;
+                // 归约完成后拷出合并后的 LSE。
                 lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
                 lseParams.blockLen = sizeof(float);
                 lseParams.srcStride = 0;
+                // MQSMLA maintains LSE state across the mixed-quant dual-KV tile in StageBroadcastMaxSum.
                 lseParams.dstStride = 0;
                 SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
                 WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
@@ -1871,10 +1888,12 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
         } else {
             if (isOriKv) {
                 if (constInfo.oriMaskMode == 0U) {
+                    // 原始 KV 独立选择 top-k 窗口语义。
                     validInfo.oriTopkMode = true;
                 } else if (constInfo.oriMaskMode == 3U) {
                     validInfo.oriRightBias = 0;
                 } else {
+                    // MQSMLA maps original-KV positions to the cache addresses used by mixed-quant dual-KV.
                     validInfo.oriLeftBias =
                         (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
                     validInfo.oriRightBias =
@@ -1978,6 +1997,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                // Restore the compressed-KV length before counting valid rows.
                 int32_t actualKvSize = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                            cuSeqlensKvGm, constInfo.cmpS2Size);
                 int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
@@ -1988,6 +2008,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (isOriKv && constInfo.oriMaskMode != 0) {
+                // Read the original-KV length used by the sparse mask.
                 actualOriS2Size = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                       cuSeqlensKvGm, constInfo.s2Size);
             }
@@ -2029,6 +2050,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                // Recompute the restored length while emitting physical addresses.
                 int32_t actualKvSize = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                            cuSeqlensKvGm, constInfo.cmpS2Size);
                 int64_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
@@ -2039,6 +2061,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (isOriKv && constInfo.oriMaskMode != 0) {
+                // Recompute the original-KV limit for address emission.
                 actualOriS2Size = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                       cuSeqlensKvGm, constInfo.s2Size);
             }
@@ -2152,6 +2175,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  // 原始 KV 与压缩 KV 分别绑定稀疏索引。
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
     }
@@ -2162,6 +2186,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     }
 
     if (sinks != nullptr) {
+        // sinks 仅在输入有效时绑定。
         sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
         this->isSinks = true;
     }
@@ -2276,6 +2301,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in InitLocalBuffer.
     if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
@@ -2310,9 +2336,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo<HIGH_PERF
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(0));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(1));
+    // 退出前回收 FD 流水占用的事件。
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    // MQSMLA orders tile producers and consumers in the mixed-quant dual-KV pipeline in FreeEvent.
     if constexpr (IS_BATCH_CONSISTENCY) {
         WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }

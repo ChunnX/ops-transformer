@@ -37,6 +37,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
 
     gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
+    // LI V2 validates query descriptors for its V2 index-selection contract in InferShapeLightningIndexerV2.
     gert::Shape *sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
 

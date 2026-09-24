@@ -43,6 +43,7 @@ struct PAShape {
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
+// KV-quant SFA moves query data using the layout required by quantized KV-cache during the first pipeline stage.
 template <typename T>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
@@ -75,6 +76,7 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   const PAShape &shape,     // blockSize, headNum, headDim
                                   const Position &startPos) // bacthIdx nIdx curSeqIdx
 {
+    // KV-quant SFA maps paged-cache positions to the cache addresses used by quantized KV-cache in DataCopyPA.
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Idx;
@@ -301,6 +303,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::InitPageAttentionInfo(const Glo
                                                                        uint32_t maxBlockNumPerBatch)
 {
     this->blockTableGm = blockTableGm;
+    // KV-quant SFA maps paged-cache positions to the cache addresses used by quantized KV-cache in
+    // InitPageAttentionInfo.
     this->topKGm = topKGm;
     this->kvCacheBlockSize = blockSize;
     this->maxBlockNumPerBatch = maxBlockNumPerBatch;
@@ -465,6 +469,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::LoadDataMm1A(LocalTensor<K_ROPE
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
     loadData3DParams.padList[2] = 0;
+    // KV-quant SFA keeps tile state for the quantized KV-cache path in LoadDataMm1A.
     loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
@@ -857,6 +862,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                     loadData3DParamsForB.padList[0] = 0;
                     loadData3DParamsForB.padList[1] = 0;
                     loadData3DParamsForB.padList[2] = 0;
+                    // KV-quant SFA keeps tile state for the quantized KV-cache path in ComputeMm2.
                     loadData3DParamsForB.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
                     loadData3DParamsForB.mExtension = kL0SizeAlign; // 在目的操作数height维度的传输长度
@@ -922,6 +928,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
+                    // KV-quant SFA configures the tile matrix stage for quantized KV-cache during the first pipeline
+                    // stage.
                     abL0BufIter++;
                 }
 

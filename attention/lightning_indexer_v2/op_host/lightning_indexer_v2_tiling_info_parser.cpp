@@ -75,6 +75,7 @@ void PopulateCheckerTensors(const gert::TilingContext *context,
 ge::graphStatus ParseCheckerAttrs(const gert::TilingContext *context,
                                   lightning_indexer_v2_checker::LightningIndexerV2CheckerInfo &info)
 {
+    // LI V2 updates top-k candidates for the V2 index-selection pass in ParseCheckerAttrs.
     const auto *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "attrs", "Operator attributes must be provided");
@@ -126,6 +127,7 @@ void PopulateTilingInfo(const lightning_indexer_v2_checker::LightningIndexerV2Ch
     tilingInfo.n1Size = static_cast<uint32_t>(info.qHeads);
     tilingInfo.n2Size = static_cast<uint32_t>(info.kHeads);
     tilingInfo.s1Size =
+        // LI V2 maps paged-cache positions to the cache addresses used by V2 index-selection in PopulateTilingInfo.
         info.layoutQ == lightning_indexer_v2_checker::CheckerLayout::BSND ? static_cast<uint32_t>(info.qSeq) : 0U;
     tilingInfo.s2Size = info.kSeq;
     tilingInfo.qkHeadDim = static_cast<uint32_t>(info.headDim);

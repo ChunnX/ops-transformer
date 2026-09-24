@@ -21,6 +21,7 @@
 namespace vector1 {
 using liV2Vector1::BroadcastLane;
 using liV2Vector1::DuplicateZero;
+// QLI keeps KV state for the quantized index-selection path.
 using liV2Vector1::FloatSortConstCtx;
 using liV2Vector1::FloatSortTraits;
 using liV2Vector1::FloatToSortableKey;
@@ -286,6 +287,8 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(regKScale[0], kScale_);
     Reg::LoadAlign<float>(regKScale[1], kScale_ + 64);
 
+    // QLI moves quantization data using the layout required by quantized index-selection during the first pipeline
+    // stage.
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32, qk_, qkVLStride,
                             gSize);
 
@@ -370,6 +373,8 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(regKScale[0], kScale_);
     Reg::LoadAlign<float>(regKScale[1], kScale_ + 64);
 
+    // QLI moves quantization data using the layout required by quantized index-selection during the second pipeline
+    // stage.
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32, qk_, qkVLStride,
                             gSize);
 
@@ -531,6 +536,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int gSize)
 {
+    // QLI applies quantization conversion for the quantized index-selection path during the first pipeline stage.
     AscendC::Reg::RegTensor<float> regwBrc[2];
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
@@ -552,6 +558,8 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[1], weight1_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[0], qScale0_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[1], qScale1_);
+    // QLI moves quantization data using the layout required by quantized index-selection during the third pipeline
+    // stage.
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW[0], regWFP16[0], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW[1], regWFP16[1], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[0], regQScaleFP16[0], maskAllB16);
@@ -583,6 +591,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int gSize)
 {
+    // QLI applies quantization conversion for the quantized index-selection path during the second pipeline stage.
     AscendC::Reg::RegTensor<float> regwBrc[2];
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
@@ -604,6 +613,8 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[1], weight1_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[0], qScale0_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[1], qScale1_);
+    // QLI moves quantization data using the layout required by quantized index-selection during the fourth pipeline
+    // stage.
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW[0], regWFP16[0], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW[1], regWFP16[1], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[0], regQScaleFP16[0], maskAllB16);
