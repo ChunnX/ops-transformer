@@ -89,6 +89,18 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_meta(const at::Tensor &A
 } // namespace custom
 
 // step4, 为NPU设备注册前向实现
+#ifdef BUILD_GDN_OPS_EXT
+TORCH_LIBRARY_IMPL(gdn_ops_ext, PrivateUse1, m)
+{
+    m.impl("fused_gdn_gating", &custom::npu_fused_gdn_gating_npu);
+}
+
+// step5, 为META设备注册前向实现
+TORCH_LIBRARY_IMPL(gdn_ops_ext, Meta, m)
+{
+    m.impl("fused_gdn_gating", &custom::npu_fused_gdn_gating_meta);
+}
+#else
 TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
 {
     m.impl("npu_fused_gdn_gating", &custom::npu_fused_gdn_gating_npu);
@@ -99,3 +111,4 @@ TORCH_LIBRARY_IMPL(custom, Meta, m)
 {
     m.impl("npu_fused_gdn_gating", &custom::npu_fused_gdn_gating_meta);
 }
+#endif
