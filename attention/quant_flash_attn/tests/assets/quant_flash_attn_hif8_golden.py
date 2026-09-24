@@ -34,12 +34,25 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
+    # [v_tail配套] 优先custom单算子包(18输入schema含v_tail三件套);
+    # builtin整包的15输入schema先注册会导致custom注册被拒, 故不可先import builtin.ops
+    # (与 pytest 侧 common/quant_flash_attn_golden.py 同款fallback链)
+    from cann_ops_transformer_custom.ops.attention.quant_flash_attn import (
+        quant_flash_attn,
+        quant_flash_attn_metadata,
+    )
 
     _HAS_NPU = True
-except ImportError as e:
-    logger.warning("Failed to import cann_ops_transformer.ops: %s", e)
-    _HAS_NPU = False
+except ImportError:
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
+
+        _HAS_NPU = True
+    except (ImportError, RuntimeError) as e:
+        quant_flash_attn = None
+        quant_flash_attn_metadata = None
+        logging.warning("Failed to import quant_flash_attn (custom / builtin): %s", e)
+        _HAS_NPU = False
 
 try:
     from . import result_compare_method

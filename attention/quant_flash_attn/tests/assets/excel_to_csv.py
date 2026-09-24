@@ -698,6 +698,16 @@ def _row_to_csv(excel_row, api_name, testcase_suffix, cols, quant_mode):
                 f"quant_mode={quant_mode}) — 与 pytest SKIP_CASES 同款"
             )
             return None
+
+    # [红线溢出用例] data_range极端值(|v|>1e30, 如k/v=-3.39e38=bf16 min)时
+    # CPU golden的fp32中间值溢出→全NaN, 不可用于精度对比 — 跳过
+    # 极端data_range跳过暂时禁用(用户要求20条全量)
+    # for _col in ("q_datarange", "k_datarange", "v_datarange"):
+    #     _v = _str_to_datarange(excel_row.get(cols.get(_col)))
+    #     if _v is not None and (abs(_v[0]) > 1e30 or abs(_v[1]) > 1e30):
+    #         print(f"[excel_to_csv] SKIP {testcase_name}: 极端data_range({_col}={_v})")
+    #         return None
+
     shapes, dtypes, data_ranges = _build_tensor_lists(excel_row, cols, quant_mode, attrs)
 
     # 嵌套字段：双引号包裹的 Python tuple 字面量，csv.writer 自动加引号。
