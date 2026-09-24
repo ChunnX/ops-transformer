@@ -1529,6 +1529,8 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t dbgU0 = 0, dbgU1 = 0, dbgS0 = 0, dbgS1 = 0, dbgC1 = 0;
+
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();
@@ -1537,8 +1539,14 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         // UnsortGrad while the flags fly; the wait phase drains + spins, and its trailing
         // SyncAll doubles as the gradSorted-completion barrier before a2a.
         CrossRankBarrierIssue();
+        PipeBarrier<PIPE_ALL>();
+        dbgU0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
+        PipeBarrier<PIPE_ALL>();
+        dbgU1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
         CrossRankBarrierWait();
+        dbgS0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
@@ -1549,10 +1557,16 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             A2aDriveLoop();
             FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
+            if (aivId_ == 0U) {
+                printf("[ENGDBG] rank %u unsort %u us | sort_a2a 0 | scatter_add 0 (numRecv=0)\n", rankId_,
+                       static_cast<uint32_t>((dbgU1 - dbgU0) / 1000U));
+            }
         } else {
             tpipe_->Reset();
             RebuildA2aHookBuffers();
             RunSortHooked(numRecv);
+            PipeBarrier<PIPE_ALL>();
+            dbgS1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             tpipe_->Reset();
             tpipe_->InitBuffer(statusBuf_, statusBufBytes_);
@@ -1575,6 +1589,15 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             SyncAll<true>();
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+            PipeBarrier<PIPE_ALL>();
+            dbgC1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            if (aivId_ == 0U) {
+                printf("[ENGDBG] rank %u unsort %u us | sort_a2a %u us | scatter_add %u us\n", rankId_,
+                       static_cast<uint32_t>((dbgU1 - dbgU0) / 1000U),
+                       static_cast<uint32_t>((dbgS1 - dbgS0) / 1000U),
+                       static_cast<uint32_t>((dbgC1 - dbgS1) / 1000U));
+            }
         }
     }
 }
