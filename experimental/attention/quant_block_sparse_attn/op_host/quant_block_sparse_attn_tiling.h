@@ -53,8 +53,7 @@ constexpr uint32_t QBSA_MAX_G_SIZE = 16U;
 
 inline bool QBSAIsSupportedMxHeadDim(uint32_t dSize)
 {
-    return dSize == QBSA_MXFP8_D_SIZE_64 || dSize == QBSA_D_SIZE ||
-           dSize == QBSA_MXFP8_D_SIZE_256;
+    return dSize == QBSA_MXFP8_D_SIZE_64 || dSize == QBSA_D_SIZE || dSize == QBSA_MXFP8_D_SIZE_256;
 }
 
 inline uint32_t QBSACeilDiv(uint32_t value, uint32_t divisor)

@@ -179,7 +179,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         (valueShape.GetDimNum() != DIM_NUM_4 ||
          !QBSAGetDimAsU32(valueShape, QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM), tilingInfo.dSizeV))) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value", "invalid shape",
-                                                "4D PA BNBD with a positive head dimension");
+                                                 "4D PA BNBD with a positive head dimension");
         return ge::GRAPH_FAILED;
     }
 

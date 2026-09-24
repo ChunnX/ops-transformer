@@ -1612,8 +1612,8 @@ def _qk_matmul_rounded_cpu(q_block, q_scale, k_mat, k_scale):
             group_sum = torch.zeros_like(accumulator)
             for d_start in range(group_start, group_start + QUANT_GROUP_SIZE, 16):
                 products = (
-                    q[:, None, d_start:d_start + 16]
-                    * k[None, n_start:n_end, d_start:d_start + 16]
+                    q[:, None, d_start : d_start + 16]
+                    * k[None, n_start:n_end, d_start : d_start + 16]
                 )
                 maximum = products.abs().amax(dim=-1, keepdim=True)
                 _, exponent = torch.frexp(maximum)
@@ -1621,14 +1621,18 @@ def _qk_matmul_rounded_cpu(q_block, q_scale, k_mat, k_scale):
                 step = torch.ldexp(torch.ones_like(maximum), exponent - 19)
                 group_sum += (torch.trunc(products / step) * step).sum(dim=-1)
             group = group_start // QUANT_GROUP_SIZE
-            increment = group_sum * qs[:, group:group + 1] * ks[None, n_start:n_end, group]
+            increment = (
+                group_sum * qs[:, group : group + 1] * ks[None, n_start:n_end, group]
+            )
             _, accumulator_exponent = torch.frexp(accumulator.abs())
             # FP32 has 24 significant bits; its minimum subnormal step is 2**-149.
             accumulator_step = torch.ldexp(
-                torch.ones_like(accumulator), torch.clamp(accumulator_exponent - 24, min=-149)
+                torch.ones_like(accumulator),
+                torch.clamp(accumulator_exponent - 24, min=-149),
             )
             increment = torch.where(
-                accumulator == 0, increment,
+                accumulator == 0,
+                increment,
                 torch.trunc(increment / accumulator_step) * accumulator_step,
             )
             accumulator = (accumulator + increment).to(torch.float32).to(torch.float64)

@@ -54,7 +54,7 @@ public:
                       KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MXFullQuantMode currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
-                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                      (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
                   "MXFullQuantMode requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // C2 延迟两个 task，V2 再延迟一个 task。单 BMM2 UB 作为跨 iteration 的流水寄存器：
     // AIC 执行 C1(i) / C2(i-2)，AIV 执行 V2(i-3) / V1(i)。

@@ -576,7 +576,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType, TRANSPOSE_SRC_K>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
-                                     param.singleM); // d,s2
+                                                      param.singleM); // d,s2
     } else
 #endif
     {
@@ -633,8 +633,8 @@ __aicore__ inline void MxMatmulFull(const LocalTensor<A> &aL1Tensor, const Local
     // A/B scale tensor 会被透传，同时 L0ADType/L0BDType 可指定为 mx_fp8_e4m3_t，
     // 从而在 L1->L0 LoadData 阶段选择硬件随路反量化。
     // Use the physical L1 width, not param.singleK (which can be a shorter tail).
-    MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL, L0AType, L0BType, AScaleType, BScaleType, L0ADType, L0BDType, baseK>(
-        aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param, aScaleL1Tensor, bScaleL1Tensor);
+    MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL, L0AType, L0BType, AScaleType, BScaleType, L0ADType, L0BDType,
+               baseK>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param, aScaleL1Tensor, bScaleL1Tensor);
 }
 
 // MX C1 paired-subLoop path: keep the shared B/Q tile resident in L0B between two MMADs.

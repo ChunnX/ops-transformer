@@ -78,8 +78,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, QBSA_KV_LAYOUT_PA_BNSD),
         ASCENDC_TPL_UINT_SEL(MASK_MODE, ASCENDC_TPL_UI_LIST, QBSA_MASK_NONE, QBSA_MASK_CAUSAL),
         ASCENDC_TPL_BOOL_SEL(RETURN_SOFTMAX_LSE, 0, 1),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
-                             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                              Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
                              Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256),
         ASCENDC_TPL_UINT_SEL(QUANT_MODE, ASCENDC_TPL_UI_LIST, MXFullQuantMode)), );

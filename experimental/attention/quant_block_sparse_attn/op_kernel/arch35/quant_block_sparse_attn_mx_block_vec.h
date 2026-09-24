@@ -59,7 +59,7 @@ public:
                       KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX vector currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
-                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                      (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
                   "MX vector requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
     static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
@@ -190,8 +190,7 @@ public:
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
             constexpr uint32_t emptyRowsPerCopy = STAGE1_OUT_UB_SIZE / (DV_BASE * sizeof(OUTPUT_T));
             for (uint32_t row = 0U; row < actVecMSize; row += emptyRowsPerCopy) {
-                const uint32_t rows = actVecMSize - row < emptyRowsPerCopy ?
-                    actVecMSize - row : emptyRowsPerCopy;
+                const uint32_t rows = actVecMSize - row < emptyRowsPerCopy ? actVecMSize - row : emptyRowsPerCopy;
                 LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
                 Duplicate<OUTPUT_T>(emptyOut, 0.0F, rows * DV_BASE);
                 stage1OutQue_[0].template EnQue(emptyOut);

@@ -53,7 +53,7 @@ public:
                       KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX cube currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
-                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                      (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
                   "MX cube requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
