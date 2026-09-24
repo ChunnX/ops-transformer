@@ -26,7 +26,7 @@
 #include "../../../attn_infra/gemm/bsa_helper.hpp"
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
-#include "../../../attn_infra/gemm/block/block_mmad_pv_arch35_ABf16_C_to_UB.hpp"
+#include "../../../attn_infra/gemm/block/bsa_block_mmad_pv_arch35_ABf16_C_to_UB.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 #include "../../../tla/layout_bsa.hpp"
