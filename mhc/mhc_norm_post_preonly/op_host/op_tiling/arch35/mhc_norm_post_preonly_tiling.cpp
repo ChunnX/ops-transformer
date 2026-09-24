@@ -269,8 +269,8 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     auto x2OutShape = context_->GetOutputShape(X_2_OUT_OUTPUT_INDEX);
     OP_CHECK_IF(hInPrimeShape == nullptr || x2OutShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "required output shape is null"), return ge::GRAPH_FAILED);
-    const auto &hInPrime = hInPrimeShape->GetStorageShape();
-    const auto &x2Out = x2OutShape->GetStorageShape();
+    const auto &hInPrime = hInPrimeShape->GetOriginShape();
+    const auto &x2Out = x2OutShape->GetOriginShape();
     // Dynamic launch may expose preallocated outputs as zero-rank placeholders during tiling.
     // Validate every output shape that is materialized; defer zero-rank placeholders to ACLNN/infer-shape checks.
     if (hInPrime.GetDimNum() != 0U) {
@@ -296,7 +296,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
         }
     }
     auto hPreShape = context_->GetOutputShape(H_PRE_OUTPUT_INDEX);
-    OP_CHECK_IF(hPreShape != nullptr && hPreShape->GetStorageShape().GetDimNum() != 0U,
+    OP_CHECK_IF(hPreShape != nullptr && hPreShape->GetOriginShape().GetDimNum() != 0U,
                 OP_LOGE(context_->GetNodeName(), "h_pre is an interface-reserved optional output and must be empty currently"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -326,14 +326,14 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckAttrs()
 
     useRmsMid_ = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX) != nullptr;
     auto hInF32Shape = context_->GetOutputShape(H_IN_F32_OUTPUT_INDEX);
-    const bool hasHInF32 = hInF32Shape != nullptr && hInF32Shape->GetStorageShape().GetDimNum() != 0U;
+    const bool hasHInF32 = hInF32Shape != nullptr && hInF32Shape->GetOriginShape().GetDimNum() != 0U;
     OP_CHECK_IF(returnHInF32_ != hasHInF32,
                 OP_LOGE(context_->GetNodeName(),
                         "h_in_f32 must be present exactly when return_h_in_f32 is true"),
                 return ge::GRAPH_FAILED);
     if (hasHInF32) {
         const auto &hOut = context_->GetInputShape(0)->GetStorageShape();
-        const auto &hInF32 = hInF32Shape->GetStorageShape();
+        const auto &hInF32 = hInF32Shape->GetOriginShape();
         OP_CHECK_IF(hInF32.GetDimNum() != hOut.GetDimNum(),
                     OP_LOGE(context_->GetNodeName(), "h_in_f32 rank must match h_out"),
                     return ge::GRAPH_FAILED);
