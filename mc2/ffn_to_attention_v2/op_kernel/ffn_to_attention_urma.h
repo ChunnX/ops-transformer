@@ -625,9 +625,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
             (chunkStart + entryChunkMax > entryCountChannel) ? entryCountChannel - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{static_cast<uint16_t>(curEntries), REMOTE_ADDRESS_ENTRY_SIZE, strideBytes, 0U, 0U};
         SyncFunc<HardEvent::S_MTE2>();
-        DataCopyPad(entriesLocal,
-                    rankAddressTable[static_cast<uint64_t>(channelIdx + chunkStart * channelsPerRank_) * entryElements],
-                    copyParams, padParams);
+        DataCopyPad<uint64_t, PaddingMode::Compact>(
+            entriesLocal,
+            rankAddressTable[static_cast<uint64_t>(channelIdx + chunkStart * channelsPerRank_) * entryElements],
+            copyParams, padParams);
         SyncFunc<HardEvent::MTE2_S>();
         for (uint32_t i = 0U; i < curEntries; ++i) {
             uint32_t entryOffset = i * entryElements;
@@ -655,9 +656,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
             (chunkStart + entryChunkMax > entryCountChannel) ? entryCountChannel - chunkStart : entryChunkMax;
         DataCopyExtParams copyParams{static_cast<uint16_t>(curEntries), REMOTE_ADDRESS_ENTRY_SIZE, strideBytes, 0U, 0U};
         SyncFunc<HardEvent::S_MTE2>();
-        DataCopyPad(entriesLocal,
-                    rankAddressTable[static_cast<uint64_t>(channelIdx + chunkStart * channelsPerRank_) * entryElements],
-                    copyParams, padParams);
+        DataCopyPad<uint64_t, PaddingMode::Compact>(
+            entriesLocal,
+            rankAddressTable[static_cast<uint64_t>(channelIdx + chunkStart * channelsPerRank_) * entryElements],
+            copyParams, padParams);
         SyncFunc<HardEvent::MTE2_S>();
         for (uint32_t i = 0U; i < curEntries; ++i) {
             uint32_t entryOffset = i * entryElements;
