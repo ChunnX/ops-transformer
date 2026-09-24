@@ -62,6 +62,10 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const CheckContext &co
         return ge::GRAPH_SUCCESS;
     }
 
+    if (context.topkValueMode == 2) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     OP_CHECK_IF(!context.oriBlockTable.present,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_block_table",
                                                          "Ori_block_table is required when layout_kv is PA_BBND"),

@@ -32,6 +32,7 @@ protected:
 
 namespace {
 constexpr uint64_t SKIP_TILING_KEY = UINT64_MAX;
+constexpr uint64_t TOPK_OFFSET_ORI_CMP_SPARSE_TILING_KEY = 133186U;
 constexpr int64_t kBatchSize = 4;
 constexpr int64_t kNumHeadsKv = 1;
 constexpr int64_t kMetadataSize = optiling::SMLA_META_SIZE;
@@ -82,6 +83,7 @@ struct SmlaCase {
     int64_t cmpMaskMode = 0;
     int64_t oriWinLeft = 127;
     int64_t oriWinRight = 0;
+    int64_t topkValueMode = 1;
 };
 
 gert::StorageShape ToStorageShape(const std::vector<int64_t> &dims)
@@ -163,7 +165,7 @@ void RunSmlaTilingCase(const SmlaCase &c, ge::graphStatus expect, uint64_t expec
          {"ori_win_right", Ops::Transformer::AnyValue::CreateFrom<int64_t>(c.oriWinRight)},
          {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(c.layoutQ)},
          {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(c.layoutKv)},
-         {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"topk_value_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(c.topkValueMode)},
          {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(c.returnSoftmaxLse)}},
         &compileInfo, c.soc, c.coreNum, c.ubSize);
     ExecuteTestCase(tilingContextPara, expect, expectTilingKey);
@@ -209,6 +211,76 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_csa_with_sparse_indices_fp16_
     c.cmpResidualKvShape = {4};
     c.cmpRatio = 4;
     c.cmpMaskMode = 3;
+    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+// Both sparse paths use physical token offsets and do not require block tables when topk_value_mode=2.
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_ori_cmp_sparse_topk_offset_without_block_table_success)
+{
+    SmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 512};
+    c.oriSparseIndicesShape = {512, 1, 512};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.oriBlockTableShape = {};
+    c.cmpBlockTableShape = {};
+    c.sequsedCmpKvShape = {4};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.topkValueMode = 2;
+    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS, TOPK_OFFSET_ORI_CMP_SPARSE_TILING_KEY);
+}
+
+// topk_value_mode=2 is only supported for PA_BBND KV layout.
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_topk_offset_non_pa_failed)
+{
+    SmlaCase c;
+    c.oriKvShape = {512, 1, 512};
+    c.oriSparseIndicesShape = {512, 1, 512};
+    c.oriBlockTableShape = {};
+    c.cuSeqLensOriKvShape = {5};
+    c.layoutKv = "TND";
+    c.topkValueMode = 2;
+    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+}
+
+// At least one KV path must be sparse when topk_value_mode=2.
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_topk_offset_without_sparse_indices_failed)
+{
+    SmlaCase c;
+    c.topkValueMode = 2;
+    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+}
+
+// An ori-only sparse path is sufficient when topk_value_mode=2.
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_topk_offset_only_ori_sparse_success)
+{
+    SmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 512};
+    c.oriSparseIndicesShape = {512, 1, 512};
+    c.oriBlockTableShape = {};
+    c.cmpBlockTableShape = {};
+    c.sequsedCmpKvShape = {4};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.topkValueMode = 2;
+    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+}
+
+// A cmp-only sparse path is sufficient when topk_value_mode=2.
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_950_topk_offset_only_cmp_sparse_success)
+{
+    SmlaCase c;
+    c.cmpKvShape = {32, 128, 1, 512};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.oriBlockTableShape = {};
+    c.cmpBlockTableShape = {};
+    c.sequsedCmpKvShape = {4};
+    c.cmpResidualKvShape = {4};
+    c.cmpRatio = 4;
+    c.cmpMaskMode = 3;
+    c.topkValueMode = 2;
     RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
 }
 

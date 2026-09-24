@@ -402,6 +402,14 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
     if (kvLayout_ == MQSMLALayout::TND || kvLayout_ == MQSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }
+    if (*opParamInfo_.topkValueMode == 2) {
+        // Physical offsets address KV cache blocks directly, without a block table.
+        oriMaxBlockNumPerBatch_ = GetAxisNum(oriKvShape_, MQSMLAAxis::Bn, kvLayout_);
+        if (opParamInfo_.cmpKv.tensor != nullptr) {
+            cmpMaxBlockNumPerBatch_ = GetAxisNum(cmpKvShape_, MQSMLAAxis::Bn, kvLayout_);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
             opName_, "ori_block_table",
