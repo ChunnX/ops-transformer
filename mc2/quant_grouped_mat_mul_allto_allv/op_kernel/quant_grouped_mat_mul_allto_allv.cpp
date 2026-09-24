@@ -113,6 +113,10 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             shareComputeOp.Process(0, 1);
         }
         hcommImpl.End();
+#else
+        // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
+        // TILINGKEY_USING_APACE_IMPL=0，该组合不会被选中，空实现仅占位
+#endif
         return;
     }
 
