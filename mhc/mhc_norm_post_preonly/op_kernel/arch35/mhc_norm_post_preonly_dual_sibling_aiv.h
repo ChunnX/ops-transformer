@@ -136,6 +136,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -143,14 +150,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。leader的私有缓存仅包含
-    // 自己完成R3的前两行，从已经同步写出的x2_out恢复follower负责的后两行。
-    // follower负责的两个head在GM和UB中均连续，一次恢复完整2D区间，
-    // 避免按tile、按head重复发出MTE2搬运指令。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    // 会合后只有leader继续执行R6、R7和最终输出。
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
