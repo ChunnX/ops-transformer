@@ -359,7 +359,7 @@ private:
 
     /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
     __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset,
-                                                    uint32_t tOff, uint32_t tD, float invRms0)
+                                                    uint32_t tOff, uint32_t tD)
     {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
@@ -369,12 +369,14 @@ private:
         bufResidualBf16_.EnQue(residual);
         residual = bufResidualBf16_.DeQue<T>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-        LocalTensor<T> hOutCache = x2Cache[tOff];
-        MhcNormRegBase::VFNormalizeAndComputePostHeads<T, N_MAX>(
-            x2Cache[tOff], x2Cache[D_ + tOff], x2Cache[2U * D_ + tOff], x2Cache[3U * D_ + tOff], hOutCache,
-            bufGamma0Fp32_.Get<float>()[tOff], residual, combWeights, dimTile_, 0U, invRms0, postVals[0], postVals[1],
-            postVals[2], postVals[3], tD);
+
+        for (uint32_t h = 0; h < N; h += 2U) {
+            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
+                                                     residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                     tD);
+        }
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
     }
@@ -456,16 +458,23 @@ private:
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX])
     {
-        ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD, invRms0);
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
+        PipeBarrier<PIPE_V>();
+
+        ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
     }
 
     // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                     const float (&postVals)[N_MAX])
     {
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
 
-        // 提前发起residual搬运（MTE2），随后在同一大VF中完成h_out归一化与post计算。
+        // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
         const uint32_t headBegin = laneId_ * 2U;
         const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
@@ -474,14 +483,16 @@ private:
         }
         bufResidualBf16_.EnQue(residual);
 
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
+                                                          tD);
+        PipeBarrier<PIPE_V>();
+
         residual = bufResidualBf16_.DeQue<T>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-        MhcNormRegBase::VFNormalizeAndComputePostHeads<T, 2U>(
-            x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
-            x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOutCache,
-            bufGamma0Fp32_.Get<float>()[tOff], residual, combWeights, dimTile_, headBegin, invRms0,
-            postVals[headBegin], postVals[headBegin + 1U], 0.0f, 0.0f, tD);
+        MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
+                                                 hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
+                                                 postVals[headBegin + 1U], tD);
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
     }
