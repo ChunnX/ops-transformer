@@ -55,10 +55,10 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
 
     # fp16 输入取 [0.5, 1)，避免 K 较大时 fp16 中间累加溢出
     a_local_list = [
-        np.random.uniform(1.0, 1.0, (M_total, Ka)).astype(np.float16)
+        np.random.uniform(0.5, 1.0, (M_total, Ka)).astype(np.float16)
         for _ in range(rank_num)
     ]
-    b_ori = np.random.uniform(0.5, 1.0, (N, K)).astype(np.float16)
+    b_ori = np.random.uniform(1.0, 1.0, (N, K)).astype(np.float16)
     #bias = np.random.uniform(-0.5, 0.5, (N,)).astype(np.float32)
     bias = np.random.uniform(0.0, 0.0, (N,)).astype(np.float32)
 
