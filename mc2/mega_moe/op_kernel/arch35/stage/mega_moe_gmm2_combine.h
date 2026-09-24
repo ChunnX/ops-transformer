@@ -38,6 +38,38 @@ using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 struct HcommBatchHandle {};
 #endif
 
+constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
+constexpr int32_t MAX_AICORE_NUM = 36;
+
+struct QuantTokenBufferConfig {
+    uint32_t quantTokenSizeBytes;
+};
+
+struct WaveCombineBufferConfig {
+    uint32_t rowBytes = 0;
+    uint32_t rowStrideBytes = 0;
+    uint32_t quantRowElements = 0;
+    uint32_t quantRowStorageBytes = 0;
+    uint32_t slotStrideBytes = 0;
+    uint32_t quantTempElements = 0;
+    uint32_t rowBufferCount = 0;
+};
+
+struct WaveCombineScratch {
+    LocalTensor<int32_t> metaInfoTensor;
+    LocalTensor<bfloat16_t> rowBufferTensor;
+    LocalTensor<float> quantTempTensor;
+};
+
+constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
+constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
+constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
+constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
+// [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
+// The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
+constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
+constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
+
 namespace CombineImpl {
 
 // Combine 发送路由：dispatch 阶段写入 metaInfo 的 (目标rank, 原token行, topk槽) 三元组。
@@ -45,6 +77,12 @@ struct CombineTokenRoute {
     uint32_t dstRankId;
     uint32_t tokenIdx;
     uint32_t topkIdx;
+};
+
+struct LayeredCombineBatchState {
+    uint32_t dstRankId = 0U;
+    HcommBatchHandle batchHandle{};
+    uint32_t pendingTokenCount = 0U;
 };
 
 __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int32_t> &metaInfoTensor,
@@ -175,12 +213,6 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
-struct LayeredCombineBatchState {
-    uint32_t dstRankId = 0U;
-    HcommBatchHandle batchHandle{};
-    uint32_t pendingTokenCount = 0U;
-};
-
 // 读取并按需量化一组普通/layered Combine token，然后发送到目标 rank。
 template <uint8_t QuantMode, typename T, bool IsLayered = false, bool IsQuantized = true>
 __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx,
@@ -245,38 +277,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 }
 
 } // namespace CombineImpl
-
-constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
-constexpr int32_t MAX_AICORE_NUM = 36;
-
-struct QuantTokenBufferConfig {
-    uint32_t quantTokenSizeBytes;
-};
-
-struct WaveCombineBufferConfig {
-    uint32_t rowBytes = 0;
-    uint32_t rowStrideBytes = 0;
-    uint32_t quantRowElements = 0;
-    uint32_t quantRowStorageBytes = 0;
-    uint32_t slotStrideBytes = 0;
-    uint32_t quantTempElements = 0;
-    uint32_t rowBufferCount = 0;
-};
-
-struct WaveCombineScratch {
-    LocalTensor<int32_t> metaInfoTensor;
-    LocalTensor<bfloat16_t> rowBufferTensor;
-    LocalTensor<float> quantTempTensor;
-};
-
-constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
-constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
-constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
-constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
-// [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
-// The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
-constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
-constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
 // 非 layered 路径统一使用的 Combine 行环。常规 Wave 只有 AIV1 建立并使用这些 UB 视图；
 // 最后一轮不再与 GMM1/Activation 并行时，调用方才为 AIV0 补充初始化。

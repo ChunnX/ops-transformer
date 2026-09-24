@@ -55,6 +55,16 @@ struct ExpertDispatchCoreRange {
     uint32_t localExpertRowEnd;
 };
 
+// 基线 dispatch 落地目标的 GM 视图集合（按段起始行 rowDstOffset 偏置）。
+template <typename ActivationType, typename QuantScaleType>
+struct DispatchCopyTargets {
+    GlobalTensor<ActivationType> remoteRank;
+    GlobalTensor<ActivationType> tokenRev;
+    GlobalTensor<QuantScaleType> scaleRev;
+    GlobalTensor<int32_t> metaInfo;
+    GlobalTensor<int32_t> revWeights;
+};
+
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 template <typename TopkIndexType>
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
@@ -166,16 +176,6 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
 }
-
-// 基线 dispatch 落地目标的 GM 视图集合（按段起始行 rowDstOffset 偏置）。
-template <typename ActivationType, typename QuantScaleType>
-struct DispatchCopyTargets {
-    GlobalTensor<ActivationType> remoteRank;
-    GlobalTensor<ActivationType> tokenRev;
-    GlobalTensor<QuantScaleType> scaleRev;
-    GlobalTensor<int32_t> metaInfo;
-    GlobalTensor<int32_t> revWeights;
-};
 
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline DispatchCopyTargets<ActivationType, QuantScaleType> CreateDispatchCopyTargets(
