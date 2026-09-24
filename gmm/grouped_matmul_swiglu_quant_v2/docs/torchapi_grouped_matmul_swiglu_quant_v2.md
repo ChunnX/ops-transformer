@@ -31,7 +31,9 @@
 
   对`group_list`指定的每个expert，先执行GroupedMatmul并完成MXFP8反量化：
 
-  $$C_i=(X_i\cdot W_i)\odot XScale_i\odot WeightScale_i$$
+  $$C_i[m,n]=\sum_{k=0}^{K-1}\left(X_i[m,k]\cdot s_i^X[m,\lfloor k/32\rfloor]\right)\left(W_i[k,n]\cdot s_i^W[\lfloor k/32\rfloor,n]\right)$$
+
+  其中$W_i$为逻辑上的`[K,N]`权重，$s_i^X$和$s_i^W$为解码后的逻辑scale，每32个K元素共用一个scale。MX缩放发生在K方向求和之前，不能将随K变化的scale移到matmul结果之后相乘。
 
   再将$C_i$沿最后一维前后均分为$x_{glu}$和$x_{linear}$，按`swiglu_mode=2`计算：
 
@@ -125,6 +127,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 - 转置场景中，`weight`和`weight_scale`的转置属性必须一致；即使`K=N`，也通过Tensor的view stride识别。`weight`不支持规定NZ/ZN布局之外的任意非连续view。
 - `group_list_type=0`时，`group_list`表示每个group在M轴上的累计结束位置，数值必须非负、单调不递减且不大于M；`group_list_type=1`时，`group_list`表示每个group的M轴长度，数值必须非负且总和不大于M。`group_list`未指定的输出区域不会被更新。
 - `dequant_mode=2`、`dequant_dtype=torch.float32`、`quant_mode=2`、`quant_dtype=torch.float8_e4m3fn`、`swiglu_mode=2`。
+- `quant_dtype`显式传入`None`时使用默认的`torch.float8_e4m3fn`输出类型；不支持`torch.int8`、`torch.float8_e5m2`及其对应的数值枚举，数值`1`也不作为FP8输出的别名。
 - `weight_assist_matrix`、`bias`、`smooth_scale`和`tuning_config`当前不支持有效数据。
 - `round_mode`仅支持`"rint"`；底层ACLNN接口传入`nullptr`或空字符串时等效于`"rint"`。
 

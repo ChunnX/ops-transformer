@@ -85,7 +85,7 @@ __aicore__ inline void GmmSwigluAswtV3(GM_ADDR x, GM_ADDR weight, GM_ADDR weight
     epilogueArgs.gluAlpha = gmmSwigluQuantParams_.gluAlpha;
     epilogueArgs.gluBias = gmmSwigluQuantParams_.gluBias;
     // scaleAlg is part of the V3 tiling payload.  Read the named field here
-    // so scale_alg=1 reaches the dynamic-dtype-range MX quantization path;
+    // so scale_alg=1 reaches the cuBLAS MX quantization path;
     // reserved0 is retained only for compatibility with older payloads.
     epilogueArgs.scaleAlg = gmmSwigluQuantParams_.scaleAlg;
     epilogueArgs.dstTypeMax = gmmSwigluQuantParams_.dstTypeMax;

@@ -116,7 +116,7 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(GM_ADDR x, GM_ADDR w
     epilogueParams.gluAlpha = gmmParams_.gluAlpha;
     epilogueParams.gluBias = gmmParams_.gluBias;
     // scaleAlg is part of the V3 tiling payload.  Read the named field here
-    // so scale_alg=1 reaches the dynamic-dtype-range MX quantization path;
+    // so scale_alg=1 reaches the cuBLAS MX quantization path;
     // reserved0 is retained only for compatibility with older payloads.
     epilogueParams.scaleAlg = gmmParams_.scaleAlg;
     epilogueParams.dstTypeMax = gmmParams_.dstTypeMax;

@@ -100,6 +100,22 @@ void PrintVector(const std::vector<T> &data, const std::string &name, int64_t pr
     LOG_PRINT("\n");
 }
 
+bool DumpFile(const std::string &path, const std::vector<uint8_t> &data)
+{
+    std::ofstream outputFile(path, std::ios::binary);
+    if (!outputFile.is_open()) {
+        LOG_PRINT("failed to open dump file: %s\n", path.c_str());
+        return false;
+    }
+    outputFile.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    outputFile.flush();
+    if (!outputFile.good()) {
+        LOG_PRINT("failed to write or flush dump file: %s\n", path.c_str());
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     const int64_t dequantMode = 2;
@@ -278,12 +294,8 @@ int main(int argc, char **argv)
     PrintVector<uint8_t>(outputScaleHostData, "outputScale", 64);
 
     if (!dumpPrefix.empty()) {
-        std::ofstream outputFile(dumpPrefix + "_output.bin", std::ios::binary);
-        outputFile.write(reinterpret_cast<const char *>(outputHostData.data()),
-                         static_cast<std::streamsize>(outputHostData.size()));
-        std::ofstream scaleFile(dumpPrefix + "_output_scale.bin", std::ios::binary);
-        scaleFile.write(reinterpret_cast<const char *>(outputScaleHostData.data()),
-                        static_cast<std::streamsize>(outputScaleHostData.size()));
+        CHECK_RET(DumpFile(dumpPrefix + "_output.bin", outputHostData), std::_Exit(4));
+        CHECK_RET(DumpFile(dumpPrefix + "_output_scale.bin", outputScaleHostData), std::_Exit(4));
         LOG_PRINT("dumpPrefix=%s\n", dumpPrefix.c_str());
     }
 

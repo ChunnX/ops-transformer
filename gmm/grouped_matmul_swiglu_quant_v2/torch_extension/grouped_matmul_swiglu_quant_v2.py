@@ -81,6 +81,13 @@ def _normalize_wrapper_dtype(dtype):
     return None if dtype is None else dtype + ACL_DTYPE_OFFSET
 
 
+def _normalize_v3_quant_dtype(dtype):
+    dtype = _normalize_dtype(dtype)
+    if dtype is not None and dtype != GE_DTYPE_FLOAT8_E4M3FN:
+        raise TypeError("swiglu_mode=2 only supports torch.float8_e4m3fn output.")
+    return dtype
+
+
 def _infer_v3_n(weight_scale):
     if weight_scale.dim() != 4:
         raise ValueError("weight_scale[0] must be 4D in the V3 MXFP8 scenario.")
@@ -152,12 +159,13 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
                 raise TypeError(
                     "swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn."
                 )
+            _normalize_v3_quant_dtype(quant_dtype)
             n = _infer_v3_n(weight_scale[0])
             m = x.shape[0]
             return (
                 torch.empty((m, n // 2), dtype=torch.float8_e4m3fn, device="meta"),
                 torch.empty(
-                    (m, math.ceil((n // 2) / MX_GROUP_SIZE), 2),
+                    (m, ((n // 2) + MX_GROUP_SIZE - 1) // MX_GROUP_SIZE, 2),
                     dtype=getattr(torch, "float8_e8m0fnu", torch.uint8),
                     device="meta",
                 ),
@@ -290,6 +298,7 @@ def grouped_matmul_swiglu_quant_v2(
     if dst_type_max != 0.0:
         raise ValueError("MXFP8 only supports dst_type_max=0.0.")
 
+    quant_dtype = _normalize_v3_quant_dtype(quant_dtype)
     return torch.ops.cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
         x,
         weight,
@@ -302,7 +311,7 @@ def grouped_matmul_swiglu_quant_v2(
         dequant_mode=dequant_mode,
         dequant_dtype=_normalize_dtype(dequant_dtype),
         quant_mode=quant_mode,
-        quant_dtype=_normalize_dtype(quant_dtype),
+        quant_dtype=quant_dtype,
         group_list_type=group_list_type,
         tuning_config=tuning_config,
         x_dtype=_normalize_wrapper_dtype(x_dtype),

@@ -108,6 +108,59 @@ aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
     return ret;
 }
 
+aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t stride, int64_t offset,
+                                 int64_t groupListType)
+{
+    SetupAscend950();
+    auto inputExecutor = CREATE_EXECUTOR();
+    if (inputExecutor.get() == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    // The input executor owns the copied Host storage until the API executor has been destroyed.
+    auto *groupList =
+        inputExecutor->AllocHostTensor(storageValues.data(), storageValues.size(), op::DataType::DT_INT64);
+    if (groupList == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    groupList->SetViewShape(op::Shape({2}));
+    groupList->SetViewStrides(op::Strides({stride}));
+    groupList->SetViewOffset(offset);
+
+    auto x = BuildAclTensorDescFromSpec("32:128", "FLOAT8_E4M3FN", "ND").ToAclType();
+    auto weightTensor =
+        BuildAclTensorDescFromSpec("2:128:128#16384:128:1#2:4:8:16:32", "FLOAT8_E4M3FN", "FRACTAL_NZ").ToAclType();
+    auto weightScaleTensor = BuildAclTensorDescFromSpec("2:2:128:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto xScale = BuildAclTensorDescFromSpec("32:2:2", "FLOAT8_E8M0", "ND").ToAclType();
+    auto output = BuildAclTensorDescFromSpec("32:64", "FLOAT8_E4M3FN", "ND").ToAclType();
+    auto outputScale = BuildAclTensorDescFromSpec("32:1:2", "FLOAT8_E8M0", "ND").ToAclType();
+
+    const aclTensor *weightElements[] = {weightTensor.get()};
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(aclCreateTensorList(weightElements, 1),
+                                                                      aclDestroyTensorList);
+    if (weight == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    (void)weightTensor.release();
+    const aclTensor *weightScaleElements[] = {weightScaleTensor.get()};
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(aclCreateTensorList(weightScaleElements, 1),
+                                                                           aclDestroyTensorList);
+    if (weightScale == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    (void)weightScaleTensor.release();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
+        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList, 2, 0, 2,
+        groupListType, nullptr, 2, 7.0, 1.702, 1.0, "rint", 0, 0.0, output.get(), outputScale.get(), &workspaceSize,
+        &executor);
+    if (executor != nullptr) {
+        (void)aclDestroyAclOpExecutor(executor);
+    }
+    return ret;
+}
+
 aclOpExecutor *CreateTestExecutor()
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -298,6 +351,31 @@ TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase1_output_pointers_retu
 {
     EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kWorkspaceSize), ACLNN_ERR_PARAM_NULLPTR);
     EXPECT_EQ(RunPhase1NullPointerCase(Phase1NullPointerTarget::kExecutor), ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_ignore_padding)
+{
+    EXPECT_EQ(RunHostGroupListCase({16, 99, 32}, 2, 0, 0), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({99, 16, 99, 32}, 2, 1, 0), ACLNN_SUCCESS);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_check_logical_values)
+{
+    EXPECT_EQ(RunHostGroupListCase({16, 20, -1}, 2, 0, 0), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunHostGroupListCase({16, 20, 8}, 2, 0, 0), ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_check_logical_sum)
+{
+    EXPECT_EQ(RunHostGroupListCase({12, 99, 20}, 2, 0, 1), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({16, 1, 20}, 2, 0, 1), ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_contiguous_values_are_unchanged)
+{
+    EXPECT_EQ(RunHostGroupListCase({16, 32}, 1, 0, 0), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({12, 20}, 1, 0, 1), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({16, -1}, 1, 0, 0), ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, tensor_list_elements_return_param_nullptr)

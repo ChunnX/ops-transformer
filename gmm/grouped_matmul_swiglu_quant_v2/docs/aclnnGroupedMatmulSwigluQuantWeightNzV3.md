@@ -34,9 +34,9 @@
   1. 根据 `groupList` 和 `groupListType` 将 `x` 划分为不同的分组，并为每个分组选择对应的权重切片。
   2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MXFP8 反量化，得到待进行 SwiGLU 计算的矩阵 `x_i`：
 
-     $$x_i = (X_i \cdot W_i) \odot xScale_i \odot weightScale_i$$
+     $$x_i[m,n] = \sum_{k=0}^{K-1} \left(X_i[m,k] \cdot s_i^X[m,\lfloor k/32\rfloor]\right) \left(W_i[k,n] \cdot s_i^W[\lfloor k/32\rfloor,n]\right)$$
 
-     其中缩放因子按MX block规则在K方向每32个元素一组广播，每64个元素存储两个E8M0 scale。
+     其中 `W_i` 表示逻辑上的 `[K,N]` 权重，$s_i^X$、$s_i^W$ 是解码后的逻辑缩放因子，按MX block规则在K方向每32个元素一组广播，每64个元素存储两个E8M0 scale。缩放发生在K方向求和之前，不能将随K变化的scale移到矩阵乘法结果之后相乘。
 
   3. 沿最后一维前后分半，对前半部分执行带clamp和alpha的SiLU，对后半部分执行带clamp和bias的线性分支，再逐元素相乘，得到`swigluOut_i`。
   4. 对 `swigluOut_i` 执行 MXFP8 动态量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`：
@@ -323,7 +323,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
 ## 调用示例
 
-示例代码如下，仅展示 V3 ACLNN 两段式接口的调用方式。完整的 Tensor 创建、Device 内存管理和资源释放代码请参考[示例源码](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp)。
+示例代码如下，仅展示 V3 ACLNN 两段式接口的调用方式。Tensor 创建、Device 内存申请和结果读取请参考[示例源码](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp)。该源码用于短进程验证，保留了通过`std::_Exit`绕过已遇到的Ascend 950 debug runtime teardown挂起问题的处理，不作为完整资源生命周期管理的模板；该规避不表示所有Ascend 950运行时版本均存在此问题。
 
 ```cpp
 #include "acl/acl.h"
