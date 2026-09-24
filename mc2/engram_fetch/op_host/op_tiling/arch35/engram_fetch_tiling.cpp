@@ -113,7 +113,7 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
 /**
  * @brief 校验tensor数据类型
  */
-static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
+static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -151,13 +151,26 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
             return ge::GRAPH_FAILED);
     }
 
+    // 训练模式 sf_table 为本卡 SF 表地址 (1元 int64), 校验与 localStorageAddr 对齐;
+    // 无 SF 时为空占位 (dim0=0), 跳过校验。推理模式 sf_table 为真表, 不在此校验。
+    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+    const gert::StorageShape *sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    if (isTraining && sfTableDesc != nullptr && sfTableShape != nullptr &&
+        sfTableShape->GetStorageShape().GetDim(0) > 0) {
+        OP_TILING_CHECK(sfTableDesc->GetDataType() != ge::DT_INT64,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            nodeName, "sfTable", Ops::Base::ToString(sfTableDesc->GetDataType()).c_str(),
+                            "The dtype of sfTable must be DT_INT64 in training mode."),
+                        return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
 /**
  * @brief 校验tensor维度
  */
-static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_t &numTokens)
+static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_t &numTokens, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
     // input dim check
@@ -228,6 +241,24 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             return ge::GRAPH_FAILED);
     }
 
+    // 训练模式 sf_table 校验与 localStorageAddr 对齐 (1元 int64 地址张量);
+    // 无 SF 时为空占位 (dim0=0), 跳过校验。推理模式 sf_table 为真表, 不在此校验。
+    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    if (isTraining && sfTableShape != nullptr && sfTableShape->GetStorageShape().GetDim(0) > 0) {
+        OP_TILING_CHECK(
+            sfTableShape->GetStorageShape().GetDimNum() != DIM_ONE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                nodeName, "sfTable", (std::to_string(sfTableShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "The shape dim of sfTable must be 1D in training mode."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(sfTableShape->GetStorageShape().GetDim(0) != 1,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            nodeName, "sfTable",
+                            (std::string("dim0=") + std::to_string(sfTableShape->GetStorageShape().GetDim(0))).c_str(),
+                            "dim0 must be 1 in training mode."),
+                        return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -263,17 +294,17 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 /**
  * @brief 校验所有tensor（指针、数据类型、维度、格式）
  */
-static ge::graphStatus TilingCheckEngramFetch(const gert::TilingContext *context, int64_t &numTokens)
+static ge::graphStatus TilingCheckEngramFetch(const gert::TilingContext *context, int64_t &numTokens, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
 
     OP_TILING_CHECK(CheckTensorPtrNullptr(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckTensorDataType(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "params dataType is invalid."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorDataType(context, isTraining) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckTensorDim(context, numTokens) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckTensorDim(context, numTokens, isTraining) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckTensorFormat(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "params format is invalid."),
@@ -627,23 +658,16 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
     bool hasSf = false;
-    if (isTraining) {
-        // 训练模式 sf_table 输入为本卡 SF 表地址 (1元 int64 张量), hasSf 按
-        // fetched_sf 输出形态判定 (无 SF 时 fetched_sf 为空 1-D 张量)
-        auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
-        auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
-        hasSf = fetchedSfDesc != nullptr && fetchedSfShape != nullptr &&
-                fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
-                fetchedSfShape->GetStorageShape().GetDim(1) > 0;
-    } else {
-        auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
-        auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
-        auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
-        auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
-        hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
-                fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
-                fetchedSfShape->GetStorageShape().GetDim(1) > 0;
-    }
+    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+    auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+    // hasSf 训练/推理统一判定: sf_table 与 fetched_sf 成对提供时为真。
+    // 无 SF 时两者均为空占位 (1-D), fetched_sf 非 2D 使 hasSf 恒为假;
+    // 训练的 sf_table 为本卡 SF 表地址 (1元 int64 张量), 推理为全量 SF 表。
+    hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
+            fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
+            fetchedSfShape->GetStorageShape().GetDim(1) > 0;
     const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
                                             GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     context->SetTilingKey(tilingKey);
@@ -744,7 +768,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
 
     // 1. tensor check (ptr + dtype + shape + format)
     int64_t numTokens = 0;
-    OP_TILING_CHECK(TilingCheckEngramFetch(context, numTokens) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(TilingCheckEngramFetch(context, numTokens, isTraining) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
     // 2. attr check

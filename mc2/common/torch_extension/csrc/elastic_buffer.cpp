@@ -657,7 +657,7 @@ private:
     static void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
                                           int64_t numCpuBytes, EngramContextResources &resources,
                                           HostBufferGuard &guard, void *externalHostPtr = nullptr,
-                                          int64_t externalBytes = 0, bool isSf = false)
+                                          int64_t externalBytes = 0)
     {
         if (externalHostPtr == nullptr) {
             aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
@@ -674,11 +674,7 @@ private:
                 ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
                             externalBytes, static_cast<int>(ar));
             }
-            if (isSf) {
-                resources.sfExternalRegistered = (ar == ACL_SUCCESS);
-            } else {
-                resources.externalRegistered = (ar == ACL_SUCCESS);
-            }
+            resources.externalRegistered = (ar == ACL_SUCCESS);
         }
 
         void *hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
@@ -687,22 +683,33 @@ private:
         TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
                     ", host memory cannot be mapped to device");
 
-        if (!isSf) {
-            CommMem mem;
-            mem.type = COMM_MEM_TYPE_DEVICE;
-            mem.addr = devPtr;
-            mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
-            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
-                        ") failed, ret=", hcclRet);
-        }
+        CommMem mem;
+        mem.type = COMM_MEM_TYPE_DEVICE;
+        mem.addr = devPtr;
+        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
+        auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
+                    ") failed, ret=", hcclRet);
 
-        if (isSf) {
-            resources.sfDeviceBufPtr = devPtr;
-        } else {
-            resources.hostBufPtr = hostPtr;
-            resources.deviceBufPtr = devPtr;
+        resources.hostBufPtr = hostPtr;
+        resources.deviceBufPtr = devPtr;
+    }
+
+    // SF 表仅本核经映射地址直读 (参数路由): 只做 host->device 映射, 不自建内存、不入 HCCL 通信域。
+    static void MapSfTableBuffer(EngramContextResources &resources, void *sfHostPtr, int64_t sfBytes)
+    {
+        aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
+        if (ar != ACL_SUCCESS) {
+            ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration", sfBytes,
+                        static_cast<int>(ar));
         }
+        resources.sfExternalRegistered = (ar == ACL_SUCCESS);
+
+        void *devPtr = nullptr;
+        ar = aclrtHostGetDevicePointer(sfHostPtr, &devPtr, 0);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
+                    ", host memory cannot be mapped to device");
+        resources.sfDeviceBufPtr = devPtr;
     }
 
     void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim, uint32_t channelsPerRank,
@@ -947,8 +954,7 @@ private:
                                   externalBytes);
 
         if (sfHostPtr != nullptr && sfBytes > 0) {
-            AllocateAndRegisterBuffer(resources.hcclComm, "engram_sf_table", 0, resources, sfGuard, sfHostPtr, sfBytes,
-                                      true);
+            MapSfTableBuffer(resources, sfHostPtr, sfBytes);
         }
 
         uint32_t *netLayerList = nullptr;
