@@ -68,7 +68,6 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
                 LocalTensor<float> gammaCurrent = gammaEven;
                 LocalTensor<float> gammaNext = gammaOdd;
@@ -81,15 +80,15 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 if (n + 1 < N_MAX) {
                     LoadGammaInto(gammaNext, gamma2Gm_, (n + 1) * D_ + tOff, tD);
                 }
-                MhcNormRegBase::VFCastB16ScaleGammaQuantizeToB16AndFp32(
-                    x2Cache[n * D_ + tOff], x2[n * dimTile_], x2Cache[n * D_ + tOff], gammaCurrent, invRmsMid, tD);
+                MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[n * D_ + tOff], x2Cache[n * D_ + tOff],
+                                                               gammaCurrent, invRmsMid, tD);
                 PipeBarrier<PIPE_V>();
                 // 当前缓存会在两轮后再次由MTE2写入，前两轮显式建立V到MTE2依赖。
                 if (n + 2 < N_MAX) {
                     FenceVToMte2();
                 }
             }
-            CacheX2Tile(token, tOff, tD, true, false, false);
+            CacheX2Tile(token, tOff, tD, true, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);
         }
     }
