@@ -2,7 +2,9 @@ import pytest
 import torch
 
 from core.cpu import run_cpu_golden, softmax_flash, tforward
+from core.case_loader import normalize_params
 from core.gen_data import generate_inputs
+from testcase.functional_stc import TestCases
 
 
 def _base_params(s2, sinks=None):
@@ -90,6 +92,33 @@ def test_empty_kv_with_sink_has_sink_lse_and_zero_output():
     assert torch.count_nonzero(result["attn_out"]) == 0
     expected_lse = sinks.reshape(1, 2, 1).expand(1, 2, 2)
     torch.testing.assert_close(result["softmax_lse"], expected_lse)
+
+
+def test_physical_empty_kv_with_nonzero_declared_length_keeps_infinite_lse():
+    params = _base_params(2048, sinks=torch.tensor([0.25, -0.5]))
+    params["N2"] = 0
+    params["seqused_kv"] = [2048]
+    inputs = generate_inputs(params, seed=1)
+
+    result = run_cpu_golden(inputs)
+
+    assert inputs["k"].numel() == 0
+    assert torch.count_nonzero(result["attn_out"]) == 0
+    assert torch.isposinf(result["softmax_lse"]).all()
+
+
+def test_zero_batch_query_is_generated_and_has_empty_outputs():
+    raw = {
+        key: value[0] if isinstance(value, list) else value
+        for key, value in TestCases["b270_empty_q_b"].items()
+    }
+    inputs = generate_inputs(normalize_params(raw), seed=21)
+    result = run_cpu_golden(inputs)
+
+    assert tuple(inputs["q"].shape) == (0, 1, 8, 128)
+    assert tuple(inputs["block_table"].shape) == (0, 0)
+    assert tuple(result["attn_out"].shape) == (0, 1, 8, 128)
+    assert tuple(result["softmax_lse"].shape) == (0, 8, 1)
 
 
 def test_generated_sink_changes_normal_attention_normalization():
@@ -373,3 +402,35 @@ def test_sink_normalization_invariant_matrix(
     torch.testing.assert_close(
         with_sink["attn_out"].float(), expected_out, rtol=2e-2, atol=2e-2
     )
+
+
+@pytest.mark.parametrize(
+    "case_name",
+    ["b270_sink_n1_6", "b270_sink_bnsd_g1", "b270_sink_tnd_g8"],
+)
+def test_stc_sink_ranges_materially_change_output_and_lse(case_name):
+    raw = {
+        key: value[0] if isinstance(value, list) else value
+        for key, value in TestCases[case_name].items()
+    }
+    params = normalize_params(raw)
+    params["return_softmax_lse"] = True
+    with_sink_inputs = generate_inputs(params, seed=21)
+    no_sink_inputs = dict(with_sink_inputs)
+    no_sink_inputs["sinks"] = None
+
+    no_sink = run_cpu_golden(no_sink_inputs)
+    with_sink = run_cpu_golden(with_sink_inputs)
+
+    out_delta = torch.linalg.vector_norm(
+        with_sink["attn_out"].float() - no_sink["attn_out"].float()
+    )
+    out_norm = torch.linalg.vector_norm(no_sink["attn_out"].float())
+    finite = torch.isfinite(no_sink["softmax_lse"]) & torch.isfinite(with_sink["softmax_lse"])
+    lse_delta = (
+        with_sink["softmax_lse"][finite] - no_sink["softmax_lse"][finite]
+    ).abs()
+
+    assert out_delta / out_norm.clamp_min(1e-12) > 0.1
+    assert lse_delta.numel() > 0
+    assert lse_delta.max() > 1.0

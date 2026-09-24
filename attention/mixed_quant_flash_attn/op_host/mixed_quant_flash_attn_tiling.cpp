@@ -36,9 +36,26 @@ using namespace mixed_quant_flash_attn;
 static ge::graphStatus TilingEmptyInput(gert::TilingContext *context, const FaTilingInfo &faInfo,
                                         platform_ascendc::PlatformAscendC &platform)
 {
+    CommonChecker commonChecker;
+    QuantChecker quantChecker;
+    PagedAttentionChecker pagedAttentionChecker;
+    SoftmaxLSEChecker softmaxLseChecker;
     SinksChecker sinksChecker;
-    OP_CHECK_IF(sinksChecker.CheckSinglePara(faInfo) != ge::GRAPH_SUCCESS,
-                OP_LOGE(faInfo.opName, "Invalid sinks for empty input."), return ge::GRAPH_FAILED);
+    const bool queryEmpty = faInfo.opParamInfo.query.shape->GetStorageShape().GetShapeSize() == 0;
+    const bool invalidSoftmaxLse = !queryEmpty &&
+        (softmaxLseChecker.CheckSinglePara(faInfo) != ge::GRAPH_SUCCESS ||
+         softmaxLseChecker.CheckParaExistence(faInfo) != ge::GRAPH_SUCCESS ||
+         softmaxLseChecker.CheckMultiPara(faInfo) != ge::GRAPH_SUCCESS);
+    OP_CHECK_IF(commonChecker.CheckEmptyTensorPara(faInfo) != ge::GRAPH_SUCCESS ||
+                    quantChecker.CheckSinglePara(faInfo) != ge::GRAPH_SUCCESS ||
+                    quantChecker.CheckParaExistence(faInfo) != ge::GRAPH_SUCCESS ||
+                    quantChecker.CheckMultiPara(faInfo) != ge::GRAPH_SUCCESS ||
+                    pagedAttentionChecker.CheckSinglePara(faInfo) != ge::GRAPH_SUCCESS ||
+                    pagedAttentionChecker.CheckParaExistence(faInfo) != ge::GRAPH_SUCCESS ||
+                    pagedAttentionChecker.CheckMultiPara(faInfo) != ge::GRAPH_SUCCESS ||
+                    invalidSoftmaxLse ||
+                    sinksChecker.CheckSinglePara(faInfo) != ge::GRAPH_SUCCESS,
+                OP_LOGE(faInfo.opName, "Invalid parameter for empty input."), return ge::GRAPH_FAILED);
 
     uint32_t aivNum = platform.GetCoreNumAiv();
     uint32_t aicNum = platform.GetCoreNumAic();

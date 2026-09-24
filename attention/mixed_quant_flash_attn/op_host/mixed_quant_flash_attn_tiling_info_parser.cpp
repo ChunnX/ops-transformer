@@ -14,7 +14,9 @@
  */
 
 #include <map>
+#include <limits>
 #include <numeric>
+#include <vector>
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
@@ -28,28 +30,250 @@ using namespace Ops::Base;
 namespace optiling {
 namespace mixed_quant_flash_attn {
 
-ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
+namespace {
+
+bool IsEmptyShape(const gert::StorageShape *shape)
 {
-    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
-        if (shape == nullptr) {
+    return shape != nullptr && shape->GetStorageShape().GetShapeSize() == 0;
+}
+
+bool IsSameShape(const gert::Shape &lhs, const gert::Shape &rhs)
+{
+    if (lhs.GetDimNum() != rhs.GetDimNum()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.GetDimNum(); ++i) {
+        if (lhs.GetDim(i) != rhs.GetDim(i)) {
             return false;
         }
-        for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
-            if (shape->GetStorageShape().GetDim(i) == 0) {
-                OP_LOGI(opName_, "Tensor %s has empty dimension at axis %zu, size is 0.", name.c_str(), i);
-                return true;
-            }
-        }
-        return false;
-    };
-
-    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
-        checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
-        checkEmptyTensor(opParamInfo_.kDescale.shape, K_DESCALE_NAME) ||
-        checkEmptyTensor(opParamInfo_.vDescale.shape, V_DESCALE_NAME) ||
-        checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
-        emptyTensorFlag_ = true;
     }
+    return true;
+}
+
+bool HasNegativeDim(const gert::Shape &shape)
+{
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (shape.GetDim(i) < 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsExpectedShape(const gert::Shape &shape, const std::vector<int64_t> &expected)
+{
+    if (shape.GetDimNum() != expected.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < expected.size(); ++i) {
+        if (shape.GetDim(i) != expected[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+ge::graphStatus GetQLogicalAxes(const gert::Shape &shape, FaLayout layout, int64_t &b, int64_t &n, int64_t &s,
+                                int64_t &d)
+{
+    if (layout == FaLayout::BSND && shape.GetDimNum() == 4U) {
+        b = shape.GetDim(0);
+        s = shape.GetDim(1);
+        n = shape.GetDim(2);
+        d = shape.GetDim(3);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (layout == FaLayout::BNSD && shape.GetDimNum() == 4U) {
+        b = shape.GetDim(0);
+        n = shape.GetDim(1);
+        s = shape.GetDim(2);
+        d = shape.GetDim(3);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (layout == FaLayout::TND && shape.GetDimNum() == 3U) {
+        b = 0;
+        s = shape.GetDim(0);
+        n = shape.GetDim(1);
+        d = shape.GetDim(2);
+        return ge::GRAPH_SUCCESS;
+    }
+    return ge::GRAPH_FAILED;
+}
+
+ge::graphStatus GetKvLogicalAxes(const gert::Shape &shape, FaLayout layout, int64_t &blockNum, int64_t &n,
+                                 int64_t &blockSize, int64_t &d)
+{
+    if (layout == FaLayout::PA_NZ && shape.GetDimNum() == 5U) {
+        blockNum = shape.GetDim(0);
+        n = shape.GetDim(1);
+        const int64_t d1 = shape.GetDim(2);
+        const int64_t d0 = shape.GetDim(4);
+        if (d1 <= 0 || d0 <= 0 || d1 > std::numeric_limits<int64_t>::max() / d0) {
+            return ge::GRAPH_FAILED;
+        }
+        d = d1 * d0;
+        blockSize = shape.GetDim(3);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (layout == FaLayout::PA_BBND && shape.GetDimNum() == 4U) {
+        blockNum = shape.GetDim(0);
+        blockSize = shape.GetDim(1);
+        n = shape.GetDim(2);
+        d = shape.GetDim(3);
+        return ge::GRAPH_SUCCESS;
+    }
+    if (layout == FaLayout::PA_BNBD && shape.GetDimNum() == 4U) {
+        blockNum = shape.GetDim(0);
+        n = shape.GetDim(1);
+        blockSize = shape.GetDim(2);
+        d = shape.GetDim(3);
+        return ge::GRAPH_SUCCESS;
+    }
+    return ge::GRAPH_FAILED;
+}
+
+} // namespace
+
+ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
+{
+    const auto &queryShape = opParamInfo_.query.shape->GetStorageShape();
+    const auto &attnOutShape = opParamInfo_.attnOut.shape->GetStorageShape();
+    const auto &keyShape = opParamInfo_.key.shape->GetStorageShape();
+    const auto &valueShape = opParamInfo_.value.shape->GetStorageShape();
+    const auto &kDescaleShape = opParamInfo_.kDescale.shape->GetStorageShape();
+    const auto &vDescaleShape = opParamInfo_.vDescale.shape->GetStorageShape();
+
+    const bool queryEmpty = IsEmptyShape(opParamInfo_.query.shape);
+    const bool attnOutEmpty = IsEmptyShape(opParamInfo_.attnOut.shape);
+    OP_CHECK_IF(queryEmpty != attnOutEmpty,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and attention_out",
+            (ToString(queryShape) + " and " + ToString(attnOutShape)).c_str(),
+            "query and attention_out must be both empty or both non-empty"),
+        return ge::GRAPH_FAILED);
+
+    const bool keyEmpty = IsEmptyShape(opParamInfo_.key.shape);
+    const bool valueEmpty = IsEmptyShape(opParamInfo_.value.shape);
+    const bool kDescaleEmpty = IsEmptyShape(opParamInfo_.kDescale.shape);
+    const bool vDescaleEmpty = IsEmptyShape(opParamInfo_.vDescale.shape);
+    OP_CHECK_IF(keyEmpty != valueEmpty || keyEmpty != kDescaleEmpty || keyEmpty != vDescaleEmpty,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "key, value, k_descale and v_descale",
+            (ToString(keyShape) + ", " + ToString(valueShape) + ", " + ToString(kDescaleShape) + ", " +
+             ToString(vDescaleShape)).c_str(),
+            "key, value, k_descale and v_descale must be all empty or all non-empty"),
+        return ge::GRAPH_FAILED);
+
+    if (!queryEmpty && !keyEmpty) {
+        emptyTensorFlag_ = false;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(HasNegativeDim(queryShape) || HasNegativeDim(attnOutShape) || HasNegativeDim(keyShape) ||
+                    HasNegativeDim(valueShape) || HasNegativeDim(kDescaleShape) || HasNegativeDim(vDescaleShape),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "empty tensor inputs",
+            (ToString(queryShape) + ", " + ToString(keyShape) + ", " + ToString(valueShape) + ", " +
+             ToString(kDescaleShape) + ", " + ToString(vDescaleShape) + " and " + ToString(attnOutShape)).c_str(),
+            "shape dimensions must be greater than or equal to 0"),
+        return ge::GRAPH_FAILED);
+
+    int64_t qB = 0;
+    int64_t qN = 0;
+    int64_t qS = 0;
+    int64_t qD = 0;
+    int64_t outB = 0;
+    int64_t outN = 0;
+    int64_t outS = 0;
+    int64_t outD = 0;
+    OP_CHECK_IF(GetQLogicalAxes(queryShape, layoutQ_, qB, qN, qS, qD) != ge::GRAPH_SUCCESS ||
+                    GetQLogicalAxes(attnOutShape, layoutOut_, outB, outN, outS, outD) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and attention_out",
+            (ToString(queryShape) + " and " + ToString(attnOutShape)).c_str(),
+            "query and attention_out rank must match their layouts"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qB != outB || qN != outN || qS != outS,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and attention_out",
+            (ToString(queryShape) + " and " + ToString(attnOutShape)).c_str(),
+            "query and attention_out must have identical logical B/T, N and S axes"),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(!IsSameShape(keyShape, valueShape),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "key and value",
+            (ToString(keyShape) + " and " + ToString(valueShape)).c_str(),
+            "key and value must have the same physical shape"),
+        return ge::GRAPH_FAILED);
+
+    int64_t blockNum = 0;
+    int64_t n2 = 0;
+    int64_t blockSize = 0;
+    int64_t kvD = 0;
+    OP_CHECK_IF(GetKvLogicalAxes(keyShape, layoutKV_, blockNum, n2, blockSize, kvD) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToString(keyShape).c_str(),
+            "key rank must match layout_kv"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qD <= 0 || kvD <= 0 || blockSize <= 0 || qD != kvD || outD != kvD,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, key/value and attention_out",
+            (ToString(queryShape) + ", " + ToString(keyShape) + " and " + ToString(attnOutShape)).c_str(),
+            "D must be greater than 0 and consistent, and block_size must be greater than 0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(n2 > 0 && qN % n2 != 0,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
+            (ToString(queryShape) + " and " + ToString(keyShape)).c_str(),
+            "N of query must be an integer multiple of N of key"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockNum < 0 || blockNum > std::numeric_limits<int32_t>::max() ||
+                    blockSize > std::numeric_limits<int32_t>::max(),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToString(keyShape).c_str(),
+            "block_num and block_size must fit in int32"),
+        return ge::GRAPH_FAILED);
+
+    const int64_t groupSize = quantMode_ == 1 ? 32 : 64;
+    std::vector<int64_t> expectedKDescale;
+    std::vector<int64_t> expectedVDescale;
+    if (layoutKV_ == FaLayout::PA_NZ) {
+        OP_CHECK_IF(keyShape.GetDim(4) != 64 || blockSize % 64 != 0 || kvD % 64 != 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToString(keyShape).c_str(),
+                "PA_NZ requires D0=64 and block_size/D aligned to 64"),
+            return ge::GRAPH_FAILED);
+        expectedKDescale = {blockNum, n2, blockSize / 16, kvD / 64, 16};
+        expectedVDescale = {blockNum, n2, kvD / 16, blockSize / 64, 16};
+        if (quantMode_ == 1) {
+            expectedKDescale.push_back(2);
+            expectedVDescale.push_back(2);
+        }
+    } else if (layoutKV_ == FaLayout::PA_BBND) {
+        OP_CHECK_IF(blockSize % groupSize != 0 || kvD % groupSize != 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToString(keyShape).c_str(),
+                "block_size and D must be aligned to quant group size"),
+            return ge::GRAPH_FAILED);
+        expectedKDescale = {blockNum, blockSize, n2, kvD / groupSize};
+        expectedVDescale = {blockNum, n2, kvD, blockSize / groupSize};
+    } else if (layoutKV_ == FaLayout::PA_BNBD) {
+        OP_CHECK_IF(blockSize % groupSize != 0 || kvD % groupSize != 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToString(keyShape).c_str(),
+                "block_size and D must be aligned to quant group size"),
+            return ge::GRAPH_FAILED);
+        expectedKDescale = {blockNum, n2, blockSize, kvD / groupSize};
+        expectedVDescale = {blockNum, n2, kvD, blockSize / groupSize};
+    } else {
+        OP_LOGE(opName_, "layout_kv %s is not supported for empty tensor.", LayoutToSerialString(layoutKV_).c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    OP_CHECK_IF(!IsExpectedShape(kDescaleShape, expectedKDescale),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "k_descale", ToString(kDescaleShape).c_str(),
+            "k_descale shape must match key shape and quant_compute_mode"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!IsExpectedShape(vDescaleShape, expectedVDescale),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "v_descale", ToString(vDescaleShape).c_str(),
+            "v_descale shape must match value shape and quant_compute_mode"),
+        return ge::GRAPH_FAILED);
+
+    n2Size_ = n2;
+    qkHeadDim_ = qD;
+    vHeadDim_ = kvD;
+    blockSize_ = blockSize;
+    blockNum_ = blockNum;
+    emptyTensorFlag_ = true;
+    OP_LOGI(opName_, "Valid empty tensor input detected: queryEmpty=%d, kvEmpty=%d.", queryEmpty, keyEmpty);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -576,15 +800,18 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     }
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
 
-    if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
+    if (ge::GRAPH_SUCCESS != GetInAndOutLayout() || ge::GRAPH_SUCCESS != GetQuantModeInfo()) {
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
+    if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
+        return ge::GRAPH_FAILED;
+    }
     sinksFlag_ = opParamInfo_.sinks.tensor != nullptr;
     if (sinksFlag_) {
         const auto &sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
@@ -608,8 +835,17 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         faInfo.softmaxLseFlag = softmaxLseFlag_;
         faInfo.bSize = bSize_;
         faInfo.n1Size = n1Size_;
+        faInfo.n2Size = n2Size_;
         faInfo.s1Size = s1Size_;
+        faInfo.qkHeadDim = qkHeadDim_;
+        faInfo.vHeadDim = vHeadDim_;
         faInfo.qTSize = queryTSize_;
+        faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
+        faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+        faInfo.blockSize = blockSize_;
+        faInfo.totalBlockNum = blockNum_;
+        faInfo.quantComputeMode = quantMode_;
+        faInfo.faQuantMode = faQuantMode_;
         faInfo.seqUsedQSize = seqUsedQSize_;
         faInfo.seqUsedKvSize = seqUsedKvSize_;
         faInfo.cuSeqLensQSize = cuSeqLensQSize_;

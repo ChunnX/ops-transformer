@@ -629,11 +629,12 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     print(f'attn_out shape: {attn_out.shape}, dtype: {attn_out.dtype}')
     attn_out_shape = attn_out.shape
 
-    # With no KV heads there is no matmul work.  A sink is still a valid
-    # softmax candidate: it contributes exp(sink) to the denominator and
-    # therefore makes LSE equal to the sink value, while the value output is
-    # zero because the sink has no associated V vector.  Without a sink the
-    # row is empty (sum=0), and run_cpu_golden exposes LSE as +inf.
+    # With no KV heads there is no matmul work.  Match the empty-kernel
+    # contract when deciding whether a sink is a valid softmax candidate:
+    # InitEmptyKvSinkLse only writes the sink for a batch whose effective KV
+    # length is zero.  A physically empty K/V tensor with a non-zero
+    # seqused_kv therefore keeps the initialized +inf LSE instead of treating
+    # the sink as the only softmax term.
     if n2 == 0:
         if layout_q in ("BNSD", "BSND"):
             x_max = torch.zeros((batch, n1, s1), dtype=torch.float32)
@@ -644,11 +645,22 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
         else:
             raise NotImplementedError(f"unsupported layout_q({layout_q})")
         if sinks is not None and sinks.numel() > 0:
-            if layout_q in ("BNSD", "BSND"):
-                x_max = sinks.reshape(1, n1, 1).expand(batch, n1, s1).clone()
-            else:
-                x_max = sinks.reshape(1, n1).expand(q.shape[0], n1).clone()
-            x_sum.fill_(1.0)
+            for batch_idx in range(batch):
+                effective_kv = int(seqused_kv[batch_idx]) if seqused_kv is not None else int(s2)
+                if effective_kv != 0:
+                    continue
+                if layout_q in ("BNSD", "BSND"):
+                    used_q = int(seqused_q[batch_idx]) if seqused_q is not None else s1
+                    used_q = min(used_q, s1)
+                    x_max[batch_idx, :, :used_q] = sinks.reshape(n1, 1)
+                    x_sum[batch_idx, :, :used_q] = 1.0
+                else:
+                    q_start = int(cu_seqlens_q[batch_idx])
+                    q_end = int(cu_seqlens_q[batch_idx + 1])
+                    used_q = int(seqused_q[batch_idx]) if seqused_q is not None else q_end - q_start
+                    q_end = min(q_start + used_q, q_end)
+                    x_max[q_start:q_end] = sinks.reshape(1, n1)
+                    x_sum[q_start:q_end] = 1.0
         return attn_out.reshape(attn_out_shape), x_max, x_sum
 
     g = n1 // n2

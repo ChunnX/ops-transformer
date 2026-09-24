@@ -1355,7 +1355,9 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[48, 128, 256]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        # No-sink LSE is about 145~400 for seed 21.  Cover the competitive
+        # and sink-dominant regions instead of a numerically invisible 0~1.
+        "sinks_datarange": [(250.0, 420.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [256],
         "softmax_scale": 0.08838834764831843,
@@ -1377,7 +1379,8 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[512, 1024, 2048]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        # No-sink LSE is about 224~520 for seed 21.
+        "sinks_datarange": [(330.0, 540.0)],
         "max_seqlen_q": [7],
         "max_seqlen_kv": [2048],
         "softmax_scale": 0.08838834764831843,
@@ -1399,7 +1402,7 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[5, 256, 900, 33, 2048, 77, 3400, 128, 4500, 12, 1024, 66, 4992]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        "sinks_datarange": [(4500.0, 7500.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [4992],
         "softmax_scale": 0.08838834764831843,
@@ -1421,7 +1424,7 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[512, 1024, 2048]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        "sinks_datarange": [(300.0, 650.0)],
         "max_seqlen_q": [33],
         "max_seqlen_kv": [2048],
         "softmax_scale": 0.08838834764831843,
@@ -1443,7 +1446,7 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[2048, 3072, 512, 4500, 128, 333, 4097, 64, 1000, 3000, 4992, 25, 720]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        "sinks_datarange": [(300.0, 650.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [4992],
         "softmax_scale": 0.08838834764831843,
@@ -1465,7 +1468,7 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[1, 4, 9, 16, 25, 64, 128, 200, 36, 49, 81, 100, 256]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        "sinks_datarange": [(4500.0, 7500.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [256],
         "softmax_scale": 0.08838834764831843,
@@ -1487,7 +1490,7 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[7, 333, 4097, 65, 0, 999, 2048, 3, 555, 4000, 21, 1025, 3072]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 1.0)],
+        "sinks_datarange": [(250.0, 650.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [4097],
         "softmax_scale": 0.08838834764831843,
@@ -1531,7 +1534,9 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[512, 1024, 2048]],
         "sinks": [True],
-        "sinks_datarange": [(-1.0, 1.0)],
+        # Include weak negative sinks and strongly competitive positive sinks
+        # in one multi-head case.
+        "sinks_datarange": [(-600.0, 600.0)],
         "max_seqlen_q": [7],
         "max_seqlen_kv": [2048],
         "softmax_scale": 0.08838834764831843,
@@ -1555,6 +1560,7 @@ TestCases = {
         "sinks_datarange": [(0.0, 1.0)],
         "max_seqlen_q": [1],
         "max_seqlen_kv": [2048],
+        "return_softmax_lse": [True],
         "softmax_scale": 0.08838834764831843,
         "q_range": [(-10.0, 10.0)],
         "kv_range": [(-10.0, 10.0)],
@@ -1713,9 +1719,10 @@ TestCases = {
         "q_range": [(-10.0, 10.0)],
         "kv_range": [(-10.0, 10.0)],
     },
-    # Sink coverage across layout and G dimensions.  Keep the ranges broad
-    # enough to exercise the max/normalization path, including negative-only
-    # and positive-only sinks.
+    # Sink coverage across layout and G dimensions.  The ranges are centered
+    # on measured no-sink LSE/QK magnitudes so they exercise weak,
+    # competitive and dominant normalization paths rather than merely
+    # carrying a non-null sink tensor.
     "b270_sink_bnsd_g1": {
         "B": [2],
         "N1": [4],
@@ -1731,7 +1738,8 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[64, 129]],
         "sinks": [True],
-        "sinks_datarange": [(-4.0, -1.0)],
+        # No-sink LSE is about 787~1378 for seed 21.
+        "sinks_datarange": [(900.0, 1450.0)],
         "max_seqlen_q": [3],
         "max_seqlen_kv": [129],
         "return_softmax_lse": [True],
@@ -1754,7 +1762,8 @@ TestCases = {
         "mask_mode": [3],
         "seqused_kv": [[1, 257, 513]],
         "sinks": [True],
-        "sinks_datarange": [(0.0, 0.0)],
+        # No-sink LSE is about -84~449 for seed 21.
+        "sinks_datarange": [(250.0, 480.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [513],
         "softmax_scale": 0.08838834764831843,
@@ -1778,7 +1787,8 @@ TestCases = {
         "cu_seqlens_q": [[0, 1, 6]],
         "seqused_kv": [[63, 255]],
         "sinks": [True],
-        "sinks_datarange": [(1.0, 2.0)],
+        # No-sink LSE is about 98~201 for seed 21.
+        "sinks_datarange": [(120.0, 230.0)],
         "max_seqlen_q": [5],
         "max_seqlen_kv": [255],
         "return_softmax_lse": [True],
