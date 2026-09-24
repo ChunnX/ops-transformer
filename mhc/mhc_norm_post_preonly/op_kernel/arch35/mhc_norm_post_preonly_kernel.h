@@ -421,8 +421,14 @@ private:
     {
         LocalTensor<T> hInPrime = bufHInPrimeBf16_.AllocTensor<T>();
         LocalTensor<float> hInFp32 = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        MhcNormRegBase::VFCastB16ScaleMulGammaToOutputs<T, RETURN_H_IN_F32>(hInPrime, hInFp32, src, gamma, scale,
-                                                                           count);
+        if constexpr (USE_RMS_MID) {
+            MhcNormRegBase::VFCastB16ScaleMulGammaToOutputs<T, RETURN_H_IN_F32>(hInPrime, hInFp32, src, gamma, scale,
+                                                                               count);
+        } else {
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToFp32(hInFp32, src, gamma, scale, count);
+            PipeBarrier<PIPE_V>();
+            MhcNormRegBase::VFCastFp32ToB16(hInPrime, hInFp32, count);
+        }
         bufHInPrimeBf16_.EnQue(hInPrime);
         hInPrime = bufHInPrimeBf16_.DeQue<T>();
         DataCopy(hInPrimeGm_[gmOffset], hInPrime, count);
