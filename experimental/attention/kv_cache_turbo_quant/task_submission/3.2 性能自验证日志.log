@@ -1,5 +1,5 @@
 ## KCTQ 性能自验证日志
-## 算子仓：ops-transformer @ e1a4b2b9c（分支 kv_cache_turbo_quant；目录 experimental/attention/kv_cache_turbo_quant）
+## 算子仓：ops-transformer（分支 kv_cache_turbo_quant；目录 experimental/attention/kv_cache_turbo_quant）
 ## 环境：Atlas 800T A2（910B3）×1，CANN 9.1.0，torch 2.9.0 / torch_npu 2.9.0.post6，Python 3.11.15
 ## 命令：bash tests/run_all.sh 2>&1 | tee runall_final.log   （与 2.2 精度日志同一轮、同一命令序列）
 ## 计时口径：warmup=3、repeat=10，取中位数（latency_ms_median）；计时环内含 workspace 申请（aclrtMalloc）
