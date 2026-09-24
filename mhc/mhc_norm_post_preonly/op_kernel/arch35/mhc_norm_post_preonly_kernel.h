@@ -345,7 +345,9 @@ private:
     __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
     {
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        // R1期间bufResFp32_尚未保存residual/h_out，可作为单行平方临时区；
+        // 5op跨token预取的gamma0因此能保留在bufGamma2Fp32_直到R2消费。
+        LocalTensor<float> sqBuf = bufResFp32_.Get<float>();
         MhcNormRegBase::VFCastB16ToFp32Square(sqBuf, hOutCache, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
