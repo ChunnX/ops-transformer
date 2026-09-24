@@ -572,38 +572,8 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
             Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
-            if constexpr (N_MAX > 0U) {
-                constexpr uint32_t row = 0U;
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
-                                                                  residualAddr + row * rowStride + i * VL_FP32);
-                Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
-                Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
-                Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
-            }
-            if constexpr (N_MAX > 1U) {
-                constexpr uint32_t row = 1U;
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
-                                                                  residualAddr + row * rowStride + i * VL_FP32);
-                Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
-                Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
-                Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
-            }
-            if constexpr (N_MAX > 2U) {
-                constexpr uint32_t row = 2U;
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
-                                                                  residualAddr + row * rowStride + i * VL_FP32);
-                Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
-                Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
-                Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
-            }
-            if constexpr (N_MAX > 3U) {
-                constexpr uint32_t row = 3U;
+            for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+                const uint32_t row = static_cast<uint32_t>(j);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
                                                                   residualAddr + row * rowStride + i * VL_FP32);
                 Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
