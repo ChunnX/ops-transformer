@@ -20,7 +20,6 @@
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "../../matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
-#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
 namespace Apace {
 
@@ -67,7 +66,7 @@ public:
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->hcclA2avTilingInfo.hcclInitTiling);
         hccl_.SetCcTilingV2(
             static_cast<uint64_t>(offsetof(TilingDataType, hcclA2avTilingInfo)) +
-            static_cast<uint64_t>(offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling)));
+            static_cast<uint64_t>(offsetof(decltype(tilingData_->hcclA2avTilingInfo), a2avCcTiling)));
     }
 
     __aicore__ inline void Run()
@@ -90,7 +89,7 @@ public:
     }
 
 private:
-    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = MC2KernelTemplate::MAX_EXPERT_SIZE;
+    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = 256U;
     static constexpr uint32_t MX_BASIC_FACTOR = 64U;
     static constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
     static constexpr uint8_t GROUP_LIST_TYPE_SPARSE = 2U;
@@ -290,9 +289,8 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    template <typename GmmTiling>
-    __aicore__ inline void FillGmmTiling(GmmTiling &out,
-                                         const Mc2GroupedMatmulTilingData::GMMQuantTilingData &in,
+    template <typename GmmTiling, typename GmmTilingData>
+    __aicore__ inline void FillGmmTiling(GmmTiling &out, const GmmTilingData &in,
                                          uint32_t groupNum, int64_t m, int64_t n, int64_t k,
                                          uint8_t groupListType)
     {
