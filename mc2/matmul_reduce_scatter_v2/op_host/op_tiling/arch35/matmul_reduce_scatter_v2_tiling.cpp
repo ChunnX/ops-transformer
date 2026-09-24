@@ -120,11 +120,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for matmul_reduce_scatter_v2_tiling.");
-        // 16p跨机场景，根据通信api benchmark，使用InsReduceScatterParallelMesh1DNHR算法速度更快
-        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
-            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
-            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
-        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
@@ -144,8 +139,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
             opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
             REDUCE_SCATTER_DEFAULT_ALGO_NAME);
-        // 当前版本暂不生效，仍旧使用原算法
-        algoName = rsConfig;
         OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
         mc2CcTilingConfig.SetAlgConfig(algoName);
     }
@@ -247,17 +240,14 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::STANDARD_CARD, SocVersion::SOC950,
-                                                      (commMode_ == TPL_AICPU_COMM_MODE));
+                                                      TopoType::STANDARD_CARD, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::EIGHT_P, SocVersion::SOC950,
-                                                      (commMode_ == TPL_AICPU_COMM_MODE));
+                                                      TopoType::EIGHT_P, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == Ops::Base::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion, false,
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false,
                                           (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
