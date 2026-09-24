@@ -61,7 +61,11 @@ def _head_index(shape, layout, kv):
 
 
 class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
-    """aclgraph 编译目标: __init__ 构建 metadata, forward 只调主算子."""
+    """aclgraph 编译目标: forward 只调 quant_flash_attn 主算子.
+
+    __init__ (capture 之外) 完成 metadata 构建并缓存运行时入参; forward (capture
+    之内) 只调主算子。入参对齐 15 位置 tensor 与 op schema 位置参数顺序。
+    """
 
     def __init__(
         self,
@@ -95,7 +99,7 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        import torch_npu  # noqa: F401
+        import torch_npu  # 懒加载 torch_npu (fork 之后再 import)
 
         torch_npu.npu.set_device(int(kwargs.get("device_id", 0)))
 
@@ -121,7 +125,7 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
 
         torch.npu.synchronize()
 
-        logger.info("[GRAPH] build metadata (quant_flash_attn_metadata)")
+        logger.info("[GRAPH] 构建 metadata (quant_flash_attn_metadata)")
         self.metadata = _resolve_metadata_op()(
             num_heads_q=num_heads_q,
             num_heads_kv=num_heads_kv,
