@@ -39,6 +39,9 @@ using namespace MC2KernelTemplate;
 
 // groupList 起始槽位（与 mc2_templates compute 侧约定一致，当前为 0）
 constexpr uint64_t GMM_A2AV_GROUP_LIST_INDEX = 0UL;
+// groupList 存储格式（与 GroupedMatmulMxKernel 的 GROUP_LIST_TYPE_OFFSET 语义一致）：
+// 共享专家单组用 OFFSET——groupList 存该组 M 的终点偏移，splitValue = offset - preOffset
+constexpr uint8_t GMM_A2AV_GROUP_LIST_TYPE_OFFSET = 0U;
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
           CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, bool isA2avGmm>
