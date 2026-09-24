@@ -39,7 +39,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
     RegTensor<half> min_val_reg;
     RegTensor<uint8_t> idx_nd2nz;
 
-    // 量化专用寄存器（FIA 四路 float→e4m3）
+    // 量化专用寄存器（四路 float→e4m3）
     RegTensor<float> src_f0, src_f1, src_f2, src_f3, src_f4, src_f5, src_f6, src_f7;
 
     // ====================== 分块常量 ======================
