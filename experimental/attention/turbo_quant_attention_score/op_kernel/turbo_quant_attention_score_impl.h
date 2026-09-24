@@ -1,6 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef TURBO_QUANT_ATTENTION_SCORE_IMPL_H
 #define TURBO_QUANT_ATTENTION_SCORE_IMPL_H
@@ -16,13 +21,19 @@ constexpr float COEFFICIENT = 0.009791516697777346F;
 template <typename NormType>
 class Kernel {
 public:
-    __aicore__ inline void Init(GM_ADDR q, GM_ADDR qr, GM_ADDR idx, GM_ADDR sign,
-        GM_ADDR norm, GM_ADDR gamma, GM_ADDR table, GM_ADDR lens, GM_ADDR out,
-        uint32_t tokens, uint32_t qHeads, uint32_t kvHeads, uint32_t batch,
-        uint32_t blocks, uint32_t width, uint32_t maxLen, uint32_t bits)
+    __aicore__ inline void Init(GM_ADDR q, GM_ADDR qr, GM_ADDR idx, GM_ADDR sign, GM_ADDR norm, GM_ADDR gamma,
+                                GM_ADDR table, GM_ADDR lens, GM_ADDR out, uint32_t tokens, uint32_t qHeads,
+                                uint32_t kvHeads, uint32_t batch, uint32_t blocks, uint32_t width, uint32_t maxLen,
+                                uint32_t bits)
     {
-        tokens_ = tokens; qHeads_ = qHeads; kvHeads_ = kvHeads; batch_ = batch;
-        blocks_ = blocks; width_ = width; maxLen_ = maxLen; bits_ = bits;
+        tokens_ = tokens;
+        qHeads_ = qHeads;
+        kvHeads_ = kvHeads;
+        batch_ = batch;
+        blocks_ = blocks;
+        width_ = width;
+        maxLen_ = maxLen;
+        bits_ = bits;
         q_.SetGlobalBuffer((__gm__ bfloat16_t *)q);
         qr_.SetGlobalBuffer((__gm__ bfloat16_t *)qr);
         idx_.SetGlobalBuffer((__gm__ uint8_t *)idx);
@@ -34,27 +45,37 @@ public:
         out_.SetGlobalBuffer((__gm__ float *)out);
         pipe_.InitBuffer(storage_, 160 * 1024);
         auto mem = storage_.Get<float>();
-        primary_ = mem[0]; signs_ = mem[ELEMS]; a_ = mem[2 * ELEMS];
-        b_ = mem[3 * ELEMS]; c_ = mem[4 * ELEMS];
+        primary_ = mem[0];
+        signs_ = mem[ELEMS];
+        a_ = mem[2 * ELEMS];
+        b_ = mem[3 * ELEMS];
+        c_ = mem[4 * ELEMS];
         offset0_ = mem[5 * ELEMS].ReinterpretCast<uint32_t>();
         offset1_ = mem[6 * ELEMS].ReinterpretCast<uint32_t>();
         offsetSign_ = mem[7 * ELEMS].ReinterpretCast<uint32_t>();
-        scale_ = mem[8 * ELEMS]; scaleSign_ = mem[9 * ELEMS];
+        scale_ = mem[8 * ELEMS];
+        scaleSign_ = mem[9 * ELEMS];
         bytesFloat_ = mem[10 * ELEMS];
         bytesHalf_ = mem[11 * ELEMS].ReinterpretCast<half>();
         bytes_ = mem[12 * ELEMS].ReinterpretCast<uint8_t>();
-        query_ = mem[13 * ELEMS]; queryResidual_ = query_[DIM];
+        query_ = mem[13 * ELEMS];
+        queryResidual_ = query_[DIM];
         queryRaw_ = query_[2 * DIM].ReinterpretCast<bfloat16_t>();
-        normFloat_ = mem[14 * ELEMS]; gammaFloat_ = normFloat_[256];
+        normFloat_ = mem[14 * ELEMS];
+        gammaFloat_ = normFloat_[256];
         normRaw_ = normFloat_[512].ReinterpretCast<NormType>();
         gammaRaw_ = normFloat_[768].ReinterpretCast<NormType>();
-        reducedMain_ = mem[15 * ELEMS]; reducedSign_ = reducedMain_[64];
-        output_ = reducedMain_[128]; centroids_ = reducedMain_[160];
-        normCompact_ = reducedMain_[192]; gammaCompact_ = reducedMain_[224];
+        reducedMain_ = mem[15 * ELEMS];
+        reducedSign_ = reducedMain_[64];
+        output_ = reducedMain_[128];
+        centroids_ = reducedMain_[160];
+        normCompact_ = reducedMain_[192];
+        gammaCompact_ = reducedMain_[224];
         evenOffsets_ = reducedMain_[256].ReinterpretCast<uint32_t>();
         oddOffsets_ = reducedMain_[288].ReinterpretCast<uint32_t>();
         normOffsets_ = reducedMain_[320].ReinterpretCast<uint32_t>();
-        queryCache_ = mem[16 * ELEMS]; queryResidualCache_ = queryCache_[4096];
+        queryCache_ = mem[16 * ELEMS];
+        queryResidualCache_ = queryCache_[4096];
         InitDecode();
     }
 
@@ -116,12 +137,12 @@ private:
     __aicore__ inline void InitDecode()
     {
         const float c2[] = {-0.1335033178F, -0.04002048075F, 0.04002048075F, 0.1335033178F};
-        const float c3[] = {-0.19020693F, -0.1187859178F, -0.06682205945F, -0.02166347019F,
-            0.02166347019F, 0.06682205945F, 0.1187859178F, 0.19020693F};
-        const float c4[] = {-0.2414890379F, -0.1828317791F, -0.1429702938F, -0.1109927073F,
-            -0.08325428516F, -0.05802082643F, -0.03428063914F, -0.01134236995F,
-            0.01134236995F, 0.03428063914F, 0.05802082643F, 0.08325428516F,
-            0.1109927073F, 0.1429702938F, 0.1828317791F, 0.2414890379F};
+        const float c3[] = {-0.19020693F,   -0.1187859178F, -0.06682205945F, -0.02166347019F,
+                            0.02166347019F, 0.06682205945F, 0.1187859178F,   0.19020693F};
+        const float c4[] = {-0.2414890379F,  -0.1828317791F,  -0.1429702938F,  -0.1109927073F,
+                            -0.08325428516F, -0.05802082643F, -0.03428063914F, -0.01134236995F,
+                            0.01134236995F,  0.03428063914F,  0.05802082643F,  0.08325428516F,
+                            0.1109927073F,   0.1429702938F,   0.1828317791F,   0.2414890379F};
         for (uint32_t i = 0; i < (1U << bits_); ++i) {
             centroids_.SetValue(i, bits_ == 2 ? c2[i] : (bits_ == 3 ? c3[i] : c4[i]));
         }
@@ -217,7 +238,7 @@ private:
     }
 
     __aicore__ inline void Dot(const LocalTensor<float> &keys, const LocalTensor<float> &query,
-                              const LocalTensor<float> &result)
+                               const LocalTensor<float> &result)
     {
         Mul(a_, keys, query, 64, ROWS, {1, 1, 1, 16, 16, 0});
         Mul(a_[64], keys[64], query[64], 64, ROWS, {1, 1, 1, 16, 16, 0});

@@ -1,7 +1,7 @@
 # 自测
 
 依赖 CANN 9.1.0+、Ascend 910B、配套 PyTorch/torch_npu、numpy。
-`task_golden.py` 和 `case.json` 原样来自任务附件。脚本按 case.json 的五组形状生成输入，
+`task_golden.py` 和 `case.json` 来自任务附件；仅补齐许可证头、格式和文件末尾换行，计算逻辑及用例数据保持不变。脚本按 case.json 的五组形状生成输入，
 随机种子固定为 20260923；页表使用物理块随机排列，而不是假定连续映射。
 
 先按上级 README 构建并安装算子，加载 CANN 和算子包环境：

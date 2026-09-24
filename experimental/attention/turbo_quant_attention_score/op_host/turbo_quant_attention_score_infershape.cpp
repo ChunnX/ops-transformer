@@ -1,6 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <algorithm>
 #include "register/op_impl_registry.h"
@@ -21,7 +26,8 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
         maxLen = 0;
         for (int64_t i = 0; i < lens->GetDim(0); ++i) {
             const int64_t length = context->GetInputDesc(7)->GetDataType() == ge::DT_INT32 ?
-                tensor->GetData<int32_t>()[i] : tensor->GetData<int64_t>()[i];
+                                       tensor->GetData<int32_t>()[i] :
+                                       tensor->GetData<int64_t>()[i];
             if (length < 0) {
                 return ge::GRAPH_FAILED;
             }
@@ -35,6 +41,5 @@ static ge::graphStatus InferType(gert::InferDataTypeContext *context)
 {
     return context->SetOutputDataType(0, ge::DT_FLOAT);
 }
-IMPL_OP_INFERSHAPE(TurboQuantAttentionScore).InferShape(InferShape).InferDataType(InferType)
-    .InputsDataDependency({7});
+IMPL_OP_INFERSHAPE(TurboQuantAttentionScore).InferShape(InferShape).InferDataType(InferType).InputsDataDependency({7});
 } // namespace ops

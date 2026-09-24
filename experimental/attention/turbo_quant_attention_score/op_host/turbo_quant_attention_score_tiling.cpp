@@ -1,6 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <algorithm>
 #include <climits>
@@ -35,9 +40,8 @@ static ge::graphStatus Tiling(gert::TilingContext *context)
     }
     const int64_t tokens = s[0]->GetDim(0), qHeads = s[0]->GetDim(1);
     const int64_t kvHeads = s[2]->GetDim(2), batch = s[6]->GetDim(0);
-    if (*s[0] != *s[1] || s[0]->GetDim(2) != 128 || s[2]->GetDim(1) != 128 ||
-        s[2]->GetDim(3) != 16 * *bits || s[3]->GetDim(3) != 16 ||
-        qHeads % kvHeads != 0 || (batch != 1 && tokens != batch) || s[7]->GetDim(0) != batch) {
+    if (*s[0] != *s[1] || s[0]->GetDim(2) != 128 || s[2]->GetDim(1) != 128 || s[2]->GetDim(3) != 16 * *bits ||
+        s[3]->GetDim(3) != 16 || qHeads % kvHeads != 0 || (batch != 1 && tokens != batch) || s[7]->GetDim(0) != batch) {
         return ge::GRAPH_FAILED;
     }
     for (size_t i = 3; i <= 5; ++i) {
@@ -50,7 +54,7 @@ static ge::graphStatus Tiling(gert::TilingContext *context)
     const auto normType = context->GetInputDesc(4)->GetDataType();
     const auto lengthType = context->GetInputDesc(7)->GetDataType();
     const ge::DataType types[] = {ge::DT_BF16, ge::DT_BF16, ge::DT_UINT8, ge::DT_UINT8,
-                                normType, normType, ge::DT_INT32, lengthType};
+                                  normType,    normType,    ge::DT_INT32, lengthType};
     if ((normType != ge::DT_BF16 && normType != ge::DT_FLOAT16) ||
         (lengthType != ge::DT_INT32 && lengthType != ge::DT_INT64)) {
         return ge::GRAPH_FAILED;
@@ -78,7 +82,8 @@ static ge::graphStatus Tiling(gert::TilingContext *context)
         }
         int64_t actualMax = 0;
         for (int64_t i = 0; i < batch; ++i) {
-            const int64_t len = lengthType == ge::DT_INT32 ? lengths->GetData<int32_t>()[i] : lengths->GetData<int64_t>()[i];
+            const int64_t len =
+                lengthType == ge::DT_INT32 ? lengths->GetData<int32_t>()[i] : lengths->GetData<int64_t>()[i];
             if (len < 0 || len > INT_MAX || len > s[6]->GetDim(1) * 128) {
                 return ge::GRAPH_FAILED;
             }
