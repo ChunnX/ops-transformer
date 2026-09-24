@@ -18,10 +18,9 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-// ascend950（arch35）APT 编译链路不为 op_host 侧 BEGIN_TILING_DATA_DEF 宏生成 kernel 侧
-// MhcPreSplitPostResTilingData 定义，引入 arch35 手写版（namespace 内声明，使下方 kernel
-// 类的 tiling 形参解析到手写结构）。本算子仅注册 ascend950，无条件引入。
-#include "arch35/mhc_pre_split_post_res_tiling_data.h"
+// MhcPreSplitPostResTilingData 采用与 mhc_pre 相同的单份模式：op_host 宏版
+// （mhc_pre_split_post_res_tiling.h 的 BEGIN_TILING_DATA_DEF）为唯一事实源，
+// kernel 侧定义由编译链自动注入（入口 GET_TILING_DATA 取数）。
 
 namespace MhcPreSplitPostRes {
 using namespace AscendC;

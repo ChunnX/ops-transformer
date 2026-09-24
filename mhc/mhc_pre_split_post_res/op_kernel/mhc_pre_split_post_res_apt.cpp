@@ -26,7 +26,7 @@
 #include "kernel_operator_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-// 算法头（base.h 无条件引入 arch35 手写 tiling 结构，本算子仅注册 ascend950）
+// 算法头（TilingData 定义由编译链从 op_host 宏版自动注入，同 mhc_pre 单份模式）
 #include "mhc_pre_split_post_res_multi_tile.h"
 // schMode 模板参数与 TilingKey 的映射声明（APT 链路，Host 侧同用）
 #include "arch35/mhc_pre_split_post_res_tiling_key.h"
@@ -38,10 +38,8 @@ template <uint32_t schMode>
 __global__ __aicore__ void mhc_pre_split_post_res(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha,
     GM_ADDR bias, GM_ADDR h_post, GM_ADDR h_res, GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_TILING_DEFAULT(MhcPreSplitPostResTilingData);
+    GET_TILING_DATA(tilingData, tiling);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    GET_TILING_DATA_WITH_STRUCT(MhcPreSplitPostResTilingData, tilingDataIn, tiling);
-    const MhcPreSplitPostResTilingData *__restrict tilingData = &tilingDataIn;
     TPipe pipe;
     if (workspace == nullptr) {
         return;
@@ -52,11 +50,11 @@ __global__ __aicore__ void mhc_pre_split_post_res(GM_ADDR x, GM_ADDR phi, GM_ADD
     }
     if constexpr (schMode == MHC_PRS_SCH_MODE_SINGLE_TILE) {
         KernelMhcSingleTile<DTYPE_X> op;
-        op.Init(x, phi, alpha, bias, h_post, h_res, usrWorkspace, &pipe, tilingData);
+        op.Init(x, phi, alpha, bias, h_post, h_res, usrWorkspace, &pipe, &tilingData);
         op.Process();
     } else if constexpr (schMode == MHC_PRS_SCH_MODE_MULTI_TILE) {
         KernelMhcMultiTile<DTYPE_X> op;
-        op.Init(x, phi, alpha, bias, h_post, h_res, usrWorkspace, &pipe, tilingData);
+        op.Init(x, phi, alpha, bias, h_post, h_res, usrWorkspace, &pipe, &tilingData);
         op.Process();
     }
 }
