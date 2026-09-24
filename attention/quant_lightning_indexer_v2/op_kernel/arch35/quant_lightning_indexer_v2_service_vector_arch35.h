@@ -24,6 +24,23 @@
 #include "../arch35/vf/quant_lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/quant_lightning_indexer_v2_topk.h"
 
+// HiFloat4 stage dump switch. Override target coordinates with compiler -D options.
+#ifndef QLIV2_HIF4_DEBUG_DUMP
+#define QLIV2_HIF4_DEBUG_DUMP 1
+#endif
+#ifndef QLIV2_HIF4_DEBUG_BATCH
+#define QLIV2_HIF4_DEBUG_BATCH 0
+#endif
+#ifndef QLIV2_HIF4_DEBUG_KV_HEAD
+#define QLIV2_HIF4_DEBUG_KV_HEAD 0
+#endif
+#ifndef QLIV2_HIF4_DEBUG_S1_BLOCK
+#define QLIV2_HIF4_DEBUG_S1_BLOCK 0
+#endif
+#ifndef QLIV2_HIF4_DEBUG_S2_BLOCK
+#define QLIV2_HIF4_DEBUG_S2_BLOCK 0
+#endif
+
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
@@ -562,6 +579,24 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
+
+#if QLIV2_HIF4_DEBUG_DUMP
+    // Dump one deterministic AIV/tile. Descriptor IDs:
+    // 6101 = QK UB ([G, 256] BF16; first 128 columns valid),
+    // 6102 = weight UB (first G FP32 values valid).
+    if constexpr (IS_HIFLOAT4) {
+        bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
+                           info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
+                           info.gS1Idx == QLIV2_HIF4_DEBUG_S1_BLOCK &&
+                           info.s2Idx == QLIV2_HIF4_DEBUG_S2_BLOCK &&
+                           blockId_ % CVRATIO == 0;
+        if (isDebugTile) {
+            AscendC::DumpTensor(qkBase, 6101, gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
+            AscendC::DumpTensor(weightBase, 6102, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T));
+        }
+    }
+#endif
+
     if constexpr (IS_HIFLOAT4) {
         vector1::BatchMulWeightAndReduceSumFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
                                                (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
@@ -602,6 +637,22 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                             (uint32_t)0, qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float), gSize_,
                                             curAivS1ProcNum);
     }
+
+#if QLIV2_HIF4_DEBUG_DUMP
+    // 6103 = first S1 row after BF16 accumulation is encoded as the uint16 key used by TopK.
+    if constexpr (IS_HIFLOAT4) {
+        bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
+                           info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
+                           info.gS1Idx == QLIV2_HIF4_DEBUG_S1_BLOCK &&
+                           info.s2Idx == QLIV2_HIF4_DEBUG_S2_BLOCK &&
+                           blockId_ % CVRATIO == 0;
+        if (isDebugTile) {
+            PipeBarrier<PIPE_V>();
+            AscendC::DumpTensor(outBase, 6103, s2BaseSize_);
+        }
+    }
+#endif
+
     if (info.isFirstS2InnerLoop) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
     }
