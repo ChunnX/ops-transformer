@@ -55,6 +55,9 @@ constexpr uint64_t TOKEN_INFO_ALIGN_SIZE = 512;
 constexpr uint64_t CCL_BUFFER_ALIGN_SIZE = 2 * MB_SIZE;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 constexpr int64_t BS_UPPER_BOUND = 512;
+constexpr int64_t MICRO_BATCH_NUM_UPPER_BOUND = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
+// Per-token expert count upper bound: keeps MB * BS * K * HS products inside uint64 in CalWinSize.
+constexpr int64_t EXPERT_NUM_PER_TOKEN_UPPER_BOUND = 256;
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t SCALE_SIZE = 128;
@@ -135,6 +138,23 @@ static bool CheckAttrLimits(const char *nodeName, const int64_t worldSize, const
         OP_LOGE_WITH_INVALID_ATTR(
             nodeName, "worldSize", std::to_string(worldSize).c_str(),
             (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
+        return false);
+    // microBatchNum (= dim0, shared with tokenDataShape[0] via CheckAttrShapes) drives the window layout;
+    // it must be positive and must survive the int64 -> uint32 narrowing at the tilingData assignment.
+    OP_TILING_CHECK(
+        (tokenInfoTableShape[INDEX_ZERO] < 1) || (tokenInfoTableShape[INDEX_ZERO] > MICRO_BATCH_NUM_UPPER_BOUND),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape",
+                                  (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(),
+                                  (std::string("[1, ") + std::to_string(MICRO_BATCH_NUM_UPPER_BOUND) + "]").c_str()),
+        return false);
+    OP_TILING_CHECK(
+        (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] < 1) ||
+            (tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX] > EXPERT_NUM_PER_TOKEN_UPPER_BOUND),
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "tokenInfoTableShape",
+            (std::string("dim2=") + std::to_string(tokenInfoTableShape[TOKEN_INFO_TABLE_SHAPE_EXPERT_NUM_INDEX]))
+                .c_str(),
+            (std::string("[1, ") + std::to_string(EXPERT_NUM_PER_TOKEN_UPPER_BOUND) + "]").c_str()),
         return false);
     OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] > BS_UPPER_BOUND) ||
                         (tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] <= 0),

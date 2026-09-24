@@ -143,12 +143,15 @@
 
 - `cclBufferSize`为HBM上分配的通信window总大小，单位为Byte，必须大于0并满足：
 
-$$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}, 512) + \mathrm{tokenDataSize}, 32) + 32\,\mathrm{KiB},\ 2\,\mathrm{MB})$$
+$$cclBufferSize \ge \mathrm{CeilAlign}\big(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},\,512) + \mathrm{tokenDataSize},\,32) + 32\,\mathrm{KiB},\,512) + \mathrm{tableBytes},\ 2\,\mathrm{MB}\big)$$
 
 其中：
 
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
+  - `tableBytes = worldSize × rankTableStride + 1025 × countRowStride`（各rank地址表与AIV计数行；1025 = 1条总计数行 + 1024条AIV预留计数行）
+  - `rankTableStride = CeilAlign(worldSize × microBatchNum × BS × expertNumPerToken × 16B, 512)`
+  - `countRowStride = CeilAlign(worldSize × 4B, 512)`
 
 可通过`get_ffn_to_attention_ccl_buffer_size`接口计算所需最小值。
 

@@ -243,11 +243,14 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_ffn_to_attention`内部自动计算，需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},512) + \mathrm{tokenDataSize},32) + 32\,\mathrm{KiB},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}\big(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},\,512) + \mathrm{tokenDataSize},\,32) + 32\,\mathrm{KiB},\,512) + \mathrm{tableBytes},\ 2\,\mathrm{MB}\big)$$
 
 其中：
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
+  - `tableBytes = world_size × rankTableStride + 1025 × countRowStride`（各rank地址表与AIV计数行；1025 = 1条总计数行 + 1024条AIV预留计数行）
+  - `rankTableStride = CeilAlign(world_size × microBatchNum × BS × expertNumPerToken × 16B, 512)`
+  - `countRowStride = CeilAlign(world_size × 4B, 512)`
 
 该大小由`get_buffer_for_ffn_to_attention`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。`ccl_buffer_size`描述对端attention卡通信窗口大小；本卡（ffn侧）通信窗口大小由`window_size`指定。
 
