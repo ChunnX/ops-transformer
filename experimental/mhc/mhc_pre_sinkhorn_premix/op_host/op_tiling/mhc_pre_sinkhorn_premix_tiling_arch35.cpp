@@ -48,8 +48,9 @@ constexpr uint64_t M_L1_MAX_SIZE = 256;
 constexpr uint64_t K_MULIT_CORE_SPLIT_BASE_SIZE = 256;
 constexpr uint64_t A_L1_SIZE = 128 * 256;
 constexpr uint64_t K_L1_MAX_SIZE = 1024;
-// Ascend950(regbase, A5) only supports these two tail-axis(c) sizes, which differs from A2/A3(membase).
+// Ascend950(regbase, A5) only supports these three tail-axis(c) sizes, which differs from A2/A3(membase).
 constexpr int64_t C_VALID_VALUE_4096 = 4096;
+constexpr int64_t C_VALID_VALUE_5120 = 5120;
 constexpr int64_t C_VALID_VALUE_7168 = 7168;
 constexpr int64_t HCMULT_VALUE = 4;
 constexpr int64_t NUM_ITERS_VALUE = 20;
@@ -328,11 +329,11 @@ ge::graphStatus MhcPreSinkhornPremixTilingRegbase::GetShapeAttrsInfoInner()
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(d_ != C_VALID_VALUE_4096 && d_ != C_VALID_VALUE_7168,
+    OP_CHECK_IF(d_ != C_VALID_VALUE_4096 && d_ != C_VALID_VALUE_5120 && d_ != C_VALID_VALUE_7168,
                 OP_LOGE(context_->GetNodeName(),
-                        "On Ascend950, x last dim c only supports %ld or %ld, but is %ld. "
-                        "Please set x last dim c to 4096 or 7168.",
-                        C_VALID_VALUE_4096, C_VALID_VALUE_7168, d_),
+                        "On Ascend950, x last dim c only supports %ld, %ld or %ld, but is %ld. "
+                        "Please set x last dim c to 4096, 5120 or 7168.",
+                        C_VALID_VALUE_4096, C_VALID_VALUE_5120, C_VALID_VALUE_7168, d_),
                 return ge::GRAPH_FAILED);
 
     auto shapeHcFn = context_->GetInputShape(1);
