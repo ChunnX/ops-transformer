@@ -1524,6 +1524,12 @@ LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
 
 
+def _cast_mxfp8_p_to_e4m3(value):
+    """Saturate P to the E4M3FN finite range before the CPU FP8 cast."""
+    fp8_max = torch.finfo(FP8_DTYPE).max
+    return value.clamp(-fp8_max, fp8_max).to(FP8_DTYPE).to(torch.float32)
+
+
 def _align_up_to_ln2(value, use_quant_matmul):
     value_fp32 = value.to(torch.float32).contiguous()
     if use_quant_matmul:
@@ -2406,7 +2412,7 @@ def cpu_mxfp8_golden(
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = _cast_mxfp8_p_to_e4m3(p_subloop)
                             subloop_results.append(
                                 (
                                     subloop_start,
