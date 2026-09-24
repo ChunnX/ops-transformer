@@ -9,6 +9,8 @@
  */
 
 #include <array>
+#include <cstddef>
+#include <cstring>
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
@@ -16,7 +18,8 @@
 #include "tiling_case_executor.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "../../../op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
-#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_data.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_data.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 namespace {
 struct RouteCase {
@@ -28,10 +31,13 @@ struct RouteCase {
     int64_t key;
 };
 
-constexpr int64_t V3_CGMCT_NZ_KEY = 32;
-constexpr int64_t V3_CGMCT_ZN_KEY = 33;
-constexpr int64_t V3_TENSOR_API_NZ_KEY = 48;
-constexpr int64_t V3_TENSOR_API_ZN_KEY = 49;
+constexpr int64_t V3_CGMCT_NZ_KEY = 0;
+constexpr int64_t V3_CGMCT_ZN_KEY = 1;
+constexpr int64_t V3_TENSOR_API_NZ_KEY = 16;
+constexpr int64_t V3_TENSOR_API_ZN_KEY = 17;
+
+using CgmctTilingData = ::GMMSwigluQuantV2TilingDataParams;
+using TensorApiTilingData = GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData;
 
 gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2CompileInfo *info, int scaleAlg,
                                     int aiv = 64, int64_t swigluMode = 2)
@@ -84,10 +90,132 @@ gert::TilingContextPara MakeContext(const RouteCase &c, optiling::GMMSwigluV2Com
     return context;
 }
 
-const ::GMMSwigluQuantV3TilingDataParams *GetTilingData(const TilingInfo &result)
+template <typename T>
+const T *GetTilingData(const TilingInfo &result)
 {
-    EXPECT_EQ(result.tilingDataSize, sizeof(::GMMSwigluQuantV3TilingDataParams));
-    return reinterpret_cast<const ::GMMSwigluQuantV3TilingDataParams *>(result.tilingData.get());
+    EXPECT_EQ(result.tilingDataSize, sizeof(T));
+    if (result.tilingDataSize != sizeof(T)) {
+        return nullptr;
+    }
+    return reinterpret_cast<const T *>(result.tilingData.get());
+}
+
+const ::GMMSwigluQuantSwigluParams *GetSwigluParams(const TilingInfo &result)
+{
+    if (result.tilingKey == V3_CGMCT_NZ_KEY || result.tilingKey == V3_CGMCT_ZN_KEY) {
+        const auto *data = GetTilingData<CgmctTilingData>(result);
+        return data == nullptr ? nullptr : &data->swigluParams;
+    }
+    if (result.tilingKey == V3_TENSOR_API_NZ_KEY || result.tilingKey == V3_TENSOR_API_ZN_KEY) {
+        const auto *data = GetTilingData<TensorApiTilingData>(result);
+        return data == nullptr ? nullptr : &data->swigluParams;
+    }
+    ADD_FAILURE() << "Unexpected MXFP8 tiling key: " << result.tilingKey;
+    return nullptr;
+}
+
+void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams &params, int64_t mode, uint8_t scaleAlg,
+                       float clampLimit = 7.0F, float gluAlpha = 1.702F, float gluBias = 1.0F)
+{
+    EXPECT_EQ(params.swigluMode, mode);
+    EXPECT_EQ(params.scaleAlg, scaleAlg);
+    EXPECT_FLOAT_EQ(params.clampLimit, clampLimit);
+    EXPECT_FLOAT_EQ(params.gluAlpha, gluAlpha);
+    EXPECT_FLOAT_EQ(params.gluBias, gluBias);
+    EXPECT_FLOAT_EQ(params.dstTypeMax, 0.0F);
+    EXPECT_EQ(params.roundMode, 0U);
+    EXPECT_EQ(params.reserved0, 0U);
+    EXPECT_EQ(params.reserved1, 0U);
+    EXPECT_EQ(params.reserved2, 0U);
+    EXPECT_EQ(params.reserved3, 0U);
+}
+
+template <typename DeviceTiling, typename HostTiling>
+void ExpectHostTailReset(HostTiling &host)
+{
+    ASSERT_EQ(host.GetDataSize(), sizeof(DeviceTiling));
+    std::array<uint8_t, sizeof(DeviceTiling)> buffer;
+    buffer.fill(0xA5U);
+    ::GMMSwigluQuantSwigluParams previous;
+    previous.swigluMode = 2;
+    previous.clampLimit = 3.0F;
+    previous.gluAlpha = 0.5F;
+    previous.gluBias = -1.0F;
+    previous.scaleAlg = 1;
+    previous.dstTypeMax = 448.0F;
+    previous.roundMode = 0xA5U;
+    previous.reserved0 = 0xA5U;
+    previous.reserved1 = 0xA5A5U;
+    previous.reserved2 = 0xA5U;
+    previous.reserved3 = 0xA5A5U;
+    optiling::SetGMMSwigluQuantSwigluParams(host.swigluParams, previous);
+    host.SaveToBuffer(buffer.data(), buffer.size());
+    DeviceTiling decoded{};
+    std::memcpy(&decoded, buffer.data(), sizeof(decoded));
+    EXPECT_EQ(std::memcmp(&decoded.swigluParams, &previous, sizeof(previous)), 0);
+
+    // Exercise a reused Host payload and a nonzero destination: resetting
+    // legacy attributes must overwrite every field, including reserved bytes.
+    buffer.fill(0xA5U);
+    optiling::SetGMMSwigluQuantSwigluParams(host.swigluParams);
+    host.SaveToBuffer(buffer.data(), buffer.size());
+    std::memcpy(&decoded, buffer.data(), sizeof(decoded));
+    ExpectSwigluParams(decoded.swigluParams, 0, 0);
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, SharedPayloadsPreserveLegacyPrefixes)
+{
+    EXPECT_EQ(sizeof(::GMMSwigluQuantSwigluParams), 32U);
+    EXPECT_EQ(sizeof(::GMMSwigluQuantV2Params), 16U);
+    EXPECT_EQ(offsetof(CgmctTilingData, mmTilingData), 16U);
+    EXPECT_EQ(offsetof(CgmctTilingData, swigluParams), 16U + sizeof(::TCubeTiling));
+    EXPECT_EQ(sizeof(CgmctTilingData), 16U + sizeof(::TCubeTiling) + 32U);
+    EXPECT_EQ(sizeof(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiQuantParams), 24U);
+    EXPECT_EQ(sizeof(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiMMTiling), 48U);
+    EXPECT_EQ(offsetof(TensorApiTilingData, mmTilingData), 24U);
+    EXPECT_EQ(offsetof(TensorApiTilingData, swigluParams), 72U);
+    EXPECT_EQ(sizeof(TensorApiTilingData), 104U);
+
+    optiling::GMMSwigluQuantTilingDataParams cgmctHost;
+    optiling::GMMSwigluQuantV2TensorApiTilingData tensorApiHost;
+    EXPECT_EQ(cgmctHost.GetDataSize(), sizeof(CgmctTilingData));
+    EXPECT_EQ(tensorApiHost.GetDataSize(), sizeof(TensorApiTilingData));
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, HostTailResetOverwritesPreviousModeAndReservedBytes)
+{
+    optiling::GMMSwigluQuantTilingDataParams cgmctHost;
+    ExpectHostTailReset<CgmctTilingData>(cgmctHost);
+    optiling::GMMSwigluQuantV2TensorApiTilingData tensorApiHost;
+    ExpectHostTailReset<TensorApiTilingData>(tensorApiHost);
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, AttributesShareBackendKeys)
+{
+    using Value = Ops::Transformer::AnyValue;
+    const std::vector<RouteCase> cases = {{128, 128, 128, 1, false, V3_CGMCT_NZ_KEY},
+                                          {128, 128, 128, 1, true, V3_CGMCT_ZN_KEY},
+                                          {1024, 128, 128, 1, false, V3_TENSOR_API_NZ_KEY},
+                                          {1024, 128, 128, 1, true, V3_TENSOR_API_ZN_KEY}};
+    for (const auto &c : cases) {
+        for (int scaleAlg : {0, 1}) {
+            SCOPED_TRACE(::testing::Message() << "key=" << c.key << ",alg=" << scaleAlg);
+            optiling::GMMSwigluV2CompileInfo info{};
+            auto context = MakeContext(c, &info, scaleAlg);
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_CLAMP_LIMIT].attr_ =
+                Value::CreateFrom<float>(3.0F);
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_GLU_ALPHA].attr_ =
+                Value::CreateFrom<float>(0.5F);
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_GLU_BIAS].attr_ =
+                Value::CreateFrom<float>(-1.0F);
+            TilingInfo result;
+            ASSERT_TRUE(ExecuteTiling(context, result));
+            EXPECT_EQ(result.tilingKey, c.key);
+            const auto *params = GetSwigluParams(result);
+            ASSERT_NE(params, nullptr);
+            ExpectSwigluParams(*params, 2, static_cast<uint8_t>(scaleAlg), 3.0F, 0.5F, -1.0F);
+        }
+    }
 }
 
 TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
@@ -111,6 +239,9 @@ TEST(GroupedMatmulSwigluQuantV3Route, V2CapabilityBoundaries)
             ASSERT_TRUE(ExecuteTiling(context, result));
             EXPECT_EQ(result.tilingKey, c.key);
             EXPECT_EQ(result.blockNum, 32U);
+            const auto *params = GetSwigluParams(result);
+            ASSERT_NE(params, nullptr);
+            ExpectSwigluParams(*params, 2, static_cast<uint8_t>(scaleAlg));
         }
     }
 }
@@ -135,7 +266,7 @@ TEST(GroupedMatmulSwigluQuantV3Route, ReportedUnalignedKCasesKeepCgmctScaleFacto
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         ASSERT_EQ(result.tilingKey, c.route.key);
-        const auto *tilingData = GetTilingData(result);
+        const auto *tilingData = GetTilingData<CgmctTilingData>(result);
         ASSERT_NE(tilingData, nullptr);
         const auto &mm = tilingData->mmTilingData;
         ASSERT_GT(mm.stepKa, 0);
@@ -179,20 +310,19 @@ TEST(GroupedMatmulSwigluQuantV3Route, TensorApiUsesSymmetricL1Budget)
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         ASSERT_EQ(result.tilingKey, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY);
-        const auto *tilingData = GetTilingData(result);
+        const auto *tilingData = GetTilingData<TensorApiTilingData>(result);
         ASSERT_NE(tilingData, nullptr);
         const auto &mm = tilingData->mmTilingData;
         EXPECT_EQ(mm.baseM, 256);
         EXPECT_EQ(mm.baseN, 128);
         EXPECT_EQ(mm.baseK, 128);
-        EXPECT_EQ(mm.depthA1, 4);
-        EXPECT_EQ(mm.depthB1, 4);
-        EXPECT_EQ(mm.stepKa, 2);
-        EXPECT_EQ(mm.stepKb, 2);
+        // The compact Tensor API protocol carries the actual L1 windows,
+        // not the TCube step/depth encoding used by the CGMCT family.
+        EXPECT_EQ(mm.kAL1, 256U);
+        EXPECT_EQ(mm.kBL1, 256U);
+        EXPECT_EQ(mm.scaleKAL1, 6144U);
+        EXPECT_EQ(mm.scaleKBL1, 6144U);
         EXPECT_EQ(mm.dbL0C, 1);
-        const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
-        EXPECT_EQ(mxTypePara & 0xFFU, 24U);
-        EXPECT_EQ((mxTypePara >> 8U) & 0xFFU, 24U);
     }
 }
 
@@ -210,12 +340,19 @@ TEST(GroupedMatmulSwigluQuantV3Route, PerformanceShapesKeepNdCompatibleBasicTile
         TilingInfo result;
         ASSERT_TRUE(ExecuteTiling(context, result));
         ASSERT_EQ(result.tilingKey, useTensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY);
-        const auto *tilingData = GetTilingData(result);
-        ASSERT_NE(tilingData, nullptr);
-        const auto &mm = tilingData->mmTilingData;
-        EXPECT_EQ(mm.baseM, useTensorApi ? 256 : 128);
-        EXPECT_EQ(mm.baseN, useTensorApi ? 128 : 256);
-        EXPECT_EQ(mm.baseK, 128);
+        if (useTensorApi) {
+            const auto *tilingData = GetTilingData<TensorApiTilingData>(result);
+            ASSERT_NE(tilingData, nullptr);
+            EXPECT_EQ(tilingData->mmTilingData.baseM, 256U);
+            EXPECT_EQ(tilingData->mmTilingData.baseN, 128U);
+            EXPECT_EQ(tilingData->mmTilingData.baseK, 128U);
+        } else {
+            const auto *tilingData = GetTilingData<CgmctTilingData>(result);
+            ASSERT_NE(tilingData, nullptr);
+            EXPECT_EQ(tilingData->mmTilingData.baseM, 128);
+            EXPECT_EQ(tilingData->mmTilingData.baseN, 256);
+            EXPECT_EQ(tilingData->mmTilingData.baseK, 128);
+        }
     }
 }
 
@@ -230,16 +367,17 @@ TEST(GroupedMatmulSwigluQuantV3Route, TensorApiKeepsKBoundaryScaleWindowWithinL1
             TilingInfo result;
             ASSERT_TRUE(ExecuteTiling(context, result));
             ASSERT_EQ(result.tilingKey, trans ? V3_TENSOR_API_ZN_KEY : V3_TENSOR_API_NZ_KEY);
-            const auto *tilingData = GetTilingData(result);
+            const auto *tilingData = GetTilingData<TensorApiTilingData>(result);
             ASSERT_NE(tilingData, nullptr);
             const auto &mm = tilingData->mmTilingData;
             EXPECT_EQ(mm.baseM, 256);
             EXPECT_EQ(mm.baseN, 128);
             EXPECT_EQ(mm.baseK, 128);
             EXPECT_EQ(mm.dbL0C, 1);
-            const auto mxTypePara = static_cast<uint32_t>(mm.mxTypePara);
-            EXPECT_EQ(mxTypePara & 0xFFU, 32U);
-            EXPECT_EQ((mxTypePara >> 8U) & 0xFFU, 32U);
+            EXPECT_EQ(mm.kAL1, 256U);
+            EXPECT_EQ(mm.kBL1, 256U);
+            EXPECT_EQ(mm.scaleKAL1, 8192U);
+            EXPECT_EQ(mm.scaleKBL1, 8192U);
         }
     }
 }
@@ -257,12 +395,35 @@ TEST(GroupedMatmulSwigluQuantV3Route, CoreRatioFallsBack)
 
 TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesV2Template)
 {
-    for (bool trans : {false, true}) {
-        optiling::GMMSwigluV2CompileInfo info{};
-        auto context = MakeContext({512, 128, 128, 1, trans, trans ? 1 : 0}, &info, 0, 64, 0);
-        TilingInfo result;
-        ASSERT_TRUE(ExecuteTiling(context, result));
-        EXPECT_EQ(result.tilingKey, trans ? 1 : 0);
+    for (bool tensorApi : {false, true}) {
+        for (bool trans : {false, true}) {
+            for (bool explicitMode : {false, true}) {
+                SCOPED_TRACE(::testing::Message() << "tensorApi=" << tensorApi << ",trans=" << trans
+                                                  << ",explicitMode=" << explicitMode);
+                const int64_t key = (tensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY) + (trans ? 1 : 0);
+                optiling::GMMSwigluV2CompileInfo info{};
+                auto context = MakeContext({1024, 128, 128, 1, trans, key}, &info, 0, 64, 0);
+                if (tensorApi) {
+                    // Legacy Tensor API accepts ND weights, whereas V3 uses
+                    // the same key family for its supported weight-NZ input.
+                    const std::vector<int64_t> weightShape = {1, 128, 128};
+                    context.inputTensorDesc_[3] = gert::TilingContextPara::TensorDescription(
+                        ops::ut::MakeGertStorageShape(weightShape, weightShape), ge::DT_FLOAT8_E4M3FN,
+                        ge::FORMAT_ND);
+                }
+                if (!explicitMode) {
+                    context.attrs_.erase(context.attrs_.begin() +
+                                             optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_SWIGLU_MODE,
+                                         context.attrs_.end());
+                }
+                TilingInfo result;
+                ASSERT_TRUE(ExecuteTiling(context, result));
+                EXPECT_EQ(result.tilingKey, key);
+                const auto *params = GetSwigluParams(result);
+                ASSERT_NE(params, nullptr);
+                ExpectSwigluParams(*params, 0, 0);
+            }
+        }
     }
 }
 

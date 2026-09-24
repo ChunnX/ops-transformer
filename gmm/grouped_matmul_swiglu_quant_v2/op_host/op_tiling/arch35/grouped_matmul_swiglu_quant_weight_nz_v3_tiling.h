@@ -24,38 +24,9 @@
 #include "tiling/tiling_api.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 namespace optiling {
-
-BEGIN_TILING_DATA_DEF(GMMSwigluQuantV3Params)
-TILING_DATA_FIELD_DEF(uint32_t, groupNum);
-TILING_DATA_FIELD_DEF(uint8_t, groupListType);
-TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
-TILING_DATA_FIELD_DEF(uint8_t, isMxWeightNzMultiTensor);
-TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
-TILING_DATA_FIELD_DEF(int64_t, swigluMode);
-TILING_DATA_FIELD_DEF(float, clampLimit);
-TILING_DATA_FIELD_DEF(float, gluAlpha);
-TILING_DATA_FIELD_DEF(float, gluBias);
-TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
-TILING_DATA_FIELD_DEF(uint8_t, reserved0);
-TILING_DATA_FIELD_DEF(uint16_t, reserved1);
-TILING_DATA_FIELD_DEF(float, dstTypeMax);
-TILING_DATA_FIELD_DEF(uint8_t, roundMode);
-TILING_DATA_FIELD_DEF(uint8_t, reserved2);
-TILING_DATA_FIELD_DEF(uint16_t, reserved3);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV3ParamsOp, GMMSwigluQuantV3Params)
-
-BEGIN_TILING_DATA_DEF(GMMSwigluQuantV3TilingDataParams)
-TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV3Params, gmmSwigluQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_32, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_33, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_48, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_49, GMMSwigluQuantV3TilingDataParams)
 
 namespace GroupedMatmulSwigluQuantV3Tiling {
 constexpr uint32_t X_INDEX = 0;
@@ -151,8 +122,10 @@ private:
     bool GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index, bool &value) const;
     bool GetAttrFloat(const gert::RuntimeAttrs *attrs, uint32_t index, float &value) const;
     bool GetAttrString(const gert::RuntimeAttrs *attrs, uint32_t index, std::string &value) const;
+    void SetTensorApiMatmulTiling();
 
-    GMMSwigluQuantV3TilingDataParams tilingData_;
+    GMMSwigluQuantTilingDataParams tilingData_;
+    GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tensorApiTilingData_;
     bool transposeWeight_ = false;
     int64_t swigluMode_ = SWIGLU_MODE;
     float clampLimit_ = 7.0F;
