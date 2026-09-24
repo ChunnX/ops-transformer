@@ -128,7 +128,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoCsaTiling(MQSMLATilingInfo *ti
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
     tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
-    tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
+    tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount); // MQSMLA: sparse block count.
     tilingData_.baseParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
     tilingData_.baseParams.set_paOriBlockSize(tilingInfo->oriBlockSize);

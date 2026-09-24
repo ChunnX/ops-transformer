@@ -85,135 +85,137 @@ __aicore__ inline void GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv
 }
 
 __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                 uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // vec mul by row
     // dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
-    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, actualColumnCount] dstUb:[dealRowCount, columnCount]
-    // dstRepStride为0~255,columnCount需要小于2048
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+    // src0Ub:[1, vectorColumnCount] src1Ub:[vectorRowCount, vectorActualColumnCount] dstUb:[vectorRowCount,
+    // vectorColumnCount] dstRepStride为0~255,vectorColumnCount需要小于2048
+    if (vectorColumnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src1RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-        uint32_t loopCount = actualColumnCount / mask;
-        uint32_t remainCount = actualColumnCount % mask;
+        uint32_t loopCount = vectorActualColumnCount / mask;
+        uint32_t remainCount = vectorActualColumnCount % mask;
         uint32_t offset = 0;
         for (int i = 0; i < loopCount; i++) {
             // offset = i * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, dealRowCount, repeatParams);
+            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, vectorRowCount, repeatParams);
             offset += mask;
         }
         if (remainCount > 0) {
             // offset = loopCount * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, dealRowCount, repeatParams);
+            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, vectorRowCount, repeatParams);
         }
     } else {
         uint32_t offset = 0;
-        for (int i = 0; i < dealRowCount; i++) {
-            Mul(dstUb[offset], src0Ub, src1Ub[offset], actualColumnCount);
-            offset += columnCount;
+        for (int i = 0; i < vectorRowCount; i++) {
+            Mul(dstUb[offset], src0Ub, src1Ub[offset], vectorActualColumnCount);
+            offset += vectorColumnCount;
         }
     }
 }
 
 __aicore__ inline void VecMulMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
-                                               LocalTensor<float> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
-                                               uint32_t actualColumnCount)
+                                               LocalTensor<float> src1Ub, uint32_t vectorRowCount,
+                                               uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
-    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
+    // src0Ub:[1, vectorColumnCount] src1Ub:[vectorRowCount, vectorColumnCount] dstUb:[vectorRowCount,
+    // vectorColumnCount]
     uint32_t repeatTimes = MAX_REPEAT_TIMES;
-    for (uint32_t i = 0; i < dealRowCount; i += MAX_REPEAT_TIMES) {
-        if (i + MAX_REPEAT_TIMES > dealRowCount) {
-            repeatTimes = dealRowCount - i;
+    for (uint32_t i = 0; i < vectorRowCount; i += MAX_REPEAT_TIMES) {
+        if (i + MAX_REPEAT_TIMES > vectorRowCount) {
+            repeatTimes = vectorRowCount - i;
         }
-        VecMulMat(dstUb[i * columnCount], src0Ub, src1Ub[i * columnCount], repeatTimes, columnCount, actualColumnCount);
+        VecMulMat(dstUb[i * vectorColumnCount], src0Ub, src1Ub[i * vectorColumnCount], repeatTimes, vectorColumnCount,
+                  vectorActualColumnCount);
     }
 }
 
 __aicore__ inline void MatDivVec(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                 uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // vec mul by row
     // dstUb[i, j] = src1Ub[i, j] / src0Ub[j],
-    // src0Ub:[dealRowCount, actualColumnCount] src1Ub:[1, columnCount] dstUb:[dealRowCount, columnCount]
-    // restraint: dealRowCount < 256
-    // dstRepStride为0~255,columnCount需要小于2048
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+    // src0Ub:[vectorRowCount, vectorActualColumnCount] src1Ub:[1, vectorColumnCount] dstUb:[vectorRowCount,
+    // vectorColumnCount] restraint: vectorRowCount < 256 dstRepStride为0~255,vectorColumnCount需要小于2048
+    if (vectorColumnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
         repeatParams.dstBlkStride = 1;
         repeatParams.src1BlkStride = 1;
         repeatParams.src0BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src1RepStride = 0;
-        repeatParams.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-        uint32_t loopCount = actualColumnCount / mask;
-        uint32_t remainCount = actualColumnCount % mask;
+        uint32_t loopCount = vectorActualColumnCount / mask;
+        uint32_t remainCount = vectorActualColumnCount % mask;
         uint32_t offset = 0;
         for (int i = 0; i < loopCount; i++) {
             // offset = i * mask
-            Div(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, dealRowCount, repeatParams);
+            Div(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, vectorRowCount, repeatParams);
             offset += mask;
         }
         if (remainCount > 0) {
             // offset = loopCount * mask
-            Div(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, dealRowCount, repeatParams);
+            Div(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, vectorRowCount, repeatParams);
         }
     } else {
         uint32_t offset = 0;
-        for (int i = 0; i < dealRowCount; i++) {
-            Div(dstUb[offset], src0Ub[offset], src1Ub, actualColumnCount);
-            offset += columnCount;
+        for (int i = 0; i < vectorRowCount; i++) {
+            Div(dstUb[offset], src0Ub[offset], src1Ub, vectorActualColumnCount);
+            offset += vectorColumnCount;
         }
     }
 }
 
 __aicore__ inline void VecMulBlkMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                    uint32_t vectorRowCount, uint32_t vectorColumnCount,
+                                    uint32_t vectorActualColumnCount)
 {
     // vec mul by row
-    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, 8] dstUb:[dealRowCount, columnCount]
+    // src0Ub:[1, vectorColumnCount] src1Ub:[vectorRowCount, 8] dstUb:[vectorRowCount, vectorColumnCount]
     BinaryRepeatParams repeatParams;
     uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t loopCount = actualColumnCount / mask;
-    uint32_t remainCount = actualColumnCount % mask;
-    // dstRepStride为0~255,columnCount需要小于2048
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
-        // [1, columnCount] * [dealRowCount, 8]
+    uint32_t loopCount = vectorActualColumnCount / mask;
+    uint32_t remainCount = vectorActualColumnCount % mask;
+    // dstRepStride为0~255,vectorColumnCount需要小于2048
+    if (vectorColumnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+        // [1, vectorColumnCount] * [vectorRowCount, 8]
         repeatParams.src0BlkStride = 1;
         repeatParams.src0RepStride = 0;
         repeatParams.src1BlkStride = 0;
         repeatParams.src1RepStride = 1;
         repeatParams.dstBlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t offset = 0;
         for (uint32_t i = 0; i < loopCount; i++) {
-            Mul(dstUb[offset], src0Ub[offset], src1Ub, mask, dealRowCount, repeatParams);
+            Mul(dstUb[offset], src0Ub[offset], src1Ub, mask, vectorRowCount, repeatParams);
             offset += mask;
         }
         if (remainCount > 0) {
-            Mul(dstUb[offset], src0Ub[offset], src1Ub, remainCount, dealRowCount, repeatParams);
+            Mul(dstUb[offset], src0Ub[offset], src1Ub, remainCount, vectorRowCount, repeatParams);
         }
     } else {
-        // [1, columnCount] * [1, 8]
+        // [1, vectorColumnCount] * [1, 8]
         repeatParams.src0BlkStride = 1;
         repeatParams.src0RepStride = STRIDE_LENGTH;
         repeatParams.src1BlkStride = 0;
         repeatParams.src1RepStride = 0;
         repeatParams.dstBlkStride = 1;
         repeatParams.dstRepStride = STRIDE_LENGTH;
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            Mul(dstUb[i * columnCount], src0Ub, src1Ub[i * AttentionCommon::FP32_BLOCK_ELEMENT_NUM], mask, loopCount,
-                repeatParams);
+        for (uint32_t i = 0; i < vectorRowCount; i++) {
+            Mul(dstUb[i * vectorColumnCount], src0Ub, src1Ub[i * AttentionCommon::FP32_BLOCK_ELEMENT_NUM], mask,
+                loopCount, repeatParams);
             if (remainCount > 0) {
-                Mul(dstUb[i * columnCount + loopCount * mask], src0Ub[loopCount * mask],
+                Mul(dstUb[i * vectorColumnCount + loopCount * mask], src0Ub[loopCount * mask],
                     src1Ub[i * AttentionCommon::FP32_BLOCK_ELEMENT_NUM], remainCount, 1, repeatParams);
             }
         }
@@ -221,115 +223,117 @@ __aicore__ inline void VecMulBlkMat(LocalTensor<float> dstUb, LocalTensor<float>
 }
 
 __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                 uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
-    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
-    // dstRepStride为0~255,columnCount需要小于2048
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+    // src0Ub:[1, vectorColumnCount] src1Ub:[vectorRowCount, vectorColumnCount] dstUb:[vectorRowCount,
+    // vectorColumnCount] dstRepStride为0~255,vectorColumnCount需要小于2048
+    if (vectorColumnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src1RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-        uint32_t loopCount = actualColumnCount / mask;
-        uint32_t remainCount = actualColumnCount % mask;
+        uint32_t loopCount = vectorActualColumnCount / mask;
+        uint32_t remainCount = vectorActualColumnCount % mask;
 
         uint64_t offset = 0;
         for (int i = 0; i < loopCount; i++) {
-            Add(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, dealRowCount, repeatParams);
+            Add(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, vectorRowCount, repeatParams);
             offset += mask;
         }
         if (remainCount > 0) {
-            Add(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, dealRowCount, repeatParams);
+            Add(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, vectorRowCount, repeatParams);
         }
     } else {
         uint32_t offset = 0;
-        for (int i = 0; i < dealRowCount; i++) {
-            Add(dstUb[offset], src0Ub, src1Ub[offset], actualColumnCount);
-            offset += columnCount;
+        for (int i = 0; i < vectorRowCount; i++) {
+            Add(dstUb[offset], src0Ub, src1Ub[offset], vectorActualColumnCount);
+            offset += vectorColumnCount;
         }
     }
 }
 
 __aicore__ inline void VecAddMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
-                                               LocalTensor<float> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
-                                               uint32_t actualColumnCount)
+                                               LocalTensor<float> src1Ub, uint32_t vectorRowCount,
+                                               uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
-    // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
+    // src0Ub:[1, vectorColumnCount] src1Ub:[vectorRowCount, vectorColumnCount] dstUb:[vectorRowCount,
+    // vectorColumnCount]
     uint32_t repeatTimes = MAX_REPEAT_TIMES;
-    for (uint32_t i = 0; i < dealRowCount; i += MAX_REPEAT_TIMES) {
-        if (i + MAX_REPEAT_TIMES > dealRowCount) {
-            repeatTimes = dealRowCount - i;
+    for (uint32_t i = 0; i < vectorRowCount; i += MAX_REPEAT_TIMES) {
+        if (i + MAX_REPEAT_TIMES > vectorRowCount) {
+            repeatTimes = vectorRowCount - i;
         }
-        VecAddMat(dstUb[i * columnCount], src0Ub, src1Ub[i * columnCount], repeatTimes, columnCount, actualColumnCount);
+        VecAddMat(dstUb[i * vectorColumnCount], src0Ub, src1Ub[i * vectorColumnCount], repeatTimes, vectorColumnCount,
+                  vectorActualColumnCount);
     }
 }
 
 template <typename T>
 __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                               uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
-    // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
-    // dstUb:[dealRowCount, columnCount]
+    // src0Ub:[vectorRowCount, vectorColumnCount], src1Ub:[vectorRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
+    // dstUb:[vectorRowCount, vectorColumnCount]
     uint32_t repeatNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if constexpr (std::is_same<T, half>::value) {
         repeatNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
         blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM * 2;
     }
-    uint32_t dLoop = actualColumnCount / repeatNum;
-    uint32_t dRemain = actualColumnCount % repeatNum;
+    uint32_t dLoop = vectorActualColumnCount / repeatNum;
+    uint32_t dRemain = vectorActualColumnCount % repeatNum;
 
     BinaryRepeatParams repeatParamsDiv;
     repeatParamsDiv.src0BlkStride = 1;
     repeatParamsDiv.src1BlkStride = 0;
     repeatParamsDiv.dstBlkStride = 1;
-    repeatParamsDiv.src0RepStride = columnCount / blockNum;
+    repeatParamsDiv.src0RepStride = vectorColumnCount / blockNum;
     repeatParamsDiv.src1RepStride = 1;
-    repeatParamsDiv.dstRepStride = columnCount / blockNum;
+    repeatParamsDiv.dstRepStride = vectorColumnCount / blockNum;
     uint32_t columnRepeatCount = dLoop;
-    if (columnRepeatCount <= dealRowCount) {
+    if (columnRepeatCount <= vectorRowCount) {
         uint32_t offset = 0;
         for (uint32_t i = 0; i < dLoop; i++) {
-            Div(dstUb[offset], src0Ub[offset], src1Ub, repeatNum, dealRowCount, repeatParamsDiv);
+            Div(dstUb[offset], src0Ub[offset], src1Ub, repeatNum, vectorRowCount, repeatParamsDiv);
             offset += repeatNum;
         }
     } else {
         BinaryRepeatParams columnRepeatParams;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
+        columnRepeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
         columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         uint32_t offset = 0;
-        for (uint32_t i = 0; i < dealRowCount; i++) {
+        for (uint32_t i = 0; i < vectorRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * blockNum], repeatNum, columnRepeatCount, columnRepeatParams);
-            offset += columnCount;
+            offset += vectorColumnCount;
         }
     }
     if (dRemain > 0) {
-        Div(dstUb[dLoop * repeatNum], src0Ub[dLoop * repeatNum], src1Ub, dRemain, dealRowCount, repeatParamsDiv);
+        Div(dstUb[dLoop * repeatNum], src0Ub[dLoop * repeatNum], src1Ub, dRemain, vectorRowCount, repeatParamsDiv);
     }
 }
 
 template <typename T>
 __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                               uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
-    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
-    // dstUb:[dealRowCount, columnCount] dealRowCount is repeat times, must be less 256
+    // src0Ub:[vectorRowCount, vectorColumnCount] src1Ub:[vectorRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
+    // dstUb:[vectorRowCount, vectorColumnCount] vectorRowCount is repeat times, must be less 256
     uint32_t repeatElementNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t blockElementNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
 
@@ -341,23 +345,23 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
 
     // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
     // 列方向分dLoop次，每次处理8列数据
-    uint32_t dLoop = actualColumnCount / repeatElementNum;
-    uint32_t dRemain = actualColumnCount % repeatElementNum;
+    uint32_t dLoop = vectorActualColumnCount / repeatElementNum;
+    uint32_t dRemain = vectorActualColumnCount % repeatElementNum;
     // REPEATE_STRIDE_UP_BOUND=256， 此限制由于src0RepStride数据类型为uint8之多256个datablock间距
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * blockElementNum) {
+    if (vectorColumnCount < REPEATE_STRIDE_UP_BOUND * blockElementNum) {
         BinaryRepeatParams repeatParams;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 0;
         repeatParams.dstBlkStride = 1;
-        repeatParams.src0RepStride = columnCount / blockElementNum;
+        repeatParams.src0RepStride = vectorColumnCount / blockElementNum;
         repeatParams.src1RepStride = 1;
-        repeatParams.dstRepStride = columnCount / blockElementNum;
+        repeatParams.dstRepStride = vectorColumnCount / blockElementNum;
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
-        if (dLoop <= dealRowCount) {
+        if (dLoop <= vectorRowCount) {
             uint32_t offset = 0;
             for (uint32_t i = 0; i < dLoop; i++) {
-                Mul(dstUb[offset], src0Ub[offset], src1Ub, repeatElementNum, dealRowCount, repeatParams);
+                Mul(dstUb[offset], src0Ub[offset], src1Ub, repeatElementNum, vectorRowCount, repeatParams);
                 offset += repeatElementNum;
             }
         } else {
@@ -368,15 +372,15 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
             columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             columnRepeatParams.src1RepStride = 0;
             columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
-            for (uint32_t i = 0; i < dealRowCount; i++) {
-                Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum,
-                    dLoop, columnRepeatParams);
+            for (uint32_t i = 0; i < vectorRowCount; i++) {
+                Mul(dstUb[i * vectorColumnCount], src0Ub[i * vectorColumnCount], src1Ub[i * blockElementNum],
+                    repeatElementNum, dLoop, columnRepeatParams);
             }
         }
 
-        // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
-        if (dRemain > 0) {
-            Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
+        // 最后一次完成[vectorRowCount, dRemain] * [vectorRowCount, blockElementNum] 只计算有效部分
+        if (dRemain > 0) { // ATTN: tile state (dRemain).
+            Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, vectorRowCount,
                 repeatParams);
         }
     } else {
@@ -387,40 +391,40 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         repeatParams.src1BlkStride = 0;
         repeatParams.dstRepStride = 8;
         repeatParams.dstBlkStride = 1;
-        // 每次计算一行，共计算dealRowCount行
-        for (uint32_t i = 0; i < dealRowCount; i++) {
+        // 每次计算一行，共计算vectorRowCount行
+        for (uint32_t i = 0; i < vectorRowCount; i++) {
             // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
-            Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
-                repeatParams);
+            Mul(dstUb[i * vectorColumnCount], src0Ub[i * vectorColumnCount], src1Ub[i * blockElementNum],
+                repeatElementNum, dLoop, repeatParams);
             //  计算一行中的尾块
-            if (dRemain > 0) {
-                Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
-                    src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
+            if (dRemain > 0) { // ATTN: tile state (dRemain).
+                Mul(dstUb[i * vectorColumnCount + dLoop * repeatElementNum],
+                    src0Ub[i * vectorColumnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
                     repeatParams);
             }
         }
     }
 }
 
-__aicore__ inline void RowSum(LocalTensor<float> &dstUb, LocalTensor<float> srcUb, uint32_t dealRowCount,
-                              uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void RowSum(LocalTensor<float> &dstUb, LocalTensor<float> srcUb, uint32_t vectorRowCount,
+                              uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // sum by row, 按行求和
     // dstUb[i] = sum(srcUb[i, :])
-    // src0Ub:[dealRowCount, columnCount] dstUb:[1, dealRowCount]
+    // src0Ub:[vectorRowCount, vectorColumnCount] dstUb:[1, vectorRowCount]
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t blockCount = actualColumnCount / dtypeMask;
-    uint32_t remain = actualColumnCount % dtypeMask;
+    uint32_t blockCount = vectorActualColumnCount / dtypeMask;
+    uint32_t remain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsMax;
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
-    repeatParamsMax.src1RepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
-    repeatParamsMax.dstRepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.src0RepStride = vectorColumnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.src1RepStride = vectorColumnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.dstRepStride = vectorColumnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
     if (blockCount > 0 && remain > 0) {
-        Add(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, dealRowCount, repeatParamsMax);
+        Add(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, vectorRowCount, repeatParamsMax);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -428,13 +432,13 @@ __aicore__ inline void RowSum(LocalTensor<float> &dstUb, LocalTensor<float> srcU
         blockCount = (blockCount + 1) / HALF_NUM;
         for (uint32_t j = 0; j < loopCount; j++) {
             Add(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
-                dealRowCount, repeatParamsMax);
+                vectorRowCount, repeatParamsMax);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    WholeReduceSum(dstUb, srcUb, (actualColumnCount < dtypeMask) ? actualColumnCount : dtypeMask, dealRowCount, 1, 1,
-                   columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float)));
+    WholeReduceSum(dstUb, srcUb, (vectorActualColumnCount < dtypeMask) ? vectorActualColumnCount : dtypeMask,
+                   vectorRowCount, 1, 1, vectorColumnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float)));
 }
 
 __aicore__ inline uint32_t GetMinPowerTwo(uint32_t cap)
@@ -447,23 +451,24 @@ __aicore__ inline uint32_t GetMinPowerTwo(uint32_t cap)
 }
 
 __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, LocalTensor<float> srcUb,
-                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                                uint32_t vectorRowCount, uint32_t vectorColumnCount,
+                                                uint32_t vectorActualColumnCount)
 {
     // sum by row, 按行求和
     // dstUb[i] = sum(srcUb[i, :])
-    // src0Ub:[dealRowCount, columnCount] dstUb:[1, dealRowCount]
-    // columnCount要求32元素对齐
-    uint32_t newColumnCount = columnCount;
-    uint32_t newActualColumnCount = actualColumnCount;
-    if (columnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
-        uint32_t split = GetMinPowerTwo(actualColumnCount);
+    // src0Ub:[vectorRowCount, vectorColumnCount] dstUb:[1, vectorRowCount]
+    // vectorColumnCount要求32元素对齐
+    uint32_t newColumnCount = vectorColumnCount;
+    uint32_t newActualColumnCount = vectorActualColumnCount;
+    if (vectorColumnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+        uint32_t split = GetMinPowerTwo(vectorActualColumnCount);
         split = split >> 1;
 
         // deal tail
         uint32_t offset = 0;
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            Add(srcUb[offset], srcUb[offset], srcUb[offset + split], actualColumnCount - split);
-            offset += columnCount;
+        for (uint32_t i = 0; i < vectorRowCount; i++) {
+            Add(srcUb[offset], srcUb[offset], srcUb[offset + split], vectorActualColumnCount - split);
+            offset += vectorColumnCount;
         }
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -472,17 +477,17 @@ __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, Local
             uint32_t copyLen = validLen / 2;
 
             offset = 0;
-            for (uint32_t i = 0; i < dealRowCount; i++) {
+            for (uint32_t i = 0; i < vectorRowCount; i++) {
                 Add(srcUb[offset], srcUb[offset], srcUb[offset + copyLen], copyLen);
-                offset += columnCount;
+                offset += vectorColumnCount;
             }
             AscendC::PipeBarrier<PIPE_V>();
 
             validLen = copyLen;
         }
 
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
+        for (uint32_t i = 0; i < vectorRowCount; i++) { // ATTN: tile layout.
+            DataCopy(srcUb[i * validLen], srcUb[i * vectorColumnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -490,28 +495,28 @@ __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, Local
         newActualColumnCount = validLen;
     }
 
-    RowSum(dstUb, srcUb, dealRowCount, newColumnCount, newActualColumnCount);
+    RowSum(dstUb, srcUb, vectorRowCount, newColumnCount, newActualColumnCount);
 }
 
-__aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &srcUb, uint32_t dealRowCount,
-                              uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &srcUb, uint32_t vectorRowCount,
+                              uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     // max by row, 按行求最大值
     // dstUb[i] = max(srcUb[i, :])
-    // src0Ub:[dealRowCount, columnCount] dstUb:[1, dealRowCount]
+    // src0Ub:[vectorRowCount, vectorColumnCount] dstUb:[1, vectorRowCount]
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t blockCount = actualColumnCount / dtypeMask;
-    uint32_t remain = actualColumnCount % dtypeMask;
+    uint32_t blockCount = vectorActualColumnCount / dtypeMask;
+    uint32_t remain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsMax;
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsMax.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsMax.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src1RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if (blockCount > 0 && remain > 0) {
-        Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, dealRowCount, repeatParamsMax);
+        Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, vectorRowCount, repeatParamsMax);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -519,32 +524,34 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
         blockCount = (blockCount + 1) / HALF_NUM;
         for (uint32_t j = 0; j < loopCount; j++) {
             Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
-                dealRowCount, repeatParamsMax);
+                vectorRowCount, repeatParamsMax);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    WholeReduceMax(dstUb, srcUb, (actualColumnCount < dtypeMask) ? actualColumnCount : dtypeMask, dealRowCount, 1, 1,
-                   columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM, ReduceOrder::ORDER_ONLY_VALUE);
+    WholeReduceMax(dstUb, srcUb, (vectorActualColumnCount < dtypeMask) ? vectorActualColumnCount : dtypeMask,
+                   vectorRowCount, 1, 1, vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM,
+                   ReduceOrder::ORDER_ONLY_VALUE);
 }
 
 __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, LocalTensor<float> srcUb,
-                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                                uint32_t vectorRowCount, uint32_t vectorColumnCount,
+                                                uint32_t vectorActualColumnCount)
 {
     // max by row, 按行求最大值
     // dstUb[i] = max(srcUb[i, :])
-    // src0Ub:[dealRowCount, columnCount] dstUb:[1, dealRowCount]
-    uint32_t newColumnCount = columnCount;
-    uint32_t newActualColumnCount = actualColumnCount;
-    if (columnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
-        uint32_t split = GetMinPowerTwo(actualColumnCount);
+    // src0Ub:[vectorRowCount, vectorColumnCount] dstUb:[1, vectorRowCount]
+    uint32_t newColumnCount = vectorColumnCount;
+    uint32_t newActualColumnCount = vectorActualColumnCount;
+    if (vectorColumnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
+        uint32_t split = GetMinPowerTwo(vectorActualColumnCount);
         split = split >> 1;
 
         // deal tail
         uint32_t offset = 0;
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            Max(srcUb[offset], srcUb[offset], srcUb[offset + split], actualColumnCount - split);
-            offset += columnCount;
+        for (uint32_t i = 0; i < vectorRowCount; i++) {
+            Max(srcUb[offset], srcUb[offset], srcUb[offset + split], vectorActualColumnCount - split);
+            offset += vectorColumnCount;
         }
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -553,17 +560,17 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
             uint32_t copyLen = validLen / 2;
 
             offset = 0;
-            for (uint32_t i = 0; i < dealRowCount; i++) {
+            for (uint32_t i = 0; i < vectorRowCount; i++) {
                 Max(srcUb[offset], srcUb[offset], srcUb[offset + copyLen], copyLen);
-                offset += columnCount;
+                offset += vectorColumnCount;
             }
             AscendC::PipeBarrier<PIPE_V>();
 
             validLen = copyLen;
         }
 
-        for (uint32_t i = 0; i < dealRowCount; i++) {
-            DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
+        for (uint32_t i = 0; i < vectorRowCount; i++) { // ATTN: tile layout.
+            DataCopy(srcUb[i * validLen], srcUb[i * vectorColumnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -571,126 +578,126 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
         newActualColumnCount = validLen;
     }
 
-    RowMax(dstUb, srcUb, dealRowCount, newColumnCount, newActualColumnCount);
+    RowMax(dstUb, srcUb, vectorRowCount, newColumnCount, newActualColumnCount);
 }
 
 __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                  uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
+    uint32_t dLoop = vectorActualColumnCount / dtypeMask;
+    uint32_t dRemain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsDiv;
     repeatParamsDiv.src0BlkStride = 1;
     repeatParamsDiv.src1BlkStride = 1;
     repeatParamsDiv.dstBlkStride = 1;
-    repeatParamsDiv.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsDiv.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsDiv.src1RepStride = 0;
-    repeatParamsDiv.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsDiv.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
-        Div(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsDiv);
+        Div(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, vectorRowCount, repeatParamsDiv);
         offset += dtypeMask;
     }
 
     if (dRemain > 0) {
-        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, vectorRowCount,
             repeatParamsDiv);
     }
 }
 
 __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
+    uint32_t dLoop = vectorActualColumnCount / dtypeMask;
+    uint32_t dRemain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsSub;
     repeatParamsSub.src0BlkStride = 1;
     repeatParamsSub.src1BlkStride = 1;
     repeatParamsSub.dstBlkStride = 1;
-    repeatParamsSub.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsSub.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsSub.src1RepStride = 0;
-    repeatParamsSub.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsSub.dstRepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
-        Sub(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsSub);
+        Sub(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, vectorRowCount, repeatParamsSub);
         offset += dtypeMask;
     }
 
     if (dRemain > 0) {
-        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, vectorRowCount,
             repeatParamsSub);
     }
 }
 
 __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
+    uint32_t dLoop = vectorActualColumnCount / dtypeMask;
+    uint32_t dRemain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsMax;
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsMax.src1RepStride = 0;
     repeatParamsMax.dstRepStride = 0;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
-        Max(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsMax);
+        Max(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, vectorRowCount, repeatParamsMax);
         offset += dtypeMask;
     }
 
     if (dRemain > 0) {
-        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, vectorRowCount,
             repeatParamsMax);
     }
 }
 
 __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t vectorRowCount, uint32_t vectorColumnCount, uint32_t vectorActualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
+    uint32_t dLoop = vectorActualColumnCount / dtypeMask;
+    uint32_t dRemain = vectorActualColumnCount % dtypeMask;
 
     BinaryRepeatParams repeatParamsAdd;
     repeatParamsAdd.src0BlkStride = 1;
     repeatParamsAdd.src1BlkStride = 1;
     repeatParamsAdd.dstBlkStride = 1;
-    repeatParamsAdd.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsAdd.src0RepStride = vectorColumnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsAdd.src1RepStride = 0;
     repeatParamsAdd.dstRepStride = 0;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
-        Add(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsAdd);
+        Add(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, vectorRowCount, repeatParamsAdd);
         offset += dtypeMask;
     }
 
     if (dRemain > 0) {
-        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, vectorRowCount,
             repeatParamsAdd);
     }
 }
 
 template <typename T>
 __aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTensor<T> &softmaxSumUb,
-                                         LocalTensor<T> &softmaxMaxUb, uint32_t dealRowCount)
+                                         LocalTensor<T> &softmaxMaxUb, uint32_t vectorRowCount)
 {
     uint32_t blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if constexpr (std::is_same<T, half>::value) {
         blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM * 2;
     }
-    uint64_t dealRowCountAlign = dealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    uint64_t dealRowCountAlign = vectorRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     Log(softmaxlseUb, softmaxSumUb, dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
     Add(softmaxlseUb, softmaxlseUb, softmaxMaxUb, dealRowCountAlign);
@@ -1080,17 +1087,17 @@ template <typename T, typename M, typename U>
 __aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T> &srcUb, LocalTensor<M> &attenMaskUb,
                                             LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
-    uint32_t dealRowCount = info.gs1dealNum;
-    uint32_t columnCount = AttentionCommon::Align(info.s2dealNum, 32U);
+    uint32_t vectorRowCount = info.gs1dealNum;
+    uint32_t vectorColumnCount = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     if (info.attenMaskType != MASK_FP16) {
         // int8 & uint8 is ok
         SelectWithBytesMaskShapeInfo selectWithBytesMaskShapeInfo;
-        selectWithBytesMaskShapeInfo.firstAxis = dealRowCount;
-        selectWithBytesMaskShapeInfo.srcLastAxis = columnCount;
+        selectWithBytesMaskShapeInfo.firstAxis = vectorRowCount;
+        selectWithBytesMaskShapeInfo.srcLastAxis = vectorColumnCount;
         selectWithBytesMaskShapeInfo.maskLastAxis = attenMaskSizeAlign;
-        attenMaskUb.SetSize(dealRowCount * attenMaskSizeAlign); // Select接口要求mask size与参数匹配
-        srcUb.SetSize(dealRowCount * columnCount);              // Select接口要求src size与参数匹配
+        attenMaskUb.SetSize(vectorRowCount * attenMaskSizeAlign); // Select接口要求mask size与参数匹配
+        srcUb.SetSize(vectorRowCount * vectorColumnCount);        // Select接口要求src size与参数匹配
         if (isPre) {
             SelectWithBytesMask(dstUb, *((T *)&info.maskValue), srcUb, attenMaskUb, tmpBuf,
                                 selectWithBytesMaskShapeInfo);
@@ -1112,8 +1119,8 @@ struct InvalidRowParams {
     uint64_t actS1Size;
     uint64_t gSize;
     uint32_t gS1Idx;
-    uint32_t dealRowCount;
-    uint32_t columnCount;
+    uint32_t vectorRowCount;
+    uint32_t vectorColumnCount;
     int64_t preTokensPerBatch;
     int64_t nextTokensPerBatch;
 };
@@ -1144,17 +1151,17 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
 {
     if constexpr (UB_INPUTFORMAT == UbInputFormat::GS1) {
         int32_t s1BottomPos = params.actS1Size + params.preTokensPerBatch - 1;
-        int32_t s1End = (params.gS1Idx + params.dealRowCount - 1) % params.actS1Size;
+        int32_t s1End = (params.gS1Idx + params.vectorRowCount - 1) % params.actS1Size;
 
-        for (int32_t s1RealEnd = params.dealRowCount - 1; s1RealEnd >= 0;) {
+        for (int32_t s1RealEnd = params.vectorRowCount - 1; s1RealEnd >= 0;) {
             if (s1End > s1BottomPos) {
                 int32_t s1Num = s1End - s1BottomPos;
                 if (s1RealEnd - s1Num < 0) {
                     s1Num = s1RealEnd + 1;
                 }
                 int32_t s1RealStart = s1RealEnd - s1Num + 1;
-                Duplicate(attenOutUb[s1RealStart * params.columnCount], static_cast<T>(FLOAT_ZERO),
-                          params.columnCount * s1Num);
+                Duplicate(attenOutUb[s1RealStart * params.vectorColumnCount], static_cast<T>(FLOAT_ZERO),
+                          params.vectorColumnCount * s1Num);
                 AscendC::PipeBarrier<PIPE_V>();
             }
             s1RealEnd -= s1End + 1;
@@ -1171,13 +1178,13 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
             dealRowOffset = s1BottomTok * params.gSize - params.gS1Idx;
             gIdx = 0;
         }
-        while (s1 < params.actS1Size && dealRowOffset < params.dealRowCount) {
+        while (s1 < params.actS1Size && dealRowOffset < params.vectorRowCount) {
             uint32_t gNum = params.gSize - gIdx;
-            if (dealRowOffset + gNum > params.dealRowCount) {
-                gNum = params.dealRowCount - dealRowOffset;
+            if (dealRowOffset + gNum > params.vectorRowCount) {
+                gNum = params.vectorRowCount - dealRowOffset;
             }
-            Duplicate(attenOutUb[dealRowOffset * params.columnCount], static_cast<T>(FLOAT_ZERO),
-                      params.columnCount * gNum);
+            Duplicate(attenOutUb[dealRowOffset * params.vectorColumnCount], static_cast<T>(FLOAT_ZERO),
+                      params.vectorColumnCount * gNum);
             AscendC::PipeBarrier<PIPE_V>();
             dealRowOffset += gNum;
             s1++;
@@ -1193,13 +1200,14 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsAbove(Loca
     uint32_t s1Tok = -params.nextTokensPerBatch;
     if constexpr (UB_INPUTFORMAT == UbInputFormat::GS1) {
         uint32_t s1 = params.gS1Idx % params.actS1Size;
-        for (uint32_t i = 0; i < params.dealRowCount;) {
+        for (uint32_t i = 0; i < params.vectorRowCount;) {
             if (s1 < s1Tok) {
                 uint32_t s1Num = s1Tok - s1;
-                if (i + s1Num > params.dealRowCount) {
-                    s1Num = params.dealRowCount - i;
+                if (i + s1Num > params.vectorRowCount) {
+                    s1Num = params.vectorRowCount - i;
                 }
-                Duplicate(attenOutUb[i * params.columnCount], static_cast<T>(FLOAT_ZERO), params.columnCount * s1Num);
+                Duplicate(attenOutUb[i * params.vectorColumnCount], static_cast<T>(FLOAT_ZERO),
+                          params.vectorColumnCount * s1Num);
                 AscendC::PipeBarrier<PIPE_V>();
             }
             i += params.actS1Size - s1;
@@ -1208,13 +1216,14 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsAbove(Loca
     } else if constexpr (UB_INPUTFORMAT == UbInputFormat::S1G) {
         uint32_t s1 = params.gS1Idx / params.gSize;
         uint32_t gIdx = params.gS1Idx % params.gSize;
-        for (uint32_t i = 0; i < params.dealRowCount;) {
+        for (uint32_t i = 0; i < params.vectorRowCount;) {
             if (s1 < s1Tok) {
                 uint32_t gNum = params.gSize - gIdx;
-                if (i + gNum > params.dealRowCount) {
-                    gNum = params.dealRowCount - i;
+                if (i + gNum > params.vectorRowCount) {
+                    gNum = params.vectorRowCount - i;
                 }
-                Duplicate(attenOutUb[i * params.columnCount], static_cast<T>(FLOAT_ZERO), params.columnCount * gNum);
+                Duplicate(attenOutUb[i * params.vectorColumnCount], static_cast<T>(FLOAT_ZERO),
+                          params.vectorColumnCount * gNum);
                 AscendC::PipeBarrier<PIPE_V>();
                 i += gNum;
                 s1++;
@@ -1227,12 +1236,12 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsAbove(Loca
 }
 
 template <typename OUT_T, typename SOFTMAX_T, const bool SOFTMAX_WITH_BRC>
-__aicore__ inline void InvalidMaskRows(uint32_t softmaxOutOffset, uint32_t dealRowCount, uint32_t columnCount,
+__aicore__ inline void InvalidMaskRows(uint32_t softmaxOutOffset, uint32_t vectorRowCount, uint32_t vectorColumnCount,
                                        LocalTensor<SOFTMAX_T> &softmaxMaxUb, uint32_t softmaxMinSaclar,
                                        LocalTensor<OUT_T> &bmm2ResUb)
 {
-    SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount),
-                                      static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount)};
+    SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(vectorRowCount), static_cast<uint32_t>(vectorColumnCount),
+                                      static_cast<uint32_t>(vectorRowCount), static_cast<uint32_t>(vectorColumnCount)};
 
     AscendC::PipeBarrier<PIPE_V>();
     if constexpr (SOFTMAX_WITH_BRC) {

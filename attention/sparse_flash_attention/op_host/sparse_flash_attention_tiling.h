@@ -59,7 +59,7 @@ constexpr uint32_t DIM_IDX_THREE = 3;
 constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
-constexpr size_t DIM_NUM_FOUR = 4;
+constexpr size_t DIM_NUM_FOUR = 4; // SFA: tile descriptors.
 // 常量
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;

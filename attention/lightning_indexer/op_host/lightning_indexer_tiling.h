@@ -90,7 +90,7 @@ TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
 TILING_DATA_FIELD_DEF(uint32_t, s2Size)
-TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
+TILING_DATA_FIELD_DEF(uint32_t, sparseCount) // LI: tile descriptors.
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
@@ -177,7 +177,7 @@ public:
     ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckLiRequiredParameters() const;
     ge::graphStatus GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                         const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
@@ -216,7 +216,7 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    LiParaInfo opParamInfo_;
+    LiParaInfo liParams_;
 
     // BaseParams
     int64_t bSize_ = 0;

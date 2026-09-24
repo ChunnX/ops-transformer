@@ -89,13 +89,16 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);
-        OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
+        OpAICoreConfig aicore_config; // LI V2: mask config.
+        const auto configureLightningIndexerV2 = [](OpAICoreConfig &config) {
+            config.DynamicCompileStaticFlag(true);
+            config.DynamicFormatFlag(true);
+            config.DynamicRankSupportFlag(true);
+            config.DynamicShapeSupportFlag(true);
+            config.NeedCheckSupportFlag(false);
+            config.PrecisionReduceFlag(true);
+        };
+        configureLightningIndexerV2(aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
 
         OpAICoreConfig aicore_config_910b;
