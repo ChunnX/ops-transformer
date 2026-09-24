@@ -161,7 +161,7 @@ class ElasticBufferOpBuilder(OpBuilder):
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor sf_table, Tensor fetched_sf, "
-            "int fetch_mode) -> Tensor",
+            "int fetch_mode=0) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
             "Tensor sf_table_addr, Tensor fetched_sf, "
@@ -656,6 +656,13 @@ class ElasticBuffer:
         Arguments:
             group: the distributed process group.
             num_cpu_bytes: the CPU buffer size in bytes (must be 2MB-aligned).
+                In sliced mode (fetch_mode=0) it only needs to hold this
+                rank's shard of the table. In local mode (fetch_mode=1) it
+                must hold a full replica of the global table for every rank
+                (engram_write fails fast when the capacity is insufficient);
+                pass 0 to auto-size it via
+                ``ElasticBuffer.get_engram_storage_size_hint`` (the computed
+                size already includes the per-row aligned SF overhead).
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
