@@ -319,11 +319,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     sessionId_ = sessionIdGMTensor_.GetValue(0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(microBatchIdGMTensor_);
     microBatchId_ = microBatchIdGMTensor_.GetValue(0);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(layerIdGMTensor_);
     layerId_ = layerIdGMTensor_.GetValue(0);
+    ascendc_assert(layerId_ < axisL_, "layerId %u must be less than L %u", layerId_, axisL_);
 
     expertIdsCnt_ = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
-    uint32_t expertRankTableCnt = expertNum_ * expRankTableM_;
-    layIdsExpRankTableOffset_ = layerId_ * expertRankTableCnt;
+    const uint64_t expertRankTableCnt = static_cast<uint64_t>(expertNum_) * expRankTableM_;
+    layIdsExpRankTableOffset_ = static_cast<uint64_t>(layerId_) * expertRankTableCnt;
     ffnNumAlignSize_ = Ceil(ffnNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     ffnNumAlignCnt_ = ffnNumAlignSize_ / sizeof(int32_t);
     aivWorkspaceOffset_ = Ceil(ffnNum_ * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET) * WORKSPACE_ELEMENT_OFFSET;
@@ -607,11 +609,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::FindExpertRank(int32_t expertId)
 {
-    uint64_t expRankTableOffset = expertId * expRankTableM_ + layIdsExpRankTableOffset_;
+    ascendc_assert(expertId >= 0 && static_cast<uint32_t>(expertId) < expertNum_,
+                   "expertId %d must be in [0, expertNum %u)", expertId, expertNum_);
+    uint64_t expRankTableOffset = static_cast<uint64_t>(expertId) * expRankTableM_ + layIdsExpRankTableOffset_;
     uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset);
     if (rankCnt == 0) {
         return;
     }
+    ascendc_assert(static_cast<uint64_t>(rankCnt) * RANK_OFFSET_STRIDE + 1 <= expRankTableM_,
+                   "rankCnt %u exceeds expert_rank_table row capacity M %u", rankCnt, expRankTableM_);
     uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;
     toRankId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset);
     localExpId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset + 1);
@@ -646,6 +652,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::H
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetWindowAddr(int32_t rankId)
 {
+    ascendc_assert(rankId >= 0 && static_cast<uint32_t>(rankId) < worldSize_,
+                   "rankId %d must be in [0, worldSize %u)", rankId, worldSize_);
     return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
 }
 
@@ -1128,8 +1136,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             if (tokenOffset < totalSendNum_) {
                 AttentionToFfnTokenMetaData metaData;
                 ReadTokenMetaData(metaData, tokenOffset);
-                ascendc_assert(metaData.toRankId >= 0 && static_cast<uint32_t>(metaData.toRankId) < worldSize_,
-                               "toRankId is out of range");
                 tokenRankScratchTensor_.SetValue(round, metaData.toRankId);
 
                 if constexpr (isSync) {

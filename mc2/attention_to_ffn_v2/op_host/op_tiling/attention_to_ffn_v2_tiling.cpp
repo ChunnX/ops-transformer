@@ -80,6 +80,7 @@ AttentionToFFNTilingConfig MakeTilingConfig(bool allowMxQuantMode)
     config.isMc2Context = true;
     config.allowMxQuantMode = allowMxQuantMode;
     config.allowMultiLayer = true;
+    config.maxWorldSize = 1024;
     return config;
 }
 
