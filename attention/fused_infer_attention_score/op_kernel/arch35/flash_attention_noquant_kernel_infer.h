@@ -365,7 +365,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     runParam.s1oIdx = actualS1Outersize % tmpS1Outersize;
 
     runParam.s1RealSize = CalS1RealSize(runParam.actualS1Size, runParam.actualS2Size);
-    runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
+    runParam.halfS1RealSize = (runParam.s1RealSize + ArchInfo::CV_RATIO - 1) / ArchInfo::CV_RATIO;
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (this->constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
@@ -474,6 +474,12 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
         ProcessS1OutSplitLoop();
     } else {
         ProcessMainLoop();
+    }
+    this->UnInitMMResBuf();
+    if ASCEND_IS_AIC {
+        this->cubeBlock.UnInitCubeBlock();
+    } else {
+        this->vecBlock.UnInitLocalBuffer();
     }
     if constexpr (isFd) {
         if ASCEND_IS_AIV {
