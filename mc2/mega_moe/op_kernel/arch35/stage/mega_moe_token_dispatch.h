@@ -1022,13 +1022,11 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
  * dispatch 首批发布之后，而发布侧有 done-gate 挡到全体建表完成）。随后本地复算 count 前缀表
  *（发布仍由 AIV1 独担；count 槽只被读，无并发写）。必须在 BuildDedupRowDescTable 之前调用；
  * 去重关闭或非 AIV0 为空操作。
- * 到达性判据：等本 block AIV1 的 countTableReady（AIV1 完成 epoch 校验+前缀和才置位，到达性由它
- * 背书；AIV0 正常流程本就在下游等同一标志，清零与多 launch 语义均为既有机制），装载后掩低 24 位。
  * 到达性判据：与 AIV1 相同走 WaitForCountTable（count 携带本轮 epoch tag，整表校验+退避重读；
  * 输入准备阶段每个物理 AIV 含 AIV0 都推进自己的同步计数，期望 tag 可用）。不可改等 countTableReady
- * 残留判据：上游已删除入口跨卡握手，且轮尾 count 接收区被清零，而 countTableReady 无人清零——
+ * 残留判据：入口无跨卡握手，且轮尾 count 接收区被清零，而 countTableReady 无人清零——
  * 首轮=0 时等待成立，第 2 轮起残留非零使 AIV0 冲线，读到"已清零、本轮未到达"的 count 槽即建出
- * 全 0 前缀表，消费者死等（2026-09-23 连续多轮性能循环停滞实翻，AIV0 禁用对照全绿定案）。
+ * 全 0 前缀表，消费者死等（多轮连续 launch 场景必现）。
  */
 template <typename ActivationType, typename TopkIndexType>
 __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, const MoeStageCommonConfig &common,

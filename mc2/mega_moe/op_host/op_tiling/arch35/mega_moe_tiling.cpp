@@ -2788,15 +2788,15 @@ static void ApplyDedupBenefitGate(MegaMoeTilingData *tilingData, const char *nod
         double savedBytes = static_cast<double>(tilingData->numMaxTokensPerRank) * topKf * dupRatio *
                             static_cast<double>(tilingData->h) * actBytesPerElem;
         /*
-         * 4 卡判据（2026-09-21 标定：强制开门包逐形状实测 24 个点，含领导 12 例与 k16 族，0 错开）：
+         * 4 卡判据（按去重强制开/关双态逐形状实测 24 个典型形状标定，判定与实测收益 0 错开）：
          * 判别量 = 每个本卡专家摊到的节省字节。prepass/dispatch 的固定成本按 (专家, 来源卡) 槽付，
          * 每卡 64 专家时 bs64~4096 真开恒亏约 50~150us；同样的节省量摊到 12 专家上则净赢 15%~50%。
          * 再按 hiddenDim 分两档：hiddenDim 小则每行计算轻、通信在关键路径上，少量节省即兑现；
          * hiddenDim 大则计算遮住通信，节省量要大到让通信重新成为瓶颈才有收益。
-         *   hiddenDim<=2048：亏 0.14MB(S1 bs64) / 赢 0.37MB(h2048 k8 E32 bs1394 -12.5%)，取 0.30MB
+         *   hiddenDim<=2048：亏 0.14MB(bs64) / 赢 0.37MB(h2048 k8 E32 bs1394 -12.5%)，取 0.30MB
          *   hiddenDim> 2048：亏 1.65MB(h6144 k8 E64 bs4096 +3.1%) / 赢 2.37MB(h7168 k6 E32 bs4096 -3.7%)，取 2.10MB
-         * 旧判据（总节省量 >= 60MB）在同一批点上错开 1 个、漏开 11 个（k16 族 bs256~1568 白丢 15%~40%）。
-         * 其它卡数没有实测数据，沿用 60MB 总量判据，待对应卡数标定后再放开。
+         * 总量判据（节省量 >= 60MB）在同一批实测点上错开 1 个、漏开 11 个（k16 族 bs256~1568 损失
+         * 15%~40% 收益），故 4 卡不采用。其它卡数无实测数据，沿用 60MB 总量判据，待标定后再放开。
          */
         constexpr uint32_t DEDUP_GATE_CALIBRATED_WORLD = 4U;
         constexpr uint32_t DEDUP_GATE_COMM_BOUND_MAX_HIDDEN_DIM = 2048U;
