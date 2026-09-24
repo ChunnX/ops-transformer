@@ -25,6 +25,7 @@ constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
 constexpr uint32_t DIM_3 = 3;
+constexpr uint32_t DIM_4 = 4;
 constexpr uint32_t DIM_6 = 6;
 constexpr uint32_t CACHE_MODE_INDEX = 0;
 constexpr uint32_t IS_SEQ_LENS_CUNSUM_INDEX = 1;
@@ -66,8 +67,9 @@ size_t GetTensorElementSizes(ge::DataType dType)
 
 uint32_t GatherPaKvCacheGetBlockDim(gert::TilingContext *context)
 {
-    auto kShape = context->GetOutputShape(DIM_0);
-    uint32_t sumContextLens = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(DIM_0));
+    auto kShape = context->GetInputShape(DIM_4);
+    auto kLogicalShape = context->InputIsView(DIM_4) ? kShape->GetShape() : kShape->GetStorageShape();
+    uint32_t sumContextLens = static_cast<uint32_t>(kLogicalShape.GetDim(DIM_0));
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t blockDim = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
@@ -83,10 +85,16 @@ uint32_t GatherPaKvCacheGetBlockDim(gert::TilingContext *context)
 bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
 {
     auto kCacheShape = context->GetInputShape(DIM_0);
+    auto vCacheShape = context->GetInputShape(DIM_1);
     auto blockTablesShape = context->GetInputShape(DIM_2);
-    auto kShape = context->GetOutputShape(DIM_0);
-    auto vShape = context->GetOutputShape(DIM_1);
     auto attrs = context->GetAttrs();
+    // A view's backing storage may be flattened; tiling must use its logical shape.
+    auto kCacheLogicalShape =
+        context->InputIsView(DIM_0) ? kCacheShape->GetShape() : kCacheShape->GetStorageShape();
+    auto vCacheLogicalShape =
+        context->InputIsView(DIM_1) ? vCacheShape->GetShape() : vCacheShape->GetStorageShape();
+    auto blockTablesLogicalShape =
+        context->InputIsView(DIM_2) ? blockTablesShape->GetShape() : blockTablesShape->GetStorageShape();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
     if (mode == nullptr || mode[0] == '\0') {
         mode = "Norm";
@@ -99,24 +107,21 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto inDtype = context->GetInputDesc(DIM_0)->GetDataType();
     uint32_t typeByte = static_cast<uint32_t>(GetTensorElementSizes(inDtype));
     if (strcmp(mode, "PA_NZ") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_2));
-        tokenSizeK = static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1));
-        tokenSizeV = static_cast<int32_t>(vShape->GetStorageShape().GetDim(DIM_1));
+        blockSize = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_2));
+        tokenSizeK = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_1) * kCacheLogicalShape.GetDim(DIM_3));
+        tokenSizeV = static_cast<int32_t>(vCacheLogicalShape.GetDim(DIM_1) * vCacheLogicalShape.GetDim(DIM_3));
         context->SetTilingKey(TILING_KEY_NZ);
     } else if (strcmp(mode, "Norm") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_1));
-        tokenSizeK =
-            static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1) * kShape->GetStorageShape().GetDim(DIM_2));
-        tokenSizeV =
-            static_cast<int32_t>(vShape->GetStorageShape().GetDim(DIM_1) * vShape->GetStorageShape().GetDim(DIM_2));
+        blockSize = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_1));
+        tokenSizeK = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_2) * kCacheLogicalShape.GetDim(DIM_3));
+        tokenSizeV = static_cast<int32_t>(vCacheLogicalShape.GetDim(DIM_2) * vCacheLogicalShape.GetDim(DIM_3));
         context->SetTilingKey(TILING_KEY_ND + typeByte);
     } else {
         return false;
     }
 
-    int32_t numTokens = static_cast<int32_t>(blockTablesShape->GetStorageShape().GetDim(DIM_0)); // block tables row
-    int32_t numblkTabCol =
-        static_cast<int32_t>(blockTablesShape->GetStorageShape().GetDim(DIM_1)); // block tables column
+    int32_t numTokens = static_cast<int32_t>(blockTablesLogicalShape.GetDim(DIM_0)); // block tables row
+    int32_t numblkTabCol = static_cast<int32_t>(blockTablesLogicalShape.GetDim(DIM_1)); // block tables column
 
     OP_CHECK_IF((blockSize <= 0 || blockSize > INT_MAX), OP_LOGE(context, "blockSize is invalid."),
                 return ge::GRAPH_FAILED);
