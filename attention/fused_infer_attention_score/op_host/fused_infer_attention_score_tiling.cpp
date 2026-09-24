@@ -2475,6 +2475,20 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     if (RouteToFia(context)) {
+        // [静态编译兼容] FIA tiling 依赖运行时tensor数据(逐batch序列长度,GetData读取):
+        // 在线静态编译只提供shape不提供数据,继续执行会产生错误烘焙值或空指针崩溃。
+        // 检测到该环境时主动拒绝(FIA不支持在线静态编译),由框架回退动态执行。
+        const gert::Tensor *seqQTensor = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+        const gert::Tensor *seqKvTensor = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
+        const gert::Tensor *queryTensor = context->GetInputTensor(QUERY_INDEX);
+        bool isStaticCompileEnv = (queryTensor != nullptr && queryTensor->GetData<uint8_t>() == nullptr) ||
+                                  (seqQTensor != nullptr && seqQTensor->GetData<int64_t>() == nullptr) ||
+                                  (seqKvTensor != nullptr && seqKvTensor->GetData<int64_t>() == nullptr);
+        OP_CHECK_IF(isStaticCompileEnv,
+                    OP_LOGE(context->GetNodeName(),
+                            "FIA tiling depends on runtime tensor data (actual_seq_lengths), "
+                            "online static compilation is not supported, fallback to dynamic."),
+                    return ge::GRAPH_FAILED);
         return TilingFusedInferAttentionScoreV3(context);
     }
 
