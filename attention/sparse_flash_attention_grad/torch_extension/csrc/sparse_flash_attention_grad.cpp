@@ -101,13 +101,22 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
         auto localDevice = c10::Device(query.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
 
-        dq = at::empty_like(query);
-        dk = at::empty_like(key);
-        dv = valueConst.defined() ? at::empty_like(valueConst) : at::empty({SFAG_EMPTY_NUMEL}, query.options());
-        dqRope =
-            queryRopeConst.defined() ? at::empty_like(queryRopeConst) : at::empty({SFAG_EMPTY_NUMEL}, query.options());
-        dkRope = keyRopeConst.defined() ? at::empty_like(keyRopeConst) : at::empty({SFAG_EMPTY_NUMEL}, query.options());
-        dSinks = sinksConst.defined() ? at::empty_like(sinksConst) :
+        // 输出一律按连续内存分配：at::empty_symint 的 memory_format 默认是 Contiguous，
+        // 与输入布局无关。不能用 at::empty_like —— 它的 memory_format 默认是 Preserve，
+        // 会把输入的 stride 原样抄给输出：输入 query 非连续时 dq 会拿到
+        // (512, 8388608, 1) 这种与 buffer 实际布局不符的 stride，数据正确但按逻辑
+        // 索引取值整体错位。
+        dq = at::empty_symint(query.sym_sizes(), query.options());
+        dk = at::empty_symint(key.sym_sizes(), key.options());
+        dv = valueConst.defined() ? at::empty_symint(valueConst.sym_sizes(), valueConst.options()) :
+                                    at::empty({SFAG_EMPTY_NUMEL}, query.options());
+        dqRope = queryRopeConst.defined() ?
+                     at::empty_symint(queryRopeConst.sym_sizes(), queryRopeConst.options()) :
+                     at::empty({SFAG_EMPTY_NUMEL}, query.options());
+        dkRope = keyRopeConst.defined() ?
+                     at::empty_symint(keyRopeConst.sym_sizes(), keyRopeConst.options()) :
+                     at::empty({SFAG_EMPTY_NUMEL}, query.options());
+        dSinks = sinksConst.defined() ? at::empty_symint(sinksConst.sym_sizes(), sinksConst.options()) :
                                         at::empty({SFAG_EMPTY_NUMEL}, query.options().dtype(at::kFloat));
     }
 
