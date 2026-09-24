@@ -12,6 +12,8 @@
  * \file engram_fetch_local_arch35.h
  * \brief engram_fetch arch35 kernel, local full-table mode (fetch_mode=1, inference only):
  *        every rank holds the full table, indices are local row ids, pure local GM copies, no cross-NPU traffic.
+ *        Small 32B-aligned rows are gathered in batched waves (rowsPerWave rows per 24KB relay round) when
+ *        at least 8 rows pack into one relay tile; other shapes use the per-row legacy relay.
  */
 
 #ifndef ENGRAM_FETCH_LOCAL_ARCH35_H
@@ -98,24 +100,25 @@ __aicore__ inline void EngramFetchLocalArch35::Init(GM_ADDR commContext, GM_ADDR
     batched_ = false;
     rowsPerWave_ = 1U;
     uint64_t relayUb = static_cast<uint64_t>(tileBytes_) * RELAY_BUFFER_NUM_INFER;
-    if (hiddenBytes_ > 0 && static_cast<uint64_t>(hiddenBytes_) % UB_ALIGN == 0 && rowBytes <= TILE_BYTES_INFER_MAX) {
-        uint32_t rows = static_cast<uint32_t>(static_cast<uint64_t>(TILE_BYTES_INFER_MAX) / rowBytes);
-        // Batching only pays off when many small rows share one relay buffer: small rows expose the
-        // read latency in the per-row relay, while large rows already keep MTE2 saturated and the
-        // wave restructuring measured slower for them (h=9216 on the old 32KB base). Keep rows that
-        // pack fewer than 8 rows per wave on the legacy path.
-        if (rows >= 8U) {
-            // Rebinding relayQue_ carves new 24KB tiles after the single-row tiles the base already
-            // carved from the UB pool; the base tiles become dead space and must stay counted in the
-            // indices-buffer UB budget. Skip wave packing when the widened relay would not fit.
-            uint64_t waveRelayUb = (static_cast<uint64_t>(tileBytes_) + TILE_BYTES_INFER_MAX) * RELAY_BUFFER_NUM_INFER;
-            if (waveRelayUb + UB_RESERVED_SIZE <= ubSize_) {
-                batched_ = true;
-                rowsPerWave_ = rows;
-                tileBytes_ = TILE_BYTES_INFER_MAX;
-                tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM_INFER, tileBytes_);
-                relayUb = waveRelayUb;
-            }
+    // Batching only pays off when many small rows share one relay buffer: small rows expose the read
+    // latency in the per-row relay, while large rows already keep MTE2 saturated and the wave
+    // restructuring measured slower for them (h=9216 on the old 32KB base). Keep rows that are not
+    // 32B-aligned or that pack fewer than minRowsPerWave rows per wave on the legacy path.
+    constexpr uint32_t minRowsPerWave = 8U;
+    bool rowAligned = hiddenBytes_ > 0 && static_cast<uint64_t>(hiddenBytes_) % UB_ALIGN == 0;
+    bool wavePacks = rowAligned && rowBytes <= TILE_BYTES_INFER_MAX &&
+                     static_cast<uint64_t>(TILE_BYTES_INFER_MAX) / rowBytes >= minRowsPerWave;
+    if (wavePacks) {
+        // Rebinding relayQue_ carves new 24KB tiles after the single-row tiles the base already
+        // carved from the UB pool; the base tiles become dead space and must stay counted in the
+        // indices-buffer UB budget. Skip wave packing when the widened relay would not fit.
+        uint64_t waveRelayUb = (static_cast<uint64_t>(tileBytes_) + TILE_BYTES_INFER_MAX) * RELAY_BUFFER_NUM_INFER;
+        if (waveRelayUb + UB_RESERVED_SIZE <= ubSize_) {
+            tileBytes_ = TILE_BYTES_INFER_MAX;
+            rowsPerWave_ = static_cast<uint32_t>(static_cast<uint64_t>(tileBytes_) / rowBytes);
+            batched_ = true;
+            tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM_INFER, tileBytes_);
+            relayUb = waveRelayUb;
         }
     }
 
