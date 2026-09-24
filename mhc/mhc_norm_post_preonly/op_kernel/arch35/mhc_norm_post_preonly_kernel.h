@@ -121,7 +121,8 @@ public:
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
+        // 两个2D缓冲分别保存相邻head的Phi分块，保持总UB占用不变并减少MTE2发射次数。
+        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_TWO, 2U * dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);

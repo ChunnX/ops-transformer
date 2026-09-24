@@ -485,43 +485,34 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
         PipeBarrier<PIPE_V>();
         MhcNormRegBase::Add(reduceRows, reduceRows, tmp, tD);
 
-        // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
-        LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
-        LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
-        DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-        DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
-        bufPhiFp32_.EnQue(curPhi0);
-        bufPhiFp32_.EnQue(curPhi1);
+        // 相邻两个head用一次二维DMA搬到同一个2D缓冲；双缓冲使下一输出行的
+        // MTE2与当前dot计算重叠。数据量和UB占用不变，减少一半搬运指令。
+        DataCopyExtParams pairCopyParams = {2, tD * sizeof(float), (D_ - tD) * sizeof(float), 0, 0};
+        LocalTensor<float> curPhiPair = bufPhiFp32_.AllocTensor<float>();
+        DataCopyPad(curPhiPair, phiGm_[(uint64_t)h0 * D_ + tOff], pairCopyParams, copyPad);
+        bufPhiFp32_.EnQue(curPhiPair);
 
         for (uint32_t o = 0; o < N_MAX; ++o) {
-            // 预取下一轮o+1的两路phi，与当前dot计算重叠。
-            LocalTensor<float> nextPhi0;
-            LocalTensor<float> nextPhi1;
+            // 预取下一轮o+1的Phi head pair，与当前dot计算重叠。
+            LocalTensor<float> nextPhiPair;
             if (o + 1U < N_MAX) {
-                nextPhi0 = bufPhiFp32_.AllocTensor<float>();
-                nextPhi1 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
-                            copyPad);
-                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
-                            copyPad);
-                bufPhiFp32_.EnQue(nextPhi0);
-                bufPhiFp32_.EnQue(nextPhi1);
+                nextPhiPair = bufPhiFp32_.AllocTensor<float>();
+                DataCopyPad(nextPhiPair, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff],
+                            pairCopyParams, copyPad);
+                bufPhiFp32_.EnQue(nextPhiPair);
             }
 
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
-            curPhi0 = bufPhiFp32_.DeQue<float>();
-            curPhi1 = bufPhiFp32_.DeQue<float>();
-            MhcNormRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
+            curPhiPair = bufPhiFp32_.DeQue<float>();
+            MhcNormRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhiPair, tD);
             PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
+            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhiPair[dimTile_], tD);
             PipeBarrier<PIPE_V>();
             MhcNormRegBase::Add(dotRow, dotRow, tmp, tD);
-            bufPhiFp32_.FreeTensor(curPhi0);
-            bufPhiFp32_.FreeTensor(curPhi1);
+            bufPhiFp32_.FreeTensor(curPhiPair);
 
             if (o + 1U < N_MAX) {
-                curPhi0 = nextPhi0;
-                curPhi1 = nextPhi1;
+                curPhiPair = nextPhiPair;
             }
         }
 
