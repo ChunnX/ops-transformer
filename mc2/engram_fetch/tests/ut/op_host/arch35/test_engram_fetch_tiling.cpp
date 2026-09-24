@@ -15,6 +15,10 @@
  * 测试用例覆盖:
  * - 推理场景: 2 inputs + 1 output + 2 attrs (with_grad=0)
  * - 训练场景: 3 inputs + 6 outputs + 5 attrs (with_grad=1)
+ * - 本地模式: fetch_mode=1 (全表本地 gather, 仅推理): 无 SF tiling key=2 / 带 SF tiling key=258;
+ *   with_grad=1 + fetch_mode=1 与非法 fetch_mode 均被拒绝。
+ *   注意: tiling 侧按扁平实例下标取 sf_table(输入3)/fetchedSf(输出6), SF 用例须同时实例化
+ *   前序可选输入(localStorageAddr)与全部可选输出, 否则下标与常量不对齐。
  * - 异常场景: dtype 不匹配、维度错误、attr 非法值
  */
 
@@ -54,6 +58,11 @@ struct EngramFetchTestParam {
     uint64_t expectTilingKey;
     std::string expectTilingData;
     std::vector<size_t> expectWorkspaces;
+    std::initializer_list<int64_t> sfTableShape;
+    ge::DataType sfTableDtype;
+    std::initializer_list<int64_t> fetchedSfShape;
+    ge::DataType fetchedSfDtype;
+    int64_t fetchMode;
 };
 
 inline std::ostream &operator<<(std::ostream &os, const EngramFetchTestParam &param)
@@ -705,6 +714,171 @@ static EngramFetchTestParam g_testCases[] = {
      0UL,
      "",
      {}},
+
+    {"infer_success_local_mode_basic",
+     {4 * 512},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {8},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {},
+     ge::DT_INT64,
+     {8, 512},
+     ge::DT_BF16,
+     ge::FORMAT_ND,
+     {},
+     {},
+     {},
+     {},
+     {},
+     512,
+     32,
+     0,
+     0,
+     0,
+     "3510",
+     ge::GRAPH_SUCCESS,
+     2UL,
+     "",
+     {16777216},
+     {},
+     ge::DT_FLOAT8_E8M0,
+     {},
+     ge::DT_FLOAT8_E8M0,
+     1},
+
+    {"infer_success_local_mode_with_sf",
+     {4 * 512},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {8},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {1},
+     ge::DT_INT64,
+     {8, 512},
+     ge::DT_FLOAT8_E4M3FN,
+     ge::FORMAT_ND,
+     {8},
+     {2},
+     {2},
+     {16},
+     {1},
+     512,
+     32,
+     0,
+     0,
+     0,
+     "3510",
+     ge::GRAPH_SUCCESS,
+     258UL,
+     "",
+     {16777216},
+     {32, 16},
+     ge::DT_FLOAT8_E8M0,
+     {8, 16},
+     ge::DT_FLOAT8_E8M0,
+     1},
+
+    {"infer_success_local_mode_sf_table_without_fetched_sf",
+     {4 * 512},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {8},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {1},
+     ge::DT_INT64,
+     {8, 512},
+     ge::DT_FLOAT8_E4M3FN,
+     ge::FORMAT_ND,
+     {},
+     {},
+     {},
+     {},
+     {},
+     512,
+     32,
+     0,
+     0,
+     0,
+     "3510",
+     ge::GRAPH_SUCCESS,
+     2UL,
+     "",
+     {16777216},
+     {32, 16},
+     ge::DT_FLOAT8_E8M0,
+     {},
+     ge::DT_FLOAT8_E8M0,
+     1},
+
+    {"fail_local_mode_with_grad",
+     {6146},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {8},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {1},
+     ge::DT_INT64,
+     {8, 512},
+     ge::DT_BF16,
+     ge::FORMAT_ND,
+     {8},
+     {2},
+     {2},
+     {16},
+     {1},
+     512,
+     32,
+     8,
+     4194304,
+     1,
+     "3510",
+     ge::GRAPH_FAILED,
+     0UL,
+     "",
+     {},
+     {},
+     ge::DT_FLOAT8_E8M0,
+     {},
+     ge::DT_FLOAT8_E8M0,
+     1},
+
+    {"fail_local_invalid_fetch_mode",
+     {4 * 512},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {8},
+     ge::DT_INT32,
+     ge::FORMAT_ND,
+     {},
+     ge::DT_INT64,
+     {8, 512},
+     ge::DT_BF16,
+     ge::FORMAT_ND,
+     {},
+     {},
+     {},
+     {},
+     {},
+     512,
+     32,
+     0,
+     0,
+     0,
+     "3510",
+     ge::GRAPH_FAILED,
+     0UL,
+     "",
+     {},
+     {},
+     ge::DT_FLOAT8_E8M0,
+     {},
+     ge::DT_FLOAT8_E8M0,
+     2},
 };
 
 class EngramFetchArch35TilingTest : public testing::TestWithParam<EngramFetchTestParam> {
@@ -737,6 +911,10 @@ static gert::TilingContextPara BuildTilingContextPara(const EngramFetchTestParam
         gert::StorageShape localStorageAddrShape = {param.localStorageAddrShape, param.localStorageAddrShape};
         inputTensorDesc_.push_back({localStorageAddrShape, param.localStorageAddrDtype, ge::FORMAT_ND});
     }
+    if (param.sfTableShape.size() > 0) {
+        gert::StorageShape sfTableShape = {param.sfTableShape, param.sfTableShape};
+        inputTensorDesc_.push_back({sfTableShape, param.sfTableDtype, ge::FORMAT_ND});
+    }
 
     std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_;
     outputTensorDesc_.push_back({fetchedShape, param.fetchedDtype, param.fetchedFormat});
@@ -760,16 +938,24 @@ static gert::TilingContextPara BuildTilingContextPara(const EngramFetchTestParam
         gert::StorageShape numRecvOutShape = {param.numRecvOutShape, param.numRecvOutShape};
         outputTensorDesc_.push_back({numRecvOutShape, ge::DT_INT32, ge::FORMAT_ND});
     }
+    if (param.fetchedSfShape.size() > 0) {
+        gert::StorageShape fetchedSfShape = {param.fetchedSfShape, param.fetchedSfShape};
+        outputTensorDesc_.push_back({fetchedSfShape, param.fetchedSfDtype, ge::FORMAT_ND});
+    }
 
     std::vector<gert::TilingContextPara::OpAttr> attrs_;
     attrs_.push_back({"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.hiddenSize)});
     attrs_.push_back(
         {"num_entries_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.numEntriesPerRank)});
-    if (param.withGrad != 0) {
+    if (param.withGrad != 0 || param.fetchMode != 0) {
         attrs_.push_back(
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.numMaxTokensPerRank)});
         attrs_.push_back({"comm_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commBufferSize)});
         attrs_.push_back({"with_grad", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.withGrad)});
+    }
+    // fetch_mode 位于属性扁平下标 5, 须在其前面补齐下标 2-4 的属性, 与算子定义顺序保持一致
+    if (param.fetchMode != 0) {
+        attrs_.push_back({"fetch_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.fetchMode)});
     }
 
     return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
