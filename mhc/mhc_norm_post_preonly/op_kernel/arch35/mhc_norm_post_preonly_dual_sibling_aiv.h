@@ -16,18 +16,9 @@ __aicore__ inline void
 KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
     float postVals[N_MAX];
-    float sumSqHalf[2];
-    float dotHalf[2][N_MAX];
-    float midSqHalf[2];
-    // 会合前每条lane只累加自己的half；另一half随后由workspace覆盖，避免初始化无效Scalar槽。
-    sumSqHalf[laneId_] = 0.0f;
-    dotHalf[laneId_][0] = 0.0f;
-    dotHalf[laneId_][1] = 0.0f;
-    dotHalf[laneId_][2] = 0.0f;
-    dotHalf[laneId_][3] = 0.0f;
-    if constexpr (USE_RMS_MID) {
-        midSqHalf[laneId_] = 0.0f;
-    }
+    float sumSqHalf[2] = {0.0f, 0.0f};
+    float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
+    float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
     // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
     // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
