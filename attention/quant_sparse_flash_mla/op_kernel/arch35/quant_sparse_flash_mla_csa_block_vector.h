@@ -982,7 +982,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
     if (qsmlaCoreNum != 0) {
         uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * qsmlaCoreNum) - 1) / (CV_RATIO * qsmlaCoreNum);
         uint64_t tailSize;
-        uint64_t singleInitOutputSize
+        uint64_t singleInitOutputSize = 0;
         if (constInfo.aivIdx * singleCoreSize < totalOutputSize) {
             tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
             singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
