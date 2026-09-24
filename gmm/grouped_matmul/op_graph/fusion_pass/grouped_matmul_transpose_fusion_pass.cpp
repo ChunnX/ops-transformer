@@ -61,7 +61,8 @@ constexpr char kTransposeWeightAttr[] = "transpose_weight";
 constexpr char kXInputName[] = "x";
 constexpr char kWeightInputName[] = "weight";
 constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
-constexpr char kDav3510ShortSocVersion[] = "Ascend950";
+constexpr char kAscend350ShortSocVersion[] = "Ascend350";
+constexpr char kAscend950ShortSocVersion[] = "Ascend950";
 
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
@@ -248,7 +249,7 @@ bool IsMxFp4QuantMode(const GNode &groupedMatmulNode)
            IsFloat4DataType(xDesc.GetDataType()) && IsFloat4DataType(weightDesc.GetDataType());
 }
 
-bool CheckPlatformIsDav3510ForGmm()
+bool CheckPlatformSupportsGmmTransposeFusion()
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
@@ -256,7 +257,8 @@ bool CheckPlatformIsDav3510ForGmm()
         OP_LOGW(kPassName, "Get platform information failed.");
         return false;
     }
-    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
+    const auto &shortSocVersion = platformInfo.str_info.short_soc_version;
+    return shortSocVersion == kAscend350ShortSocVersion || shortSocVersion == kAscend950ShortSocVersion;
 }
 
 bool CheckPlatformSupportReshapePattern()
@@ -590,9 +592,9 @@ void DetectReshapePattern(GNode &groupedMatmulNode, std::vector<GmmReshapePatter
     reshapePattern[kAntiquantScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kAntiquantScaleIndex));
     reshapePattern[kPertokenScaleIndex] = AnalyzeNodePattern(GetInputNode(groupedMatmulNode, kPertokenScaleIndex));
 
-    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
+    const bool supportsGmmTransposeFusion = CheckPlatformSupportsGmmTransposeFusion();
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
-    if (isDav3510 && !isWeightQuant) {
+    if (supportsGmmTransposeFusion && !isWeightQuant) {
         return;
     }
 
@@ -883,7 +885,7 @@ Status FusionNodeX(GraphPtr &graph, GNode &groupedMatmulNode,
                    const std::vector<GmmReshapePatternMatchInfo> &reshapePattern,
                    std::vector<GmmInputPattern> &fusedPatterns)
 {
-    if (!CheckPlatformIsDav3510ForGmm() || IsWeightQuant(groupedMatmulNode)) {
+    if (!CheckPlatformSupportsGmmTransposeFusion() || IsWeightQuant(groupedMatmulNode)) {
         return GRAPH_NOT_CHANGED;
     }
 
@@ -929,9 +931,9 @@ Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
         return GRAPH_NOT_CHANGED;
     }
 
-    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
+    const bool supportsGmmTransposeFusion = CheckPlatformSupportsGmmTransposeFusion();
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
-    if (isDav3510 && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+    if (supportsGmmTransposeFusion && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
         GmmInputPattern scalePattern;
         if (BuildInputPattern(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern) &&
             IsType(scalePattern.transposeNode, kOpTypeReshape) &&
@@ -947,7 +949,7 @@ Status FusionNodeWeight(GraphPtr &graph, GNode &groupedMatmulNode,
         return fusionNodeWeightResult;
     }
 
-    if (!isDav3510) {
+    if (!supportsGmmTransposeFusion) {
         return SUCCESS;
     }
 
