@@ -140,8 +140,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    const bool overlapFollowerReload = USE_RMS_MID || D_ <= GAMMA1_CACHE_MAX_D;
+    if (overlapFollowerReload) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
@@ -151,6 +154,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
+    if (!overlapFollowerReload) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
