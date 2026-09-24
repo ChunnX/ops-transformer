@@ -237,6 +237,8 @@ struct EngramSharedBufferEntry {
     bool externalRegistered = false;
     int64_t registeredBytes = 0; // 实际已注册的字节数
     int64_t commBufferSize = 0;
+    int64_t fetchMode = ENGRAM_FETCH_MODE_SLICED;
+    bool withGrad = false;
     EngramCommContext context;
     void* sfDeviceBufPtr = nullptr;
     bool sfExternalRegistered = false;
@@ -549,6 +551,8 @@ public:
                 entry.registeredBytes =
                     resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
                 entry.commBufferSize = resources.commBufferSize;
+                entry.fetchMode = fetchMode_;
+                entry.withGrad = withGrad_;
                 entry.context = resources.context;
                 entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 entry.sfExternalRegistered = resources.sfExternalRegistered;
@@ -574,6 +578,10 @@ public:
         bool callerHasBuffer = (numCpuBytes > 0) || (externalHostPtr != nullptr);
         if (!callerHasBuffer) {
             // 仅初始化 ctx(如 engram_barrier 无存储场景)：复用共享池既有状态
+            TORCH_CHECK(!(withGrad_ && entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL), "Engram comm context of group '",
+                        contextTag,
+                        "' was created in local fetch mode and has no cross-NPU channel; a training instance "
+                        "requires channels to fetch remotely, please use a new comm group");
             resources.hostBufPtr = entry.hostBufPtr;
             resources.deviceBufPtr = entry.deviceBufPtr;
             resources.memHandle = entry.memHandle;
@@ -615,6 +623,8 @@ public:
                 poolEntry.externalRegistered = resources.externalRegistered;
                 poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
                 poolEntry.commBufferSize = resources.commBufferSize;
+                poolEntry.fetchMode = fetchMode_;
+                poolEntry.withGrad = withGrad_;
                 poolEntry.context = resources.context;
                 poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
@@ -643,6 +653,10 @@ public:
                         "; the shared engram storage is sized by the first ElasticBuffer created on this group, "
                         "destroy and recreate with a larger size is not supported, please use a new comm group");
         }
+        TORCH_CHECK(!(entry.fetchMode == ENGRAM_FETCH_MODE_LOCAL && fetchMode_ == ENGRAM_FETCH_MODE_SLICED),
+                    "Engram comm context of group '", contextTag,
+                    "' was created in local fetch mode and holds no cross-NPU channels; sliced fetch-mode "
+                    "rebuild on this group is not supported, please use a new comm group");
         resources.hostBufPtr = entry.hostBufPtr;
         resources.deviceBufPtr = entry.deviceBufPtr;
         resources.memHandle = entry.memHandle;
@@ -2405,7 +2419,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                                        const at::Tensor &, at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
             pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
             pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
-            pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode"))
+            pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"), pybind11::arg("sf_table_addr"),
