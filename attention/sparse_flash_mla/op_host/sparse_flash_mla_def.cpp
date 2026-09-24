@@ -40,7 +40,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cmp_sparse_indices")
+        this->Input("cmp_sparse_indices") // SMLA: tile config.
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -110,7 +110,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("attn_out")
+        this->Output("attn_out") // SMLA: output config.
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
@@ -124,13 +124,13 @@ public:
         this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0); // cmp_mask_mode默认值0
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
-        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND"); // SMLA: softmax config (layout_q).
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
+        aicore_config.DynamicCompileStaticFlag(true) // SMLA: softmax config (DynamicCompileStaticFlag).
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)

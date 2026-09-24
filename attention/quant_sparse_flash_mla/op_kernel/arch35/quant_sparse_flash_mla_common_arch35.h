@@ -44,7 +44,7 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
     X(Q_T) \
     X(KV_T) \
     X(T) \
-    X(OUTPUT_T)
+    X(OUTPUT_T) /* QSMLA: query params. */
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
     X(isFd, bool, false) \
@@ -66,10 +66,10 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
-#define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
+#define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name, // QSMLA: template expansion.
 #define TEMPLATES_DEF_NO_DEFAULT \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-                  CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+                  CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end> /* QSMLA: tile params. */
 
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,

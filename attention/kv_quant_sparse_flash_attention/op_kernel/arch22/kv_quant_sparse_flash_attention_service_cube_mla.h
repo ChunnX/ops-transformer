@@ -43,7 +43,7 @@ struct PAShape {
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
-template <typename T>
+template <typename T> // KV-SFA: query layout.
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,       // D
@@ -75,7 +75,7 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   const PAShape &shape,     // blockSize, headNum, headDim
                                   const Position &startPos) // bacthIdx nIdx curSeqIdx
 {
-    uint32_t copyFinishRowCnt = 0;
+    uint32_t copyFinishRowCnt = 0; // KV-SFA: paged-KV addresses (copyFinishRowCnt).
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Idx;
     uint32_t blockElementCnt = 32 / sizeof(T);
@@ -301,7 +301,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::InitPageAttentionInfo(const Glo
                                                                        uint32_t maxBlockNumPerBatch)
 {
     this->blockTableGm = blockTableGm;
-    this->topKGm = topKGm;
+    this->topKGm = topKGm; // KV-SFA: paged-KV addresses (topKGm).
     this->kvCacheBlockSize = blockSize;
     this->maxBlockNumPerBatch = maxBlockNumPerBatch;
     this->kvMergeGm_ = kvMergeGm;
@@ -464,7 +464,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::LoadDataMm1A(LocalTensor<K_ROPE
     loadData3DParams.l1W = 16;         // Win=M0
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
-    loadData3DParams.padList[2] = 0;
+    loadData3DParams.padList[2] = 0;   // KV-SFA: tile state (padList).
     loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
@@ -856,7 +856,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                     loadData3DParamsForB.l1W = 16;                // 源操作数weight=16，目的height=l1H*L1W
                     loadData3DParamsForB.padList[0] = 0;
                     loadData3DParamsForB.padList[1] = 0;
-                    loadData3DParamsForB.padList[2] = 0;
+                    loadData3DParamsForB.padList[2] = 0;   // KV-SFA: tile state (padList).
                     loadData3DParamsForB.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
                     loadData3DParamsForB.mExtension = kL0SizeAlign; // 在目的操作数height维度的传输长度
@@ -922,7 +922,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
-                    abL0BufIter++;
+                    abL0BufIter++; // KV-SFA: tile matmul.
                 }
 
                 if (nL1 == (nL1Loops - 1)) { // nL1最后一轮, 需要将B驻留在L1中, 用于下一轮的计算？

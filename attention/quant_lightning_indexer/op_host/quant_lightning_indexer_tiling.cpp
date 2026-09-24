@@ -101,7 +101,8 @@ ge::graphStatus QLIInfoParser::CheckTensorShapes() const
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The shape of query is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
+    // Key shape is required to derive the quantized storage layout.
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, // QLI: query descriptors (shape).
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The shape of key is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
@@ -126,7 +127,8 @@ ge::graphStatus QLIInfoParser::CheckTensorDescriptions() const
 {
     OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query", "The desc of query is nullptr"),
-                return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED); // QLI: query descriptors (GRAPH_FAILED).
+    // Key descriptor supplies the dtype checked by quantization tiling.
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "The desc of key is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -156,7 +158,8 @@ ge::graphStatus QLIInfoParser::CheckRequiredInOutExistence() const
         return status;
     }
 
-    status = CheckTensorDescriptions();
+    // shape 通过后继续校验 tensor desc。
+    status = CheckTensorDescriptions(); // QLI: tile descriptors.
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
@@ -174,7 +177,8 @@ ge::graphStatus QLIInfoParser::CheckRequiredAttrExistence() const
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_key", "Layout_key is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr,
+    // sparse_count selects the number of sparse blocks processed per query.
+    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, // QLI: query descriptors (sparseCount).
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_count", "Sparse_count is nullptr"),
                 return ge::GRAPH_FAILED);
 
@@ -290,7 +294,8 @@ ge::graphStatus QLIInfoParser::GetAttrParaInfo()
     if (opParamInfo_.layOutKey != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_key is:%s", opParamInfo_.layOutKey);
     }
-    if (opParamInfo_.sparseCount != nullptr) {
+    if (opParamInfo_.sparseCount != nullptr) { // QLI: query params.
+        // 记录本次 tiling 采用的 sparse_count。
         OP_LOGI(context_->GetNodeName(), "selscted count is:%d", *opParamInfo_.sparseCount);
     }
     if (opParamInfo_.sparseMode != nullptr) {
@@ -389,8 +394,9 @@ ge::graphStatus QLIInfoParser::GetOpParaInfo()
 {
     GetInputParaInfo();
     GetOutputParaInfo();
+    // Read quantization attributes before validating their ranges.
     if (ge::GRAPH_SUCCESS != GetAttrParaInfo()) {
-        return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED; // QLI: output descriptors.
     }
     if (ge::GRAPH_SUCCESS != CheckAttrParaInfo()) {
         return ge::GRAPH_FAILED;
@@ -558,11 +564,12 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                     "The dtype of actual_seq_lengths_key must be int32"),
                 return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
+        // TND needs explicit query lengths to recover individual sequences.
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "actual_seq_lengths_query",
                         "When layout_query is TND, actual_seq_lengths_query must not be null"),
-                    return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED); // QLI: sequence descriptors (GRAPH_FAILED).
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
@@ -923,9 +930,10 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                     std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
                     " respectively, they must be same"),
             return ge::GRAPH_FAILED);
+        // BSND query lengths must contain one entry per batch.
         OP_CHECK_IF((opParamInfo_.actualSeqLengthsQ.tensor != nullptr) &&
                         (opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize() != bSize_),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON( // QLI: sequence descriptors (actual_seq_lengths_query).
                         opName_, "query and actual_seq_lengths_query",
                         Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                             Ops::Base::ToString(opParamInfo_.actualSeqLengthsQ.tensor->GetStorageShape()),
@@ -1159,16 +1167,19 @@ ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
         return ge::GRAPH_FAILED;
     }
 
+    // Validate data types, layouts, and optional inputs as one stage.
     if (ge::GRAPH_SUCCESS != GetAndCheckInOutDataType() || ge::GRAPH_SUCCESS != GetQueryKeyAndOutLayout() ||
         ge::GRAPH_SUCCESS != GetAndCheckOptionalInput()) {
         return ge::GRAPH_FAILED;
     }
 
+    // Validate head relationships before deriving batch and sequence dimensions.
     if (ge::GRAPH_SUCCESS != CheckShapeDim() || ge::GRAPH_SUCCESS != GetN1Size() ||
         ge::GRAPH_SUCCESS != GetAndCheckN2Size() || ge::GRAPH_SUCCESS != GetGSize()) {
         return ge::GRAPH_FAILED;
     }
 
+    // Derive batch and sequence dimensions before checking scale shapes.
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
         ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;

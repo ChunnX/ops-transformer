@@ -93,7 +93,7 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
         repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
@@ -229,7 +229,7 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
         repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
@@ -307,7 +307,7 @@ __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         BinaryRepeatParams columnRepeatParams;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
+        columnRepeatParams.dstBlkStride = 1; // ATTN: mask offsets (dstBlkStride).
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
         columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
@@ -375,7 +375,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
-        if (dRemain > 0) {
+        if (dRemain > 0) { // ATTN: tile state (dRemain).
             Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
                 repeatParams);
         }
@@ -393,7 +393,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
             Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
                 repeatParams);
             //  计算一行中的尾块
-            if (dRemain > 0) {
+            if (dRemain > 0) { // ATTN: tile state (dRemain).
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
                     src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
                     repeatParams);
@@ -481,7 +481,7 @@ __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, Local
             validLen = copyLen;
         }
 
-        for (uint32_t i = 0; i < dealRowCount; i++) {
+        for (uint32_t i = 0; i < dealRowCount; i++) { // ATTN: tile layout.
             DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -562,7 +562,7 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
             validLen = copyLen;
         }
 
-        for (uint32_t i = 0; i < dealRowCount; i++) {
+        for (uint32_t i = 0; i < dealRowCount; i++) { // ATTN: tile layout.
             DataCopy(srcUb[i * validLen], srcUb[i * columnCount], validLen);
             AscendC::PipeBarrier<PIPE_V>();
         }

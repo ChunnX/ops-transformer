@@ -252,7 +252,7 @@ private:
     TBuf<> softmaxSumDefaultBuff; // 2K
 
     LocalTensor<T> softmaxMaxDefaultUb;
-    LocalTensor<T> softmaxSumDefaultUb;
+    LocalTensor<T> softmaxSumDefaultUb; // MQSMLA: softmax state (softmaxSumDefaultUb).
 
     LocalTensor<T> softmaxMaxUb;
     LocalTensor<T> softmaxSumUb;
@@ -610,7 +610,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SoftmaxFlashV2
         inMaxTensor = softmaxMaxDefaultUb[startRow];
         inSumTensor = softmaxSumDefaultUb;
     } else {
-        uint32_t inIdx = (info.loop - 1) % (constInfo.preLoadNum);
+        uint32_t inIdx = (info.loop - 1) % (constInfo.preLoadNum); // MQSMLA: softmax state (inIdx).
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset];
     }
@@ -680,7 +680,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1Sin
                               BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
-    mSplitSize = mSplitSize / 8 * 8;
+    mSplitSize = mSplitSize / 8 * 8; // MQSMLA: tile state (mSplitSize).
 
     if (mSplitSize > mSplitInfo.vecDealM) {
         mSplitSize = mSplitInfo.vecDealM;
@@ -877,7 +877,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInSingleKv
     int64_t validS2Count =
         (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams;
-    intriParams.blockLen = validS2Count * constInfo.headDim * sizeof(KV_T);
+    intriParams.blockLen = validS2Count * constInfo.headDim * sizeof(KV_T); // MQSMLA: KV layout (blockLen).
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
@@ -958,7 +958,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyInKv(int64
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockLen = constInfo.sparseBlockSize * constInfo.headDim * sizeof(KV_T);
-        intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
+        intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0); // MQSMLA: KV layout (blockCount).
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
         DataCopyPadExtParams<KV_T> padParams;
@@ -1113,14 +1113,14 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec1L(c
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = i;
-        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize; // MQSMLA: tile state (nBufferStartM).
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
                                                                 (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
-            mSplitInfo.vecStartM = mSplitInfo.vecDealM;
+            mSplitInfo.vecStartM = mSplitInfo.vecDealM; // MQSMLA: pipeline sync (vecStartM).
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
 
@@ -1161,7 +1161,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2L(c
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferIdx = i;
-        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
+        mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize; // MQSMLA: tile state (nBufferStartM).
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
@@ -1169,7 +1169,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2L(c
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
-            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
+            mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM; // MQSMLA: pipeline sync (vecDealM).
         }
         CrossCoreWaitFlag(constInfo.syncC2V2);
         ProcessVec2SingleBuf(info, mSplitInfo);
@@ -1188,7 +1188,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ProcessVec2Inn
     }
 
     uint32_t loopCount = (mDealSize + mSplitSize - 1) / mSplitSize;
-    uint32_t tailSplitSize = mDealSize - (loopCount - 1) * mSplitSize;
+    uint32_t tailSplitSize = mDealSize - (loopCount - 1) * mSplitSize; // MQSMLA: tile matmul.
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
         if (i == (loopCount - 1)) {
             dealSize = tailSplitSize;
@@ -1234,7 +1234,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2DataCopyOu
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
-    dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
+    dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T); // MQSMLA: output layout.
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[info.attenOutOffset + wsMStart * actualColumnCount], attenOutUb, dataCopyParams);
@@ -1254,7 +1254,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2CastAndCop
         Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
 
-    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG); // MQSMLA: output matmul.
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     Bmm2DataCopyOutTrans(info, tmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1266,7 +1266,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::Bmm2ResCopyOut
     uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
-        if (info.tndIsS2SplitCore) {
+        if (info.tndIsS2SplitCore) { // MQSMLA: workspace layout.
             Bmm2FDDataCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
         } else {
             Bmm2CastAndCopyOut(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
@@ -1387,7 +1387,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowDivs(LocalT
         BinaryRepeatParams columnRepeatParams;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
+        columnRepeatParams.dstBlkStride = 1; // MQSMLA: mask offsets (dstBlkStride).
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
         columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
@@ -1395,7 +1395,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowDivs(LocalT
         for (uint32_t i = 0; i < dealRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * FP32_BLOCK_ELEMENT_NUM], dtypeMask, columnRepeatCount,
                 columnRepeatParams);
-            offset += columnCount;
+            offset += columnCount; // MQSMLA: mask offsets (offset).
         }
     }
     if (dRemain > 0) {
@@ -1459,7 +1459,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowMuls(LocalT
         }
 
         // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
-        if (dRemain > 0) {
+        if (dRemain > 0) { // MQSMLA: vector tile state.
             Mul(dstUb[dLoop * repeatElementNum], src0Ub[dLoop * repeatElementNum], src1Ub, dRemain, dealRowCount,
                 repeatParams);
         }
@@ -1477,7 +1477,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::RowMuls(LocalT
             Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum, dLoop,
                 repeatParams);
             //  计算一行中的尾块
-            if (dRemain > 0) {
+            if (dRemain > 0) { // MQSMLA: accumulated tile state.
                 Mul(dstUb[i * columnCount + dLoop * repeatElementNum],
                     src0Ub[i * columnCount + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain, 1,
                     repeatParams);

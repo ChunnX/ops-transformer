@@ -115,7 +115,7 @@ struct QSMLAParaInfo {
     const int64_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    const int64_t *oriWinLeft = nullptr;
+    const int64_t *oriWinLeft = nullptr; // QSMLA: compressed-KV candidates.
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
@@ -137,7 +137,7 @@ public:
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
-    int64_t s2Size = 0;
+    int64_t s2Size = 0; // QSMLA: tile descriptors.
     int64_t cmpS2Size = 0;
     uint32_t gSize = 0;
     uint32_t qkHeadDim = 0;
@@ -287,7 +287,7 @@ public:
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
-    ge::DataType oriKvType_ = ge::DT_FLOAT16;
+    ge::DataType oriKvType_ = ge::DT_FLOAT16; // QSMLA: compressed-KV bounds.
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpSparseIndicesType_ = ge::DT_INT32;
     ge::DataType oriBlockTableType_ = ge::DT_INT32;
@@ -300,7 +300,7 @@ public:
 
     gert::Shape qShape_{};
     gert::Shape oriKvShape_{};
-    gert::Shape cmpKvShape_{};
+    gert::Shape cmpKvShape_{}; // QSMLA: compressed-KV descriptors.
     gert::Shape oriSparseIndicesShape_{};
     gert::Shape cmpSparseIndicesShape_{};
 };

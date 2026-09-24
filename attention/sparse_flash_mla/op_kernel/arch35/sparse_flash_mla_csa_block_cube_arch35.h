@@ -62,7 +62,7 @@ TEMPLATES_DEF
 class CSABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64;
+    static constexpr uint32_t s1BaseSize = 64; // SMLA: tile matmul (s1BaseSize).
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
@@ -521,7 +521,7 @@ public:
     __aicore__ inline void FreeEvent() {}
 };
 
-template <typename T>
+template <typename T>   // SMLA: tile matmul.
 struct CubeBlockTraits; // 声明
 
 /* 生成CubeBlockTraits */
@@ -529,8 +529,8 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT /* SMLA: tile matmul (TEMPLATES_DEF_NO_DEFAULT). */ \
+        struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }

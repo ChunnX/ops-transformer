@@ -89,7 +89,7 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);
-        OpAICoreConfig aicore_config;
+        OpAICoreConfig aicore_config; // LI V2: mask config.
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

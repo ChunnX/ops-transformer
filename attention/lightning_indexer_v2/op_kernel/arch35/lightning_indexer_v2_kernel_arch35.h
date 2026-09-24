@@ -89,7 +89,7 @@ public:
     static constexpr uint32_t M_BASE_SIZE = 256;
     static constexpr uint32_t S1_BASE_SIZE = 4;
     static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
-    static constexpr uint32_t S2_BASE_SIZE = 128;
+    static constexpr uint32_t S2_BASE_SIZE = 128; // LI V2: tile state (S2_BASE_SIZE).
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
@@ -111,7 +111,7 @@ protected:
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
     bool hasCuSeqlensQ = false;
-    bool hasCuSeqlensK = false;
+    bool hasCuSeqlensK = false; // LI V2: residual-KV offsets.
     bool hasSequsedQ = false;
     bool hasSequsedK = false;
     bool hasCmpResidualK = false;
@@ -130,7 +130,7 @@ protected:
     GlobalTensor<uint32_t> cuSeqlensKGm;
     GlobalTensor<uint32_t> sequsedQGm;
     GlobalTensor<uint32_t> sequsedKGm;
-    GlobalTensor<uint32_t> cmpResidualKGm;
+    GlobalTensor<uint32_t> cmpResidualKGm; // LI V2: residual-KV bounds (cmpResidualKGm).
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -241,7 +241,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ ui
     }
     if (sequsedK != nullptr) {
         sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK);
-        hasSequsedK = true;
+        hasSequsedK = true; // LI V2: residual-KV state.
     }
     if (cmpResidualK != nullptr) {
         cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
@@ -554,7 +554,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;
+        aiCoreIdx = tmpBlockIdx;     // LI V2: residual-KV bounds (aiCoreIdx).
     }
 
     InitTilingData(tiling);
@@ -581,8 +581,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     offset += GetBlockNum() * singleCoreScoreSize;
     // vec 存储需要LD的s1对应的s2的score与index，
     // 大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
-    GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
-    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
+    GlobalTensor<SCORE_T> ldScoreGm;                                   // 存放进行LD的s2 score
+    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset)); // LI V2: top-k candidates.
     offset += static_cast<uint64_t>(GetBlockNum()) * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
     GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
     ldIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
@@ -811,7 +811,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessDecode()
         ICachePreLoad(LD_PREFETCH_LEN);
         SyncAll();
         if (ldInfo.isLdCoreEnable) {
-            vectorService.ProcessLD();
+            vectorService.ProcessLD(); // LI V2: tile state (ProcessLD).
         }
     }
 }

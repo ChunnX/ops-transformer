@@ -32,7 +32,7 @@ using AscendC::CrossCoreWaitFlag;
 
 // 由于S2循环前，RunInfo还没有赋值，使用Bngs1Param临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
-    uint32_t bn2IdxInCurCore = 0;
+    uint32_t bn2IdxInCurCore = 0; // KV-SFA: sequence bounds (bn2IdxInCurCore).
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t s2LoopTimes = 0U; // S2方向循环的总次数，无论TND还是BXXD都是等于实际次数，不用减1
@@ -307,7 +307,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::GetSparseActualSeq
 {
     if (tempLoopInfo.nextTokensPerBatch < 0 && s1Idx < (-tempLoopInfo.nextTokensPerBatch)) { // 存在行无效
         tempLoopInfo.curActualSeqLen = 0;
-        return;
+        return; // KV-SFA: sequence bounds (GetSparseActualSeqLen).
     }
     int64_t threshold = tempLoopInfo.curActualSeqLenOri;
     if (constInfo.sparseMode == 3) {
@@ -366,7 +366,7 @@ __aicore__ inline uint32_t KvQuantSparseFlashAttentionMla<QSFAT>::GetActualSeqLe
         }
     } else {
         if (constInfo.actualLenDimsKV == 0) {
-            return constInfo.kvSeqSize;
+            return constInfo.kvSeqSize; // KV-SFA: sequence bounds (kvSeqSize).
         } else if (constInfo.actualLenDimsKV == 1) {
             return actualSeqLengthsKVGm.GetValue(0);
         } else {
@@ -524,7 +524,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
     if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
-        matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
+        matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm); // KV-SFA: paged-KV addresses.
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
                                             constInfo.maxBlockNumPerBatch);
     }
@@ -895,7 +895,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(constInfo.syncV0C1);
             }
-            ComputeMm1(extraInfo0);
+            ComputeMm1(extraInfo0); // KV-SFA: pipeline sync.
         } else {
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(3);
@@ -906,7 +906,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
     }
     if (extraInfo2.isValid) {
         if ASCEND_IS_AIV {
-            vectorService.ProcessVec1L(extraInfo2);
+            vectorService.ProcessVec1L(extraInfo2); // KV-SFA: tile params.
         }
         if ASCEND_IS_AIC {
             ComputeMm2(extraInfo2);
@@ -917,7 +917,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
     }
     if (extraInfo1.isValid) {
         if ASCEND_IS_AIV {
-            vectorService.ProcessVec2L(extraInfo1);
+            vectorService.ProcessVec2L(extraInfo1); // KV-SFA: tile state.
         }
         extraInfo1.isValid = false;
     }

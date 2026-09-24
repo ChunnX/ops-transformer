@@ -98,7 +98,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910b", aicore_config); // SFA: KV config.
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
         OpAICoreConfig aicore_config_95;
@@ -123,7 +123,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend950", aicore_config_95); // SFA: tile config.
     }
 };
 OP_ADD(SparseFlashAttention);

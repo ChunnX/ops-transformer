@@ -60,7 +60,7 @@ __aicore__ inline int64_t ConvertS2MetadataBlockToToken(const RunParamStr &runPa
     int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
-        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
+        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize; // SMLA: tile state (oriToken).
         return oriToken < oriLen ? oriToken : oriLen;
     }
     int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
@@ -80,7 +80,7 @@ __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &co
 
     int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
     int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
-    rangeStart = rangeStart < 0 ? 0 : rangeStart;
+    rangeStart = rangeStart < 0 ? 0 : rangeStart; // SMLA: compressed-KV state.
     rangeStart = rangeStart < totalLen ? rangeStart : totalLen;
     int64_t rangeEnd = isLastS2RangeTask ? effectiveS2EndPoint : totalLen;
     rangeEnd = rangeEnd < 0 ? 0 : rangeEnd;
@@ -152,7 +152,7 @@ __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo, const ConstInfo &con
         return;
     }
     fdRunInfo.bn2Idx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_BN2_IDX_INDEX, true));
-    fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true));
+    fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true)); // SMLA: workspace slots.
     fdRunInfo.workspaceIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_IDX_INDEX, true));
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
@@ -217,7 +217,7 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
-        runInfo.s1oIdx = runParam.s1oIdx;
+        runInfo.s1oIdx = runParam.s1oIdx; // SMLA: tile state (s1oIdx).
         runInfo.boIdx = runParam.boIdx;
         runInfo.n2oIdx = runParam.n2oIdx;
         runInfo.goIdx = runParam.goIdx;
@@ -228,8 +228,8 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
 
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
-    runInfo.taskIdMod3 = taskId % 3; // 3：同上
-    runInfo.s2LoopLimit = s2LoopLimit;
+    runInfo.taskIdMod3 = taskId % 3;   // 3：同上
+    runInfo.s2LoopLimit = s2LoopLimit; // SMLA: output sync.
 
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;

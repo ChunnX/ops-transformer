@@ -364,7 +364,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::Init(
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;
+        aiCoreIdx = tmpBlockIdx;     // QLI: sequence bounds (aiCoreIdx).
     }
 
     InitTilingData(tiling);
@@ -557,7 +557,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
-        splitCoreInfo.gS1Start = 0;
+        splitCoreInfo.gS1Start = 0; // QLI: sequence bounds (gS1Start).
     }
 
     if ASCEND_IS_AIV {

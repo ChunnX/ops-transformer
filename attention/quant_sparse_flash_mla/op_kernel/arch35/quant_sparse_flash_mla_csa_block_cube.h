@@ -327,7 +327,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     // 将matmul结果从L0C搬运到UB
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
-    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);   // QSMLA: output matmul (l0CBufId).
     l0CBufId ^= 1;
     outputBuf.SetCrossCore();
 }
@@ -374,7 +374,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     qsmlaFixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
-    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);   // QSMLA: output matmul (l0CBufId).
     l0CBufId ^= 1;
 
     outputBuf.SetCrossCore();
@@ -392,7 +392,7 @@ public:
     {}
 };
 
-template <typename T>
+template <typename T>   // QSMLA: tile matmul.
 struct CubeBlockTraits; // 声明
 
 /* 生成CubeBlockTraits */
@@ -400,8 +400,8 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT /* QSMLA: tile matmul (TEMPLATES_DEF_NO_DEFAULT). */ \
+        struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }

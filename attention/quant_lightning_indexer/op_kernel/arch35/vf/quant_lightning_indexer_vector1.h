@@ -21,7 +21,7 @@
 namespace vector1 {
 using liV2Vector1::BroadcastLane;
 using liV2Vector1::DuplicateZero;
-using liV2Vector1::FloatSortConstCtx;
+using liV2Vector1::FloatSortConstCtx; // QLI: KV state.
 using liV2Vector1::FloatSortTraits;
 using liV2Vector1::FloatToSortableKey;
 using liV2Vector1::FloatX2ToSortableKey;
@@ -287,7 +287,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(regKScale[1], kScale_ + 64);
 
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32, qk_, qkVLStride,
-                            gSize);
+                            gSize); // QLI: quant layout (gSize).
 
     ReduceSumFinalize(regSum0, regSum1, regKScale, maskAllB32, bf16Ctx, maskAllB16, out_);
 }
@@ -371,7 +371,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(regKScale[1], kScale_ + 64);
 
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, regwBrc, regW, regSum0, regSum1, maskAllB32, qk_, qkVLStride,
-                            gSize);
+                            gSize); // QLI: quant layout (gSize).
 
     ReduceSumFinalize(regSum0, regSum1, regKScale, maskAllB32, bf16Ctx, maskAllB16, out_);
 }
@@ -531,7 +531,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int gSize)
 {
-    AscendC::Reg::RegTensor<float> regwBrc[2];
+    AscendC::Reg::RegTensor<float> regwBrc[2]; // QLI: quant conversion (regwBrc).
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
     AscendC::Reg::RegTensor<int32_t> regQK0Int32[2], regQK1Int32[2];
@@ -557,7 +557,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[0], regQScaleFP16[0], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[1], regQScaleFP16[1], maskAllB16);
 
-    AscendC::Reg::Mul(regW[0], regW[0], regQScale[0], maskAllB32);
+    AscendC::Reg::Mul(regW[0], regW[0], regQScale[0], maskAllB32); // QLI: quant layout (maskAllB16).
     AscendC::Reg::Mul(regW[1], regW[1], regQScale[1], maskAllB32);
     // regW[0]与weight1混合使用
     AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weightFloat_, regW[1], maskAllB32);
@@ -583,7 +583,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int gSize)
 {
-    AscendC::Reg::RegTensor<float> regwBrc[2];
+    AscendC::Reg::RegTensor<float> regwBrc[2]; // QLI: quant conversion (regwBrc).
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
     AscendC::Reg::RegTensor<int32_t> regQK0Int32[2], regQK1Int32[2];
@@ -609,7 +609,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[0], regQScaleFP16[0], maskAllB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regQScale[1], regQScaleFP16[1], maskAllB16);
 
-    AscendC::Reg::Mul(regW[0], regW[0], regQScale[0], maskAllB32);
+    AscendC::Reg::Mul(regW[0], regW[0], regQScale[0], maskAllB32); // QLI: quant layout (maskAllB16).
     AscendC::Reg::Mul(regW[1], regW[1], regQScale[1], maskAllB32);
 
     constexpr static Reg::CastTrait castTraitFP32ToFP16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,

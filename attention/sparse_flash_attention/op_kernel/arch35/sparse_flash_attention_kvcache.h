@@ -91,9 +91,10 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo 
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
-TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN,
-                                         int64_t nextGs1Idx, int64_t gS1StartIdx)
+TEMPLATE_INTF // SFA: sequence bounds (constInfo).
+    __aicore__ inline void
+    ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN, int64_t nextGs1Idx,
+                      int64_t gS1StartIdx)
 {
     runParam.qSNumInOneBlock = 1; // sfa 不切G轴, 计算每个基本块可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
@@ -144,7 +145,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
     } else {
-        runParam.mOuterOffset = runParam.cubeMOuterOffset;
+        runParam.mOuterOffset = runParam.cubeMOuterOffset; // SFA: tile offsets.
     }
 
     runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
@@ -213,7 +214,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
-    return false;
+    return false; // SFA: sequence bounds (ComputeParamS1).
 }
 
 TEMPLATE_INTF
@@ -250,7 +251,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.s2LineStartIdx = 0;
         runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount);
-    } else if (constInfo.sparseMode == sparseModeThree) {
+    } else if (constInfo.sparseMode == sparseModeThree) { // SFA: tile matmul.
         runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2Size);
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(

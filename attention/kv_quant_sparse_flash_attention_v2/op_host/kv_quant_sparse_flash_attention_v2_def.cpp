@@ -84,7 +84,7 @@ public:
         this->Attr("value_quant_mode").AttrType(REQUIRED).Int(1);
         this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND"); // KV-SFA V2: quant config.
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3); // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
@@ -165,7 +165,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend950", aicore_config_95); // KV-SFA V2: tile config.
     }
 };
 OP_ADD(KvQuantSparseFlashAttentionV2);

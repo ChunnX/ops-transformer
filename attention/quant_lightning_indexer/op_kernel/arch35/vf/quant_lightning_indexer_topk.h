@@ -27,7 +27,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
-    {}
+    {} // QLI: top-k candidates.
 };
 template <>
 class LITopk<uint32_t> {
@@ -39,7 +39,7 @@ public:
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
     {
-        this->topK = topK;
+        this->topK = topK; // QLI: tile candidates.
         this->trunkLen = trunkLen;
     }
 
