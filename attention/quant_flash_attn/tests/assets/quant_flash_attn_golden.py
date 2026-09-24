@@ -185,6 +185,7 @@ def vtail_slots_to_npu_args(v_tail, block_table_tail, seqused_kv_tail):
         对全零 seqused_kv_tail 走未验证路径。
     返回 (v_tail_npu, block_table_tail_npu, seqused_kv_tail_npu)。
     """
+
     def _npu(t):
         if isinstance(t, torch.Tensor) and t.numel() > 0:
             return t.npu()
@@ -1491,7 +1492,9 @@ def cpu_mxfp8_golden(
             tail_mask_j = None
             if vtail_tail_start is not None:
                 col_j = torch.arange(Sk_start, Sk_end)
-                tail_mask_j = col_j.view(1, 1, 1, -1) >= vtail_tail_start.view(-1, 1, 1, 1)
+                tail_mask_j = col_j.view(1, 1, 1, -1) >= vtail_tail_start.view(
+                    -1, 1, 1, 1
+                )
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
                 S_ij, mask_j, mi, si, oi, ln_p_scale, tail_mask=tail_mask_j
             )
@@ -1510,12 +1513,17 @@ def cpu_mxfp8_golden(
                 tail_mask_j1 = None
                 if vtail_tail_start is not None:
                     col_j1 = torch.arange(Sk1_start, Sk1_end)
-                    tail_mask_j1 = (
-                        col_j1.view(1, 1, 1, -1) >= vtail_tail_start.view(-1, 1, 1, 1)
+                    tail_mask_j1 = col_j1.view(1, 1, 1, -1) >= vtail_tail_start.view(
+                        -1, 1, 1, 1
                     )
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale,
-                    tail_mask=tail_mask_j1
+                    S_ij1,
+                    mask_j1,
+                    m_block_j,
+                    s_block_j,
+                    oi,
+                    ln_p_scale,
+                    tail_mask=tail_mask_j1,
                 )
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE

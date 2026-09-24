@@ -369,9 +369,11 @@ def _derive_vtail_slots(attrs, quant_mode):
       非 PA / quant_mode!=1 / PA_NZ 且 D%16!=0。
     """
     if not attrs.get("enable_v_tail"):
-        return [(0,), (0,), (0,)], ["bfloat16", "int32", "int32"], [
-            _DRANGE_PLACEHOLDER
-        ] * 3
+        return (
+            [(0,), (0,), (0,)],
+            ["bfloat16", "int32", "int32"],
+            [_DRANGE_PLACEHOLDER] * 3,
+        )
 
     if quant_mode not in (1, None):
         raise ValueError(
@@ -499,9 +501,11 @@ def _build_tensor_lists(row, cols, quant_mode, attrs=None):
             _cu = attrs["cu_seqlens_kv"]
             _kv = [_cu[i + 1] - _cu[i] for i in range(len(_cu) - 1)]
         if _bs and _kv:
-            _need = max(-(-int(k) // int(_bs)) for k in _kv if int(k) > 0) if any(
-                int(k) > 0 for k in _kv
-            ) else 1
+            _need = (
+                max(-(-int(k) // int(_bs)) for k in _kv if int(k) > 0)
+                if any(int(k) > 0 for k in _kv)
+                else 1
+            )
             _B = vt_shapes[0][0]  # v_tail推导的B
             _excel_bt = shapes[7]
             if tuple(_excel_bt) != (_B, _need):
@@ -583,7 +587,9 @@ def _build_attributes(row, cols):
         else None
     )
     if _vt_flag is None:
-        _vt_flag = 1 if _str_to_shape(row.get(cols.get("v_tail_shape"))) is not None else None
+        _vt_flag = (
+            1 if _str_to_shape(row.get(cols.get("v_tail_shape"))) is not None else None
+        )
     _set("enable_v_tail", _vt_flag)
     # max_seqlen_q/kv：空则写 None。 -1 是显式值，保留。
     _set_force("max_seqlen_q", _str_to_int(row.get(cols.get("max_seqlen_q"))))
@@ -708,7 +714,9 @@ def _row_to_csv(excel_row, api_name, testcase_suffix, cols, quant_mode):
     #         print(f"[excel_to_csv] SKIP {testcase_name}: 极端data_range({_col}={_v})")
     #         return None
 
-    shapes, dtypes, data_ranges = _build_tensor_lists(excel_row, cols, quant_mode, attrs)
+    shapes, dtypes, data_ranges = _build_tensor_lists(
+        excel_row, cols, quant_mode, attrs
+    )
 
     # 嵌套字段：双引号包裹的 Python tuple 字面量，csv.writer 自动加引号。
     # attributes 用 repr() 生成单引号 Python dict 字面量（HANDOFF.md 坑2：json.dumps 双引号会失败）。
