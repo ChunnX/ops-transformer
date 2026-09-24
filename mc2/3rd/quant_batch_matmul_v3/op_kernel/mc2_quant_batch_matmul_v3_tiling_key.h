@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file quant_batch_matmul_v3_tiling_key.h
+ * \file mc2_quant_batch_matmul_v3_tiling_key.h
  * \brief
  */
 
