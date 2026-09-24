@@ -43,8 +43,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID);
 
         if constexpr (USE_RMS_MID) {
-            LocalTensor<float> out = GetResFp32()[N_MAX * dimTile_];
-            LocalTensor<T> x2Cache = GetX2Cache();
+            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
@@ -66,10 +66,10 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             const uint32_t tOff = tile * dimTile_;
             // R3阶段gamma0缓存已经空闲，与gamma2缓存组成双缓冲；
             // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
-            LocalTensor<float> gammaEven = GetGamma2Fp32();
-            LocalTensor<float> gammaOdd = GetGamma0Fp32();
+            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
-            LocalTensor<T> x2Cache = GetX2Cache();
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
                 LocalTensor<float> gammaCurrent = gammaEven;
                 LocalTensor<float> gammaNext = gammaOdd;
@@ -107,13 +107,13 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     // 第三遍：计算R6和h_in低精度边界。在完整D轴的R7标量确定前，
     // 复用已经消费完的x2缓存首段保存低精度h_in。
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到gamma0分段），与下方R6的Vector计算重叠。
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
     StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<T> x2Cache = GetX2Cache()[tOff];
-        LocalTensor<float> gateBuf = GetScalarBuf()[EXP_DIV_ELEM];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
@@ -123,9 +123,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = GetResFp32()[N_MAX * dimTile_];
-        LocalTensor<T> hInCache = GetX2Cache()[tOff];
-        LocalTensor<float> gamma1 = GetGamma0Fp32();
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);

@@ -102,34 +102,24 @@ public:
         }
 
         // UB空间分配
+        pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
         // 双sibling每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存。
         const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_;
-        const uint32_t gamma1CacheElems = D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
-
-        // 将此前分别登记的7个纯TBuf合并为一个等容量工作池，并为各用途保留不重叠分段。
-        // 各段大小均为32B对齐，不改变UB布局、数据类型、读写顺序或队列同步；
-        // 只减少每核运行时InitBuffer的元数据初始化。D=7168时总UB仍为260448B。
-        uint32_t workBufBytes = 0U;
-        gamma0OffsetBytes_ = workBufBytes;
-        workBufBytes += D_ * sizeof(float);
-        x2Fp32OffsetBytes_ = workBufBytes;
-        workBufBytes += x2Fp32Rows * dimTile_ * sizeof(float);
-        x2CacheOffsetBytes_ = workBufBytes;
-        workBufBytes += K_ * sizeof(T);
-        resFp32OffsetBytes_ = workBufBytes;
-        workBufBytes += (N_ + 1U) * dimTile_ * sizeof(float);
-        postCombOffsetBytes_ = workBufBytes;
-        workBufBytes += POST_COMB_SIZE * sizeof(float);
-        scalarOffsetBytes_ = workBufBytes;
-        workBufBytes += SCALAR_BUF_SIZE;
-        gamma2OffsetBytes_ = workBufBytes;
-        workBufBytes += gamma1CacheElems * sizeof(float);
-        pipe_.InitBuffer(bufWork_, workBufBytes);
-
+        pipe_.InitBuffer(bufX2Fp32_, x2Fp32Rows * dimTile_ * sizeof(float));
+        // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
+        // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
+        pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
+        // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
+        // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
+        pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
+        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
+        const uint32_t gamma1CacheElems = D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
+        pipe_.InitBuffer(bufGamma2Fp32_, gamma1CacheElems * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
@@ -167,7 +157,7 @@ public:
             DataCopyExtParams gP = {1, 0, 0, 0, 0};
             gP.blockLen = dimTile_ * sizeof(float);
             DataCopyPadExtParams<float> gPad = {false, 0, 0, 0};
-            DataCopyPad(GetGamma0Fp32(), gamma0Gm_[0], gP, gPad);
+            DataCopyPad(bufGamma0Fp32_.Get<float>(), gamma0Gm_[0], gP, gPad);
             // gamma_2的形状为[N*D]，在RMSNorm_mid中按head加载
         }
 
@@ -196,41 +186,6 @@ public:
     //  各执行路径的方法，实现在独立头文件中
     // =================================================================
 private:
-    __aicore__ inline LocalTensor<float> GetGamma0Fp32()
-    {
-        return bufWork_.Get<float>()[gamma0OffsetBytes_ / sizeof(float)];
-    }
-
-    __aicore__ inline LocalTensor<float> GetX2Fp32()
-    {
-        return bufWork_.Get<float>()[x2Fp32OffsetBytes_ / sizeof(float)];
-    }
-
-    __aicore__ inline LocalTensor<T> GetX2Cache()
-    {
-        return bufWork_.Get<T>()[x2CacheOffsetBytes_ / sizeof(T)];
-    }
-
-    __aicore__ inline LocalTensor<float> GetResFp32()
-    {
-        return bufWork_.Get<float>()[resFp32OffsetBytes_ / sizeof(float)];
-    }
-
-    __aicore__ inline LocalTensor<float> GetPostComb()
-    {
-        return bufWork_.Get<float>()[postCombOffsetBytes_ / sizeof(float)];
-    }
-
-    __aicore__ inline LocalTensor<float> GetScalarBuf()
-    {
-        return bufWork_.Get<float>()[scalarOffsetBytes_ / sizeof(float)];
-    }
-
-    __aicore__ inline LocalTensor<float> GetGamma2Fp32()
-    {
-        return bufWork_.Get<float>()[gamma2OffsetBytes_ / sizeof(float)];
-    }
-
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     // =================================================================
@@ -259,7 +214,7 @@ private:
     {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
-        LocalTensor<float> postCombUb = GetPostComb();
+        LocalTensor<float> postCombUb = bufPostComb_.Get<float>();
         LocalTensor<float> hPostUb = postCombUb;
         LocalTensor<float> hResUb = postCombUb[ALIGN8]; // h_post[N] aligned to 8 elements
         {
@@ -282,28 +237,28 @@ private:
     /// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
     __aicore__ inline void CacheHOut(uint64_t gmOffset)
     {
-        LocalTensor<T> hOutCache = GetX2Cache();
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>();
         DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     }
 
     /// 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
     __aicore__ inline void CacheGamma0()
     {
-        LocalTensor<float> gamma0 = GetGamma0Fp32();
+        LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
         params.blockLen = D_ * sizeof(float);
         DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
         DataCopyPad(gamma0, gamma0Gm_, params, pad);
     }
 
-    /// 提前发起完整gamma1搬运到gamma0分段，使MTE2与R6的Vector计算重叠。
-    /// gamma0分段在R3完成后即空闲，R6的平方缓存gamma2分段不受影响。
+    /// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
+    /// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
     __aicore__ inline void StartCacheGamma1()
     {
         if (D_ > GAMMA1_CACHE_MAX_D) {
             return;
         }
-        LocalTensor<float> gamma1 = GetGamma0Fp32();
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
         params.blockLen = D_ * sizeof(float);
         DataCopyPadExtParams<float> pad = {false, 0, 0, 0};
@@ -335,7 +290,7 @@ private:
     /// 使用二叉树累加模式执行高精度ReduceSum。
     __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
     {
-        LocalTensor<float> scBuf = GetScalarBuf();
+        LocalTensor<float> scBuf = bufScalar_.Get<float>();
         constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
         uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
         uint32_t srcShape[2] = {1, tDAligned};
@@ -349,7 +304,7 @@ private:
     __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
     {
         // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
-        LocalTensor<float> sqBuf = GetGamma2Fp32();
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
         MhcNormRegBase::VFMul(sqBuf, src, src, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
@@ -358,8 +313,8 @@ private:
     /// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
     __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
     {
-        LocalTensor<T> hOutCache = GetX2Cache()[tOff];
-        LocalTensor<float> sqBuf = GetGamma2Fp32();
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
         MhcNormRegBase::VFCastB16ToFp32Square(sqBuf, hOutCache, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
@@ -385,9 +340,9 @@ private:
             DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
         bufResidualBf16_.EnQue(residual);
         residual = bufResidualBf16_.DeQue<T>();
-        LocalTensor<T> x2Cache = GetX2Cache();
-        LocalTensor<float> hOut = GetResFp32()[N_MAX * dimTile_];
-        LocalTensor<float> combWeights = GetPostComb()[ALIGN8];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
         for (uint32_t h = 0; h < N; h += 2U) {
             MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
@@ -410,7 +365,7 @@ private:
         for (uint32_t o = 0; o < N; ++o)
             xHatVals[o] *= invRmsPre;
 
-        LocalTensor<float> scBuf = GetScalarBuf();
+        LocalTensor<float> scBuf = bufScalar_.Get<float>();
         for (uint32_t i = 0; i < N; ++i)
             scBuf.SetValue(i, -(alpha0_ * xHatVals[i] + biasCache_[i]));
         LocalTensor<float> gateBuf = scBuf[EXP_DIV_ELEM];
@@ -475,9 +430,9 @@ private:
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX])
     {
-        LocalTensor<float> hOut = GetResFp32()[N_MAX * dimTile_];
-        LocalTensor<T> hOutCache = GetX2Cache()[tOff];
-        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, GetGamma0Fp32()[tOff], invRms0,
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
                                                           tD);
         PipeBarrier<PIPE_V>();
 
@@ -488,8 +443,8 @@ private:
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                     const float (&postVals)[N_MAX])
     {
-        LocalTensor<float> hOut = GetResFp32()[N_MAX * dimTile_];
-        LocalTensor<T> hOutCache = GetX2Cache()[tOff];
+        LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
 
         // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
         const uint32_t headBegin = laneId_ * 2U;
@@ -500,13 +455,13 @@ private:
         }
         bufResidualBf16_.EnQue(residual);
 
-        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, GetGamma0Fp32()[tOff], invRms0,
+        MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,
                                                           tD);
         PipeBarrier<PIPE_V>();
 
         residual = bufResidualBf16_.DeQue<T>();
-        LocalTensor<T> x2Cache = GetX2Cache();
-        LocalTensor<float> combWeights = GetPostComb()[ALIGN8];
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+        LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
         MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
                                                  hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
                                                  postVals[headBegin + 1U], tD);
@@ -517,8 +472,8 @@ private:
     // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
-        LocalTensor<float> x2 = GetX2Fp32();
-        LocalTensor<T> x2Cache = GetX2Cache();
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
         // R2已在成对VF尾部完成首次量化；这里只负责按需要恢复和写回。
@@ -547,8 +502,8 @@ private:
     // 写回x2_out时也只写这两行，leader会合后再从GM恢复follower的两行。
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
-        LocalTensor<float> x2 = GetX2Fp32();
-        LocalTensor<T> x2Cache = GetX2Cache();
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
         const uint32_t headBegin = laneId_ * 2U;
 
@@ -573,8 +528,8 @@ private:
     __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf)
     {
-        LocalTensor<T> hInCache = GetX2Cache()[tOff];
-        LocalTensor<float> sqBuf = GetGamma2Fp32();
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
         MhcNormRegBase::VFGateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
         return ReduceSumPrecise(sqBuf, tD);
@@ -586,8 +541,8 @@ private:
                                                   float (&dotHalf)[2][N_MAX], uint32_t halfBegin = 0,
                                                   uint32_t halfEnd = 2)
     {
-        LocalTensor<float> x2 = GetX2Fp32();
-        LocalTensor<float> reduceRows = GetResFp32();
+        LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
+        LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
 
         DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
         copyParams.blockLen = tD * sizeof(float);
@@ -674,7 +629,7 @@ private:
             }
 
             PipeBarrier<PIPE_V>();
-            LocalTensor<float> scBuf = GetScalarBuf();
+            LocalTensor<float> scBuf = bufScalar_.Get<float>();
             uint32_t reduceShape[2] = {N_MAX + 1, tD};
             // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
             ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
@@ -692,17 +647,16 @@ private:
     TPipe pipe_;
 
     // UB缓存
-    TBuf<TPosition::VECCALC> bufWork_;
+    TBuf<TPosition::VECCALC> bufGamma0Fp32_;
+    TBuf<TPosition::VECCALC> bufGamma2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Fp32_;
+    TBuf<TPosition::VECCALC> bufX2Cache_;
     TQue<TPosition::VECIN, 1> bufResidualBf16_;
+    TBuf<TPosition::VECCALC> bufResFp32_;
+    TBuf<TPosition::VECCALC> bufPostComb_;
     TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
-    uint32_t gamma0OffsetBytes_;
-    uint32_t x2Fp32OffsetBytes_;
-    uint32_t x2CacheOffsetBytes_;
-    uint32_t resFp32OffsetBytes_;
-    uint32_t postCombOffsetBytes_;
-    uint32_t scalarOffsetBytes_;
-    uint32_t gamma2OffsetBytes_;
+    TBuf<TPosition::VECCALC> bufScalar_;
 
     // GM张量
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
