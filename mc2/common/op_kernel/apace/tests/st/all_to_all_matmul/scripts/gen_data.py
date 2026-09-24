@@ -58,7 +58,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
         np.random.uniform(0.5, 1.0, (M_total, Ka)).astype(np.float16)
         for _ in range(rank_num)
     ]
-    b_ori = np.random.uniform(1.0, 1.0, (N, K)).astype(np.float16)
+    b_ori = np.random.uniform(0.5, 1.0, (N, K)).astype(np.float16)
     #bias = np.random.uniform(-0.5, 0.5, (N,)).astype(np.float32)
     bias = np.random.uniform(0.0, 0.0, (N,)).astype(np.float32)
 
