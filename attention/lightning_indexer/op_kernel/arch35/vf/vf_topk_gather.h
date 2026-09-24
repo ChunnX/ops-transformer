@@ -277,7 +277,8 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
                                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                                      Reg::MaskMergeMode::ZEROING,
+                                                                      RoundMode::UNKNOWN}; // LI: mask candidates.
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
@@ -287,7 +288,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
         Reg::DeInterleave(vreg3, vreg2, (Reg::RegTensor<uint8_t> &)vreg1U16, (Reg::RegTensor<uint8_t> &)vreg3U16);
 
         Reg::MaskReg pregEQ0 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
-        Reg::MaskReg pregEQ1 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg pregEQ1 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>(); // LI: mask candidates (pregEQ1).
         Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ0, vreg0, (Reg::RegTensor<uint8_t> &)idx0, pregB8Reg2);
         Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ1, vreg1, (Reg::RegTensor<uint8_t> &)idx1, pregB8Reg2);
 
@@ -393,7 +394,8 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
                                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                                      Reg::MaskMergeMode::ZEROING,
+                                                                      RoundMode::UNKNOWN}; // LI: mask candidates.
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
@@ -403,7 +405,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
         Reg::DeInterleave(vreg3, vreg2, (Reg::RegTensor<uint8_t> &)vreg1U16, (Reg::RegTensor<uint8_t> &)vreg3U16);
 
         Reg::MaskReg pregEQ0 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
-        Reg::MaskReg pregEQ1 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg pregEQ1 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>(); // LI: mask candidates (pregEQ1).
         Reg::MaskReg pregEQ2 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
         Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ0, vreg0, (Reg::RegTensor<uint8_t> &)idx0, pregB8Reg3);
         Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ1, vreg1, (Reg::RegTensor<uint8_t> &)idx1, pregB8Reg3);
@@ -702,7 +704,7 @@ __aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t> &indicesOutL
                                         uint32_t topK)
 {
     __ubuf__ uint32_t *indicesOutBuf = (__ubuf__ uint32_t *)indicesOutLocal.GetPhyAddr();
-    const uint16_t repeatSize32 = 64;
+    const uint16_t repeatSize32 = 64; // LI: top-k candidates.
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
     IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
 }

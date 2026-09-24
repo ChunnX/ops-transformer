@@ -374,7 +374,7 @@ public:
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
-    void GetOutputParaInfo();
+    void GetOutputParaInfo(); // SMLA: sequence bounds.
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
 
