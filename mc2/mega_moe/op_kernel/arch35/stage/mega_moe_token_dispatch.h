@@ -441,7 +441,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
      * 本核已在输入准备阶段更新同步计数，直接读取本核计数生成预期标签。
      * 整表搬入 UB 后批量检查本轮标签，包括零 count；失败退避重试，成功快照直接用于 cumsum。
      */
-    const int32_t syncCount = GetSyncCount(params.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+    auto *syncCountAddr = GetSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+    const int32_t syncCount = ReadGmBypassDCache(syncCountAddr);
     const uint32_t expectedSyncRoundTag = GetSyncRoundTag(syncCount);
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));

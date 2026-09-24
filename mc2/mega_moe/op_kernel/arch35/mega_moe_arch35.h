@@ -795,7 +795,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCoun
     }
     if (ownedExpertRange.count > 0U) {
         PipeBarrier<PIPE_MTE3>();
-        const int32_t syncCount = GetSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+        auto *syncCountAddr = GetSyncCountAddress(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+        const int32_t syncCount = ReadGmBypassDCache(syncCountAddr);
         SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
                                    sendMaskScratch_);
         if (sharedExpertNum_ > 0U || GetSubBlockIdx() == 1U) {
