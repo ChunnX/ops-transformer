@@ -90,12 +90,18 @@ def _truncate_runs(runs, cap=20):
     return sorted(by_len[:cap]), len(runs) - cap
 
 
-def render_density_map(counts, m, n, tile, width_limit=120):
-    """缩略密度图：每格一个符号，列方向超宽时分页打印。"""
+def render_density_map(mask_np, m, n, tile, width_limit=120):
+    """缩略密度图：自动粗化到 <=40 行 x <=80 列，避免超大矩阵刷屏。"""
+    rows_limit, cols_limit = 40, 80
+    map_tile = tile
+    while (m + map_tile - 1) // map_tile > rows_limit or (n + map_tile - 1) // map_tile > cols_limit:
+        map_tile *= 2
+    counts = _tile_counts(mask_np, m, n, map_tile)
     tr, tc = counts.shape
-    print(f"\n[visual] error density map  (each cell = {tile}x{tile} elements, "
-          f"tile grid {tr} rows x {tc} cols)")
-    print(f"[visual]   symbol: .:0  ::1-9  o:10-49  O:50-99  #:>=100 errors/cell")
+    coarsen = f" (auto-coarsened from {tile}x{tile} to {map_tile}x{map_tile})" if map_tile != tile else ""
+    print(f"\n[visual] error density map  (each cell = {map_tile}x{map_tile} elements, "
+          f"tile grid {tr} rows x {tc} cols){coarsen}")
+    print("[visual]   symbol: .:0  ::1-9  o:10-49  O:50-99  #:>=100 errors/cell")
     cell_w = 3  # 每列固定 3 字符（f"{c:>3}" / f"{sym:^3}"）
     page = max(1, (width_limit - 8) // cell_w)
     for c0 in range(0, tc, page):
@@ -103,7 +109,8 @@ def render_density_map(counts, m, n, tile, width_limit=120):
         hdr = "       " + "".join(f"{c:>3}" for c in range(c0, c1))
         print(f"[visual]    col-tile>{hdr}")
         for r in range(tr):
-            line = f"[visual]    {r*tile:>7}" + "".join(f"{_density_symbol(int(counts[r, c])):^3}" for c in range(c0, c1))
+            line = f"[visual]    {r*map_tile:>7}" + "".join(
+                f"{_density_symbol(int(counts[r, c])):^3}" for c in range(c0, c1))
             print(line)
 
 
@@ -115,6 +122,11 @@ def render_profiles(mask_np, m, n, tile):
     bad_cols = int(col_any.sum())
     print(f"\n[visual] row/col profile: bad rows {bad_rows}/{m} ({100.0*bad_rows/m:.1f}%), "
           f"bad cols {bad_cols}/{n} ({100.0*bad_cols/n:.1f}%)")
+
+    # 接近全坏：折叠明细，避免刷屏
+    if bad_rows >= 0.98 * m and bad_cols >= 0.98 * n:
+        print("[visual]   (corruption covers ~entire matrix; row/col runs and tile lists omitted)")
+        return
 
     rr, dropped_r = _truncate_runs(_bool_runs(row_any))
     if rr:
@@ -129,21 +141,21 @@ def render_profiles(mask_np, m, n, tile):
             seg += f" ... +{dropped_c} more"
         print(f"[visual]   bad-col runs: {seg}")
 
-    # 每 tile 的错误 tile 分布（仅打印有错误的，cap 20）
+    # 每 tile 的错误 tile 分布（仅打印有错误的，cap 8）
     counts = _tile_counts(mask_np, m, n, tile)
     rnz = [(r, int((counts[r] > 0).sum())) for r in range(counts.shape[0]) if (counts[r] > 0).any()]
     cnz = [(c, int((counts[:, c] > 0).sum())) for c in range(counts.shape[1]) if (counts[:, c] > 0).any()]
     if rnz:
         rnz = sorted(rnz, key=lambda x: x[1], reverse=True)
-        seg = " ".join(f"row-tile{r}({cnt})" for r, cnt in rnz[:20])
-        if len(rnz) > 20:
-            seg += f" ... +{len(rnz)-20} more"
+        seg = " ".join(f"row-tile{r}({cnt})" for r, cnt in rnz[:8])
+        if len(rnz) > 8:
+            seg += f" ... +{len(rnz)-8} more"
         print(f"[visual]   row-tiles containing errors (tile={tile}): {seg}")
     if cnz:
         cnz = sorted(cnz, key=lambda x: x[1], reverse=True)
-        seg = " ".join(f"col-tile{c}({cnt})" for c, cnt in cnz[:20])
-        if len(cnz) > 20:
-            seg += f" ... +{len(cnz)-20} more"
+        seg = " ".join(f"col-tile{c}({cnt})" for c, cnt in cnz[:8])
+        if len(cnz) > 8:
+            seg += f" ... +{len(cnz)-8} more"
         print(f"[visual]   col-tiles containing errors (tile={tile}): {seg}")
 
 
@@ -182,6 +194,11 @@ def render_focus(mask_np, counts, m, n, tile):
     if not comps:
         return
     (r0, c0, r1, c1), area = comps[0]
+    total_tiles = counts.shape[0] * counts.shape[1]
+    if area >= 0.95 * total_tiles:
+        print("\n[visual] largest error cluster covers ~entire matrix; focus grid omitted "
+              "(see density map)")
+        return
     er0, ec0 = r0 * tile, c0 * tile
     er1, ec1 = min(m - 1, (r1 + 1) * tile - 1), min(n - 1, (c1 + 1) * tile - 1)
     print(f"\n[visual] largest error cluster: element bbox rows [{er0},{er1}] x cols [{ec0},{ec1}] "
@@ -286,7 +303,7 @@ def render_visual(golden_tensor, npu_tensor, m, n, opts):
     if hint:
         print(f"\n[visual] pattern hint: {hint}")
 
-    render_density_map(counts, m, n, tile)
+    render_density_map(mask, m, n, tile)
     render_focus(mask, counts, m, n, tile)
 
 
