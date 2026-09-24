@@ -587,8 +587,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
             Reg::MulAddDst(dst0Reg, residualReg, weight00Reg, mask);
             Reg::MulAddDst(dst1Reg, residualReg, weight01Reg, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
-                                                              residualAddr + rowStride + i * VL_FP32);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + rowStride + i * VL_FP32);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
             Reg::MulAddDst(dst0Reg, residualReg, weight10Reg, mask);
             Reg::MulAddDst(dst1Reg, residualReg, weight11Reg, mask);
@@ -658,14 +657,16 @@ __aicore__ inline void VFGateWeightedSum(const LocalTensor<float> &dst, const Lo
     }
 }
 
-// R6一次VF完成四路门控和、低精度缓存以及量化后平方，保留低精度往返语义并消除中间FP32写回。
+// R6一次VF完成四路门控和、低精度缓存以及量化后平方；每个寄存器块立即归约为一个partial。
+// 避免完整平方tile的UB写回与读出，同时不跨D长期持有lane累加寄存器。
 template <typename T>
-__aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dstCache, const LocalTensor<float> &square,
-                                                       const LocalTensor<T> &src, uint32_t headStride,
-                                                       const LocalTensor<float> &gate, uint32_t count)
+__aicore__ inline void VFGateWeightedSumQuantizeBlockSum(const LocalTensor<T> &dstCache,
+                                                         const LocalTensor<float> &blockSum, const LocalTensor<T> &src,
+                                                         uint32_t headStride, const LocalTensor<float> &gate,
+                                                         uint32_t count)
 {
     __local_mem__ T *dstCacheAddr = (__local_mem__ T *)dstCache.GetPhyAddr();
-    __local_mem__ float *squareAddr = (__local_mem__ float *)square.GetPhyAddr();
+    __local_mem__ float *blockSumAddr = (__local_mem__ float *)blockSum.GetPhyAddr();
     __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
     __local_mem__ float *gateAddr = (__local_mem__ float *)gate.GetPhyAddr();
     uint32_t remain = count;
@@ -673,7 +674,7 @@ __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dst
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> srcReg, quantizedReg;
-        Reg::RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg;
+        Reg::RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg, partialReg;
         Reg::RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
         Reg::MaskReg mask;
         Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
@@ -703,7 +704,8 @@ __aicore__ inline void VFGateWeightedSumQuantizeSquare(const LocalTensor<T> &dst
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstCacheAddr + offset, quantizedReg, mask);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(quantizedFp32Reg, quantizedReg, mask);
             Reg::Mul(squareReg, quantizedFp32Reg, quantizedFp32Reg, mask);
-            Reg::StoreAlign(squareAddr + offset, squareReg, mask);
+            Reg::Reduce<Reg::ReduceType::SUM>(partialReg, squareReg, mask);
+            Reg::Store(blockSumAddr + i, partialReg, 1U);
         }
     }
 }
