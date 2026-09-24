@@ -114,6 +114,9 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
                                                            GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM,
                                                            GM_ADDR tilingGM)
 {
+#if defined(GMM_FR_FULL_MX)
+    AscendC::InitSocState();
+#endif
 #if defined(V310_GMM_FR_ANTI_QUANT)
 #if !defined(GMM_FR_BF16_OUTPUT)
 #ifndef DTYPE_BIAS
