@@ -186,7 +186,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | tensor | 必选 | 表示公式中的q | float16、bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
-| quant_mode | int | 必选 | 量化模式。支持1、2、3；模式1/2保持原FP8量化布局，模式3表示融合TQ4反量化。具体产品支持的量化模式见约束说明。 | int32 | - | -
+| quant_mode | int | 必选 | 量化模式。支持1、2、3；模式1/2保持原FP8量化布局，模式3表示融合TQ4反量化。具体产品支持的量化模式见约束说明。量化模式2仅支持layout_kv为PA_BBND。 | int32 | - | -
 | ori_kv | tensor | 可选 | 原始KV。quant_mode=1/2时使用fp8_e4m3；quant_mode=3时必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
 | cmp_kv | tensor | 可选 | 压缩KV。quant_mode=1/2时使用fp8_e4m3；quant_mode=3时必须传入uint8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
