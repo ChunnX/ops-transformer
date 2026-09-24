@@ -365,16 +365,6 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
                                                       "MxFP4 only supports layout_q_descale = BNSD"),
                 return ge::GRAPH_FAILED);
 
-    // MxFP4: 仅支持 Q_N == KV_N (即 G=1)
-    OP_CHECK_IF(
-        qfaInfo.n1Size != qfaInfo.n2Size,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key",
-                                               (ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-                                                ToString(qfaInfo.opParamInfo.key.shape->GetStorageShape()))
-                                                   .c_str(),
-                                               "MxFP4 only supports Q_N == KV_N (G=1, GQA is not supported)"),
-        return ge::GRAPH_FAILED);
-
     // MxFP4: D 仅支持 128
     const std::vector<int64_t> supportedHeadDims = {128};
     OP_CHECK_IF(
