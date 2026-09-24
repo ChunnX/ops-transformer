@@ -126,6 +126,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                 }
                 shareComputeOp.Process(0, 1);
             }
+#if defined(GMM_A2AV_DBG_EXTRA)
             if (tilingData_->taskTilingInfo.ubSize == 12UL) {
                 // 诊断档位 12：共享专家问题经路由实例完整复刻——isLocal=false 代码路径
                 // （LENGTH groupList + 三表构建，组行数取 sendCnt）+ dn 布局 + DTYPE_GMM_X_SCALE，
@@ -139,11 +140,13 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                      tilingData_, &tilingData_->sharedGmmTiling, gmmArrayAddr_, &pipe);
                 routedReplicaOp.Process(0, 1);
             }
+#endif
             hcommImpl.End();
         } else if (TILINGKEY_COMPUTE_MATMUL) {
             // dbg=8：仅共享专家（全维度，mm 张量地址），无 hcommImpl 实例
             GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                                mmArrayAddr_, tilingGM);
+#if defined(GMM_A2AV_DBG_EXTRA)
             if (tilingData_->taskTilingInfo.ubSize == 11UL) {
                 // 诊断档位 11：强制共享专家使用 dn（转置）B 布局实例——判别挂死是否
                 // 为 ND 布局实例特有（路由专家走 dn 实例正常；mm 张量为非转置物理布局，
@@ -155,7 +158,9 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                 shareDnOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
                 shareDnOp.Process(0, 1);
-            } else {
+            } else
+#endif
+            {
                 SharedGmmExpertOpType shareComputeOp;
                 shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                     sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
