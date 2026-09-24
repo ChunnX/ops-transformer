@@ -58,6 +58,12 @@ public:
         return epWorldSize_;
     }
 
+    // Mc2MoeContext 不携带窗口大小，返回 0 表示跳过窗口地址校验
+    __aicore__ inline uint64_t GetWinSize()
+    {
+        return 0UL;
+    }
+
     // 数据区基址在 epHcclBuffer 的 STATE_SIZE 之后；与 hccl helper 同语义。
     __aicore__ inline GM_ADDR GetWindAddrByRankId(int32_t rankId, int32_t /* curRankId */)
     {

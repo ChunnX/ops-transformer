@@ -62,6 +62,11 @@ public:
         return Mc2Kernel::GetRankDim(epContext_);
     }
 
+    __aicore__ inline uint64_t GetWinSize()
+    {
+        return Mc2Kernel::GetWinSize(epContext_);
+    }
+
     __aicore__ inline GM_ADDR GetWindAddrByRankId(int32_t rankId, int32_t curRankId)
     {
         return Mc2Kernel::GetBaseWindAddrByRankId(epContext_, rankId, curRankId);

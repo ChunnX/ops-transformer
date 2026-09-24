@@ -39,6 +39,8 @@ public:
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<float> smoothScalesTensor_;
     GlobalTensor<uint8_t> dynamicScalesOutGMTensor_;
+    // dynamicScalesOut 输出缓冲区字节数，0 表示不做越界校验
+    uint64_t dynamicScalesOutSize_{0};
 
     TBuf<> smoothScalesBuf_;
 
@@ -58,6 +60,11 @@ public:
 
         scalesInParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(float)), 0U, 0U};
         scalesPadParams_ = {true, 0, 0, 0};
+    }
+
+    __aicore__ inline void SetDynamicScalesOutSize(uint64_t dynamicScalesOutSize)
+    {
+        dynamicScalesOutSize_ = dynamicScalesOutSize;
     }
 
     __aicore__ inline void QuantInit(uint32_t &hAlignSize_, uint32_t &hOutSize_, uint32_t scaleInBytes_,
@@ -318,6 +325,17 @@ public:
                               .template ReinterpretCast<uint8_t>();
             }
 #endif
+            if (dynamicScalesOutSize_ != 0UL) {
+                uint64_t blockCnt = static_cast<uint64_t>(scaleOutParams.blockCount);
+                uint64_t blockBytes = static_cast<uint64_t>(scaleOutParams.blockLen) + scaleOutParams.dstStride;
+                uint64_t copySize = blockCnt > 0UL ? (blockCnt - 1UL) * blockBytes + scaleOutParams.blockLen : 0UL;
+                uint64_t scaleOutOffset = static_cast<uint64_t>(currentTokenIndex) * scaleOutBytes;
+                ascendc_assert(
+                    scaleOutOffset <= dynamicScalesOutSize_ && copySize <= dynamicScalesOutSize_ - scaleOutOffset,
+                    "dynamicScalesOut addr out of range, tokenIndex=%u, offset=%lu, copySize=%lu, "
+                    "outSize=%lu",
+                    currentTokenIndex, scaleOutOffset, copySize, dynamicScalesOutSize_);
+            }
             DataCopyPad(dynamicScalesOutGMTensor_[currentTokenIndex * scaleOutBytes], scaleLT, scaleOutParams);
         }
     }
