@@ -712,6 +712,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
     }
 }
 
+
 // ========================== LoadAndCastToFloat ==========================
 // Cast input T data to float. For T=float this is a DataCopy, otherwise Cast.
 template <typename T>
