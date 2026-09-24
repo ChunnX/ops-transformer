@@ -176,6 +176,7 @@ struct QfaRequiredParaInfo {
 struct QfaOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
+    const gert::StorageShape *shape = nullptr;
 };
 
 struct QfaParaInfo {
