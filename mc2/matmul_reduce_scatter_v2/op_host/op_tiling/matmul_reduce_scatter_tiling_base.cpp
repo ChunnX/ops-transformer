@@ -258,7 +258,7 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     uint8_t commAlg =
         isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY : (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8,
-                                            TPL_X1_X2_DTYPE_IS_OTHER, commAlg, commMode_);
+                                            TPL_X1_X2_DTYPE_IS_OTHER, commAlg, commMode_, false);
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", args_.isATrans, args_.isBTrans,
             inputIsBf16Fp16);
     return tilingKey;
@@ -385,8 +385,15 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
                     return false);
-    OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""), return false);
+    if (npuArch_ == Ops::Base::DAV_9201) {
+        // A6(ascend910_96)无CCU引擎，仅支持ai_cpu(gen_task按attr路由server，ccu必须在此拒绝)
+        OP_TILING_CHECK(std::strcmp(commMode, "ai_cpu") != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\""), return false);
+    } else {
+        OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""),
+                        return false);
+    }
     return CheckInputScale();
 }
 
@@ -461,6 +468,15 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()
     auto bType = context_->GetInputDesc(1)->GetDataType();
     auto cType = context_->GetOutputDesc(0)->GetDataType();
     const gert::StorageShape *matrix_bias = context_->GetOptionalInputShape(2);
+    if (matrix_bias != nullptr) {
+        const auto &biasShape = matrix_bias->GetStorageShape();
+        for (size_t i = 0; i < biasShape.GetDimNum(); ++i) {
+            if (biasShape.GetDim(i) <= 0) {
+                matrix_bias = nullptr; // 空 Tensor 按未启用 bias 处理。
+                break;
+            }
+        }
+    }
     if (matrix_bias == nullptr) {
         isBias = false;
         biasType = cType;
@@ -468,7 +484,10 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()
         biasType = context_->GetInputDesc(BIAS_INDEX)->GetDataType();
     }
 
-    uint64_t inputDtypeSize = mc2tiling::GetDataTypeSize(opName_, aType);
+    // HiFP4 仅复用 B4 的形状/存储预算，实际 dtype 保留在 geAType/geBType 中。
+    const auto tilingAType = aType == ge::DT_HIFLOAT4 ? ge::DT_FLOAT4_E2M1 : aType;
+    const auto tilingBType = bType == ge::DT_HIFLOAT4 ? ge::DT_FLOAT4_E2M1 : bType;
+    uint64_t inputDtypeSize = mc2tiling::GetDataTypeSize(opName_, tilingAType);
     uint64_t outputDtypeSize = mc2tiling::GetDataTypeSize(opName_, cType);
 
     args_.isBias = isBias;
@@ -476,8 +495,8 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()
     args_.geBType = bType;
     args_.geCType = cType;
     args_.geBiasType = biasType;
-    args_.aType = mc2tiling::ConvertGeTypeToMmType(opName_, aType);
-    args_.bType = mc2tiling::ConvertGeTypeToMmType(opName_, bType);
+    args_.aType = mc2tiling::ConvertGeTypeToMmType(opName_, tilingAType);
+    args_.bType = mc2tiling::ConvertGeTypeToMmType(opName_, tilingBType);
     args_.cType = mc2tiling::ConvertGeTypeToMmType(opName_, cType);
     args_.biasType = mc2tiling::ConvertGeTypeToMmType(opName_, biasType); // 因为bias可能不存在，先采用biasType规避
     args_.inputDtypeSize = inputDtypeSize;
