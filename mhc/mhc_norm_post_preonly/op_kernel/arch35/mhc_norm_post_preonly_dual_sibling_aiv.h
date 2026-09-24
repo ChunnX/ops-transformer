@@ -90,6 +90,14 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 }
             }
 
+            // 最后一块h_out已完成gamma0消费，且本块residual已经到达UB；此时复用gamma0缓存
+            // 提前搬运本lane首个gamma2 head，用最后一块R2与RMS_mid计算隐藏这笔MTE2。
+            if (tile + 1U == dimLoop_) {
+                FenceVToMte2();
+                LoadGammaInto(bufGamma0Fp32_.Get<float>(), gamma2Gm_, headBegin * D_, D_);
+                SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            }
+
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
             MhcNormRegBase::VFComputePostHeadPair<T>(
@@ -121,12 +129,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     if constexpr (USE_RMS_MID) {
-        // R2结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
-        // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
+        // 本lane第一个gamma2 head已在最后一块R2计算前整段预取，
+        // 下方RMS_mid跨核交换继续隐藏尚未完成的搬运尾部。
         LocalTensor<float> gammaEvenCache = bufGamma0Fp32_.Get<float>();
-        FenceVToMte2();
-        LoadGammaInto(gammaEvenCache, gamma2Gm_, headBegin * D_, D_);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
