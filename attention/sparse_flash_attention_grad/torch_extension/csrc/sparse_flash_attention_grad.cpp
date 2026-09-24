@@ -47,7 +47,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     const c10::optional<at::Tensor> &actualSeqLenQ, const c10::optional<at::Tensor> &actualSeqLenKv, std::string layout,
     int64_t sparseMode, int64_t winLeft, int64_t winRight, int64_t attentionMode)
 {
-    // attention_mode 为接口占位参数，暂不参与计算（仅收参，不转发到 aclnn/OpDef/tiling）
+    // attention_mode 为接口占位参数，暂不参与计算
     (void)attentionMode;
     // ---- 入参校验 ----
     TORCH_CHECK((query.scalar_type() == at::kBFloat16 || query.scalar_type() == at::kHalf),
@@ -101,11 +101,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
         auto localDevice = c10::Device(query.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
 
-        // 输出一律按连续内存分配：at::empty_symint 的 memory_format 默认是 Contiguous，
-        // 与输入布局无关。不能用 at::empty_like —— 它的 memory_format 默认是 Preserve，
-        // 会把输入的 stride 原样抄给输出：输入 query 非连续时 dq 会拿到
-        // (512, 8388608, 1) 这种与 buffer 实际布局不符的 stride，数据正确但按逻辑
-        // 索引取值整体错位。
         dq = at::empty_symint(query.sym_sizes(), query.options());
         dk = at::empty_symint(key.sym_sizes(), key.options());
         dv = valueConst.defined() ? at::empty_symint(valueConst.sym_sizes(), valueConst.options()) :
@@ -121,10 +116,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     }
 
     char *layoutPtr = const_cast<char *>(layout.c_str());
-    // aclnn 层接口仍保留 bool deterministic 位置参数，但 host tiling(arch35/arch22) 实际用的是
-    // context_->GetDeterministic()，即 torch.use_deterministic_algorithms(True/False) 下推的
-    // ACL_OPT_DETERMINISTIC，本参数在 host 层不生效（模板切换靠全局 flag）。
-    // 必须传左值 bool 变量：ACLNN_CMD 宏 ConvertTypes 要求参数可绑定非 const 左值引用，字面量 true 编不过。
+
     bool deterministic = true;
     ACLNN_CMD(aclnnSparseFlashAttentionGradV2, query, key, valueConst, sparseIndices, dOut, out, softmaxMax, softmaxSum,
               sinksConst, actualSeqLenQConst, actualSeqLenKvConst, queryRopeConst, keyRopeConst, scaleValue,
