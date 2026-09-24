@@ -282,7 +282,11 @@ wScaleGM = wScaleBaseGM + startExpertIdx·N1·scaleK · sizeof(scale)
 | groupListType | `gmmQuantParams.groupListType`（LENGTH） | 与原 tiling 一致 |
 
 **共享专家（isLocal=true）**：单组 groupList[0]=BS，偏移表全空，`Process(0,1)` 单次
-调用；在 `End()`（Finalize）之后执行，输出 mmY 不参与通信。
+调用；在 `End()`（Finalize）之后执行，输出 mmY 不参与通信。**维度取 MM 维度
+（N2/H2）而非 GMM 维度（N1/H1）**——其 L0 tiling 来自 sharedGmmTiling（按
+{BS, N2, H2} 切分），问题维度与之一致是正确性前提；早期版本误用 n1_/h1_，
+H1≠H2/N1≠N2 时 K/N 循环与 B/scaleB 布局错位，mmad 管线挂死（真机定位：
+路由专家精度正常、仅注释共享专家即可跑通）。
 
 ### 4.5 workspace 布局与 tiling 扩容
 
@@ -335,7 +339,7 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 | D4 | 复用原 `QuantGmmA2avTilingData` 与原 MM tiling 字段 | 接口与模板签名对齐 `QuantGroupedMatmul`，原算子目录侵入最小（tiling_common 零修改） |
 | D5 | kAL1/kBL1/scaleKAL1 = 0 兜底 baseK | 正确性优先；自定义 L1 窗口组合未经真机验证（历史上 stage=4 Blaze 挂死的嫌疑组合） |
 | D6 | 基址从固定基址绝对推导 | 相对累加在多批场景重复计入历史批偏移（实现期自查发现） |
-| D7 | 共享专家 m = BS（非 maxM） | 共享专家实际行数与路由专家 token 分布无关，maxM 上界可能小于 BS 导致行截断 |
+| D7 | 共享专家独立维度：m=BS、n=N2、k=H2（非 maxM/n1_/h1_） | 共享专家是独立 MM 问题（mmX[BS,H2]×mmWeight[H2,N2]），L0 tiling 亦按此切分；误用 GMM 维度（N1/H1）时 K/N 循环与 B/scaleB 布局错位，mmad 挂死（真机实证） |
 | D8 | workspace 扩容放在 MX tiling 类覆写（虚函数） | 公共 tiling_common 保持与主库字节一致；TT 类不受影响 |
 
 ## 6 已知限制与后续方向

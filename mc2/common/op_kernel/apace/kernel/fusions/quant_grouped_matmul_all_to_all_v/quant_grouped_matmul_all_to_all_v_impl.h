@@ -101,8 +101,10 @@ private:
     uint64_t expertTokenOffset_ = 0;
     uint64_t expertNumInOneRank_ = 0;
     uint64_t epWorldSize_ = 0;
-    uint64_t h1_ = 0;
-    uint64_t n1_ = 0;
+    uint64_t h1_{0};
+    uint64_t n1_{0};
+    uint64_t h2_{0};
+    uint64_t n2_{0};
     uint64_t bs_ = 0;
     uint64_t a_ = 0;
     uint64_t mMaxSize_ = 0;
@@ -139,6 +141,8 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     epWorldSize_ = tilingData_->taskTilingInfo.epWorldSize;
     h1_ = tilingData_->taskTilingInfo.H1;
     n1_ = tilingData_->taskTilingInfo.N1;
+    h2_ = tilingData_->taskTilingInfo.H2;
+    n2_ = tilingData_->taskTilingInfo.N2;
     bs_ = tilingData_->taskTilingInfo.BS;
     a_ = tilingData_->taskTilingInfo.A;
 
@@ -301,13 +305,18 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     const auto *mmTilingData = &gmmTilingData_->mmTilingData;
     const auto *gmmQuantParams = &gmmTilingData_->gmmQuantParams;
 
-    // 调度上界 M：路由专家取全专家最大 token 数；共享专家（isLocal 单组）实际行数为 BS
+    // 调度上界 M 与问题维度：路由专家取全专家最大 token 数与 GMM 维度（N1/H1）；
+    // 共享专家（isLocal 单组）实际行数为 BS，维度为 MM 维度（N2/H2）——其 L0 tiling
+    // （baseM/baseN/baseK）来自 sharedGmmTiling，按 {BS, N2, H2} 切分，问题维度
+    // 必须与之一致，否则 K/N 循环与 B/scaleB 布局错位（越界读→管线挂死）
     const int64_t maxM = isLocal ? static_cast<int64_t>(bs_) : static_cast<int64_t>(mMaxSize_);
+    const int64_t problemN = isLocal ? static_cast<int64_t>(n2_) : static_cast<int64_t>(n1_);
+    const int64_t problemK = isLocal ? static_cast<int64_t>(h2_) : static_cast<int64_t>(h1_);
     GMMTiling gmmParams;
     gmmParams.groupNum = isLocal ? 1U : expertNum * static_cast<uint32_t>(epWorldSize_);
     gmmParams.m = maxM;
-    gmmParams.n = static_cast<int64_t>(n1_);
-    gmmParams.k = static_cast<int64_t>(h1_);
+    gmmParams.n = problemN;
+    gmmParams.k = problemK;
     gmmParams.baseM = static_cast<uint32_t>(mmTilingData->baseM);
     gmmParams.baseN = static_cast<uint32_t>(mmTilingData->baseN);
     gmmParams.baseK = static_cast<uint32_t>(mmTilingData->baseK);
@@ -337,7 +346,7 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     }
 
     KernelParams params;
-    params.problemShape = ProblemShape{maxM, static_cast<int64_t>(n1_), static_cast<int64_t>(h1_), 0};
+    params.problemShape = ProblemShape{maxM, problemN, problemK, 0};
     params.mmadParams = mmadParams;
     params.groupListGmAddr = groupListGm_;
     params.gmmParams = gmmParams;
