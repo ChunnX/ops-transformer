@@ -428,6 +428,22 @@ private:
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
+            // === DEBUG (temporary): dump bias table + bias L1 content ===
+            static uint32_t dbgBiasDumpCnt = 0;
+            if (dbgBiasDumpCnt < 4) {
+                dbgBiasDumpCnt++;
+                AscendC::print("[DBG] bias: btAddr=%lu nl1Align=%lu curN0=%lu\n",
+                               static_cast<uint64_t>(btSlot.Addr()), static_cast<uint64_t>(nl1Align),
+                               static_cast<uint64_t>(curN0));
+                __biasbuf__ float *btDbg = reinterpret_cast<__biasbuf__ float *>(btSlot.Addr());
+                float *l1Dbg = reinterpret_cast<float *>(biasL1Slot.Addr());
+                uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
+                for (uint64_t d = 0; d < dumpN; ++d) {
+                    AscendC::print("[DBG] bias bt[%lu]=%f  l1[%lu]=%f\n", d, static_cast<float>(btDbg[d]), d,
+                                   static_cast<float>(l1Dbg[d]));
+                }
+            }
+            // === DEBUG end ===
         }
 
         return AscendC::Std::make_tuple(tensorAL0, tensorBL0, tensorBiasL0);
