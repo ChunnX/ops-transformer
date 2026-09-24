@@ -749,10 +749,19 @@ public:
     __aicore__ inline void LoadPToL0B(const RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore,
                                         uint32_t subKIdx, uint32_t actSubKSize)
     {
-        // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1（固定满宽）、ifTranspose=true。
+        // m/k 方向对齐 DN LoadPToL0（量产）：m 沿 S2（subK 切片）、k 沿 S1、ifTranspose=true。
         // subLoop 粒度槽（L1 v3）：每 subK 一槽 [128,128]，mStartPosition 恒 0、srcStride 恒 8
         //（槽内行数固定 128），subK → 槽选择（ring = loop×2+subK，核间交错 L1_PSLOT）
         uint32_t actSubKSizeAlign64 = (actSubKSize + 63U) / 64U * 64U;  // S2 方向 64 对齐（DN 同款）
+
+        // S1 呈现宽度契约（2026-09-24 S1 非对齐修复）：转置加载下 Mmad 的 n 落在 doc-K（S1）轴，
+        // dstStride 必须与 MatmulVP 按自身 n 的紧凑分形距匹配（= n/16），kStep/xStep 同步收窄——
+        // load 宽、Mmad 窄依然错位。旧固定满宽 pitch 8 在 V1/V0 部分列（n=64）时 K 分形组 2+ 全部
+        // 读错地址，V1 整半输出全错（n=128 时 8 恰好匹配，满宽/全空用例无法暴露）
+        uint32_t actVecS1Size = (vCore == 0U)
+            ? AttentionCommon::Min(runInfo.actMSize, S1_SUB_BLOCK_SIZE)
+            : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
+        uint32_t actVecS1SizeAlign32 = (actVecS1Size + 31U) / 32U * 32U;  // 与 MatmulVP 的 n 同源
 
         uint32_t pRing = L1_PRING(runInfo.loop, subKIdx);
         uint32_t pL1Offset = L1_PSLOT(vCore, pRing);
@@ -762,15 +771,15 @@ public:
         dataParams.mStartPosition = 0U;                                  // 恒 0（subK → 槽选择）
         dataParams.kStartPosition = 0U;
         dataParams.mStep = actSubKSizeAlign64 / 16U;                     // m 沿 S2：本 subK 有效行
-        dataParams.kStep = S1_SUB_BLOCK_SIZE / 32U;                      // k 沿 S1：固定满宽 128/32=4
+        dataParams.kStep = actVecS1SizeAlign32 / 32U;                    // k 沿 S1：本核呈现宽（128→4，64→2）
         dataParams.srcStride = 128U / 16U;                                // 恒 8（槽内行数固定 128）
-        dataParams.dstStride = S1_SUB_BLOCK_SIZE / 16U;                   // L0B 固定 pitch 128/16=8
+        dataParams.dstStride = actVecS1SizeAlign32 / 16U;                 // 与 MatmulVP n 匹配（128→8，64→4）
         dataParams.ifTranspose = true;                                    // L1 NZ [S2,S1] → L0B [K=S2, N=S1]
 
         LoadData2DMxParams scaleParams;
         scaleParams.xStartPosition = 0U;                                  // x 沿 S1（与 data k 同向）
         scaleParams.yStartPosition = 0U;                                  // 恒 0（槽即本 subK 专属）
-        scaleParams.xStep = S1_SUB_BLOCK_SIZE / 16U;                      // 128/16 = 8
+        scaleParams.xStep = actVecS1SizeAlign32 / 16U;                    // 本核呈现宽（128→8，64→4）
         scaleParams.yStep = (actSubKSizeAlign64 + 63U) / 64U;             // 本 subK 的 y 单元数（128→2，64→1）
         scaleParams.srcStride = 3U;                                       // x 行距 = 2 y + 1 bank pad（DN 款）
         scaleParams.dstStride = scaleParams.yStep;
