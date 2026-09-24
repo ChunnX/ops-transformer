@@ -34,7 +34,7 @@ public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
+    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize;
     static constexpr uint32_t vec1HalfS1BaseSize = s1BaseSize; // __NPU_ARCH__ == 5102 does not have sameab
     static constexpr uint32_t vec1S2CopyCountDn = s1BaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
@@ -122,8 +122,8 @@ public:
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TQue<QuePosition::VECIN, 1> pseInQue;
     TBuf<> stage2OutBuf;
-    TEventID mte3ToVId[2];               // 存放MTE3_V的eventId, 2份表示可能存在pingpong
-    TEventID vToMte3Id[2];               // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
+    TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
     CVSyncEventIds *cvSyncPtr = nullptr; // C/V跨队列同步事件号, 由KernelBase注入
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
@@ -276,10 +276,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     stage1CastTensor = this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     //-------------------------Data copy to l1-------------------------
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-    DataCopy(mm2AL1Tensor[0], stage1CastTensor[0], {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, vec1S2CopyLenDn});
-    // 16:sinner / 2 * 32; 64:sinner / 2 * 32 * souter / 32
-    DataCopy(mm2AL1Tensor[s2BaseSize * 16], stage1CastTensor[s2BaseSize * 64],
-             {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, vec1S2CopyLenDn});
+    DataCopy(mm2AL1Tensor, stage1CastTensor, {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, 0});
     SetFlag<HardEvent::MTE3_MTE1>(cvSyncPtr->syncV1C2Mte3Mte1[runInfo.taskIdMod3]);
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);

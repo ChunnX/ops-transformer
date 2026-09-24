@@ -89,7 +89,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
                                                           preg_all_b16);
                 Reg::Select(vreg_input_x, vreg_min, vreg_input_x, preg_mask);
             }
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x, preg_all_b16);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x, preg_ori_tail_n);
             Reg::ReduceMax<T, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_x, preg_all_b16);
             Reg::DataCopyUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(maxUb, vreg_input_max, ureg_max, 1);
         }
@@ -101,7 +101,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
             Reg::DataCopy<T, Reg::LoadDist::DIST_BRC_B16>(vreg_max_brc, maxUbStart + i);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x, srcUb + i * sInner);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res, vreg_input_x,
-                                                                                     vreg_max_brc, preg_all_b16);
+                                                                                     vreg_max_brc, preg_ori_tail_n);
 
             static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -213,9 +213,9 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
                 Reg::Select(vreg_input_x_1, vreg_min, vreg_input_x_1, preg_mask_1);
                 Reg::Select(vreg_input_x_2, vreg_min, vreg_input_x_2, preg_mask_2);
             }
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_ori_tail_n_1);
             Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2,
-                                                            preg_all_b16);
+                                                            preg_ori_tail_n_2);
             Reg::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
             Reg::ReduceMax<T, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
             Reg::DataCopyUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(maxUb, vreg_input_max, ureg_max, 1);
@@ -229,9 +229,9 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res_1, vreg_input_x_1,
-                                                                                     vreg_max_brc, preg_all_b16);
+                                                                                     vreg_max_brc, preg_ori_tail_n_1);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res_2, vreg_input_x_2,
-                                                                                     vreg_max_brc, preg_all_b16);
+                                                                                     vreg_max_brc, preg_ori_tail_n_2);
             static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
@@ -378,7 +378,7 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl128(
                                                           preg_all_b16);
                 Reg::Select(vreg_input_x, vreg_min, vreg_input_x, preg_mask);
             }
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x, preg_all_b16);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x, preg_ori_tail_n);
             Reg::ReduceMax<T, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_x, preg_all_b16);
             Reg::DataCopyUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vreg_input_max, ureg_max, 1);
         }
@@ -403,7 +403,7 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl128(
             Reg::DataCopy<T, Reg::LoadDist::DIST_BRC_B16>(vreg_max, maxUb + i);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x, srcUb + i * sInner);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res, vreg_input_x,
-                                                                                     vreg_max, preg_all_b16);
+                                                                                     vreg_max, preg_ori_tail_n);
 
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -531,11 +531,11 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-
+        
         Reg::MaskReg preg_ori_tail_n_1 = Reg::UpdateMask<T>(maskLen1);
         Reg::MaskReg preg_ori_tail_n_2 = Reg::UpdateMask<T>(maskLen2);
 
-        Reg::Duplicate(vreg_min, minValue);
+        Duplicate(vreg_min, minValue);
 
         for (uint16_t i = 0; i < rows; ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
@@ -558,9 +558,9 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
                 Reg::Select(vreg_input_x_1, vreg_min, vreg_input_x_1, preg_mask_1);
                 Reg::Select(vreg_input_x_2, vreg_min, vreg_input_x_2, preg_mask_2);
             }
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_ori_tail_n_1);
             Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2,
-                                                            preg_all_b16);
+                                                            preg_ori_tail_n_2);
             Reg::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
             Reg::ReduceMax<T, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
             Reg::DataCopyUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vreg_input_max, ureg_max, 1);
@@ -588,9 +588,9 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res_1, vreg_input_x_1,
-                                                                                     vreg_max, preg_all_b16);
+                                                                                     vreg_max, preg_ori_tail_n_1);
             Reg::FusedExpSub<T, T, Reg::RegLayout::ONE, Reg::MaskMergeMode::ZEROING>(vreg_exp_res_2, vreg_input_x_2,
-                                                                                     vreg_max, preg_all_b16);
+                                                                                     vreg_max, preg_ori_tail_n_2);
 
             if constexpr (IsSameType<T2, int8_t>::value) {
                 Reg::Muls<half, half, Reg::MaskMergeMode::ZEROING>(vreg_muls_res_1, vreg_exp_res_1, (half)quantScaleP,
