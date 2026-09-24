@@ -322,7 +322,7 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv", "The tensor of ori_kv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (std::string(opParamInfo_.layoutKv) == "PA_BBND") {
+    if (std::string(opParamInfo_.layoutKv) == "PA_BBND" && *opParamInfo_.topkValueMode != 2) {
         OP_CHECK_IF(
             opParamInfo_.oriBlockTable.tensor == nullptr,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
@@ -853,6 +853,14 @@ ge::graphStatus SMLAInfoParser::GetS1Size()
 
 ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
 {
+    if (*opParamInfo_.topkValueMode == 2) {
+        // Physical offsets address KV cache blocks directly, without a block table.
+        oriMaxBlockNumPerBatch_ = GetAxisNum(oriKvShape_, SMLAAxis::Bn, kvLayout_);
+        if (opParamInfo_.cmpKv.tensor != nullptr) {
+            cmpMaxBlockNumPerBatch_ = GetAxisNum(cmpKvShape_, SMLAAxis::Bn, kvLayout_);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
@@ -2341,10 +2349,11 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint64_t oriUbSize = (isPa ? paExtraUb : 0U) + static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int64_t);
     uint64_t vectorizeUbSize = std::max(cmpUbSize, oriUbSize);
-    vectorizeFlag = static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                          (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
+    vectorizeFlag =
+        static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                              tilingInfo->topkValueMode == 1 && (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
 
     if (vectorizeFlag == 0U) {
         return 0ULL;
@@ -2480,7 +2489,8 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64); // 64：分组拆分阈值
     }
     tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag);
+                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag,
+                                   static_cast<uint32_t>(tilingInfo->topkValueMode));
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 
