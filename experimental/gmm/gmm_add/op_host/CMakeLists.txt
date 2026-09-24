@@ -1,0 +1,7 @@
+add_op_to_compiled_list()
+if(BUILD_OPEN_PROJECT)
+  target_sources(op_host_aclnn PRIVATE gmm_add_def.cpp)
+endif()
+if(NOT BUILD_OPS_RTY_KERNEL)
+  add_modules_sources(OPTYPE gmm_add ACLNNTYPE aclnn)
+endif()
