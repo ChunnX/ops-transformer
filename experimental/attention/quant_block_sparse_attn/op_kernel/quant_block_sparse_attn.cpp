@@ -107,7 +107,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
             AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
                 FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
         }
-        // MX 支持 TND/BSND/BNSD + PA BNBD；D256 的 S2 logical tile 为 256，其余为 512。
+        // MX supports TND/BSND/BNSD with PA BNBD; the logical S2 tile is 256 for D256 and 512 otherwise.
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 ||
                       Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ||
                       Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256,

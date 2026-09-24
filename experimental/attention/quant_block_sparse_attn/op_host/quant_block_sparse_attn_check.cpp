@@ -572,8 +572,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if ((tilingInfo_.dSize != 64U && tilingInfo_.dSize != 128U && tilingInfo_.dSize != 256U) ||
-            tilingInfo_.dSizeV != tilingInfo_.dSize) {
+        if (!QBSAIsSupportedMxHeadDim(tilingInfo_.dSize) || tilingInfo_.dSizeV != tilingInfo_.dSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "dSize/dSizeV", std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
                 "MXFP8 requires dSize=dSizeV in {64,128,256}");

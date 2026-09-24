@@ -81,7 +81,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
     }
 
     if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if (tilingInfo.dSize != 64U && tilingInfo.dSize != 128U && tilingInfo.dSize != 256U) {
+        if (!QBSAIsSupportedMxHeadDim(tilingInfo.dSize)) {
             OP_LOGE_FOR_INVALID_VALUE(kOpName, "query head_dim (dSize)", std::to_string(tilingInfo.dSize),
                                       "64, 128 or 256");
             return ge::GRAPH_FAILED;
