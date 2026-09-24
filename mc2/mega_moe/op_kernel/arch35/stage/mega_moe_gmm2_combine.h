@@ -614,7 +614,8 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 
 // 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
 // 当前 GMM2 problem 的起始地址和 M 大小共同限定 token 范围，无需再次遍历专家或重建 scheduler。
-// UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
+// metadata 使用双缓冲，两个 32 KiB 数据槽跨 tile 复用，使下一 tile 的 metadata 和首 chunk MTE2
+// 能与当前 tile 尾部的 MTE3 重叠；函数退出时再统一排空数据槽。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
@@ -624,12 +625,24 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
     constexpr uint32_t bufferCount = 2U;
     constexpr uint32_t chunkElements = chunkRows * L1_TILE_N;
     constexpr uint32_t chunkBytes = chunkElements * sizeof(ElementC);
+    constexpr uint32_t metaSlotRows = L1_TILE_M_256;
+    constexpr uint32_t metaSlotElements = metaSlotRows * META_INFO_SIZE;
+    constexpr uint32_t metaSlotBytes = metaSlotElements * sizeof(int32_t);
     static_assert(chunkBytes == 32U * 1024U, "non-quant Combine chunk must be 32 KiB");
     static_assert(WAVE_COMBINE_UB_BASE + bufferCount * chunkBytes <= WAVE_COMBINE_UB_LIMIT,
                   "non-quant Combine ping-pong buffers exceed reserved UB");
+    static_assert(bufferCount * metaSlotRows <= WAVE_COMBINE_META_INFO_TOKEN_CAPACITY,
+                  "non-quant Combine metadata ping-pong buffers exceed reserved UB");
 
     auto chunkUbLayout = MakeLayoutC{}(chunkRows, L1_TILE_N);
     auto copyGmToUb = asc::te::make_copy(asc::te::copy_gm_to_ub{});
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+
+    uint32_t currentMetaSlot = 0U;
+    uint32_t currentFirstChunkSlot = 0U;
+    bool currentTilePrefetched = false;
+
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -638,64 +651,87 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         uint32_t tileRows = Get<M_VALUE>(actualShape);
         uint32_t validN = Get<N_VALUE>(actualShape);
 
-        // GMM2 的 ready/ACK 仍保持原 scheduler tile 粒度，64 行 chunk 只是 AIV 内部流水。
-        gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
-        if (tileRows == 0U || validN == 0U) {
-            // 防御性空 tile：让 MTE3 上的 ACK 显式依赖 MTE2 上已消费的 ready，避免跨 pipe 提前归还额度。
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-            gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
-            continue;
+        // 首个 tile 在函数入口准备；后续 tile 的 metadata 和首 chunk 已在前一 tile 尾部提交。
+        if (!currentTilePrefetched) {
+            gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
+            if (tileRows == 0U || validN == 0U) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
+                continue;
+            }
+
+            uint32_t metaUbAddr = META_INFO_TENSOR_ADDR + currentMetaSlot * metaSlotBytes;
+            LocalTensor<int32_t> metaInfoTensor =
+                LocalTensor<int32_t>(TPosition::VECCALC, metaUbAddr, metaSlotElements);
+            GlobalTensor<int32_t> metaInfoGm;
+            metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
+            AscendC::DataCopy(metaInfoTensor, metaInfoGm, tileRows * META_INFO_SIZE);
+            TEventID metaEventId = static_cast<TEventID>(
+                static_cast<int32_t>(EVENT_ID6) + static_cast<int32_t>(currentMetaSlot));
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(metaEventId);
+
+            TEventID firstChunkEventId = static_cast<TEventID>(
+                static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(currentFirstChunkSlot));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(firstChunkEventId);
+            uint32_t firstChunkRows = tileRows < chunkRows ? tileRows : chunkRows;
+            uint32_t firstChunkUbBase = WAVE_COMBINE_UB_BASE + currentFirstChunkSlot * chunkBytes;
+            auto firstChunkUbStorage = asc::te::make_tensor(
+                asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(firstChunkUbBase), chunkUbLayout);
+            auto firstChunkUbTensor = firstChunkUbStorage.slice(
+                asc::te::make_coord(0U, 0U), asc::te::make_shape(firstChunkRows, validN));
+            auto firstChunkGmTensor = l0cOutGm.slice(
+                asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(firstChunkRows, validN));
+            asc::te::copy(copyGmToUb, firstChunkUbTensor, firstChunkGmTensor);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(firstChunkEventId);
         }
+        currentTilePrefetched = false;
 
-        GlobalTensor<int32_t> metaInfoGm;
+        uint32_t metaUbAddr = META_INFO_TENSOR_ADDR + currentMetaSlot * metaSlotBytes;
         LocalTensor<int32_t> metaInfoTensor =
-            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, tileRows * META_INFO_SIZE);
-        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(metaInfoTensor, metaInfoGm, tileRows * META_INFO_SIZE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+            LocalTensor<int32_t>(TPosition::VECCALC, metaUbAddr, metaSlotElements);
+        TEventID metaEventId = static_cast<TEventID>(
+            static_cast<int32_t>(EVENT_ID6) + static_cast<int32_t>(currentMetaSlot));
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(metaEventId);
 
-        // 两个 32 KiB 槽初始为空闲。先预取 chunk 0，稳态中先预取下一 chunk，再发送当前 chunk。
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         uint32_t chunkCount = Ops::Base::CeilDiv(tileRows, chunkRows);
-
-        // Prologue：把第一个 chunk 搬入 slot 0。
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        uint32_t firstChunkRows = tileRows < chunkRows ? tileRows : chunkRows;
-        auto firstChunkUbStorage = asc::te::make_tensor(
-            asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(WAVE_COMBINE_UB_BASE), chunkUbLayout);
-        auto firstChunkUbTensor = firstChunkUbStorage.slice(
-            asc::te::make_coord(0U, 0U), asc::te::make_shape(firstChunkRows, validN));
-        auto firstChunkGmTensor = l0cOutGm.slice(
-            asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(firstChunkRows, validN));
-        asc::te::copy(copyGmToUb, firstChunkUbTensor, firstChunkGmTensor);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+        uint32_t nextLoopIdx = loopIdx + config.blockNum;
+        bool hasNextTile = nextLoopIdx < tileNum;
+        uint32_t nextMLoc = 0U;
+        uint32_t nextNLoc = 0U;
+        uint32_t nextTileRows = 0U;
+        uint32_t nextValidN = 0U;
+        uint32_t nextMetaSlot = 1U - currentMetaSlot;
+        uint32_t nextFirstChunkSlot = (currentFirstChunkSlot + chunkCount) & 1U;
+        bool nextTileValid = false;
+        if (hasNextTile) {
+            auto nextBlockCoord = scheduler.GetBlockCoord(nextLoopIdx);
+            auto nextActualShape = scheduler.GetBlockShape(nextBlockCoord);
+            nextMLoc = Get<M_VALUE>(nextBlockCoord);
+            nextNLoc = Get<N_VALUE>(nextBlockCoord);
+            nextTileRows = Get<M_VALUE>(nextActualShape);
+            nextValidN = Get<N_VALUE>(nextActualShape);
+            nextTileValid = nextTileRows != 0U && nextValidN != 0U;
+        }
 
         for (uint32_t chunkIndex = 0U; chunkIndex < chunkCount; ++chunkIndex) {
             uint32_t rowOffset = chunkIndex * chunkRows;
             uint32_t currentRows = tileRows - rowOffset;
             currentRows = currentRows < chunkRows ? currentRows : chunkRows;
-            uint32_t slot = chunkIndex & 1U;
+            uint32_t slot = (currentFirstChunkSlot + chunkIndex) & 1U;
             TEventID eventId =
                 static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
-
-            // 当前槽 copy-in 完成后才允许 MTE3 读取。
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
 
-            // Steady state：先向另一槽提交下一 chunk 的 MTE2，再提交当前 chunk 的 MTE3 发送。
             if (chunkIndex + 1U < chunkCount) {
                 uint32_t nextChunkIndex = chunkIndex + 1U;
                 uint32_t nextRowOffset = nextChunkIndex * chunkRows;
                 uint32_t nextRows = tileRows - nextRowOffset;
                 nextRows = nextRows < chunkRows ? nextRows : chunkRows;
-                uint32_t nextSlot = nextChunkIndex & 1U;
-                TEventID nextEventId =
-                    static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(nextSlot));
-
-                // 下一槽上一次的发送结束后才可覆盖；该等待只约束 MTE2，不阻塞当前槽的 MTE3。
+                uint32_t nextSlot = (currentFirstChunkSlot + nextChunkIndex) & 1U;
+                TEventID nextEventId = static_cast<TEventID>(
+                    static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(nextSlot));
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(nextEventId);
                 uint32_t nextChunkUbBase = WAVE_COMBINE_UB_BASE + nextSlot * chunkBytes;
                 auto nextChunkUbStorage = asc::te::make_tensor(
@@ -706,6 +742,18 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
                     asc::te::make_coord(mLoc + nextRowOffset, nLoc), asc::te::make_shape(nextRows, validN));
                 asc::te::copy(copyGmToUb, nextChunkUbTensor, nextChunkGmTensor);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(nextEventId);
+            } else if (nextTileValid) {
+                // 当前 tile 的最后一个 chunk 已在 UB，此时预取下一 tile metadata 到另一槽。
+                uint32_t nextMetaUbAddr = META_INFO_TENSOR_ADDR + nextMetaSlot * metaSlotBytes;
+                LocalTensor<int32_t> nextMetaInfoTensor =
+                    LocalTensor<int32_t>(TPosition::VECCALC, nextMetaUbAddr, metaSlotElements);
+                GlobalTensor<int32_t> nextMetaInfoGm;
+                nextMetaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                    gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(nextMLoc) * META_INFO_SIZE * sizeof(int32_t)));
+                AscendC::DataCopy(nextMetaInfoTensor, nextMetaInfoGm, nextTileRows * META_INFO_SIZE);
+                TEventID nextMetaEventId = static_cast<TEventID>(
+                    static_cast<int32_t>(EVENT_ID6) + static_cast<int32_t>(nextMetaSlot));
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(nextMetaEventId);
             }
 
             uint32_t chunkUbBase = WAVE_COMBINE_UB_BASE + slot * chunkBytes;
@@ -717,11 +765,31 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         }
 
-        // Epilogue：排空两个槽的最后一批发送后，才向 AIC 归还当前 GMM2 tile 的额度。
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        // ACK 排在当前 tile 全部 MTE3 之后提交；下一 tile MTE2 可与尚在执行的 MTE3/ACK 并行。
         gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
+        if (nextTileValid) {
+            gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
+            TEventID nextFirstChunkEventId = static_cast<TEventID>(
+                static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(nextFirstChunkSlot));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(nextFirstChunkEventId);
+            uint32_t nextFirstChunkRows = nextTileRows < chunkRows ? nextTileRows : chunkRows;
+            uint32_t nextFirstChunkUbBase = WAVE_COMBINE_UB_BASE + nextFirstChunkSlot * chunkBytes;
+            auto nextFirstChunkUbStorage = asc::te::make_tensor(
+                asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(nextFirstChunkUbBase), chunkUbLayout);
+            auto nextFirstChunkUbTensor = nextFirstChunkUbStorage.slice(
+                asc::te::make_coord(0U, 0U), asc::te::make_shape(nextFirstChunkRows, nextValidN));
+            auto nextFirstChunkGmTensor = l0cOutGm.slice(
+                asc::te::make_coord(nextMLoc, nextNLoc), asc::te::make_shape(nextFirstChunkRows, nextValidN));
+            asc::te::copy(copyGmToUb, nextFirstChunkUbTensor, nextFirstChunkGmTensor);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(nextFirstChunkEventId);
+            currentMetaSlot = nextMetaSlot;
+            currentFirstChunkSlot = nextFirstChunkSlot;
+            currentTilePrefetched = true;
+        }
     }
+
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
 // 执行 A8W4 GMM2 tile 循环。
