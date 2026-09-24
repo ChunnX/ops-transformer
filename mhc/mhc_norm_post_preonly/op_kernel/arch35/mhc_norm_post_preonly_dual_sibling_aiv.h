@@ -57,8 +57,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
+                                                              invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -103,6 +103,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
         }
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
+        if constexpr (!USE_RMS_MID) {
+            if (laneId_ == 1U && tile + 1U == dimLoop_) {
+                // 在最后一块x2_out的MTE3完成后立即通知leader，使回读可与follower的R4/R5收尾重叠。
+                CrossCoreSetFlag<0x1, PIPE_MTE3>(X2_READY_FLAG);
+            }
+        }
 
         if constexpr (USE_RMS_MID) {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
@@ -164,8 +170,22 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true);
+            if (laneId_ == 1U && tile + 1U == dimLoop_) {
+                // 独立就绪标志只约束x2_out可见性，不等待后续partial归约与打包。
+                CrossCoreSetFlag<0x1, PIPE_MTE3>(X2_READY_FLAG);
+            }
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
+    }
+
+    // leader本地R4/R5结束时，follower通常仍在收尾；先安全发起两行x2回读，
+    // 让20KB MTE2与follower的partial生成及下方跨核会合重叠。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    if (laneId_ == 0U) {
+        CrossCoreWaitFlag<0x1, PIPE_MTE2>(X2_READY_FLAG);
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
@@ -201,15 +221,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
-    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    if constexpr (USE_RMS_MID) {
-        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    }
-
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -218,10 +229,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
-    if constexpr (!USE_RMS_MID) {
-        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
