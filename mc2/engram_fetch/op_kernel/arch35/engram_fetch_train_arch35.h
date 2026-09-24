@@ -346,10 +346,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
     if (sfTableAddr != nullptr && numSfPacks_ > 0) {
         AscendC::GlobalTensor<int64_t> sfAddrTensor;
         sfAddrTensor.SetGlobalBuffer((__gm__ int64_t *)sfTableAddr);
-        uint64_t sfAddr = static_cast<uint64_t>(sfAddrTensor.GetValue(0));
-        if (sfAddr != 0U) {
-            sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(sfAddr);
-        }
+        sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(static_cast<uint64_t>(sfAddrTensor.GetValue(0)));
     }
     hasSf_ = numSfPacks_ > 0 && sfElemSize_ > 0 && sfTableGM_ != nullptr && fetchedSfGM_ != nullptr;
     rowStride_ = hasSf_ ? (static_cast<uint64_t>(hiddenBytes_) + sfBytes_) : static_cast<uint64_t>(hiddenBytes_);
