@@ -453,11 +453,12 @@ __aicore__ inline void LoadAndComputeExpertCountTable(const MoeStageCommonConfig
      * 本核已在输入准备阶段更新同步计数，直接读取本核计数生成预期标签。
      * 整表搬入 UB 后批量检查本轮标签，包括零 count；失败退避重试，成功快照直接用于 cumsum。
      */
-    const int32_t syncCount = GetSyncCount(params.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+    auto *syncCountAddr = GetSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+    const int32_t syncCount = ReadGmBypassDCache(syncCountAddr);
     const uint32_t expectedSyncRoundTag = GetSyncRoundTag(syncCount);
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-    // 共享计算之后已有 MTE3_MTE2，保护此处 MTE2 对同一 UB 的复用。
+    // MoE 阶段入口已通过 MTE3_MTE2 完成这段 UB 的交接。
     // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
     WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
                       rawCountElementCount, expectedSyncRoundTag);
