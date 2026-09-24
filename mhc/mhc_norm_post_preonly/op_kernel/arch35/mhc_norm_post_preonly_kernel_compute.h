@@ -487,7 +487,8 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
 
         // 相邻两个head用一次二维DMA搬到同一个2D缓冲；双缓冲使下一输出行的
         // MTE2与当前dot计算重叠。数据量和UB占用不变，减少一半搬运指令。
-        DataCopyExtParams pairCopyParams = {2, tD * sizeof(float), (D_ - tD) * sizeof(float), 0, 0};
+        DataCopyExtParams pairCopyParams = {2, static_cast<uint32_t>(tD * sizeof(float)),
+                                            static_cast<int64_t>((D_ - tD) * sizeof(float)), 0, 0};
         LocalTensor<float> curPhiPair = bufPhiFp32_.AllocTensor<float>();
         DataCopyPad(curPhiPair, phiGm_[(uint64_t)h0 * D_ + tOff], pairCopyParams, copyPad);
         bufPhiFp32_.EnQue(curPhiPair);

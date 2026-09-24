@@ -215,7 +215,7 @@ private:
     TQue<TPosition::VECIN, 1> bufResidualBf16_;
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
+    TQue<TPosition::VECIN, BUFFER_NUM_TWO> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
