@@ -364,17 +364,31 @@ private:
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-        for (uint32_t n = 0; n < N; ++n)
-            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        if constexpr (N > 0U) {
+            DataCopy(residual, residualGm_[gmBaseOffset], tD);
+        }
+        if constexpr (N > 1U) {
+            DataCopy(residual[dimTile_], residualGm_[gmBaseOffset + D_], tD);
+        }
+        if constexpr (N > 2U) {
+            DataCopy(residual[2U * dimTile_], residualGm_[gmBaseOffset + 2ULL * D_], tD);
+        }
+        if constexpr (N > 3U) {
+            DataCopy(residual[3U * dimTile_], residualGm_[gmBaseOffset + 3ULL * D_], tD);
+        }
         bufResidualBf16_.EnQue(residual);
         residual = bufResidualBf16_.DeQue<T>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
 
-        for (uint32_t h = 0; h < N; h += 2U) {
-            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
-                                                     residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+        if constexpr (N > 1U) {
+            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[tOff], x2Cache[D_ + tOff], hOut, residual, combWeights,
+                                                     dimTile_, 0U, postVals[0], postVals[1], tD);
+        }
+        if constexpr (N > 3U) {
+            MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[2U * D_ + tOff], x2Cache[3U * D_ + tOff], hOut,
+                                                     residual, combWeights, dimTile_, 2U, postVals[2], postVals[3],
                                                      tD);
         }
         PipeBarrier<PIPE_V>();
@@ -478,8 +492,17 @@ private:
         const uint32_t headBegin = laneId_ * 2U;
         const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-        for (uint32_t n = 0; n < N_MAX; ++n) {
-            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        if constexpr (N_MAX > 0U) {
+            DataCopy(residual, residualGm_[gmBaseOffset], tD);
+        }
+        if constexpr (N_MAX > 1U) {
+            DataCopy(residual[dimTile_], residualGm_[gmBaseOffset + D_], tD);
+        }
+        if constexpr (N_MAX > 2U) {
+            DataCopy(residual[2U * dimTile_], residualGm_[gmBaseOffset + 2ULL * D_], tD);
+        }
+        if constexpr (N_MAX > 3U) {
+            DataCopy(residual[3U * dimTile_], residualGm_[gmBaseOffset + 3ULL * D_], tD);
         }
         bufResidualBf16_.EnQue(residual);
 
