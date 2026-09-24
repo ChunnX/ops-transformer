@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。
+- 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。需要设置`syncFlag`时，请使用[aclnnFfnWorkerBatchingV2](aclnnFfnWorkerBatchingV2.md)。
 
   **该算子不建议单独使用，建议与FfnWorkerScheduler等算子配合使用，形成完整的工作流。**
 
@@ -35,7 +35,7 @@
 
     3. 多核并行按gather索引从`token_data`中提取token的hidden states和dynamic scale，同时查表得到对应的session_id、micro_batch_id、token_id。
 
-    4. 单核扫描排序后的专家ID序列，查找跳变点，生成`groupList`（每个专家处理的token起止偏移）。
+    4. 单核扫描排序后的专家ID序列，查找跳变点，生成`groupList`（每个专家处理的token数）。
 
     其中 $Y = A \times BS \times (K+1)$，$A$ 为Attention worker数量，$BS$ 为micro batch size，$K+1$ 为topK加共享专家数。
 
@@ -139,7 +139,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>maxOutShape</td>
       <td>输入</td>
       <td>输出shape上限，格式为 {A, BS, topK+1, H}。用于推导y输出的shape上限 Y = A × BS × (topK+1)，以及H值。</td>
-      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。</td>
+      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。tokenDtype=5时H须为偶数。</td>
       <td>LIST_INT64</td>
       <td>-</td>
       <td>-</td>
@@ -148,8 +148,8 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>输入token的数据类型。0表示FP16；1表示BF16；2表示INT8动态量化（INT8数据与FP32 dynamic scale连续排布）。取值为2时需输出dynamic_scale。</td>
-      <td>取值为0、1或2。</td>
+      <td>输入token的数据类型：0为FP16；1为BF16；2为INT8动态量化，每行一个FP32 scale；3为FLOAT8_E5M2；4为FLOAT8_E4M3FN（float8_e4m3）；5为FLOAT4_E2M1。3、4、5每32个逻辑hidden state元素对应一个FLOAT8_E8M0 scale，全部scale紧跟整行token数据。</td>
+      <td>取值为0～5</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -179,8 +179,8 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>y</td>
       <td>输出</td>
       <td>重排后的token hidden states，按专家ID排序后连续存放。</td>
-      <td>-</td>
-      <td>FP16、BF16、INT8</td>
+      <td>数据类型由tokenDtype决定；FP4的逻辑shape仍为(Y, H)，两个元素打包为一个字节。</td>
+      <td>FP16、BF16、INT8、支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>2维，(Y, H)，其中Y = A × BS × (topK+1)</td>
       <td>×</td>
@@ -238,11 +238,11 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>dynamicScale</td>
       <td>输出</td>
-      <td>动态量化的scale值，仅在tokenDtype=2时有效。tokenDtype为0或1时为空tensor。</td>
-      <td>-</td>
-      <td>FP32</td>
+      <td>随token重排的scale值。tokenDtype=2时每行一个FP32 scale；tokenDtype=3、4、5时每32个逻辑元素一个FLOAT8_E8M0 scale。</td>
+      <td>tokenDtype=0、1时该输出无有效数据。tokenDtype=3、4、5时尾部不足32个元素的分组仍占一个E8M0 scale。</td>
+      <td>FP32，FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>1维，(Y)</td>
+      <td>tokenDtype=2时shape为(Y)；tokenDtype=3、4、5时shape为(Y, ceil(H/32))</td>
       <td>×</td>
     </tr>
     <tr>
@@ -353,17 +353,25 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 ## 约束说明
 
+- 调度上下文中的缓冲区地址必须是有效Device地址，相关内存在算子执行完成前不得释放或被生产者覆盖；源行字节步长`attn_to_ffn_token_size`必须容纳完整token及scale数据。
 - 参数A（Attention worker数量）支持 ≤ 1024。
 - 参数M（micro batch数量）支持 ≤ 64。
 - 参数K+1（topK加共享专家数）支持 ≤ 64。
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
-- 参数H（hidden size）支持泛化。
+- `y`、索引输出及有效的`dynamicScale`仅保证前`actualTokenNum`行有效；算子只做原始位模式搬运，不进行量化或反量化。
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>有如下约束：
+  - 参数H（hidden size）大于0；`tokenDtype=5`时H须为偶数。
+  - 额外支持`tokenDtype=3、4、5`。
+  - 令`S=ceil(H/32)`，tokenDtype=3、4、5时的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，以字节计，可包含行尾padding
+<!-- end id7 -->
+
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+完整示例：[test_aclnn_ffn_worker_batching.cpp](../examples/test_aclnn_ffn_worker_batching.cpp)。示例代码如下，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -459,8 +467,6 @@ int CreateAclTensorNoData(const std::vector<int64_t> &shape, void **deviceAddr, 
     return 0;
 }
 
-constexpr uint64_t kBufAlignSize = 512;
-
 inline uint64_t AlignUp(uint64_t num, uint64_t align)
 {
     return ((num + align - 1) / align) * align;
@@ -538,8 +544,6 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
-    scheduleContext.common.attn_to_ffn_token_size = 512;
-    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;
@@ -550,6 +554,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
+    scheduleContext.common.attn_to_ffn_token_size = H * sizeof(int16_t);
+    scheduleContext.common.ffn_to_attn_token_size = H * sizeof(int16_t);
+    scheduleContext.ffn.out_num = A;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -731,6 +738,18 @@ int main()
         LOG_PRINT("group_list[%ld] = [expert_id=%ld, token_num=%ld]\n", i, groupListHost[i * 2],
                   groupListHost[i * 2 + 1]);
     }
+
+    CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
+    for (int64_t i = 0; i < expertNum; ++i) {
+        CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
+                  LOG_PRINT("unexpected expert group\n");
+                  return 1);
+    }
+    std::vector<int16_t> yHost(Y * H);
+    ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray
     aclDestroyTensor(scheduleContextRef);
