@@ -117,6 +117,7 @@ private:
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
     __aicore__ inline CombineBufferConfig InitMoeCombineBufferConfig(bool dedupCombineActive);
     __aicore__ inline void PrepareMoeCountAndDedupTables();
+    __aicore__ inline void SyncBeforeMoeExpertStages();
     __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
                                                   Gmm2CombineSync &gmm2CombineSync);
     __aicore__ inline bool IsSameExpertTokenPosition(const ExpertTokenPosition &currentPosition,
@@ -604,6 +605,19 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Prepare
         PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, params_, tokenDispatchScratch_);
         BuildDedupRowDescTable<TopkIndexType>(tokenDispatchConfig_.dedup, commonConfig_, gmmExecutionConfig_.blockJob,
                                               syncWorkspaceLayout_, params_, tokenDispatchScratch_);
+    }
+}
+
+// 由 arch35 在 AIV0 上调用：等待输入准备或共享计算的搬出完成，再由 MoE 复用 UB。
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SyncBeforeMoeExpertStages()
+{
+    if constexpr (TopkWeightsPrefetch) {
+        // 预取路径从 GM 搬入 GMM1 结果，MTE2 写 UB 前等待前序搬出完成。
+        SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+    } else {
+        // 直接 UB 激活由 Vector 写入中间值，需等待前序搬出完成。
+        SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
     }
 }
 

@@ -92,10 +92,15 @@ protected:
     __aicore__ inline void EnterSteadyDispatch();
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
-    __aicore__ inline void SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange);
     __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
-    __aicore__ inline void ProcessInputPreparationStage();
+    __aicore__ inline void PrepareLocalInput();
+    __aicore__ inline void ProcessInputPreparationStage(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void WaitForInputPreparation();
+    __aicore__ inline SharedGmmStartCondition GetSharedGmmStartCondition() const;
+    __aicore__ inline void ProcessTokenUnpermuteStage();
+    __aicore__ inline void SyncBeforeSharedExpertGmm1();
+    template <typename Derived>
+    __aicore__ inline void SyncBeforeMoeExpertStages(Derived &derived);
     __aicore__ inline void ExportAndResetExpertCounts();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -608,6 +613,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     }
 }
 
+// 等待本核输入准备的 MTE3 搬出完成，再允许共享计算覆盖同一段 UB。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeSharedExpertGmm1()
+{
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 0U) {
+            if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
+                // AIV0 通过 MTE2 搬入待转换的权重，等待本核 quant/pack 搬出完成后复用 UB。
+                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+            } else {
+                // AIV0 通过 Vector 执行共享激活，等待本核 quant/pack 搬出完成后复用 UB。
+                SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
+            }
+        } else {
+            if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
+                // AIV1 通过 MTE2 搬入待激活的 GMM1 结果，等待下标/count 搬出完成后复用 UB。
+                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+            }
+        }
+    }
+}
+
+// 在 MoE 阶段开始前，等待前序 MTE3 搬出完成，保护下一阶段对同一段 UB 的写入。
+// 共享计算的搬出及输入准备的发送，统一在这里与 MoE 阶段交接 UB。
+template <TemplateMegaMoeTypeClass>
+template <typename Derived>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStages(Derived &derived)
+{
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1U) {
+            // AIV1 即将通过 MTE2 搬入 count 表；等待下标/count 发送或共享 A8W4 激活搬出完成。
+            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+        } else {
+            // AIV0 由具体 MoE 实现确定后继写 UB 的流水，承接输入准备或共享计算的搬出。
+            derived.SyncBeforeMoeExpertStages();
+        }
+    }
+}
+
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(
     Gmm1ActivationSync &sharedGmm1ActivationSync)
@@ -649,13 +693,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     }
     Gmm1UbActivationSync::EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0U;
-    if constexpr (g_coreType == AIV) {
-        const bool hasSharedMte3Producer = GetSubBlockIdx() == 0U || SharedQuantConfig::AXW_MODE == AxWMode::A8W4;
-        if (hasSharedMte3Producer) {
-            // 等共享激活或权重转换搬出完成，后续 MoE 阶段才能通过 MTE2 复用 UB。
-            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-        }
-    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -806,44 +843,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(E
     UpdateExpertLoopState(state, expertIdx, expertTokenCount);
 }
 
-// 仅由 AIV 调用：先发送下标，等待本卡全部 AIV 完成 reset 和量化，再发送 count。
-// 空专家范围不发送数据，但仍须消费一次量化完成事件。
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange)
-{
-    if (ownedExpertRange.count > 0U) {
-        SendTopkIdsIndexForExperts(ownedExpertRange, commonConfig_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
-    }
-    // 通知在共享量化之后发布，覆盖此前的 reset 和全部量化写回；空专家任务也参与。
-    CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
-    // 将 reset 和量化完成条件传递给 Scalar，在输入准备末尾消费。
-    SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
-    // AIV0 转发全 AIV 完成条件；有共享专家时，不必等 AIV1 发完下标才启动 AIC。
-    if (GetSubBlockIdx() == 0U) {
-        CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
-    }
-    if (ownedExpertRange.count > 0U) {
-        PipeBarrier<PIPE_MTE3>();
-        const int32_t syncCount = GetSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
-        SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
-                                   sendMaskScratch_);
-        if (sharedExpertNum_ > 0U || GetSubBlockIdx() == 1U) {
-            // 有共享时仅 AIV1 发送；后续共享激活或 Dispatch 都先通过 MTE2 复用源 UB。
-            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        } else if constexpr (MoeQuantConfig::AXW_MODE == AxWMode::A8W4 || TopkWeightsPrefetch) {
-            // 无共享 AIV0：权重转换或 GM 激活路径先通过 MTE2 搬入数据。
-            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        } else {
-            // 无共享 AIV0：直接 UB 激活路径由 Vector 复用工作区。
-            SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
-        }
-    }
-    if (GetSubBlockIdx() == 0U) {
-        // FIX 的 UB 输出只写入 AIV0，因此仅由 AIV0 通知 AIC，避免覆盖尚在发送的数据。
-        CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_UB_FREE_FLAG);
-    }
-}
-
 // 只有量化类型不同且启用了共享专家，才传入独立共享量化参数。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantizeInputTokens(const WorkRange &tokenRange)
@@ -889,12 +888,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExportAndResetExpertCou
     SyncAll<true>();
 }
 
-// 仅由 AIV 调用，AIC 在 ProcessWave 中等待输入就绪。
+// 仅由 AIV 调用：准备本核输入，分别发布 reset 完成和 token 数据就绪通知。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput()
 {
     SendAndQuantBuffInit();
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+    // 本核状态清零完成后，通知其他 AIV。
+    CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
     const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
     if (tokenRange.count > 0U) {
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
@@ -909,27 +910,66 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     }
     // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
     IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
-    // 同一 MTE3 流水先完成 reset、MoE 量化及可选共享量化写回，再发布完成通知。
+    // MoE 及可选共享 token 数据和 scale 写回后，发布 token 数据就绪通知。
     // 空 token 核也必须报告，保证全 AIV 事件配对。
-    CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
+    CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
+}
 
-    // 无共享时由全部 AIV 分配专家；有共享时仅 AIV1 分配，AIV0 保持空范围。
-    WorkRange ownedExpertRange{};
+// 仅由 AIV 调用：准备输入、发送下标，等待 token 数据就绪后发送 count。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage(
+    SharedGmmStartCondition sharedGmmStartCondition)
+{
+    PrepareLocalInput();
+    auto sendIndexAndCount = [&](const WorkRange &ownedExpertRange, bool notifyAicAfterQuantOrPack)
+        __attribute__((cce_aicore))
+    {
+        if (ownedExpertRange.count > 0U) {
+            SendTopkIdsIndexForExperts(ownedExpertRange, commonConfig_, g_winRankAddr_, sendMaskConfig_,
+                                       sendMaskScratch_);
+        }
+        CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
+        SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
+        CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
+        if (notifyAicAfterQuantOrPack) {
+            CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
+        }
+        if (ownedExpertRange.count > 0U) {
+            PipeBarrier<PIPE_MTE3>();
+            auto *syncCountAddr = GetSyncCountAddress(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+            const int32_t syncCount = ReadGmBypassDCache(syncCountAddr);
+            SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
+                                       sendMaskScratch_);
+        }
+    };
+
     const uint32_t totalExperts = commonConfig_.worldSize * commonConfig_.moeExpertPerRank;
-    if (sharedExpertNum_ == 0U) {
-        ownedExpertRange = GetBalancedWorkRange(totalExperts, aivJob_);
-    } else if (GetSubBlockIdx() == 1U) {
-        ownedExpertRange = GetBalancedWorkRange(totalExperts, {.jobIndex = blockIdx_, .totalJobs = blockNum_});
+    if (sharedGmmStartCondition == SharedGmmStartCondition::NoSharedExpert) {
+        // 全部 AIV 分担发送；AIV0 在 count 发送前通知 AIC 输入就绪。
+        const WorkRange ownedExpertRange = GetBalancedWorkRange(totalExperts, aivJob_);
+        sendIndexAndCount(ownedExpertRange, GetSubBlockIdx() == 0U);
+    } else {
+        if (GetSubBlockIdx() == 1U) {
+            // AIV1 分担全部发送任务，等待 quant/pack 完成后发布 count。
+            const WorkRange ownedExpertRange =
+                GetBalancedWorkRange(totalExperts, {.jobIndex = blockIdx_, .totalJobs = blockNum_});
+            sendIndexAndCount(ownedExpertRange, false);
+        } else {
+            // AIV0 按共享 GMM 的启动条件等待，随后通知 AIC 搬入输入。
+            CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
+            SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
+            if (sharedGmmStartCondition == SharedGmmStartCondition::QuantOrPackDone) {
+                CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
+            }
+            CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
+        }
     }
-    /*
-     * AIV 先发送下标；发送 count 前等待全部 AIV 完成 reset 和量化，由 AIV0 向 AIC 通知输入就绪。
-     * 有共享专家时 AIV0 不发送下标，AIC 可与 AIV1 的下标发送并行；FIX 输出另等 AIV0 释放 UB。
-     * 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行下标/count 发送。
-     * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成下标/count 发送后执行共享激活。
-     * count 携带本轮 epoch，接收端逐项确认远端输入就绪；共享计算不等待入口跨卡握手。
-     */
-    SendTopkIdsIndexAndCount(ownedExpertRange);
-    // Scalar 读取 GM ready 状态前确认 reset 已完成；此事件在 count 发送前发布。
+
+    if (GetSubBlockIdx() == 0U) {
+        // AIC 的 FIX 输出写入配对 AIV0 的 UB。
+        CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_UB_FREE_FLAG);
+    }
+    // 后继 Scalar 状态读取承接已记录的 reset 完成条件。
     WaitFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
 }
 
@@ -944,6 +984,33 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitForInputPreparation
     CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_FIX>(INPUT_UB_FREE_FLAG);
 }
 
+// 根据共享专家及其输入来源，确定共享 GMM 的启动条件。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline SharedGmmStartCondition MegaMoe<TemplateMegaMoeTypeFunc>::GetSharedGmmStartCondition() const
+{
+    if (sharedExpertNum_ == 0U) {
+        return SharedGmmStartCondition::NoSharedExpert;
+    }
+    const bool sharedInputDirectly =
+        !Std::IsSame<XType, bfloat16_t>::value && commonConfig_.tokenHiddenDim % MXFP_DIVISOR_SIZE == 0U;
+    if (sharedInputDirectly) {
+        return SharedGmmStartCondition::ResetDone;
+    }
+    return SharedGmmStartCondition::QuantOrPackDone;
+}
+
+// 仅由 AIV 调用：等待全部 rank 完成输出发送，再将专家结果聚合到 token 输出。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessTokenUnpermuteStage()
+{
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
+    MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
+    UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
+        tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+}
+
 /*
  * 所有 MTE Wave 路径共用相同的阶段边界，派生类只负责 MoE 专家 Wave 的具体编排。
  */
@@ -955,26 +1022,34 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
-    // 阶段 1：准备动态量化或预量化输入、清零、本卡输入同步及下标/count 发送。
+    // 阶段 1：AIV 准备输入，AIC 等待输入可读及 UB 释放。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
+    const SharedGmmStartCondition sharedGmmStartCondition = GetSharedGmmStartCondition();
     if constexpr (g_coreType == AIV) {
-        ProcessInputPreparationStage();
-    }
-    // AIC 进入计算前等待输入就绪及工作区释放。
-    if constexpr (g_coreType == AIC) {
+        ProcessInputPreparationStage(sharedGmmStartCondition);
+    } else {
         WaitForInputPreparation();
     }
+
     // 共享 A8W4 写 GM，由 AIV1 消费；独立事件使剩余 ACK 不阻塞 MoE GMM 启动。
     Gmm1ActivationSync sharedGmm1ActivationSync(1U, GmmEventPair::SHARED_GMM1);
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
+        SyncBeforeSharedExpertGmm1();
         ProcessSharedExpertGmm1(sharedGmm1ActivationSync);
+        if constexpr (g_coreType == AIV) {
+            if (sharedGmmStartCondition == SharedGmmStartCondition::ResetDone && GetSubBlockIdx() == 0U) {
+                // 此路径 AIV0 仅等待 reset 完成就启动共享 GMM，token ready 留到共享计算结束后等待。
+                CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
+            }
+        }
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     Gmm1ActivationSync gmm1ActivationSync(MoeQuantConfig::AXW_MODE == AxWMode::A8W4 ? 1U : 0U);
     Gmm2CombineSync gmm2CombineSync;
+    SyncBeforeMoeExpertStages(derived);
     derived.ProcessMoeExpertStages(gmm1ActivationSync, gmm2CombineSync);
     if constexpr (g_coreType == AIV) {
         ExportAndResetExpertCounts();
@@ -987,12 +1062,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
-        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
-        MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
-        UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
-            tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+        ProcessTokenUnpermuteStage();
     }
 
     // 三组 GM 硬同步事件独立，末尾统一回收 ACK，避免阻塞后续共享计算。

@@ -92,6 +92,7 @@ private:
                                                   GMMAddrInfo &gmm2AddrInfo,
                                                   WaveCombineBufferConfig &combineBufferConfig,
                                                   uint32_t &combineRowSequence);
+    __aicore__ inline void SyncBeforeMoeExpertStages();
     __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
                                                   Gmm2CombineSync &gmm2CombineSync);
 };
@@ -271,6 +272,19 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     } else if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
         DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount);
+    }
+}
+
+// 由 arch35 在 AIV0 上调用：等待输入准备或共享计算的搬出完成，再由 MoE 复用 UB。
+template <TemplateMegaMoeA4W4WaveTypeClass>
+__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::SyncBeforeMoeExpertStages()
+{
+    if constexpr (TopkWeightsPrefetch) {
+        // 预取路径从 GM 搬入 GMM1 结果，MTE2 写 UB 前等待前序搬出完成。
+        SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+    } else {
+        // 直接 UB 激活由 Vector 写入中间值，需等待前序搬出完成。
+        SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
     }
 }
 
