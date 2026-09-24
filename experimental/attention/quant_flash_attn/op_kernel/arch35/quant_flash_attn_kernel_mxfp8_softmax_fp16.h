@@ -31,7 +31,7 @@
 
 // 核间流水 printf 调试开关（大 shape 验证时可置 0，避免 printf 拖死流水）
 #ifndef QFA_SF16_DEBUG_PRINTF
-#define QFA_SF16_DEBUG_PRINTF 1
+#define QFA_SF16_DEBUG_PRINTF 0
 #endif
 #include "quant_flash_attn_block_cube_mxfp8_softmax_fp16.h"
 #include "quant_flash_attn_block_vector_mxfp8_softmax_fp16.h"
@@ -475,9 +475,20 @@ public:
                     if (vCore == constInfo_.subBlockIdx) {
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         ComputeVec2(runInfo2); // 跨 S2 分块 rescale 累积，末块除+cast+输出
-                        // 挂 PIPE_MTE3（corrections #8）：GM 拷贝（含 mm2ResUB 别名区 divOut/outputT
-                        // 的读）排空后才释放，否则 AIC 下一次 FixpipeMm2 覆写与在途读竞争
-                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_C2_V2);
+                        // 释放管道按任务类型区分（2026-09-24 竞态修复）：
+                        //  - 末块挂 PIPE_MTE3（corrections #8 原语义）：GM 拷贝（含 mm2ResUB
+                        //    别名区 outputT 的读）排空后才释放，防 AIC 下一次 FixpipeMm2
+                        //    覆写与在途 MTE3 读竞争
+                        //  - 非末块挂 PIPE_V：VfFlashUpdateAcc 读尽 mm2Res 后释放。原实现统一
+                        //    挂 MTE3，但非末块无 V→MTE3 屏障（EVT_GM_OUT 仅末块路径）——MTE3
+                        //    空闲时 flag 立即触发，AIC 下一次 FixpipeMm2 在 V 管道累积读进行中
+                        //    就覆写 mm2Res（n 窄时 fixpipe 极快窗口放大：QS1/QS32_KVS832 实测
+                        //    D 前列被下块数据抢写、rowsum 先读故分母幸存）
+                        if (runInfo2.isLastS2Loop) {
+                            CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_C2_V2);
+                        } else {
+                            CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
+                        }
                     }
                 }
             }
