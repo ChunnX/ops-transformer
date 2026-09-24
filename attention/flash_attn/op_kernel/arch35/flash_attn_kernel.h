@@ -9,17 +9,15 @@
  */
 
 /*!
- * \file flash_attn_kernel_nd.h
- * \brief FlashAttentionNoQuantGqaKernelNd —— Nd 路径专用 kernel 模板（独立类）。
+ * \file flash_attn_kernel.h
+ * \brief FlashAttentionNoQuantGqaKernel —— DN/ND 共用调度，布局差异在编译期选择。
  */
 
-#ifndef FLASH_ATTN_KERNEL_ND_H_
-#define FLASH_ATTN_KERNEL_ND_H_
+#ifndef FLASH_ATTN_KERNEL_H_
+#define FLASH_ATTN_KERNEL_H_
 
 #include "../utils/flash_attn_common_def.h"
 
-#include "flash_attn_block_cube_nd.h"
-#include "flash_attn_block_vec_nd.h"
 #include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
@@ -38,8 +36,8 @@ using namespace AscendC::Impl::Detail;
 
 namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
-template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernelNd {
+template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType, bool IS_DN>
+class FlashAttentionNoQuantGqaKernel {
 public:
     using T = float;
     using SEQLEN_T = uint32_t;
@@ -104,7 +102,7 @@ public:
     uint32_t s2FirstToken_ = 0;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernelNd()
+    __aicore__ inline FlashAttentionNoQuantGqaKernel()
         : cubeBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
@@ -526,7 +524,13 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
-        info.actVecMSize = (info.actMSize + CV_RATIO - 1) / CV_RATIO;
+        if constexpr (IS_DN) {
+            // DN splits the aligned M dimension; ND splits the actual rows.
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 / CV_RATIO);
+        } else {
+            info.actVecMSize = (info.actMSize + CV_RATIO - 1) / CV_RATIO;
+        }
         info.vecMbaseIdx = 0;
         if (constInfo_.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -631,8 +635,14 @@ public:
             vecFaBlock_.InitCrossCoreSync();
             vecFaBlock_.AllocEventID();
         } else {
-            cubeBlock_.InitCrossCoreSync();
-            cubeBlock_.InitBuffers();
+            // Preserve the initialization order required by each Cube block.
+            if constexpr (IS_DN) {
+                cubeBlock_.InitBuffers();
+                cubeBlock_.InitCrossCoreSync();
+            } else {
+                cubeBlock_.InitCrossCoreSync();
+                cubeBlock_.InitBuffers();
+            }
             cubeBlock_.AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
@@ -651,8 +661,8 @@ public:
             cubeBlock_.UnInitCrossCoreSync();
         }
     }
-}; // FlashAttentionNoQuantGqaKernelNd
+}; // FlashAttentionNoQuantGqaKernel
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_ATTN_KERNEL_ND_H_
+#endif // FLASH_ATTN_KERNEL_H_
