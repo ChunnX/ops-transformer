@@ -36,17 +36,11 @@ __aicore__ inline __gm__ int32_t *GetSyncCountAddress(GM_ADDR rankSyncBase, uint
                                               static_cast<uint64_t>(aivCoreIdx) * RANK_SYNC_COUNTER_SLOT_BYTES);
 }
 
-// 绕过 DCache 读取指定 AIV 的当前同步计数。
-__aicore__ inline int32_t GetSyncCount(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
-{
-    return ReadGmBypassDCache(GetSyncCountAddress(rankSyncBase, aivCoreIdx));
-}
-
 // 推进指定物理 AIV 的同步轮次，仅负责计数，不表示量化数据已写回。
 __aicore__ inline void IncrementSyncCount(GM_ADDR rankSyncBase, uint32_t aivCoreIdx)
 {
     auto *sequenceAddr = GetSyncCountAddress(rankSyncBase, aivCoreIdx);
-    uint32_t nextSequence = static_cast<uint32_t>(GetSyncCount(rankSyncBase, aivCoreIdx)) + 1U;
+    uint32_t nextSequence = static_cast<uint32_t>(ReadGmBypassDCache(sequenceAddr)) + 1U;
     WriteGmBypassDCache(sequenceAddr, static_cast<int32_t>(nextSequence));
 }
 

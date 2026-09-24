@@ -90,6 +90,7 @@ private:
     __aicore__ inline void RunMoeExpertLoop(GMMAddrInfo &gmm1AddrInfo, GMMAddrInfo &gmm2AddrInfo,
                                             ExpertTokenPosition dispatchPosition,
                                             WaveCombineBufferConfig &combineBufferConfig, const BlockContext &pipeline);
+    __aicore__ inline void SyncBeforeMoeExpertStages();
     __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
                                                   Gmm2CombineSync &gmm2CombineSync);
 };
@@ -244,6 +245,14 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     }
+}
+
+// 由 arch35 在 AIV0 上调用：等待输入准备或共享计算的搬出完成，再由 MoE 复用 UB。
+template <TemplateMegaMoeA8W4WaveTypeClass>
+__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::SyncBeforeMoeExpertStages()
+{
+    // 权重转换先由 MTE2 搬入权重，需等待前序搬出完成后再覆盖 UB。
+    SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
 }
 
 /*

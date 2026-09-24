@@ -26,6 +26,13 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
+// 共享 GMM 启动前，输入准备需要满足的完成条件。
+enum class SharedGmmStartCondition {
+    NoSharedExpert,
+    ResetDone,
+    QuantOrPackDone,
+};
+
 enum DispatchQuantOutDtype : int64_t {
     E5M2_QUANT = 3U,
     E4M3_QUANT = 4U,
