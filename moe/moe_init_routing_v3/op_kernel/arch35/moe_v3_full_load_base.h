@@ -168,6 +168,7 @@ protected:
     int64_t actualExpertNum_ = 0;
     int64_t actualExpertIdxNum_ = 0;
     int64_t expertCountElements_ = 0;
+    int64_t expertTokensGmElements_ = 0;
     int64_t actualExpertTotalNum_ = 0;
     int64_t curIndexStart_;
     int64_t startXRow_;
@@ -244,8 +245,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ?
                                    (actualExpertNum_ + 1) * EXERPT_TOKENS_KEY_VALUE :
                                    expertNum_ * EXERPT_TOKENS_KEY_VALUE;
+        expertTokensGmElements_ = expertNum_ * EXERPT_TOKENS_KEY_VALUE;
     } else {
         expertCountElements_ = actualExpertNum_;
+        expertTokensGmElements_ = actualExpertNum_;
     }
 
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);
@@ -591,6 +594,9 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
             expertTokensOutLocal.SetValue(i, cumsumCount);
             actualExpertTotalNum_ += expertCount;
         }
+    }
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        InitGlobalMemory(expertTokensCountOrCumsumGm_, expertTokensGmElements_, static_cast<int64_t>(0));
     }
     event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
     SetFlag<HardEvent::S_MTE3>(eventIDSToMte3);
