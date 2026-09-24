@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef ARCH35_CATLASS_TILE_COPY_UB_TO_L1_H
-#define ARCH35_CATLASS_TILE_COPY_UB_TO_L1_H
+#ifndef ARCH35_CATLASS_TILE_MC2_3RD_COPY_UB_TO_L1_H
+#define ARCH35_CATLASS_TILE_MC2_3RD_COPY_UB_TO_L1_H
 
 #include "../utils/wq_device_utils.h"
 
