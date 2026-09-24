@@ -17,6 +17,7 @@
 #define GROUPED_MATMUL_SWIGLU_QUANT_V2_TILING_DATA_H
 
 #include "kernel_tiling/kernel_tiling.h"
+#include "grouped_matmul_swiglu_quant_swiglu_params.h"
 
 #pragma pack(push, 8)
 struct GMMSwigluQuantV2Params {
@@ -32,6 +33,7 @@ struct GMMSwigluQuantV2Params {
 struct GMMSwigluQuantV2TilingDataParams {
     GMMSwigluQuantV2Params gmmSwigluQuantParams;
     TCubeTiling mmTilingData;
+    GMMSwigluQuantSwigluParams swigluParams;
 };
 #pragma pack(pop)
 
