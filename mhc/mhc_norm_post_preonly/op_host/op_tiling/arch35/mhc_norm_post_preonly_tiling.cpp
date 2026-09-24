@@ -126,7 +126,9 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     auto alphaShape = context_->GetInputShape(5);
     auto biasShape = context_->GetInputShape(6);
     auto gamma0Shape = context_->GetOptionalInputShape(GAMMA_0_INPUT_INDEX);
-    auto gamma1Shape = context_->GetInputShape(GAMMA_1_INPUT_INDEX);
+    // gamma_1 is required by the interface, but it is located after two optional inputs.
+    // Runtime TilingContext exposes such trailing inputs through the optional-input accessor.
+    auto gamma1Shape = context_->GetOptionalInputShape(GAMMA_1_INPUT_INDEX);
     auto gamma2Shape = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX);
     OP_CHECK_IF(hOutShape == nullptr || residualShape == nullptr || hPostShape == nullptr || phiShape == nullptr ||
                     alphaShape == nullptr || biasShape == nullptr || gamma1Shape == nullptr,
@@ -283,7 +285,8 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
                     OP_LOGE(context_->GetNodeName(), "x_2_out shape must match residual"),
                     return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(context_->GetOutputShape(H_PRE_OUTPUT_INDEX) != nullptr,
+    auto hPreShape = context_->GetOutputShape(H_PRE_OUTPUT_INDEX);
+    OP_CHECK_IF(hPreShape != nullptr && hPreShape->GetStorageShape().GetDimNum() != 0U,
                 OP_LOGE(context_->GetNodeName(), "h_pre is an interface-reserved optional output and must be empty currently"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -313,11 +316,12 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckAttrs()
 
     useRmsMid_ = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX) != nullptr;
     auto hInF32Shape = context_->GetOutputShape(H_IN_F32_OUTPUT_INDEX);
-    OP_CHECK_IF(returnHInF32_ != (hInF32Shape != nullptr),
+    const bool hasHInF32 = hInF32Shape != nullptr && hInF32Shape->GetStorageShape().GetDimNum() != 0U;
+    OP_CHECK_IF(returnHInF32_ != hasHInF32,
                 OP_LOGE(context_->GetNodeName(),
                         "h_in_f32 must be present exactly when return_h_in_f32 is true"),
                 return ge::GRAPH_FAILED);
-    if (hInF32Shape != nullptr) {
+    if (hasHInF32) {
         const auto &hOut = context_->GetInputShape(0)->GetStorageShape();
         const auto &hInF32 = hInF32Shape->GetStorageShape();
         OP_CHECK_IF(hInF32.GetDimNum() != hOut.GetDimNum(),
