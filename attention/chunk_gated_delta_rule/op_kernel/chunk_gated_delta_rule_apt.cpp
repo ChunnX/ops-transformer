@@ -27,26 +27,21 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
 {
     REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
+    // 每组 1 个 AIC + 2 个 AIV 协作处理同一 batch/value-head；融合内核自行管理片上缓冲与同步。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    TPipe pipe;
-
-    __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
-    CGDRInitParams initParams{query, key, value, beta, initialState, seqlens, gOptional, out, finalState};
+    const CGDRInitParams initParams{query, key, value, beta, initialState, seqlens, gOptional, out, finalState};
+    // 将状态类型和 g 是否存在固化为模板参数，移除热循环内的类型判断及无门控场景的 g 搬运。
     if (TILING_KEY_IS(TILING_KEY_CGDR_FP32_STATE_WITH_GAMMA)) {
-        CGDR<bfloat16_t, float, float, true> op(&pipe, &tilingData);
-        op.Init(initParams, user);
+        CGDR<float, true> op(initParams, tilingData);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_CGDR_FP32_STATE_NO_GAMMA)) {
-        CGDR<bfloat16_t, float, float, false> op(&pipe, &tilingData);
-        op.Init(initParams, user);
+        CGDR<float, false> op(initParams, tilingData);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_CGDR_BF16_STATE_WITH_GAMMA)) {
-        CGDR<bfloat16_t, float, bfloat16_t, true> op(&pipe, &tilingData);
-        op.Init(initParams, user);
+        CGDR<bfloat16_t, true> op(initParams, tilingData);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_CGDR_BF16_STATE_NO_GAMMA)) {
-        CGDR<bfloat16_t, float, bfloat16_t, false> op(&pipe, &tilingData);
-        op.Init(initParams, user);
+        CGDR<bfloat16_t, false> op(initParams, tilingData);
         op.Process();
     }
 }

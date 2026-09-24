@@ -15,7 +15,7 @@ import torch
 import torch_npu
 
 # from cann_ops_transformer.ops import chunk_gated_delta_rule
-from chunk_gated_delta_rule_benchmark import chunk_gdn_benchmark_opt
+from chunk_gated_delta_rule_benchmark_fused import chunk_gdn_benchmark_fused, MODEL_REVISION
 from chunk_gated_delta_rule_golden import chunk_gated_delta_rule_npu
 import torch.nn.functional as F
 import numpy as np
@@ -238,18 +238,17 @@ def cgdr_benchmark(
     dtype = torch.bfloat16
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1])).to(v.device).to(torch.float32)
-    o_bench, state_bench = chunk_gdn_benchmark_opt(
+    logger.info(f"[benchmark] {MODEL_REVISION}, device={q.device}, state_dtype={initial_state.dtype}")
+    o_bench, state_bench = chunk_gdn_benchmark_fused(
         q.to(dtype),
         k.to(dtype),
         v.to(dtype),
         beta.to(dtype),
         scale,
-        initial_state.to(dtype),
+        initial_state,
         actual_seq_lengths,
         g,
         chunk_size=chunk_size,
-        # Keep the BF16 state baseline, but match the Vinner/Vprime accumulator path.
-        v_inner_dtype=initial_state.dtype,
     )
     o_bench = o_bench.to(torch.float32)
     state_bench = state_bench.to(torch.float32)
@@ -379,6 +378,19 @@ def _save_input_pt(
     logger.info(f"[SAVE_PT] saved input data to {fpath}")
 
 
+def to_device_preserving_layout(tensor, device):
+    """保留 PT 张量的 shape、stride 和 storage_offset，避免搬运时丢失非连续布局。"""
+    if tensor is None:
+        return None
+    offset = tensor.storage_offset()
+    # 最后一个元素的位置 = offset + sum((shape[i] - 1) * stride[i])。
+    count = offset + sum((n - 1) * stride for n, stride in zip(tensor.shape, tensor.stride())) + 1
+    base = torch.empty(max(count, 0), dtype=tensor.dtype, device=device)
+    target = base.as_strided(tensor.shape, tensor.stride(), offset)
+    target.copy_(tensor.to(device))
+    return target
+
+
 def _load_input_pt(
     B,
     seqlen,
@@ -417,16 +429,9 @@ def _load_input_pt(
         raise FileNotFoundError(f"[LOAD_PT] pt file not found: {fpath}")
     data = torch.load(fpath, map_location="cpu")
     dev = f"npu:{DEVICE_ID}"
-    loaded = {
-        "q": data["q"].to(dev),
-        "k": data["k"].to(dev),
-        "v": data["v"].to(dev),
-        "beta": data["beta"].to(dev),
-        "scale": data["scale"],
-        "initial_state": data["initial_state"].to(dev),
-        "actual_seq_lengths": data["actual_seq_lengths"].to(dev),
-        "g": None if data["g"] is None else data["g"].to(dev),
-    }
+    loaded = {key: to_device_preserving_layout(data[key], dev)
+              for key in ("q", "k", "v", "beta", "initial_state", "actual_seq_lengths", "g")}
+    loaded["scale"] = data["scale"]
     logger.info(f"[LOAD_PT] loaded input data from {fpath}")
     return loaded
 
