@@ -593,7 +593,11 @@ def generate_inputs(params, seed=42):
 
     # sinks
     sinks = params.get("sinks", None)
-    sinks_range = tuple(params.get("sinks_range", (-1.0, 1.0)))
+    # STC testcase files historically called this field sinks_datarange;
+    # accept both spellings so the declared range is reflected in generated
+    # inputs and TTK/pytest stay bit-for-bit consistent.
+    sinks_range = tuple(params.get(
+        "sinks_range", params.get("sinks_datarange", (-1.0, 1.0))))
 
     softmax_scale = params.get("softmax_scale", 1.0 / (d ** 0.5))
 

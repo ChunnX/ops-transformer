@@ -629,6 +629,28 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     print(f'attn_out shape: {attn_out.shape}, dtype: {attn_out.dtype}')
     attn_out_shape = attn_out.shape
 
+    # With no KV heads there is no matmul work.  A sink is still a valid
+    # softmax candidate: it contributes exp(sink) to the denominator and
+    # therefore makes LSE equal to the sink value, while the value output is
+    # zero because the sink has no associated V vector.  Without a sink the
+    # row is empty (sum=0), and run_cpu_golden exposes LSE as +inf.
+    if n2 == 0:
+        if layout_q in ("BNSD", "BSND"):
+            x_max = torch.zeros((batch, n1, s1), dtype=torch.float32)
+            x_sum = torch.zeros((batch, n1, s1), dtype=torch.float32)
+        elif layout_q == "TND":
+            x_max = torch.zeros((q.shape[0], n1), dtype=torch.float32)
+            x_sum = torch.zeros((q.shape[0], n1), dtype=torch.float32)
+        else:
+            raise NotImplementedError(f"unsupported layout_q({layout_q})")
+        if sinks is not None and sinks.numel() > 0:
+            if layout_q in ("BNSD", "BSND"):
+                x_max = sinks.reshape(1, n1, 1).expand(batch, n1, s1).clone()
+            else:
+                x_max = sinks.reshape(1, n1).expand(q.shape[0], n1).clone()
+            x_sum.fill_(1.0)
+        return attn_out.reshape(attn_out_shape), x_max, x_sum
+
     g = n1 // n2
     gs_flag = True if layout_q == 'BNSD' else False
     if gs_flag:

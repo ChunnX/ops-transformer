@@ -49,7 +49,14 @@ def _load_cases_for_modules(module_names, case_id_arg):
         params = normalize_params(all_cases[name])
         n1 = params.get("N1", 1)
         n2 = params.get("N2", n1)
-        if n2 > 0 and n1 >= n2 and n1 % n2 == 0:
+        # Empty query/head and empty KV are valid FIA-style boundary cases.
+        # They must not be sent through the ordinary GQA divisibility check,
+        # which would either reject them or eventually divide by zero.
+        if n1 == 0 and n2 > 0:
+            valid_cases.append(name)
+        elif n2 == 0 and n1 > 0:
+            valid_cases.append(name)
+        elif n1 > 0 and n2 > 0 and n1 >= n2 and n1 % n2 == 0:
             valid_cases.append(name)
     return valid_cases
 

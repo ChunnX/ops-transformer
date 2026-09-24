@@ -256,9 +256,13 @@ def generate_mixed_quant_inputs(
         # metadata 实际生成 size 可能 != CSV view_shape，用截断填充（numpy/torch 两条路径都要 min 截断）
         if torch.is_tensor(metadata):
             _meta_dst = metadata.view(torch.int32).reshape(-1)
+            if n2 <= 0:
+                _meta_dst.zero_()
             _n = min(_meta_dst.numel(), _meta_src.numel())
             _meta_dst[:_n] = _meta_src[:_n]
         else:
             _meta_dst = np.asarray(metadata).view(np.int32).reshape(-1)
+            if n2 <= 0:
+                _meta_dst.fill(0)
             _n = min(_meta_dst.size, _meta_src.numel())
             _meta_dst[:_n] = _meta_src.numpy().reshape(-1)[:_n]
