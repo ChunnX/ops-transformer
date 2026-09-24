@@ -942,7 +942,9 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
 
 /*
  * 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
- * 每组共同依赖的旧逆行仅加载一次，分组内新求得的八行留在寄存器中，直接用于后续行。
+ * attnUb/invResUb/eiUb 均为 FP32 [32,64]；offset=0/32 选择当前 AIV 的 32x32 对角子块。
+ * 每个 invRow 为 32 个有效 FP32 lane，表示 A 的一行；A=(I+L)^(-1)。
+ * 优化方案：每组共同依赖的旧逆行仅加载一次，新求得的八行留在寄存器中供后续行复用。
  * 系数 L_ij 通过 B32 从 UB 直接广播，省去常驻的八个系数行寄存器以及索引构造/Gather。
  * 各行的 j 累加顺序不变；组末的 store->load 屏障保证下一组读到完整的旧逆行。
  */
