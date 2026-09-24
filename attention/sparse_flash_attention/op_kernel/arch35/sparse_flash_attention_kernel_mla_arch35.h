@@ -492,6 +492,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     if ASCEND_IS_AIC {
         cubeBlock.UninitLocalBuffer();
+        bmm1Buffers.GetPre().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
