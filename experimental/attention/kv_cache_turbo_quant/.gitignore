@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.o
+*.so
+/tests/data/
+/tests/logs/
+/tests/overnight_auto/
+*.log
+/tests/cpu_encode_twin
+/tests/verify_kernel_encode_vs_twin
+/tests/regen_npu_expects_from_twin
+/tests/npu_precision_cases
+/tests/npu_perf_bench
+/tests/npu_export_for_metric
