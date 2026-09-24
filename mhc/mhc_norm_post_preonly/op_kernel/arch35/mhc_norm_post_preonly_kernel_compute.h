@@ -65,34 +65,6 @@ __aicore__ inline void VFCastB16ToFp32(const LocalTensor<float> &dst, const Loca
     }
 }
 
-// 在一个VF内恢复相邻两路低精度数据，减少相同分块上的VF启动次数。
-template <typename T>
-__aicore__ inline void VFCastB16PairToFp32(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
-                                           const LocalTensor<T> &src0, const LocalTensor<T> &src1, uint32_t count)
-{
-    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
-    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
-    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
-    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<T> src0Reg, src1Reg;
-        Reg::RegTensor<float> dst0Reg, dst1Reg;
-        Reg::MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = Reg::UpdateMask<float>(remain);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, src0Reg, mask);
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, src1Reg, mask);
-            Reg::StoreAlign(dst0Addr + i * VL_FP32, dst0Reg, mask);
-            Reg::StoreAlign(dst1Addr + i * VL_FP32, dst1Reg, mask);
-        }
-    }
-}
-
 // 在一个VF内完成低精度恢复和平方，直接生成平方和归约输入。
 template <typename T>
 __aicore__ inline void VFCastB16ToFp32Square(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
@@ -140,6 +112,41 @@ __aicore__ inline void VFPairSquareB16ToFp32(const LocalTensor<float> &dst, cons
             Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
             Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
             Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 在一个VF内恢复两路低精度数据并完成成对点积，避免为R4/R5生成完整FP32 x2中间缓存。
+template <typename T>
+__aicore__ inline void VFPairMulAddB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
+                                             const LocalTensor<float> &weight0, const LocalTensor<T> &src1,
+                                             const LocalTensor<float> &weight1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
+    __local_mem__ float *weight0Addr = (__local_mem__ float *)weight0.GetPhyAddr();
+    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
+    __local_mem__ float *weight1Addr = (__local_mem__ float *)weight1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<T> src0Reg, src1Reg;
+        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, weight0Reg, weight1Reg;
+        Reg::RegTensor<float> product0Reg, product1Reg, dstReg;
+        Reg::MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(weight0Reg, weight0Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(weight1Reg, weight1Addr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
+            Reg::Mul(product0Reg, src0Fp32Reg, weight0Reg, mask);
+            Reg::Mul(product1Reg, src1Fp32Reg, weight1Reg, mask);
+            Reg::Add(dstReg, product0Reg, product1Reg, mask);
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
@@ -244,61 +251,6 @@ __aicore__ inline void VFAdd(const LocalTensor<float> &dst, const LocalTensor<fl
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
             Reg::Add(dstReg, src0Reg, src1Reg, mask);
-            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
-        }
-    }
-}
-
-// 在一个VF内完成两路平方并求和，避免两个中间结果写回UB后再读出相加。
-__aicore__ inline void VFPairSquareAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
-                                       const LocalTensor<float> &src1, uint32_t count)
-{
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
-    __local_mem__ float *src1Addr = (__local_mem__ float *)src1.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<float> src0Reg, src1Reg, src0SqReg, src1SqReg, dstReg;
-        Reg::MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = Reg::UpdateMask<float>(remain);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
-            Reg::Mul(src0SqReg, src0Reg, src0Reg, mask);
-            Reg::Mul(src1SqReg, src1Reg, src1Reg, mask);
-            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
-            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
-        }
-    }
-}
-
-// 在一个VF内完成两路乘法并求和，用于相邻head对同一输出行的点积部分和。
-__aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src00,
-                                    const LocalTensor<float> &src01, const LocalTensor<float> &src10,
-                                    const LocalTensor<float> &src11, uint32_t count)
-{
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    __local_mem__ float *src00Addr = (__local_mem__ float *)src00.GetPhyAddr();
-    __local_mem__ float *src01Addr = (__local_mem__ float *)src01.GetPhyAddr();
-    __local_mem__ float *src10Addr = (__local_mem__ float *)src10.GetPhyAddr();
-    __local_mem__ float *src11Addr = (__local_mem__ float *)src11.GetPhyAddr();
-    uint32_t remain = count;
-    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<float> src00Reg, src01Reg, src10Reg, src11Reg, product0Reg, product1Reg, dstReg;
-        Reg::MaskReg mask;
-        for (uint16_t i = 0; i < loops; ++i) {
-            mask = Reg::UpdateMask<float>(remain);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src00Reg, src00Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src01Reg, src01Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src10Reg, src10Addr + i * VL_FP32);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src11Reg, src11Addr + i * VL_FP32);
-            Reg::Mul(product0Reg, src00Reg, src01Reg, mask);
-            Reg::Mul(product1Reg, src10Reg, src11Reg, mask);
-            Reg::Add(dstReg, product0Reg, product1Reg, mask);
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
