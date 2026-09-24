@@ -186,6 +186,8 @@ struct AlltoAllvGmmAivTilingData {
     uint32_t is910C = 0U;
     uint32_t expertOverlapMode = A2AVGMM_EXPERT_OVERLAP_DISABLED;
     uint32_t reserved = 0U;
+    // GMM数组扩容(128->256)使AlltoAllvGmmTilingData增大3072字节，此处同步扩充默认tiling容量，保持原有余量
+    uint8_t capacityPadding[3072] = {};
 };
 #pragma pack(pop)
 

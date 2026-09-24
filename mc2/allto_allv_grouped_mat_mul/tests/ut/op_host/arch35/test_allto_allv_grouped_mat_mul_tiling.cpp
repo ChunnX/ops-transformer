@@ -185,7 +185,7 @@ TEST_P(AlltoAllvGroupedMatMulArch35TilingTest, ShapeSize)
 
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
 
     TilingParams tilingParams;
     InitializeTilingParams(testParam, tilingParams);
@@ -344,7 +344,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BasicSuccess)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -382,7 +382,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, H4)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -420,7 +420,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, A1)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -458,7 +458,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BS1)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -496,7 +496,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim1)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -534,7 +534,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim2)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -572,7 +572,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim3)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -610,7 +610,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim5)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -648,7 +648,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim6)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -686,7 +686,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim7)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -724,7 +724,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim10)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -762,7 +762,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, TransMmWeight1)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -800,7 +800,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize2)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts2{2048, 2048};
     std::vector<int64_t> recvCounts2{2048, 2048};
     gert::TilingContextPara tilingContextPara(
@@ -840,7 +840,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize16)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts16(256, 64);
     std::vector<int64_t> recvCounts16(256, 64);
     gert::TilingContextPara tilingContextPara(
@@ -880,7 +880,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize32)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts32(1024, 32);
     std::vector<int64_t> recvCounts32(1024, 32);
     gert::TilingContextPara tilingContextPara(
@@ -920,7 +920,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeEmptyDefault)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -958,7 +958,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeAiCpu)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -996,7 +996,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeInvalid)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1034,7 +1034,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, CommModeEmptyEp16)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts16(64, 64);
     std::vector<int64_t> recvCounts16(64, 64);
     gert::TilingContextPara tilingContextPara(
@@ -1074,7 +1074,7 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize64)
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCounts64(4096, 16);
     std::vector<int64_t> recvCounts64(4096, 16);
     gert::TilingContextPara tilingContextPara(
