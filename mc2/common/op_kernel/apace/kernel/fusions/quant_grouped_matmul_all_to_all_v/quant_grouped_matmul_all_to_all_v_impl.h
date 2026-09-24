@@ -320,13 +320,29 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     gmmParams.baseM = static_cast<uint32_t>(mmTilingData->baseM);
     gmmParams.baseN = static_cast<uint32_t>(mmTilingData->baseN);
     gmmParams.baseK = static_cast<uint32_t>(mmTilingData->baseK);
-    // L1 K 窗口映射：kAL1 = stepK × baseK，stepK 取 tiling 自身的 min(stepKa, stepKb)
-    // （与 tiling 的 L1 depth 模型一致：depthA1 = stepKa × 双缓冲）。此前填 0 由 kernel
-    // 兜底为 baseK（单 baseK 窗口），该窗口与 ND 布局 B（非转置权重）组合真机挂死
-    // （同用例下 stepK×baseK 多 baseK 窗口形态已验证跑通）；stepK 缺失时兜底 baseK
-    const uint32_t stepKa = mmTilingData->stepKa > 0 ? static_cast<uint32_t>(mmTilingData->stepKa) : 1U;
-    const uint32_t stepKb = mmTilingData->stepKb > 0 ? static_cast<uint32_t>(mmTilingData->stepKb) : 1U;
-    const uint32_t stepK = stepKa < stepKb ? stepKa : stepKb;
+    // L1 K 窗口映射：按 L1 半区预算选取最大深度 stepK（1~4），窗口 = stepK × baseK。
+    // 约束：baseM×kAL1 + baseN×kAL1 + 双 scale 窗口 ≤ TOTAL_L1_SIZE/2（Blaze 的
+    // L1 布局按半区放置双缓冲）。语义对齐已跑通形态（同用例 SWAT 深度模型：
+    // L1 装得下的最大 stepK，上限 4，{256,256,128} 形状 → stepK=3 → 窗口 384）；
+    // 此前 baseK（128）与 tiling stepK×baseK（256）窗口下共享专家真机挂死
+    // （路由专家不受窗口取值影响）
+    const uint64_t sizeShift = Blaze::Gemm::IsFp4<xType>() ? 1UL : 0UL;
+    const uint64_t halfL1 = AscendC::TOTAL_L1_SIZE >> 1;
+    uint32_t stepK = 1U;
+    for (uint32_t s = 4U; s >= 2U; --s) {
+        const uint64_t kWin = static_cast<uint64_t>(s) * gmmParams.baseK;
+        const uint64_t kWinAlign = (kWin + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1UL) / Blaze::Gemm::MXFP_DIVISOR_SIZE *
+                                   Blaze::Gemm::MXFP_DIVISOR_SIZE;
+        const uint64_t scaleSpan = (kWinAlign / Blaze::Gemm::MXFP_DIVISOR_SIZE) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+        const uint64_t aBuf = (static_cast<uint64_t>(gmmParams.baseM) * kWinAlign) >> sizeShift;
+        const uint64_t bBuf = (static_cast<uint64_t>(gmmParams.baseN) * kWinAlign) >> sizeShift;
+        const uint64_t scaleBuf =
+            (static_cast<uint64_t>(gmmParams.baseM) + static_cast<uint64_t>(gmmParams.baseN)) * scaleSpan;
+        if (aBuf + bBuf + scaleBuf <= halfL1) {
+            stepK = s;
+            break;
+        }
+    }
     const uint32_t kL1Window = stepK * gmmParams.baseK;
     gmmParams.kAL1 = kL1Window;
     gmmParams.kBL1 = kL1Window;

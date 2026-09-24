@@ -112,6 +112,9 @@ private:
 
     __aicore__ inline AscendC::HcclHandle CommitAlltoAllV(uint32_t startExpertIdx, uint32_t expertNum)
     {
+        // 通信参数组为提交期临时数据，用局部变量而非成员（4KB），降低共享专家
+        // GMM 执行期的栈峰值（成员会在整个 kernel 生命周期占用）
+        A2avCommParams commParams;
         const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
         const uint32_t rankDim = static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
         const uint64_t n1 = tilingData_->taskTilingInfo.N1;
@@ -120,11 +123,11 @@ private:
 
         // 本批 send/recv 计数（元素单位，axis=N1）
         for (uint32_t i = 0U; i < rankDim; i++) {
-            commParams_.sendCnt[i] = 0UL;
-            commParams_.recvCnt[i] = 0UL;
+            commParams.sendCnt[i] = 0UL;
+            commParams.recvCnt[i] = 0UL;
             for (uint32_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-                commParams_.sendCnt[i] += static_cast<uint64_t>(sendCounts[expertIdx + i * e]) * n1;
-                commParams_.recvCnt[i] += static_cast<uint64_t>(recvCounts[expertIdx + i * e]) * n1;
+                commParams.sendCnt[i] += static_cast<uint64_t>(sendCounts[expertIdx + i * e]) * n1;
+                commParams.recvCnt[i] += static_cast<uint64_t>(recvCounts[expertIdx + i * e]) * n1;
             }
         }
 
@@ -137,31 +140,31 @@ private:
             }
         }
         batchStartOffset *= n1;
-        commParams_.sendOffset[0] = batchStartOffset;
+        commParams.sendOffset[0] = batchStartOffset;
         uint64_t rankRunningOffset = 0UL;
         for (uint32_t i = 1U; i < rankDim; i++) {
             for (uint32_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
                 rankRunningOffset += static_cast<uint64_t>(sendCounts[expertIdx + (i - 1) * e]) * n1;
             }
-            commParams_.sendOffset[i] = batchStartOffset + rankRunningOffset;
+            commParams.sendOffset[i] = batchStartOffset + rankRunningOffset;
         }
 
         // recv 偏移：y 按 recvCounts 源 rank 聚合顺序（rank-major）。
         // 索引 startExpertIdx + (i-1)*e + j 跨过 rank i-1 的本批后段专家与 rank i 的批前专家，
         // 累加后恰好折叠为 rank 段基 + 批前前缀（伸缩和恒等式）
-        commParams_.recvOffset[0] = 0UL;
+        commParams.recvOffset[0] = 0UL;
         for (uint32_t i = 0U; i < startExpertIdx; i++) {
-            commParams_.recvOffset[0] += static_cast<uint64_t>(recvCounts[i]) * n1;
+            commParams.recvOffset[0] += static_cast<uint64_t>(recvCounts[i]) * n1;
         }
         for (uint32_t i = 1U; i < rankDim; i++) {
-            commParams_.recvOffset[i] = commParams_.recvOffset[i - 1];
+            commParams.recvOffset[i] = commParams.recvOffset[i - 1];
             for (uint32_t j = 0U; j < e; j++) {
-                commParams_.recvOffset[i] += static_cast<uint64_t>(recvCounts[startExpertIdx + (i - 1) * e + j]) * n1;
+                commParams.recvOffset[i] += static_cast<uint64_t>(recvCounts[startExpertIdx + (i - 1) * e + j]) * n1;
             }
         }
 
-        return hccl_.template AlltoAllV<true>(gmmOutputGM_, commParams_.sendCnt, commParams_.sendOffset,
-                                              GetHcclDataType(), yGM_, commParams_.recvCnt, commParams_.recvOffset,
+        return hccl_.template AlltoAllV<true>(gmmOutputGM_, commParams.sendCnt, commParams.sendOffset,
+                                              GetHcclDataType(), yGM_, commParams.recvCnt, commParams.recvOffset,
                                               GetHcclDataType(), static_cast<uint8_t>(1));
     }
 
@@ -170,7 +173,6 @@ private:
 
     HcclType hccl_;
     ComputeOp computeOp_;
-    A2avCommParams commParams_;
     AscendC::HcclHandle a2avHandles_[MAX_COMM_LOOP]{};
     uint32_t submitted_{0};
     GM_ADDR yGM_{nullptr};

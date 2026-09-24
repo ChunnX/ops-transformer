@@ -278,7 +278,7 @@ wScaleGM = wScaleBaseGM + startExpertIdx·N1·scaleK · sizeof(scale)
 | m | isLocal ? BS : maxM | 调度上界：路由专家取全专家最大 token 数；共享专家实际行数为 BS |
 | n / k | N1 / H1 | |
 | baseM/baseN/baseK/dbL0C/isBias | 原 `mmTilingData` 同名字段 | **复用原 tiling 引擎产出**（与原通路同源） |
-| kAL1/kBL1/scaleKAL1 | **min(stepKa,stepKb) × baseK** | 与 tiling 自身 L1 depth 模型一致（depthA1 = stepKa×双缓冲）。真机实证：填 0 兜底为 baseK（单 baseK 窗口）与 **ND 布局 B（非转置权重）组合挂死**，dn 布局不受影响；多 baseK 窗口（stepK×baseK）为同用例已验证形态；stepK 缺失兜底 baseK |
+| kAL1/kBL1/scaleKAL1 | **L1 深度最大化窗口**（设备端按 TOTAL_L1_SIZE 半区预算取最大 stepK≤4，窗口=stepK×baseK） | 语义对齐已跑通形态的 SWAT 深度模型（{256,256,128}+512KB L1 → stepK=3 → 384）。真机实证：128（baseK 兜底）与 256（tiling stepK×baseK）窗口下共享专家挂死（路由不受影响、transB 两态均挂、单独执行仍挂） |
 | l1BufferStage | 2（DOUBLE_BUFFER_COUNT） | |
 | groupListType | `gmmQuantParams.groupListType`（LENGTH） | 与原 tiling 一致 |
 
@@ -341,7 +341,7 @@ kernel 侧 `Init` 按相同布局切表（`!isLocal` 分支），共享专家仅
 | D2 | 通信在 AIC 核内（弃用 AIV KFC 通路） | Blaze 与 AIV 侧 KFC 同实例共存 → AIV 通信任务参数校验失败（与是否执行计算无关） |
 | D3 | apace 组合 AIC_ONLY（TPL KERNEL_TYPE_SEL 按组合声明） | `KERNEL_TASK_TYPE_DEFAULT` 编译单元级无法按组合区分（14 实例 json 实证）；TPL SEL 为仓内已验证机制（allto_all_matmul 同款），无需核型守卫 |
 | D4 | 复用原 `QuantGmmA2avTilingData` 与原 MM tiling 字段 | 接口与模板签名对齐 `QuantGroupedMatmul`，原算子目录侵入最小（tiling_common 零修改） |
-| D5 | kAL1/kBL1/scaleKAL1 = stepK×baseK（tiling 自身 stepK） | 单 baseK 窗口（0 兜底）+ ND 布局 B 真机挂死（tiling dump 对账定位：同用例 stepK×baseK 窗口跑通、dn 布局两形态均正常）；stepK 窗口与 tiling 的 L1 depth 模型自洽 |
+| D5 | kAL1/kBL1/scaleKAL1 = L1 深度最大化窗口（stepK≤4） | 128/256 窗口下共享专家真机挂死（transB 两态、单独执行均复现）；唯一跑通形态（同用例）为 SWAT L1 深度模型窗口（384），设备端按 TOTAL_L1_SIZE 半区预算复现该语义 |
 | D6 | 基址从固定基址绝对推导 | 相对累加在多批场景重复计入历史批偏移（实现期自查发现） |
 | D7 | 共享专家独立维度：m=BS、n=N2、k=H2（非 maxM/n1_/h1_） | 共享专家是独立 MM 问题（mmX[BS,H2]×mmWeight[H2,N2]），L0 tiling 亦按此切分；误用 GMM 维度（N1/H1）时 K/N 循环与 B/scaleB 布局错位，mmad 挂死（真机实证） |
 | D8 | workspace 扩容放在 MX tiling 类覆写（虚函数） | 公共 tiling_common 保持与主库字节一致；TT 类不受影响 |
