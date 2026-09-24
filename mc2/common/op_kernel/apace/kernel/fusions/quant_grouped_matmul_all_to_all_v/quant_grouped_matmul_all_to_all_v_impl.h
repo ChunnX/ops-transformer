@@ -110,8 +110,11 @@ private:
     uint64_t mMaxSize_ = 0;
     // 共享专家挂死定位（临时诊断，经 taskTilingInfo.ubSize 下发，原通路不消费该字段）：
     // 0=关闭；1=M钳256；2=N钳256；3=K钳128；4=全钳制；5=跳过 Run（仅 Init/建表）；
-    // 7=K钳512（2 窗口）
+    // 7=K钳512（2 窗口）；9=拆2组；10=拆16组（复刻路由多组形态）
     uint64_t sharedDbg_{0};
+    // dbg=9/10：B/scaleB 多组偏移表（全部指向同一专家权重，即偏移 0），
+    // 布局 [groupList 256B][bTable 256B][scaleBTable 256B] 于共享 workspace 内
+    GM_ADDR shBTableGM_{};
     MxApaceKernel mxKernel_;
 };
 
@@ -279,7 +282,26 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
         if (sharedDbg_ == 1UL || sharedDbg_ == 4UL) {
             sharedM = sharedM > 256L ? 256L : sharedM;
         }
-        groupListPtr[GMM_A2AV_GROUP_LIST_INDEX] = sharedM;
+        const bool multiGroup = (sharedDbg_ == 9UL || sharedDbg_ == 10UL);
+        if (!multiGroup) {
+            groupListPtr[GMM_A2AV_GROUP_LIST_INDEX] = sharedM;
+        } else {
+            // 诊断档位 9/10：把共享问题拆成多组（组内 M 均分，末组收余量），
+            // B/scaleB 偏移表全部置 0（各组共用同一份专家权重）——复刻路由专家的
+            // 多组调用形态，判别挂死是否与 groupNum=1/单组大 M 相关
+            const uint32_t dbgGroupNum = (sharedDbg_ == 9UL) ? 2U : 16U;
+            const int64_t perGroup = sharedM / dbgGroupNum;
+            __gm__ uint64_t *bTable = reinterpret_cast<__gm__ uint64_t *>(groupListGm_ + 256UL);
+            __gm__ uint64_t *scaleBTable = reinterpret_cast<__gm__ uint64_t *>(groupListGm_ + 512UL);
+            int64_t assigned = 0;
+            for (uint32_t g = 0U; g < dbgGroupNum; ++g) {
+                const int64_t rows = (g == dbgGroupNum - 1U) ? (sharedM - assigned) : perGroup;
+                groupListPtr[GMM_A2AV_GROUP_LIST_INDEX + g] = rows;
+                bTable[g] = 0UL;
+                scaleBTable[g] = 0UL;
+                assigned += rows;
+            }
+        }
     }
 }
 
@@ -342,7 +364,11 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
         }
     }
     GMMTiling gmmParams;
-    gmmParams.groupNum = isLocal ? 1U : expertNum * static_cast<uint32_t>(epWorldSize_);
+    if (isLocal && (sharedDbg_ == 9UL || sharedDbg_ == 10UL)) {
+        gmmParams.groupNum = (sharedDbg_ == 9UL) ? 2U : 16U;
+    } else {
+        gmmParams.groupNum = isLocal ? 1U : expertNum * static_cast<uint32_t>(epWorldSize_);
+    }
     gmmParams.m = maxM;
     gmmParams.n = problemN;
     gmmParams.k = problemK;
@@ -390,6 +416,10 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     mmadParams.scaleBGmAddr = weightScaleGM_;
 
     GroupOffsetTables offsetTables;
+    if (isLocal && (sharedDbg_ == 9UL || sharedDbg_ == 10UL)) {
+        offsetTables.bGroupAddrTable = reinterpret_cast<const __gm__ uint64_t *>(groupListGm_ + 256UL);
+        offsetTables.scaleBGroupAddrTable = reinterpret_cast<const __gm__ uint64_t *>(groupListGm_ + 512UL);
+    }
     if constexpr (!isLocal) {
         offsetTables.aGroupAddrTable = nullptr; // A 走公式（expert-major 累积）
         offsetTables.scaleAGroupAddrTable = nullptr;
