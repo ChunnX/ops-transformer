@@ -699,7 +699,7 @@ __aicore__ inline void VFAxpy(const LocalTensor<float> &dst, const LocalTensor<f
     {
         Reg::RegTensor<float> srcReg, dstReg, scalarReg;
         Reg::MaskReg mask;
-        Reg::MaskReg maskAll = Reg::CreateMask<float, MaskPattern::ALL>();
+        Reg::MaskReg maskAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::Duplicate(scalarReg, scalar, maskAll);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
