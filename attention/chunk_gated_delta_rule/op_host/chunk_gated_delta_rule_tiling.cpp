@@ -255,9 +255,13 @@ uint64_t ChunkGatedDeltaRuleTiling::GetTilingKey() const
 // 计算 workspace 大小
 ge::graphStatus ChunkGatedDeltaRuleTiling::GetWorkspaceSize()
 {
+    // 融合实现版本将阶段中间量和递推状态保留在 UB/L1，仅申请 16 MiB 系统工作区。
+    // interWorkspaceSz/stageWorkspaceSz 仍由公共 tiling 计算，只有其他架构的分阶段实现需要申请。
     workspaceSize_ = SYS_WORKSPACE_SIZE;
-    workspaceSize_ += tilingData_.interWorkspaceSz;
-    workspaceSize_ += tilingData_.stageWorkspaceSz;
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        workspaceSize_ += tilingData_.interWorkspaceSz;
+        workspaceSize_ += tilingData_.stageWorkspaceSz;
+    }
     return ge::GRAPH_SUCCESS;
 };
 
