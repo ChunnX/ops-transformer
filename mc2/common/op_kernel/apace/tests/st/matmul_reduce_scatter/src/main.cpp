@@ -390,7 +390,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
     GM_ADDR deviceWorkspace = nullptr;
 
     // 显存申请失败必须退出: ACL_CHECK 仅打印不返回, nullptr 传入 memcpy/kernel 会触发
-    // 设备侧非法访问 (SEC-4.1); 失败路径释放已申请资源
+    // 设备侧非法访问; 失败路径释放已申请资源
     auto mallocOrCleanup = [&](GM_ADDR *ptr, size_t size, const char *name) -> bool {
         if (aclrtMalloc((void **)ptr, size, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_SUCCESS) {
             std::cerr << "aclrtMalloc failed: " << name << " (" << size << " bytes)" << std::endl;

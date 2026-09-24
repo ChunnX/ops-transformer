@@ -13,26 +13,15 @@
  * \brief 使用 AIV 进行 reduce_sum — 批量加载 + 高精度中间类型累加
  *
  *   - LocalTensor (VECIN) + GlobalTensor + DataCopy/Cast/Add 实现
- *   - v4 批量加载: rankDim 份输入背靠背 DataCopy (MTE2 流水交叠 GM 访问延迟),
- *     单次 MTE2_V 等待覆盖全部 load, 替代 v3 逐 rank load→wait→cast→add 串行
- *     (实测每输入约 1us 的 GM 延迟无法被掩盖, rankDim 份串行累加)
- *   - slot 布局: 1(sum) + rankDim(输入, 每 rank 独立 slot) + 2(cast scratch pingpong) + 1(out)
+ *   - 批量加载: rankDim 份输入背靠背 DataCopy (MTE2 流水交叠 GM 访问延迟),
+ *     单次 MTE2_V 等待覆盖本批全部 load; 在途模式 (与 PUT 并发) 逐 rank 交替
+ *     让出 GM/互连带宽, 尾声模式 (PUT 已 drain) 全量批量交叠全部加载延迟
+ *   - slot 布局: 1(sum) + rankDim(输入, 每 rank 独立 slot) + 2(cast scratch pingpong) + 1(out),
+ *     按 maxSegLen 固定于分段循环外 (各段共用, 收缩尾段 slot 不漂移)
  *   - 中间类型累加: IOType → Cast SumType → Add → Cast 回 IOType (精度优先);
  *     IOType == SumType (如 fp32) 时免 Cast 直接累加
  *   - IOType 支持 bfloat16_t / half / float, SumType 为模板参数控制累加精度 (默认 float)
  *   - self/received 分离读取; 外部传参统一归纳为 RsParams, Init 一次传入
- *
- * 注: 曾有 ExecuteReduceSumBatch 批量接口, 因多行批量 + 单次 flag 模式存在
- * 时序竞态(尾段数据错乱)已删除; 统一走逐行同步的 ExecuteReduceSum。
- *
- * v3 修复 (v2 存量 bug): slot 布局按 maxSegLen 固定 (不再按每段 segLen 重算)。
- * 旧实现在尾段收缩 (n 分段最后一段 segLen < maxSegLen) 时, 尾段 inIO slot 与
- * 前段 sum slot 在 UB 内重叠, 且 MTE2 (下段输入写) 与 MTE3 (上段输出读) 无排序,
- * 竞态覆写前段输出尾部元素 (n=16384: 坏列窗口 [7856, 8528))。
- * 合并说明 (v8.1): 基于远端 PR 检视修复 (尾段 DataCopyPad 钳制 + ASC_DEVKIT include
- * 守卫) 之上移植 v4 批量加载结构; 尾段钳制语义不变 — 补齐区仅 UB 内参与计算、不落 GM。
- * v4 保持该纪律: 布局仍按 maxSegLen 固定于分段循环外; 输入 slot 按 rank 独立分配,
- * MTE2 覆写仅发生在分段边界, 由输出段的 V_MTE3 等待 + MTE2_V 等待双向排序覆盖。
  */
 
 #ifndef REDUCE_SUM_REF_H
@@ -76,11 +65,11 @@ public:
 
     // Init 外部传参: 归纳全部一次性输入, 生命周期内不变
     struct RsParams {
-        GM_ADDR recvWindowAddr{0};  // 通信窗口: 远端 rank PUT 过来的各份部分和
-        GM_ADDR selfPartialAddr{0}; // 本卡 workspace: 本 rank matmul 输出的部分和
-        GM_ADDR outputAddr{0};      // 归约结果输出地址
-        uint64_t rankDim{0};        // 参与归约的 rank 总数 (前置条件: ≤ COMM_MAX_RS_RANK=64,
-                             //  超出时 ExecuteReduceSum 直接返回; ST 装配层已校验 rankNum ∈ [2,16])
+        GM_ADDR recvWindowAddr{0};   // 通信窗口: 远端 rank PUT 过来的各份部分和
+        GM_ADDR selfPartialAddr{0};  // 本卡 workspace: 本 rank matmul 输出的部分和
+        GM_ADDR outputAddr{0};       // 归约结果输出地址
+        uint64_t rankDim{0};         // 参与归约的 rank 总数 (前置条件: ≤ COMM_MAX_RS_RANK=64,
+                                     //  超出时 ExecuteReduceSum 直接返回)
         uint64_t rankId{0};          // 本 rank 编号
         uint64_t aivNum{0};          // 参与归约计算的 AIV 核数
         uint64_t rowStride{0};       // 相邻 rank 部分和的行间距 (元素数)
@@ -102,7 +91,7 @@ public:
     __aicore__ inline void ExecuteReduceSum(uint64_t tileM)
     {
         // rankDim 上界防护: inIOElem/inSumElem 为定长 [COMM_MAX_RS_RANK] 栈数组,
-        // rankDim 超出时越界写 (SEC-1.2); 调用方不变量 rankNum ≤ 16, 此处防御性兜底
+        // 超出时越界写, 防御性退出
         if (rsParams_.rankDim > COMM_MAX_RS_RANK) {
             return;
         }
@@ -137,7 +126,7 @@ public:
         LocalTensor<IOType> ubIO{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(IOType))};
 
         // slot 布局按 maxSegLen 固定计算 (分段循环外), 全部段共用同一布局 —
-        // 若按各段 segLen 重算, 收缩尾段的输入 slot 会落入其他 slot (v3 修复纪律, 见文件头)。
+        // 若按各段 segLen 重算, 收缩尾段的输入 slot 会落入其他 slot 区域。
         // 输入 slot 双视图: 混型路径按 IOType 元素偏移 (ubIO), 同型路径按 SumType 偏移 (ubSum);
         // 全部偏移加 ubReservedBytes 换算的基址 (保留区上移)。
         uint64_t slotIOElems = maxSegLen * sizeof(SumType) / sizeof(IOType);
@@ -162,7 +151,7 @@ public:
             // N 分段循环
             for (uint64_t nStart = 0; nStart < alignedN; nStart += maxSegLen) {
                 uint64_t segLen = (nStart + maxSegLen <= alignedN) ? maxSegLen : (alignedN - nStart);
-                // 尾段钳制 (PR 检视修复): nSize 非 SEG_ALIGN_ELEMS 对齐时, alignedN 补齐部分不参与
+                // 尾段钳制: nSize 非 SEG_ALIGN_ELEMS 对齐时, alignedN 补齐部分不参与
                 // GM 读写 (对齐读会越过本行行尾: 末行越过输出缓冲区末端 → GM 越界写; 跨核行边界
                 // 溢出写与邻核正确写出无排序 → 数据竞争)。读写均按实际有效长度搬运 (DataCopyPad)
                 uint64_t validLen = (nStart + segLen <= rsParams_.nSize) ? segLen : (rsParams_.nSize - nStart);
@@ -174,14 +163,12 @@ public:
                 // 2. 分批加载 + 逐批累加: 每批 batchRank 份输入背靠背 DataCopy (MTE2 流水
                 //    交叠 GM 访问延迟, 单次 MTE2_V 等待覆盖本批 load), 批内 Cast/Add 串行;
                 //    V→MTE2 排序: 上一行/上一段/上一次调用对输入 slot 的 V 读全部完成后,
-                //    本段 MTE2 批量写才可覆写 (v2 时代 MTE2/V 无排序竞态的同类防护,
-                //    原 v3 逐 rank 迭代尾的 V_MTE2 flag 对在此合并为段首单次)
+                //    本段 MTE2 批量写才可覆写
                 SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                 WaitFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                 // batchRank: 尾声 (fullBatch=1, 无并发 PUT) 全量批量交叠全部加载延迟;
-                // 在途 (fullBatch=0) 逐 rank 串行 — 与 v7 节奏一致, load→wait→compute 的
-                // 交替天然为并发 PUT 让出 GM/互连带宽 (实测批量/配对在 T≥4 通信并发场景
-                // 回退 +3~6%, 节奏而非突发大小所致)
+                // 在途 (fullBatch=0) 逐 rank 串行, load→wait→compute 的交替为并发 PUT
+                // 让出 GM/互连带宽 (连续突发读流实测与 PUT 争抢带宽)
                 uint64_t batchRank = (rsParams_.fullBatch != 0U) ? rsParams_.rankDim : 1U;
                 for (uint64_t baseRank = 0; baseRank < rsParams_.rankDim; baseRank += batchRank) {
                     uint64_t batchCnt = rsParams_.rankDim - baseRank;
@@ -232,8 +219,8 @@ public:
                         for (uint64_t i = 0; i < batchCnt; ++i) {
                             Add(ubSum[sumElem], ubSum[sumElem], ubSum[inSumElem[baseRank + i]], segLen);
                             if (batchRank == 1U) {
-                                // 在途路径: 逐 rank V 排空后再发下一 load — v7 严格交替节奏,
-                                // 为并发 PUT 留出 GM/互连带宽间隙 (连续读流实测争抢 PUT 带宽)
+                                // 在途路径: 逐 rank V 排空后再发下一 load,
+                                // 为并发 PUT 留出 GM/互连带宽间隙
                                 SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                                 WaitFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                             } else {
@@ -247,7 +234,7 @@ public:
                             PipeBarrier<PIPE_V>();
                             Add(ubSum[sumElem], ubSum[sumElem], ubSum[scratchElem[pp]], segLen);
                             if (batchRank == 1U) {
-                                // 在途路径: 同上, 逐 rank V 排空 (v7 节奏)
+                                // 在途路径: 同上, 逐 rank V 排空
                                 SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                                 WaitFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                             }
@@ -311,7 +298,7 @@ private:
         }
     }
 
-    // v4 slot 布局 (slot 容量按字节统一 = maxSegLen × sizeof(SumType), 每 rank 输入独立 slot):
+    // slot 布局 (slot 容量按字节统一 = maxSegLen × sizeof(SumType), 每 rank 输入独立 slot):
     //   slot#0: sum 累加器 | slot#1..rankDim: 各 rank 输入 | slot#rankDim+1/2: cast scratch
     //   pingpong | slot#rankDim+3: 输出
     constexpr static uint32_t SCRATCH_SLOT_NUM = PINGPONG_NUM;

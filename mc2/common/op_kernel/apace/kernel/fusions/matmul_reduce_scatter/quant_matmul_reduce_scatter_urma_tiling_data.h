@@ -61,7 +61,7 @@ struct QuantMatmulReduceScatterTilingData {
 };
 
 // 通信 tiles (splitAxisTileCnt + splitAxisTailCnt) 上限 — host/kernel 同源常量。
-// tile 通知 flagid 直接使用 tid (三轮评审意见1), 每 id 严格一次 Set ↔ 一次 Wait;
+// tile 通知 flagid 直接使用 tid, 每 id 严格一次 Set ↔ 一次 Wait;
 // dav_3510 flagid 为 4bit (0-15): id 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL),
 // id 15 保留未用, tiles 可用 {0..13} ⇒ T ≤ 14。
 constexpr uint32_t QMRS_MAX_COMM_TILES = 14;
