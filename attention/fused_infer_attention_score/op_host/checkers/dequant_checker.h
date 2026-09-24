@@ -68,7 +68,7 @@ private:
     ge::graphStatus CheckDequantScaleKVMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleContiguousMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleDimMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleQueryShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
@@ -128,7 +128,7 @@ private:
     ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureD032ForAntiquant(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckStrideForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckStrideForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckContiguousIfExistsAntiquant(const FiaTilingInfo &fiaInfo, const gert::Tensor *tensor,
                                                      const char *tensorName, const gert::Stride *strides) const;
     ge::graphStatus CheckStrideForAntiquantNoPA(const FiaTilingInfo &fiaInfo) const;
