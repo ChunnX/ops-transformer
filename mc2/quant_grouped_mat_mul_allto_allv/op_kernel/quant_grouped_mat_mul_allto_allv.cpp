@@ -131,10 +131,24 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // dbg=8：仅共享专家（全维度，mm 张量地址），无 hcommImpl 实例
             GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                                mmArrayAddr_, tilingGM);
-            SharedGmmExpertOpType shareComputeOp;
-            shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-            shareComputeOp.Process(0, 1);
+            if (tilingData_->taskTilingInfo.ubSize == 11UL) {
+                // 诊断档位 11：强制共享专家使用 dn（转置）B 布局实例——判别挂死是否
+                // 为 ND 布局实例特有（路由专家走 dn 实例正常；mm 张量为非转置物理布局，
+                // 此处数据语义不正确但访问均在界内，仅用于挂死判别）
+                using SharedDnOpType = Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData,
+                                                                   DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_MM_X_SCALE,
+                                                                   DTYPE_Y, CubeFormat::ND, false, true, true, false>;
+                SharedDnOpType shareDnOp;
+                shareDnOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                               sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+                shareDnOp.Process(0, 1);
+            } else {
+                SharedGmmExpertOpType shareComputeOp;
+                shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                                    sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
+                                    &pipe);
+                shareComputeOp.Process(0, 1);
+            }
         }
 #else
         // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
