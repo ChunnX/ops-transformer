@@ -509,10 +509,11 @@ aclnnStatus CheckHostGroupListValues(const aclTensor *x, const aclTensor *groupL
     }
     const int64_t m = x->GetViewShape().GetDim(0);
     const int64_t groupNum = groupList->GetViewShape().GetDim(0);
+    const int64_t groupStride = groupList->GetViewStrides()[0];
     int64_t previous = 0;
     int64_t sum = 0;
     for (int64_t index = 0; index < groupNum; ++index) {
-        const int64_t value = data[index];
+        const int64_t value = data[index * groupStride];
         GMM_SWIGLU_V3_CHECK_WITH_LOG(value >= 0, ACLNN_ERR_PARAM_INVALID,
                                      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "groupList", std::to_string(value),
                                                                            "values must be non-negative"));

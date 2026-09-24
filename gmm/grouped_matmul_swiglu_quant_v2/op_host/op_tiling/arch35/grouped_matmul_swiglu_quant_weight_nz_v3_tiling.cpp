@@ -396,7 +396,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::IsTensorApiCapable() const
          aivNum_, transposeWeight_, true});
     OP_LOGD(context_->GetNodeName(),
             "V3 Tensor API capability: M=%lu, N=%lu, K=%lu, groups=%lu, averageM=%lu, "
-            "transB=%d, cores=%lu:%lu, capable=%d",
+            "transB=%d, cores=%lu:%u, capable=%d",
             inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum, averageM,
             transposeWeight_, aicoreParams_.aicNum, aivNum_, capable);
     return capable;

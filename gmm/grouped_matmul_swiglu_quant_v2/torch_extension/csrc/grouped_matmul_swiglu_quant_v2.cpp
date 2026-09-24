@@ -172,8 +172,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     CheckV3Args(x, weight, weightScale, xScale, weightAssistMatrix, bias, smoothScale, tuningConfig, dequantMode,
                 dequantDtype, quantMode, groupListType, xDtype, weightDtype, weightScaleDtype, xScaleDtype, swigluMode,
                 clampLimitValue, roundMode, scaleAlg, dstTypeMax);
-    TORCH_CHECK(!quantDtype.has_value() || quantDtype.value() == 1 ||
-                    GetAclDtypeFromValue(quantDtype.value()) == ACL_FLOAT8_E4M3FN,
+    TORCH_CHECK(!quantDtype.has_value() || GetAclDtypeFromValue(quantDtype.value()) == ACL_FLOAT8_E4M3FN,
                 "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
 
     const int64_t m = x.size(kDim0);
