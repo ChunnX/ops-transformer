@@ -46,7 +46,7 @@ private:
                                                FagConstInfo constInfo);
     __aicore__ inline LocalTensor<int32_t> LoadTopkToUb(uint64_t gmIndex, uint32_t count);
     __aicore__ inline int32_t GetTopkIdx(const LocalTensor<int32_t> &topkUb, bool useUbTopk, uint64_t topkGmOffset,
-                                         int64_t blkIdx);
+                                         int64_t blkIdx, const FagRunInfo &runInfo);
     // WRITE_DV=false 时只散写 dk（KV_MERGE 已把 dv 累加进 dk）
     template <bool WRITE_DV>
     __aicore__ inline void ScatterRowsToGm(const GlobalTensor<CALC_TYPE> &dkOutGm,
@@ -55,7 +55,7 @@ private:
                                            const LocalTensor<CALC_TYPE> &dvInTensor, const LocalTensor<int32_t> &topkUb,
                                            bool useUbTopk, uint64_t topkGmOffset, int64_t blkCount,
                                            FagConstInfo &constInfo, int64_t rowCount, ScatterRowCursor &cursor,
-                                           event_t eventIDVToMTE3);
+                                           event_t eventIDVToMTE3, const FagRunInfo &runInfo);
     __aicore__ inline void GatherKVSingleRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                              FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void GatherKVMultiRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
@@ -305,8 +305,14 @@ __aicore__ inline LocalTensor<int32_t> FAGBlockVec<TEMPLATE_ARGS>::LoadTopkToUb(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GetTopkIdx(const LocalTensor<int32_t> &topkUb, bool useUbTopk,
-                                                                 uint64_t topkGmOffset, int64_t blkIdx)
+                                                                 uint64_t topkGmOffset, int64_t blkIdx,
+                                                                 const FagRunInfo &runInfo)
 {
+    int64_t offset = static_cast<int64_t>(topkGmOffset) + blkIdx;
+    int64_t mappedOffset = MapSfagBlockOffset(offset, runInfo.partialBlockGmOffset, runInfo.lastBlockGmOffset);
+    if (mappedOffset != offset) {
+        return topkIndicesGm.GetValue(mappedOffset);
+    }
     return useUbTopk ? topkUb.GetValue(static_cast<uint32_t>(blkIdx)) :
                        topkIndicesGm.GetValue(topkGmOffset + static_cast<uint64_t>(blkIdx));
 }
@@ -365,7 +371,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
     }
 
     for (uint32_t i = blkBegin; i < blkEnd; i++) {
-        int64_t keyOffset = GetTopkIdx(topkUb, useUbTopk, gmOffset, i) * blockSize;
+        int64_t keyOffset = GetTopkIdx(topkUb, useUbTopk, gmOffset, i, runInfo) * blockSize;
         // tile 里只有最后一个 block 可能被因果对角线截断，越界的行既不搬也不进 mm 的 N 维
         bool isTailBlk = runInfo.isLastBasicBlock && (i + 1 == static_cast<uint32_t>(runInfo.actualSelCntOffset));
         int64_t rowsInBlk = isTailBlk ? runInfo.lastBlockSize : blockSize;
@@ -847,7 +853,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterRowsToGm(
     const GlobalTensor<CALC_TYPE> &dkOutGm, const GlobalTensor<CALC_TYPE> &dvOutGm,
     const LocalTensor<CALC_TYPE> &dkInTensor, const LocalTensor<CALC_TYPE> &dvInTensor,
     const LocalTensor<int32_t> &topkUb, bool useUbTopk, uint64_t topkGmOffset, int64_t blkCount,
-    FagConstInfo &constInfo, int64_t rowCount, ScatterRowCursor &cursor, event_t eventIDVToMTE3)
+    FagConstInfo &constInfo, int64_t rowCount, ScatterRowCursor &cursor, event_t eventIDVToMTE3,
+    const FagRunInfo &runInfo)
 {
     const int64_t blockSize = constInfo.selectedBlockSize;
     const int64_t dSizeV = constInfo.commonConstInfo.dSizeV;
@@ -872,7 +879,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterRowsToGm(
             cursor.blkIdx++;
             // 末尾 block 处理完后不再预取，避免读到 topk 缓冲之外
             if (cursor.blkIdx < blkCount) {
-                cursor.s2Idx = GetTopkIdx(topkUb, useUbTopk, topkGmOffset, cursor.blkIdx);
+                cursor.s2Idx = GetTopkIdx(topkUb, useUbTopk, topkGmOffset, cursor.blkIdx, runInfo);
             }
         }
     }
@@ -919,7 +926,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     bool useUbTopk = true;
     LocalTensor<int32_t> topkUb = LoadTopkToUb(gmOffset, static_cast<uint32_t>(curCoreBlkSize));
     ScatterRowCursor cursor;
-    cursor.s2Idx = topkUb.GetValue(0);
+    cursor.s2Idx = GetTopkIdx(topkUb, useUbTopk, gmOffset, 0, runInfo);
 
     SetAtomicAdd<CALC_TYPE>();
     int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
@@ -954,7 +961,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
         SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
         WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
         ScatterRowsToGm<true>(dkOutGm, dvOutGm, dkInTensor[dkOff], dvInTensor[dvOff], topkUb, useUbTopk, gmOffset,
-                              curCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3);
+                              curCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3, runInfo);
         SetFlag<HardEvent::MTE3_MTE2>(backEvent);
         pingPong = 1 - pingPong;
     }
@@ -972,7 +979,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
     ScatterRowsToGm<true>(dkOutGm, dvOutGm, dkInTensor[dkOff], dvInTensor[dvOff], topkUb, useUbTopk, gmOffset,
-                          curCoreBlkSize, constInfo, tailRows, cursor, eventIDVToMTE3);
+                          curCoreBlkSize, constInfo, tailRows, cursor, eventIDVToMTE3, runInfo);
     SetFlag<HardEvent::MTE3_MTE2>(backEvent);
     SetAtomicNone();
     dSOutQue.FreeTensor(dkInTensor);
@@ -1023,7 +1030,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
     bool useUbTopk = true;
     LocalTensor<int32_t> topkUb = LoadTopkToUb(gmOffset, static_cast<uint32_t>(curCoreBlkSize));
     ScatterRowCursor cursor;
-    cursor.s2Idx = topkUb.GetValue(0);
+    cursor.s2Idx = GetTopkIdx(topkUb, useUbTopk, gmOffset, 0, runInfo);
     // 1 - main loop
     SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
@@ -1049,7 +1056,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
         ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUb, useUbTopk, gmOffset,
-                                     curCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3);
+                                     curCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3, runInfo);
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     }
 
@@ -1076,7 +1083,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
         WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
     }
     ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUb, useUbTopk, gmOffset, curCoreBlkSize,
-                                 constInfo, tailRows, cursor, eventIDVToMTE3);
+                                 constInfo, tailRows, cursor, eventIDVToMTE3, runInfo);
     SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     SetAtomicNone();
     WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
@@ -1167,7 +1174,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         uint64_t gmOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + s2SrcOffset;
         LocalTensor<int32_t> topkUbUnused;
         ScatterRowCursor cursor;
-        cursor.s2Idx = topkIndicesGm.GetValue(gmOffset);
+        cursor.s2Idx = GetTopkIdx(topkUbUnused, false, gmOffset, 0, runInfo);
         GlobalTensor<float> dkOutGm = dkWorkSpaceGm[runInfo.keyOffsetWithRope];
         GlobalTensor<float> dvOutGm = dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset];
         for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
@@ -1193,7 +1200,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             }
             ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUbUnused, false, gmOffset,
-                                         currentCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3);
+                                         currentCoreBlkSize, constInfo, UB_ROW_SIZE, cursor, eventIDVToMTE3, runInfo);
             SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         }
 
@@ -1221,7 +1228,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
         ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUbUnused, false, gmOffset,
-                                     currentCoreBlkSize, constInfo, tailRows, cursor, eventIDVToMTE3);
+                                     currentCoreBlkSize, constInfo, tailRows, cursor, eventIDVToMTE3, runInfo);
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         // V核同步等待所有V核完成某一个C核上S2的计算
@@ -1284,17 +1291,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bS1Index, 
     int64_t blockSize = constInfo.selectedBlockSize;
     int64_t maxS2Blk = CeilDiv(maxS2, blockSize);
     runInfo.actualSelectedBlockCount = Min(static_cast<int64_t>(constInfo.selectedBlockCount), maxS2Blk);
-    // 与 FlashAttentionScoreGradKernelBase::GetLastBlockSize 逐字一致：对角块被选中时只有
-    // maxS2 % blockSize 行有效，Scatter 少读/多读都会和生产侧写过的区域对不上。
-    runInfo.lastBlockSize = blockSize;
-    int64_t tailRows = maxS2 - (maxS2Blk - 1) * blockSize;
-    if (runInfo.actualSelectedBlockCount > 0 && tailRows != blockSize) {
-        uint64_t topkOffset =
-            bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.actualSelectedBlockCount - 1;
-        if (topkIndicesGm.GetValue(topkOffset) == maxS2Blk - 1) {
-            runInfo.lastBlockSize = tailRows;
-        }
-    }
+    int64_t topkOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount);
+    runInfo.lastBlockGmOffset = topkOffset + runInfo.actualSelectedBlockCount - 1;
+    runInfo.partialBlockGmOffset =
+        FindSfagPartialBlock(topkIndicesGm, topkOffset, runInfo.actualSelectedBlockCount, blockSize, maxS2);
+    runInfo.lastBlockSize = runInfo.partialBlockGmOffset >= 0 ? maxS2 - (maxS2Blk - 1) * blockSize : blockSize;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
