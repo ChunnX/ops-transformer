@@ -14,33 +14,33 @@
 namespace MhcNormRegBase {
 
 using namespace AscendC;
-using namespace AscendC::Reg;
+namespace Reg = AscendC::Reg;
 
 constexpr uint32_t VL_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
-constexpr AscendC::Reg::CastTrait CAST_B16_TO_FP32 = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::UNKNOWN,
-    AscendC::Reg::MaskMergeMode::ZEROING,
+constexpr Reg::CastTrait CAST_B16_TO_FP32 = {
+    Reg::RegLayout::ZERO,
+    Reg::SatMode::UNKNOWN,
+    Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN,
 };
 
-constexpr AscendC::Reg::CastTrait CAST_FP32_TO_B16_NONE = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::NO_SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING,
+constexpr Reg::CastTrait CAST_FP32_TO_B16_NONE = {
+    Reg::RegLayout::ZERO,
+    Reg::SatMode::NO_SAT,
+    Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
-constexpr AscendC::Reg::CastTrait CAST_FP32_TO_B16_RINT = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::NO_SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING,
+constexpr Reg::CastTrait CAST_FP32_TO_B16_RINT = {
+    Reg::RegLayout::ZERO,
+    Reg::SatMode::NO_SAT,
+    Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr AscendC::Reg::DivSpecificMode DIV_ZEROING_MODE = {
-    AscendC::Reg::MaskMergeMode::ZEROING,
+constexpr Reg::DivSpecificMode DIV_ZEROING_MODE = {
+    Reg::MaskMergeMode::ZEROING,
     true,
 };
 
@@ -54,14 +54,14 @@ __aicore__ inline void CastB16ToFp32(const LocalTensor<float> &dst, const LocalT
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(dstReg, srcReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(dstReg, srcReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -79,17 +79,17 @@ __aicore__ inline void CastB16PairToFp32(const LocalTensor<float> &dst0, const L
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> src0Reg, src1Reg;
-        RegTensor<float> dst0Reg, dst1Reg;
-        MaskReg mask;
+        Reg::RegTensor<T> src0Reg, src1Reg;
+        Reg::RegTensor<float> dst0Reg, dst1Reg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, src0Reg, mask);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, src1Reg, mask);
-            DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
-            DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, src0Reg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, src1Reg, mask);
+            Reg::DataCopy(dst0Addr + i * VL_FP32, dst0Reg, mask);
+            Reg::DataCopy(dst1Addr + i * VL_FP32, dst1Reg, mask);
         }
     }
 }
@@ -104,15 +104,15 @@ __aicore__ inline void CastB16ToFp32Square(const LocalTensor<float> &dst, const 
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> srcFp32Reg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(dstReg, srcFp32Reg, srcFp32Reg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Mul(dstReg, srcFp32Reg, srcFp32Reg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -129,19 +129,19 @@ __aicore__ inline void PairSquareB16ToFp32(const LocalTensor<float> &dst, const 
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> src0Reg, src1Reg;
-        RegTensor<float> src0Fp32Reg, src1Fp32Reg, src0SqReg, src1SqReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> src0Reg, src1Reg;
+        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, src0SqReg, src1SqReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
-            AscendC::Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
-            AscendC::Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
-            AscendC::Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
+            Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
+            Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
+            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -156,18 +156,18 @@ __aicore__ inline void CastFp32ToB16(const LocalTensor<T> &dst, const LocalTenso
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg;
-        RegTensor<T> dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> srcReg;
+        Reg::RegTensor<T> dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, srcReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, srcReg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, srcReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, srcReg, mask);
             }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -185,22 +185,22 @@ __aicore__ inline void CastFp32PairToB16(const LocalTensor<T> &dst0, const Local
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> src0Reg, src1Reg;
-        RegTensor<T> dst0Reg, dst1Reg;
-        MaskReg mask;
+        Reg::RegTensor<float> src0Reg, src1Reg;
+        Reg::RegTensor<T> dst0Reg, dst1Reg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0Reg, src0Reg, mask);
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1Reg, src1Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0Reg, src0Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1Reg, src1Reg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0Reg, src0Reg, mask);
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1Reg, src1Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0Reg, src0Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1Reg, src1Reg, mask);
             }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0Reg, mask);
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1Reg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0Reg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1Reg, mask);
         }
     }
 }
@@ -215,14 +215,14 @@ __aicore__ inline void Mul(const LocalTensor<float> &dst, const LocalTensor<floa
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> src0Reg, src1Reg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> src0Reg, src1Reg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
-            AscendC::Reg::Mul(dstReg, src0Reg, src1Reg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Mul(dstReg, src0Reg, src1Reg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -237,14 +237,14 @@ __aicore__ inline void Add(const LocalTensor<float> &dst, const LocalTensor<floa
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> src0Reg, src1Reg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> src0Reg, src1Reg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
-            AscendC::Reg::Add(dstReg, src0Reg, src1Reg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Add(dstReg, src0Reg, src1Reg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -260,16 +260,16 @@ __aicore__ inline void PairSquareAdd(const LocalTensor<float> &dst, const LocalT
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> src0Reg, src1Reg, src0SqReg, src1SqReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> src0Reg, src1Reg, src0SqReg, src1SqReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
-            AscendC::Reg::Mul(src0SqReg, src0Reg, src0Reg, mask);
-            AscendC::Reg::Mul(src1SqReg, src1Reg, src1Reg, mask);
-            AscendC::Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Mul(src0SqReg, src0Reg, src0Reg, mask);
+            Reg::Mul(src1SqReg, src1Reg, src1Reg, mask);
+            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -288,18 +288,18 @@ __aicore__ inline void PairMulAdd(const LocalTensor<float> &dst, const LocalTens
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> src00Reg, src01Reg, src10Reg, src11Reg, product0Reg, product1Reg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> src00Reg, src01Reg, src10Reg, src11Reg, product0Reg, product1Reg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(src00Reg, src00Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src01Reg, src01Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src10Reg, src10Addr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(src11Reg, src11Addr + i * VL_FP32);
-            AscendC::Reg::Mul(product0Reg, src00Reg, src01Reg, mask);
-            AscendC::Reg::Mul(product1Reg, src10Reg, src11Reg, mask);
-            AscendC::Reg::Add(dstReg, product0Reg, product1Reg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src00Reg, src00Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src01Reg, src01Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src10Reg, src10Addr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(src11Reg, src11Addr + i * VL_FP32);
+            Reg::Mul(product0Reg, src00Reg, src01Reg, mask);
+            Reg::Mul(product1Reg, src10Reg, src11Reg, mask);
+            Reg::Add(dstReg, product0Reg, product1Reg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -312,13 +312,13 @@ __aicore__ inline void Muls(const LocalTensor<float> &dst, const LocalTensor<flo
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> srcReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Muls(dstReg, srcReg, scalar, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Muls(dstReg, srcReg, scalar, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -334,14 +334,14 @@ __aicore__ inline void MulsWithUbScalar(const LocalTensor<float> &dst, const Loc
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, dstReg, scalarReg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        Reg::RegTensor<float> srcReg, dstReg, scalarReg;
+        Reg::MaskReg mask;
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Mul(dstReg, srcReg, scalarReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Mul(dstReg, srcReg, scalarReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -358,16 +358,16 @@ __aicore__ inline void MulsB16WithUbScalar(const LocalTensor<float> &dst, const 
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        Reg::MaskReg mask;
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(dstReg, srcFp32Reg, scalarReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Mul(dstReg, srcFp32Reg, scalarReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -383,15 +383,15 @@ __aicore__ inline void ScaleAndMulGamma(const LocalTensor<float> &dst, const Loc
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, gammaReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> srcReg, gammaReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
-            AscendC::Reg::Muls(dstReg, srcReg, scale, mask);
-            AscendC::Reg::Mul(dstReg, dstReg, gammaReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            Reg::Muls(dstReg, srcReg, scale, mask);
+            Reg::Mul(dstReg, dstReg, gammaReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -408,17 +408,17 @@ __aicore__ inline void CastB16ScaleAndMulGamma(const LocalTensor<float> &dst, co
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, gammaReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> srcFp32Reg, gammaReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
-            AscendC::Reg::Muls(dstReg, srcFp32Reg, scale, mask);
-            AscendC::Reg::Mul(dstReg, dstReg, gammaReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            Reg::Muls(dstReg, srcFp32Reg, scale, mask);
+            Reg::Mul(dstReg, dstReg, gammaReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -435,23 +435,23 @@ __aicore__ inline void CastB16ScaleGammaQuantizeToFp32(const LocalTensor<float> 
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg, quantizedReg;
-        RegTensor<float> srcFp32Reg, gammaReg, scaledReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg, quantizedReg;
+        Reg::RegTensor<float> srcFp32Reg, gammaReg, scaledReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
-            AscendC::Reg::Muls(scaledReg, srcFp32Reg, scale, mask);
-            AscendC::Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            Reg::Muls(scaledReg, srcFp32Reg, scale, mask);
+            Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, scaledReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, scaledReg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, scaledReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, scaledReg, mask);
             }
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(dstReg, quantizedReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(dstReg, quantizedReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -468,22 +468,22 @@ __aicore__ inline void CastB16ScaleAndMulGammaToB16(const LocalTensor<T> &dst, c
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg, dstReg;
-        RegTensor<float> srcFp32Reg, gammaReg, scaledReg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg, dstReg;
+        Reg::RegTensor<float> srcFp32Reg, gammaReg, scaledReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
-            AscendC::Reg::Muls(scaledReg, srcFp32Reg, scale, mask);
-            AscendC::Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(gammaReg, gammaAddr + i * VL_FP32);
+            Reg::Muls(scaledReg, srcFp32Reg, scale, mask);
+            Reg::Mul(scaledReg, scaledReg, gammaReg, mask);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, scaledReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dstReg, scaledReg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, scaledReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, scaledReg, mask);
             }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -498,17 +498,17 @@ __aicore__ inline void SigmoidAddEps(const LocalTensor<float> &dst, const LocalT
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, expReg, denomReg, oneReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<float> srcReg, expReg, denomReg, oneReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Exp(expReg, srcReg, mask);
-            AscendC::Reg::Adds(denomReg, expReg, 1.0f, mask);
-            AscendC::Reg::Duplicate(oneReg, 1.0f, mask);
-            AscendC::Reg::Div<float, &DIV_ZEROING_MODE>(dstReg, oneReg, denomReg, mask);
-            AscendC::Reg::Adds(dstReg, dstReg, epsilon, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Exp(expReg, srcReg, mask);
+            Reg::Adds(denomReg, expReg, 1.0f, mask);
+            Reg::Duplicate(oneReg, 1.0f, mask);
+            Reg::Div<float, &DIV_ZEROING_MODE>(dstReg, oneReg, denomReg, mask);
+            Reg::Adds(dstReg, dstReg, epsilon, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -527,21 +527,22 @@ __aicore__ inline void ComputePostHead(const LocalTensor<float> &dst, const Loca
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> residualB16Reg;
-        RegTensor<float> hOutReg, residualReg, weightReg, dstReg;
-        MaskReg mask;
+        Reg::RegTensor<T> residualB16Reg;
+        Reg::RegTensor<float> hOutReg, residualReg, weightReg, dstReg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
-            AscendC::Reg::Muls(dstReg, hOutReg, postWeight, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            Reg::Muls(dstReg, hOutReg, postWeight, mask);
             for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
-                AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
-                AscendC::Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
+                Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
+                                                                 residualAddr + row * rowStride + i * VL_FP32);
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weightReg, combAddr + row * N_MAX + headIndex);
+                Reg::MulAddDst(dstReg, residualReg, weightReg, mask);
             }
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -562,32 +563,33 @@ __aicore__ inline void ComputePostHeadPair(const LocalTensor<T> &dst0, const Loc
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
-        RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
-        MaskReg mask;
+        Reg::RegTensor<T> residualB16Reg, dst0B16Reg, dst1B16Reg;
+        Reg::RegTensor<float> hOutReg, residualReg, weight0Reg, weight1Reg, dst0Reg, dst1Reg;
+        Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
-            AscendC::Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
-            AscendC::Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
+            Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
+            Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
             for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
                 const uint32_t row = static_cast<uint32_t>(j);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
-                AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
-                AscendC::Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
-                AscendC::Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
+                Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
+                                                                 residualAddr + row * rowStride + i * VL_FP32);
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight0Reg, combAddr + row * N_MAX + headIndex);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
+                Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
+                Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
             }
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1B16Reg, dst1Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst1B16Reg, dst1Reg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0B16Reg, dst0Reg, mask);
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1B16Reg, dst1Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst0B16Reg, dst0Reg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dst1B16Reg, dst1Reg, mask);
             }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
         }
     }
 }
@@ -606,31 +608,31 @@ __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const Loca
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, accReg;
-        RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
-        MaskReg mask;
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> srcFp32Reg, accReg;
+        Reg::RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
+        Reg::MaskReg mask;
         // 四个gate权重只依赖head，对整个D循环不变，广播一次。
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
+            mask = Reg::UpdateMask<float>(remain);
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
-            DataCopy(dstAddr + offset, accReg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
+            Reg::DataCopy(dstAddr + offset, accReg, mask);
         }
     }
 }
@@ -649,38 +651,38 @@ __aicore__ inline void GateWeightedSumQuantizeSquare(const LocalTensor<T> &dstCa
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg, quantizedReg;
-        RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg;
-        RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
+        Reg::RegTensor<T> srcReg, quantizedReg;
+        Reg::RegTensor<float> srcFp32Reg, accReg, quantizedFp32Reg, squareReg;
+        Reg::RegTensor<float> g0Reg, g1Reg, g2Reg, g3Reg;
+        Reg::MaskReg mask;
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + 0U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g2Reg, gateAddr + 2U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(g3Reg, gateAddr + 3U);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
+            mask = Reg::UpdateMask<float>(remain);
             const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 0U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 1U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 2U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g2Reg, mask);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + 3U * headStride + offset);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::MulAddDst(accReg, srcFp32Reg, g3Reg, mask);
             if constexpr (IsSameT<T, bfloat16_t>::value) {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, accReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(quantizedReg, accReg, mask);
             } else {
-                AscendC::Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, accReg, mask);
+                Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(quantizedReg, accReg, mask);
             }
-            DataCopy<T, StoreDist::DIST_PACK_B32>(dstCacheAddr + offset, quantizedReg, mask);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(quantizedFp32Reg, quantizedReg, mask);
-            AscendC::Reg::Mul(squareReg, quantizedFp32Reg, quantizedFp32Reg, mask);
-            DataCopy(squareAddr + offset, squareReg, mask);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dstCacheAddr + offset, quantizedReg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(quantizedFp32Reg, quantizedReg, mask);
+            Reg::Mul(squareReg, quantizedFp32Reg, quantizedFp32Reg, mask);
+            Reg::DataCopy(squareAddr + offset, squareReg, mask);
         }
     }
 }
@@ -693,16 +695,16 @@ __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<flo
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, dstReg, scalarReg;
-        MaskReg mask;
-        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        Duplicate(scalarReg, scalar, maskAll);
+        Reg::RegTensor<float> srcReg, dstReg, scalarReg;
+        Reg::MaskReg mask;
+        Reg::MaskReg maskAll = Reg::CreateMask<float, MaskPattern::ALL>();
+        Reg::Duplicate(scalarReg, scalar, maskAll);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
-            MulAddDst(dstReg, srcReg, scalarReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            Reg::MulAddDst(dstReg, srcReg, scalarReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -718,15 +720,15 @@ __aicore__ inline void AxpyWithUbScalar(const LocalTensor<float> &dst, const Loc
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<float> srcReg, dstReg, scalarReg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        Reg::RegTensor<float> srcReg, dstReg, scalarReg;
+        Reg::MaskReg mask;
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<float, LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
-            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
-            AscendC::Reg::MulAddDst(dstReg, srcReg, scalarReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(srcReg, srcAddr + i * VL_FP32);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            Reg::MulAddDst(dstReg, srcReg, scalarReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
@@ -743,17 +745,17 @@ __aicore__ inline void AxpyB16WithUbScalar(const LocalTensor<float> &dst, const 
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
-        RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, dstReg, scalarReg;
-        MaskReg mask;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
+        Reg::RegTensor<T> srcReg;
+        Reg::RegTensor<float> srcFp32Reg, dstReg, scalarReg;
+        Reg::MaskReg mask;
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scalarReg, scalarAddr + scalarIndex);
         for (uint16_t i = 0; i < loops; ++i) {
-            mask = UpdateMask<float>(remain);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
-            AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            DataCopy<float, LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
-            AscendC::Reg::MulAddDst(dstReg, srcFp32Reg, scalarReg, mask);
-            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(dstReg, dstAddr + i * VL_FP32);
+            Reg::MulAddDst(dstReg, srcFp32Reg, scalarReg, mask);
+            Reg::DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
 }
