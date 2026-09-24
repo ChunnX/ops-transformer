@@ -679,23 +679,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-// 诊断二分开关（临时）：环境变量 MC2_APACE_SHARED_DBG 经 taskTilingInfo.ubSize 传递
-// （原通路不消费该字段），kernel 侧共享专家按档位钳制维度/跳过执行，定位挂死的规模依赖
-static uint64_t GetApaceSharedDbgStage()
-{
-    const char *dbgEnv = getenv("MC2_APACE_SHARED_DBG");
-    return (dbgEnv != nullptr) ? static_cast<uint64_t>(atoll(dbgEnv)) : 0UL;
-}
-
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
 {
-    // 共享专家挂死定位：诊断档位经 ubSize 下发（0=关闭；1=M钳256；2=N钳256；3=K钳128；
-    // 4=全钳制 256/256/128；5=跳过共享专家 Run 仅执行 Init/建表）
-    localTilingData_.taskTilingInfo.ubSize = GetApaceSharedDbgStage();
-    if (localTilingData_.taskTilingInfo.ubSize != 0UL) {
-        OP_LOGE(opName_, "ApaceMXPath sharedDbg=%lu (1=M钳256 2=N钳256 3=K钳128 4=全钳制 5=跳过Run)",
-                localTilingData_.taskTilingInfo.ubSize);
-    }
     constexpr uint64_t alignAddrLen = 512;
     constexpr uint64_t tensorListSize = 512;
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
@@ -743,32 +728,7 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
             "ApaceMXPath selected: tilingKey=%lu, e=%lu, ep=%lu, A=%lu, BSK=%lu, N1=%lu, H1=%lu, hasSharedMm=%d.",
             tilingKey, localParams_.ep, localParams_.epWorldSize, localParams_.A, localParams_.BsK, localParams_.N1,
             localParams_.H1, localParams_.hasSharedMm);
-    // GMM 参数级诊断（ERROR 确保现场可见）：路由/共享两组 tiling 的全部 Blaze 消费字段，
-    // 用于与已验证形态做数值级对账（共享专家挂死定位）
-    uint64_t mMaxSize = 0;
-    for (uint64_t expertIdx = 0; expertIdx < localParams_.ep; expertIdx++) {
-        uint64_t mSize = 0;
-        for (uint64_t i = 0; i < localParams_.epWorldSize; i++) {
-            mSize += static_cast<uint64_t>(localTilingData_.taskTilingInfo.sendCnt[i * localParams_.ep + expertIdx]);
-        }
-        mMaxSize = std::max(mSize, mMaxSize);
-    }
-    const auto &gmmMm = localTilingData_.gmmBaseTiling.mmTilingData;
-    const auto &shMm = localTilingData_.sharedGmmTiling.mmTilingData;
-    const auto &gmmQp = localTilingData_.gmmBaseTiling.gmmQuantParams;
-    const auto &shQp = localTilingData_.sharedGmmTiling.gmmQuantParams;
-    OP_LOGE(opName_,
-            "ApaceMXPath gmmParams: routed[baseM=%d baseN=%d baseK=%d dbL0C=%d stepKa=%d stepKb=%d depthA1=%d "
-            "depthB1=%d usedCoreNum=%d groupListType=%u | mMax=%lu N1=%lu H1=%lu transB=%d] shared[baseM=%d baseN=%d "
-            "baseK=%d dbL0C=%d stepKa=%d stepKb=%d depthA1=%d depthB1=%d usedCoreNum=%d groupListType=%u | BS=%lu "
-            "N2=%lu H2=%lu transB=%d] quantMode[gmmX=%ld gmmW=%ld mmX=%ld mmW=%ld] dtype[x=%d w=%d mmXScale=%d].",
-            gmmMm.baseM, gmmMm.baseN, gmmMm.baseK, gmmMm.dbL0C, gmmMm.stepKa, gmmMm.stepKb, gmmMm.depthA1,
-            gmmMm.depthB1, gmmMm.usedCoreNum, gmmQp.groupListType, mMaxSize, localParams_.N1, localParams_.H1,
-            localParams_.isGmmWeightTrans, shMm.baseM, shMm.baseN, shMm.baseK, shMm.dbL0C, shMm.stepKa, shMm.stepKb,
-            shMm.depthA1, shMm.depthB1, shMm.usedCoreNum, shQp.groupListType, localParams_.Bs, localParams_.N2,
-            localParams_.H2, localParams_.isMmWeightTrans, localParams_.gmmXQuantMode, localParams_.gmmWeightQuantMode,
-            localParams_.mmXQuantMode, localParams_.mmWeightQuantMode, localParams_.gmmXDtype,
-            localParams_.gmmWeightDtype, localParams_.mmXScaleDtype);
+
     return tilingKey;
 }
 

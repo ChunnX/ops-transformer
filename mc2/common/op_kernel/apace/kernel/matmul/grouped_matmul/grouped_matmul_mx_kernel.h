@@ -22,14 +22,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-// 临时诊断（K 循环进度标记）：定义 GMM_A2AV_KLOOP_DEBUG 时编译带 GM 进度标记的
-// BlockMmad 副本（由使用方算子经 -I 提供 blaze/gemm/block/block_mmad_qgmm_mx_dbg.h），
-// 标记写 C 张量基址前 4 字节、fixpipe 后被真实结果覆盖，正常执行零影响
-#ifdef GMM_A2AV_KLOOP_DEBUG
-#include "blaze/gemm/block/block_mmad_qgmm_mx_dbg.h"
-#else
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
-#endif
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
@@ -184,18 +177,8 @@ public:
         const uint64_t kBL1 = gmmParams->kBL1 != 0 ? gmmParams->kBL1 : gmmParams->baseK;
         const uint64_t scaleKAL1 = gmmParams->scaleKAL1 != 0 ? gmmParams->scaleKAL1 : gmmParams->baseK;
         const L1Params l1Params{kAL1, kBL1, scaleKAL1};
-#ifdef GMM_A2AV_KLOOP_DEBUG
-        // 临时诊断：向 BlockMmad 注入 K 循环进度标记地址（C 张量基址，标记仅挂死时残留）
-        const typename BlockMmad::MmadParams mmadParams{l0Shape,
-                                                        l1Params,
-                                                        isBias_,
-                                                        gmmParams->dbL0C == DOUBLE_BUFFER_COUNT,
-                                                        gmmParams->l1BufferStage,
-                                                        reinterpret_cast<__gm__ uint32_t *>(cBasePtr_)};
-#else
         const typename BlockMmad::MmadParams mmadParams{
             l0Shape, l1Params, isBias_, gmmParams->dbL0C == DOUBLE_BUFFER_COUNT, gmmParams->l1BufferStage};
-#endif
         mmadOp_.Init(initProblemShape, mmadParams);
     }
 

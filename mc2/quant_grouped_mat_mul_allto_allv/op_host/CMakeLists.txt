@@ -26,22 +26,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
-    # apace hcomm 通路（MX 量化实例默认编译）kernel 头（blaze/tensor_api）
-    # 经 op_kernel 根与 ops-tensor include 引入
-    # ===== 调试期临时开关（MX 挂死定位）：仅编译 MX 相关代码 =====
-    # 置 1：原通路整体裁剪（TT 实例空编译、全部实例不再实例化 UBMEM/scheduler 模板）
-    # 恢复全量编译：改为 0（TT 用例恢复可用）
-    set(APACE_MX_ONLY_DEBUG 1)
-    if(APACE_MX_ONLY_DEBUG)
-        add_compile_definitions(GMM_A2AV_MX_ONLY)
-    endif()
-
-    # 诊断专用实例化开关（默认关）：MC2_APACE_DBG_EXTRA=1 构建时才编译 dbg=11/12 的
-    # 额外 Blaze 模板实例（各为一份完整实例化，显著增加编译耗时），仅定位时打开
-    set(APACE_DBG_EXTRA_OPTS "")
-    if("$ENV{MC2_APACE_DBG_EXTRA}" STREQUAL "1")
-        set(APACE_DBG_EXTRA_OPTS -DGMM_A2AV_DBG_EXTRA)
-    endif()
+    # apace hcomm 通路（MX 量化实例默认编译）kernel 头（blaze/tensor_api）经 op_kernel 根与 ops-tensor include 引入
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
@@ -49,9 +34,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
-                    -DGMM_A2AV_KLOOP_DEBUG
-                    ${APACE_DBG_EXTRA_OPTS}
-                    -I${CMAKE_SOURCE_DIR}/mc2/quant_grouped_mat_mul_allto_allv/op_kernel/blaze_debug
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
