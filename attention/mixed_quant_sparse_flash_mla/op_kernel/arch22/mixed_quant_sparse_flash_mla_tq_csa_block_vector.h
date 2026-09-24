@@ -171,8 +171,8 @@ private:
     static constexpr uint32_t TQ4_RAW_OFFSET = TQ4_INDEX_OFFSET + TQ4_INDEX_BYTES;
     static constexpr uint32_t TQ4_CENTROID_COUNT = 16U;
     static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_OFFSET = TQ4_CENTROID_COUNT * sizeof(float);
-    static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_BYTES = TQ4_DEQUANT_BATCH_ROWS * sizeof(uint32_t);
-    static constexpr uint32_t TQ4_SCALE_CARRIER_BYTES = TQ4_DEQUANT_BATCH_ROWS * BYTE_BLOCK;
+    static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_BYTES = TQ4_MAX_STAGED_ROWS * sizeof(uint32_t);
+    static constexpr uint32_t TQ4_SCALE_CARRIER_BYTES = TQ4_MAX_STAGED_ROWS * BYTE_BLOCK;
     static constexpr uint32_t TQ4_SCALE_SLOT_ROWS = 512U;
     static constexpr uint32_t TQ4_SCALE_STAGE_OFFSET = TQ4_RAW_OFFSET + TQ4_RAW_BUFFER_BYTES;
     static constexpr uint32_t TQ4_SCALE_STAGE_BYTES = TQ4_SCALE_SLOT_ROWS * sizeof(half);
@@ -197,8 +197,8 @@ private:
                   "TQ4 BF16 indices exceed outputBuff1");
     static_assert(TQ4_SCALE_GATHER_INDEX_OFFSET + TQ4_SCALE_GATHER_INDEX_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_256B,
                   "TQ4 scale gather indices overlap tqCentBuff");
-    static_assert(TQ4_SCALE_CARRIER_BYTES + TQ4_DEQUANT_BATCH_ROWS * sizeof(half) <= TQ4_SIGNED_BYTES,
-                  "TQ4 scale extraction exceeds signed-code scratch");
+    static_assert(TQ4_SCALE_CARRIER_BYTES <= TQ4_SIGNED_BYTES, "TQ4 scale extraction exceeds signed-code scratch");
+    static_assert(TQ4_SCALE_STAGE_OFFSET % BYTE_BLOCK == 0U, "TQ4 scale Gather destination must be block aligned");
     static_assert(TQ4_SCALE_STAGE_OFFSET + TQ4_SCALE_STAGE_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_32K,
                   "TQ4 scale staging exceeds tmpBuff1");
     static_assert(TQ4_SCALE_UB_F32_OFFSET + TQ4_SCALE_SLOT_ROWS * sizeof(float) <= ConstInfo::BUFFER_SIZE_BYTE_8K,
@@ -311,7 +311,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitBuffers(TP
         }
         LocalTensor<uint32_t> scaleGatherIndices =
             tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
-        for (uint32_t row = 0; row < TQ4_DEQUANT_BATCH_ROWS; ++row) {
+        for (uint32_t row = 0; row < TQ4_MAX_STAGED_ROWS; ++row) {
             scaleGatherIndices.SetValue(row, row * BYTE_BLOCK);
         }
         PipeBarrier<PIPE_ALL>();
@@ -873,23 +873,17 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::DequantTq4Rows
             Cast(output[base * TQ4_HEAD_DIM], work, RoundMode::CAST_ROUND, elementCount);
             PipeBarrier<PIPE_V>();
         }
-
-        // Extract the leading FP16 scale from each staged row for the scale ring.
-        DataCopyParams scaleCopyParams;
-        scaleCopyParams.blockCount = static_cast<uint16_t>(currentRows);
-        scaleCopyParams.blockLen = 1;
-        scaleCopyParams.srcStride = static_cast<uint16_t>(TQ4_SLOT_ROW_BYTES / BYTE_BLOCK - 1U);
-        scaleCopyParams.dstStride = 0;
-        uint32_t scaleSourceOffset =
-            (static_cast<uint32_t>(base) * TQ4_SLOT_ROW_BYTES + TQ4_PACKED_BYTES) / sizeof(half);
-        DataCopy(scaleCarriers, slotHalf[scaleSourceOffset], scaleCopyParams);
-        PipeBarrier<PIPE_V>();
-        Gather(scales[base], scaleCarriers, scaleGatherIndices, 0, currentRows);
-        // The next batch reuses dequant scratch; the final batch is synchronized by CopyOutMrgeResult's V_MTE3 event.
-        if (base + static_cast<int64_t>(currentRows) < rowCount) {
-            PipeBarrier<PIPE_V>();
-        }
     }
+
+    // Gather all staged scales at an aligned address; an FP16 dequant batch advances by only 8 bytes.
+    DataCopyParams scaleCopyParams;
+    scaleCopyParams.blockCount = static_cast<uint16_t>(rowCount);
+    scaleCopyParams.blockLen = 1;
+    scaleCopyParams.srcStride = static_cast<uint16_t>(TQ4_SLOT_ROW_BYTES / BYTE_BLOCK - 1U);
+    scaleCopyParams.dstStride = 0;
+    DataCopy(scaleCarriers, slotHalf[TQ4_PACKED_BYTES / sizeof(half)], scaleCopyParams);
+    PipeBarrier<PIPE_V>();
+    Gather(scales, scaleCarriers, scaleGatherIndices, 0, rowCount);
 }
 
 template <typename SAST>
