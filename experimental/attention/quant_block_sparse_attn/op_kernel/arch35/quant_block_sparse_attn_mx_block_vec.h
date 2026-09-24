@@ -516,18 +516,24 @@ private:
         // DataCopy 以 32B 为基本块，fp8_e8m0_t 每块 32 个元素。每行有
         // S2_SPLIT / MX_SCALE_GROUP 个 scale；DN packed 后按 4 个搬运列组写入。
         constexpr uint16_t pScaleDstStride = ((S2_SPLIT / MX_SCALE_GROUP) >> 1U) - 1U;
+        constexpr uint32_t pScaleColumnGroupSize = MX_SCALE_GROUP * 2U;
+        constexpr uint32_t pScaleCopyBlockElements = FaVectorApi::blockBytesU8 / sizeof(SCALE_T);
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if constexpr (SUB_LOOP == 1U) {
-            // subLoop1 写 P 的后 S2_SPLIT 列，每 64 列重复一份行 scale。
-            for (uint32_t columnGroup = 0U; columnGroup < S2_SPLIT / 64U; ++columnGroup) {
-                DataCopy(pScaleL1Tensor[vecOffset + columnGroup * 32U], pScaleSubLoopTensor,
+            // subLoop1 写 P 的后 S2_SPLIT 列，每两个 MX_SCALE_GROUP 列重复一份行 scale。
+            for (uint32_t columnGroup = 0U; columnGroup < S2_SPLIT / pScaleColumnGroupSize; ++columnGroup) {
+                DataCopy(pScaleL1Tensor[vecOffset + columnGroup * pScaleCopyBlockElements], pScaleSubLoopTensor,
                          {4, 1, 0, pScaleDstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
             // 只有一个 subLoop 时，将单位 scale 重复到该 AIV 的整个 scale 区域。
             // 半区跨度随 S2_SPLIT 缩放。
-            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {1, static_cast<uint16_t>(pScaleDataLen / 2U / 32U), 0, 0});
-            DataCopy(pScaleL1Tensor[vecOffset + pScaleDataLen / 2U], pScaleSubLoopTensor, {1, static_cast<uint16_t>(pScaleDataLen / 2U / 32U), 0, 0});
+            constexpr uint64_t pScaleHalfDataLen = pScaleDataLen / 2U;
+            constexpr uint16_t pScaleHalfCopyBlocks =
+                static_cast<uint16_t>(pScaleHalfDataLen / pScaleCopyBlockElements);
+            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {1, pScaleHalfCopyBlocks, 0, 0});
+            DataCopy(pScaleL1Tensor[vecOffset + pScaleHalfDataLen], pScaleSubLoopTensor,
+                     {1, pScaleHalfCopyBlocks, 0, 0});
         }
     }
 
