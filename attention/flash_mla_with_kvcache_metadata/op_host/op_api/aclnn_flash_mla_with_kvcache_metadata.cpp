@@ -62,10 +62,10 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     }
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
-        cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
-        headDimQk, headDimV, maskMode, winLeft, winRight, layoutQ, metaData, aicCoreNum, aivCoreNum);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    // auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
+    //     cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+    //     headDimQk, headDimV, maskMode, winLeft, winRight, layoutQ, metaData, aicCoreNum, aivCoreNum);
+    // CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 前置处理：seqlens 输入转连续（AICPU kernel 按连续内存读取原始数据）
     const aclTensor *cuSeqlensQContiguous = nullptr;

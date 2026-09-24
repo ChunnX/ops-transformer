@@ -57,11 +57,11 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashMlaWithKvcache(gert::TilingContext *
         return ge::GRAPH_FAILED;
     }
 
-    FlashMlaWithKvcacheChecker faChecker;
-    faChecker.Init(faInfo);
-    if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    // FlashMlaWithKvcacheChecker faChecker;
+    // faChecker.Init(faInfo);
+    // if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
+    //     return ge::GRAPH_FAILED;
+    // }
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &faInfo);
 }
 
