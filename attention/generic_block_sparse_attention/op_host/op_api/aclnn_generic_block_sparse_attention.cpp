@@ -61,13 +61,15 @@ static bool CheckDataType(const aclTensor *query, const aclTensor *key, const ac
 }
 
 static aclnnStatus CheckMandatoryTensors(const aclTensor *query, const aclTensor *key, const aclTensor *value,
-                                         const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount)
+                                         const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
+                                         const aclTensor *metadataOptional)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(sparseBlockIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(sparseBlockCount != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(metadataOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -99,10 +101,12 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShape)
 
 static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                   const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
-                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv)
+                                  const aclTensor *metadataOptional, const aclIntArray *blockShape, char *layoutQ,
+                                  char *layoutKv)
 {
-    CHECK_RET(CheckMandatoryTensors(query, key, value, sparseBlockIdx, sparseBlockCount) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(
+        CheckMandatoryTensors(query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional) == ACLNN_SUCCESS,
+        ACLNN_ERR_PARAM_NULLPTR);
 
     if (!CheckDataType(query, key, value)) {
         return ACLNN_ERR_PARAM_INVALID;
@@ -297,8 +301,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     int64_t residualBlockMode, bool isConsistentTopk, aclTensor *attentionOut, aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus ret =
-        ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ, layoutKv);
+    aclnnStatus ret = ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional, blockShape,
+                                     layoutQ, layoutKv);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
