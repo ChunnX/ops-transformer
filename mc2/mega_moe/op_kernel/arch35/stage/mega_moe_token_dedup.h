@@ -21,7 +21,6 @@
 #define MEGA_MOE_TOKEN_DEDUP_H
 
 #include "../common/mega_moe_utils.h"
-#include "../common/mgb_kts_mega_moe.h" // KTS 打点（默认关）
 
 namespace MegaMoeImpl {
 
@@ -436,12 +435,8 @@ __aicore__ inline void RunDedupPrepassWorkItem(DedupPrepassWorker<TopkIndexType>
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
     Duplicate<int32_t>(worker.countTensor, DEDUP_PACK_INIT, static_cast<int32_t>(dedup.prepassChunkTokens));
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
-    MM_KTS_T(ktsScanT0);
     DedupScanRouteSlots(worker, common, params, scratch, srcRank, window);
-    MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS_SCAN, 0U, srcRank, chunkIdx, 0U, ktsScanT0);
-    MM_KTS_T(ktsDescT0);
     DedupStoreRowDescChunk(worker, tokenHi - window.tokenLo);
-    MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS_DESC, 0U, srcRank, chunkIdx, 0U, ktsDescT0);
     // ready 置位前 drain desc 乒乓两半（末尾 1-2 行的 GM 写可能还在飞，而 ready 语义 = 本项
     // desc 全部落盘），随即重新武装供下一工作项。
     WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
@@ -489,7 +484,6 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
     SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
 
-    MM_KTS_T(ktsPrepassT0);
     for (uint32_t workItem = workerIndex; workItem < totalWorkItems; workItem += totalWorkers) {
         RunDedupPrepassWorkItem(worker, common, params, scratch, dedup, workItem);
     }
@@ -497,7 +491,6 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
     WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
 
-    MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS, 0U, 0U, totalWorkItems, dedup.prepassChunkTokens, ktsPrepassT0);
     // 槽 0 = done 计数，AIV1 计低 16 位、AIV0 计高 16 位。dispatch 发布 gate 只等高位（全体 AIV0）：
     // 每个 AIV1 发布前自己必然已建完，AIV1 互等会打断 prepass 与 dispatch 的流水交叠（实测大形状
     // 明显劣化）；combine 兜底等全值。本核不等任何人。

@@ -26,7 +26,6 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
-#include "../common/mgb_kts_mega_moe.h" // KTS 打点（默认关）
 #include "../../../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../../../common/op_kernel/quantize_functions.h"
 
@@ -633,10 +632,7 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        MM_KTS_T(ktsTileWaitT0);
         gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
-        MM_KTS_SPAN(MgbKts::MM_COMBINE_TILE_WAIT, static_cast<uint32_t>(loopIdx), 0U, mLoc, nLoc, ktsTileWaitT0);
-        MM_KTS_T(ktsTileT0);
         auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
                                             asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
@@ -660,7 +656,6 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
                                                                     actualShape, L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-        MM_KTS_SPAN_ISSUE(MgbKts::MM_COMBINE_TILE_RANGE, static_cast<uint32_t>(loopIdx), 0U, mLoc, nLoc, ktsTileT0);
         gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
     }
 }
@@ -1367,7 +1362,6 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
         reinterpret_cast<__gm__ bfloat16_t *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset =
         (static_cast<uint64_t>(route.tokenIdx) * params.tilingData->topK + static_cast<uint64_t>(minTopkIdx)) * h;
-    MM_KTS_CTR(MgbKts::MM_KTS_CTR_COMBINE, 1U | ((memberCount - 1U) << 16));
 
     constexpr TEventID mergeEvent = static_cast<TEventID>(WAVE_COMBINE_DEDUP_MERGE_EVENT);
     // 上一合并行发送（MTE3 读 mergeSend）完成后，本行 V 才能复写发送缓冲。
@@ -1506,11 +1500,8 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
     if (currentCoreTokenRange.count == 0U) {
         return;
     }
-    MM_KTS_T(ktsReadyWaitT0);
     WaitWaveGmm2Ready(job, params, expertIdx);
-    MM_KTS_SPAN(MgbKts::MM_DEDUP_MERGE_WAIT, 0U, expertIdx, 0U, 0U, ktsReadyWaitT0);
     WaitDedupPrepassAllDone(params);
-    MM_KTS_T(ktsCombineT0);
 
     const uint32_t strideInt32 =
         static_cast<uint32_t>(CalcDedupRowDescStrideInt32(static_cast<int64_t>(params.tilingData->topK)));
@@ -1539,8 +1530,6 @@ __aicore__ inline void RunWaveCombineStageDedup(const MoeStageCommonConfig &comm
                                      dedupState);
         processedTokenNum += batchTokenNum;
     }
-    MM_KTS_SPAN(MgbKts::MM_COMBINE_TILE_RANGE, expertIdx, 0U, currentCoreTokenRange.start,
-                currentCoreTokenRange.count, ktsCombineT0);
 }
 
 } // namespace MegaMoeImpl
