@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR&950DT系列产品</term>：支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3系列产品</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2推理产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas推理系列产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas训练系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -683,13 +683,13 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 ### 产品差异化约束
 
 <!-- npu="950" id7 -->
-- <term>Ascend 950PR&950DT系列产品</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
   - 仅支持`quantMode=1/2`。q、attnOutOut的数据类型为BFLOAT16，oriKvOptional、cmpKvOptional的数据类型为FLOAT8_E4M3FN。
   - 下文参数组约束适用于`quantMode=1/2`场景。
 <!-- end id7 -->
 
 <!-- npu="A3" id8 -->
-- <term>Atlas A3系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 仅支持`quantMode=3`的TurboQuant路径。
   - q、attnOutOut：`layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。
   - oriKvOptional、cmpKvOptional：均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。
@@ -699,7 +699,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 <!-- end id8 -->
 
 <!-- npu="910b" id9 -->
-- <term>Atlas A2系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 仅支持`quantMode=3`的TurboQuant路径。
   - q、attnOutOut：`layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。
   - oriKvOptional、cmpKvOptional：均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。
