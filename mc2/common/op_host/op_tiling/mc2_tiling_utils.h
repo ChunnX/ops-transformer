@@ -226,6 +226,7 @@ const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
     {Ops::Base::DAV_2002, {1, 2, 4}},
     {Ops::Base::DAV_2201, {1, 2, 4, 8}},
     {Ops::Base::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+    {Ops::Base::DAV_9201, {1, 2, 4, 8, 16, 32, 64}}, // A6复用950支持的rank规格
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,

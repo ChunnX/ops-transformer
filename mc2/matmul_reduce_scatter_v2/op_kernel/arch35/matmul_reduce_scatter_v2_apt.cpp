@@ -17,6 +17,26 @@
 #include "lib/matmul_intf.h"
 #include "../common_def.h"
 
+// HiF4 uses the same MatmulWithScaleMx APACE block, with native scale metadata.
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT4))
+#define MMRS_APACE_HIF4_DTYPE 1
+#else
+#define MMRS_APACE_HIF4_DTYPE 0
+#endif
+
+// MatmulReduceScatterV2 also registers HIFLOAT8 binaries, while the APACE MX
+// kernel accepts MXFP8/MXFP4/HiFP4. Keep APACE out of other dtype translation
+// units so collection cannot instantiate MatmulWithScaleMx with __hif8.
+#if ((((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                  \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                 \
+     ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)) || MMRS_APACE_HIF4_DTYPE)
+#define MMRS_APACE_MX_DTYPE 1
+#include "../../../common/op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_mx_quant_hcomm_impl.h"
+#else
+#define MMRS_APACE_MX_DTYPE 0
+#endif
+
+
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "matmul_a2a_vec_reduce_fp16_bf16.h" // 新实现：All2All + Vec Reduce
 #include "matmul_reduce_scatter_fp16_bf16.h" // 旧实现：原生 ReduceScatter
@@ -80,16 +100,39 @@ using namespace MatmulReduceScatterV2Impl;
     } while (0)
 
 template <bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, uint8_t TPL_INPUT, uint8_t TPL_OUTPUTDTYPE,
-          uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE>
+          uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE, bool TPL_USING_APACE>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM,
                                                     GM_ADDR x2ScaleGM, GM_ADDR quantScaleGM, GM_ADDR cGM,
                                                     GM_ADDR amaxOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     // david算子模板
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // A6(ascend910_96) AIC:AIV为1:1
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
     auto context = GetHcclContext<0>();
+#if MMRS_APACE_MX_DTYPE
+    if constexpr (TPL_USING_APACE) {
+// APACE 的 Host Tiling 统一输出 hcommMatmulReduceScatterV2TilingData，
+        // MXFP4/MXFP8/HiFP4 共用同一份通信与 QBMM TilingData。
+        REGISTER_TILING_DEFAULT(hcommMatmulReduceScatterV2TilingData);
+        GET_TILING_DATA_WITH_STRUCT(hcommMatmulReduceScatterV2TilingData, tilingData, tilingGM);
+        if ASCEND_IS_AIC {
+            Apace::MatmulReduceScatterV2MxQuantHcommImpl<
+                DTYPE_X1, DTYPE_X2, DTYPE_Y, TPL_TRANSB, hcommMatmulReduceScatterV2TilingData,
+                AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU> op(&tilingData);
+            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM);
+            op.Run();
+        }
+    } else
+#endif
+    {
+#if !MMRS_APACE_HIF4_DTYPE
     GET_TILING_DATA(tilingData, tilingGM);
+#endif
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
@@ -137,4 +180,8 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
         }
     }
 #endif
+    }
 }
+
+#undef MMRS_APACE_MX_DTYPE
+#undef MMRS_APACE_HIF4_DTYPE
