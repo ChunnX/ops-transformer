@@ -679,8 +679,23 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
+// 诊断二分开关（临时）：环境变量 MC2_APACE_SHARED_DBG 经 taskTilingInfo.ubSize 传递
+// （原通路不消费该字段），kernel 侧共享专家按档位钳制维度/跳过执行，定位挂死的规模依赖
+static uint64_t GetApaceSharedDbgStage()
+{
+    const char *dbgEnv = getenv("MC2_APACE_SHARED_DBG");
+    return (dbgEnv != nullptr) ? static_cast<uint64_t>(atoll(dbgEnv)) : 0UL;
+}
+
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
 {
+    // 共享专家挂死定位：诊断档位经 ubSize 下发（0=关闭；1=M钳256；2=N钳256；3=K钳128；
+    // 4=全钳制 256/256/128；5=跳过共享专家 Run 仅执行 Init/建表）
+    localTilingData_.taskTilingInfo.ubSize = GetApaceSharedDbgStage();
+    if (localTilingData_.taskTilingInfo.ubSize != 0UL) {
+        OP_LOGE(opName_, "ApaceMXPath sharedDbg=%lu (1=M钳256 2=N钳256 3=K钳128 4=全钳制 5=跳过Run)",
+                localTilingData_.taskTilingInfo.ubSize);
+    }
     constexpr uint64_t alignAddrLen = 512;
     constexpr uint64_t tensorListSize = 512;
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);

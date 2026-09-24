@@ -108,6 +108,9 @@ private:
     uint64_t bs_ = 0;
     uint64_t a_ = 0;
     uint64_t mMaxSize_ = 0;
+    // 共享专家挂死定位（临时诊断，经 taskTilingInfo.ubSize 下发，原通路不消费该字段）：
+    // 0=关闭；1=M钳256；2=N钳256；3=K钳128；4=全钳制；5=跳过 Run（仅 Init/建表）
+    uint64_t sharedDbg_{0};
     MxApaceKernel mxKernel_;
 };
 
@@ -144,6 +147,7 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     h2_ = tilingData_->taskTilingInfo.H2;
     n2_ = tilingData_->taskTilingInfo.N2;
     bs_ = tilingData_->taskTilingInfo.BS;
+    sharedDbg_ = tilingData_->taskTilingInfo.ubSize;
     a_ = tilingData_->taskTilingInfo.A;
 
     if constexpr (!isLocal) {
@@ -200,6 +204,10 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
 
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
     UpdateAddr(startExpertIdx, expertNum);
+    if (isLocal && sharedDbg_ == 5UL) {
+        // 诊断档位 5：仅执行 Init/建表/基址推进，跳过 Blaze Run
+        return;
+    }
     InitApaceKernel(startExpertIdx, expertNum);
     mxKernel_.Run();
 }
@@ -266,7 +274,11 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
             }
         }
     } else {
-        groupListPtr[GMM_A2AV_GROUP_LIST_INDEX] = static_cast<int64_t>(bs_);
+        int64_t sharedM = static_cast<int64_t>(bs_);
+        if (sharedDbg_ == 1UL || sharedDbg_ == 4UL) {
+            sharedM = sharedM > 256L ? 256L : sharedM;
+        }
+        groupListPtr[GMM_A2AV_GROUP_LIST_INDEX] = sharedM;
     }
 }
 
@@ -309,9 +321,21 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     // 共享专家（isLocal 单组）实际行数为 BS，维度为 MM 维度（N2/H2）——其 L0 tiling
     // （baseM/baseN/baseK）来自 sharedGmmTiling，按 {BS, N2, H2} 切分，问题维度
     // 必须与之一致，否则 K/N 循环与 B/scaleB 布局错位（越界读→管线挂死）
-    const int64_t maxM = isLocal ? static_cast<int64_t>(bs_) : static_cast<int64_t>(mMaxSize_);
-    const int64_t problemN = isLocal ? static_cast<int64_t>(n2_) : static_cast<int64_t>(n1_);
-    const int64_t problemK = isLocal ? static_cast<int64_t>(h2_) : static_cast<int64_t>(h1_);
+    int64_t maxM = isLocal ? static_cast<int64_t>(bs_) : static_cast<int64_t>(mMaxSize_);
+    int64_t problemN = isLocal ? static_cast<int64_t>(n2_) : static_cast<int64_t>(n1_);
+    int64_t problemK = isLocal ? static_cast<int64_t>(h2_) : static_cast<int64_t>(h1_);
+    if (isLocal) {
+        // 诊断档位：1/4 钳 M，2/4 钳 N，3/4 钳 K（结果不正确，仅定位挂死的规模依赖）
+        if (sharedDbg_ == 1UL || sharedDbg_ == 4UL) {
+            maxM = maxM > 256L ? 256L : maxM;
+        }
+        if (sharedDbg_ == 2UL || sharedDbg_ == 4UL) {
+            problemN = problemN > 256L ? 256L : problemN;
+        }
+        if (sharedDbg_ == 3UL || sharedDbg_ == 4UL) {
+            problemK = problemK > 128L ? 128L : problemK;
+        }
+    }
     GMMTiling gmmParams;
     gmmParams.groupNum = isLocal ? 1U : expertNum * static_cast<uint32_t>(epWorldSize_);
     gmmParams.m = maxM;
