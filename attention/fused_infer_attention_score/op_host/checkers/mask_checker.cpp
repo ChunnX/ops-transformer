@@ -79,9 +79,9 @@ ge::graphStatus MaskChecker::CheckAntiquantSparseMode(const FiaTilingInfo &fiaIn
                                               "When S of query equal to 1, sparseMode only supports 0(defaultMask)"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        fiaInfo.kvCacheNzD0 == NUM_32 && fiaInfo.s1Size > 1U && fiaInfo.s1Size < 16U && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN ,
+        fiaInfo.kvCacheNzD0 == NUM_32 && fiaInfo.s1Size > 1U && fiaInfo.s1Size < 17U && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN ,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode", std::to_string(fiaInfo.sparseMode).c_str(),
-                                              "when PA_NZ D0=32 antiquant and S of query within (1, 16), sparseMode only supports 3"),
+                                              "when PA_NZ D0=32 antiquant and S of query within (1, 16], sparseMode only supports 3"),
         return ge::GRAPH_FAILED);    
     return ge::GRAPH_SUCCESS;
 }
