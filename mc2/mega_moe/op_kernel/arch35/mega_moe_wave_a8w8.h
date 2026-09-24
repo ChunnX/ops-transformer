@@ -18,7 +18,6 @@
 
 #include "common/mega_moe_utils.h"
 #include "mega_moe_arch35.h"
-#include "common/mgb_kts_mega_moe.h" // KTS 打点（默认关，见 mgb_kts_switch.h）
 
 namespace MegaMoeImpl {
 
@@ -189,13 +188,9 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         plannedDispatchPosition = nextDispatchRange.end;
         dispatchRange.end = nextDispatchRange.end;
     }
-    MM_KTS_T(ktsDispatchT0);
     DispatchTokenRange<TopkIndexType, ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
         g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
-    MM_KTS_SPAN(MgbKts::MM_DISPATCH_WAVE, dispatchRange.begin.expertIdx, dispatchRange.end.expertIdx,
-                static_cast<uint32_t>(dispatchRange.end.globalTokenIndex - dispatchRange.begin.globalTokenIndex), 0U,
-                ktsDispatchT0);
     // 整 WAVE 的数据和 ready flag 发布完成后，再提交 Dispatch 进度。
     dispatchPosition = plannedDispatchPosition;
     return dispatchPosition;
@@ -284,7 +279,6 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         }
         ProblemShape gmm1WaveProblemShape = gmm1ExpertState.problemShape;
         Get<M_VALUE>(gmm1WaveProblemShape) = waveEndTokenIndexInExpert - gmm1Position.tokenIndexInExpert;
-        MM_KTS_T(ktsGmm1T0);
         UpdateMoeExpertGmm1GlobalBuffer<ActivationType, MoeWeightType, ActivationType, QuantScaleOutType,
                                         PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, false,
                                         TopkWeightsPrefetch>(
@@ -303,8 +297,6 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
             epilogueOp_, params_, gmm1WaveProblemShape, gmm1AddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, gmmExecutionConfig_.blockJob, waveTokenStartIndex, gmm1Position.expertIdx,
             runtimeState.pingpongIdx, nullptr, isWholeExpert);
-        MM_KTS_SPAN_ISSUE(MgbKts::MM_GMM1_PROBLEM, processedMGroupCount, gmm1Position.expertIdx, waveRowCount, 0U,
-                          ktsGmm1T0);
 
         processedMGroupCount += problemMGroupCount;
         gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
@@ -334,7 +326,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         return;
     }
 
-    MM_KTS_T(ktsGmm2T0);
     ProblemShape gmm2WaveProblemShape = gmm2ExpertState.problemShape;
     Get<M_VALUE>(gmm2WaveProblemShape) = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
     UpdateMoeExpertGmm2GlobalBuffer<MoeWeightType, ActivationType, QuantScaleOutType>(
@@ -348,7 +339,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                    CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
                                                          gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
                                                          gmm2Position.tokenIndexInExpert, &params_);
-    MM_KTS_SPAN_ISSUE(MgbKts::MM_GMM2_PROBLEM, 0U, gmm2Position.expertIdx, waveRowCount, 0U, ktsGmm2T0);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -598,9 +588,7 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitMoeCombineBufferConfig(boo
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::PrepareMoeCountAndDedupTables()
 {
-    MM_KTS_T(ktsCountT0);
     PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-    MM_KTS_SPAN(MgbKts::MM_COUNT_TABLE_PREP, 0U, 0U, 0U, 0U, ktsCountT0);
     if (tokenDispatchConfig_.dedup.dedupMode != 0) {
         // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
         PrepareDedupPrepassAiv0Local(tokenDispatchConfig_.dedup, commonConfig_, params_, tokenDispatchScratch_);

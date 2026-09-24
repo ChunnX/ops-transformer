@@ -459,7 +459,6 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
     }
     const int32_t flags = views.descBatchTensor.GetValue(static_cast<uint32_t>(descBase));
     const int32_t memberCount = (flags & DEDUP_ROW_FLAG_FIRST) != 0 ? (flags & DEDUP_ROW_MEMBER_COUNT_MASK) : 1;
-    MM_KTS_CTR(MgbKts::MM_KTS_CTR_FANOUT, static_cast<uint32_t>(memberCount - 1));
 
     const uint32_t fanMetaSlotBase =
         static_cast<uint32_t>(bufferIdx) * static_cast<uint32_t>(topK) * static_cast<uint32_t>(INT32_PER_256B);
@@ -502,7 +501,6 @@ __aicore__ inline void WaitDedupPrepassForBatch(const TokenDispatchConfig &conte
     if (chunkLast <= confirmedChunkEnd) {
         return;
     }
-    MM_KTS_T(ktsDescWaitT0);
     __gm__ int32_t *prepassReadyBase = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
     int32_t chunkFirst = tokenFirst / chunkTokens;
     chunkFirst = chunkFirst > confirmedChunkEnd + 1 ? chunkFirst : confirmedChunkEnd + 1;
@@ -511,8 +509,6 @@ __aicore__ inline void WaitDedupPrepassForBatch(const TokenDispatchConfig &conte
         WaitUntilGmFlagEquals(prepassReadyBase + (1U + item) * INT_CACHELINE, 1);
     }
     confirmedChunkEnd = chunkLast;
-    MM_KTS_SPAN(MgbKts::MM_DEDUP_DESC_WAIT, 0U, localExpertId, static_cast<uint32_t>(chunkLast), remoteRankIdx,
-                ktsDescWaitT0);
 }
 
 // 装载本批 route 条目与 rowDesc；装载 desc 前按需等待其覆盖的 prepass 工作项 ready。
@@ -705,8 +701,6 @@ __aicore__ inline void DispatchRankTokensDedup(const TokenDispatchConfig &contex
         PublishDedupTileReadyRuns<PipelineTileM>(views, syncLayout, params, localExpertId, expertGlobalRowBegin,
                                                  batchRowBegin, strideInt32, batchCount);
         // 去重收益计数：本批实拉/跳过行数（跳过数≈被省掉的跨片拉取数，扇出写在 Store 内计）。
-        MM_KTS_CTR(MgbKts::MM_KTS_CTR_FETCHED, static_cast<uint32_t>(activeCount));
-        MM_KTS_CTR(MgbKts::MM_KTS_CTR_SKIPPED, static_cast<uint32_t>(batchCount - activeCount));
         PublishDedupFanoutMembers(views, params, strideInt32, batchCount);
         processed += batchCount;
     }
