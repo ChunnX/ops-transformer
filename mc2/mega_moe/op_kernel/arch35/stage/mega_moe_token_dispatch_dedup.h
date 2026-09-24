@@ -15,6 +15,16 @@
 
 namespace MegaMoeImpl {
 
+// ============================== dispatch 去重 ==============================
+// 干什么：一个 token 选中的 topK 个专家里，落在同一张卡上的专家会让基线把同一行激活
+// 重复拉取多次。dispatch 去重把这些重复拉取合并成一次：把落在同一张卡的同一 token 的
+// 多条记录看成一个「组」，只有组里第一行（FIRST）真正跨片拉数据，拉完后在本地把数据
+// 复制给组内其它行（这一步叫「扇出」）；组内其它行（SKIP）什么都不做。
+// 怎么知道谁跟谁一组：prepass（见 mega_moe_token_dedup.h）提前建好每行的描述表
+// （rowDesc），本文件按表办事。数值结果与基线逐比特相同，去重只省通信量。
+// 本文件包含：dispatch 去重的搬运/扇出/发布实现，以及按开关分流去重/基线的路由入口。
+// ==========================================================================
+
 // 去重 dispatch 的 UB/GM 视图集合：一次构造，批循环各段共用。
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType>
 struct DedupDispatchViews {
@@ -88,10 +98,11 @@ __aicore__ inline void FanoutDedupDataAndMeta(DedupDispatchViews<TopkIndexType, 
     }
 }
 
-// tkw=0 的 combine 去重：FIRST 行扇出时把整 token 的 topK 权重段落到 LAST 成员行的 revWeights 槽
-//（组成员按行号升序、末位即 LAST；merge 在 LAST 行驱动，一次连续读回按成员 topkIndex 乘权）。
-// 条件按 GROUP 标志而非 memberCount>1：clamp 裁剪后 survivorCount==1 的单成员组仍走 merge 乘权路径，
-// 漏写即读到未初始化权重。
+// 只在 tkw=0（权重不随激活预乘）的 combine 去重时需要做一件额外的事：把整个 token 的
+// topK 权重放到组内最后一行（LAST 行）的 revWeights 槽里。因为 combine 合并是由 LAST 行
+// 驱动的，它要拿着每个成员的权重做乘加，权重必须在它够得着的地方。
+// 判断条件用 GROUP 标志、不用 memberCount>1：被 clamp 裁到只剩 1 个成员的组照样走
+// 合并乘权路径，这里不写权重它就会读到未初始化的内存。
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType>
 __aicore__ inline void StoreDedupGroupWeights(DedupDispatchViews<TopkIndexType, ActivationType, QuantScaleType> &views,
                                               const Params &params, const LocalTensor<int32_t> &weightBitsTensor,
@@ -434,10 +445,10 @@ __aicore__ inline void WaitDedupPrepassPublishGate(const TokenDispatchConfig &co
     if (context.dedup.dedupMode == 0 || params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
         return;
     }
-    // AIV0 参与建表后，其 UB 建表区会被 AIC 的首批 GMM1 tile 覆写（覆写发生在 dispatch 首批
-    // 发布之后；GMM1 problem 抢全局 tile，任一 AIV1 的发布都可能触发任一 block 的 AIC 写其
-    // AIV0 UB）。发布任何 tile 前只等 done 计数高 16 位=全体 AIV0（本 AIV1 自己已建完，AIV1
-    // 之间不互等，保住流水交叠）；combine 单开同样经由本入口。首个 wave 之后瞬时通过。
+    // 为什么要这道门：AIV0 建表用的 UB 区，会在 GMM1 开始算之后被 AIC 覆写。而 GMM1 是
+    // 全局抢 tile 的——任何一个 AIV1 发布了 tile-ready，任何一张卡的 AIC 都可能开算。
+    // 所以每个 AIV1 在发布任何 tile 之前，必须确认全体 AIV0 已经建完表（等 done 计数的
+    // 高 16 位到齐）。AIV1 相互之间不等，流水交叠不受影响；首个 wave 之后这里瞬时通过。
     __gm__ int32_t *dedupDoneSlot = reinterpret_cast<__gm__ int32_t *>(context.dedup.prepassReadyPtr);
     const int32_t expectAiv0Done = static_cast<int32_t>(GetBlockNum());
     while ((ReadGmBypassDCache(dedupDoneSlot) >> 16) != expectAiv0Done) {
@@ -520,12 +531,14 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig &context, co
     }
 }
 /*
- * AIV0 参与去重 prepass 建表的本地准备：AIV0 的 dispatch UB 布局从未初始化（DispatchBuffInit 仅
- * AIV1 执行），在本子核 UB 自建 cumsum / expertTokenNumsOut 视图与 dedupUbBaseAddr——两子核 UB
- * 物理独立，且 P0 探针实测本窗口 AIV0 UB [0,200KB) 无人写（AIC 首批 GMM1 tile 的覆写发生在
- * dispatch 首批发布之后，而发布侧有 done-gate 挡到全体建表完成）。随后本地复算 count 前缀表
- *（发布仍由 AIV1 独担；count 槽只被读，无并发写）。必须在 BuildDedupRowDescTable 之前调用；
- * 去重关闭或非 AIV0 为空操作。
+ * AIV0 加入 prepass 建表前的本地准备。去重关闭或不是 AIV0 时什么都不做。
+ * 要解决的问题：dispatch 的 UB 布局初始化（DispatchBuffInit）只有 AIV1 做过，AIV0 的
+ * UB 里什么都没有。好在 AIV0 和 AIV1 的 UB 物理上是两块独立内存，AIV0 可以在自己的
+ * UB 里把建表要用的 cumsum / expertTokenNumsOut 视图和 dedupUbBaseAddr 自建一份。
+ * 这块 UB 此时没有别人写（AIC 要到 dispatch 首批发布之后才会覆写它，而发布被上面的
+ * 门挡到全体建表完成之后）。
+ * 自建视图后本地重算一遍 count 前缀表就能开工（count 槽只读不写，没有并发问题）。
+ * 必须在 BuildDedupRowDescTable 之前调用。
  * 到达性判据：与 AIV1 相同走 WaitForCountTable（count 携带本轮 epoch tag，整表校验+退避重读；
  * 输入准备阶段每个物理 AIV 含 AIV0 都推进自己的同步计数，期望 tag 可用）。不可改等 countTableReady
  * 残留判据：入口无跨卡握手，且轮尾 count 接收区被清零，而 countTableReady 无人清零——

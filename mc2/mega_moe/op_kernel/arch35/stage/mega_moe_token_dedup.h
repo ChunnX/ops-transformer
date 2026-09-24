@@ -26,6 +26,14 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
+// ============================== 去重 prepass（建表） ==============================
+// 干什么：在 dispatch 搬数据之前，先把「哪些行是重复的、谁跟谁一组」算出来，写成每行
+// 一条的描述表（rowDesc）。同一 token 发到同一张卡的多行为一组：组里第一行标 FIRST
+// （真正拉数据并扇出给全组），其余行标 SKIP（什么都不做），组内最大专家那行标 LAST
+// （combine 合并由它驱动）。不在任何组里的行标 PLAIN，走基线路径。
+// dispatch 去重与 combine 去重都按这张表办事，表只建一次。
+// =================================================================================
+
 /*
  * 去重 UB 暂存从 dispatch 固定区尾（scratch.dedupUbBaseAddr，512B 对齐）动态起址。
  * host 在 dedupMode!=0 时已从 dispatch 自适应预算预留 DEDUP_DISPATCH_UB_RESERVE_BYTES（含对齐余量），
