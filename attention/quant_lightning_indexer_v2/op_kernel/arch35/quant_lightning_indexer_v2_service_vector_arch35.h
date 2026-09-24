@@ -581,9 +581,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
 
 #if QLIV2_HIF4_DEBUG_DUMP
-    // Dump one deterministic AIV/tile. Descriptor IDs:
-    // 6101 = first half of QK UB rows ([ceil(G / 2), 256] BF16; first 128 columns valid),
-    // 6102 = second half of QK UB rows ([floor(G / 2), 256] BF16; first 128 columns valid).
+    // Dump one deterministic AIV/tile without changing the physical QK layout.
+    // Fixpipe stores the two logical 64-column S2 halves in different VL regions.  Each physical G row has a
+    // 256-BF16 stride, so only the first 64 elements of every dumped physical row belong to the descriptor's
+    // logical S2 half.  Split G into two dumps per VL region to stay below DumpTensor's 32-KiB record limit:
+    //   6101/6102 = logical S2 columns [0, 64), first/remaining G rows;
+    //   6104/6105 = logical S2 columns [64, 128), first/remaining G rows (base + qkVLstride).
     if constexpr (IS_HIFLOAT4) {
         bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
                            info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
@@ -594,9 +597,19 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             uint32_t qkRowStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
             uint32_t firstDumpRows = (gSize_ + 1U) / 2U;
             uint32_t secondDumpRows = gSize_ - firstDumpRows;
+
+            // First logical 64-column half.
             AscendC::DumpTensor(qkBase, 6101, firstDumpRows * qkRowStride);
             if (secondDumpRows > 0U) {
                 AscendC::DumpTensor(qkBase[firstDumpRows * qkRowStride], 6102, secondDumpRows * qkRowStride);
+            }
+
+            // Second logical 64-column half.  It is not adjacent to the first half in the VL-addressed UB layout.
+            auto qkSecondVlBase = qkBase[qkVLstride];
+            AscendC::DumpTensor(qkSecondVlBase, 6104, firstDumpRows * qkRowStride);
+            if (secondDumpRows > 0U) {
+                AscendC::DumpTensor(qkSecondVlBase[firstDumpRows * qkRowStride], 6105,
+                                    secondDumpRows * qkRowStride);
             }
         }
     }

@@ -1082,10 +1082,9 @@ class GeneralizedQLIV2:
         debug_enabled = os.environ.get("QLIV2_DEBUG_HIF4_UB", "1") == "1"
         debug_batch = int(os.environ.get("QLIV2_HIF4_DEBUG_BATCH", "0"))
         if debug_enabled and b_idx == debug_batch and not self.hif4_vector_debug_dumped:
-            # Match device descriptors 6101/6102/6103 for the first S1 row
-            # and first 128-wide S2 tile. Device 6101 and 6102 split the G rows
-            # into two dumps with a physical stride of 256 BF16 values per row;
-            # qk_valid omits those padding elements.
+            # Match the device's VL-addressed QK layout for the first S1 row and first 128-wide S2 tile.  On device,
+            # each descriptor has a physical stride of 256 BF16 values per G row and only its first 64 values are
+            # logical QK data.  6101/6102 carry logical S2 [0, 64); 6104/6105 carry logical S2 [64, 128).
             tile_s2 = min(128, qk_matrix.shape[-1])
             qk_valid = qk_matrix[0, : self.group_size, :tile_s2]
             first_dump_rows = (self.group_size + 1) // 2
@@ -1093,15 +1092,22 @@ class GeneralizedQLIV2:
             reduce_key = bf16_to_qliv2_sortable_key(reduce_bf16)
             print(
                 "[QLIV2_HIF4_GOLDEN] device_map: "
-                "6101=qk_valid first G rows, 6102=qk_valid remaining G rows "
-                "(device row stride=256 BF16), "
+                "6101/6102=qk S2[0:64] first/remaining G rows, "
+                "6104/6105=qk S2[64:128] first/remaining G rows "
+                "(each device physical row stride=256 BF16; compare its first 64 values), "
                 "6103=reduce_sortable_key"
             )
             print_hif4_vector_golden_stage(
-                "6101_qk_valid_first_g_rows", qk_valid[:first_dump_rows]
+                "6101_qk_s2_0_64_first_g_rows", qk_valid[:first_dump_rows, :64]
             )
             print_hif4_vector_golden_stage(
-                "6102_qk_valid_remaining_g_rows", qk_valid[first_dump_rows:]
+                "6102_qk_s2_0_64_remaining_g_rows", qk_valid[first_dump_rows:, :64]
+            )
+            print_hif4_vector_golden_stage(
+                "6104_qk_s2_64_128_first_g_rows", qk_valid[:first_dump_rows, 64:128]
+            )
+            print_hif4_vector_golden_stage(
+                "6105_qk_s2_64_128_remaining_g_rows", qk_valid[first_dump_rows:, 64:128]
             )
             print_hif4_vector_golden_stage("reduce_bf16_before_key", reduce_bf16)
             print_hif4_vector_golden_stage("6103_reduce_sortable_key", reduce_key)
