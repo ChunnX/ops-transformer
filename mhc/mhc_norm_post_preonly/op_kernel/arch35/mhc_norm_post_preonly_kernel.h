@@ -531,10 +531,9 @@ private:
     {
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-        MhcNormRegBase::VFGateWeightedSumQuantizeBlockSum<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
+        MhcNormRegBase::VFGateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
-        const uint32_t partialCount = (tD + MhcNormRegBase::VL_FP32 - 1U) / MhcNormRegBase::VL_FP32;
-        return ReduceSumPrecise(sqBuf, partialCount);
+        return ReduceSumPrecise(sqBuf, tD);
     }
 
     // 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
