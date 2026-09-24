@@ -183,6 +183,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                                                           GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
+    // Diagnostic no-op kernel: isolate V3 from runtime computation.
+    return;
+
     if (g_coreType == AIC) {
         return;
     }
