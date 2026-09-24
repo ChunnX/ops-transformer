@@ -131,7 +131,9 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
     const int64_t maxTokenNumDim = xShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(maxTokenNumDim < 0 || maxTokenNumDim > std::numeric_limits<int32_t>::max(),
-                    OP_LOGE(context->GetNodeName(), "x dim0 must fit non-negative int32 rank counts"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "x",
+                                              (std::string("dim0=") + std::to_string(maxTokenNumDim)).c_str(),
+                                              "a non-negative int32 token count"),
                     return ge::GRAPH_FAILED);
     tilingData->ffnToAttentionV2Info.maxTokenNum = static_cast<uint64_t>(maxTokenNumDim);
 
@@ -141,8 +143,13 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t aivNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum);
     const size_t maxTokenNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.maxTokenNum);
     const size_t worldSize = static_cast<size_t>(tilingData->ffnToAttentionV2Info.worldSize);
-    OP_TILING_CHECK(aivNum == 0U || worldSize == 0U,
-                    OP_LOGE(context->GetNodeName(), "aivNum and worldSize must be greater than zero"),
+    OP_TILING_CHECK(aivNum == 0U,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "aivNum", std::to_string(aivNum).c_str(),
+                                              "greater than zero"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(worldSize == 0U,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "worldSize", std::to_string(worldSize).c_str(),
+                                              "greater than zero"),
                     return ge::GRAPH_FAILED);
     const size_t flagWindowSize = aivNum * URMA_FLAG_SLOT_SIZE;
     const auto &info = tilingData->ffnToAttentionV2Info;
@@ -152,18 +159,27 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
         (static_cast<uint64_t>(info.H) * TOKEN_DTYPE_BYTES + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN;
     const uint64_t ubCountRowBytes =
         (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN;
+    const uint64_t rankTableUbBytes =
+        info.isInputRankTable ?
+            (static_cast<uint64_t>(info.A) * sizeof(int32_t) + URMA_UB_ALIGN - 1U) / URMA_UB_ALIGN * URMA_UB_ALIGN :
+            0U;
     const uint64_t requiredUbBytes =
         URMA_BUFFER_NUM * alignedPayloadBytes + URMA_UB_ALIGN + METADATA_CHUNK_BUFFER_SIZE + ADDRESS_TABLE_BUFFER_SIZE +
-        RANK_INFO_SEGMENT_NUM * ubCountRowBytes + URMA_HCOMM_INIT_SIZE + URMA_BATCH_BUFFER_SIZE;
+        RANK_INFO_SEGMENT_NUM * ubCountRowBytes + URMA_HCOMM_INIT_SIZE + URMA_BATCH_BUFFER_SIZE + rankTableUbBytes;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t availableUbBytes = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, availableUbBytes);
     OP_TILING_CHECK(requiredUbBytes > availableUbBytes,
-                    OP_LOGE(context->GetNodeName(), "URMA explicit buffers exceed available UB"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "requiredUbBytes",
+                        (std::to_string(requiredUbBytes) + " > " + std::to_string(availableUbBytes)).c_str(),
+                        "URMA explicit buffers must fit in available UB"),
                     return ge::GRAPH_FAILED);
-    // Shape limits validated by the base tiling bound these products (MB=1, BS<=512, K<=17, HS<=8320).
+    // Shape limits validated by the base tiling bound these products (MB in [1, uint32 max], BS<=512, K<=256,
+    // HS<=8320).
     const uint64_t tokenSlotNum = static_cast<uint64_t>(info.microBatchNum) * info.BS * info.expertNumPerToken;
-    const uint64_t tokenInfoBytes = (tokenSlotNum * sizeof(int32_t) + 511U) / 512U * 512U;
+    const uint64_t tokenInfoBytes =
+        (tokenSlotNum * sizeof(int32_t) + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
     const uint64_t tokenWindowEnd = tokenInfoBytes + tokenSlotNum * info.HS * TOKEN_DTYPE_BYTES;
     const uint64_t flagWindowOffset =
         (tokenWindowEnd + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
