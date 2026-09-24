@@ -549,17 +549,22 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
 }
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
-template <typename T>
+template <typename T, bool COMPUTE_MID_SQ = false>
 __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                              const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
-                                             const LocalTensor<float> &combWeights, uint32_t rowStride,
-                                             uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
+                                             const LocalTensor<float> &midSq, const LocalTensor<float> &combWeights,
+                                             uint32_t rowStride, uint32_t headIndex, float postWeight0,
+                                             float postWeight1, uint32_t count)
 {
     __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
     __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
     __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
+    __local_mem__ float *midSqAddr;
+    if constexpr (COMPUTE_MID_SQ) {
+        midSqAddr = (__local_mem__ float *)midSq.GetPhyAddr();
+    }
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
@@ -587,8 +592,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
             Reg::MulAddDst(dst0Reg, residualReg, weight00Reg, mask);
             Reg::MulAddDst(dst1Reg, residualReg, weight01Reg, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
-                                                              residualAddr + rowStride + i * VL_FP32);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg, residualAddr + rowStride + i * VL_FP32);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
             Reg::MulAddDst(dst0Reg, residualReg, weight10Reg, mask);
             Reg::MulAddDst(dst1Reg, residualReg, weight11Reg, mask);
@@ -611,6 +615,16 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             }
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
+            if constexpr (COMPUTE_MID_SQ) {
+                // 复用已经量化的两路寄存器，保持B16往返后再平方相加的原数值顺序，
+                // 避免独立VF从UB重新加载两行x2。
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, dst0B16Reg, mask);
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, dst1B16Reg, mask);
+                Reg::Mul(dst0Reg, dst0Reg, dst0Reg, mask);
+                Reg::Mul(dst1Reg, dst1Reg, dst1Reg, mask);
+                Reg::Add(dst0Reg, dst0Reg, dst1Reg, mask);
+                Reg::StoreAlign(midSqAddr + i * VL_FP32, dst0Reg, mask);
+            }
         }
     }
 }

@@ -57,8 +57,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
+                                                              invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -92,10 +92,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
-            MhcNormRegBase::VFComputePostHeadPair<T>(
-                x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
-                dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
+            MhcNormRegBase::VFComputePostHeadPair<T, true>(
+                x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, hOut,
+                combWeights, dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD);
             PipeBarrier<PIPE_V>();
+            midSqHalf[laneId_] += ReduceSumPrecise(hOut, tD);
             if (residualFromQueue) {
                 bufResidualBf16_.FreeTensor(residual);
             }
@@ -104,18 +105,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         }
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
-        if constexpr (USE_RMS_MID) {
-            // 每个lane只归约自己负责的两个head，循环结束后交换半和。
-            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
-                const uint32_t h0 = half * 2U;
-                const uint32_t h1 = h0 + 1;
-                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
-                PipeBarrier<PIPE_V>();
-                midSqHalf[half] += ReduceSumPrecise(out, tD);
-            }
-        } else {
+        if constexpr (!USE_RMS_MID) {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
     }
