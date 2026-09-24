@@ -346,8 +346,8 @@ private:
 
         for (uint32_t h = 0; h < N; h += 2U) {
             MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[h * D_ + tOff], x2Cache[(h + 1U) * D_ + tOff], hOut,
-                                                     residual, hOut, combWeights, dimTile_, h, postVals[h],
-                                                     postVals[h + 1U], tD);
+                                                     residual, combWeights, dimTile_, h, postVals[h], postVals[h + 1U],
+                                                     tD);
         }
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
@@ -463,8 +463,8 @@ private:
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
         MhcNormRegBase::VFComputePostHeadPair<T>(x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff],
-                                                 hOut, residual, hOut, combWeights, dimTile_, headBegin,
-                                                 postVals[headBegin], postVals[headBegin + 1U], tD);
+                                                 hOut, residual, combWeights, dimTile_, headBegin, postVals[headBegin],
+                                                 postVals[headBegin + 1U], tD);
         PipeBarrier<PIPE_V>();
         bufResidualBf16_.FreeTensor(residual);
     }
