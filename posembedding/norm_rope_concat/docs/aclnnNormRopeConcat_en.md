@@ -1,6 +1,6 @@
-Statement: This document is licensed under the [Creative Commons License version 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) license. Any forwarding, quoting, modification, or other operations performed on this document shall comply with the license agreement.
-
 # aclnnNormRopeConcat
+
+Statement: This document is licensed under the [Creative Commons License version 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) license. Any forwarding, quoting, modification, or other operations performed on this document shall comply with the license agreement.
 
 ## Supported Products
 

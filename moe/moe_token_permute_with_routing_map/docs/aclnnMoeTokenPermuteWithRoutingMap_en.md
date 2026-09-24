@@ -62,9 +62,9 @@
   $$
 
   $$
-  sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
+  sortedIndicesOut = argsort(routingMap.T, dim=-1)\[:, :capacity\]
   $$
-  
+
   $$
   permutedTokensOut = tokens.index\_select(0, sortedIndicesOut)
   $$

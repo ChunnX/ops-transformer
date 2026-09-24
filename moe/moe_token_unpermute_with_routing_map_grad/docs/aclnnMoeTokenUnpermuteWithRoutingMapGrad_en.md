@@ -53,7 +53,7 @@
   $$
 
   $$
-  permutedProbs[outIndex[i]] = probsOptional.view(1)[i]
+  permutedProbs[outIndex[i]] = probsOptional.view(1) [i]
   $$
 
   $$
