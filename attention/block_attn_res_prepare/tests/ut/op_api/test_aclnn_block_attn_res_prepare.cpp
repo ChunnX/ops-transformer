@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "../../../op_host/op_api/aclnn_block_attn_res_prepare.h"
+#include "../../../op_api/aclnn_block_attn_res_prepare.h"
 #include "gmm_csv_acl_parse_utils.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"

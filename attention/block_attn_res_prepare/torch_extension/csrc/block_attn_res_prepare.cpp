@@ -37,11 +37,30 @@ constexpr int64_t MAX_BLOCK_NUM = 64;
 constexpr int64_t MIN_HEAD_DIM = 1;
 constexpr int64_t MAX_HEAD_DIM = 8192;
 
+void CheckOptionalOutput(const c10::optional<at::Tensor> &output, const char *name, at::IntArrayRef expectedShape,
+                         const at::Device &expectedDevice)
+{
+    if (!output.has_value()) {
+        return;
+    }
+    const at::Tensor &tensor = output.value();
+    TORCH_CHECK(tensor.defined(), name, " must be a defined tensor");
+    TORCH_CHECK(tensor.scalar_type() == at::kFloat, name, " must have dtype float32, but got ", tensor.scalar_type());
+    TORCH_CHECK(tensor.sizes() == expectedShape, name, " must have shape ", expectedShape, ", but got ",
+                tensor.sizes());
+    TORCH_CHECK(tensor.device() == expectedDevice, name, " must be on the same device as inputs, but got ",
+                tensor.device(), " while inputs are on ", expectedDevice);
+    TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
+}
+
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::Tensor &blockRes,
                                                                       const at::Tensor &validBlocks,
-                                                                      const at::Tensor &pseudoQuery, double eps)
+                                                                      const at::Tensor &pseudoQuery, double eps,
+                                                                      const c10::optional<at::Tensor> &numeratorOut,
+                                                                      const c10::optional<at::Tensor> &logitMaxOut,
+                                                                      const c10::optional<at::Tensor> &expSumOut)
 {
     TORCH_CHECK(blockRes.dim() == BLOCK_RES_RANK, "block_res must be a 3D tensor, but got ", blockRes.dim(), "D");
     TORCH_CHECK(validBlocks.dim() == VALID_BLOCKS_RANK && validBlocks.size(VALID_BLOCKS_VALUE_DIM_INDEX) == 1,
@@ -73,15 +92,20 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
     const int64_t totalT = blockRes.size(T_DIM_INDEX);
     const int64_t totalS = pseudoQuery.size(S_DIM_INDEX);
     const int64_t totalD = blockRes.size(D_DIM_INDEX);
+    CheckOptionalOutput(numeratorOut, "numerator", {totalS, totalT, totalD}, blockRes.device());
+    CheckOptionalOutput(logitMaxOut, "logit_max", {totalS, totalT}, blockRes.device());
+    CheckOptionalOutput(expSumOut, "exp_sum", {totalS, totalT}, blockRes.device());
+
     const auto outputOptions = blockRes.options().dtype(at::kFloat);
     at::Tensor numerator{nullptr};
     at::Tensor logitMax{nullptr};
     at::Tensor expSum{nullptr};
     {
         const c10::OptionalDeviceGuard deviceGuard(blockRes.device());
-        numerator = at::empty({totalS, totalT, totalD}, outputOptions);
-        logitMax = at::empty({totalS, totalT}, outputOptions);
-        expSum = at::empty({totalS, totalT}, outputOptions);
+        numerator =
+            numeratorOut.has_value() ? numeratorOut.value() : at::empty({totalS, totalT, totalD}, outputOptions);
+        logitMax = logitMaxOut.has_value() ? logitMaxOut.value() : at::empty({totalS, totalT}, outputOptions);
+        expSum = expSumOut.has_value() ? expSumOut.value() : at::empty({totalS, totalT}, outputOptions);
     }
 
     ACLNN_CMD(aclnnBlockAttnResPrepare, blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, eps);
@@ -90,7 +114,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("block_attn_res_prepare", &block_attn_res_prepare, "block_attn_res_prepare");
+    m.def("block_attn_res_prepare", &block_attn_res_prepare, "block_attn_res_prepare", py::arg("block_res"),
+          py::arg("valid_blocks"), py::arg("pseudo_query"), py::arg("eps"), py::arg("numerator") = py::none(),
+          py::arg("logit_max") = py::none(), py::arg("exp_sum") = py::none());
 }
 
 } // namespace op_api

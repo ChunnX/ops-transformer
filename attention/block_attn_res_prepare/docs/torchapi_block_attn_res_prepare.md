@@ -99,6 +99,9 @@ cann_ops_transformer.block_attn_res_prepare(
     pseudo_query,
     *,
     eps=1.0e-6,
+    numerator=None,
+    logit_max=None,
+    exp_sum=None,
 ) -> Tuple[Tensor, Tensor, Tensor]
 ```
 
@@ -110,10 +113,17 @@ cann_ops_transformer.block_attn_res_prepare(
 | valid_blocks | Tensor | 必选 | 当前有效历史残差块数 $N_v$。数据格式为 ND。值为0时，`numerator` 返回全0 Tensor、`logit_max` 返回所有元素均为float32最小有限值的Tensor、`exp_sum` 返回全0 Tensor；值大于 $N$ 时按 $N$ 处理。 | uint64 | [1] |
 | pseudo_query | Tensor | 必选 | 伪 Query，对应公式中的 $Q$；每个目标 slot 对应一个 Query 向量，最后一维必须与 `block_res` 的最后一维相同。数据格式为 ND。 | float32 | [S, D] |
 | eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-6`。 | float | - |
+| numerator | Tensor | 可选 | 可选输出参数（out 语义），对应公式中的 $O$。数据格式为 ND，仅支持关键字传参，默认值为 `None`；传入时须为连续 Tensor，dtype 为 float32、device 必须与输入一致。校验通过后直接复用传入 Tensor（原样写回，不拷贝、不转换）；未传入时由接口内部在输入所在 device 上分配同 shape 的 float32 Tensor。 | float32 | [S, T, D] |
+| logit_max | Tensor | 可选 | 可选输出参数（out 语义），对应公式中的 $M$。数据格式为 ND，仅支持关键字传参，默认值为 `None`；传入时须为连续 Tensor，dtype 为 float32、device 必须与输入一致。校验通过后直接复用传入 Tensor（原样写回，不拷贝、不转换）；未传入时由接口内部在输入所在 device 上分配同 shape 的 float32 Tensor。 | float32 | [S, T] |
+| exp_sum | Tensor | 可选 | 可选输出参数（out 语义），对应公式中的 $L$。数据格式为 ND，仅支持关键字传参，默认值为 `None`；传入时须为连续 Tensor，dtype 为 float32、device 必须与输入一致。校验通过后直接复用传入 Tensor（原样写回，不拷贝、不转换）；未传入时由接口内部在输入所在 device 上分配同 shape 的 float32 Tensor。 | float32 | [S, T] |
 
 ## 返回值说明
 
-返回由 `numerator`、`logit_max` 和 `exp_sum` 组成的三元组。当 `valid_blocks[0] == 0` 时，三者组成 online softmax 的空状态：`numerator` 为全 0 Tensor，`logit_max` 的所有元素均为 float32 最小有限值，`exp_sum` 为全 0 Tensor。
+返回由 `numerator`、`logit_max` 和 `exp_sum` 组成的三元组，返回顺序固定为 `(numerator, logit_max, exp_sum)`。
+
+`numerator`、`logit_max` 和 `exp_sum` 同时作为可选输出参数（out 语义）接收结果：调用时可传入其中任意子集（可全部传入、部分传入或全部不传）；传入的 Tensor 经校验（shape、dtype、device、连续性）通过后被直接复用（原样写回，不拷贝、不转换），未传入的输出由接口内部在输入所在 device 上分配。因此无论是否传入，三元组中每个元素均为对应 shape 的 float32 连续 Tensor。
+
+当 `valid_blocks[0] == 0` 时，三者组成 online softmax 的空状态：`numerator` 为全 0 Tensor，`logit_max` 的所有元素均为 float32 最小有限值，`exp_sum` 为全 0 Tensor。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
@@ -174,6 +184,58 @@ cann_ops_transformer.block_attn_res_prepare(
         block_res,
         valid_blocks,
         pseudo_query,
+    )
+    torch_npu.npu.synchronize()
+
+    print("numerator:", numerator)
+    print("logit_max:", logit_max)
+    print("exp_sum:", exp_sum)
+    ```
+
+- 单算子模式调用（传入输出 Tensor，out 语义）：
+
+    ```python
+    import torch
+    import torch_npu
+    import cann_ops_transformer
+
+    torch_npu.npu.set_device(0)
+
+    block_res = torch.tensor(
+        [
+            [
+                [1.0, 2.0, 3.0, 4.0],
+                [2.0, 0.0, -1.0, 1.0],
+            ]
+        ],
+        dtype=torch.float32,
+        device="npu",
+    )
+    valid_blocks = torch.tensor([2], dtype=torch.uint64, device="npu")
+    pseudo_query = torch.tensor(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+        ],
+        dtype=torch.float32,
+        device="npu",
+    )
+
+    # 预分配输出 Tensor：shape 分别为 [S, T, D]、[S, T]、[S, T]，dtype 为 float32，
+    # device 与输入一致，且必须连续。
+    numerator_out = torch.empty((2, 1, 4), dtype=torch.float32, device="npu")
+    logit_max_out = torch.empty((2, 1), dtype=torch.float32, device="npu")
+    exp_sum_out = torch.empty((2, 1), dtype=torch.float32, device="npu")
+
+    # 传入的输出 Tensor 校验通过后会被直接复用（原样写回，不拷贝、不转换）；
+    # 三个输出可部分传入，未传入的输出由接口内部自动分配。
+    numerator, logit_max, exp_sum = cann_ops_transformer.block_attn_res_prepare(
+        block_res,
+        valid_blocks,
+        pseudo_query,
+        numerator=numerator_out,
+        logit_max=logit_max_out,
+        exp_sum=exp_sum_out,
     )
     torch_npu.npu.synchronize()
 
