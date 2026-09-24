@@ -68,6 +68,7 @@ public:
             }
             this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx, dSizeRope);
             this->GetExtremeValue(this->negativeFloatScalar);
+            initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
         }
     }
 
@@ -805,8 +806,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
-
-    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
