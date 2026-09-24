@@ -222,25 +222,17 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
-    // follower两行回读期间，先计算leader本地两个head的FP32半和；bufResFp32_在R6阶段已经空闲。
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        ComputeHInLeaderHalf(tOff, tD, x2Cache, gateBuf);
-    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到bufGamma0Fp32_），与后两个head的R6 Vector计算重叠。
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
     StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        sumSq1 += FinishHInFollowerHalfAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
+        sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
