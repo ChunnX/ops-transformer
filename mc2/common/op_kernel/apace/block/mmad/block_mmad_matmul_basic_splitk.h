@@ -428,20 +428,16 @@ private:
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
-            // === DEBUG (temporary): dump bias table + bias L1 content ===
-            static uint32_t dbgBiasDumpCnt = 0;
-            if (dbgBiasDumpCnt < 4) {
-                dbgBiasDumpCnt++;
+            // === DEBUG (temporary): dump bias L1 content (L1 本地内存可安全读) ===
+            if (dbgBiasDumpCnt_ < 4) {
+                dbgBiasDumpCnt_++;
                 printf("[DBG] bias: btAddr=%u nl1Align=%u curN0=%u\n",
                        static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
                        static_cast<uint32_t>(curN0));
-                float *btDbg = reinterpret_cast<float *>(btSlot.Addr());
                 float *l1Dbg = reinterpret_cast<float *>(biasL1Slot.Addr());
                 uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
                 for (uint64_t d = 0; d < dumpN; ++d) {
-                    printf("[DBG] bias bt[%u]=%f  l1[%u]=%f\n", static_cast<uint32_t>(d),
-                           static_cast<float>(btDbg[d]), static_cast<uint32_t>(d),
-                           static_cast<float>(l1Dbg[d]));
+                    printf("[DBG] bias l1[%u]=%f\n", static_cast<uint32_t>(d), static_cast<float>(l1Dbg[d]));
                 }
             }
             // === DEBUG end ===
@@ -494,6 +490,7 @@ private:
     uint64_t baseM_{16};
     uint64_t baseN_{16};
     uint64_t baseK_{16};
+    uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
