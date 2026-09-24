@@ -87,7 +87,7 @@ G indicates the number of groups of antiquantOffset and antiquantScale in the fa
   <table style="undefined;table-layout: fixed; width: 1650px">
   <colgroup>
   <col style="width: 200px"> <!-- Parameter name -->
-  <col style="width: 120px"> <!-- Input/Output -- >
+  <col style="width: 120px"> <!-- Input/Output -->
   <col style="width: 280px"> <!-- Description -->
   <col style="width: 300px"> <!-- Usage Description -->
   <col style="width: 250px"> <!-- Data Type -->

@@ -62,8 +62,8 @@ aclnnStatus aclnnAttentionUpdate(
   <table style="undefined; table-layout: fixed; width: 1567px">
     <colgroup>
       <col style="width: 170px"><!-- Name -->
-      <col style="width: 120px"><!-- Input/Output-- >
-      <col style="width: 300px"><!-- Description-- >
+      <col style="width: 120px"><!-- Input/Output -->
+      <col style="width: 300px"><!-- Description -->
       <col style="width: 330px"><!-- Usage Notes -->
       <col style="width: 212px"><!-- Data Type -->
       <col style="width: 100px"><!-- Data Format -->
