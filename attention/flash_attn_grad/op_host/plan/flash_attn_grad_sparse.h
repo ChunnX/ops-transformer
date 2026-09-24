@@ -24,17 +24,19 @@ constexpr int64_t FAG_SPARSE_DENSE = 0;
 constexpr int64_t FAG_SPARSE_CASUAL = 1;
 constexpr int64_t FAG_SPARSE_BAND = 2;
 constexpr int64_t FAG_CUBE_BASE = 128;
+constexpr int64_t FAG_WIN_INF = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 
 inline void FagCorrectSparseTokens(int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t s1, int64_t s2,
                                    int64_t &s1Token, int64_t &s2Token)
 {
     // ProcessTokensInfo (non-TND): causal tokens then right-down pad correction.
+    // mask_mode=4 的 -1 是正无穷（与正向 flash_attn 同口径）。
     if (maskMode == MASK_MODE_CAUSAL) {
-        s1Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        s1Token = FAG_WIN_INF;
         s2Token = 0;
     } else if (maskMode == MASK_MODE_WINDOW) {
-        s1Token = winLeft;
-        s2Token = winRight;
+        s1Token = (winLeft == -1) ? FAG_WIN_INF : winLeft;
+        s2Token = (winRight == -1) ? FAG_WIN_INF : winRight;
     } else {
         s1Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
         s2Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());

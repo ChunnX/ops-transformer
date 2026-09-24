@@ -24,6 +24,7 @@ task 数一致的前提，也是 set/wait 能配对的前提。任何只改一�
 import pypto_pro.language as pl
 
 # --- generated imports (fag_fiximports.py) ---
+from fag_colsplit import col_core_count, col_local_to_global, col_packed_to_dense
 from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
 from fag_deter_ondevice import deter_lin_gidx, deter_lin_max_round
 # --- end generated imports ---
@@ -228,64 +229,6 @@ def swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx):
     return head * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
 
 
-# Packed 反函数按列扫描的上限。S=8192 -> s2Outer=64；本轮不做 S>32768。
-PACKED_SCAN_MAX = 128
-
-
-def packed_g_to_s1s2(constInfo, gDimTail):
-    """packed 有效块下标 -> (s1o, s2o)。按列扫描，与 kernel 既有 packed 同序。
-
-    暂不改成求根公式，按列扫描即可。
-    mask_mode 静态分支只编一侧长度公式。
-    """
-    acc = 0
-    s1Idx = 0
-    s2Idx = 0
-    found = 0
-    m = constInfo.s1Outer
-    n = constInfo.s2Outer
-    for s2 in pl.range(0, PACKED_SCAN_MAX):
-        if s2 < n:
-            active = 1
-        else:
-            active = 0
-        if mask_mode == 3:
-            need = s2 * CUBE_BASEN + 1
-            rhs = need - (constInfo.s2Size - constInfo.s1Size)
-            if rhs < 1:
-                s1Min = 0
-            else:
-                s1Min = pl.max((rhs + CUBE_BASEM - 1) // CUBE_BASEM - 1, 0)
-            length = pl.max(m - s1Min, 0) * active
-            s1Base = s1Min
-        elif mask_mode == 4:
-            xMin = pl.max(s2 - constInfo.bandQ, 0)
-            xMax = pl.min(m - 1, s2 + constInfo.bandP)
-            length = pl.max(xMax - xMin + 1, 0) * active
-            s1Base = xMin
-        else:
-            length = m * active
-            s1Base = 0
-        if found == 0:
-            if gDimTail >= acc:
-                if gDimTail < acc + length:
-                    s2Idx = s2
-                    s1Idx = s1Base + (gDimTail - acc)
-                    found = 1
-        acc = acc + length
-    return s1Idx, s2Idx
-
-
-def packed_to_dense_idx(constInfo, packedIdx):
-    total = constInfo.totalPerBatchNum
-    if total < 1:
-        total = constInfo.s1oS2o
-    bIdx = packedIdx // total
-    gDimTail = packedIdx % total
-    s1Idx, s2Idx = packed_g_to_s1s2(constInfo, gDimTail)
-    return bIdx * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
-
-
 # ==================================================================
 #  AICPU metadata 布局 —— 与 flash_attn_grad_metadata_split.h 对齐
 # ==================================================================
@@ -322,9 +265,7 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
         return pl.astype(
             ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer, pl.DT_INT64
         )
-    fused = constInfo.bSize * constInfo.n2Size * constInfo.gSize
-    remP = pl.max(fused * constInfo.totalPerBatchNum - cBlockIdx, 0)
-    return pl.astype((remP + coreNum - 1) // coreNum, pl.DT_INT64)
+    return pl.astype(col_core_count(constInfo, cBlockIdx, coreNum), pl.DT_INT64)
 
 
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
@@ -335,10 +276,8 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
         return pl.astype(
             swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx), pl.DT_INT64
         )
-    return pl.astype(
-        packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum),
-        pl.DT_INT64,
-    )
+    gidx = col_local_to_global(constInfo, cBlockIdx, coreNum, localIdx)
+    return pl.astype(col_packed_to_dense(constInfo, gidx), pl.DT_INT64)
 
 
 # ==================================================================

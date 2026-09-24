@@ -18,6 +18,8 @@
 
 import pypto_pro.language as pl
 
+from fag_colsplit import ceil_div_signed, col_prefix_body
+
 # ---- 基本块尺寸 ----
 CUBE_BASEM = 128  # s1 对齐 128
 CUBE_BASEN = 128  # s2 对齐 128
@@ -138,6 +140,29 @@ def set_const_info(tiling, coreNum):
     """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
+    # mask3 的 s1Token 可能是 INT32_MAX + s1 - s2，这里不读它。
+    # mask0 不走 packed 反查，列几何折叠成整矩形。
+    if mask_mode == 0:
+        colP = 0
+        colQ = 0
+        packedPerHead = s1Outer * s2Outer
+    else:
+        colQ = ceil_div_signed(tiling.s2Token, CUBE_BASEM)
+        colQ = pl.min(colQ, s2Outer - 1)
+        if mask_mode == 3:
+            colP = s1Outer - 1
+            colLastHi = s1Outer - 1
+        else:
+            colP = ceil_div_signed(tiling.s1Token, CUBE_BASEM)
+            colP = pl.min(colP, s1Outer - 1)
+            lc = ((tiling.s2 + 63) // 64) * 64
+            colLastHi = pl.min(
+                ceil_div_signed(lc + tiling.s1Token, CUBE_BASEM) - 1, s1Outer - 1
+            )
+        lastLo = pl.max(s2Outer - 1 - colQ, 0)
+        packedPerHead = col_prefix_body(s1Outer, colP, colQ, s2Outer - 1) + pl.max(
+            colLastHi - lastLo + 1, 0
+        )
     return pl.struct(
         "FagConstInfo",
         bSize=tiling.b,
@@ -188,6 +213,9 @@ def set_const_info(tiling, coreNum):
         s1Token=tiling.s1Token,
         s2Token=tiling.s2Token,
         totalPerBatchNum=tiling.totalPerBatchNum,
+        colP=colP,
+        colQ=colQ,
+        packedPerHead=packedPerHead,
         bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
         bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
     )
