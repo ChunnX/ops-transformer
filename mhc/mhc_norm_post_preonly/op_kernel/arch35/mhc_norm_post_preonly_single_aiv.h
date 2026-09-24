@@ -41,9 +41,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         CacheX2Tile(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
-            LocalTensor<float> pairSquare = bufResFp32_.Get<float>();
+            LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+            LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t half = 0; half < 2; ++half) {
-                midSqHalf[half] += ReduceSumPrecise(pairSquare[half * dimTile_], tD);
+                const uint32_t h0 = half * 2;
+                const uint32_t h1 = h0 + 1;
+                MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
+                PipeBarrier<PIPE_V>();
+                midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
         } else {
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf);

@@ -116,6 +116,35 @@ __aicore__ inline void VFCastB16ToFp32Square(const LocalTensor<float> &dst, cons
     }
 }
 
+// 在一个VF内恢复两路低精度数据并计算平方和，避免中间FP32结果写回UB。
+template <typename T>
+__aicore__ inline void VFPairSquareB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
+                                             const LocalTensor<T> &src1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
+    __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<T> src0Reg, src1Reg;
+        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, src0SqReg, src1SqReg, dstReg;
+        Reg::MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
+            Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
+            Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
+            Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
+            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
 // 保持原有BF16使用RINT、FP16使用NONE的量化边界。
 template <typename T>
 __aicore__ inline void VFCastFp32ToB16(const LocalTensor<T> &dst, const LocalTensor<float> &src, uint32_t count)
@@ -520,17 +549,14 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
 }
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
-// 5op路径在量化后直接从低精度寄存器恢复并生成pair-square，避免RMS_mid单独回读UB。
-template <typename T, bool WRITE_PAIR_SQUARE>
+template <typename T>
 __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
-                                             const LocalTensor<float> &pairSquare, const LocalTensor<float> &hOut,
-                                             const LocalTensor<T> &residual,
+                                             const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
                                              const LocalTensor<float> &combWeights, uint32_t rowStride,
                                              uint32_t headIndex, float postWeight0, float postWeight1, uint32_t count)
 {
     __local_mem__ T *dst0Addr = (__local_mem__ T *)dst0.GetPhyAddr();
     __local_mem__ T *dst1Addr = (__local_mem__ T *)dst1.GetPhyAddr();
-    __local_mem__ float *pairSquareAddr = (__local_mem__ float *)pairSquare.GetPhyAddr();
     __local_mem__ float *hOutAddr = (__local_mem__ float *)hOut.GetPhyAddr();
     __local_mem__ T *residualAddr = (__local_mem__ T *)residual.GetPhyAddr();
     __local_mem__ float *combAddr = (__local_mem__ float *)combWeights.GetPhyAddr();
@@ -565,13 +591,6 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             }
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst0Addr + i * VL_FP32, dst0B16Reg, mask);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dst1Addr + i * VL_FP32, dst1B16Reg, mask);
-            if constexpr (WRITE_PAIR_SQUARE) {
-                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, dst0B16Reg, mask);
-                Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, dst1B16Reg, mask);
-                Reg::Mul(hOutReg, dst0Reg, dst0Reg, mask);
-                Reg::MulAddDst(hOutReg, dst1Reg, dst1Reg, mask);
-                Reg::StoreAlign(pairSquareAddr + i * VL_FP32, hOutReg, mask);
-            }
         }
     }
 }
