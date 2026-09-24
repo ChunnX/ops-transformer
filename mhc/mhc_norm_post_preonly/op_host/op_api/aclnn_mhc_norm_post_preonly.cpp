@@ -109,12 +109,12 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const 
         CHECK_COND(gamma2Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma2 failed.");
     }
 
-    bool ok = MhcNormPostPreonlyl0op::MhcNormPostPreonly(hOut, residual, hPost, hResOptional, phi, alpha, bias,
-                                                         preMixOptional, gamma0Optional, gamma1, gamma2Optional,
-                                                         normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut,
-                                                         x2Out, hInF32OutOptional, hPreOptional, uniqueExecutor.get());
+    bool isLaunchPrepared = MhcNormPostPreonlyl0op::MhcNormPostPreonly(
+        hOut, residual, hPost, hResOptional, phi, alpha, bias, preMixOptional, gamma0Optional, gamma1, gamma2Optional,
+        normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrimeOut, x2Out, hInF32OutOptional, hPreOptional,
+        uniqueExecutor.get());
 
-    CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(isLaunchPrepared, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
