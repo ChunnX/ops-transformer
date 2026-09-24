@@ -211,7 +211,6 @@ struct EngramContextResources {
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
-    void *sfHostBufPtr = nullptr;
     void *sfDeviceBufPtr = nullptr;
     bool sfExternalRegistered = false;
 };
@@ -230,9 +229,7 @@ struct EngramSharedBufferEntry {
     int64_t registeredBytes = 0; // 实际已注册的字节数
     int64_t commBufferSize = 0;
     EngramCommContext context;
-    void *sfHostBufPtr = nullptr;
     void *sfDeviceBufPtr = nullptr;
-    bool sfExternalRegistered = false;
 };
 static std::mutex gEngramSharedBufferMutex;
 static std::unordered_map<std::string, EngramSharedBufferEntry> gEngramSharedBuffers;
@@ -542,7 +539,6 @@ public:
                     resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
                 entry.commBufferSize = resources.commBufferSize;
                 entry.context = resources.context;
-                entry.sfHostBufPtr = resources.sfHostBufPtr;
                 entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 entry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
@@ -574,7 +570,6 @@ public:
             resources.commBufferSize = entry.commBufferSize;
             resources.context = entry.context;
             resources.contextTensor = CreateCommContextTensor(resources.context);
-            resources.sfHostBufPtr = entry.sfHostBufPtr;
             resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
             resources.sfExternalRegistered = entry.sfExternalRegistered;
             return resources;
@@ -610,7 +605,6 @@ public:
                 poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
                 poolEntry.commBufferSize = resources.commBufferSize;
                 poolEntry.context = resources.context;
-                poolEntry.sfHostBufPtr = resources.sfHostBufPtr;
                 poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
                 poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
             } catch (...) {
@@ -645,9 +639,7 @@ public:
         resources.commBufferSize = entry.commBufferSize;
         resources.context = entry.context;
         resources.contextTensor = CreateCommContextTensor(resources.context);
-        resources.sfHostBufPtr = entry.sfHostBufPtr;
         resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
-        resources.sfExternalRegistered = entry.sfExternalRegistered;
         return resources;
     }
 
@@ -678,15 +670,14 @@ private:
             // Map caller-owned storage memory directly (zero-copy): plain memory is supported
             aclError ar =
                 aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
-            bool externalRegistered = (ar == ACL_SUCCESS);
             if (ar != ACL_SUCCESS) {
                 ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
                             externalBytes, static_cast<int>(ar));
             }
             if (isSf) {
-                resources.sfExternalRegistered = externalRegistered;
+                resources.sfExternalRegistered = (ar == ACL_SUCCESS);
             } else {
-                resources.externalRegistered = externalRegistered;
+                resources.externalRegistered = (ar == ACL_SUCCESS);
             }
         }
 
@@ -707,7 +698,6 @@ private:
         }
 
         if (isSf) {
-            resources.sfHostBufPtr = hostPtr;
             resources.sfDeviceBufPtr = devPtr;
         } else {
             resources.hostBufPtr = hostPtr;
@@ -1729,7 +1719,6 @@ private:
     at::Tensor engramContextTensor_;    // Cached Engram context tensor
     at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
     at::Tensor localSfTableTensor_;     // FP8 device tensor view of HCCL-registered sf table
-    void *sfHostBufPtr_ = nullptr;
     void *sfDeviceBufPtr_ = nullptr;
     bool sfExternalRegistered_ = false;
     bool engramContextInitialized_ = false;
@@ -1809,7 +1798,6 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     commBufferSize_ = resources.commBufferSize;
     engramStorageExternal_ = (externalHostPtr != nullptr);
     engramExternalRegisteredByUs_ = resources.externalRegistered;
-    sfHostBufPtr_ = resources.sfHostBufPtr;
     sfDeviceBufPtr_ = resources.sfDeviceBufPtr;
     sfExternalRegistered_ = resources.sfExternalRegistered;
     if (sfDeviceBufPtr_ != nullptr) {
@@ -2101,7 +2089,6 @@ void ElasticBuffer::Destroy()
     moeContextTensor_ = at::Tensor();
 
     // SF 注册内存同样按 tag 入进程级共享池，Destroy 仅解除本实例引用、不释放内存。
-    sfHostBufPtr_ = nullptr;
     sfDeviceBufPtr_ = nullptr;
     sfExternalRegistered_ = false;
 
