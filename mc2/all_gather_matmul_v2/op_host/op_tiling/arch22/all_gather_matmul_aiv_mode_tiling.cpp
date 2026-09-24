@@ -317,7 +317,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(const gert::
         return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
-        OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
+        OP_TILING_CHECK(K % INT4_ELEMENTS_PER_BYTE != 0 || N % INT4_ELEMENTS_PER_BYTE != 0,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             context->GetNodeName(), "K/N",
                             (std::string("K=") + std::to_string(K) + " N=" + std::to_string(N)).c_str(),
@@ -633,7 +633,6 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     uint32_t elementSize = 0;
     uint32_t nElemAlign = 0;
     if (aType == ge::DT_INT4) {
-        constexpr uint32_t INT4_ELEMENTS_PER_BYTE = 2U;
         nElemAlign = HALF_KBYTE * INT4_ELEMENTS_PER_BYTE;
     } else {
         elementSize = D_TYPE_SIZE_MAP.at(aType);
