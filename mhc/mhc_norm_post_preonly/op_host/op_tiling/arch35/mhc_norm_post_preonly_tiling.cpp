@@ -31,6 +31,9 @@ constexpr uint32_t PARTIAL_SLOT_BYTES = 32U;
 constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2U;
 constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000U;
 constexpr int32_t DUAL_SIBLING_SCHEDULE_MODE = 1;
+constexpr size_t PRE_MIX_INPUT_INDEX = 7U;
+constexpr size_t GAMMA_0_INPUT_INDEX = 8U;
+constexpr size_t GAMMA_2_INPUT_INDEX = 10U;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
@@ -90,6 +93,15 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     auto phiShape = context_->GetInputShape(4);
     OP_CHECK_IF(hOutShape == nullptr || residualShape == nullptr || hPostShape == nullptr || phiShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "required input shape is null"), return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
+        context_->GetOptionalInputShape(PRE_MIX_INPUT_INDEX) != nullptr,
+        OP_LOGE(context_->GetNodeName(), "pre_mix is an interface-reserved optional input and must be empty currently"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetOptionalInputShape(GAMMA_0_INPUT_INDEX) == nullptr,
+                OP_LOGE(context_->GetNodeName(),
+                        "gamma_0 is an interface-reserved optional input and must not be empty currently"),
+                return ge::GRAPH_FAILED);
 
     const auto &hOut = hOutShape->GetStorageShape();
     const auto &residual = residualShape->GetStorageShape();
@@ -176,7 +188,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckAttrs()
     OP_CHECK_IF(hcEps_ < 0.0F, OP_LOGE(context_->GetNodeName(), "hc_eps must be >= 0, got %e", hcEps_),
                 return ge::GRAPH_FAILED);
 
-    useRmsMid_ = context_->GetOptionalInputShape(10) != nullptr;
+    useRmsMid_ = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX) != nullptr;
     return ge::GRAPH_SUCCESS;
 }
 
