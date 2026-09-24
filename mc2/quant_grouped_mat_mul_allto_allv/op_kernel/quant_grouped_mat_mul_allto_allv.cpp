@@ -108,8 +108,17 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                                mmArrayAddr_, tilingGM);
             SharedGmmExpertOpType shareComputeOp;
-            shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+            // 诊断档位 6：共享专家改用 gmm 侧张量地址（sendBuf 充当 C 出口，尺寸足够），
+            // 判别挂死是否源于 mm 张量的 GM 地址/映射属性（形状 stride 与 gmm 侧一致）
+            if (tilingData_->taskTilingInfo.ubSize == 6UL) {
+                shareComputeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM,
+                                    sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
+                                    &pipe);
+            } else {
+                shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                                    sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_,
+                                    &pipe);
+            }
             shareComputeOp.Process(0, 1);
         }
         hcommImpl.End();

@@ -109,7 +109,8 @@ private:
     uint64_t a_ = 0;
     uint64_t mMaxSize_ = 0;
     // 共享专家挂死定位（临时诊断，经 taskTilingInfo.ubSize 下发，原通路不消费该字段）：
-    // 0=关闭；1=M钳256；2=N钳256；3=K钳128；4=全钳制；5=跳过 Run（仅 Init/建表）
+    // 0=关闭；1=M钳256；2=N钳256；3=K钳128；4=全钳制；5=跳过 Run（仅 Init/建表）；
+    // 7=K钳512（2 窗口）
     uint64_t sharedDbg_{0};
     MxApaceKernel mxKernel_;
 };
@@ -334,6 +335,10 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
         }
         if (sharedDbg_ == 3UL || sharedDbg_ == 4UL) {
             problemK = problemK > 128L ? 128L : problemK;
+        }
+        if (sharedDbg_ == 7UL) {
+            // K 钳 512：kAL1=384 下为 2 个窗口（384+128），判别多窗口 K 循环是否即挂
+            problemK = problemK > 512L ? 512L : problemK;
         }
     }
     GMMTiling gmmParams;
