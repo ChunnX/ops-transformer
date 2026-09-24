@@ -457,10 +457,10 @@ __aicore__ inline void VFCastB16ScaleGammaQuantizeToFp32(const LocalTensor<float
     }
 }
 
-// R3在一个VF内完成恢复、缩放、第二次量化，并同时生成R4/R5所需的FP32缓存。
-// 量化结果先落入低精度寄存再恢复为FP32，保持低精度往返语义，避免后续单独的pair-cast VF。
-template <typename T>
-__aicore__ inline void VFCastB16ScaleGammaQuantizeToB16AndFp32(
+// R3在一个VF内完成恢复、缩放和第二次量化；BF16同时生成R4/R5所需的FP32缓存。
+// BF16量化结果先落入低精度寄存再恢复为FP32，保持往返语义并避免后续单独的pair-cast VF。
+template <typename T, bool WRITE_FP32_CACHE>
+__aicore__ inline void VFCastB16ScaleGammaQuantizeR3(
     const LocalTensor<T> &dstB16, const LocalTensor<float> &dstFp32, const LocalTensor<T> &src,
     const LocalTensor<float> &gamma, float scale, uint32_t count)
 {
@@ -487,9 +487,11 @@ __aicore__ inline void VFCastB16ScaleGammaQuantizeToB16AndFp32(
             } else {
                 Reg::Cast<T, float, CAST_FP32_TO_B16_NONE>(dstReg, scaledReg, mask);
             }
-            Reg::Cast<float, T, CAST_B16_TO_FP32>(quantizedFp32Reg, dstReg, mask);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstB16Addr + i * VL_FP32, dstReg, mask);
-            Reg::StoreAlign(dstFp32Addr + i * VL_FP32, quantizedFp32Reg, mask);
+            if constexpr (WRITE_FP32_CACHE) {
+                Reg::Cast<float, T, CAST_B16_TO_FP32>(quantizedFp32Reg, dstReg, mask);
+                Reg::StoreAlign(dstFp32Addr + i * VL_FP32, quantizedFp32Reg, mask);
+            }
         }
     }
 }

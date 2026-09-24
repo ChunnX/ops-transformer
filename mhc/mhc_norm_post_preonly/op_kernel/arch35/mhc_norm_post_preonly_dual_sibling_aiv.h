@@ -76,6 +76,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            constexpr bool WRITE_R45_FP32_CACHE = IsSameT<T, bfloat16_t>::value;
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
@@ -88,17 +89,17 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToB16AndFp32(
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeR3<T, WRITE_R45_FP32_CACHE>(
                 x2Cache[headBegin * D_ + tOff], x2, x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
 
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToB16AndFp32(
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeR3<T, WRITE_R45_FP32_CACHE>(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2[dimTile_], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd,
                 invRmsMid, tD);
             PipeBarrier<PIPE_V>();
-            CacheX2TileForLane(token, tOff, tD, true, false, false);
+            CacheX2TileForLane(token, tOff, tD, true, false, !WRITE_R45_FP32_CACHE);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
     }
