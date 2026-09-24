@@ -517,9 +517,20 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
 
             // 尾块掩码：AIC 侧 nSize 对齐 16 写出的 padding 列是 L0C 残留，必须掩成 NEG_INF
             if (kChunkSize < foldCols) {
+                // VEC 32B 对齐：kChunkSize%8≠0 时 Duplicate 目标未对齐（kCols=31→+124B 实锤
+                // VEC 队列死亡→下游所有 MTE3_V/V_MTE3 等待永挂）——未对齐尾段(≤7列)标量写，
+                // 对齐段一次性 Duplicate
+                const uint32_t padAlign = (kChunkSize + 7u) / 8u * 8u;
                 for (uint32_t r = 0; r < subRows; r++) {
-                    AscendC::Duplicate(subUb[static_cast<uint32_t>(r) * foldCols + kChunkSize],
-                                       float(SOFTMAX_NEG_INF), foldCols - kChunkSize);
+                    for (uint32_t c = kChunkSize; c < padAlign; c++) {
+                        subUb.SetValue(static_cast<uint32_t>(r) * foldCols + c, float(SOFTMAX_NEG_INF));
+                    }
+                }
+                if (padAlign < foldCols) {
+                    for (uint32_t r = 0; r < subRows; r++) {
+                        AscendC::Duplicate(subUb[static_cast<uint32_t>(r) * foldCols + padAlign],
+                                           float(SOFTMAX_NEG_INF), foldCols - padAlign);
+                    }
                 }
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -1186,9 +1197,18 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
 
         // 尾块掩码：AIC 侧 nSize 对齐 16 写出的 padding 列是 L0C 残留，必须掩成 NEG_INF
         if (kChunkSize < kChunkSizeAlign) {
+            // 同 pass1：kCols%8≠0 时 Duplicate 未对齐——尾段标量 + 对齐段 Duplicate
+            const uint32_t padAlign2 = (kChunkSize + 7u) / 8u * 8u;
             for (uint32_t r = 0; r < bandRows; r++) {
-                AscendC::Duplicate(scoreUb[static_cast<uint32_t>(r) * kChunkSizeAlign + kChunkSize],
-                                   float(SOFTMAX_NEG_INF), kChunkSizeAlign - kChunkSize);
+                for (uint32_t c = kChunkSize; c < padAlign2; c++) {
+                    scoreUb.SetValue(static_cast<uint32_t>(r) * kChunkSizeAlign + c, float(SOFTMAX_NEG_INF));
+                }
+            }
+            if (padAlign2 < kChunkSizeAlign) {
+                for (uint32_t r = 0; r < bandRows; r++) {
+                    AscendC::Duplicate(scoreUb[static_cast<uint32_t>(r) * kChunkSizeAlign + padAlign2],
+                                       float(SOFTMAX_NEG_INF), kChunkSizeAlign - padAlign2);
+                }
             }
             AscendC::PipeBarrier<PIPE_V>();
         }
