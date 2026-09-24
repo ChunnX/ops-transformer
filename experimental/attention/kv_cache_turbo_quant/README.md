@@ -1,29 +1,27 @@
-# KvCacheTurboQuant · 交付实现根目录
+# KvCacheTurboQuant（Encode-only）
 
-本目录 = 本单唯一写码位置（浅挂在 ascend-work/deliver/ 下）。
+挂载目录：`experimental/attention/kv_cache_turbo_quant`  
+配方：`mse_bits∈{2,3,4}` + 1-bit QJL；`head_dim=128`；任务书存储口径约 4.25 bit / 3.76×（默认 bits=3）。
 
 | 路径 | 用途 |
 |------|------|
-| `op_host/` | Host：def / tiling / inferShape / aclnn |
-| `op_kernel/` | Device Kernel；算法核=`encode_one_core.h` |
-| `tests/` | 精度 / 性能自测 |
-| `golden/` | 任务书金样 CPU 复刻（已有） |
-| `docs/` | 设计文档草稿 |
+| `op_host/` | def / InferShape / Tiling / aclnn |
+| `op_kernel/` | MIX Kernel；算法核 `encode_one_core.h` |
+| `examples/` | aclnn smoke |
+| `golden/` | CPU 金样形状/语义 |
+| `tests/` | CPU 孪生与精度脚本（不含大体积 NPU case 数据） |
+| `docs/design.md` | 设计说明 |
 
-任务书：`../../tasks/kv_cache_turbo_quant-a3/任务书/`
-参考仓：`../../refs/ops-transformer/experimental/attention/`
-算法真源：任务书 `golden.py`；本目录 `golden/cpu_golden.py` 为 CPU 复刻；Kernel 同核=`op_kernel/encode_one_core.h`。
-
-### Kernel 语义中间验证（未挂 ops-transformer 前）
+## 编译（示例）
 
 ```bash
-cd deliver/kv_cache_turbo_quant/tests
-python3 gen_selftest_matrices.py
-g++ -O2 -std=c++17 -o cpu_encode_twin cpu_encode_twin.cpp && ./cpu_encode_twin
-g++ -O2 -std=c++17 -o verify_kernel_encode_vs_twin verify_kernel_encode_vs_twin.cpp
-./verify_kernel_encode_vs_twin
-python3 compare_twin_vs_python.py
+bash build.sh --pkg --experimental --soc=ascend910_93 --ops=kv_cache_turbo_quant -j8
+# 或验收机：--soc=ascend910b
 ```
 
-期望：`ALL PASS verify_kernel_encode_vs_twin` + `ALL PASS compare_twin_vs_python`。
-**阻塞**：本目录尚未挂入 `ops-transformer` 构建，故无 NPU 上板 Kernel 二进制证据；下一步=按 experimental/attention 目录范式接入仓内编译再跑 aclnn smoke。
+## 自测摘要（本机 A3 / CANN 9.0）
+
+- decode idx/qjl exact；§3.2 IP95 PASS  
+- 五档性能 warmup+SynchronizeStream ALL ≥10×  
+
+复现命令见 `docs/挂仓编译与NPU_smoke.md`、`docs/精度门禁_NPU_S32.md`。

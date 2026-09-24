@@ -11,18 +11,23 @@
 #define KV_CACHE_TURBO_QUANT_TILING_H_
 
 #include "register/tilingdata_base.h"
+#include "tiling/tiling_api.h"
 
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(KvCacheTurboQuantTilingData)
 TILING_DATA_FIELD_DEF(int64_t, numTokens);
 TILING_DATA_FIELD_DEF(int64_t, numKvHeads);
-TILING_DATA_FIELD_DEF(int64_t, headDim);      // 首版固定 128
-TILING_DATA_FIELD_DEF(int64_t, mseBits);      // 2/3/4
-TILING_DATA_FIELD_DEF(int64_t, qjlDim);       // 首版 = headDim
-TILING_DATA_FIELD_DEF(int64_t, idxBytes);     // ceil(headDim * mseBits / 8)
-TILING_DATA_FIELD_DEF(int64_t, qjlBytes);     // ceil(qjlDim / 8)
-TILING_DATA_FIELD_DEF(uint32_t, coreNum);
+TILING_DATA_FIELD_DEF(int64_t, headDim);
+TILING_DATA_FIELD_DEF(int64_t, mseBits);
+TILING_DATA_FIELD_DEF(int64_t, qjlDim);
+TILING_DATA_FIELD_DEF(int64_t, idxBytes);
+TILING_DATA_FIELD_DEF(int64_t, qjlBytes);
+TILING_DATA_FIELD_DEF(uint32_t, coreNum);     // AIC 核数（SetBlockDim）
+TILING_DATA_FIELD_DEF(uint32_t, totalRows);   // numTokens * numKvHeads
+TILING_DATA_FIELD_DEF(uint32_t, coreRows);    // 每 AIV 分片行数
+TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);  // AIV 逻辑核 = AIC*2
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTiling);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(KvCacheTurboQuant, KvCacheTurboQuantTilingData)
