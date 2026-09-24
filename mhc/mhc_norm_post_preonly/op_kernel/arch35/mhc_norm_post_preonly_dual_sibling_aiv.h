@@ -66,7 +66,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
         const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
         DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
-        MhcPairMidReadySync();
+        CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
+        CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
         const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
         DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
         SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
@@ -117,7 +118,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
-    MhcPairReadySync();
+    CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
+    CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
     if (laneId_ == 1U) {
         return;
     }

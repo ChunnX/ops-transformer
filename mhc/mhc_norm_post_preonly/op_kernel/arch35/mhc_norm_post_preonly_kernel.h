@@ -132,7 +132,6 @@ public:
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
         evtMte3toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_V>());
         evtVtoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE3>());
-        evtMte3toMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE3_MTE2>());
         if constexpr (DUAL_SIBLING) {
             evtMte2toS_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_S>());
             evtStoMte3_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::S_MTE3>());
@@ -184,7 +183,6 @@ public:
         pipe_.ReleaseEventID<HardEvent::V_MTE2>(evtVtoMte2_);
         pipe_.ReleaseEventID<HardEvent::MTE3_V>(evtMte3toV_);
         pipe_.ReleaseEventID<HardEvent::V_MTE3>(evtVtoMte3_);
-        pipe_.ReleaseEventID<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
         if constexpr (DUAL_SIBLING) {
             pipe_.ReleaseEventID<HardEvent::MTE2_S>(evtMte2toS_);
             pipe_.ReleaseEventID<HardEvent::S_MTE3>(evtStoMte3_);
@@ -260,14 +258,12 @@ private:
     int32_t evtVtoMte2_ = 0;
     int32_t evtMte3toV_ = 0;
     int32_t evtVtoMte3_ = 0;
-    int32_t evtMte3toMte2_ = 0;
     int32_t evtMte2toS_ = 0;
     int32_t evtStoMte3_ = 0;
 };
 
 // 引入各执行路径的方法实现
 #include "mhc_norm_post_preonly_single_aiv.h"
-#include "mhc_norm_post_preonly_crosscore_sync.h"
 #include "mhc_norm_post_preonly_dual_sibling_aiv.h"
 
 #endif // MHC_NORM_POST_PREONLY_KERNEL_H_

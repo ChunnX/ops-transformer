@@ -25,12 +25,6 @@ __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint
     MhcNormRegBase::CastFp32ToB16(dst, src, count);
 }
 
-__aicore__ inline void FenceMte3ToMte2()
-{
-    SetFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-    WaitFlag<HardEvent::MTE3_MTE2>(evtMte3toMte2_);
-}
-
 __aicore__ inline void FenceMte3ToV()
 {
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
@@ -41,18 +35,6 @@ __aicore__ inline void FenceVToMte2()
 {
     SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
     WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
-}
-
-__aicore__ inline void LoadLowPrecisionTile(GlobalTensor<T> &src, uint64_t gmOffset, LocalTensor<float> dst,
-                                            uint32_t count)
-{
-    LocalTensor<T> tmp = bufHOutBf16_.AllocTensor<T>();
-    DataCopy(tmp, src[gmOffset], count);
-    bufHOutBf16_.EnQue(tmp);
-    tmp = bufHOutBf16_.DeQue<T>();
-    MhcNormRegBase::CastB16ToFp32(dst, tmp, count);
-    PipeBarrier<PIPE_V>();
-    bufHOutBf16_.FreeTensor(tmp);
 }
 
 __aicore__ inline void WriteLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
@@ -75,11 +57,6 @@ __aicore__ inline void WriteHInPrimeTile(LocalTensor<float> src, uint64_t gmOffs
         DataCopy(hInF32Gm_[gmOffset], src, count);
         FenceMte3ToV();
     }
-}
-
-__aicore__ inline void WriteX2OutTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
-{
-    WriteLowPrecisionTile(x2OutGm_, gmOffset, src, count);
 }
 
 __aicore__ inline uint32_t GetTileD(uint32_t tile) const
