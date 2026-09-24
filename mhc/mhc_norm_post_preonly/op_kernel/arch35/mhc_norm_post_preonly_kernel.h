@@ -524,15 +524,15 @@ private:
     }
 
     // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
-    // 恢复FP32、平方与跨D lane累加在同一VF内完成；只归约64个lane partial。
+    // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
     __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf)
     {
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-        MhcNormRegBase::VFGateWeightedSumQuantizeLaneSum<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
+        MhcNormRegBase::VFGateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
         PipeBarrier<PIPE_V>();
-        return ReduceSumPrecise(sqBuf, MhcNormRegBase::VL_FP32);
+        return ReduceSumPrecise(sqBuf, tD);
     }
 
     // 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
