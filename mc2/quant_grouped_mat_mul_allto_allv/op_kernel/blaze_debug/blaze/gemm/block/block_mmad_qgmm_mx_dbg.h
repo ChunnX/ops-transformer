@@ -90,6 +90,9 @@ public:
         bool isBias;
         bool enableL0cPingPong;
         uint8_t l1BufferStage{DOUBLE_BUFFER_COUNT};
+        // [临时诊断] K 循环进度标记地址（外层 kernel 传入 C 张量基址；正常执行时
+        // 标记被 fixpipe 结果覆盖，仅挂死时残留）
+        __gm__ uint32_t *dbgMarker{nullptr};
     };
 
     template <typename TensorScaleAL1, typename TensorScaleBL1>
@@ -132,6 +135,7 @@ public:
         baseK_ = asc::te::get<MNK_K>(params.tileShapeL0);
         isBias_ = params.isBias;
         enableL0cPingPong_ = params.enableL0cPingPong;
+        dbgMarker_ = params.dbgMarker;
         l1BufferStage_ = params.l1BufferStage == TRIPLE_BUFFER_COUNT ? TRIPLE_BUFFER_COUNT : DOUBLE_BUFFER_COUNT;
         orderAL1BL1_ = kAL1_ >= kBL1_;
         scaleKL1_ = Max(params.l1Params.scaleKL1, 1UL);
@@ -243,7 +247,7 @@ private:
         constexpr auto mmadAtom = asc::te::make_mmad(asc::te::mmad_operation{}, Tile::MmadTraitMX{});
         const uint64_t halfL0Size = AscendC::TOTAL_L0A_SIZE / DOUBLE_BUFFER_COUNT;
         // [临时诊断] 与 Iterate 同款 L0 tile 级进度标记（编码见 RunImpl 处注释）
-        volatile __gm__ uint32_t *dbgMarker = reinterpret_cast<volatile __gm__ uint32_t *>(cBasePtr_);
+        __gm__ uint32_t *dbgMarker = dbgMarker_;
 
         for (uint64_t kL0Offset = 0; kL0Offset < minGmKL1; kL0Offset += baseK_) {
             const uint32_t l0Tile = static_cast<uint32_t>(kL0Offset / baseK_);
@@ -546,7 +550,7 @@ private:
         // [临时诊断] L0 tile 级进度标记（与 RunImpl 的窗口级标记共用 C 基址槽位）：
         // 0x201+tile L0 循环启动；0x211+tile WaitFlag(M_MTE1) 后；0x221+tile L0 拷贝后；
         // 0x231+tile MTE1_M 对后；0x241+tile MMAD 后；0x251+tile SetFlag(M_MTE1) 后
-        volatile __gm__ uint32_t *dbgMarker = reinterpret_cast<volatile __gm__ uint32_t *>(cBasePtr_);
+        __gm__ uint32_t *dbgMarker = dbgMarker_;
         // Walk the current L1 K strip in baseK L0 tiles, copying A/B/scale to L0 before each MMAD.
         for (uint64_t kL0Offset = 0; kL0Offset < minGmKL1; kL0Offset += baseK_) {
             const uint32_t l0Tile = static_cast<uint32_t>(kL0Offset / baseK_);
@@ -649,7 +653,7 @@ private:
             // 0x131+win WaitFlag(A) 后；0x141+win CopyA 后；0x151+win WaitFlag(B) 后；
             // 0x161+win CopyB 后；0x171+win MTE2_MTE1 对后；0x181+win Iterate 后；
             // 0x191+win SetFlag(B) 后；0x1A1+win SetFlag(A) 后；0x1B1+win scale 释放后
-            volatile __gm__ uint32_t *dbgMarker = reinterpret_cast<volatile __gm__ uint32_t *>(cBasePtr_);
+            __gm__ uint32_t *dbgMarker = dbgMarker_;
             *dbgMarker = 0x001U;
             for (uint64_t kOuter = 0; kOuter < k_; kOuter += kAL1_) {
                 const uint32_t win = static_cast<uint32_t>(kOuter / kAL1_);
@@ -897,6 +901,8 @@ private:
     bool orderAL1BL1_{false};
     bool isBias_{false};
     bool enableL0cPingPong_{false};
+    // [临时诊断] K 循环进度标记地址（由 MmadParams 注入）
+    __gm__ uint32_t *dbgMarker_{nullptr};
 };
 
 } // namespace Block

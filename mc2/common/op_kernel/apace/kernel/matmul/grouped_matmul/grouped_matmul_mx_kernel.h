@@ -184,8 +184,18 @@ public:
         const uint64_t kBL1 = gmmParams->kBL1 != 0 ? gmmParams->kBL1 : gmmParams->baseK;
         const uint64_t scaleKAL1 = gmmParams->scaleKAL1 != 0 ? gmmParams->scaleKAL1 : gmmParams->baseK;
         const L1Params l1Params{kAL1, kBL1, scaleKAL1};
+#ifdef GMM_A2AV_KLOOP_DEBUG
+        // 临时诊断：向 BlockMmad 注入 K 循环进度标记地址（C 张量基址，标记仅挂死时残留）
+        const typename BlockMmad::MmadParams mmadParams{l0Shape,
+                                                        l1Params,
+                                                        isBias_,
+                                                        gmmParams->dbL0C == DOUBLE_BUFFER_COUNT,
+                                                        gmmParams->l1BufferStage,
+                                                        reinterpret_cast<__gm__ uint32_t *>(cBasePtr_)};
+#else
         const typename BlockMmad::MmadParams mmadParams{
             l0Shape, l1Params, isBias_, gmmParams->dbL0C == DOUBLE_BUFFER_COUNT, gmmParams->l1BufferStage};
+#endif
         mmadOp_.Init(initProblemShape, mmadParams);
     }
 
