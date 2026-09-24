@@ -300,6 +300,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyInApe(const LocalTen
     inputQue1.DeQue<T>();
     DataCopy(apeUb, apeUbTmp, coff_ * dDealSize * constInfo_.cmpRatio);
     inputQue1.FreeTensor(apeUbTmp);
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename COMP>
