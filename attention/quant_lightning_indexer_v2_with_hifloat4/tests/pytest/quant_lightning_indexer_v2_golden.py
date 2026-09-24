@@ -1082,35 +1082,30 @@ class GeneralizedQLIV2:
         debug_enabled = os.environ.get("QLIV2_DEBUG_HIF4_UB", "1") == "1"
         debug_batch = int(os.environ.get("QLIV2_HIF4_DEBUG_BATCH", "0"))
         if debug_enabled and b_idx == debug_batch and not self.hif4_vector_debug_dumped:
-            # Match the device's VL-addressed QK layout for the first S1 row and first 128-wide S2 tile.  On device,
-            # each descriptor has a physical stride of 256 BF16 values per G row and only its first 64 values are
-            # logical QK data.  6101/6102 carry logical S2 [0, 64); 6104/6105 carry logical S2 [64, 128).
+            # Device 6201/6202 are raw FP32 L0C fragments; this is their logical [G, S2] reference before
+            # Fixpipe, ReLU and F322BF16. Device 6211/6212 are physical BF16 UB rows: logical S2 [0,64) is at
+            # physical [0,64), and logical S2 [64,128) is at physical [128,192) in every 256-element row.
             tile_s2 = min(128, qk_matrix.shape[-1])
-            qk_valid = qk_matrix[0, : self.group_size, :tile_s2]
-            first_dump_rows = (self.group_size + 1) // 2
-            reduce_bf16 = brc_vmul_matrix[0, 0, :tile_s2]
-            reduce_key = bf16_to_qliv2_sortable_key(reduce_bf16)
+            debug_rows = min(self.group_size, 64)
+            qk_fp32_matrix = qk_bmm_res.permute(0, 2, 1, 3).squeeze(0)
+            qk_fp32_valid = qk_fp32_matrix[0, :debug_rows, :tile_s2]
+            qk_valid = qk_matrix[0, :debug_rows, :tile_s2]
+            first_dump_rows = (debug_rows + 1) // 2
             print(
                 "[QLIV2_HIF4_GOLDEN] device_map: "
-                "6101/6102=qk S2[0:64] first/remaining G rows, "
-                "6104/6105=qk S2[64:128] first/remaining G rows "
-                "(each device physical row stride=256 BF16; compare its first 64 values), "
-                "6103=reduce_sortable_key"
+                "6201/6202=raw FP32 L0C for first S1 (unpack Cube fractal layout before comparison); "
+                "6211/6212=BF16 UB first/remaining G rows, physical row stride=256, "
+                "compare physical [0:64] with logical S2[0:64] and physical [128:192] with logical S2[64:128]"
             )
             print_hif4_vector_golden_stage(
-                "6101_qk_s2_0_64_first_g_rows", qk_valid[:first_dump_rows, :64]
+                "6201_6202_l0c_fp32_logical", qk_fp32_valid
             )
             print_hif4_vector_golden_stage(
-                "6102_qk_s2_0_64_remaining_g_rows", qk_valid[first_dump_rows:, :64]
+                "6211_ub_bf16_first_g_rows_logical", qk_valid[:first_dump_rows, :]
             )
             print_hif4_vector_golden_stage(
-                "6104_qk_s2_64_128_first_g_rows", qk_valid[:first_dump_rows, 64:128]
+                "6212_ub_bf16_remaining_g_rows_logical", qk_valid[first_dump_rows:, :]
             )
-            print_hif4_vector_golden_stage(
-                "6105_qk_s2_64_128_remaining_g_rows", qk_valid[first_dump_rows:, 64:128]
-            )
-            print_hif4_vector_golden_stage("reduce_bf16_before_key", reduce_bf16)
-            print_hif4_vector_golden_stage("6103_reduce_sortable_key", reduce_key)
             self.hif4_vector_debug_dumped = True
 
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape

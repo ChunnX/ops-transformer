@@ -742,6 +742,31 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
+#if QLIV2_HIF4_DEBUG_DUMP
+    // 6201/6202 = raw FP32 MM result in L0C after Mmad is complete and before any Fixpipe operation.
+    // Dump only the first S1's G rows. L0C is a Cube fractal layout, so these records must be unpacked before
+    // comparing them with the logical [G, S2] Golden tensor. Two records keep each dump safely below 32 KiB.
+    if constexpr (IS_HIFLOAT4) {
+        bool isDebugTile = runInfo.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
+                           runInfo.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
+                           runInfo.gS1Idx == QLIV2_HIF4_DEBUG_S1_BLOCK &&
+                           runInfo.s2Idx == QLIV2_HIF4_DEBUG_S2_BLOCK;
+        if (isDebugTile) {
+            uint32_t debugRows = Min(Min(static_cast<uint32_t>(s1gSizeAlign2G),
+                                         static_cast<uint32_t>(constInfo_.gSize)),
+                                     64U);
+            uint32_t l0cDumpElements = debugRows * S2_BASIC_BLOCK_L0;
+            uint32_t firstDumpElements = (l0cDumpElements + 1U) / 2U;
+            uint32_t secondDumpElements = l0cDumpElements - firstDumpElements;
+            auto l0cDebugBase = cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_];
+            AscendC::DumpTensor(l0cDebugBase, 6201, firstDumpElements);
+            if (secondDumpElements > 0U) {
+                AscendC::DumpTensor(l0cDebugBase[firstDumpElements], 6202, secondDumpElements);
+            }
+        }
+    }
+#endif
+
     if constexpr (std::is_same_v<QK_T, float> || std::is_same_v<QK_T, int32_t>) {
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束

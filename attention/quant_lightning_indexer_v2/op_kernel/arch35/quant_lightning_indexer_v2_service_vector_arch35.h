@@ -24,23 +24,6 @@
 #include "../arch35/vf/quant_lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/quant_lightning_indexer_v2_topk.h"
 
-// HiFloat4 stage dump switch. Override target coordinates with compiler -D options.
-#ifndef QLIV2_HIF4_DEBUG_DUMP
-#define QLIV2_HIF4_DEBUG_DUMP 1
-#endif
-#ifndef QLIV2_HIF4_DEBUG_BATCH
-#define QLIV2_HIF4_DEBUG_BATCH 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_KV_HEAD
-#define QLIV2_HIF4_DEBUG_KV_HEAD 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_S1_BLOCK
-#define QLIV2_HIF4_DEBUG_S1_BLOCK 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_S2_BLOCK
-#define QLIV2_HIF4_DEBUG_S2_BLOCK 0
-#endif
-
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
@@ -581,12 +564,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
 
 #if QLIV2_HIF4_DEBUG_DUMP
-    // Dump one deterministic AIV/tile without changing the physical QK layout.
-    // Fixpipe stores the two logical 64-column S2 halves in different VL regions.  Each physical G row has a
-    // 256-BF16 stride, so only the first 64 elements of every dumped physical row belong to the descriptor's
-    // logical S2 half.  Split G into two dumps per VL region to stay below DumpTensor's 32-KiB record limit:
-    //   6101/6102 = logical S2 columns [0, 64), first/remaining G rows;
-    //   6104/6105 = logical S2 columns [64, 128), first/remaining G rows (base + qkVLstride).
+    // 6211/6212 = the real BF16 Fixpipe output in UB, split by G rows to keep each record below 32 KiB.
+    // For S2=128 each 256-BF16 physical row contains logical columns at:
+    //   physical [0, 64)   -> logical S2 [0, 64)
+    //   physical [128,192) -> logical S2 [64,128)
+    // The two holes [64,128) and [192,256) are not QK data and must not be compared with Golden.
     if constexpr (IS_HIFLOAT4) {
         bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
                            info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
@@ -595,20 +577,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                            blockId_ % CVRATIO == 0;
         if (isDebugTile) {
             uint32_t qkRowStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
-            uint32_t firstDumpRows = (gSize_ + 1U) / 2U;
-            uint32_t secondDumpRows = gSize_ - firstDumpRows;
-
-            // First logical 64-column half.
-            AscendC::DumpTensor(qkBase, 6101, firstDumpRows * qkRowStride);
+            uint32_t debugRows = Min(gSize_, 64U);
+            uint32_t firstDumpRows = (debugRows + 1U) / 2U;
+            uint32_t secondDumpRows = debugRows - firstDumpRows;
+            AscendC::DumpTensor(qkBase, 6211, firstDumpRows * qkRowStride);
             if (secondDumpRows > 0U) {
-                AscendC::DumpTensor(qkBase[firstDumpRows * qkRowStride], 6102, secondDumpRows * qkRowStride);
-            }
-
-            // Second logical 64-column half.  It is not adjacent to the first half in the VL-addressed UB layout.
-            auto qkSecondVlBase = qkBase[qkVLstride];
-            AscendC::DumpTensor(qkSecondVlBase, 6104, firstDumpRows * qkRowStride);
-            if (secondDumpRows > 0U) {
-                AscendC::DumpTensor(qkSecondVlBase[firstDumpRows * qkRowStride], 6105,
+                AscendC::DumpTensor(qkBase[firstDumpRows * qkRowStride], 6212,
                                     secondDumpRows * qkRowStride);
             }
         }
@@ -655,21 +629,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                             (uint32_t)0, qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float), gSize_,
                                             curAivS1ProcNum);
     }
-
-#if QLIV2_HIF4_DEBUG_DUMP
-    // 6103 = first S1 row after BF16 accumulation is encoded as the uint16 key used by TopK.
-    if constexpr (IS_HIFLOAT4) {
-        bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
-                           info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
-                           info.gS1Idx == QLIV2_HIF4_DEBUG_S1_BLOCK &&
-                           info.s2Idx == QLIV2_HIF4_DEBUG_S2_BLOCK &&
-                           blockId_ % CVRATIO == 0;
-        if (isDebugTile) {
-            PipeBarrier<PIPE_V>();
-            AscendC::DumpTensor(outBase, 6103, s2BaseSize_);
-        }
-    }
-#endif
 
     if (info.isFirstS2InnerLoop) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
