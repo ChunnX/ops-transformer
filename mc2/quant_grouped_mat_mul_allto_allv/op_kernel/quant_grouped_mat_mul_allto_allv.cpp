@@ -126,6 +126,19 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                 }
                 shareComputeOp.Process(0, 1);
             }
+            if (tilingData_->taskTilingInfo.ubSize == 12UL) {
+                // 诊断档位 12：共享专家问题经路由实例完整复刻——isLocal=false 代码路径
+                // （LENGTH groupList + 三表构建，组行数取 sendCnt）+ dn 布局 + DTYPE_GMM_X_SCALE，
+                // gmm 张量输入、gmmOutput 作 C（写 sendBuf 与在途通信存在数据竞争，仅判别挂死）
+                using RoutedComputeOpType =
+                    Apace::QuantGroupedMatmulMx<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X,
+                                                DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
+                                                TILINGKEY_GROUPED_MATMUL_TRANS, false, false>;
+                RoutedComputeOpType routedReplicaOp;
+                routedReplicaOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM,
+                                     tilingData_, &tilingData_->sharedGmmTiling, gmmArrayAddr_, &pipe);
+                routedReplicaOp.Process(0, 1);
+            }
             hcommImpl.End();
         } else if (TILINGKEY_COMPUTE_MATMUL) {
             // dbg=8：仅共享专家（全维度，mm 张量地址），无 hcommImpl 实例
