@@ -34,17 +34,15 @@ struct BnbdDescs {
     IntArrayDesc seqLensKv;
 };
 
+// TensorListDesc/IntArrayDesc have no default constructor, so BnbdDescs must be aggregate-initialized.
 BnbdDescs MakeBnbdDescs(const vector<int64_t> &qShape, const vector<int64_t> &kShape, const vector<int64_t> &vShape,
                         const vector<int64_t> &blockTableShape)
 {
-    BnbdDescs descs;
-    descs.query = TensorDesc(qShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    descs.key = TensorListDesc({TensorDesc(kShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)});
-    descs.value = TensorListDesc({TensorDesc(vShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)});
-    descs.blockTable = TensorDesc(blockTableShape, ACL_INT32, ACL_FORMAT_ND);
-    descs.seqLens = IntArrayDesc(vector<int64_t>{4});
-    descs.seqLensKv = IntArrayDesc(vector<int64_t>{256});
-    return descs;
+    return {TensorDesc(qShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1),
+            TensorListDesc({TensorDesc(kShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)}),
+            TensorListDesc({TensorDesc(vShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1)}),
+            TensorDesc(blockTableShape, ACL_INT32, ACL_FORMAT_ND), IntArrayDesc(vector<int64_t>{4}),
+            IntArrayDesc(vector<int64_t>{256})};
 }
 } // namespace
 
