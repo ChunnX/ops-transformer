@@ -330,8 +330,9 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
+        # comm_alg: 通信算法选择（历史平台语义）。Ascend950 的通信去重不读取本参数。
         comm_alg: str = "",
-        # combine_comm_mode: combine 通信去重开关，完全由调用方决定。0=关闭；1=强制开启（kernel
+        # combine_comm_mode: combine 通信去重开关，完全由调用方决定。0=强制关闭；1=强制开启（kernel
         # 必走 combine 去重路径，不经内部收益裁决）。适用场景见算子资料：topK 大、同卡重复路由多、
         # 通信主导的形状收益显著；容量不满足（如 hidden > 10240）时 tiling 显式报错而非静默回退。
         combine_comm_mode: int = 0,
