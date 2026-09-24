@@ -6,10 +6,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -679,6 +679,34 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
+
+### 产品差异化约束
+
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 仅支持`quantMode=1/2`。q、attnOutOut的数据类型为BFLOAT16，oriKvOptional、cmpKvOptional的数据类型为FLOAT8_E4M3FN。
+  - 下文参数组约束适用于`quantMode=1/2`场景。
+<!-- end id7 -->
+
+<!-- npu="A3" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - 仅支持`quantMode=3`的TurboQuant路径。
+  - q、attnOutOut：`layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。
+  - oriKvOptional、cmpKvOptional：均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。
+  - 稀疏与PA参数：cmpSparseIndicesOptional、oriBlockTableOptional、cmpBlockTableOptional必须传入；cmpSparseIndicesOptional的shape为(qT, 1, 512)或(qT, 1, 1024)。oriSparseIndicesOptional、oriTopkLengthOptional、cmpTopkLengthOptional不支持传入。
+  - 序列参数：cuSeqlensQOptional、sequsedOriKvOptional必须传入；cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedCmpKvOptional不支持传入。
+  - Mask与压缩参数：`oriMaskMode=4`、`cmpMaskMode=3`、`oriWinLeft>=0`、`oriWinRight=0`，`cmpRatio`仅支持4或128；cmpResidualKvOptional不支持传入。
+<!-- end id8 -->
+
+<!-- npu="910b" id9 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - 仅支持`quantMode=3`的TurboQuant路径。
+  - q、attnOutOut：`layoutQOptional`为TND；数据类型为FLOAT16或BFLOAT16且保持一致；qN为4到128的4的倍数，qD为512，qT允许为0。
+  - oriKvOptional、cmpKvOptional：均必须传入，`layoutKvOptional`为PA_BBND。oriKvOptional的数据类型与q一致且kvD为512；cmpKvOptional的数据类型为UINT8且kvD为258。两者blockSize均为16到1024的16的倍数。
+  - 稀疏与PA参数：cmpSparseIndicesOptional、oriBlockTableOptional、cmpBlockTableOptional必须传入；cmpSparseIndicesOptional的shape为(qT, 1, 512)或(qT, 1, 1024)。oriSparseIndicesOptional、oriTopkLengthOptional、cmpTopkLengthOptional不支持传入。
+  - 序列参数：cuSeqlensQOptional、sequsedOriKvOptional必须传入；cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedCmpKvOptional不支持传入。
+  - Mask与压缩参数：`oriMaskMode=4`、`cmpMaskMode=3`、`oriWinLeft>=0`、`oriWinRight=0`，`cmpRatio`仅支持4或128；cmpResidualKvOptional不支持传入。
+<!-- end id9 -->
 
 ### 特性参数组
 
