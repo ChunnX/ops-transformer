@@ -616,8 +616,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::CalcParams(uin
         info.v0S2DealSize = 0;
     } else {
         info.v0S2Start = info.relativeS2Idx * constInfo.s2BaseSize;
-        info.v0S2DealSize =
-            constInfo.kvQuantMode == 3 ? info.actualSingleProcessSInnerSize : constInfo.s2BaseSize;
+        info.v0S2DealSize = constInfo.kvQuantMode == 3 ? info.actualSingleProcessSInnerSize : constInfo.s2BaseSize;
     }
 }
 
