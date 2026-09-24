@@ -116,11 +116,10 @@ __aicore__ inline void VFCastB16ToFp32Square(const LocalTensor<float> &dst, cons
     }
 }
 
-// 在一个VF内恢复两路低精度数据、累计平方和并只写回一个标量，
-// 避免先写整段FP32平方结果再启动独立归约VF。
+// 在一个VF内恢复两路低精度数据并计算平方和，避免中间FP32结果写回UB。
 template <typename T>
-__aicore__ inline void VFPairSquareB16ReduceSum(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
-                                                const LocalTensor<T> &src1, uint32_t count)
+__aicore__ inline void VFPairSquareB16ToFp32(const LocalTensor<float> &dst, const LocalTensor<T> &src0,
+                                             const LocalTensor<T> &src1, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
@@ -130,23 +129,19 @@ __aicore__ inline void VFPairSquareB16ReduceSum(const LocalTensor<float> &dst, c
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> src0Reg, src1Reg;
-        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, squareReg, sumReg, partialReg;
+        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, src0SqReg, src1SqReg, dstReg;
         Reg::MaskReg mask;
-        Reg::MaskReg fullMask = Reg::CreateMask<float>();
-        Reg::Duplicate(sumReg, 0.0f);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src0Reg, src0Addr + i * VL_FP32);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
-            Reg::Mul(squareReg, src0Fp32Reg, src0Fp32Reg, mask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(sumReg, sumReg, squareReg, mask);
-            Reg::Mul(squareReg, src1Fp32Reg, src1Fp32Reg, mask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(sumReg, sumReg, squareReg, mask);
+            Reg::Mul(src0SqReg, src0Fp32Reg, src0Fp32Reg, mask);
+            Reg::Mul(src1SqReg, src1Fp32Reg, src1Fp32Reg, mask);
+            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
+            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
-        Reg::Reduce<Reg::ReduceType::SUM>(partialReg, sumReg, fullMask);
-        Reg::Store(dstAddr, partialReg, 1U);
     }
 }
 
