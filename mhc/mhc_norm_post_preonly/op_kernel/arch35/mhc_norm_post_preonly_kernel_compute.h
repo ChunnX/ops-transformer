@@ -108,14 +108,6 @@ __aicore__ inline void WaitCacheGamma1()
 }
 
 /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
-__aicore__ inline void LoadCachedHOut(uint32_t tOff, uint32_t tD)
-{
-    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-    LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    MhcNormRegBase::CastB16ToFp32(hOut, hOutCache, tD);
-    PipeBarrier<PIPE_V>();
-}
-
 /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
 __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
@@ -167,13 +159,6 @@ __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq
 }
 
 /// 原地依次执行标量缩放和gamma缩放。
-__aicore__ inline void ApplyScaleAndGamma(LocalTensor<float> buf, float scale, LocalTensor<float> gamma, uint32_t tD)
-{
-    // TODO：完成多VF融合和双缓冲后，执行Membase回退消融，复测改回高层接口的组合收益。
-    MhcNormRegBase::ScaleAndMulGamma(buf, buf, gamma, scale, tD);
-    PipeBarrier<PIPE_V>();
-}
-
 // MHC_Post计算
 
 /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
@@ -221,16 +206,6 @@ __aicore__ inline void ComputeGateValues(float totalSumSqPre, float (&xHatVals)[
 }
 
 // 输入输出与本核流水同步辅助函数。
-
-__aicore__ inline void QuantizeRoundTrip(LocalTensor<float> buf, uint32_t count)
-{
-    LocalTensor<T> tmp = bufHInPrimeBf16_.AllocTensor<T>();
-    CastToIO(tmp, buf, count);
-    PipeBarrier<PIPE_V>();
-    MhcNormRegBase::CastB16ToFp32(buf, tmp, count);
-    PipeBarrier<PIPE_V>();
-    bufHInPrimeBf16_.FreeTensor(tmp);
-}
 
 __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
 {
@@ -286,10 +261,10 @@ __aicore__ inline uint32_t GetTileD(uint32_t tile) const
 __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                          const float (&postVals)[N_MAX])
 {
-    LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
+    MhcNormRegBase::CastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+    PipeBarrier<PIPE_V>();
 
     ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
 }
@@ -298,8 +273,8 @@ __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t
 __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                 const float (&postVals)[N_MAX])
 {
-    LoadCachedHOut(tOff, tD);
     LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+    LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
 
     // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
     const uint32_t headBegin = laneId_ * 2U;
@@ -310,8 +285,8 @@ __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, u
     }
     bufResidualBf16_.EnQue(residual);
 
-    ApplyScaleAndGamma(hOut, invRms0, bufGamma0Fp32_.Get<float>()[tOff], tD);
-    QuantizeRoundTrip(hOut, tD);
+    MhcNormRegBase::CastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+    PipeBarrier<PIPE_V>();
 
     residual = bufResidualBf16_.DeQue<T>();
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -395,22 +370,14 @@ __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_
 
 // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
 // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
-__aicore__ inline float CacheHInAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
+__aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
+                                                      LocalTensor<float> gateBuf)
 {
     LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    CastToIO(hInCache, hIn, tD);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
-    MhcNormRegBase::CastB16ToFp32Square(sqBuf, hInCache, tD);
+    MhcNormRegBase::GateWeightedSumQuantizeSquare<T>(hInCache, sqBuf, x2Cache, D_, gateBuf, tD);
     PipeBarrier<PIPE_V>();
     return ReduceSumPrecise(sqBuf, tD);
-}
-
-__aicore__ inline void LoadHInCacheTile(uint32_t tOff, uint32_t tD, LocalTensor<float> hIn)
-{
-    LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-    MhcNormRegBase::CastB16ToFp32(hIn, hInCache, tD);
-    PipeBarrier<PIPE_V>();
 }
 
 // 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
@@ -420,7 +387,6 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
 {
     LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
     LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
-    LocalTensor<float> tmp = bufGamma2Fp32_.Get<float>();
 
     DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
     copyParams.blockLen = tD * sizeof(float);
@@ -436,35 +402,24 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
             const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
             const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-            MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Add(out, out, tmp, tD);
+            MhcNormRegBase::PairSquareAdd(out, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
             PipeBarrier<PIPE_V>();
             sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
-                LocalTensor<float> phi = bufPhiFp32_.AllocTensor<float>();
-                uint64_t phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::Mul(out, x2[x2h0 * dimTile_], phi, tD);
+                LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
+                LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
+                const uint64_t phiBaseOffset = (uint64_t)o * phiCols_ + tOff;
+                DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
+                DataCopyPad(phi1, phiGm_[phiBaseOffset + (uint64_t)h1 * D_], copyParams, copyPad);
+                bufPhiFp32_.EnQue(phi0);
+                bufPhiFp32_.EnQue(phi1);
+                phi0 = bufPhiFp32_.DeQue<float>();
+                phi1 = bufPhiFp32_.DeQue<float>();
+                MhcNormRegBase::PairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi1, tD);
                 PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
-
-                phi = bufPhiFp32_.AllocTensor<float>();
-                phiOffset = (uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff;
-                DataCopyPad(phi, phiGm_[phiOffset], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi);
-                phi = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], phi, tD);
-                PipeBarrier<PIPE_V>();
-                bufPhiFp32_.FreeTensor(phi);
-
-                MhcNormRegBase::Add(out, out, tmp, tD);
-                PipeBarrier<PIPE_V>();
+                bufPhiFp32_.FreeTensor(phi0);
+                bufPhiFp32_.FreeTensor(phi1);
                 dotHalf[half][o] += ReduceSumPrecise(out, tD);
             }
         }
@@ -479,11 +434,7 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
 
         // 五行依次保存{sumSqPre,dot0,dot1,dot2,dot3}，一次按行归约，
         // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
-        MhcNormRegBase::Mul(reduceRows, x2[x2h0 * dimTile_], x2[x2h0 * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
-        MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], x2[x2h1 * dimTile_], tD);
-        PipeBarrier<PIPE_V>();
-        MhcNormRegBase::Add(reduceRows, reduceRows, tmp, tD);
+        MhcNormRegBase::PairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
 
         // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
         LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
@@ -511,11 +462,7 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
             LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
             curPhi0 = bufPhiFp32_.DeQue<float>();
             curPhi1 = bufPhiFp32_.DeQue<float>();
-            MhcNormRegBase::Mul(dotRow, x2[x2h0 * dimTile_], curPhi0, tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Mul(tmp, x2[x2h1 * dimTile_], curPhi1, tD);
-            PipeBarrier<PIPE_V>();
-            MhcNormRegBase::Add(dotRow, dotRow, tmp, tD);
+            MhcNormRegBase::PairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
             bufPhiFp32_.FreeTensor(curPhi0);
             bufPhiFp32_.FreeTensor(curPhi1);
 

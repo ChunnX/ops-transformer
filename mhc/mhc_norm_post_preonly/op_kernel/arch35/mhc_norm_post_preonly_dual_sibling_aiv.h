@@ -165,12 +165,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
-        MhcNormRegBase::GateWeightedSum<T>(hIn, x2Cache, D_, gateBuf, tD);
-        PipeBarrier<PIPE_V>();
-        sumSq1 += CacheHInAndReduceSumSq(tOff, tD, hIn);
+        sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
     }
 
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
@@ -179,7 +176,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
-        LoadHInCacheTile(tOff, tD, hIn);
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
@@ -188,7 +185,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         } else {
             gamma1 = gamma1[tOff];
         }
-        ApplyScaleAndGamma(hIn, invRms1, gamma1, tD);
+        MhcNormRegBase::CastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+        PipeBarrier<PIPE_V>();
         if (D_ > GAMMA1_CACHE_MAX_D) {
             FenceVToMte2();
         }

@@ -21,7 +21,7 @@
 #define MHC_NORM_POST_PREONLY_KERNEL_H_
 
 #include "mhc_norm_post_preonly_common.h"
-#include "mhc_norm_post_preonly_regbase.h"
+#include "mhc_norm_post_preonly_kernel_vf.h"
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
 class KernelMhcNormPostPreonly {
