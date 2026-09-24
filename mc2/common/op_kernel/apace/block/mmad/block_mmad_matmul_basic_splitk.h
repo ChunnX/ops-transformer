@@ -432,15 +432,16 @@ private:
             static uint32_t dbgBiasDumpCnt = 0;
             if (dbgBiasDumpCnt < 4) {
                 dbgBiasDumpCnt++;
-                AscendC::print("[DBG] bias: btAddr=%lu nl1Align=%lu curN0=%lu\n",
-                               static_cast<uint64_t>(btSlot.Addr()), static_cast<uint64_t>(nl1Align),
-                               static_cast<uint64_t>(curN0));
-                __biasbuf__ float *btDbg = reinterpret_cast<__biasbuf__ float *>(btSlot.Addr());
+                printf("[DBG] bias: btAddr=%u nl1Align=%u curN0=%u\n",
+                       static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
+                       static_cast<uint32_t>(curN0));
+                float *btDbg = reinterpret_cast<float *>(btSlot.Addr());
                 float *l1Dbg = reinterpret_cast<float *>(biasL1Slot.Addr());
                 uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
                 for (uint64_t d = 0; d < dumpN; ++d) {
-                    AscendC::print("[DBG] bias bt[%lu]=%f  l1[%lu]=%f\n", d, static_cast<float>(btDbg[d]), d,
-                                   static_cast<float>(l1Dbg[d]));
+                    printf("[DBG] bias bt[%u]=%f  l1[%u]=%f\n", static_cast<uint32_t>(d),
+                           static_cast<float>(btDbg[d]), static_cast<uint32_t>(d),
+                           static_cast<float>(l1Dbg[d]));
                 }
             }
             // === DEBUG end ===

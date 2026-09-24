@@ -49,6 +49,11 @@ def _fmt_num(x):
     return f"{x:.6g}"
 
 
+def _banner(title):
+    """统一分节横幅：每个 [visual] 小节都以 ===== 标题 ===== 开头。"""
+    print(f"\n[visual] ===== {title} =====")
+
+
 def build_mismatch_mask(golden_np, npu_np, atol, rtol):
     """与 torch.allclose(golden, npu, rtol, atol) 一致的错误 mask。"""
     diff = np.abs(npu_np.astype(np.float32) - golden_np.astype(np.float32))
@@ -56,14 +61,14 @@ def build_mismatch_mask(golden_np, npu_np, atol, rtol):
     return diff > thr, diff
 
 
-def _tile_counts(mask_np, m, n, tile):
-    """把 (m,n) bool mask 按 tile x tile 分块求和，返回 (tr, tc) 计数矩阵（补齐零行/零列）。"""
-    pm = (tile - m % tile) % tile
-    pn = (tile - n % tile) % tile
+def _tile_counts(mask_np, m, n, tile_m, tile_n):
+    """把 (m,n) bool mask 按 tile_m(行) x tile_n(列) 分块求和，返回 (tr, tc) 计数矩阵。"""
+    pm = (tile_m - m % tile_m) % tile_m
+    pn = (tile_n - n % tile_n) % tile_n
     padded = np.zeros((m + pm, n + pn), dtype=np.int64)
     padded[:m, :n] = mask_np.astype(np.int64)
-    tr, tc = (m + pm) // tile, (n + pn) // tile
-    return padded.reshape(tr, tile, tc, tile).sum(axis=(1, 3))
+    tr, tc = (m + pm) // tile_m, (n + pn) // tile_n
+    return padded.reshape(tr, tile_m, tc, tile_n).sum(axis=(1, 3))
 
 
 def _bool_runs(arr):
@@ -90,38 +95,44 @@ def _truncate_runs(runs, cap=20):
     return sorted(by_len[:cap]), len(runs) - cap
 
 
-def render_density_map(mask_np, m, n, tile, width_limit=120, title="error density map",
+def render_density_map(mask_np, m, n, tile_m, tile_n, width_limit=120, title="error density map",
                        legend=".:0  ::1-9  o:10-49  O:50-99  #:>=100 errors/cell"):
-    """缩略密度图：自动粗化到 <=40 行 x <=80 列，避免超大矩阵刷屏。"""
+    """缩略密度图：按 baseM x baseN tile 分块，坐标 = tile 行列号。
+
+    每个格子对应一个计算 tile：(r,c) 覆盖元素 [r*tile_m..(r+1)*tile_m) x [c*tile_n..(c+1)*tile_n)。
+    网格过大（>40 行或 >80 列）时自动按 2 倍粗化。
+    """
+    tm, tn = tile_m, tile_n
     rows_limit, cols_limit = 40, 80
-    map_tile = tile
-    while (m + map_tile - 1) // map_tile > rows_limit or (n + map_tile - 1) // map_tile > cols_limit:
-        map_tile *= 2
-    counts = _tile_counts(mask_np, m, n, map_tile)
+    while (m + tm - 1) // tm > rows_limit or (n + tn - 1) // tn > cols_limit:
+        tm *= 2
+        tn *= 2
+    counts = _tile_counts(mask_np, m, n, tm, tn)
     tr, tc = counts.shape
-    coarsen = f" (auto-coarsened from {tile}x{tile} to {map_tile}x{map_tile})" if map_tile != tile else ""
-    print(f"\n[visual] {title}  (each cell = {map_tile}x{map_tile} elements, "
-          f"tile grid {tr} rows x {tc} cols){coarsen}")
+    coarsen = f"  (auto-coarsened to {tm}x{tn})" if (tm, tn) != (tile_m, tile_n) else ""
+    _banner(f"{title}  (tile = {tile_m}x{tile_n}, grid {tr} x {tc}){coarsen}")
     print(f"[visual]   {legend}")
-    cell_w = 3  # 每列固定 3 字符（f"{c:>3}" / f"{sym:^3}"）
-    page = max(1, (width_limit - 8) // cell_w)
+    print(f"[visual]   cell (r,c) = tile [r*{tm}..(r+1)*{tm}) x [c*{tn}..(c+1)*{tn})")
+    cell_w = 3
+    page = max(1, (width_limit - 14) // cell_w)
     for c0 in range(0, tc, page):
         c1 = min(tc, c0 + page)
-        hdr = "       " + "".join(f"{c:>3}" for c in range(c0, c1))
-        print(f"[visual]    col-tile>{hdr}")
+        hdr = "   tile-c> " + "".join(f"{c:>3}" for c in range(c0, c1))
+        print(f"[visual]  {hdr}")
         for r in range(tr):
-            line = f"[visual]    {r*map_tile:>7}" + "".join(
+            line = f"[visual]  tile-r{r:>3} " + "".join(
                 f"{_density_symbol(int(counts[r, c])):^3}" for c in range(c0, c1))
             print(line)
 
 
-def render_profiles(mask_np, m, n, tile, label="error"):
+def render_profiles(mask_np, m, n, tile_m, tile_n, label="error"):
     """行/列 profile：元素级连续段 + 每 tile 的分布。label 用于区分 error/zero-output。"""
     row_any = mask_np.any(axis=1)
     col_any = mask_np.any(axis=0)
     bad_rows = int(row_any.sum())
     bad_cols = int(col_any.sum())
-    print(f"\n[visual] {label} row/col profile: bad rows {bad_rows}/{m} ({100.0*bad_rows/m:.1f}%), "
+    _banner(f"{label} profile")
+    print(f"[visual]   bad rows {bad_rows}/{m} ({100.0*bad_rows/m:.1f}%), "
           f"bad cols {bad_cols}/{n} ({100.0*bad_cols/n:.1f}%)")
 
     # 接近全坏：折叠明细，避免刷屏
@@ -143,7 +154,7 @@ def render_profiles(mask_np, m, n, tile, label="error"):
         print(f"[visual]   {label} bad-col runs: {seg}")
 
     # 每 tile 的分布（仅打印有异常的，cap 8）
-    counts = _tile_counts(mask_np, m, n, tile)
+    counts = _tile_counts(mask_np, m, n, tile_m, tile_n)
     rnz = [(r, int((counts[r] > 0).sum())) for r in range(counts.shape[0]) if (counts[r] > 0).any()]
     cnz = [(c, int((counts[:, c] > 0).sum())) for c in range(counts.shape[1]) if (counts[:, c] > 0).any()]
     if rnz:
@@ -151,31 +162,30 @@ def render_profiles(mask_np, m, n, tile, label="error"):
         seg = " ".join(f"row-tile{r}({cnt})" for r, cnt in rnz[:8])
         if len(rnz) > 8:
             seg += f" ... +{len(rnz)-8} more"
-        print(f"[visual]   {label} row-tiles (tile={tile}): {seg}")
+        print(f"[visual]   {label} row-tiles (tile={tile_m}x{tile_n}): {seg}")
     if cnz:
         cnz = sorted(cnz, key=lambda x: x[1], reverse=True)
         seg = " ".join(f"col-tile{c}({cnt})" for c, cnt in cnz[:8])
         if len(cnz) > 8:
             seg += f" ... +{len(cnz)-8} more"
-        print(f"[visual]   {label} col-tiles (tile={tile}): {seg}")
+        print(f"[visual]   {label} col-tiles (tile={tile_m}x{tile_n}): {seg}")
 
 
-def render_zero_output(npu_np, m, n, tile):
+def render_zero_output(npu_np, m, n, tile_m, tile_n):
     """输出零值分析：全坏/未覆盖时最有判别力——区分'被 fixpipe 写了'和'没写（0）'。"""
     zero = npu_np == 0.0
     total = int(zero.sum())
     frac = float(total) / zero.size
     if frac < 0.01:
         return
-    print(f"\n[visual] output-zero analysis: {total}/{zero.size} elements are EXACTLY 0.0 "
-          f"({100.0*frac:.1f}%) <- likely unwritten/zeroed by kernel")
+    _banner(f"zero-output  ({total}/{zero.size} = {100.0*frac:.1f}% exactly 0.0)")
     if frac >= 0.99:
         print("[visual]   ~entire output is 0.0 -> GM mostly unwritten; check fixpipe coverage / "
               "write target, not per-element error")
         return
-    render_density_map(zero, m, n, tile, title="zero-output map",
+    render_density_map(zero, m, n, tile_m, tile_n, title="zero-output map",
                        legend=".:0 zeros  ::1-9  o:10-49  O:50-99  #:>=100 zeros/cell")
-    render_profiles(zero, m, n, tile, label="zero-output")
+    render_profiles(zero, m, n, tile_m, tile_n, label="zero-output")
 
 
 def _tile_components(counts):
@@ -207,7 +217,7 @@ def _tile_components(counts):
     return comps
 
 
-def render_focus(mask_np, counts, m, n, tile):
+def render_focus(mask_np, counts, m, n, tile_m, tile_n):
     """对最大错误连通域画框：bbox 元素级点阵（<=64x64）或 tile 级子图。"""
     comps = _tile_components(counts)
     if not comps:
@@ -215,37 +225,38 @@ def render_focus(mask_np, counts, m, n, tile):
     (r0, c0, r1, c1), area = comps[0]
     total_tiles = counts.shape[0] * counts.shape[1]
     if area >= 0.95 * total_tiles:
-        print("\n[visual] largest error cluster covers ~entire matrix; focus grid omitted "
-              "(see density map)")
+        _banner("focus: largest error cluster")
+        print("[visual]   cluster covers ~entire matrix; focus grid omitted (see density map)")
         return
-    er0, ec0 = r0 * tile, c0 * tile
-    er1, ec1 = min(m - 1, (r1 + 1) * tile - 1), min(n - 1, (c1 + 1) * tile - 1)
-    print(f"\n[visual] largest error cluster: element bbox rows [{er0},{er1}] x cols [{ec0},{ec1}] "
-          f"({area} error tiles, element area {(er1-er0+1)*(ec1-ec0+1)})")
+    er0, ec0 = r0 * tile_m, c0 * tile_n
+    er1, ec1 = min(m - 1, (r1 + 1) * tile_m - 1), min(n - 1, (c1 + 1) * tile_n - 1)
+    _banner("focus: largest error cluster")
+    print(f"[visual]   tile bbox rows [{r0},{r1}] x cols [{c0},{c1}]  (elements "
+          f"[{er0},{er1}] x [{ec0},{ec1}], {area} error tiles)")
 
     h = er1 - er0 + 1
     w = ec1 - ec0 + 1
     if h <= 64 and w <= 64:
-        print("[visual] element-level dot grid ('.'=ok, 'X'=error):")
+        print("[visual]   element-level dot grid ('.'=ok, 'X'=error):")
         print(f"[visual]   +{'-' * (2 * w)}+")
         for i in range(er0, er1 + 1):
             row_str = "".join(" X" if mask_np[i, j] else " ." for j in range(ec0, ec1 + 1))
             print(f"[visual]   |{row_str}|")
         print(f"[visual]   +{'-' * (2 * w)}+")
-        print(f"[visual]   (element bbox rows [{er0},{er1}], cols [{ec0},{ec1}])")
+        print(f"[visual]   (element rows [{er0},{er1}], cols [{ec0},{ec1}])")
     else:
         sub = counts[r0:r1 + 1, c0:c1 + 1]
         sub_tr, sub_tc = sub.shape
         if sub_tr <= 60 and sub_tc <= 100:
-            print(f"[visual] tile-level grid (tile={tile}, each cell = tile):")
+            print(f"[visual]   tile-level grid (tile={tile_m}x{tile_n}, each cell = tile):")
             print(f"[visual]   +{'-' * (2 * sub_tc)}+")
             for rr in range(sub_tr):
                 line = "".join(f" {_density_symbol(int(sub[rr, cc]))}" for cc in range(sub_tc))
                 print(f"[visual]   |{line}|")
-            print(f"[visual]   +{'-' * (2 * sub_tc + 1)}+")
+            print(f"[visual]   +{'-' * (2 * sub_tc)}+")
             print(f"[visual]   (tile rows [{r0},{r1}], tile cols [{c0},{c1}])")
         else:
-            print(f"[visual]   (region too large for grid; see density map above)")
+            print("[visual]   (region too large for grid; see density map above)")
 
 
 def render_top_n(golden_np, npu_np, mask, diff, n_top):
@@ -259,8 +270,9 @@ def render_top_n(golden_np, npu_np, mask, diff, n_top):
         order = take[np.argsort(diffs[take])[::-1]]
     else:
         order = np.argsort(diffs)[::-1]
-    print(f"\n[visual] top {min(n_top, idx.shape[0])} mismatches by |diff| "
-          f"(total mismatches: {idx.shape[0]} / {mask.size} = {100.0*idx.shape[0]/mask.size:.2f}%):")
+    shown = min(n_top, idx.shape[0])
+    _banner(f"top-{shown} mismatches by |diff|  (total {idx.shape[0]}/{mask.size} = "
+            f"{100.0*idx.shape[0]/mask.size:.2f}%)")
     print(f"[visual]   {'i':>8} {'j':>8} {'golden':>12} {'npu':>12} {'|diff|':>12}")
     for oi in order:
         i, j = idx[oi]
@@ -268,7 +280,7 @@ def render_top_n(golden_np, npu_np, mask, diff, n_top):
               f"{_fmt_num(float(npu_np[i, j])):>12} {_fmt_num(float(diffs[oi])):>12}")
 
 
-def pattern_hint(mask_np, counts, tile):
+def pattern_hint(mask_np, counts, tile_m, tile_n):
     """根据错误分布形态给出定位提示。"""
     total = int(mask_np.sum())
     if total == 0:
@@ -290,7 +302,7 @@ def pattern_hint(mask_np, counts, tile):
         return "errors present but tile-clustering empty (unexpected)"
     # 局部：看最大簇元素面积占比与簇数
     (r0, c0, r1, c1), area = comps[0]
-    bbox_elems = (r1 - r0 + 1) * (c1 - c0 + 1) * tile * tile
+    bbox_elems = (r1 - r0 + 1) * (c1 - c0 + 1) * tile_m * tile_n
     biggest_frac = min(1.0, float(bbox_elems) / max(1, total))
     n_comps = len(comps)
     if n_comps >= max(16, total // max(1, m // 100)) and area == 1:
@@ -308,23 +320,25 @@ def render_visual(golden_tensor, npu_tensor, m, n, opts):
     mask, diff = build_mismatch_mask(golden_np, npu_np, ERROR_TOL, ERROR_TOL)
     total = int(mask.sum())
     if total == 0:
-        print("\n[visual] no mismatches (all elements within tolerance) - all '.'")
+        _banner("no mismatches  (all elements within tolerance) - all '.'")
         return
 
-    tile = max(1, opts.tile)
-    counts = _tile_counts(mask, m, n, tile)
+    tile_m, tile_n = opts.tile_m, opts.tile_n
+    counts = _tile_counts(mask, m, n, tile_m, tile_n)
 
-    print(f"\n[visual] ===== mismatch visualization (total {total} elements over tol) =====")
-    render_zero_output(npu_np, m, n, tile)
-    render_profiles(mask, m, n, tile)
+    _banner(f"mismatch visualization  (total {total}/{m*n} = "
+            f"{100.0*total/(m*n):.2f}% elements over tol)")
+    render_zero_output(npu_np, m, n, tile_m, tile_n)
+    render_profiles(mask, m, n, tile_m, tile_n)
     render_top_n(golden_np, npu_np, mask, diff, max(1, opts.top))
 
-    hint = pattern_hint(mask, counts, tile)
+    hint = pattern_hint(mask, counts, tile_m, tile_n)
     if hint:
-        print(f"\n[visual] pattern hint: {hint}")
+        _banner("pattern hint")
+        print(f"[visual]   {hint}")
 
-    render_density_map(mask, m, n, tile)
-    render_focus(mask, counts, m, n, tile)
+    render_density_map(mask, m, n, tile_m, tile_n)
+    render_focus(mask, counts, m, n, tile_m, tile_n)
 
 
 def _print_large_tensor_summary(golden_tensor, npu_output_tensor, m, n, rank_id=-1):
@@ -436,6 +450,15 @@ def verify_result(m, n, rank_num, base_dir="./output", opts=None):
     return all_pass
 
 
+def _parse_tile(s):
+    """解析 --tile：'256' -> (256,256)；'256x128' -> (256,128)。"""
+    if "x" in s:
+        a, b = s.split("x", 1)
+        return int(a), int(b)
+    v = int(s)
+    return v, v
+
+
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
         description="Verify NPU AllToAllMatmul output against CPU golden, with mismatch visualization.",
@@ -449,11 +472,12 @@ def _parse_args(argv):
                         help="mismatch visualization on/off (default: on)")
     parser.add_argument("--top", type=int, default=20,
                         help="number of top mismatches to list (default: 20)")
-    parser.add_argument("--tile", type=int, default=16,
-                        help="analysis tile granularity, in elements (default: 16)")
+    parser.add_argument("--tile", type=str, default="16x16",
+                        help="analysis tile (baseM x baseN) granularity, e.g. 256x256 (default: 16x16)")
     args = parser.parse_args(argv)
-    if args.tile < 1:
-        parser.error("--tile must be >= 1")
+    args.tile_m, args.tile_n = _parse_tile(args.tile)
+    if args.tile_m < 1 or args.tile_n < 1:
+        parser.error("--tile must be >= 1 (e.g. 256 or 256x128)")
     if args.top < 1:
         parser.error("--top must be >= 1")
     return args
