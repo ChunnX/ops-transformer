@@ -40,7 +40,7 @@ public:
     using LayoutPScale = typename PScaleType::Layout;
     using ElementDm = ElementDm_;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         for (uint32_t i = 0; i < MXFP8::UB_P_SCALE_CNT; i++) {
             pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(MXFP8::UB_P_SCALE_BUF_OFFSET +
@@ -63,7 +63,6 @@ public:
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(MXFP8::UB_UPDATE_SCALE_BUF_OFFSET +
                                                                                MXFP8::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
-        LOG2_CX_CEIL_ = LOG2_CX_CEIL;
     }
     __aicore__ inline ~BlockEpilogue() {}
 
@@ -113,21 +112,21 @@ public:
             if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
             } else {
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
             }
         } else {
             if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
             } else {
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
             }
         }
 
@@ -257,7 +256,6 @@ private:
     AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP8::UB_LOCAL_GROUP_MAX_CNT];   // LocalGroupMax
     AscendC::LocalTensor<ElementGroupMax> localGlobalMaxUBTensor[MXFP8::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
     AscendC::LocalTensor<ElementDm> dmUBTensor[MXFP8::UB_UPDATE_SCALE_CNT];                       // updateScale
-    ElementGroupMax LOG2_CX_CEIL_;
 };
 
 } // namespace NpuArch::Epilogue::Block
