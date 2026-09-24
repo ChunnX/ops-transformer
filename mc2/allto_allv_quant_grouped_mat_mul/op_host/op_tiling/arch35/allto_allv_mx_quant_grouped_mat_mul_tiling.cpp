@@ -36,8 +36,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
 
 bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
 {
-    if (epWorldSize_ == 0U || epWorldSize_ > Apace::A2AV_GMM_MAX_RANK_NUM || e_ == 0U ||
-        e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
+    if (epWorldSize_ == 0U || epWorldSize_ > MC2KernelTemplate::MAX_EXPERT_SIZE || e_ == 0U ||
+        e_ * epWorldSize_ > MC2KernelTemplate::MAX_EXPERT_SIZE) {
         return false;
     }
 
