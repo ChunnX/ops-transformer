@@ -87,6 +87,9 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto kShape = context->GetOutputShape(DIM_0);
     auto vShape = context->GetOutputShape(DIM_1);
     auto attrs = context->GetAttrs();
+    // A view's backing storage may be flattened; tiling must use its logical shape.
+    auto kCacheLogicalShape =
+        context->InputIsView(DIM_0) ? kCacheShape->GetShape() : kCacheShape->GetStorageShape();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
     if (mode == nullptr || mode[0] == '\0') {
         mode = "Norm";
@@ -99,12 +102,12 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto inDtype = context->GetInputDesc(DIM_0)->GetDataType();
     uint32_t typeByte = static_cast<uint32_t>(GetTensorElementSizes(inDtype));
     if (strcmp(mode, "PA_NZ") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_2));
+        blockSize = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_2));
         tokenSizeK = static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1));
         tokenSizeV = static_cast<int32_t>(vShape->GetStorageShape().GetDim(DIM_1));
         context->SetTilingKey(TILING_KEY_NZ);
     } else if (strcmp(mode, "Norm") == 0) {
-        blockSize = static_cast<int32_t>(kCacheShape->GetStorageShape().GetDim(DIM_1));
+        blockSize = static_cast<int32_t>(kCacheLogicalShape.GetDim(DIM_1));
         tokenSizeK =
             static_cast<int32_t>(kShape->GetStorageShape().GetDim(DIM_1) * kShape->GetStorageShape().GetDim(DIM_2));
         tokenSizeV =

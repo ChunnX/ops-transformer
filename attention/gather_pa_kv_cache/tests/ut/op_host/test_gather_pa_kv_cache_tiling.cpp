@@ -107,3 +107,45 @@ TEST_F(GatherPaKvCacheTiling, GatherPaKvCacheTiling_test_case2) {
     uint64_t expectTilingKey = 618;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
+
+TEST_F(GatherPaKvCacheTiling, flattenedStorageShapeUsesLogicalViewShape) {
+    struct AddExampleCompileInfo {} compileInfo;
+    gert::TilingContextPara tilingContextPara("GatherPaKvCache",
+        {
+            {{{1093, 128, 1, 512}, {80584704}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // keyCache view
+            {{{1093, 128, 1, 64}, {8953856}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // valueCache
+            {{{8, 4}, {8, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // blockTables
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND}, // seqLens
+            {{{512, 1, 512}, {512, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key
+            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND}, // seqOffset
+        },
+        {
+            {{{512, 1, 512}, {512, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key
+            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"is_seq_lens_cumsum", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        },
+        &compileInfo
+    );
+
+    auto &keyCacheDesc = tilingContextPara.inputTensorDesc_[0];
+    keyCacheDesc.stride_.SetDimNum(4);
+    keyCacheDesc.stride_.SetStride(0, 73728);
+    keyCacheDesc.stride_.SetStride(1, 512);
+    keyCacheDesc.stride_.SetStride(2, 512);
+    keyCacheDesc.stride_.SetStride(3, 1);
+    keyCacheDesc.hasStride_ = true;
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    auto *tilingData = reinterpret_cast<optiling::GatherPaKvCacheTilingData *>(
+        tilingInfo.tilingData.get());
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->get_blockSize(), 128);
+    EXPECT_EQ(tilingData->get_tokenSizeK(), 512);
+    EXPECT_EQ(tilingData->get_tokenSizeV(), 64);
+    EXPECT_EQ(tilingData->get_kCacheBlockStride(), 73728);
+}
