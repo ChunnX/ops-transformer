@@ -663,6 +663,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 {
+    OP_CHECK_IF(context_->GetRawTilingData()->GetCapacity() < tilingData_.GetDataSize(),
+                OP_LOGE(context_->GetNodeName(), "Tiling data buffer is too small"), return ge::GRAPH_FAILED);
+    SetGMMSwigluQuantSwigluParams(tilingData_.swigluParams);
     tilingData_.gmmSwigluQuantParams.set_groupNum(inputParams_.groupNum);
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
     tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(static_cast<uint8_t>(isMxWeightNzMultiTensor_));

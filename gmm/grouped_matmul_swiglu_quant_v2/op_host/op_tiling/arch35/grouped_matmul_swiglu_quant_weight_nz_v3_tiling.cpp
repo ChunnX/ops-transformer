@@ -56,6 +56,7 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
 {
     auto *rawTilingData = context_ == nullptr ? nullptr : context_->GetRawTilingData();
     tilingData_.SetDataPtr(rawTilingData == nullptr ? nullptr : rawTilingData->GetData());
+    tensorApiTilingData_ = {};
     transposeWeight_ = false;
     swigluMode_ = SWIGLU_MODE;
     clampLimit_ = 7.0F;
@@ -411,18 +412,40 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
 {
     // Platform resources are populated after AnalyzeInputs by the base tiling lifecycle.
     useTensorApi_ = IsTensorApiCapable();
+    ::GMMSwigluQuantSwigluParams swigluParams;
+    swigluParams.swigluMode = swigluMode_;
+    swigluParams.clampLimit = clampLimit_;
+    swigluParams.gluAlpha = gluAlpha_;
+    swigluParams.gluBias = gluBias_;
+    swigluParams.scaleAlg = scaleAlg_;
+    swigluParams.dstTypeMax = dstTypeMax_;
+    swigluParams.roundMode = roundMode_;
+    if (useTensorApi_) {
+        auto &params = tensorApiTilingData_.gmmQuantParams;
+        params.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
+        params.activeType = static_cast<uint32_t>(inputParams_.actType);
+        params.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
+        params.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
+        params.singleX = static_cast<uint8_t>(inputParams_.isSingleX);
+        params.singleW = static_cast<uint8_t>(inputParams_.isSingleW);
+        params.singleY = static_cast<uint8_t>(inputParams_.isSingleY);
+        params.groupType = static_cast<int8_t>(inputParams_.groupType);
+        params.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
+        params.hasBias = 0;
+        params.reserved = 0;
+        tensorApiTilingData_.swigluParams = swigluParams;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(context_->GetRawTilingData()->GetCapacity() < tilingData_.GetDataSize(),
+                OP_LOGE(context_->GetNodeName(), "V3 tiling data buffer is too small"), return ge::GRAPH_FAILED);
     tilingData_.gmmSwigluQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
     tilingData_.gmmSwigluQuantParams.set_quantDtype(static_cast<uint8_t>(inputParams_.outDataDtype));
     tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(0);
     tilingData_.gmmSwigluQuantParams.set_dequantDtype(static_cast<uint8_t>(FLOAT_DEQUANT_DTYPE));
-    tilingData_.gmmSwigluQuantParams.set_swigluMode(swigluMode_);
-    tilingData_.gmmSwigluQuantParams.set_clampLimit(clampLimit_);
-    tilingData_.gmmSwigluQuantParams.set_gluAlpha(gluAlpha_);
-    tilingData_.gmmSwigluQuantParams.set_gluBias(gluBias_);
-    tilingData_.gmmSwigluQuantParams.set_scaleAlg(scaleAlg_);
-    tilingData_.gmmSwigluQuantParams.set_dstTypeMax(dstTypeMax_);
-    tilingData_.gmmSwigluQuantParams.set_roundMode(roundMode_);
+    tilingData_.gmmSwigluQuantParams.set_rowLen(0);
+    tilingData_.gmmSwigluQuantParams.set_ubAvail(0);
+    SetGMMSwigluQuantSwigluParams(tilingData_.swigluParams, swigluParams);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -441,6 +464,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"), return ge::GRAPH_FAILED);
     if (useTensorApi_) {
         GroupedMatmulSwigluQuantTensorApiTiling::RestoreBasicBlockAfterL1(basicTiling_);
+        SetTensorApiMatmulTiling();
+        return ge::GRAPH_SUCCESS;
     }
 
     auto &mm = tilingData_.mmTilingData;
@@ -477,10 +502,38 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+void GroupedMatmulSwigluQuantV3Tiling950::SetTensorApiMatmulTiling()
+{
+    auto &mm = tensorApiTilingData_.mmTilingData;
+    mm.m = static_cast<uint32_t>(inputParams_.mSize);
+    mm.n = static_cast<uint32_t>(inputParams_.nSize);
+    mm.k = static_cast<uint32_t>(inputParams_.kSize);
+    mm.baseM = static_cast<uint32_t>(basicTiling_.baseM);
+    mm.baseN = static_cast<uint32_t>(basicTiling_.baseN);
+    mm.baseK = static_cast<uint32_t>(basicTiling_.baseK);
+    mm.kAL1 = static_cast<uint32_t>(basicTiling_.stepKa * basicTiling_.baseK);
+    mm.kBL1 = static_cast<uint32_t>(basicTiling_.stepKb * basicTiling_.baseK);
+    // Preserve the scale-factor decoding previously performed by the V3 device wrapper.
+    const uint32_t mxTypePara = static_cast<uint32_t>(
+        (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
+        (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
+    const uint64_t scaleFactorA = mxTypePara & 0xFFU;
+    const uint64_t scaleFactorB = (mxTypePara >> SCALER_FACTOR_B_BIT) & 0xFFU;
+    const uint64_t scaleKL1 = std::min(
+        std::max(scaleFactorA * basicTiling_.stepKa, scaleFactorB * basicTiling_.stepKb) * basicTiling_.baseK,
+        inputParams_.kSize);
+    mm.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
+    mm.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
+    mm.isBias = 0;
+    mm.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
+    mm.reserved1 = 0;
+    mm.reserved2 = 0;
+}
+
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
     const uint64_t kernelType =
-        useTensorApi_ ? GMM_SWIGLU_QUANT_V3_TENSOR_LEVEL_KERNEL_TYPE : GMM_SWIGLU_QUANT_V3_CGMCT_KERNEL_TYPE;
+        useTensorApi_ ? GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE : GMM_SWIGLU_QUANT_ORIGINAL_KERNEL_TYPE;
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(transposeWeight_), GMM_SWIGLU_QUANT_NO_TRANS, kernelType);
 }
 
@@ -505,6 +558,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::PostTiling()
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(aicoreParams_.aicNum);
     context_->SetScheduleMode(1);
+    if (useTensorApi_) {
+        return SaveTilingDataToContext(tensorApiTilingData_);
+    }
     OP_CHECK_IF(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
                 OP_LOGE(context_->GetNodeName(), "V3 tiling data is not 8-byte aligned"), return ge::GRAPH_FAILED);
     tilingData_.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
