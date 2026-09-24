@@ -109,6 +109,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_chunk
 } // namespace custom
 
 // 为NPU设备注册前向实现
+#ifdef BUILD_GDN_OPS_EXT
+TORCH_LIBRARY_IMPL(gdn_ops_ext, PrivateUse1, m)
+{
+    m.impl("chunk_gated_delta_rule_compute_wy", &custom::npu_chunk_gated_delta_rule_compute_wy_npu);
+}
+
+// 为META设备注册前向实现
+TORCH_LIBRARY_IMPL(gdn_ops_ext, Meta, m)
+{
+    m.impl("chunk_gated_delta_rule_compute_wy", &custom::npu_chunk_gated_delta_rule_compute_wy_meta);
+}
+#else
 TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
 {
     m.impl("npu_chunk_gated_delta_rule_compute_wy", &custom::npu_chunk_gated_delta_rule_compute_wy_npu);
@@ -119,3 +131,4 @@ TORCH_LIBRARY_IMPL(custom, Meta, m)
 {
     m.impl("npu_chunk_gated_delta_rule_compute_wy", &custom::npu_chunk_gated_delta_rule_compute_wy_meta);
 }
+#endif
