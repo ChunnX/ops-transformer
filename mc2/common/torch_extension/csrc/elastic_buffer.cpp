@@ -230,6 +230,7 @@ struct EngramSharedBufferEntry {
     int64_t commBufferSize = 0;
     EngramCommContext context;
     void *sfDeviceBufPtr = nullptr;
+    bool sfExternalRegistered = false;
 };
 static std::mutex gEngramSharedBufferMutex;
 static std::unordered_map<std::string, EngramSharedBufferEntry> gEngramSharedBuffers;
