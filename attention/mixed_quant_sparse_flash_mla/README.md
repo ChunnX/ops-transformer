@@ -186,7 +186,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。量化模式1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；量化模式2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成；量化模式3表示融合TQ4反量化的TurboQuant模式。量化模式1和2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。</td>
+      <td>表示量化模式。quant_mode=1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前支持1、2和3，quant_mode=2仅支持layout_kv为PA_BBND。quant_mode=1和quant_mode=2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。quant_mode=3表示融合TQ4反量化的TurboQuant模式。具体产品支持的量化模式见约束说明。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -287,7 +287,7 @@
 ## 约束说明
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1/2`，q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN；quant_mode为1和2时kv_d分别为608和584，quant_mode为2时layout_kv仅支持PA_BBND。
+- <term>Ascend 950PR&950DT系列产品</term>：仅支持`quant_mode=1`或`quant_mode=2`，q和attn_out仅支持BFLOAT16，ori_kv和cmp_kv仅支持FLOAT8_E4M3FN；quant_mode=1和quant_mode=2时kv_d分别为608和584，quant_mode=2时layout_kv仅支持PA_BBND。
 <!-- end id1 -->
 
 <!-- npu="A3" id2 -->
