@@ -38,7 +38,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
         ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
-        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
+        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID, false);
 
         if constexpr (USE_RMS_MID) {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
@@ -82,21 +82,19 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
             // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
-            MhcNormRegBase::VFCastB16ScaleAndMulGammaQuantizeRestore(
-                x2Cache[headBegin * D_ + tOff], x2, x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
+                                                           x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
 
             SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
             WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            MhcNormRegBase::VFCastB16ScaleAndMulGammaQuantizeRestore(
-                x2Cache[(headBegin + 1U) * D_ + tOff], x2[dimTile_],
-                x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
+            MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
+                x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true, false);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);

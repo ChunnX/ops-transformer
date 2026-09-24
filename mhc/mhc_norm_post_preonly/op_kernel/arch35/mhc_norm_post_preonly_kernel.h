@@ -499,14 +499,23 @@ private:
 
     // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                       bool restoreInput = true)
+                                       bool quantizeInput = true)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-        // R2已在成对VF尾部完成首次量化；R3大VF已同时完成第二次量化和FP32恢复。
-        if (restoreInput && (!USE_RMS_MID || writeOutput)) {
+        // R2已在成对VF尾部完成首次量化；R3后的第二次量化仍使用该路径。
+        if (quantizeInput) {
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            }
+            PipeBarrier<PIPE_V>();
+        }
+        // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
+        // 保证后续R4/R5仍使用低精度往返后的x2。
+        if (!USE_RMS_MID || writeOutput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
                 MhcNormRegBase::VFCastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
                                                     x2Cache[(n + 1U) * D_ + tOff], tD);
@@ -528,14 +537,21 @@ private:
     // 双sibling路径仍在每个lane的私有UB中保留完整x2，便于两个lane按同一顺序执行R1/R2/R3；
     // 写回x2_out时每个lane只写自己负责的两个head，避免任何输出竞争。
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput,
-                                              bool restoreInput = true)
+                                              bool quantizeInput = true)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
         const uint32_t headBegin = laneId_ * 2U;
 
-        if (restoreInput && (!USE_RMS_MID || writeOutput)) {
+        if (quantizeInput) {
+            for (uint32_t n = 0; n < N_MAX; n += 2U) {
+                MhcNormRegBase::VFCastFp32PairToB16(x2Cache[n * D_ + tOff], x2Cache[(n + 1U) * D_ + tOff],
+                                                    x2[n * dimTile_], x2[(n + 1U) * dimTile_], tD);
+            }
+            PipeBarrier<PIPE_V>();
+        }
+        if (!USE_RMS_MID || writeOutput) {
             // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
             MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
                                                 x2Cache[(headBegin + 1U) * D_ + tOff], tD);
