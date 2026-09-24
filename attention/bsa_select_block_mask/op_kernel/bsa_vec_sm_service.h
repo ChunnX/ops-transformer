@@ -134,6 +134,8 @@ public:
     // evCross(6)：band 末 partSum 写出的 MTE3→V WAR 信号。原 band 末 Set+Wait（标量阻塞）
     // 改为只 Set，Wait 挪到下 tile 入口 M2 发射之后——M2(t+1) 与 M3(t) 写出重叠。
     static constexpr event_t evCross = (event_t)6;
+    // finalize 专用事件（协议重构试验：与 pass1 的 eventSft(3) 隔离，消除复用竞态窗口）
+    static constexpr event_t eventFin = (event_t)7;
     bool nextHeadPrefetched = false; // 下 tile 首子带已在 slot0（入口跳过首读）
     bool preWaitedNextReady = false; // 已提前 Wait 掉下 tile ready（base 循环跳过，Set/Wait 1:1）
     bool receiptSentByPass1 = false; // 本 tile receipt 已在 band 末发出（base 跳过）
@@ -1030,10 +1032,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
         const uint32_t winGroups = gHi - gLo;
 
         // —— 窗口复位 + 排空（上一窗写出 M3 与 V 均已由窗尾 MTE3_V 收敛，此处再成对保险）——
-        SetFlag<HardEvent::MTE3_MTE2>(eventSft);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
-        SetFlag<HardEvent::V_MTE2>(eventSft);
-        WaitFlag<HardEvent::V_MTE2>(eventSft);
+        SetFlag<HardEvent::MTE3_MTE2>(eventFin);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventFin);
+        SetFlag<HardEvent::V_MTE2>(eventFin);
+        WaitFlag<HardEvent::V_MTE2>(eventFin);
         AscendC::Duplicate(acc, float(0.0f), nUnits * groupsWinA);
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1045,8 +1047,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
             }
             const uint64_t slotB = (static_cast<uint64_t>(constInfo.aivIdx) * KTILES + t) * Q_CHUNK_SIZE * G;
             const uint64_t pmSlotB = (static_cast<uint64_t>(constInfo.aivIdx) * KTILES + t) * Q_CHUNK_SIZE;
-            SetFlag<HardEvent::V_MTE2>(eventSft);
-            WaitFlag<HardEvent::V_MTE2>(eventSft);
+            SetFlag<HardEvent::V_MTE2>(eventFin);
+            WaitFlag<HardEvent::V_MTE2>(eventFin);
             for (uint32_t off = 0; off < ownRows * G; off += 1024) {
                 const uint32_t n = BSAMin(uint32_t(1024), ownRows * G - off);
                 DataCopyPad(psUb[off], partSumGmTensor[slotB + chunkBase * G + off],
@@ -1054,8 +1056,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
             }
             DataCopyPad(pmRow[0], partMaxGmTensor[pmSlotB + chunkBase],
                         {1, static_cast<uint16_t>(ownRows * sizeof(float)), 0, 0}, {false, 0, 0, 0});
-            SetFlag<HardEvent::MTE2_V>(eventSft);
-            WaitFlag<HardEvent::MTE2_V>(eventSft);
+            SetFlag<HardEvent::MTE2_V>(eventFin);
+            WaitFlag<HardEvent::MTE2_V>(eventFin);
 
             // corr = exp(m_t − m_c) / l_c（逐行）
             AscendC::Sub(corrRow, pmRow, globalMax[0], ownRows);
@@ -1124,12 +1126,12 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
                 AscendC::PipeBarrier<PIPE_V>(); // S 写 → V 可见
                 AscendC::Cast(outF16, outRow, AscendC::RoundMode::CAST_ROUND, BSAMax(uint32_t(16), c1 - c0));
                 AscendC::PipeBarrier<PIPE_V>();
-                SetFlag<HardEvent::V_MTE3>(eventSft);
-                WaitFlag<HardEvent::V_MTE3>(eventSft);
+                SetFlag<HardEvent::V_MTE3>(eventFin);
+                WaitFlag<HardEvent::V_MTE3>(eventFin);
                 DataCopyPad(pooledScoreGmTensor[pooledHeadOffset + static_cast<uint64_t>(px) * validPostYCur + c0],
                             outF16, {1, static_cast<uint16_t>((c1 - c0) * sizeof(OUT_T)), 0, 0});
-                SetFlag<HardEvent::MTE3_V>(eventSft);
-                WaitFlag<HardEvent::MTE3_V>(eventSft);
+                SetFlag<HardEvent::MTE3_V>(eventFin);
+                WaitFlag<HardEvent::MTE3_V>(eventFin);
             }
         }
     }
