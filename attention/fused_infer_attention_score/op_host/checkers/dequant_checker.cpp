@@ -3056,7 +3056,6 @@ ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo &fiaInfo) const
 {
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
