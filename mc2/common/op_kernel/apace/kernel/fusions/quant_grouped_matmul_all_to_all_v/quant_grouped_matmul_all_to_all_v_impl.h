@@ -320,9 +320,17 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     gmmParams.baseM = static_cast<uint32_t>(mmTilingData->baseM);
     gmmParams.baseN = static_cast<uint32_t>(mmTilingData->baseN);
     gmmParams.baseK = static_cast<uint32_t>(mmTilingData->baseK);
-    gmmParams.kAL1 = 0;      // 兜底为 baseK（正确性优先）
-    gmmParams.kBL1 = 0;      // 兜底为 baseK
-    gmmParams.scaleKAL1 = 0; // 兜底为 baseK
+    // L1 K 窗口映射：kAL1 = stepK × baseK，stepK 取 tiling 自身的 min(stepKa, stepKb)
+    // （与 tiling 的 L1 depth 模型一致：depthA1 = stepKa × 双缓冲）。此前填 0 由 kernel
+    // 兜底为 baseK（单 baseK 窗口），该窗口与 ND 布局 B（非转置权重）组合真机挂死
+    // （同用例下 stepK×baseK 多 baseK 窗口形态已验证跑通）；stepK 缺失时兜底 baseK
+    const uint32_t stepKa = mmTilingData->stepKa > 0 ? static_cast<uint32_t>(mmTilingData->stepKa) : 1U;
+    const uint32_t stepKb = mmTilingData->stepKb > 0 ? static_cast<uint32_t>(mmTilingData->stepKb) : 1U;
+    const uint32_t stepK = stepKa < stepKb ? stepKa : stepKb;
+    const uint32_t kL1Window = stepK * gmmParams.baseK;
+    gmmParams.kAL1 = kL1Window;
+    gmmParams.kBL1 = kL1Window;
+    gmmParams.scaleKAL1 = kL1Window;
     gmmParams.isBias = static_cast<uint8_t>(mmTilingData->isBias != 0 ? 1 : 0);
     gmmParams.dbL0C = static_cast<uint8_t>(mmTilingData->dbL0C);
     gmmParams.l1BufferStage = Blaze::Gemm::DOUBLE_BUFFER_COUNT;
