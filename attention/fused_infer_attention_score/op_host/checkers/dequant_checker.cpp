@@ -3058,7 +3058,7 @@ ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo
 ge::graphStatus DequantChecker::CheckKScaleShapeForKvCacheNz(const FiaTilingInfo &fiaInfo) const
 {
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-    int64_t keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode
+    int64_t keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
     uint32_t batchSize = fiaInfo.bSize;
     uint32_t numKeyValueHeads = fiaInfo.n2Size;
