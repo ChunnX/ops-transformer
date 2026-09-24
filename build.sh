@@ -52,7 +52,7 @@ ASCEND_SOC_UNITS="ascend910b"
 SOC_USER_SPECIFIED=false
 # 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
 # + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62" "ascend5162a")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend910_96" "ascend950" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62" "ascend5162a")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -362,8 +362,8 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
-    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93)"
+    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend910_96,ascend950 use ',' to separate different SoC"
+    echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93), A6(--soc=ascend910_96)"
     echo "    --list_soc List all supported Ascend SoC"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
@@ -1042,6 +1042,7 @@ function process_soc_input(){
         # 与 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT
         [ascend910b]="Atlas A2"
         [ascend910_93]="Atlas A3"
+        [ascend910_96]="Ascend 960 (A6)"
         [ascend310p]="Ascend310P3"
         [ascend950]="Ascend 950PR/Ascend 950DT"
         [kirinx90]="KirinX90"
