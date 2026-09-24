@@ -41,6 +41,11 @@ enum CommAlgoPriority : int32_t {
 
 static constexpr Mc2Hcom::CommAlgoEntry REDUCE_SCATTER_COMM_ALGO_TABLE[] = {
     // AICPU通信算法
+    // 兜底算法:ReduceScatter=level0:fullmesh
+    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_1DMESH, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
+     MAX_DATA_BYTES_UNLIMITED, MIN_RANK_SIZE, MAX_RANK_SIZE, LOW, "ReduceScatter=level0:fullmesh"},
+     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
+     MAX_DATA_BYTES_UNLIMITED, MIN_RANK_SIZE, MAX_RANK_SIZE, LOW, "ReduceScatter=level0:fullmesh"},
     // 4p/1M数据量 → sole[mesh]
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_1DMESH, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
      DATA_BYTES_1M, MIN_RANK_SIZE, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
@@ -73,13 +78,18 @@ static constexpr Mc2Hcom::CommAlgoEntry REDUCE_SCATTER_COMM_ALGO_TABLE[] = {
      MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_8, MAX_RANK_SIZE, MEDIUM, " parallel[mesh,nhr]"},
 
     // CCU通信算法
-    // 2p使用ReduceScatter实现
+    // 2p兜底算法:ReduceScatter=level0:fullmesh
     // 2p → sole[mesh]
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_1DMESH, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
-     DATA_BYTES_1M, MIN_RANK_SIZE, RANK_SIZE_2, MEDIUM, "sole[mesh]"},
+     MAX_DATA_BYTES_UNLIMITED, MIN_RANK_SIZE, RANK_SIZE_2, LOW, "ReduceScatter=level0:fullmesh"},
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
-     DATA_BYTES_1M, MIN_RANK_SIZE, RANK_SIZE_2, MEDIUM, "sole[mesh]"},
+     MAX_DATA_BYTES_UNLIMITED, MIN_RANK_SIZE, RANK_SIZE_2, LOW, "ReduceScatter=level0:fullmesh"},
     // 4p及以上使用AlltoAll实现
+    // 4p及以上兜底算法:AlltoAll=level0:fullmesh
+    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_1DMESH, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
+     MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_4, MAX_RANK_SIZE, LOW, "AlltoAll=level0:fullmesh"},
+    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
+     MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_4, MAX_RANK_SIZE, LOW, "AlltoAll=level0:fullmesh"},
     // 4p/4M数据量 → sole[mesh.muti_channel]
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_1DMESH, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
      DATA_BYTES_4M, RANK_SIZE_2, RANK_SIZE_4, MEDIUM, "sole[mesh.multi_channel]"},
