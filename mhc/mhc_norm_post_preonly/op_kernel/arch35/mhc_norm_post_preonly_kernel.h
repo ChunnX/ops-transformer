@@ -478,8 +478,8 @@ private:
 
         // R2已在成对VF尾部完成首次量化；这里只负责按需要恢复和写回。
         // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
-        // 4op在这里恢复FP32；5op已由RMS_mid融合VF直接产出量化后FP32值。
-        if constexpr (!USE_RMS_MID) {
+        // 保证后续R4/R5仍使用低精度往返后的x2。
+        if (!USE_RMS_MID || writeOutput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
                 MhcNormRegBase::VFCastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
                                                     x2Cache[(n + 1U) * D_ + tOff], tD);
@@ -507,8 +507,8 @@ private:
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
         const uint32_t headBegin = laneId_ * 2U;
 
-        if constexpr (!USE_RMS_MID) {
-            // 4op在这里恢复FP32；5op已由RMS_mid融合VF产出本lane负责的两行。
+        if (!USE_RMS_MID || writeOutput) {
+            // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
             MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
                                                 x2Cache[(headBegin + 1U) * D_ + tOff], tD);
             PipeBarrier<PIPE_V>();
