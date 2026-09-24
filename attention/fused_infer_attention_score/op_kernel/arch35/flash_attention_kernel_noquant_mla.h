@@ -115,7 +115,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     constInfo.aivIdx = GetBlockIdx();
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIV {
-        this->aicIdx = constInfo.aivIdx / CV_RATIO;
+        this->aicIdx = constInfo.aivIdx / ArchInfo::CV_RATIO;
     }
     if ASCEND_IS_AIC {
         this->aicIdx = constInfo.aivIdx;
@@ -142,8 +142,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::InitMMResBuf()
 {
-    constexpr uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-    constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
+    constexpr uint32_t mm1ResultSize = s1BaseSize / ArchInfo::CV_RATIO * s2BaseSize * sizeof(T);
+    constexpr uint32_t mm2ResultSize = s1BaseSize / ArchInfo::CV_RATIO * dTemplateAlign64 * sizeof(T);
     uint32_t mm12RightSize =
         max(static_cast<uint32_t>(dTemplateType), static_cast<uint32_t>(dVTemplateType)) * s2BaseSize * sizeof(INPUT_T);
 

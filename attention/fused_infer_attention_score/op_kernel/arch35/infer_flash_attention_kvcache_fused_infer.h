@@ -480,9 +480,10 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer> &runParam, const 
     cubeSOuterOffset += (runParam.nextTokensPerBatch < 0) ? -runParam.nextTokensPerBatch : 0;
     if constexpr (useDn) {
         runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5); // 5 and 31 for 32align factor
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
+        runParam.halfS1RealSize =
+            runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / ArchInfo::CV_RATIO;
     } else {
-        runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
+        runParam.halfS1RealSize = (runParam.s1RealSize + ArchInfo::CV_RATIO - 1) / ArchInfo::CV_RATIO;
         if (constInfo.s1Size > 1 && constInfo.isGqa &&
             (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND)) {
             runParam.halfS1RealSize =
