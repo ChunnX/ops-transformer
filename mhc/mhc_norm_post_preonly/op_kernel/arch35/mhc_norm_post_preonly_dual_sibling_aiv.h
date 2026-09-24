@@ -59,6 +59,14 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     if constexpr (USE_RMS_MID) {
+        // R2结束后bufResFp32_暂时空闲：整段预取本lane第一个gamma2 head，
+        // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
+        // R3先完成全部tile，再允许R4/R5复用该缓冲作为归约输入。
+        LocalTensor<float> gammaEvenCache = bufResFp32_.Get<float>();
+        FenceVToMte2();
+        LoadGammaInto(gammaEvenCache, gamma2Gm_, headBegin * D_, D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
         midBuf.SetValue(0, midSqHalf[laneId_]);
         for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
@@ -77,17 +85,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         midSqHalf[1U - laneId_] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
+        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
         for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
             const uint32_t tOff = tile * dimTile_;
-            LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd = bufGamma0Fp32_.Get<float>();
-            LoadGammaInto(gammaEven, gamma2Gm_, headBegin * D_ + tOff, tD);
+            LocalTensor<float> gammaEven = gammaEvenCache[tOff];
+            LocalTensor<float> gammaOdd = bufGamma2Fp32_.Get<float>();
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             // 每个lane只执行自己负责的两个head，另一半由sibling并行完成。
-            // 固定两次迭代显式展开；第二个head的MTE2仍与第一个head的Vector重叠。
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
+            // 第一个head已整段缓存；第二个head的分块MTE2与第一个head的Vector重叠。
             LoadGammaInto(gammaOdd, gamma2Gm_, (headBegin + 1U) * D_ + tOff, tD);
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(x2Cache[headBegin * D_ + tOff],
                                                            x2Cache[headBegin * D_ + tOff], gammaEven, invRmsMid, tD);
@@ -98,6 +104,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
+        }
+
+        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
             CacheX2TileForLane(token, tOff, tD, true);
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
