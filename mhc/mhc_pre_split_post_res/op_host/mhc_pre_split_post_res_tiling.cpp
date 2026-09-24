@@ -274,15 +274,6 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CalcTokenGrouping()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreSplitPostResInfoParser::CalcReduceParams()
-{
-    // invK = 1/(N*D)，RmsNorm 均值系数；host 侧浮点运算，无 aicore 类型限制
-    invK_ = 1.0f / static_cast<float>(n_ * d_);
-
-    OP_LOGD(context_->GetNodeName(), "invK: %f (N=%ld, D=%ld)", invK_, n_, d_);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
 {
     const int64_t xElemBytes = 2;
@@ -368,7 +359,9 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
     currentWorkspace[0] = wsBytes;
     OP_LOGD(context_->GetNodeName(), "wsBytes: %zu (blockDim=%ld, N=%ld, D=%ld)", wsBytes, blockDim_, n_, d_);
 
-    if (CalcReduceParams() != ge::GRAPH_SUCCESS || CheckUbBudget() != ge::GRAPH_SUCCESS) {
+    // invK = 1/(N*D)，RmsNorm 均值系数；host 侧浮点运算，无 aicore 类型限制
+    invK_ = 1.0f / static_cast<float>(n_ * d_);
+    if (CheckUbBudget() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
