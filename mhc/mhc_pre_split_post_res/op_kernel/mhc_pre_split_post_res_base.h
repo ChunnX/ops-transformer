@@ -150,9 +150,9 @@ protected:
             AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
-            // examples/fast_kernel_launch_example/.../ascend910_93 fkle ReduceLoop（MicroAPI，DAV_2201
-            // 族）——源码经 VF_CALL 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共
-            // 头），arch35 上以 __VEC_SCOPE__ 直调等价实现。
+            // fast_kernel_launch_example 的 fkle ReduceLoop（MicroAPI，DAV_2201 族）——源码经 VF_CALL
+            // 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共头），arch35 上以
+            // __VEC_SCOPE__ 直调等价实现。
             // Reg::ReduceSum/Duplicate/DataCopy 来源佐证：官方 cann-samples RmsNormQuant（DataCopy
             // <DIST_FIRST_ELEMENT_B32>）+ 仓内 fkle ReduceLoop（ReduceSum/Duplicate）；签名以目标
             // CANN 9.2.0 SDK header 为最终依据（编译通过即签名级验证）。
@@ -210,9 +210,9 @@ protected:
             AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
-            // examples/fast_kernel_launch_example/.../ascend910_93 fkle ReduceLoop（MicroAPI，DAV_2201
-            // 族）——源码经 VF_CALL 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共
-            // 头），arch35 上以 __VEC_SCOPE__ 直调等价实现。
+            // fast_kernel_launch_example 的 fkle ReduceLoop（MicroAPI，DAV_2201 族）——源码经 VF_CALL
+            // 封装、__local_mem__ 为 __ubuf__ 别名（CANN 9.0 reg_compute 公共头），arch35 上以
+            // __VEC_SCOPE__ 直调等价实现。
             // Reg::ReduceSum/Duplicate/DataCopy 来源佐证：官方 cann-samples RmsNormQuant（DataCopy
             // <DIST_FIRST_ELEMENT_B32>）+ 仓内 fkle ReduceLoop（ReduceSum/Duplicate）；签名以目标
             // CANN 9.2.0 SDK header 为最终依据（编译通过即签名级验证）。

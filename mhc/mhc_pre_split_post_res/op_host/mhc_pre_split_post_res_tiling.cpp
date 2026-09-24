@@ -267,15 +267,15 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
     const int64_t alignedNN =
         ((n_ * n_ + MIN_FP32_ALIGN_ELEM_SIZE - 1) / MIN_FP32_ALIGN_ELEM_SIZE) * MIN_FP32_ALIGN_ELEM_SIZE;
     // fixedUbBytes 逐项镜像 kernel InitCommonBuffers 固定分配（arch35/ascend950 形态，本算子仅注册 950）：
-    // xHatBuf_/biasBuf_（AlignUp(phiRows)+8）、dotBuf_/sumSqDotBuf_（仅 8 结果槽，work 段仅 910b 需要
-    // 已不分配）、sumSqBuf_（8）、alphaBuf_（8）、hPostOutQueue_/hResOutQueue_（AlignUp(N)/AlignUp(N*N)）
+    // xHatBuf_/biasBuf_（AlignUp(phiRows)+8）、dotBuf_/sumSqDotBuf_（仅 8 结果槽，无 work 段）、
+    // sumSqBuf_（8）、alphaBuf_（8）、hPostOutQueue_/hResOutQueue_（AlignUp(N)/AlignUp(N*N)）
     const int64_t fixedUbBytes = 2 * (alignedPhiRows + MIN_FP32_ALIGN_ELEM_SIZE) * fp32Bytes +
                                  2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
                                  2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
                                  (alignedN + alignedNN) * fp32Bytes;
     // 线性增长 buffer（对应 kernel InitCommonBuffers）：xInQueue_(2B/元素，SINGLE depth1/MULTI depth2)、
     // xFp32Buf_(4B，arch35 全量 n*d 按 tile 拼接持久化——Phase B 免除 x 的 GM 重读)、
-    // phiRowQue_(4B，depth2)；squareBuf_ 仅 910b 路径需要，arch35 不分配
+    // phiRowQue_(4B，depth2)
     const bool isSingleTile = (dimLoop_ == MHC_NUM_ONE);
     const int64_t xInQueueBytes = xTileElemsUb * xElemBytes * (isSingleTile ? MHC_NUM_ONE : MHC_NUM_TWO);
     const int64_t xFp32BufBytes = n_ * d_ * fp32Bytes;

@@ -2139,7 +2139,7 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_post_only_bias
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
-// 非 950 的 soc（如 Ascend310P/910B）仍应被白名单拒绝（本算子仅支持 ascend950）
+// 非 950 的 soc（如 Ascend310P）仍应被白名单拒绝（本算子仅支持 ascend950）
 TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_soc310p_not_support)
 {
     int64_t B = 32;
