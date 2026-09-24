@@ -346,10 +346,10 @@ private:
     __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
     {
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> scBuf = bufScalar_.Get<float>();
-        MhcNormRegBase::ReduceSumSquareB16(scBuf, hOutCache, tD);
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        MhcNormRegBase::CastB16ToFp32Square(sqBuf, hOutCache, tD);
         PipeBarrier<PIPE_V>();
-        return scBuf.GetValue(0);
+        return ReduceSumPrecise(sqBuf, tD);
     }
 
     /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。

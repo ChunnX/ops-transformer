@@ -94,9 +94,9 @@ __aicore__ inline void CastB16PairToFp32(const LocalTensor<float> &dst0, const L
     }
 }
 
-// 在一个VF内完成低精度恢复、平方和归约，只向UB写回一个标量。
+// 在一个VF内完成低精度恢复和平方，直接生成平方和归约输入。
 template <typename T>
-__aicore__ inline void ReduceSumSquareB16(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
+__aicore__ inline void CastB16ToFp32Square(const LocalTensor<float> &dst, const LocalTensor<T> &src, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
@@ -105,18 +105,15 @@ __aicore__ inline void ReduceSumSquareB16(const LocalTensor<float> &dst, const L
     __VEC_SCOPE__
     {
         RegTensor<T> srcReg;
-        RegTensor<float> srcFp32Reg, squareReg, blockSumReg, sumReg;
+        RegTensor<float> srcFp32Reg, dstReg;
         MaskReg mask;
-        AscendC::Reg::Duplicate(sumReg, 0.0f);
         for (uint16_t i = 0; i < loops; ++i) {
             mask = UpdateMask<float>(remain);
             DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + i * VL_FP32);
             AscendC::Reg::Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
-            AscendC::Reg::Mul(squareReg, srcFp32Reg, srcFp32Reg, mask);
-            AscendC::Reg::Reduce<AscendC::Reg::ReduceType::SUM>(blockSumReg, squareReg, mask);
-            AscendC::Reg::Add(sumReg, sumReg, blockSumReg, mask);
+            AscendC::Reg::Mul(dstReg, srcFp32Reg, srcFp32Reg, mask);
+            DataCopy(dstAddr + i * VL_FP32, dstReg, mask);
         }
-        AscendC::Reg::Store(dstAddr, sumReg, 1);
     }
 }
 
