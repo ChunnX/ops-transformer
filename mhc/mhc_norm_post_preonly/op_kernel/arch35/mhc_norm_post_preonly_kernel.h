@@ -536,6 +536,27 @@ private:
         return ReduceSumPrecise(sqBuf, tD);
     }
 
+    __aicore__ inline void ComputeHInLeaderHalf(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
+                                                LocalTensor<float> gateBuf)
+    {
+        LocalTensor<float> partial = bufResFp32_.Get<float>()[tOff];
+        MhcNormRegBase::VFGateWeightedSumLeaderHalf<T>(partial, x2Cache, D_, gateBuf, tD);
+        PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline float FinishHInFollowerHalfAndReduceSumSq(uint32_t tOff, uint32_t tD,
+                                                               LocalTensor<T> x2Cache,
+                                                               LocalTensor<float> gateBuf)
+    {
+        LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
+        LocalTensor<float> sqBuf = bufGamma2Fp32_.Get<float>();
+        LocalTensor<float> partial = bufResFp32_.Get<float>()[tOff];
+        MhcNormRegBase::VFGateWeightedSumFollowerHalfQuantizeSquare<T>(hInCache, sqBuf, partial, x2Cache, D_,
+                                                                       gateBuf, tD);
+        PipeBarrier<PIPE_V>();
+        return ReduceSumPrecise(sqBuf, tD);
+    }
+
     // 固定的R4/R5归约树由单AIV和双sibling AIV路径共用。half0固定覆盖展平区间[0,2D)，
     // half1固定覆盖[2D,4D)，调用方只执行一次顶层合并partial0+partial1。
     __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
