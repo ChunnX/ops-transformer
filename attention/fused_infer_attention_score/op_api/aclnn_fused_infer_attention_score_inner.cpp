@@ -188,9 +188,8 @@ aclnnStatus FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const
 {
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};
-        int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void *>(&addr));
+                                    shape.data(), shape.size(), nullptr);
         if (tempTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Create placeholder tensor for softmaxLse failed.");
             return ACLNN_ERR_INNER_NULLPTR;
