@@ -68,7 +68,6 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitThree = {
     AscendC::RoundMode::CAST_ROUND,
 };
 
-// FIA ProcessVec1DnMxfp8：fp8 量化用 CAST_RINT，不是 CAST_ROUND
 constexpr static AscendC::MicroAPI::CastTrait castTraitRintZero = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
@@ -120,10 +119,10 @@ constexpr half NEG_EIGHT_VALE = static_cast<half>(-7.8046875f);
 constexpr half TWO_VALE = static_cast<half>(2.0f);
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
 
-// P 量化（FIA TWO_CAST）：fp16 Exp → Cast<float> → e4m3 RINT。
+// P 量化：fp16 Exp → Cast<float> → e4m3 RINT。
 // 3510 没有 bf16→e4m3 单指令；不再做 fp16↔bf16 RT4。
 
-// FIA LoadAlign(+64)：128 half 的 even/odd 再 Interleave 成连续 qs[0:64) / qs[64:128)
+// LoadAlign(+64)：128 half 的 even/odd 再 Interleave 成连续 qs[0:64) / qs[64:128)
 #define BSA_MXFP8_FP16_SPLIT_CONSEC64(fLo, fHi, srcHalf, preg16) \
     do { \
         Cast<float, T, castTraitZero>((fLo), (srcHalf), (preg16)); \
@@ -182,7 +181,7 @@ constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
         Interleave((f3), (f7), (f3), (f7)); \
     } while (0)
 
-// FIA ProcessVec1DnMxfp8：4 路 float→e4m3 RINT + Gather + DATA_BLOCK_COPY（指针 POST_MODE_UPDATE）
+// ProcessVec1DnMxfp8：4 路 float→e4m3 RINT + Gather + DATA_BLOCK_COPY（指针 POST_MODE_UPDATE）
 #define BSA_MXFP8_PACK_STORE_E4M3_DBC(pPtr, x0, x1, x2, x3, idx, pregFp32, pregAll8, blkStride, repStride) \
     do { \
         RegTensor<fp8_e4m3fn_t> _q0; \

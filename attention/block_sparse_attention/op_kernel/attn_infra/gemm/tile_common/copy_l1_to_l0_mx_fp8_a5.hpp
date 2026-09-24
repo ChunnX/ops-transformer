@@ -174,7 +174,6 @@ struct CopyL1ToL0AMxFp8QKA5 {
         loadMxDataParams.yStartPosition = kStart / Block::MXFP8::CONST_64;
         loadMxDataParams.xStep = nCurAlign16 / NZ_C0;
         loadMxDataParams.yStep = scaleRowHalf;
-        // FIA LoadDataToL0AMx: srcStride = yStep = (K+63)>>5>>1，不是 (scaleK+1)/2
         loadMxDataParams.srcStride = scaleRowHalf;
         loadMxDataParams.dstStride = scaleRowHalf;
 

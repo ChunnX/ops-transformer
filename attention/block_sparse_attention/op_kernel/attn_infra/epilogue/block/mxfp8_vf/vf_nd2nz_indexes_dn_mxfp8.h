@@ -33,7 +33,7 @@ __simd_vf__ void inline vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2
 
     Arange((RegTensor<int8_t> &)index_reg, 0);
 
-    // FIA DN_INDEX：index[i*64+j] = i + (j<<2)，四路 e4m3（与 ProcessVec1DnMxfp8 一致）
+    // DN_INDEX：index[i*64+j] = i + (j<<2)，四路 e4m3（与 ProcessVec1DnMxfp8 一致）
     ShiftLefts(index_reg, index_reg, NUM_2, mask_32);
     for (uint16_t i = 0; i < 4; ++i) {
         Adds(index_reg_1, index_reg, i, mask_32);

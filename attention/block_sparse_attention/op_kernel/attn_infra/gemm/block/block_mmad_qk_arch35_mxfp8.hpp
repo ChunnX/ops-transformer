@@ -387,8 +387,6 @@ public:
     __aicore__ inline void MatmulQK(uint32_t n, uint32_t qsActBaseTileAlign16, uint32_t kCur, uint32_t qkL0aBufId,
                                     uint32_t qkL0bBufId, uint32_t qkL0cBufId, bool initC)
     {
-        // FIA MatmulFullMX: Mmad 操作数必须是 mx_fp8_e4m3_t（与 LoadData L0 dest 一致），
-        // 否则 cube 按普通 e4m3 乘加，S 在 fp16 fixpipe 溢出成 inf。
         auto l0ALayout = tla::MakeLayout<AscendC::mx_fp8_e4m3_t, LayoutTagL0A>(n, kCur);
         auto l0ATensorTla = tla::MakeTensor(l0ATensor[qkL0aBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
                                             l0ALayout, Arch::PositionL0A{});

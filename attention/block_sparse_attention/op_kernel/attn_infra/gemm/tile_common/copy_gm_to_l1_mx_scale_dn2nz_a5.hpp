@@ -50,7 +50,7 @@ struct CopyGmToL1MxScaleDn2NzA5 {
         dn2nzParams.srcDValue = headMul * scaleRowHalf;
         dn2nzParams.dstNzC0Stride = scaleRowHalf;
         dn2nzParams.dstNzNStride = 1;
-        // FIA CopySingleMXScaleDNToNZ: dstNzMatrixStride = nValue（half 列数）
+        // CopySingleMXScaleDNToNZ: dstNzMatrixStride = nValue（half 列数）
         // dnNum=2 时改为两块 L1 起点之差（half 元素）。
         dn2nzParams.dstNzMatrixStride = (dnNum > 1 && dstNzMatrixStride != 0) ? dstNzMatrixStride : dn2nzParams.nValue;
 
