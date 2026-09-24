@@ -331,7 +331,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
  * dispatch 恒先请求（这个形状开了是否划算，由后面的收益门决定）；combine 完全听
  * combine_comm_mode 属性（1=强制开、0=强制关，门控无权改）。非 MTE 拓扑没有去重能力，
  * 直接返回 0（客户显式给 ccm=1 撞非 MTE 时由 CheckDedupRequestAttrs 报错）。
- * comm_alg 属性与去重无关（Ascend950 不读取）。无效值返回 -1，由 CheckDedupRequestAttrs 拦截。
+ * 无效值返回 -1，由 CheckDedupRequestAttrs 拦截。
  */
 static int64_t GetDedupMode(const gert::TilingContext *context, const MegaMoeConfig &config)
 {
@@ -2823,6 +2823,7 @@ static void ApplyDedupBenefitGate(MegaMoeTilingData *tilingData, const char *nod
             tilingData->dedupMode = IsCombineDedupOn(tilingData->dedupMode) ? 1 : 0;
         }
     }
+    return;
 }
 
 // combine 去重 UB 容量护栏：独立 combine 阶段需要行环(≥2)+整行合并发送共 3×行宽，外加固定
