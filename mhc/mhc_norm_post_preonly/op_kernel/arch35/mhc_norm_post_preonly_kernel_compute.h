@@ -65,25 +65,21 @@ __aicore__ inline void VFCastB16ToFp32(const LocalTensor<float> &dst, const Loca
     }
 }
 
-// 在一个VF内恢复相邻两路低精度数据，并同时生成R4平方和，供后续R5复用FP32 x2。
+// 在一个VF内恢复相邻两路低精度数据，减少相同分块上的VF启动次数。
 template <typename T>
-__aicore__ inline void VFCastB16PairToFp32AndSquareSum(const LocalTensor<float> &dst0,
-                                                       const LocalTensor<float> &dst1,
-                                                       const LocalTensor<float> &squareSum,
-                                                       const LocalTensor<T> &src0, const LocalTensor<T> &src1,
-                                                       uint32_t count)
+__aicore__ inline void VFCastB16PairToFp32(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
+                                           const LocalTensor<T> &src0, const LocalTensor<T> &src1, uint32_t count)
 {
     __local_mem__ T *src0Addr = (__local_mem__ T *)src0.GetPhyAddr();
     __local_mem__ T *src1Addr = (__local_mem__ T *)src1.GetPhyAddr();
     __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
     __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
-    __local_mem__ float *squareSumAddr = (__local_mem__ float *)squareSum.GetPhyAddr();
     uint32_t remain = count;
     const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> src0Reg, src1Reg;
-        Reg::RegTensor<float> dst0Reg, dst1Reg, square0Reg, square1Reg, squareSumReg;
+        Reg::RegTensor<float> dst0Reg, dst1Reg;
         Reg::MaskReg mask;
         for (uint16_t i = 0; i < loops; ++i) {
             mask = Reg::UpdateMask<float>(remain);
@@ -91,12 +87,8 @@ __aicore__ inline void VFCastB16PairToFp32AndSquareSum(const LocalTensor<float> 
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(dst0Reg, src0Reg, mask);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(dst1Reg, src1Reg, mask);
-            Reg::Mul(square0Reg, dst0Reg, dst0Reg, mask);
-            Reg::Mul(square1Reg, dst1Reg, dst1Reg, mask);
-            Reg::Add(squareSumReg, square0Reg, square1Reg, mask);
             Reg::StoreAlign(dst0Addr + i * VL_FP32, dst0Reg, mask);
             Reg::StoreAlign(dst1Addr + i * VL_FP32, dst1Reg, mask);
-            Reg::StoreAlign(squareSumAddr + i * VL_FP32, squareSumReg, mask);
         }
     }
 }
@@ -252,6 +244,31 @@ __aicore__ inline void VFAdd(const LocalTensor<float> &dst, const LocalTensor<fl
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
             Reg::Add(dstReg, src0Reg, src1Reg, mask);
+            Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 在一个VF内完成两路平方并求和，避免两个中间结果写回UB后再读出相加。
+__aicore__ inline void VFPairSquareAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src0,
+                                       const LocalTensor<float> &src1, uint32_t count)
+{
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *src0Addr = (__local_mem__ float *)src0.GetPhyAddr();
+    __local_mem__ float *src1Addr = (__local_mem__ float *)src1.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> src0Reg, src1Reg, src0SqReg, src1SqReg, dstReg;
+        Reg::MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src0Reg, src0Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(src1Reg, src1Addr + i * VL_FP32);
+            Reg::Mul(src0SqReg, src0Reg, src0Reg, mask);
+            Reg::Mul(src1SqReg, src1Reg, src1Reg, mask);
+            Reg::Add(dstReg, src0SqReg, src1SqReg, mask);
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
         }
     }
