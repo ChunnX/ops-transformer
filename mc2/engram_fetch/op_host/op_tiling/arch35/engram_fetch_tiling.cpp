@@ -645,8 +645,8 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isL
         // Local mode is inference-only; training was rejected earlier in TilingFunc.
         tilingKey = GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf);
     } else {
-        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE, hasSf)
-                                 : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
+        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE, hasSf) :
+                                  GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     }
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, isLocalMode=%d, hasSf=%d).", tilingKey,
@@ -745,19 +745,18 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
         }
         auto fetchModePtr = attrs->GetAttrPointer<int64_t>(ATTR_FETCH_MODE_INDEX);
         if (fetchModePtr != nullptr) {
-            OP_TILING_CHECK(*fetchModePtr != ENGRAM_FETCH_MODE_SLICED && *fetchModePtr != ENGRAM_FETCH_MODE_LOCAL,
-                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "fetch_mode",
-                                                      std::to_string(*fetchModePtr).c_str(), "[0, 1]"),
-                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(
+                *fetchModePtr != ENGRAM_FETCH_MODE_SLICED && *fetchModePtr != ENGRAM_FETCH_MODE_LOCAL,
+                OP_LOGE_FOR_INVALID_VALUE(nodeName, "fetch_mode", std::to_string(*fetchModePtr).c_str(), "[0, 1]"),
+                return ge::GRAPH_FAILED);
             isLocalMode = (*fetchModePtr == ENGRAM_FETCH_MODE_LOCAL);
         }
     }
 
     // fetch_mode=local supports inference only
     OP_TILING_CHECK((isTraining && isLocalMode),
-                    OP_LOGE(nodeName,
-                            "fetch_mode=1 (local, full replication) only supports inference, "
-                            "training (with_grad=1) is not supported."),
+                    OP_LOGE(nodeName, "fetch_mode=1 (local, full replication) only supports inference, "
+                                      "training (with_grad=1) is not supported."),
                     return ge::GRAPH_FAILED);
 
     // 1. tensor check (ptr + dtype + shape + format)
