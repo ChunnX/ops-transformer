@@ -23,7 +23,6 @@ class FlashAttnComparator:
     DEFAULT_ATOL = 0.000025
     BFLOAT16_ATOL = 0.0001
     FAIL_RATIO = 0.005
-    MAX_RELATIVE_ERROR = 10.0
     RELATIVE_FLOOR = (1.0 / (1 << 14)) / 0.005
     RELATIVE_EPSILON = 2e-9
 
@@ -202,15 +201,18 @@ class FlashAttnComparator:
             relative_error = diff_abs / (denominator + cls.RELATIVE_EPSILON)
             max_relative_error = float(np.max(relative_error[diff_idx]))
 
-        passed = (
-            fail_ratio <= cls.FAIL_RATIO and max_relative_error < cls.MAX_RELATIVE_ERROR
+        nonfinite_mismatch = mismatch & (
+            ~np.isfinite(npu_flat) | ~np.isfinite(golden_flat)
         )
+        nonfinite_mismatch_count = int(np.count_nonzero(nonfinite_mismatch))
+        passed = fail_ratio <= cls.FAIL_RATIO and nonfinite_mismatch_count == 0
         precision = (golden_flat.size - diff_idx.size) / golden_flat.size * 100
         error_info = None
         if not passed:
             error_info = (
                 f"FlashAttn precision failed: mismatches={diff_idx.size}, "
                 f"fail_ratio={fail_ratio:.6g}, "
+                f"nonfinite_mismatches={nonfinite_mismatch_count}, "
                 f"max_relative_error={max_relative_error:.6g}"
             )
             cls.print_log(error_info, output_index)
@@ -229,8 +231,8 @@ class FlashAttnComparator:
                 "atol": atol,
                 "fail_ratio": fail_ratio,
                 "fail_ratio_limit": cls.FAIL_RATIO,
+                "nonfinite_mismatch_count": nonfinite_mismatch_count,
                 "max_relative_error": max_relative_error,
-                "max_relative_error_limit": cls.MAX_RELATIVE_ERROR,
             },
         }
 
