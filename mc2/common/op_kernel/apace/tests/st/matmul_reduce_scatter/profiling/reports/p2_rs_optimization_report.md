@@ -1,7 +1,7 @@
 # quantMatmulReduceScatter 第三轮优化报告 — P2-RS 访存优化 (v8) + P3 复评
 
 - **日期**: 2026-09-23（接续 `p1_pipeline_v7_p0_probe_report.md` 剩余方向）
-- **代码基线**: v7 @ 1a1a587ee → v8（本地提交，未推送）
+- **代码基线**: v7 @ 865dc1ee4 → v8 @ 4d3de33a3（已推送 upstream-apace）
 - **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), msprof task-based
 
 ## 一、P2-RS: reduceSum 批量加载（三轮迭代收敛）
@@ -92,7 +92,7 @@ v8 最终 op_summary: AIV idle 30~67%（v5 时代 42~69%），其中:
 
 | 项 | 位置 |
 |---|---|
-| v8 代码 | `reduce_sum_ref.h` (批量加载+UB分区+节奏控制) + `quant_matmul_reduce_scatter_urma_impl.h` (fullBatch 传参) |
-| v8 PROF | `../../prof_v8_final/` |
-| v7/v8 A/B PROF | `../../prof_v7_ab/` `../../prof_v8_ab/` |
-| 解析文本 | `../data/p2_rs/v8_final_perf.txt` |
+| v8 代码 | `reduce_sum_ref.h` (批量加载+UB分区+节奏控制) + `quant_matmul_reduce_scatter_urma_impl.h` (fullBatch 传参) @ 4d3de33a3 |
+
+原始 A/B PROF 数据体积较大不入库, 本报告表格为同日 A/B 汇总; 复现路径见
+`full_suite_v5_vs_v8_report.md` 第六节。

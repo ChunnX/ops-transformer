@@ -1,12 +1,15 @@
 # quantMatmulReduceScatter 全量用例性能验证与综合分析报告
 
 - **日期**: 2026-09-23
-- **对比对象**: v5 基线 (upstream-apace @ 106ff32dd, 优化前) vs v8 最终版 (本地 6 提交累计, 未推送)
+- **对比对象**: v5 基线 (upstream-apace @ 106ff32dd, 优化前) vs v8 最终版 (已推送 upstream-apace:
+  v6 7543af04a → v7 865dc1ee4 → P1-b tile 策略 6f8c056ca → v8 4d3de33a3; 其后 6d51651f4 检视修复
+  为 host 侧防护/防御性代码, 022ebbd48 为纯注释清理, 均不改变 kernel 有效执行路径)
 - **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), bisheng dav-3510
 - **口径**: msprof task-based, 10 iter / 3 warmup / 7 valid / outlier 过滤; **同日同机交替双二进制 A/B**
   (v5 md5=1883722f / v8 md5=7abed458), qrun 排队独占 NPU, 12 个批次完成全量
-- **覆盖**: cases.csv 全部 **101/101** case; rows 16/17/47 为 tiling 策略变更行 (v5 旧 headM vs v8 新 headM,
-  即含 P1-b tiling 收益); 精度 101/101 PASS (perf 模式内联比对)
+- **覆盖**: cases.csv 全部 **101/101** case; rows 16/17/47 为 tiling 策略变更行 (headM v5→v8:
+  512→2048 / 128→1024 / 128→256, 明细表 headM 列为 v5 值, 对比含 P1-b tiling 收益);
+  精度 101/101 PASS (perf 模式内联比对)
 
 ## 一、总览
 
@@ -58,10 +61,10 @@
 
 | 优化项 | 提交 | 主要收益族 | 单项收益 |
 |---|---|---|---|
-| v6 单 barrier 化 (3T→T+1) | ee7c257b5 | 全部 (小 tile 更敏感) | -0.3% geomean |
-| v7 fence 重叠化 + 本地轮询 | 1a1a587ee | 通信 bound / rank4 | -3.7% geomean (10 case) |
-| P1-b tile 策略 (cases.csv) | 03c4f545c | 小 N (640): -7~-16%; row47 -9.4% | tiling 参数 |
-| v8 尾声批量 RS + UB 分区 | 5567b7ecd | T=1 尾声主导 case (row17 -28.9%) | -4.9% geomean (10 case) |
+| v6 单 barrier 化 (3T→T+1) | 7543af04a | 全部 (小 tile 更敏感) | -0.3% geomean |
+| v7 fence 重叠化 + 本地轮询 | 865dc1ee4 | 通信 bound / rank4 | -3.7% geomean (10 case) |
+| P1-b tile 策略 (cases.csv) | 6f8c056ca | 小 N (640): -7~-16%; row47 -9.4% | tiling 参数 |
+| v8 尾声批量 RS + UB 分区 | 4d3de33a3 | T=1 尾声主导 case (row17 -28.9%) | -4.9% geomean (10 case) |
 
 注: 各项收益非线性叠加 (相互掩盖), 上表为各自 A/B 窗口的单项实测; 全量累计 -5.7% 为净效果。
 
@@ -182,7 +185,8 @@ apace ST 已 93 case 优于级联基线 (中位 1.23x), 本轮 101 case 在 v5 �
 
 | 项 | 位置 |
 |---|---|
-| v5 全量 PROF | `../../prof_v5_batch1/2`, `prof_v5_c1`, `prof_v5_c2a/b/c`, `prof_v5_c3a/b` |
-| v8 全量 PROF | `../../prof_v8_final`, `prof_v8_c1`, `prof_v8_c1a/b`, `prof_v8_c2a/b/c`, `prof_v8_c3a/b` |
-| 配对数据 | `../data/full_ab_v5_v8.json` |
 | 各轮专项报告 | `sync_barrier_opt_v6_report.md`, `p1_pipeline_v7_p0_probe_report.md`, `p2_rs_optimization_report.md` |
+| 复现路径 | `../scripts/gen_data.py` 生成输入 → `../run.sh` + msprof task-based 采集 → `../scripts/parse_prof.py` 解析 |
+
+原始 msprof PROF 数据 (v5/v8 交替各 101 case × 4 rank, 12 批次) 体积较大不入库, 本报告表格
+为同日 A/B 最终汇总; A/B 双二进制同源同环境编译 (v5 md5=1883722f / v8 md5=7abed458)。

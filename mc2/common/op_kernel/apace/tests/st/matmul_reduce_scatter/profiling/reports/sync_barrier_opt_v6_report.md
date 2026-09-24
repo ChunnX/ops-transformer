@@ -2,7 +2,7 @@
 
 - **日期**: 2026-09-23
 - **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), bisheng (dav-3510)
-- **代码**: ops-transformer upstream-apace @ 106ff32dd (v5 基线) + v6 工作区修改
+- **代码**: ops-transformer upstream-apace @ 106ff32dd (v5 基线) → v6 @ 7543af04a (已推送)
 - **二进制**: v5 `md5=1883722f…` / v6 `md5=f4008b90…`（同源同环境编译）
 - **采集**: msprof task-based, 10 iter / 3 warmup / 7 valid, outlier 过滤, 跨 rank 取 avg of card avgs
 - **A/B 方式**: 同机同日交替运行两个二进制, 全部经 qrun 排队独占 NPU
@@ -66,22 +66,19 @@ v6:  WaitFlag(t) → SyncAll#1 → [PUT(t)+drain+fence(t) ‖ RS(t-1)]        �
    v6 已将其与 RS/AIC 计算重叠; 通信 bound case (row 27/47) 中 PUT 传输时间本身主导。
 4. 与隔离测试报告结论对齐: row 17 融合回退 ~9us 中, v6 收回 1~3us, 其余属 fence 轮询固有成本。
 
-## 五、结论与建议
+## 五、结论
 
-- **建议保留 v6 修改**: 语义等价、结构更简 (每轮 2 次全核 barrier 冗余消除)、fence 重叠化,
-  10 用例无一真实回退, 小幅一致收益 (几何平均 -0.3%)。修改位于工作区, 未提交未推送。
-- **后续方向** (若需进一步压缩每轮同步成本, 属协议级改造):
-  1. 数据内嵌序列号: PUT 尾部附带 tile 序号, 接收侧本地轮询 win 数据区替代远端 flag 握手
-     (需确认 URMA 同 channel 写序保证), 可消除每轮 fence 的跨卡读;
-  2. URMA CQE 远端完成语义: 若 Drain 可证远端可见, fence 整体可去除 (需硬件语义确认)。
+- **v6 已合入** (@ 7543af04a): 语义等价、结构更简 (每轮 2 次全核 barrier 冗余消除)、fence 重叠化,
+  10 用例无一真实回退, 小幅一致收益 (几何平均 -0.3%)。
+- 每轮同步成本的进一步压缩已在后续轮次完成评估并收官: v7 (@ 865dc1ee4) 将 fence 移入
+  PUT 传输窗口 + 计算核本地轮询 (-3.7%); P3 残余同步复评结论为不再值得投入
+  (见 `p2_rs_optimization_report.md` 第二节)。
 
 ## 六、数据索引
 
 | 项 | 位置 |
 |---|---|
-| v5 批次1 PROF (6 case) | `../../prof_v5_batch1/` |
-| v6 批次1 PROF (6 case) | `../../prof_v6_batch1/` |
-| v5 批次2 PROF (4 case) | `../../prof_v5_batch2/` |
-| v6 批次2 PROF (4 case) | `../../prof_v6_batch2/` |
-| 解析文本 | `../data/sync_ab_v6/*.txt` |
-| 代码修改 | `apace/kernel/fusions/matmul_reduce_scatter/quant_matmul_reduce_scatter_urma_impl.h` (v6, 工作区) |
+| 代码修改 | `apace/kernel/fusions/matmul_reduce_scatter/quant_matmul_reduce_scatter_urma_impl.h` @ 7543af04a |
+
+原始 A/B PROF 数据体积较大不入库, 本报告表格为同日 A/B 汇总; 复现路径见
+`full_suite_v5_vs_v8_report.md` 第六节。

@@ -1,11 +1,11 @@
 # quantMatmulReduceScatter 第二轮优化报告 — P1 流水/tile 策略落地 + P0 多通道探针
 
-- **日期**: 2026-09-23（接续 `further_optimization_directions.md` 建议路线的第一/二批）
-- **代码基线**: v6 @ ee7c257b5 → v7 @ 1a1a587ee（本地提交，未推送）
+- **日期**: 2026-09-23（v6 后续优化第一批: P1 流水/tile 策略落地 + P0 多通道探针）
+- **代码基线**: v6 @ 7543af04a → v7 @ 865dc1ee4 + P1-b tile 策略 @ 6f8c056ca（已推送 upstream-apace）
 - **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), msprof task-based
 - **A/B 方式**: 同机同日交替双二进制（v6 md5=f4008b90 / v7 md5=949a9721），qrun 独占 NPU
 
-## 一、P1-a: v7 fence 重叠化（已落地，本地提交 1a1a587ee）
+## 一、P1-a: v7 fence 重叠化（已落地 @ 865dc1ee4）
 
 ### 设计
 
@@ -80,7 +80,7 @@ v7: #1(t) → Commit(t) → fence(t-1) → Drain(t)         → [next] WaitFlag(
 **结论**: 全部 ±0.6% 噪声级。shared-queue 多 channel 共享同一 jetty（传输队列对），
 **单 rank pair ~40GB/s 是链路/jetty 物理上限，非通道队列限制** — 在本机拓扑（单机 4 卡、
 每对 rank 单 link）下多通道 PUT 无法扩展带宽。P0 在本机**不可行**，代码已回退，
-探针补丁留存 `data/p0_probe_dual_channel.patch`（多 link 跨机拓扑可复用验证）。
+探针补丁已随代码回退（多 link 跨机拓扑如需复验, 可按第三节方法重建）。
 
 ## 四、两轮累计收益（v5 → v7 + tiling 策略）
 
@@ -99,23 +99,24 @@ v7: #1(t) → Commit(t) → fence(t-1) → Drain(t)         → [next] WaitFlag(
 
 几何平均 **-7.0%**，其中原隔离报告的劣势场景 row17 (N=640) 从 0.98x 融合回退转为显著正收益。
 
-## 五、剩余方向更新（相对 further_optimization_directions.md）
+## 五、优化方向最终状态（v8 收官更新）
 
 | 方向 | 状态 |
 |---|---|
-| P0 多通道 PUT | ❌ 本机不可行（单 link + shared-jetty 带宽上限）；跨机多 link 拓扑可复用补丁验证 |
-| P1-a fence 重叠化 | ✅ 已落地 (v7, -3.7%) |
+| P0 多通道 PUT | ❌ 本机不可行（单 link + shared-jetty 带宽上限）；跨机多 link 拓扑可按第三节方法复验 |
+| P1-a fence 重叠化 | ✅ 已落地 (v7 @ 865dc1ee4, -3.7%) |
 | P1-b 小 N tile 策略 | ✅ 已落地 (cases.csv 3 行, 最高 -16%) |
-| P2 RS 访存效率 | 待做：RS 逐段同步 (DataCopy→Wait→Add 串行) 可改 pingpong 预取流水, 均衡 case 预期 5~15% |
-| P2 AIC Blaze tiling | 待做：AIC mte2 80~95%, 大 K case tiling 调优 |
-| P3 fence 本地化 | 部分被 v7 吸收 (RS 路径已本地轮询); 通信核远端握手仍在, 残余同步占比待 P2 后复评 |
+| P2 RS 访存效率 | ✅ 已落地 (v8 @ 4d3de33a3: 尾声批量加载 + UB 分区, -4.9%, 见 `p2_rs_optimization_report.md`) |
+| P2 AIC Blaze tiling | 递延：安全旋钮仅 SetMaxBaseM / EnableBaseMHalving, 大 K 族建议经专项流程调优 (aiss-tiling-solver) |
+| P3 fence 本地化 | ❌ 已关闭：v7 已吸收 RS 路径本地轮询, 残余同步复评无收益 (见 `p2_rs_optimization_report.md` 第二节) |
 
 ## 六、产物索引
 
 | 项 | 位置 |
 |---|---|
-| v7 代码 | `quant_matmul_reduce_scatter_urma_impl.h` @ 1a1a587ee |
-| tiling 策略 | `cases.csv` rows 16/17/47 |
-| v6/v7 A/B PROF | `../../prof_v6_ab/` `../../prof_v7_ab/` |
-| P0 探针补丁 (回退留存) | `../data/p0_probe_dual_channel.patch` |
-| A/B 解析文本 | `../data/sync_ab_v6/v6_ab_perf.txt` `v7_ab_perf.txt` |
+| v7 代码 | `quant_matmul_reduce_scatter_urma_impl.h` @ 865dc1ee4 |
+| tiling 策略 | `cases.csv` rows 16/17/47 (headM 2048/1024/256) |
+| P0 探针 | 见本文第三节（补丁已回退, 结论为确定性否定） |
+
+原始 A/B PROF 数据体积较大不入库, 本报告表格为同日 A/B 汇总; 复现路径见
+`full_suite_v5_vs_v8_report.md` 第六节。

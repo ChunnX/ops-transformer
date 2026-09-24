@@ -1,6 +1,6 @@
 # profiling 目录 — quant_matmul_reduce_scatter (apace ST) 性能分析总览
 
-> **代码版本**: ops-transformer upstream-apace @ 6d51651f4 (v8 + 检视修复)
+> **代码版本**: ops-transformer upstream-apace @ 022ebbd48 (v8 + 检视修复 + 注释清理, kernel 有效执行路径同 v8 @ 4d3de33a3)
 > **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), bisheng (dav-3510)
 > **数据采集**: 2026-09-10 ~ 2026-09-23 (v1 基线 ~ v8 全量)
 > **当前版本精度**: 101/101 case PASS
@@ -14,9 +14,8 @@
 | 深入分析 | [reports/deep_analysis_report.md](reports/deep_analysis_report.md) | v1 | Bound 判定（R 值）、多维加速比分布、通信效率、rank2/4 配对分析 |
 | 隔离测试 | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) | v1 | 12 代表用例四分量分解、加速比与掩盖率（修正口径）、负值验证 |
 | v6 单 barrier 化 | [reports/sync_barrier_opt_v6_report.md](reports/sync_barrier_opt_v6_report.md) | v6 | 每轮 SyncAll 3→1 消减，fence 移出关键路径的 A/B 验证 |
-| v7 fence 重叠化探测 | [reports/p1_pipeline_v7_p0_probe_report.md](reports/p1_pipeline_v7_p0_probe_report.md) | v7 | fence 移入 PUT 传输窗口 + 计算核本地轮询，P0/P1 管线探测 |
-| v8 reduceSum 优化 | [reports/p2_rs_optimization_report.md](reports/p2_rs_optimization_report.md) | v8 | 尾声批量加载 + UB 分区竞态修复的 A/B 验证 |
-| 后续优化方向 | [reports/further_optimization_directions.md](reports/further_optimization_directions.md) | v8 | 基于 v6 A/B 与 op_summary 流水指标的证据链分析 |
+| v7 fence 重叠化 + P0/P1-b | [reports/p1_pipeline_v7_p0_probe_report.md](reports/p1_pipeline_v7_p0_probe_report.md) | v7 | fence 移入 PUT 传输窗口 + 本地轮询 A/B，P0 多通道探针否定结论，P1-b tile 策略 |
+| v8 reduceSum 优化 | [reports/p2_rs_optimization_report.md](reports/p2_rs_optimization_report.md) | v8 | 尾声批量加载 + UB 分区竞态修复 A/B，P3 复评关闭，优化方向收官 |
 
 ## 当前版本性能总览 (v8, 2026-09-23)
 
@@ -32,10 +31,10 @@
 
 | 优化项 | 提交 | 主要收益族 | 单项收益 |
 |---|---|---|---|
-| v6 单 barrier 化 (3T→T+1) | ee7c257b5 | 全部 (小 tile 更敏感) | -0.3% geomean |
-| v7 fence 重叠化 + 本地轮询 | 1a1a587ee | 通信 bound / rank4 | -3.7% geomean |
-| P1-b tile 策略 (cases.csv) | 03c4f545c | 小 N(640): -7~-16% | tiling 参数 |
-| v8 尾声批量 RS + UB 分区 | 5567b7ecd | T=1 尾声主导 case | -4.9% geomean |
+| v6 单 barrier 化 (3T→T+1) | 7543af04a | 全部 (小 tile 更敏感) | -0.3% geomean |
+| v7 fence 重叠化 + 本地轮询 | 865dc1ee4 | 通信 bound / rank4 | -3.7% geomean |
+| P1-b tile 策略 (cases.csv) | 6f8c056ca | 小 N(640): -7~-16% | tiling 参数 |
+| v8 尾声批量 RS + UB 分区 | 4d3de33a3 | T=1 尾声主导 case | -4.9% geomean |
 
 ### 族维度规律 (v8 vs v5)
 
@@ -73,22 +72,18 @@
 
 ```
 profiling/
-├── README.md                          # 本文件（总览入口）
-├── reports/                           # 📊 分析报告（读者入口）
-│   ├── full_suite_v5_vs_v8_report.md  #   ★ v8 全量 101 case A/B + 归因 (最新)
-│   ├── comparison_report.md           #   v1 期 97 用例外部基线对比
-│   ├── deep_analysis_report.md        #   v1 期深入分析
-│   ├── isolation_metrics_report.md    #   v1 期隔离测试
-│   ├── sync_barrier_opt_v6_report.md  #   v6 单 barrier 化验证
-│   ├── p1_pipeline_v7_p0_probe_report.md # v7 fence 重叠化探测
-│   ├── p2_rs_optimization_report.md   #   v8 reduceSum 优化验证
-│   └── further_optimization_directions.md # 后续优化方向分析
-├── data/                              # 📁 v1 期原始数据（复现用）
-│   ├── st_perf/                       #   ST 97 用例 PROF
-│   ├── baseline/                      #   级联基线 + MC2 融合算子
-│   └── isolation/                     #   隔离测试
-└── (v5/v8 全量 PROF 数据: prof_v5_*/, prof_v8_*/ 见仓外或 prof/ 目录)
+├── README.md                             # 本文件（总览入口）
+└── reports/                              # 📊 分析报告（读者入口）
+    ├── full_suite_v5_vs_v8_report.md     #   ★ v8 全量 101 case A/B + 归因 (最新)
+    ├── comparison_report.md              #   v1 期 97 用例外部基线对比（历史参考）
+    ├── deep_analysis_report.md           #   v1 期深入分析（历史参考）
+    ├── isolation_metrics_report.md       #   v1 期隔离测试（历史参考）
+    ├── sync_barrier_opt_v6_report.md     #   v6 单 barrier 化验证
+    ├── p1_pipeline_v7_p0_probe_report.md #   v7 fence 重叠化 + P0 多通道探针 + P1-b tile 策略
+    └── p2_rs_optimization_report.md      #   v8 reduceSum 优化验证 + P3 复评关闭
 ```
 
 > **数据口径**: v8 报告采用同日同机交替双二进制 A/B (v5 md5=1883722f / v8 md5=7abed458)，
 > 消除跨日环境漂移（09-12 报告级联基线跨日漂移达 29%，不作直接对比）。
+> 原始 msprof PROF 数据体积较大不入库，各报告表格为最终汇总；复现路径:
+> `../scripts/gen_data.py` → `../run.sh` + msprof 采集 → `../scripts/parse_prof.py`。

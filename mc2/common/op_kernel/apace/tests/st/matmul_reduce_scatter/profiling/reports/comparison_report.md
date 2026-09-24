@@ -10,6 +10,11 @@
 - **MC2 融合算子**: torch_npu profiler（npu_quant_mm_reduce_scatter ACLNN 融合算子）
 - **加速比**: 基线时延 / apace ST 时延（>1 表示 apace ST 更快）
 
+> **状态说明 (2026-09-23)**: 本报告为 v1 版本 (@ ed7d74662) 历史数据, 采集环境安装路径与 v8 报告
+> 不同 (跨日漂移实测达 29%, 与 v5/v8 同日 A/B 数据不作直接对比)。劣势结论的 v8 最新状态:
+> N=640 (row16/17) 已反转为最优提升族 (-27.7%); K=5472/6144 大 K 差距经 v6/v7 同步消减部分缓解。
+> 详见 `full_suite_v5_vs_v8_report.md`。
+
 ## 一、对比结果（97 用例）
 
 | # | M | K | N | rank | headM | apace ST(us) | 级联基线(us) | 加速比 | MC2融合(us) | ST/融合加速 |
@@ -168,7 +173,9 @@
 - 级联基线 HCCL reduce_scatter 对小消息高度优化：通信 91us + 计算 43us = 134us
 - apace ST 的 URMA PUT 固定开销在小消息场景下占比过大（230us）
 - **隔离测试佐证**（详见 isolation_metrics_report.md）：该用例 commTurn=8 小 tile，每 tile 3 次 SyncAll + CrossDevice 同步开销超过重叠收益，融合后反而比串行慢 4%
-- **性质**: 架构性 trade-off。URMA PUT 优势在大消息/计算密集场景；rank2 时已接近持平（0.96x），rank4 时小消息劣势放大（0.63x）
+- **性质**: v1 判定为架构性 trade-off —— **已被 v8 反转**: 根因实为逐轮固定开销占比过高 (非架构限制),
+  P1-b tile 策略 (减轮次) + 尾声批量 RS 后 row17 提升 -39.9%, N=640 反转为最优提升族 (见 full_suite 报告);
+  URMA PUT 优势在大消息/计算密集场景的结论不变
 
 **模式 2: K=5472/6144 大 K × rank4（8 用例 vs 融合慢）—— matmul 效率差距 ~10%**
 
@@ -180,7 +187,7 @@
 
 ### 结论
 
-97 用例中 93 个优于级联基线（中位 1.23x）。4 个劣势用例的重跑数据稳定（偏差 <2%），性能差距真实存在且根因明确：N=640 属架构性 trade-off（2 个），K=5472/6144 大 K rank4 属可优化项（后续 tiling 调优方向）。
+97 用例中 93 个优于级联基线（中位 1.23x）。4 个劣势用例的重跑数据稳定（偏差 <2%），性能差距真实存在且根因明确：N=640 的 v1 架构性 trade-off 判定已被 v8 反转（tiling 策略 + 尾声批量 RS 后转为最优提升族），K=5472/6144 大 K rank4 属可优化项（后续 tiling 调优方向）。
 
 ## 四、报告索引
 
@@ -192,10 +199,6 @@
 
 ## 原始数据
 
-- apace ST: `../data/st_perf/`（365 PROF 分析 CSV）+ `../../prof/`（msprof 完整目录）
-- ST 重跑数据: `../data/st_perf/` 20260912 时间戳的 PROF_* 目录（5 个劣势用例复测）
-- 级联基线: `../data/baseline/hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv`
-- MC2 融合: `../data/baseline/mc2_aclnnMatmulReduceScatterV2_pro_result.csv`
-- 基线日志: `../data/baseline/logs/`（97 case NPU 日志 + 重跑日志）
-- 隔离测试: `../data/isolation/`（12 case × 4 mode）+ `/home/y00845930/dev/apace_perf_probe/`（probe 源码 + 完整数据 + 核算脚本）
-- 基线 xlsx: aclnnMatmulReduceScatterV2.xlsx level0_4p 行 106-203（备份 .bak_20260911）
+原始 PROF / 基线 CSV / 隔离数据体积较大未入库, 本报告表格为最终汇总。
+复现路径: `../scripts/gen_data.py` 生成输入 → `../run.sh` + msprof 采集 → `../scripts/parse_prof.py` 解析。
+用例来源: aclnnMatmulReduceScatterV2.xlsx level0_4p 行 106-203。
