@@ -241,21 +241,6 @@ private:
         DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     }
 
-    /// 双sibling会合后，leader按D分块回读follower负责的两个head。
-    /// 两行在GM和UB中均保持D步长，便于下一分块MTE2与当前分块R6 Vector计算重叠。
-    __aicore__ inline void StartLoadFollowerX2Tile(uint32_t token, uint32_t tOff, uint32_t tD)
-    {
-        LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-        const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_ + tOff;
-        // GM的srcStride以byte计，UB的dstStride以32B block计。
-        DataCopyExtParams copyParams = {static_cast<uint16_t>(2U), static_cast<uint32_t>(tD * sizeof(T)),
-                                        static_cast<int64_t>((D_ - tD) * sizeof(T)),
-                                        static_cast<int64_t>((D_ - tD) * sizeof(T) / 32U), 0};
-        DataCopyPadExtParams<T> copyPad = {false, 0, 0, 0};
-        DataCopyPad(x2Cache[2U * D_ + tOff], x2OutGm_[followerHeadOffset], copyParams, copyPad);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-    }
-
     /// 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
     __aicore__ inline void CacheGamma0()
     {

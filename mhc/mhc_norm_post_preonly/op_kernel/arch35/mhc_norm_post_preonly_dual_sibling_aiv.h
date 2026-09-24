@@ -138,10 +138,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // 先发起follower首个D分块回读；5op保持原有与Gate重叠的发射时机。
-    // 后续分块在R6循环内与前一分块的Vector/Reduce计算流水重叠。
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
     if constexpr (USE_RMS_MID) {
-        StartLoadFollowerX2Tile(token, 0U, GetTileD(0U));
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
@@ -153,21 +156,17 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     if constexpr (!USE_RMS_MID) {
-        StartLoadFollowerX2Tile(token, 0U, GetTileD(0U));
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
+    StartCacheGamma1();
     for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dimTile_;
-        WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        if (tile + 1U < dimLoop_) {
-            const uint32_t nextTile = tile + 1U;
-            StartLoadFollowerX2Tile(token, nextTile * dimTile_, GetTileD(nextTile));
-        } else {
-            // follower最后一块到达后立即发起gamma1搬运，与最后一块R6计算重叠。
-            StartCacheGamma1();
-        }
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         sumSq1 += ComputeHInCacheAndReduceSumSq(tOff, tD, x2Cache, gateBuf);
