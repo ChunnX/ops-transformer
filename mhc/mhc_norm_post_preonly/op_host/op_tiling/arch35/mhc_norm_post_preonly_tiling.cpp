@@ -38,7 +38,6 @@ constexpr size_t GAMMA_2_INPUT_INDEX = 10U;
 constexpr size_t H_IN_PRIME_OUTPUT_INDEX = 0U;
 constexpr size_t X_2_OUT_OUTPUT_INDEX = 1U;
 constexpr size_t H_IN_F32_OUTPUT_INDEX = 2U;
-constexpr size_t H_PRE_OUTPUT_INDEX = 3U;
 
 constexpr uint64_t TILING_KEY_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_RETURN_H_IN_F32 = 1ULL << 1;
@@ -271,33 +270,13 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
                 OP_LOGE(context_->GetNodeName(), "required output shape is null"), return ge::GRAPH_FAILED);
     const auto &hInPrime = hInPrimeShape->GetOriginShape();
     const auto &x2Out = x2OutShape->GetOriginShape();
-    // Dynamic launch may expose preallocated outputs as zero-rank placeholders during tiling.
-    // Validate every output shape that is materialized; defer zero-rank placeholders to ACLNN/infer-shape checks.
-    if (hInPrime.GetDimNum() != 0U) {
-        OP_CHECK_IF(hInPrime.GetDimNum() != hOutDimNum,
-                    OP_LOGE(context_->GetNodeName(), "h_in_prime rank must match h_out: expected %zu, got %zu",
-                            hOutDimNum, hInPrime.GetDimNum()),
-                    return ge::GRAPH_FAILED);
-        for (size_t i = 0; i < hOutDimNum; ++i) {
-            OP_CHECK_IF(hInPrime.GetDim(i) != hOut.GetDim(i),
-                        OP_LOGE(context_->GetNodeName(), "h_in_prime shape must match h_out"),
-                        return ge::GRAPH_FAILED);
-        }
-    }
-    if (x2Out.GetDimNum() != 0U) {
-        OP_CHECK_IF(x2Out.GetDimNum() != residualDimNum,
-                    OP_LOGE(context_->GetNodeName(), "x_2_out rank must match residual: expected %zu, got %zu",
-                            residualDimNum, x2Out.GetDimNum()),
-                    return ge::GRAPH_FAILED);
-        for (size_t i = 0; i < residualDimNum; ++i) {
-            OP_CHECK_IF(x2Out.GetDim(i) != residual.GetDim(i),
-                        OP_LOGE(context_->GetNodeName(), "x_2_out shape must match residual"),
-                        return ge::GRAPH_FAILED);
-        }
-    }
-    auto hPreShape = context_->GetOutputShape(H_PRE_OUTPUT_INDEX);
-    OP_CHECK_IF(hPreShape != nullptr && hPreShape->GetOriginShape().GetDimNum() != 0U,
-                OP_LOGE(context_->GetNodeName(), "h_pre is an interface-reserved optional output and must be empty currently"),
+    // Dynamic launch flattens preallocated output shapes before tiling. Validate their element counts here;
+    // ACLNN validates the original ranks/dimensions and rejects the interface-reserved h_pre before launch.
+    OP_CHECK_IF(hInPrime.GetShapeSize() != hOut.GetShapeSize(),
+                OP_LOGE(context_->GetNodeName(), "h_in_prime element count must match h_out"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(x2Out.GetShapeSize() != residual.GetShapeSize(),
+                OP_LOGE(context_->GetNodeName(), "x_2_out element count must match residual"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -326,22 +305,15 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckAttrs()
 
     useRmsMid_ = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX) != nullptr;
     auto hInF32Shape = context_->GetOutputShape(H_IN_F32_OUTPUT_INDEX);
-    const bool hasHInF32 = hInF32Shape != nullptr && hInF32Shape->GetOriginShape().GetDimNum() != 0U;
-    OP_CHECK_IF(returnHInF32_ != hasHInF32,
-                OP_LOGE(context_->GetNodeName(),
-                        "h_in_f32 must be present exactly when return_h_in_f32 is true"),
-                return ge::GRAPH_FAILED);
-    if (hasHInF32) {
+    if (returnHInF32_) {
+        OP_CHECK_IF(hInF32Shape == nullptr,
+                    OP_LOGE(context_->GetNodeName(), "h_in_f32 must be present when return_h_in_f32 is true"),
+                    return ge::GRAPH_FAILED);
         const auto &hOut = context_->GetInputShape(0)->GetStorageShape();
         const auto &hInF32 = hInF32Shape->GetOriginShape();
-        OP_CHECK_IF(hInF32.GetDimNum() != hOut.GetDimNum(),
-                    OP_LOGE(context_->GetNodeName(), "h_in_f32 rank must match h_out"),
+        OP_CHECK_IF(hInF32.GetShapeSize() != hOut.GetShapeSize(),
+                    OP_LOGE(context_->GetNodeName(), "h_in_f32 element count must match h_out"),
                     return ge::GRAPH_FAILED);
-        for (size_t i = 0; i < hOut.GetDimNum(); ++i) {
-            OP_CHECK_IF(hInF32.GetDim(i) != hOut.GetDim(i),
-                        OP_LOGE(context_->GetNodeName(), "h_in_f32 shape must match h_out"),
-                        return ge::GRAPH_FAILED);
-        }
     }
     return ge::GRAPH_SUCCESS;
 }
