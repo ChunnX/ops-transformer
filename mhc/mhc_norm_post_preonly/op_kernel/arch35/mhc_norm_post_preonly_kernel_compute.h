@@ -488,8 +488,8 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
         // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
         LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
         LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
-        DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-        DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+        DataCopy(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], tD);
+        DataCopy(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], tD);
         bufPhiFp32_.EnQue(curPhi0);
         bufPhiFp32_.EnQue(curPhi1);
 
@@ -500,10 +500,8 @@ __aicore__ inline void AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float 
             if (o + 1U < N_MAX) {
                 nextPhi0 = bufPhiFp32_.AllocTensor<float>();
                 nextPhi1 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
-                            copyPad);
-                DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
-                            copyPad);
+                DataCopy(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], tD);
+                DataCopy(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], tD);
                 bufPhiFp32_.EnQue(nextPhi0);
                 bufPhiFp32_.EnQue(nextPhi1);
             }
