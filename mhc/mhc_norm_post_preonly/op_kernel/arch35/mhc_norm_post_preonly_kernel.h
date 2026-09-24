@@ -329,19 +329,6 @@ private:
     /// 原地依次执行标量缩放和gamma缩放。
     // MHC_Post计算
 
-    /// 将四行residual从GM按D行距聚合搬入UB；GM stride单位为byte，UB stride单位为32B block。
-    __aicore__ inline void CopyResidualTile(LocalTensor<T> dst, uint64_t gmBaseOffset, uint32_t tD)
-    {
-        constexpr uint32_t UB_BLOCK_BYTES = 32U;
-        DataCopyExtParams copyParams = {0, 0, 0, 0, 0};
-        copyParams.blockCount = static_cast<uint16_t>(N_MAX);
-        copyParams.blockLen = static_cast<uint32_t>(tD * sizeof(T));
-        copyParams.srcStride = static_cast<uint32_t>((D_ - tD) * sizeof(T));
-        copyParams.dstStride = static_cast<uint32_t>((dimTile_ - tD) * sizeof(T) / UB_BLOCK_BYTES);
-        DataCopyPadExtParams<T> copyPad = {false, 0, 0, 0};
-        DataCopyPad(dst, residualGm_[gmBaseOffset], copyParams, copyPad);
-    }
-
     /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
     __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset,
                                                     uint32_t tOff, uint32_t tD)
@@ -349,7 +336,8 @@ private:
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         constexpr uint32_t N = N_MAX;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-        CopyResidualTile(residual, gmBaseOffset, tD);
+        for (uint32_t n = 0; n < N; ++n)
+            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
         bufResidualBf16_.EnQue(residual);
         residual = bufResidualBf16_.DeQue<T>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -462,7 +450,9 @@ private:
         const uint32_t headBegin = laneId_ * 2U;
         const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
-        CopyResidualTile(residual, gmBaseOffset, tD);
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(residual[n * dimTile_], residualGm_[gmBaseOffset + (uint64_t)n * D_], tD);
+        }
         bufResidualBf16_.EnQue(residual);
 
         MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0,

@@ -44,7 +44,9 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         LocalTensor<T> firstResidual = bufResidualBf16_.AllocTensor<T>();
         const uint32_t firstTD = GetTileD(0U);
         const uint64_t firstBaseOffset = (uint64_t)token * N_ * D_;
-        CopyResidualTile(firstResidual, firstBaseOffset, firstTD);
+        for (uint32_t n = 0; n < N_MAX; ++n) {
+            DataCopy(firstResidual[n * dimTile_], residualGm_[firstBaseOffset + (uint64_t)n * D_], firstTD);
+        }
         bufResidualBf16_.EnQue(firstResidual);
     }
 
@@ -75,11 +77,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 const uint64_t nextBaseOffset = (uint64_t)token * N_ * D_ + nextTOff;
                 if (residualFromQueue) {
                     LocalTensor<T> nextResidual = bufResFp32_.Get<T>();
-                    CopyResidualTile(nextResidual, nextBaseOffset, nextTD);
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
                     SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
                 } else {
                     LocalTensor<T> nextResidual = bufResidualBf16_.AllocTensor<T>();
-                    CopyResidualTile(nextResidual, nextBaseOffset, nextTD);
+                    for (uint32_t n = 0; n < N_MAX; ++n) {
+                        DataCopy(nextResidual[n * dimTile_], residualGm_[nextBaseOffset + (uint64_t)n * D_], nextTD);
+                    }
                     bufResidualBf16_.EnQue(nextResidual);
                 }
             }
