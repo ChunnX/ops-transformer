@@ -599,17 +599,13 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.slice(asc::te::make_coord(mLoc, nLoc),
                                           asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // 去重 combine（运行时开启）不挂 sync 对象：AIV1 无人回 ACK，credit 握手必须整体旁路。
-            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
-                gmmAddrInfo.gmm2CombineSync->WaitForCombine();
-            }
+            // NotifyCombineTileReady 为真即 per-tile credit 握手启用（combine 去重开时调用方实例化为 false）。
+            gmmAddrInfo.gmm2CombineSync->WaitForCombine();
         }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr (NotifyCombineTileReady && !IsShared) {
             // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
-            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
-                gmmAddrInfo.gmm2CombineSync->NotifyCombine();
-            }
+            gmmAddrInfo.gmm2CombineSync->NotifyCombine();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
@@ -704,18 +700,14 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
                                             asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // 去重 combine（运行时开启）不挂 sync 对象：AIV1 无人回 ACK，credit 握手必须整体旁路。
-            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
-                gmmAddrInfo.gmm2CombineSync->WaitForCombine();
-            }
+            // NotifyCombineTileReady 为真即 per-tile credit 握手启用（combine 去重开时调用方实例化为 false）。
+            gmmAddrInfo.gmm2CombineSync->WaitForCombine();
         }
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr (NotifyCombineTileReady && !IsShared) {
             // AIV1 与本 AIC 重放同一 scheduler。FIX 完成后通知 Combine 读取 GM；
             // W4 prologue 仍由 AIV0 独立推进，不参与该一对一完成链路。
-            if (gmmAddrInfo.gmm2CombineSync != nullptr) {
-                gmmAddrInfo.gmm2CombineSync->NotifyCombine();
-            }
+            gmmAddrInfo.gmm2CombineSync->NotifyCombine();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
@@ -793,10 +785,9 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
                 rowOffsetInExpert);
         }
     } else if constexpr (NotifyCombineTileReady) {
-        // combine 去重时 AIV1 不走 per-tile 锁步消费：合并需要跨专家整行读取，去重 combine 在
-        // GMM2 之外按专家粒度独立消费（RunWaveCombineStageDedup）。此时 wave 侧按运行时开关不挂
-        // gmm2CombineSync（AIC credit 握手同步旁路），数据就绪由 NotifyWaveGmm2Ready 的 FIX 排空保证。
-        if (GetSubBlockIdx() == 1U && !IsCombineDedupOn(params->tilingData->dedupMode)) {
+        // NotifyCombineTileReady 为真时 AIV1 逐 tile 锁步消费。combine 去重的独立消费路径
+        // （RunWaveCombineStageDedup）由调用方把本参数实例化为 false，整个分支编译期裁掉。
+        if (GetSubBlockIdx() == 1U) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
                                                      startLoopIdx, tileNum);
@@ -858,12 +849,10 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
         if (GetSubBlockIdx() == 0U) {
             Gmm2Aiv0PrologueA8W4(*pipeline.block, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
-            // 去重 combine 时 AIV1 改走专家粒度独立消费（同 Generic 路径注释）；AIV0 prologue 不受影响。
-            if (!IsCombineDedupOn(params->tilingData->dedupMode)) {
-                using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-                CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
-                                                         startLoopIdx, tileNum);
-            }
+            // NotifyCombineTileReady 为真时 AIV1 逐 tile 锁步消费（combine 去重路径实例化为 false）。
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo, config,
+                                                     startLoopIdx, tileNum);
         }
     }
 }

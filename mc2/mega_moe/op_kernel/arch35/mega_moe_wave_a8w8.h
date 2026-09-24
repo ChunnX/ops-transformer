@@ -333,11 +333,19 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
     bool isWholeExpert =
         gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
-    RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                   MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
-                   CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
-                                                         gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                                                         gmm2Position.tokenIndexInExpert, &params_);
+    // 去重开/关在此一次二分发成编译期参数（per-tile 握手 = 非量化 combine 且 combine 去重关）。
+    if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
+        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                       MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true, false>(
+            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
+            gmm2Position.tokenIndexInExpert, &params_);
+    } else {
+        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                       MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
+                       CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
+                                                             gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
+                                                             gmm2Position.tokenIndexInExpert, &params_);
+    }
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -630,10 +638,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // 去重 combine：专家粒度独立消费，不参与 per-tile credit 握手（挂上会因 AIV1 缺 ACK 而挂死）。
-        if (!dedupCombineActive) {
-            gmm2State.addrInfo.gmm2CombineSync = &gmm2CombineSync;
-        }
+        // 握手对象恒挂；用不用它由 NotifyCombineTileReady 模板参数编译期决定（去重开时为 false，整段裁掉）。
+        gmm2State.addrInfo.gmm2CombineSync = &gmm2CombineSync;
     }
 
     gmm2State.expertState = CreateExpertLoopState(commonConfig_);

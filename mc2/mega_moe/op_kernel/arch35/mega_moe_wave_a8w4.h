@@ -244,8 +244,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
             bool isFinalCombine = waveRange.end.expertIdx >= commonConfig_.moeExpertPerRank &&
                                   sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
             // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                    sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine, pipeline);
+            // 去重开/关在此一次二分发成编译期参数，之后整条 GMM2/Combine 链路都是静态分支。
+            if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
+                RunGmm2CombineForExpert<true>(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                              sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine,
+                                              pipeline);
+            } else {
+                RunGmm2CombineForExpert<false>(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                               sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine,
+                                               pipeline);
+            }
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
@@ -292,10 +300,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm2AddrInfo{};
     gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // 去重 combine：专家粒度独立消费，不参与 per-tile credit 握手（挂上会因 AIV1 缺 ACK 而挂死）。
-        if (!IsCombineDedupOn(params_.tilingData->dedupMode)) {
-            gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
-        }
+        // 握手对象恒挂；用不用它由 NotifyCombineTileReady 模板参数编译期决定（去重开时为 false，整段裁掉）。
+        gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
     }
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
