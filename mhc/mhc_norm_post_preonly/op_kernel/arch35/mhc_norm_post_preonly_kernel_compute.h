@@ -549,7 +549,7 @@ __aicore__ inline void VFComputePostHead(const LocalTensor<float> &dst, const Lo
 }
 
 // 一个VF同时计算相邻两个head，共用h_out与residual的寄存器加载，并保持各自四路累加顺序不变。
-template <typename T>
+template <typename T, bool UNROLL_ROWS>
 __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const LocalTensor<T> &dst1,
                                              const LocalTensor<float> &hOut, const LocalTensor<T> &residual,
                                              const LocalTensor<float> &combWeights, uint32_t rowStride,
@@ -572,6 +572,7 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(hOutReg, hOutAddr + i * VL_FP32);
             Reg::Muls(dst0Reg, hOutReg, postWeight0, mask);
             Reg::Muls(dst1Reg, hOutReg, postWeight1, mask);
+            if constexpr (UNROLL_ROWS) {
             if constexpr (N_MAX > 0U) {
                 constexpr uint32_t row = 0U;
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(residualB16Reg,
@@ -611,6 +612,20 @@ __aicore__ inline void VFComputePostHeadPair(const LocalTensor<T> &dst0, const L
                 Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg, combAddr + row * N_MAX + headIndex + 1U);
                 Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
                 Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
+            }
+            } else {
+                for (uint16_t j = 0; j < static_cast<uint16_t>(N_MAX); ++j) {
+                    const uint32_t row = static_cast<uint32_t>(j);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(
+                        residualB16Reg, residualAddr + row * rowStride + i * VL_FP32);
+                    Reg::Cast<float, T, CAST_B16_TO_FP32>(residualReg, residualB16Reg, mask);
+                    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight0Reg,
+                                                                      combAddr + row * N_MAX + headIndex);
+                    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(weight1Reg,
+                                                                      combAddr + row * N_MAX + headIndex + 1U);
+                    Reg::MulAddDst(dst0Reg, residualReg, weight0Reg, mask);
+                    Reg::MulAddDst(dst1Reg, residualReg, weight1Reg, mask);
+                }
             }
             if constexpr (IsSameT<T, bfloat16_t>::value) {
                 Reg::Cast<T, float, CAST_FP32_TO_B16_RINT>(dst0B16Reg, dst0Reg, mask);
