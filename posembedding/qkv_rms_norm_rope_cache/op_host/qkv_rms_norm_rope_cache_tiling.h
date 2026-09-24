@@ -68,6 +68,7 @@ TILING_DATA_FIELD_DEF(int64_t, numHeadQ);    // Nq
 TILING_DATA_FIELD_DEF(int64_t, numHeadK);    // Nk
 TILING_DATA_FIELD_DEF(int64_t, numHeadV);    // Nv
 TILING_DATA_FIELD_DEF(int64_t, blockSize);   // k_cache/v_cache 的 blockSize
+TILING_DATA_FIELD_DEF(int64_t, blockNum);    // 同上;index 的合法上界 = blockNum * blockSize
 TILING_DATA_FIELD_DEF(int64_t, blockFactor); // 每核负责的 token 数(末核吸收余数)
 TILING_DATA_FIELD_DEF(int64_t, ubFactor);    // 每次 UB 迭代处理的 token 数
 TILING_DATA_FIELD_DEF(int64_t, isOutputQkv); // 是否输出 *_before_quant
@@ -98,6 +99,11 @@ constexpr int64_t TILING_KEY_REGBASE_PA_NZ = 10000;
 struct QkvRmsNormRopeCacheCompileInfo {
     int64_t coreNum = 0;
     int64_t ubSize = 0;
+    // 本编译目标是否为 regbase(arch35)SoC。
+    // 与 coreNum/ubSize 同理:TilingPrepare 阶段 platformInfo 保证非空,那时算好存下,
+    // tiling 阶段 platformInfo 为空时才有得可用 —— 否则 isRegbase_ 会停在默认 false,
+    // 让 arch35 误选 A2 的 DS 模板。框架自己的 CompileInfoCommon.socVersion 就是这个用法。
+    bool isRegbase = false;
 };
 
 enum CacheMode {
@@ -302,6 +308,10 @@ protected:
 private:
     void CalBlockTiling();
     ge::graphStatus CalUbTiling();
+    // A5 侧收紧:cos/sin 第一维必须恰为 B*S(原委见 regbase_tiling.cpp 实现处)。
+    // 基类 CheckCosSinValid 是 A2/A3 共享的,额外放行了 [B,D] 广播形态;
+    // 本模板只在 regbase 内再校一次,不改动公共逻辑。
+    ge::graphStatus CheckCosSinExact();
 
 private:
     QkvRmsNormRopeCacheRegbaseTilingData tilingData_;

@@ -32,6 +32,8 @@ namespace optiling {
 
 bool QkvRmsNormRopeCacheTilingRegbase::IsCapable()
 {
+    // isRegbase_ 由 base 的 GetPlatformInfo 设;platformInfo 为空时它从 CompileInfo 取
+    // (CompileInfo 是 TilingPrepare 阶段用保证非空的 platformInfo 算好的),故恒可靠。
     return isRegbase_;
 }
 
@@ -112,11 +114,42 @@ ge::graphStatus QkvRmsNormRopeCacheTilingRegbase::CalUbTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+// A5(ascend950)侧收紧:cos/sin 的第一维必须恰为 B*S。
+//
+// 基类共享的 CheckCosSinValid(A2/A3 同样在用)额外放行了 batch 内广播形态 [B, D],
+// 但该形态:
+//   ① proto / README / aclnn 三处公开资料均未声明,只承诺 [B*S, D];
+//   ② 内核一律按【全局 token 行】读 cos/sin(tokenStart * D),并未实现广播 ——
+//      而 cos/sin 只有 [0, B) 行有效:S>1 时 tokenStart 会落在 [B, B*S),
+//      读到 cos 张量之外的内存。
+ge::graphStatus QkvRmsNormRopeCacheTilingRegbase::CheckCosSinExact()
+{
+    const gert::StorageShape *cosShapePtr = context_->GetInputShape(COS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, cosShapePtr);
+    const gert::StorageShape *sinShapePtr = context_->GetInputShape(SIN_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, sinShapePtr);
+    const gert::Shape &cosShape = cosShapePtr->GetStorageShape();
+    const gert::Shape &sinShape = sinShapePtr->GetStorageShape();
+
+    // 秩已由基类 CheckCosSinValid 校为 2,此处可直接取 dim 0/1
+    const int64_t expect = batchSize_ * seqLength_;
+    OP_CHECK_IF(
+        cosShape.GetDim(SHAPE_IDX_BS) != expect || sinShape.GetDim(SHAPE_IDX_BS) != expect,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and sin",
+                                              Ops::Base::ToString(cosShape) + " and " + Ops::Base::ToString(sinShape),
+                                              "the 0th dim of input cos and sin must be the same and equal to B*S"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QkvRmsNormRopeCacheTilingRegbase::DoOpTiling()
 {
     // 复用 A2 的 shape / dtype / attr 校验入口,支持面与 A2 严格一致
     OP_CHECK_IF(GetShapeAttrsInfoInner() == ge::GRAPH_FAILED,
                 OP_LOGE(context_->GetNodeName(), "GetShapeAttrsInfoInner failed."), return ge::GRAPH_FAILED);
+    // 基类放行了 [B,D] 广播形态但内核读不了,A5 侧单独拒掉
+    OP_CHECK_IF(CheckCosSinExact() == ge::GRAPH_FAILED,
+                OP_LOGE(context_->GetNodeName(), "cos or sin shape is invalid."), return ge::GRAPH_FAILED);
 
     CalBlockTiling();
     if (CalUbTiling() == ge::GRAPH_FAILED) {
@@ -132,6 +165,7 @@ ge::graphStatus QkvRmsNormRopeCacheTilingRegbase::DoOpTiling()
     tilingData_.set_numHeadK(numHeadK_);
     tilingData_.set_numHeadV(numHeadV_);
     tilingData_.set_blockSize(blockSize_);
+    tilingData_.set_blockNum(blockNum_); // index 合法上界的另一半,内核散射前据此判越界
     tilingData_.set_blockFactor(blockFactor_);
     tilingData_.set_ubFactor(ubFactor_);
     tilingData_.set_isOutputQkv(isOutputQkv_);

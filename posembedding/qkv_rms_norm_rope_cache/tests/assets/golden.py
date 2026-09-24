@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 """QkvRmsNormRopeCache 多通路 golden(TestSpec 范式)。
 
-01_requirement.md §3.3 的通路支持表:
+支持的通路:
 | 通路   | 支持 | 依据 |
 |--------|------|------|
 | kernel | ✅  | op_kernel/arch35/ 有 arch35 regbase 实现 |
@@ -435,7 +435,13 @@ def _to_npu_array(a):
     return a
 
 
-def _fill_index(index, total, block_num, block_size, seed, as_numpy=False):
+# 用例名里声明「index 负向意图」的标记。生成器(gen_full_cases.make_case / make_cases.make_case)
+# 在 index_neg=True 时追加到用例名尾部;运行期 CSV 只有用例名能带这个意图进来
+# (index_neg 不是 CSV 的列,attributes 会一并传给算子、不能塞测试专有字段)。
+NEG_MARK = "_negidx"
+
+
+def _fill_index(index, total, block_num, block_size, seed, neg=False, as_numpy=False):
     """index 契约:[B*S],取值不可重复,值域 [-1, BlockNum*BlockSize);-1 表示跳过。
 
     取值本身由 numpy 生成;as_numpy 决定返回 numpy 还是 torch(NPU 侧要 numpy)。
@@ -443,16 +449,23 @@ def _fill_index(index, total, block_num, block_size, seed, as_numpy=False):
     ⚠️ total > capacity 时(**capacity 装不下全部 token**)也必须无重复:
       · 槽位不够时,超出 capacity 的部分才置 -1(跳过);
       · 但**前 capacity 个仍须是 capacity 的一个排列**。
+
+    neg=True(用例名带 NEG_MARK,即用例声明了 index 负向意图):
+      再**故意**留一批 token 不写(-1),把"跳过 cache 写入"这条分支真正走到 ——
+      否则本算子的测试里永远只写不跳(槽位恒够),该分支一次都测不到。
+      同族 A2/A3 的 ATK golden(input_funcs)候选池含 -1,槽位充足时也会抽到,
+      这里对齐该语义,但保持"取值不可重复"的契约(ATK 那版 random.sample 是可能重复的)。
     """
     rng = np.random.RandomState(seed)
     capacity = block_num * block_size
-    if total <= capacity:
-        vals = rng.permutation(capacity)[:total]
-        idx = vals.astype(np.int64)
-    else:
-        # 前 capacity 个取 [0, capacity) 的一个排列(天然无重复),其余置 -1 跳过。
-        idx = np.full(total, -1, dtype=np.int64)
-        idx[:capacity] = rng.permutation(capacity)
+    # 必须写 cache 的 token 数:槽位够就全写,不够则超出部分只能跳过
+    writable = min(total, capacity)
+    if neg and writable > 1:
+        # 至少留 1 个可写,否则整片跳过、反而测不到正常写入
+        writable = int(rng.randint(1, writable))
+    # 前 writable 个取 [0, capacity) 的一个排列(天然无重复),其余置 -1 跳过
+    idx = np.full(total, -1, dtype=np.int64)
+    idx[:writable] = rng.permutation(capacity)[:writable]
     return idx if as_numpy else torch.from_numpy(idx)
 
 
@@ -526,8 +539,9 @@ def _prepare(tensors, *, for_npu=False, **kwargs):
     total = int(index.size if for_npu else index.numel())
     block_num = int(k_cache.shape[0])
     block_size = int(k_cache.shape[2])
+    neg = NEG_MARK in str(kwargs.get("testcase_name", ""))
     t[5] = _fill_index(
-        index, total, block_num, block_size, _seed_of(kwargs), as_numpy=for_npu
+        index, total, block_num, block_size, _seed_of(kwargs), neg=neg, as_numpy=for_npu
     )
     return t
 
@@ -841,4 +855,4 @@ class QkvRmsNormRopeCacheTorchSpec:
 
 
 # 【不存在】tf / onnx / caffe 通路:算子目录内无 framework 插件源、无 onnx 插件源,
-# 全仓 find -name '*qkv_rms_norm*' 仅命中算子目录自身(见 ../01_requirement.md §3.3)。
+# 全仓 find -name '*qkv_rms_norm*' 仅命中算子目录自身。
