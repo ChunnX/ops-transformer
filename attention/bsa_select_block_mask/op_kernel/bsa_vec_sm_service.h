@@ -1003,13 +1003,14 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
     // 窗口列数恒为 stepCols 倍数（≥stepCols）：保证窗口起点 c0*P%8==0 → Add 源 unitGrp[lg0]
     // 与 acc 偏移均 32B 对齐（小 validPostY 也须如此，c1 由 validPostYCur 收敛）
     const uint32_t colsCap = accCap / nUnits / P;
-    // 上限 512：outRow/outF16 固定尾区容量（[31744,32256) fp32 + [32256,32384) fp16，间距 2KB
-    // —— Cast 相邻/重叠布局实测 VEC 越界（n1 实锤），固定大间距布局稳定）
-    const uint32_t colsPerWin = BSAMax(stepCols, (BSAMin(colsCap, uint32_t(512)) / stepCols) * stepCols);
+    // 上限 256：固定尾区布局（outRow [31744,32000) fp32 + outF16 [32256..) fp16 2KB 间距
+    // + colScale [32512,32768)——Cast 相邻/重叠布局实测 VEC 越界（n1 实锤），固定大间距稳定）
+    const uint32_t colsPerWin = BSAMax(stepCols, (BSAMin(colsCap, uint32_t(256)) / stepCols) * stepCols);
     const uint32_t groupsWinA = (colsPerWin * P + 7) / 8 * 8; // acc 行距（8 倍数）
     LocalTensor<T> acc = ub[accBase];       // [nUnits][groupsWinA]
-    LocalTensor<T> outRow = ub[31744];         // [≤512] fp32 尾区（固定偏移）
-    LocalTensor<OUT_T> outF16 = ub[32256].ReinterpretCast<OUT_T>(); // [≤640B] fp16 尾区（固定偏移）
+    LocalTensor<T> outRow = ub[31744];         // [≤256] fp32 尾区（固定偏移）
+    LocalTensor<T> colScale = ub[32512];       // [≤256] fp32 列缩放（固定尾区，窗口开头标量构建）
+    LocalTensor<OUT_T> outF16 = ub[32256].ReinterpretCast<OUT_T>(); // [512B] fp16 尾区（固定偏移）
 
     for (uint32_t c0 = 0; c0 < validPostYCur; c0 += colsPerWin) {
         const uint32_t c1 = BSAMin(c0 + colsPerWin, validPostYCur);
@@ -1087,30 +1088,29 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
                 const uint32_t u = (sl.localRowStart + uo) / unitRows;
                 const LocalTensor<T> accRow = acc[u * groupsWinA];
                 if (P == 1 && gHi == gLo + (c1 - c0)) {
-                    // 列=组：全宽列向量 1/pbY，尾列按实际宽度标量修正
-                    AscendC::Muls(outRow, accRow, 1.0f / static_cast<int32_t>(pbY), winGroups);
-                    AscendC::PipeBarrier<PIPE_V>();
-                    const uint32_t tailCol = validPostYCur - 1;
-                    if (validYBlocks % pbY != 0 && tailCol >= c0 && tailCol < c1) {
-                        const uint32_t width = validYBlocks - tailCol * pbY;
-                        const float v = outRow.GetValue(tailCol - c0) * static_cast<float>(static_cast<int32_t>(pbY)) /
-                                        static_cast<float>(static_cast<int32_t>(width));
-                        outRow.SetValue(tailCol - c0, v);
+                    // 列=组：预构建每列缩放（尾列按实际宽度）——标量写在任何 V op 之前
+                    //（invCols 同模式），单次向量 Mul。原「Muls 后 GetValue/SetValue 修尾列」
+                    // 在 2201 实测挂死（V 写后标量读触发 VEC 异常，tail 实锤）
+                    for (uint32_t c = c0; c < c1; c++) {
+                        const uint32_t width = BSAMin((c + 1) * pbY, validYBlocks) - c * pbY;
+                        colScale.SetValue(c - c0, 1.0f / static_cast<float>(static_cast<int32_t>(width)));
                     }
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Mul(outRow, accRow, colScale, winGroups);
+                    AscendC::PipeBarrier<PIPE_V>();
                 } else {
                     for (uint32_t c = c0; c < c1; c++) {
                         const uint32_t g0 = (c - c0) * P;
-                        const uint32_t gN = BSAMin(P, gHi - c * P); // 窗口尾列可能不足 P 组
+                        const uint32_t gN = BSAMin(P, gHi - c * P);
                         float sum = 0.0f;
-                        for (uint32_t p = 0; p < gN; p++) {
-                            sum += accRow.GetValue(g0 + p);
+                        for (uint32_t pj = 0; pj < gN; pj++) {
+                            sum += accRow.GetValue(g0 + pj);
                         }
                         const uint32_t width = BSAMin((c + 1) * pbY, validYBlocks) - c * pbY;
                         outRow.SetValue(c - c0, sum / static_cast<float>(static_cast<int32_t>(width)));
                     }
                 }
                 AscendC::PipeBarrier<PIPE_V>(); // S 写 → V 可见
-                // Cast 最小块实测约束：count<8 时 2201 内部按整块处理会越界（n1 实锤），padding 到 16
                 AscendC::Cast(outF16, outRow, AscendC::RoundMode::CAST_ROUND, BSAMax(uint32_t(16), c1 - c0));
                 AscendC::PipeBarrier<PIPE_V>();
                 SetFlag<HardEvent::V_MTE3>(eventSft);
