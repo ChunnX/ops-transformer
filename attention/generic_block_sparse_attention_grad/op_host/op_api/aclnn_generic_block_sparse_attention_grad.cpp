@@ -33,9 +33,17 @@ static constexpr int64_t GSAG_MAX_HEAD_NUM = 128;
 static constexpr int64_t GSAG_SUPPORTED_MASK_TYPE = 1;
 static constexpr int64_t GSAG_SUPPORTED_SOFTMAX_PRECISION = 0;
 
-inline bool TensorOk(const aclTensor *t)
+aclnnStatus CheckRequiredTensor(const aclTensor *t, const char *name)
 {
-    return t != nullptr && t->GetViewShape().GetDimNum() > 0;
+    if (t == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GenericBlockSparseAttentionGrad: %s is nullptr.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (t->GetViewShape().GetDimNum() == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GenericBlockSparseAttentionGrad: %s is empty.", name);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    return ACLNN_SUCCESS;
 }
 
 int64_t GetHeadNumFromQuery(const aclTensor *query, const char *layout)
@@ -68,44 +76,168 @@ int64_t GetHeadNumFromKey(const aclTensor *key, const char *layout)
     return -1;
 }
 
+bool IsSupportedLayout(const char *layout)
+{
+    return layout != nullptr &&
+           (strcmp(layout, "TND") == 0 || strcmp(layout, "BNSD") == 0 || strcmp(layout, "BSND") == 0);
+}
+
 aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout,
                      const aclTensor *out, const aclTensor *lse, const aclTensor *sparseBlockIdx,
                      const aclTensor *sparseBlockCount, const aclTensor *metadataOptional,
-                     const aclTensor *attenMaskOptional, const aclIntArray *blockShape, int64_t isPackedGQA,
-                     char *layoutQ, char *layoutKv, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft,
-                     int64_t winRight, const aclTensor *dQuery, const aclTensor *dKey, const aclTensor *dValue)
+                     const aclTensor *attenMaskOptional, const aclIntArray *blockShape, char *layoutQ, char *layoutKv,
+                     int64_t layoutSparsePattern, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft,
+                     int64_t winRight, int64_t residualBlockMode, bool isConsistentTopk, const aclTensor *dQuery,
+                     const aclTensor *dKey, const aclTensor *dValue)
 {
-    CHECK_RET(TensorOk(query) && TensorOk(key) && TensorOk(value) && TensorOk(dout) && TensorOk(out) && TensorOk(lse),
-              ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(TensorOk(sparseBlockIdx) && TensorOk(sparseBlockCount), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(TensorOk(metadataOptional), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(TensorOk(dQuery) && TensorOk(dKey) && TensorOk(dValue), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(layoutQ != nullptr && layoutKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(strcmp(layoutQ, layoutKv) == 0, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(isPackedGQA == 1, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(maskType == GSAG_SUPPORTED_MASK_TYPE, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(softmaxPrecision == GSAG_SUPPORTED_SOFTMAX_PRECISION, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(winLeft == -1 && winRight == -1, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(attenMaskOptional == nullptr, ACLNN_ERR_PARAM_INVALID);
+    const aclTensor *required[] = {query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount,
+                                  metadataOptional, dQuery, dKey, dValue};
+    const char *requiredNames[] = {"query", "key", "value", "dout", "out", "lse", "sparseBlockIdx",
+                                  "sparseBlockCount", "metadata", "dQuery", "dKey", "dValue"};
+    for (size_t i = 0; i < sizeof(required) / sizeof(required[0]); ++i) {
+        aclnnStatus st = CheckRequiredTensor(required[i], requiredNames[i]);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+    }
+    if (layoutQ == nullptr || layoutKv == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GenericBlockSparseAttentionGrad: layoutQ and layoutKv must not be nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (strcmp(layoutQ, layoutKv) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: layoutQ(%s) must equal layoutKv(%s).", layoutQ, layoutKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!IsSupportedLayout(layoutQ)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: layout must be TND/BSND/BNSD, got layoutQ=%s.", layoutQ);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (layoutSparsePattern != 1 || residualBlockMode != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: only layoutSparsePattern=1 and residualBlockMode=0 are supported, "
+                "got %ld and %ld.",
+                layoutSparsePattern, residualBlockMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // Both TopK hints use the same per-block sparse-count implementation.
+    (void)isConsistentTopk;
+    if (maskType != GSAG_SUPPORTED_MASK_TYPE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: only support maskType == %ld, got %ld.",
+                GSAG_SUPPORTED_MASK_TYPE, maskType);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (softmaxPrecision != GSAG_SUPPORTED_SOFTMAX_PRECISION) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: only support softmaxPrecision == %ld, got %ld.",
+                GSAG_SUPPORTED_SOFTMAX_PRECISION, softmaxPrecision);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (winLeft != -1 || winRight != -1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: only support winLeft == -1 and winRight == -1, got %ld, %ld.",
+                winLeft, winRight);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (attenMaskOptional != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: attenMask must be nullptr.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (blockShape != nullptr) {
-        CHECK_RET(blockShape->Size() >= 2, ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET((*blockShape)[0] == 1, ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET((*blockShape)[1] >= 128 && ((*blockShape)[1] % 64 == 0), ACLNN_ERR_PARAM_INVALID);
+        if (blockShape->Size() != 2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GenericBlockSparseAttentionGrad: blockShape must contain exactly two elements [x, y], got size %zu.",
+                    blockShape->Size());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if ((*blockShape)[0] != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GenericBlockSparseAttentionGrad: only support blockShape[0] == 1, got %ld.", (*blockShape)[0]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if ((*blockShape)[1] < 128 || ((*blockShape)[1] % 64 != 0)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GenericBlockSparseAttentionGrad: blockShape[1] must be >= 128 and 64-aligned, got %ld.",
+                    (*blockShape)[1]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     const int64_t qHeadNum = GetHeadNumFromQuery(query, layoutQ);
     const int64_t kvHeadNum = GetHeadNumFromKey(key, layoutKv);
-    CHECK_RET(qHeadNum > 0 && qHeadNum <= GSAG_MAX_HEAD_NUM, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(kvHeadNum > 0 && kvHeadNum <= GSAG_MAX_HEAD_NUM, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(qHeadNum % kvHeadNum == 0, ACLNN_ERR_PARAM_INVALID);
+    if (qHeadNum <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: failed to get qHeadNum from query shape[%s] with layout=%s.",
+                op::ToString(query->GetViewShape()).GetString(), layoutQ);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qHeadNum > GSAG_MAX_HEAD_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: qHeadNum=%ld must be in [1, %ld], layout=%s, query shape[%s].",
+                qHeadNum, GSAG_MAX_HEAD_NUM, layoutQ, op::ToString(query->GetViewShape()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (kvHeadNum <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: failed to get kvHeadNum from key shape[%s] with layout=%s.",
+                op::ToString(key->GetViewShape()).GetString(), layoutKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (kvHeadNum > GSAG_MAX_HEAD_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: kvHeadNum=%ld must be in [1, %ld], layout=%s, key shape[%s].",
+                kvHeadNum, GSAG_MAX_HEAD_NUM, layoutKv, op::ToString(key->GetViewShape()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qHeadNum % kvHeadNum != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: qHeadNum(%ld) must be divisible by kvHeadNum(%ld).", qHeadNum,
+                kvHeadNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     DataType qDtype = query->GetDataType();
-    CHECK_RET(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(key->GetDataType() == qDtype && value->GetDataType() == qDtype && dout->GetDataType() == qDtype &&
-                  out->GetDataType() == qDtype,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(lse->GetDataType() == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(sparseBlockIdx->GetDataType() == ACL_INT32 && sparseBlockCount->GetDataType() == ACL_INT32,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(metadataOptional->GetDataType() == ACL_INT32, ACLNN_ERR_PARAM_INVALID);
+    if (qDtype != ACL_FLOAT16 && qDtype != ACL_BF16) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: query dtype must be FP16 or BF16, got %s.",
+                op::ToString(qDtype).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (key->GetDataType() != qDtype || value->GetDataType() != qDtype || dout->GetDataType() != qDtype ||
+        out->GetDataType() != qDtype) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: key/value/dout/out dtype must match query (%s), "
+                "got key=%s value=%s dout=%s out=%s.",
+                op::ToString(qDtype).GetString(), op::ToString(key->GetDataType()).GetString(),
+                op::ToString(value->GetDataType()).GetString(), op::ToString(dout->GetDataType()).GetString(),
+                op::ToString(out->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (dQuery->GetDataType() != qDtype || dKey->GetDataType() != qDtype || dValue->GetDataType() != qDtype) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: dQuery/dKey/dValue dtype must match query (%s), "
+                "got dQuery=%s dKey=%s dValue=%s.",
+                op::ToString(qDtype).GetString(), op::ToString(dQuery->GetDataType()).GetString(),
+                op::ToString(dKey->GetDataType()).GetString(), op::ToString(dValue->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (lse->GetDataType() != ACL_FLOAT) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: lse dtype must be FP32, got %s.",
+                op::ToString(lse->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (sparseBlockIdx->GetDataType() != ACL_INT32 || sparseBlockCount->GetDataType() != ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: sparseBlockIdx and sparseBlockCount dtype must be INT32, "
+                "got idx=%s cnt=%s.",
+                op::ToString(sparseBlockIdx->GetDataType()).GetString(),
+                op::ToString(sparseBlockCount->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (metadataOptional->GetDataType() != ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: metadata dtype must be INT32, got %s.",
+                op::ToString(metadataOptional->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -116,24 +248,25 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     const aclTensor *lse, const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
     const aclTensor *metadataOptional, const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsQOptional,
     const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclIntArray *blockShape, int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue,
-    int64_t maskType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, aclTensor *dQuery, aclTensor *dKey,
-    aclTensor *dValue, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *blockShape, char *layoutQ, char *layoutKv, int64_t layoutSparsePattern, double scaleValue,
+    int64_t maskType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t residualBlockMode,
+    bool isConsistentTopk, aclTensor *dQuery, aclTensor *dKey, aclTensor *dValue, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    L2_DFX_PHASE_1(
-        aclnnGenericBlockSparseAttentionGrad,
-        DFX_IN(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
-               cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockShape,
-               isPackedGQA, layoutQ, layoutKv, scaleValue, maskType, softmaxPrecision, winLeft, winRight),
-        DFX_OUT(dQuery, dKey, dValue));
+    L2_DFX_PHASE_1(aclnnGenericBlockSparseAttentionGrad,
+                   DFX_IN(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional,
+                          attenMaskOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional,
+                          sequsedKvOptional, blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType,
+                          softmaxPrecision, winLeft, winRight, residualBlockMode, isConsistentTopk),
+                   DFX_OUT(dQuery, dKey, dValue));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = Validate(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional,
-                        attenMaskOptional, blockShape, isPackedGQA, layoutQ, layoutKv, maskType, softmaxPrecision,
-                        winLeft, winRight, dQuery, dKey, dValue);
+                        attenMaskOptional, blockShape, layoutQ, layoutKv, layoutSparsePattern, maskType,
+                        softmaxPrecision, winLeft, winRight, residualBlockMode, isConsistentTopk, dQuery, dKey, dValue);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto queryC = l0op::Contiguous(query, uniqueExecutor.get());
@@ -170,10 +303,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
         CHECK_RET(sequsedKvC != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto outs = l0op::GenericBlockSparseAttentionGrad(queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC,
-                                                      attenC, cuQC, cuKvC, sequsedQC, sequsedKvC, blockShape,
-                                                      isPackedGQA, layoutQ, layoutKv, scaleValue, maskType,
-                                                      softmaxPrecision, winLeft, winRight, uniqueExecutor.get());
+    auto outs = l0op::GenericBlockSparseAttentionGrad(
+        queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC, attenC, cuQC, cuKvC, sequsedQC, sequsedKvC,
+        blockShape, layoutQ, layoutKv, layoutSparsePattern, scaleValue, maskType, softmaxPrecision, winLeft, winRight,
+        residualBlockMode, isConsistentTopk, uniqueExecutor.get());
     CHECK_RET(outs[0] != nullptr && outs[1] != nullptr && outs[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto dqView = l0op::ViewCopy(outs[0], dQuery, uniqueExecutor.get());

@@ -292,7 +292,7 @@ private:
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
         madParams.k = mProcess;
-        madParams.cmatrixInitVal = runTimeInfo.need_copy_kv;
+        madParams.cmatrixInitVal = runTimeInfo.need_init_l0c;
         madParams.unitFlag = runTimeInfo.is_singlekv_last ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
