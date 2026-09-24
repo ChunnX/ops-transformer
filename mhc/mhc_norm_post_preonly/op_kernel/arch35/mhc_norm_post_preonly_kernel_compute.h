@@ -130,7 +130,7 @@ __aicore__ inline void VFPairSquareB16ReduceSum(const LocalTensor<float> &dst, c
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> src0Reg, src1Reg;
-        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, sumReg, partialReg;
+        Reg::RegTensor<float> src0Fp32Reg, src1Fp32Reg, squareReg, sumReg, partialReg;
         Reg::MaskReg mask;
         Reg::MaskReg fullMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::Duplicate(sumReg, 0.0f, fullMask);
@@ -140,8 +140,10 @@ __aicore__ inline void VFPairSquareB16ReduceSum(const LocalTensor<float> &dst, c
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(src1Reg, src1Addr + i * VL_FP32);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(src0Fp32Reg, src0Reg, mask);
             Reg::Cast<float, T, CAST_B16_TO_FP32>(src1Fp32Reg, src1Reg, mask);
-            Reg::MulAddDst(sumReg, src0Fp32Reg, src0Fp32Reg, mask);
-            Reg::MulAddDst(sumReg, src1Fp32Reg, src1Fp32Reg, mask);
+            Reg::Mul(squareReg, src0Fp32Reg, src0Fp32Reg, mask);
+            Reg::Add<float, Reg::MaskMergeMode::MERGING>(sumReg, sumReg, squareReg, mask);
+            Reg::Mul(squareReg, src1Fp32Reg, src1Fp32Reg, mask);
+            Reg::Add<float, Reg::MaskMergeMode::MERGING>(sumReg, sumReg, squareReg, mask);
         }
         Reg::Reduce<Reg::ReduceType::SUM>(partialReg, sumReg, fullMask);
         Reg::Store(dstAddr, partialReg, 1U);
