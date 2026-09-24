@@ -209,6 +209,15 @@ public:
         }
 
         // softmax 主体：max 归约 → 量化合并 → exp → cast fp8 → NZ 打包
+        // 尾 subLoop 先清零本槽：任意 S2 泛化（2026-09-24）——softmax 只写 validRows 行，
+        // 行 [validRows, 128) 为陈旧数据；C2 的 Mmad k 已对齐到 64（MmadMx 约束），扩展行
+        // 会参与累加，必须为 0（0×陈旧 V=0，rowsum 同免）。整槽 16KB 清零后由 softmax
+        // 覆写前 validRows 行，全宽 subLoop（validRows==128）无需清零
+        if (validRows < s2SubLoopSize) {
+            constexpr uint32_t pSlotSize = s2SubLoopSize * (s1BaseSize / 2);   // 16KB（与 VfSoftmax 槽宽一致）
+            Duplicate(vec1PUb_.template ReinterpretCast<uint8_t>()[subLoopIdx * pSlotSize],
+                      static_cast<uint8_t>(0U), pSlotSize);
+        }
         QfaVectorApi::VfSoftmaxFp16ToFp8(vec1PUb_, softmaxMaxUB_, subLoopUsedMaxUB_, pNzIdxUB_,
                                             mm1ResUB_, pScaleHalf_, validRows, subLoopIdx,
                                             mmSlot, stateSlot);

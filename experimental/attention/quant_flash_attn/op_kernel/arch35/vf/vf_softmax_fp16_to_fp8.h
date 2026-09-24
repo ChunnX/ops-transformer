@@ -167,6 +167,43 @@ __simd_vf__ inline void VfSoftmaxFp16ToFp8VF(__ubuf__ T2 *pDst, __ubuf__ half *a
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
             pDst - 4 * 4096 + (i + 3) * 32, (RegTensor<T2> &)vreg_quant_b, 128, preg_u8_second);
     }
+
+    // ===== 尾行（validRows % 4 余量 1..3 行，任意 S2 泛化 2026-09-24）=====
+    // 主循环 4 行一组（i+3 < validRows）不覆盖余量——原实现直接丢弃尾行（KVS65 的第 65 行
+    // 丢失，输出退化为前 64 key 的 softmax，PctRlt 2.7%）。尾行按配对链逐对处理：
+    // 偶数余量走完整两行链；奇数余量的末行只算 quant_a——Gather 偶位取行 i、奇位全零，
+    // 第二散布把 128 字节零写进行 i+1（落在 [validRows, 128) 零区，与整槽清零语义一致）
+    for (uint32_t i = validRows & ~3U; i < validRows; i += 2U) {
+        LoadAlign(r0, x + i * colStride);
+        Sub(r0, r0, vreg_norm_max, preg_half);
+        Exp(r0, r0, preg_half);
+        Muls(r0, r0, pScale, preg_half);
+        Cast<float, T, h2iZero>(f_tmp0, r0, preg_half);
+        Cast<float, T, h2iOne>(f_tmp1, r0, preg_half);
+        Cast<T2, float, castTraitRintZero>(vreg_quant_a, f_tmp0, preg_float);
+        Cast<T2, float, castTraitRintTwo>(fp8_tmp, f_tmp1, preg_float);
+        Or((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a,
+           (RegTensor<uint8_t> &)fp8_tmp, preg_u8);
+        if (i + 1U < validRows) {
+            LoadAlign(r1, x + (i + 1U) * colStride);
+            Sub(r1, r1, vreg_norm_max, preg_half);
+            Exp(r1, r1, preg_half);
+            Muls(r1, r1, pScale, preg_half);
+            Cast<float, T, h2iZero>(f_tmp0, r1, preg_half);
+            Cast<float, T, h2iOne>(f_tmp1, r1, preg_half);
+            Cast<T2, float, castTraitRintOne>(vreg_quant_b, f_tmp0, preg_float);
+            Cast<T2, float, castTraitRintThree>(fp8_tmp, f_tmp1, preg_float);
+            Or((RegTensor<uint8_t> &)vreg_quant_b, (RegTensor<uint8_t> &)vreg_quant_b,
+               (RegTensor<uint8_t> &)fp8_tmp, preg_u8);
+            Or((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a,
+               (RegTensor<uint8_t> &)vreg_quant_b, preg_u8);
+        }
+        Gather((RegTensor<uint8_t> &)vreg_quant_a, (RegTensor<uint8_t> &)vreg_quant_a, vreg_idx);
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst + i * 32, (RegTensor<T2> &)vreg_quant_a, 128, preg_u8_first);
+        StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY>(
+            pDst - 4 * 4096 + (i + 1) * 32, (RegTensor<T2> &)vreg_quant_a, 128, preg_u8_second);
+    }
 }
 
 /*

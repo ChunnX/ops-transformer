@@ -16,7 +16,8 @@ MxFP8 Softmax FP16 Golden（quant_mode=3 / BNSD / 非 PA）
 功能：生成 BNSD fp8 数据（5D scale）→ CPU fp32 softmax golden → NPU 调用 → 精度对比
 量化：
   - Q/K: 沿 D 每 64 元素一组 shared exponent（e8m0），descale [B,N,S,D//64,2]
-  - V:   沿 S 每 64 元素一组 shared exponent（e8m0），descale [B,N,S//64,D,2]
+  - V:   沿 S 每 64 元素一组 shared exponent（e8m0），descale [B,N,ceil(S/64),D,2]
+         （任意 S 泛化：尾组不足 64 行按 0 补齐计组内 max，2026-09-24）
 """
 
 import logging
@@ -141,9 +142,18 @@ def _get_qk_block_scale(tensor):
 
 
 def _get_v_block_scale(tensor):
-    """V：沿 S 每 QUANT_GROUP_SIZE 元素一组 shared exponent（每组内每 D 一值）-> [B,N,S//G,D]。"""
+    """V：沿 S 每 QUANT_GROUP_SIZE 元素一组 shared exponent（每组内每 D 一值）-> [B,N,ceil(S/G),D]。
+
+    任意 S 泛化（2026-09-24）：组数由 S//G（整除约束）改为 ceil(S/G)——尾组不足 G 行时按 0
+    补齐参与组内 abs-max（0 不抬升 max，尾组 scale 仅由真实行决定）。与 kernel 侧
+    CopyVScaleGmToL1/InitVScaleBuffer 的 ceil 组语义及 GM 布局 [ceil(S/G), D, 2] 对齐；
+    _quantize_v/cpu 参考的 repeat_interleave(G)+截断到 S 写法天然兼容尾组，无需改动。
+    """
     B_, N_, S_, D_ = tensor.shape
-    num_groups = S_ // QUANT_GROUP_SIZE
+    num_groups = (S_ + QUANT_GROUP_SIZE - 1) // QUANT_GROUP_SIZE
+    pad_rows = num_groups * QUANT_GROUP_SIZE - S_
+    if pad_rows:
+        tensor = torch.nn.functional.pad(tensor, (0, 0, 0, pad_rows))  # S 轴尾部补 0
     grouped = tensor.reshape(B_, N_, num_groups, QUANT_GROUP_SIZE, D_)
     max_vals = torch.max(torch.abs(grouped), dim=-2)[0].clamp(min=1e-12)
     shared_exp = torch.floor(torch.log2(max_vals)) - 8
