@@ -547,6 +547,38 @@ __aicore__ inline void GateWeightedSum(const LocalTensor<float> &dst, const Loca
     }
 }
 
+// 双sibling路径中每条lane只计算相邻两个head的R6半和，随后由leader合并。
+template <typename T>
+__aicore__ inline void GateWeightedSumPair(const LocalTensor<float> &dst, const LocalTensor<T> &src,
+                                           uint32_t headStride, const LocalTensor<float> &gate,
+                                           uint32_t gateOffset, uint32_t count)
+{
+    __local_mem__ T *srcAddr = (__local_mem__ T *)src.GetPhyAddr();
+    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
+    __local_mem__ float *gateAddr = (__local_mem__ float *)gate.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        RegTensor<T> srcReg;
+        RegTensor<float> srcFp32Reg, accReg, g0Reg, g1Reg;
+        MaskReg mask;
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g0Reg, gateAddr + gateOffset);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(g1Reg, gateAddr + gateOffset + 1U);
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = UpdateMask<float>(remain);
+            const uint32_t offset = static_cast<uint32_t>(i) * VL_FP32;
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::Mul(accReg, srcFp32Reg, g0Reg, mask);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(srcReg, srcAddr + headStride + offset);
+            Cast<float, T, CAST_B16_TO_FP32>(srcFp32Reg, srcReg, mask);
+            AscendC::Reg::MulAddDst(accReg, srcFp32Reg, g1Reg, mask);
+            DataCopy(dstAddr + offset, accReg, mask);
+        }
+    }
+}
+
 __aicore__ inline void Axpy(const LocalTensor<float> &dst, const LocalTensor<float> &src, float scalar, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();

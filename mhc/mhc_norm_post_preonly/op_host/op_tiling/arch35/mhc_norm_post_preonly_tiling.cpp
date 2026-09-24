@@ -254,6 +254,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::GetWorkspaceSize()
     workspaceSize_ = systemWorkspaceSize_;
     if (enableDualSibling_) {
         workspaceSize_ += static_cast<size_t>(totalTokens_) * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES;
+        workspaceSize_ += static_cast<size_t>(totalTokens_) * embedDim_ * sizeof(float);
     }
     return ge::GRAPH_SUCCESS;
 }
