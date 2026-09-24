@@ -54,6 +54,7 @@ public:
                                 const SparseFlashAttentionTilingDataMla *__restrict tiling, __gm__ uint8_t *gmTiling,
                                 TPipe *tPipe);
     __aicore__ inline void Process();
+    __aicore__ inline void FreeEvent();
 
 private:
     __aicore__ inline void ProcessMainLoop();
@@ -160,7 +161,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, l1BufferManager, query, queryRope);
+        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, queryRope);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
@@ -473,6 +474,18 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     }
 
     ProcessMainLoop();
+    FreeEvent();
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::FreeEvent()
+{
+    if ASCEND_IS_AIC {
+        cubeBlock.UninitLocalBuffer();
+    }
+    if ASCEND_IS_AIV {
+        vecBlock.UninitLocalBuffer();
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
