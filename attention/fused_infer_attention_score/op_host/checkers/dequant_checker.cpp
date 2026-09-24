@@ -1272,7 +1272,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleKVShapeNoPAMXFP8(const FiaTilin
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo)
+ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo) const
 {
     if (!enableQKVMxfp8FullQuant_) {
         return ge::GRAPH_SUCCESS;
@@ -2448,7 +2448,7 @@ ge::graphStatus DequantChecker::CheckStrideForAntiquantPA(const FiaTilingInfo &f
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fiaInfo)
+ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fiaInfo) const
 {
     if (!fiaInfo.hasViewStride) {
         return ge::GRAPH_SUCCESS;
