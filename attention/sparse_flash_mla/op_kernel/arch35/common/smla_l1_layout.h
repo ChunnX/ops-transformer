@@ -33,6 +33,15 @@ static_assert(SMLA_L1_PHASE_MODE <= 1, "Unsupported sparse KV phase policy");
 static_assert(SMLA_L1_PHASE_MODE == 0 || SMLA_L1_SYNC_MODE == 1,
               "KV phase gate requires unified READY and whole-slot FREE");
 
+static_assert(SMLA_L0A_QBP_MODE >= 0 && SMLA_L0A_QBP_MODE <= 2, "Unsupported Qb/P policy");
+static_assert(SMLA_L0A_QBP_PREFETCH == 0 || SMLA_L0A_QBP_PREFETCH == 1, "Unsupported P prefetch policy");
+static_assert(!SMLA_L0A_QBP_PREFETCH || SMLA_L0A_QBP_MODE == 2, "P prefetch requires three resident Q quarters");
+static_assert(SMLA_L0A_QBP_MODE == 0 ||
+              (SMLA_L1_LAYOUT_MODE == 3 && SMLA_L1_SYNC_MODE == 0 && SMLA_L1_PHASE_MODE == 0 &&
+               SMLA_L0A_MODE == 0 && !SMLA_P_EARLY_LOAD && !SMLA_ATTENTION_ABLATION &&
+               !SMLA_ATTENTION_AUDIT && !SMLA_BANK_DIAGNOSTIC),
+              "Qb/P experiments require the uninstrumented accepted L1 layout and synchronization");
+
 namespace SMLAKernel {
 template <uint32_t Mode>
 struct SparseKvL1Layout {

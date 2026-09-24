@@ -691,6 +691,13 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             bmm1GetFlag ^= 1;
                             auto &runInfo2 = runInfo[(taskId + 2) % 4];
                             RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
+                            if constexpr (CubeBlockType::QBP_PREFETCH) {
+                                if (taskId > 2) {
+                                    // Peek PV(t-3), not QK(t-2); only IterateBmm2 advances l1PGetFlag.
+                                    this->cubeBlock.SetQbpPrefetchContext(
+                                        this->l1PBuffers[l1PGetFlag], runInfo[(taskId + 1) % 4]);
+                                }
+                            }
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers[bmm1Slot], smlaNotLastTwoLoop, runInfoNext,
                                                         runInfo2, this->constInfo);
                         }
