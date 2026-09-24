@@ -100,6 +100,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::CopyInApe(const LocalT
 
     this->DataCopyWithInputQue(this->apeUb, this->apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount,
                                dstSingleRowCount);
+    PipeBarrier<PIPE_V>(); // ape UB->UB 拷贝(V) 后需等 V 排空, 后续 AddApe 才能读
 
     prevApeDStartIdx_ = dStartIdx;
     prevApeDDealSize_ = dDealSize;

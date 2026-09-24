@@ -459,6 +459,7 @@ __aicore__ inline bool QuantCompressorBlockVectorFullLoad<COMP>::ProcessSaveStat
         this->SaveState(kvUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset, splitInfo.dBaseSize,
                         splitInfo.dBaseSize, kvStateIdx_);
         AddApeToScore(scoreUb, sliceInfo, splitInfo.dBaseSize, splitInfo.dBaseSize, baseOffset, isApeFullLoad);
+        PipeBarrier<PIPE_V>(); // AddApe(V) 写 scoreUb 后需等 V 排空, SaveState 才能读(UB->GM)
         this->SaveState(scoreUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset,
                         splitInfo.dBaseSize, splitInfo.dBaseSize, scoreStateIdx_);
         sliceIterator.IteratorSlice();
