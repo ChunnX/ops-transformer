@@ -59,7 +59,9 @@ def _abi_size(fields):
 def _workspace_bytes(b, s1, s2, n1, n2, d, dv, libapi):
     public_elems = b * s1 * n1 * d + b * s2 * n2 * d + b * s2 * n2 * dv
     guard_elems = 128 * max(d, dv)
-    return libapi + 4 * (public_elems + guard_elems)
+    # dsink slots: platform aiv count is an input; these checks use 48.
+    dsink_elems = 48 * n1
+    return libapi + 4 * (public_elems + guard_elems + dsink_elems)
 
 
 class TestNewDeterHostContract(unittest.TestCase):
@@ -67,11 +69,11 @@ class TestNewDeterHostContract(unittest.TestCase):
         host_fields = _host_tiling_fields()
         kernel_fields = _kernel_tiling_fields()
         self.assertEqual(host_fields, kernel_fields)
-        self.assertEqual(_abi_size(kernel_fields), 200)
-        self.assertEqual(kernel_fields[-1], "deterMaxRound")
+        self.assertEqual(_abi_size(kernel_fields), 208)
+        self.assertEqual(kernel_fields[-1], "sinkOptional")
 
         source = _text(HOST / "base" / "flash_attn_grad_tiling_regbase.cpp")
-        self.assertIn("sizeof(FlashAttnGradTilingData) == 200", source)
+        self.assertIn("sizeof(FlashAttnGradTilingData) == 208", source)
         self.assertNotIn("deterUsedCube", source)
 
     def test_workspace_is_only_public_accumulators_and_guard(self):
@@ -99,8 +101,8 @@ class TestNewDeterHostContract(unittest.TestCase):
 
         # The result is independent of deterministic mode because no private
         # area participates in the formula. Cover D/Dv equality and mismatch.
-        self.assertEqual(_workspace_bytes(1, 128, 128, 8, 8, 64, 64, 4096), 823296)
-        self.assertEqual(_workspace_bytes(2, 256, 320, 16, 4, 192, 128, 0), 9666560)
+        self.assertEqual(_workspace_bytes(1, 128, 128, 8, 8, 64, 64, 4096), 824832)
+        self.assertEqual(_workspace_bytes(2, 256, 320, 16, 4, 192, 128, 0), 9669632)
 
     def test_epoch_workspace_symbols_are_absent_from_host_contract(self):
         sources = "\n".join(
@@ -151,7 +153,7 @@ class TestNewDeterHostContract(unittest.TestCase):
         self.assertNotIn("bar_all()", kernel)
         # preload3 pre/post, preload2 BN2 pre, preload2 GS1S2 pre/post only.
         self.assertEqual(
-            _text(KERNEL / "fag_kernel.py").count("pl.system.sync_all()"), 5
+            _text(KERNEL / "fag_kernel.py").count("pl.system.sync_all()"), 7
         )
         self.assertIn("SYNC_DQ_DETER_FIX_FLAG = 6", common)
         self.assertIn("SYNC_DK_DETER_FIX_FLAG = 7", common)

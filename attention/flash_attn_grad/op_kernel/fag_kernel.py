@@ -107,7 +107,8 @@ def flash_attn_grad_preload3(
     dout: pl.Ptr[pl.DT_UINT8],
     attn_out: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
-    # 以下 6 个为可选输入。cu_seqlens/seqused(TND)、sinks 本轮不读。
+    # 以下 6 个为可选输入。cu_seqlens/seqused(TND) 本轮不读。
+    # sinks：sinkOptional=1 时按 head 读标量，算 dsink。
     # attn_mask：mask_mode 3/4 时按 [2048,2048] uint8 压缩矩阵搬 UB。
     # metadata：FAG 区含分核 [start,end) 与 pre/post 行区间（412 int32）。
     cu_seqlens_q: pl.Ptr[pl.DT_UINT8],
@@ -117,11 +118,12 @@ def flash_attn_grad_preload3(
     sinks: pl.Ptr[pl.DT_UINT8],
     attn_mask: pl.Ptr[pl.DT_UINT8],
     metadata: pl.Ptr[pl.DT_UINT8],
-    # 3 个输出
+    # 4 个输出。dsink 是 [N1] fp32，没有 sinks 时保持调用方填的 0。
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
     dv: pl.Ptr[pl.DT_UINT8],
-    # 单块 workspace，内部再切三份 fp32 累加区（见下方 make_ptr 分区）
+    dsink: pl.Ptr[pl.DT_UINT8],
+    # 单块 workspace，内部再切 dq/dk/dv 累加区和 dsink 槽位
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: FlashAttnGradTilingData,
     d_align,
@@ -152,6 +154,10 @@ def flash_attn_grad_preload3(
     # 必须与 host 的 dqElems/dkElems/dvElems 逐一对齐。
     dk_workspace = pl.addptr(dq_workspace, wsRowsQ * tiling.d)
     dv_workspace = pl.addptr(dk_workspace, wsRowsKV * tiling.d)
+    # 128 行对齐垫之后是 dsink 槽位 [aivCount x N1]，与 host BuildWorkspacePlan 对齐。
+    dsink_workspace = pl.addptr(
+        dv_workspace, wsRowsKV * tiling.dv + 128 * pl.max(tiling.d, tiling.dv)
+    )
 
     # ---- 统一四维视图 [viewD0, S, viewD2, D] ----
     # BSND 与 BNSD 共用同一套 make_tensor / pl.load(order=...) 代码，
@@ -280,6 +286,12 @@ def flash_attn_grad_preload3(
     tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
     tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
     tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+    tensor_sinks = pl.make_tensor(sinks, [n1Size], [1], dtype=pl.DT_FP32)
+    dsinkElems = constInfo.aivCount * n1Size
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, dsinkElems], [dsinkElems, 1], dtype=pl.DT_FP32
+    )
+    tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     # V1 列宽就是 dv_align。D=256 不进本函数。
     v1w = dv_align
 
@@ -324,6 +336,10 @@ def flash_attn_grad_preload3(
             dV,
             zero_ub.current(),
         )
+        if constInfo.sinkOptional == 1:
+            process_sink_zero(
+                tensor_dsink_ws, constInfo, zero_ub.current(), pl.get_block_idx()
+            )
     pl.system.sync_all()
 
     with pl.section_cube():
@@ -394,6 +410,7 @@ def flash_attn_grad_preload3(
         nzp_ub = make_nzp_ub(v1w)
         sfmg_ub = make_sfmg_ub(v1w)
         lse_ub = make_lse_ub(v1w)
+        sink_part_ub = make_sink_part_ub(v1w)
         mask_ub = make_mask_view(v1w)
         mask_pre_ub = make_mask_pre_view(v1w)
 
@@ -414,6 +431,8 @@ def flash_attn_grad_preload3(
             tensor_dy=tensor_dy,
             tensor_lse=tensor_lse,
             tensor_mask=tensor_mask,
+            tensor_sinks=tensor_sinks,
+            tensor_dsink_ws=tensor_dsink_ws,
         )
         buf = pl.make_tuple(
             mm1_res=mm1_res,
@@ -423,6 +442,7 @@ def flash_attn_grad_preload3(
             nzp_ub=nzp_ub,
             sfmg_ub=sfmg_ub,
             lse_ub=lse_ub,
+            sink_part_ub=sink_part_ub,
             mask_ub=mask_ub,
             mask_pre_ub=mask_pre_ub,
             ds_l1=ds_l1,
@@ -481,6 +501,18 @@ def flash_attn_grad_preload3(
             dkvRowStartP * dV,
             (dkvRowEndP - dkvRowStartP) * dV,
         )
+        if constInfo.sinkOptional == 1:
+            if pl.get_block_idx() == 0:
+                sink_red_ub = make_sink_red_post_ub(v1w)
+                sink_row_ub = make_sink_row_post_ub(v1w)
+                process_sink_reduce(
+                    constInfo,
+                    tensor_dsink_ws,
+                    tensor_dsink_out,
+                    sink_red_ub.current(),
+                    sink_row_ub.current(),
+                    constInfo.aivCount,
+                )
 
 
 def flash_attn_grad_preload2(
@@ -492,9 +524,11 @@ def flash_attn_grad_preload2(
     softmax_lse: pl.Ptr[pl.DT_UINT8],
     attn_mask: pl.Ptr[pl.DT_UINT8],
     metadata: pl.Ptr[pl.DT_UINT8],
+    sinks: pl.Ptr[pl.DT_UINT8],
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
     dv: pl.Ptr[pl.DT_UINT8],
+    dsink: pl.Ptr[pl.DT_UINT8],
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: FlashAttnGradTilingData,
     d_align,
@@ -665,6 +699,22 @@ def flash_attn_grad_preload2(
     else:
         tensor_mask = tensor_lse
 
+    dsink_workspace = pl.addptr(
+        ws_ptr,
+        tiling.b * tiling.s1 * tiling.n1 * tiling.d
+        + tiling.b * tiling.s2 * tiling.n2 * tiling.d
+        + tiling.b * tiling.s2 * tiling.n2 * tiling.dv
+        + 128 * pl.max(tiling.d, tiling.dv),
+    )
+    tensor_sinks = pl.make_tensor(sinks, [constInfo.n1Size], [1], dtype=pl.DT_FP32)
+    dsinkElems = constInfo.aivCount * constInfo.n1Size
+    tensor_dsink_ws = pl.make_tensor(
+        dsink_workspace, [1, dsinkElems], [dsinkElems, 1], dtype=pl.DT_FP32
+    )
+    tensor_dsink_out = pl.make_tensor(
+        dsink, [1, constInfo.n1Size], [constInfo.n1Size, 1], dtype=pl.DT_FP32
+    )
+
     # AIV get_block_idx 按 vector 子核计数，必须换算成物理核，否则
     # cube/vector 的 numBlocks 不一致，set/wait 配不上。
     cBlockIdx = pl.get_block_idx() // pl.get_subblock_num()
@@ -725,6 +775,25 @@ def flash_attn_grad_preload2(
                     constInfo.dvSize,
                     zero_ub.current(),
                 )
+                if constInfo.sinkOptional == 1:
+                    sink_zero_ub = make_pre_zero_buffer_f32()
+                    process_sink_zero(
+                        tensor_dsink_ws,
+                        constInfo,
+                        sink_zero_ub.current(),
+                        pl.get_block_idx(),
+                    )
+            pl.system.sync_all()
+        else:
+            with pl.section_vector():
+                if constInfo.sinkOptional == 1:
+                    sink_zero_ub = make_pre_zero_buffer_f32()
+                    process_sink_zero(
+                        tensor_dsink_ws,
+                        constInfo,
+                        sink_zero_ub.current(),
+                        pl.get_block_idx(),
+                    )
             pl.system.sync_all()
     else:
         with pl.section_vector():
@@ -739,6 +808,10 @@ def flash_attn_grad_preload2(
                 dV,
                 zero_ub.current(),
             )
+            if constInfo.sinkOptional == 1:
+                process_sink_zero(
+                    tensor_dsink_ws, constInfo, zero_ub.current(), pl.get_block_idx()
+                )
         pl.system.sync_all()
 
     with pl.section_cube():
@@ -875,6 +948,7 @@ def flash_attn_grad_preload2(
             mask_ub = make_mask_view_bn2()
             mask_pre_ub = make_mask_pre_view_bn2()
             cast_ub = make_cast_ub_bn2()
+            sink_part_ub = make_sink_part_ub_bn2()
             runInfos = make_run_infos_2()
             sched = pl.make_tuple(
                 meta=meta,
@@ -895,6 +969,8 @@ def flash_attn_grad_preload2(
                 tensor_dq_out=tensor_dq_out,
                 tensor_dk_out=tensor_dk_out,
                 tensor_dq_ws=tensor_dq_ws,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
             )
             buf = pl.make_tuple(
                 mm1_res=mm1_res,
@@ -904,6 +980,7 @@ def flash_attn_grad_preload2(
                 nzp_ub=nzp_ub,
                 sfmg_ub=sfmg_ub,
                 lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
                 mask_ub=mask_ub,
                 mask_pre_ub=mask_pre_ub,
                 cast_ub=cast_ub,
@@ -917,6 +994,7 @@ def flash_attn_grad_preload2(
             nzp_ub = make_nzp_ub(v1w)
             sfmg_ub = make_sfmg_ub(v1w)
             lse_ub = make_lse_ub(v1w)
+            sink_part_ub = make_sink_part_ub(v1w)
             mask_ub = make_mask_view(v1w)
             mask_pre_ub = make_mask_pre_view(v1w)
             runInfos = make_run_infos_2()
@@ -931,6 +1009,8 @@ def flash_attn_grad_preload2(
                 tensor_dy=tensor_dy,
                 tensor_lse=tensor_lse,
                 tensor_mask=tensor_mask,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
             )
             buf = pl.make_tuple(
                 mm1_res=mm1_res,
@@ -940,6 +1020,7 @@ def flash_attn_grad_preload2(
                 nzp_ub=nzp_ub,
                 sfmg_ub=sfmg_ub,
                 lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
                 mask_ub=mask_ub,
                 mask_pre_ub=mask_pre_ub,
                 ds_l1=ds_l1,
@@ -952,6 +1033,7 @@ def flash_attn_grad_preload2(
             nzp_ub = make_nzp_ub(v1w)
             sfmg_ub = make_sfmg_ub(v1w)
             lse_ub = make_lse_ub(v1w)
+            sink_part_ub = make_sink_part_ub(v1w)
             mask_ub = make_mask_view(v1w)
             mask_pre_ub = make_mask_pre_view(v1w)
             runInfos = make_run_infos_2()
@@ -971,6 +1053,8 @@ def flash_attn_grad_preload2(
                 tensor_dy=tensor_dy,
                 tensor_lse=tensor_lse,
                 tensor_mask=tensor_mask,
+                tensor_sinks=tensor_sinks,
+                tensor_dsink_ws=tensor_dsink_ws,
             )
             buf = pl.make_tuple(
                 mm1_res=mm1_res,
@@ -980,6 +1064,7 @@ def flash_attn_grad_preload2(
                 nzp_ub=nzp_ub,
                 sfmg_ub=sfmg_ub,
                 lse_ub=lse_ub,
+                sink_part_ub=sink_part_ub,
                 mask_ub=mask_ub,
                 mask_pre_ub=mask_pre_ub,
                 ds_l1=ds_l1,
@@ -1032,3 +1117,30 @@ def flash_attn_grad_preload2(
                 dkvRowStartP * dV,
                 (dkvRowEndP - dkvRowStartP) * dV,
             )
+            if constInfo.sinkOptional == 1:
+                if pl.get_block_idx() == 0:
+                    sink_red_ub = make_sink_red_post_ub(v1w)
+                    sink_row_ub = make_sink_row_post_ub(v1w)
+                    process_sink_reduce(
+                        constInfo,
+                        tensor_dsink_ws,
+                        tensor_dsink_out,
+                        sink_red_ub.current(),
+                        sink_row_ub.current(),
+                        constInfo.aivCount,
+                    )
+    if template == Tmpl.BN2:
+        pl.system.sync_all()
+        with pl.section_vector():
+            if constInfo.sinkOptional == 1:
+                if pl.get_block_idx() == 0:
+                    sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
+                    sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
+                    process_sink_reduce(
+                        constInfo,
+                        tensor_dsink_ws,
+                        tensor_dsink_out,
+                        sink_red_ub.current(),
+                        sink_row_ub.current(),
+                        constInfo.aivCount,
+                    )

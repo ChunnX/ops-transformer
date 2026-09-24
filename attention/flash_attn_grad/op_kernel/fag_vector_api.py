@@ -390,6 +390,60 @@ def fill_zero_fp16_vf(dst_ub, nvecs: pl.DT_INT64):
         vf.store_align(dst_ub + i * VF_LANES_FP16, vregZero, pregFullExe)
 
 
+@pl.vector_function
+def dsink_partial_vf(
+    sink_part_ub,
+    p_ub,
+    dp_ub,
+    lse_ub,
+    sink: pl.DT_FP32,
+    srcM: pl.DT_INT64,
+    loopTimes: pl.DT_INT64,
+    tailCols: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+):
+    """本 s2 块的 dsink 部分和，写 sink_part_ub 的 lane 0。
+
+    -Σ_m (Σ_n P·dP)·exp(sink-lse[m+rowShift])。列按 VF_LANES 分段，尾段用 tailCols。
+    """
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregOne = vf.update_mask(1, dtype=pl.DT_FP32)
+    pregTail = vf.update_mask(tailCols, dtype=pl.DT_FP32)
+    vregSink = vf.full(sink, dtype=pl.DT_FP32)
+    vregAcc = vf.full(0.0, dtype=pl.DT_FP32)
+    for m in pl.range(0, srcM):
+        vregLse = vf.load_align(lse_ub, m + rowShift, dist=pl.LoadDist.BRC_B32)
+        vregExp = vf.exp_sub(vregSink, vregLse, pregFullExe)
+        for n in pl.range(0, loopTimes):
+            off = m * VECTOR_BASEN + n * VF_LANES
+            vregP = vf.load_align(p_ub, off)
+            vregDp = vf.load_align(dp_ub, off)
+            vregMul = vf.mul(vregP, vregDp, pregFullExe)
+            vregMul = vf.mul(vregMul, vregExp, pregFullExe)
+            vregRed = vf.reduce_sum(vregMul, pregFullExe)
+            vregAcc = vf.add(vregAcc, vregRed, pregOne)
+        offTail = m * VECTOR_BASEN + loopTimes * VF_LANES
+        vregP = vf.load_align(p_ub, offTail)
+        vregDp = vf.load_align(dp_ub, offTail)
+        vregMul = vf.mul(vregP, vregDp, pregTail)
+        vregMul = vf.mul(vregMul, vregExp, pregTail)
+        vregRed = vf.reduce_sum(vregMul, pregTail)
+        vregAcc = vf.add(vregAcc, vregRed, pregOne)
+    vregNeg = vf.muls(vregAcc, -1.0, pregFullExe)
+    vf.store_align(sink_part_ub, vregNeg, pregOne)
+
+
+@pl.vector_function
+def dsink_reduce_add_vf(acc_ub, row_ub, nsegs: pl.DT_INT64):
+    """acc += row。AIV0 按固定行序归约各 AIV 的 dsink 部分和。"""
+    pregFull = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(0, nsegs):
+        vregAcc = vf.load_align(acc_ub, i * VF_LANES)
+        vregRow = vf.load_align(row_ub, i * VF_LANES)
+        vregSum = vf.add(vregAcc, vregRow, pregFull)
+        vf.store_align(acc_ub + i * VF_LANES, vregSum, pregFull)
+
+
 # ---- post / V5 / V6: fp32 -> muls(scale) -> fp16 ----
 
 

@@ -45,6 +45,7 @@ from fag_common import (
     CUBE_BASEN,
     D_CHUNK_MAXW,
     D_PHYS_W,
+    HEAD_DIM_ALIGN,
     NZP_ROWS,
     VECTOR_BASEM,
     VECTOR_BASEN,
@@ -627,6 +628,50 @@ def make_cast_ub_bn2():
         ),
         addrs=[mem.BN2_UB_CAST],
         mutex_ids=mem.MTX_UB_CAST,
+    )
+
+
+def make_sink_part_ub(v1w):
+    """dsink 单任务部分和：[1, VECTOR_BASEN] fp32，只写 lane 0。"""
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_PART_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_PART,
+    )
+
+
+def make_sink_part_ub_bn2():
+    return make_sink_part_ub(HEAD_DIM_ALIGN)
+
+
+def make_sink_row_post_ub(v1w):
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_ROW_POST_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_ROW_POST,
+    )
+
+
+def make_sink_red_post_ub(v1w):
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_RED_POST_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_RED_POST,
     )
 
 

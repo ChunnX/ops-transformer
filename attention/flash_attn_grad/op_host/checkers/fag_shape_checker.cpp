@@ -119,6 +119,22 @@ ge::graphStatus CheckCuSeqlens(const char *opName, gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
+// sinks 是每个 Q head 一个值的一维向量 [N1]。
+ge::graphStatus CheckSinks(const char *opName, gert::TilingContext *context, int64_t qN)
+{
+    if (!IsOptionalTensorExist(context, SINKS_INDEX)) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const auto &shape = context->GetOptionalInputShape(SINKS_INDEX)->GetStorageShape();
+    OP_CHECK_IF(shape.GetDimNum() != 1U,
+                OP_LOGE(opName, "sinks must be 1D (N1,), but got %zu dims.", shape.GetDimNum()),
+                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(shape.GetDim(0) != qN,
+                OP_LOGE(opName, "sinks shape[0] must equal Q head num N1 (%ld), but got %ld.", qN, shape.GetDim(0)),
+                return ge::GRAPH_PARAM_INVALID);
+    return ge::GRAPH_SUCCESS;
+}
+
 } // namespace
 
 ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
@@ -193,6 +209,9 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
         }
     }
 
+    if (CheckSinks(opName, context, qN) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_PARAM_INVALID;
+    }
     return CheckCuSeqlens(opName, context, isTnd);
 }
 

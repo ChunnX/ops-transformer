@@ -30,7 +30,7 @@ namespace {
 // 布局钉死：改了 py 侧字段就会在这里断编译，逼着同步改 Tmp 和这些数字。
 // 注意 scaleValue 是唯一的 4 字节字段，它后面有 4 字节填充 —— 框架的
 // CheckAlignAndGenPlaceHolder 也会插同样的填充，两边才对得上。
-static_assert(sizeof(FlashAttnGradTilingData) == 200,
+static_assert(sizeof(FlashAttnGradTilingData) == 208,
               "TilingData layout changed; update FlashAttnGradTilingDataTmp in flash_attn_grad_tiling.h too.");
 static_assert(offsetof(FlashAttnGradTilingData, scaleValue) == 56, "scaleValue moved; re-check the 4-byte padding.");
 static_assert(offsetof(FlashAttnGradTilingData, gSize) == 64, "gSize moved; re-check the padding after scaleValue.");
@@ -39,6 +39,8 @@ static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128,
 static_assert(offsetof(FlashAttnGradTilingData, totalPerBatchNum) == 184,
               "trailing mask field moved; a field was added or removed.");
 static_assert(offsetof(FlashAttnGradTilingData, deterMaxRound) == 192, "deter fields must follow totalPerBatchNum.");
+static_assert(offsetof(FlashAttnGradTilingData, sinkOptional) == 200,
+              "sinkOptional must stay the last field so earlier offsets keep their values.");
 
 void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan,
              const FagRouteTrace &trace)
@@ -169,6 +171,7 @@ ge::graphStatus FlashAttnGradTilingRegbase::WriteTilingData(const FagParsedInfo 
     tilingData->s2Token = info.s2Token;
     tilingData->totalPerBatchNum = info.totalPerBatchNum;
     tilingData->deterMaxRound = plan.schedule.deterMaxRound;
+    tilingData->sinkOptional = info.hasSinks ? 1 : 0;
     return ge::GRAPH_SUCCESS;
 }
 

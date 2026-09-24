@@ -218,6 +218,9 @@ def set_const_info(tiling, coreNum):
         packedPerHead=packedPerHead,
         bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
         bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
+        n1Size=tiling.n2 * tiling.gSize,
+        sinkOptional=tiling.sinkOptional,
+        aivCount=coreNum * 2,
     )
 
 

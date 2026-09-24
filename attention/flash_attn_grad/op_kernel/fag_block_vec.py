@@ -38,6 +38,8 @@ from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
     broadcast_sub_mul_cast_vf,
     cast_p_vf,
+    dsink_partial_vf,
+    dsink_reduce_add_vf,
     fill_zero_fp16_vf,
     fill_zero_vf,
     muls_cast_vf,
@@ -272,6 +274,75 @@ def process_vec4(constInfo, runInfo, subIdx, p_l1, mm2_ub, nzp_ub):
 # ==================================================================
 #  Pre —— dq/dk/dv 累加区清零
 # ==================================================================
+
+
+def process_sink_partial(
+    constInfo,
+    runInfo,
+    tensor_slots,
+    aiv_idx,
+    p_ub,
+    dp_ub,
+    lse_ub,
+    sink_part_ub,
+    sink_val,
+):
+    """本 s2 块的 dsink 贡献，原子加到槽位区本 AIV 行的 headQ 列。"""
+    rows = runInfo.halfS1RealSize
+    if rows <= 0:
+        return
+    s2Real = runInfo.s2RealSize
+    if s2Real <= 0:
+        return
+    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
+    loopTimes = (s2Real + VF_LANES - 1) // VF_LANES - 1
+    tailCols = s2Real - loopTimes * VF_LANES
+    dsink_partial_vf(
+        sink_part_ub,
+        p_ub,
+        dp_ub,
+        lse_ub,
+        sink_val,
+        rows,
+        loopTimes,
+        tailCols,
+        runInfo.rowShift,
+    )
+    pl.set_validshape(sink_part_ub, [1, 1])
+    pl.store(
+        tensor_slots,
+        sink_part_ub,
+        [0, aiv_idx * constInfo.n1Size + headQ],
+        atomic=pl.AtomicType.AtomicAdd,
+    )
+    pl.set_validshape(sink_part_ub, [1, VECTOR_BASEN])
+
+
+def process_sink_reduce(
+    constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count
+):
+    """AIV0 按行序把各 AIV 的 dsink 部分和加到输出。"""
+    n1Size = constInfo.n1Size
+    nsegs = VECTOR_BASEN // VF_LANES
+    nChunks = (n1Size + VECTOR_BASEN - 1) // VECTOR_BASEN
+    for c in pl.range(0, nChunks):
+        w = pl.min(VECTOR_BASEN, n1Size - c * VECTOR_BASEN)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.load(acc_ub, tensor_slots, [0, c * VECTOR_BASEN])
+        pl.system.bar_mte2()
+        for r in pl.range(1, aiv_count):
+            pl.set_validshape(row_ub, [1, w])
+            pl.load(row_ub, tensor_slots, [0, r * n1Size + c * VECTOR_BASEN])
+            pl.system.bar_mte2()
+            dsink_reduce_add_vf(acc_ub, row_ub, nsegs)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.store(tensor_dsink, acc_ub, [0, c * VECTOR_BASEN])
+
+
+def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
+    """清本 AIV 的 dsink 槽位行，供主循环 atomicAdd。"""
+    fill_zero_vf(zt, (constInfo.n1Size + VF_LANES - 1) // VF_LANES)
+    process_pre(tensor_slots, zt, aiv_idx * constInfo.n1Size, constInfo.n1Size)
 
 
 def process_pre(tensor_ws, zt, elemStart, nElems):

@@ -287,6 +287,10 @@ def _run_preload3_vector_normal(
     lse_ub = buf.lse_ub
     mask_ub = buf.mask_ub
     mask_pre_ub = buf.mask_pre_ub
+    tensor_sinks = gm.tensor_sinks
+    tensor_dsink_ws = gm.tensor_dsink_ws
+    sink_part_ub = buf.sink_part_ub
+    aivIdx = pl.get_block_idx()
     ds_l1 = buf.ds_l1
     p_l1 = buf.p_l1
     taskId = 0
@@ -415,6 +419,20 @@ def _run_preload3_vector_normal(
                     sfmg_ub.current(),
                     nzp_ub.current(),
                 )
+                if constInfo.sinkOptional == 1:
+                    headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
+                    sink_val = pl.getval(tensor_sinks, headQ)
+                    process_sink_partial(
+                        constInfo,
+                        vecInfo,
+                        tensor_dsink_ws,
+                        aivIdx,
+                        mm2_t,
+                        mm1_t,
+                        lse_t,
+                        sink_part_ub.current(),
+                        sink_val,
+                    )
                 if setV2C == 1:
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.V,
@@ -898,6 +916,10 @@ def _run_preload2_vector_bn2(
     lse_ub = buf.lse_ub
     mask_ub = buf.mask_ub
     mask_pre_ub = buf.mask_pre_ub
+    tensor_sinks = gm.tensor_sinks
+    tensor_dsink_ws = gm.tensor_dsink_ws
+    sink_part_ub = buf.sink_part_ub
+    aivIdx = pl.get_block_idx()
     cast_ub = buf.cast_ub
     ds_l1 = buf.ds_l1
     p_l1 = buf.p_l1
@@ -1023,6 +1045,20 @@ def _run_preload2_vector_bn2(
                 nzp_ub.current(),
             )
             pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG)
+            if constInfo.sinkOptional == 1:
+                headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
+                sink_val = pl.getval(tensor_sinks, headQ)
+                process_sink_partial(
+                    constInfo,
+                    vecInfo,
+                    tensor_dsink_ws,
+                    aivIdx,
+                    mm2_t,
+                    mm1_t,
+                    lse_t,
+                    sink_part_ub.current(),
+                    sink_val,
+                )
             if is_bn2_multiblk == 1:
                 if vecInfo.dqLast == 1:
                     pl.system.wait_cross_core(
@@ -1128,6 +1164,10 @@ def _run_preload2_vector_gs_normal(
     lse_ub = buf.lse_ub
     mask_ub = buf.mask_ub
     mask_pre_ub = buf.mask_pre_ub
+    tensor_sinks = gm.tensor_sinks
+    tensor_dsink_ws = gm.tensor_dsink_ws
+    sink_part_ub = buf.sink_part_ub
+    aivIdx = pl.get_block_idx()
     ds_l1 = buf.ds_l1
     p_l1 = buf.p_l1
     taskId = 0
@@ -1251,6 +1291,20 @@ def _run_preload2_vector_gs_normal(
                 sfmg_ub.current(),
                 nzp_ub.current(),
             )
+            if constInfo.sinkOptional == 1:
+                headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
+                sink_val = pl.getval(tensor_sinks, headQ)
+                process_sink_partial(
+                    constInfo,
+                    vecInfo,
+                    tensor_dsink_ws,
+                    aivIdx,
+                    mm2_t,
+                    mm1_t,
+                    lse_t,
+                    sink_part_ub.current(),
+                    sink_val,
+                )
             pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG)
         if isLastLoop == 1:
             drainDone = drainDone + 1

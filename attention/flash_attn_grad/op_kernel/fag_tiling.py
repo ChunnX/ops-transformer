@@ -83,6 +83,8 @@ class FlashAttnGradTilingData:
     totalPerBatchNum: int
     # 保留字段；核上闭式算轮次，当前不读该字段。
     deterMaxRound: int
+    # 1 = 带 sinks 输入，主循环额外算 dsink。运行期标量，不占 tilingkey。必须放最后。
+    sinkOptional: int
 
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
