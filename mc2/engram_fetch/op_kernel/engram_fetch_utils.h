@@ -66,8 +66,7 @@ struct TokenRangeAssignment {
 // Remainder-aware contiguous token range split (same style as GetCoreAssignment):
 // the first (numTokens % totalBlocks) cores take one extra token, so every core participates and the
 // per-core load differs by at most 1.
-__aicore__ inline TokenRangeAssignment GetTokenRangeAssignment(uint32_t totalBlocks, uint32_t aivId,
-                                                                uint32_t numTokens)
+__aicore__ inline TokenRangeAssignment GetTokenRangeAssignment(uint32_t totalBlocks, uint32_t aivId, uint32_t numTokens)
 {
     TokenRangeAssignment result{0, 0};
     if (totalBlocks == 0U) {
