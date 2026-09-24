@@ -5,7 +5,7 @@
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See the License in the root of the software repository for the full text of the License.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcpp"
@@ -34,8 +34,8 @@ struct BnbdDescs {
     IntArrayDesc seqLensKv;
 };
 
-BnbdDescs MakeBnbdDescs(const vector<int64_t> &qShape, const vector<int64_t> &kShape,
-                        const vector<int64_t> &vShape, const vector<int64_t> &blockTableShape)
+BnbdDescs MakeBnbdDescs(const vector<int64_t> &qShape, const vector<int64_t> &kShape, const vector<int64_t> &vShape,
+                        const vector<int64_t> &blockTableShape)
 {
     BnbdDescs descs;
     descs.query = TensorDesc(qShape, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -69,15 +69,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_37_routing_supported)
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
@@ -90,15 +89,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_value_3dim_routing_rejected)
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
@@ -111,15 +109,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_mismatch_routing_reje
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
@@ -132,15 +129,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_exceeded_routing_reje
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.05892556509887896, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.05892556509887896, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
@@ -153,15 +149,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_block_size_misaligned_routing_
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
@@ -174,15 +169,14 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_block_size_exceeded_routing_re
     auto attentionOut = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     char layout[] = "TND";
 
-    auto ut = OP_API_UT(aclnnFusedInferAttentionScoreV5,
-                        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens,
-                              descs.seqLensKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              descs.blockTable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                              int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout,
-                              int64_t{1}, int64_t{0}, int64_t{0}, int64_t{128}, int64_t{0}, false,
-                              int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
-                        OUTPUT(attentionOut, nullptr));
+    auto ut = OP_API_UT(
+        aclnnFusedInferAttentionScoreV5,
+        INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
+              int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}, int64_t{0}),
+        OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
