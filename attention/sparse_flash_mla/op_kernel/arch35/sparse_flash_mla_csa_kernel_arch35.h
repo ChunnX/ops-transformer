@@ -169,7 +169,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE &&
                   LAYOUT_T == SMLA_LAYOUT::TND && KV_LAYOUT_T == SMLA_LAYOUT::TND &&
                   !IS_SPLIT_G && !IS_BATCH_CONSISTENCY && SMLA_L1_LAYOUT_MODE == 3 &&
-                  SMLA_L1_SYNC_MODE == 0 && SMLA_L0A_MODE == 0 && SMLA_L1_PHASE_MODE == 0) {
+                  SMLA_L1_SYNC_MODE == 0 && SMLA_L1_PHASE_MODE == 0) {
         constInfo.ablation.Init(metadata, aicIdx, constInfo.subBlockIdx,
             constInfo.bSize == 1 && constInfo.gSize == 64 && constInfo.n2Size == 1 &&
             constInfo.s1Size == 4096 && constInfo.s2Size == 8192 && constInfo.cmpS2Size == 2048 &&
@@ -691,13 +691,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                             bmm1GetFlag ^= 1;
                             auto &runInfo2 = runInfo[(taskId + 2) % 4];
                             RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
-                            if constexpr (CubeBlockType::QBP_PREFETCH) {
-                                if (taskId > 2) {
-                                    // Peek PV(t-3), not QK(t-2); only IterateBmm2 advances l1PGetFlag.
-                                    this->cubeBlock.SetQbpPrefetchContext(
-                                        this->l1PBuffers[l1PGetFlag], runInfo[(taskId + 1) % 4]);
-                                }
-                            }
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers[bmm1Slot], smlaNotLastTwoLoop, runInfoNext,
                                                         runInfo2, this->constInfo);
                         }

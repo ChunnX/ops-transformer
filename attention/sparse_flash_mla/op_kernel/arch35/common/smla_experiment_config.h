@@ -52,20 +52,10 @@
 #define SMLA_P_EARLY_LOAD 0
 #endif
 
-// 0 off; 1 layout/event control (only Qa resident); 2 all non-shared Q quarters resident.
-// Both enabled modes keep two L0B slots and share one Q quarter with P.
-#ifndef SMLA_L0A_QBP_MODE
-#define SMLA_L0A_QBP_MODE 0
-#endif
-
-// 1: Qb/P at [16,32) KiB; 2: Qc/P at [32,48) KiB. Q quarter addresses stay fixed.
-#ifndef SMLA_L0A_QBP_SHARED_QUARTER
-#define SMLA_L0A_QBP_SHARED_QUARTER 1
-#endif
-
-// Independent candidate: load the preceding task's P after issuing all four QK quarters.
-#ifndef SMLA_L0A_QBP_PREFETCH
-#define SMLA_L0A_QBP_PREFETCH 0
+// Accepted L0A layout: Qa/Qc/Qd resident, Qb/P share [16,32) KiB; no cross-QK P prefetch.
+// Set to 0 only for rollback/diagnostics; unsupported templates retain the generic path.
+#ifndef SMLA_L0A_QBP_REUSE
+#define SMLA_L0A_QBP_REUSE 1
 #endif
 
 // Direct cached-address pair issue for full sparse tiles; invalid rows still fall back.

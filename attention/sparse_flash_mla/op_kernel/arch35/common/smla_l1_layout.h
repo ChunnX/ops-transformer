@@ -19,12 +19,6 @@
 #endif
 static_assert(SMLA_L1_SYNC_MODE <= 2, "Unsupported sparse KV synchronization");
 
-// 0 original AB ping-pong; 1 single A scratch control; 2 single A + two resident Q quarters.
-#ifndef SMLA_L0A_MODE
-#define SMLA_L0A_MODE 0
-#endif
-static_assert(SMLA_L0A_MODE <= 2, "Unsupported sparse L0A policy");
-
 // Diagnostic phase gate: separate full KV MTE3 writes from KV MTE1 reads.
 #ifndef SMLA_L1_PHASE_MODE
 #define SMLA_L1_PHASE_MODE 0
@@ -33,18 +27,12 @@ static_assert(SMLA_L1_PHASE_MODE <= 1, "Unsupported sparse KV phase policy");
 static_assert(SMLA_L1_PHASE_MODE == 0 || SMLA_L1_SYNC_MODE == 1,
               "KV phase gate requires unified READY and whole-slot FREE");
 
-static_assert(SMLA_L0A_QBP_MODE >= 0 && SMLA_L0A_QBP_MODE <= 2, "Unsupported Qb/P policy");
-static_assert(SMLA_L0A_QBP_SHARED_QUARTER == 1 || SMLA_L0A_QBP_SHARED_QUARTER == 2,
-              "P may share only the Qb or Qc quarter");
-static_assert(SMLA_L0A_QBP_PREFETCH == 0 || SMLA_L0A_QBP_PREFETCH == 1, "Unsupported P prefetch policy");
-static_assert(!SMLA_L0A_QBP_PREFETCH || SMLA_L0A_QBP_MODE == 2, "P prefetch requires three resident Q quarters");
-static_assert(!SMLA_L0A_QBP_PREFETCH || SMLA_L0A_QBP_SHARED_QUARTER == 1,
-              "Qc/P experiment keeps cross-QK P prefetch disabled");
-static_assert(SMLA_L0A_QBP_MODE == 0 ||
+static_assert(SMLA_L0A_QBP_REUSE == 0 || SMLA_L0A_QBP_REUSE == 1, "Unsupported Qb/P reuse switch");
+static_assert(SMLA_L0A_QBP_REUSE == 0 ||
               (SMLA_L1_LAYOUT_MODE == 3 && SMLA_L1_SYNC_MODE == 0 && SMLA_L1_PHASE_MODE == 0 &&
-               SMLA_L0A_MODE == 0 && !SMLA_P_EARLY_LOAD && !SMLA_ATTENTION_ABLATION &&
+               !SMLA_P_EARLY_LOAD && !SMLA_ATTENTION_ABLATION &&
                !SMLA_ATTENTION_AUDIT && !SMLA_BANK_DIAGNOSTIC),
-              "Qb/P experiments require the uninstrumented accepted L1 layout and synchronization");
+              "Qb/P reuse requires the uninstrumented accepted L1 layout and synchronization");
 
 namespace SMLAKernel {
 template <uint32_t Mode>
