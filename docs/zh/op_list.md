@@ -388,6 +388,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/mixed_quant_flash_attn/README.md">mixed_quant_flash_attn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持key、value伪量化场景下的全量/增量注意力计算，Q不量化，KV采用MXFP4/HiFP4量化存储。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/mixed_quant_flash_attn_metadata/README.md">mixed_quant_flash_attn_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>mixed_quant_flash_attn算子的前置算子，用于生成mixed_quant_flash_attn的metadata tiling切分方案。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/mixed_quant_sparse_flash_mla/README.md">mixed_quant_sparse_flash_mla</a></td>
     <td>✓</td>
     <td>✓</td>
