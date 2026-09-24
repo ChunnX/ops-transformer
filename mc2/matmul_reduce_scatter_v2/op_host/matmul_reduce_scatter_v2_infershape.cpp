@@ -65,6 +65,10 @@ static ge::graphStatus InferDataTypeMatmulReduceScatterV2(gert::InferDataTypeCon
         }
         yDtype = static_cast<ge::DataType>(*yDtypePtr);
     }
+    if (x1Dtype == ge::DT_HIFLOAT4 && yDtype != ge::DT_FLOAT16 && yDtype != ge::DT_BF16) {
+        OP_LOGE(context->GetNodeName(), "HiFP4 only supports float16 or bfloat16 output.");
+        return ge::GRAPH_FAILED;
+    }
     context->SetOutputDataType(INDEX_OUT, yDtype);
     return GRAPH_SUCCESS;
 }
