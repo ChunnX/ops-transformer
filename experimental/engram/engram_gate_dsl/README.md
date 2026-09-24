@@ -1,11 +1,17 @@
 # engram_gate_dsl
 
-`engram_gate` 是 Engram（DSV4.x 系列模型）残差门算子的 CANNBotDSL 实现：融合
-双路 RMS 归一化、加权点积、signed-sqrt sigmoid 门控与残差更新，为单融合 kernel
-（纯单机向量计算，无通信）。本算子与 mc2 目录下的
+`engram_gate` 是 Engram（DSV4.x 系列模型）残差门算子：融合双路 RMS 归一化、
+加权点积、signed-sqrt sigmoid 门控与残差更新，为单融合 kernel（纯单机向量计算，
+无通信）。本算子与 mc2 目录下的
 [engram_fetch](../../mc2/engram_fetch)/[engram_fetch_grad](../../mc2/engram_fetch_grad)
 等通信算子同属 Engram 机制：fetch 从分布式 Engram 存储取回 key/value，本算子
 在其后完成门控残差计算。
+
+Kernel 与 NPU host 在 `cannbot-arena-ds41` 的 `net/ops/engram_gate.py`，通过
+`@register("engram_gate")` 打进 net wheel（`cannbot-arena-net-ops`）。本目录
+`torch_extension` 只做 `torch.library.custom_op` 算子边界注册，再
+`from ops.engram_gate import engram_gate`。调用前必须安装包含
+`ops.engram_gate` 的 net wheel。
 
 ## 产品支持情况
 
@@ -56,9 +62,9 @@ y    = bf16(x + gate * value)      # image_mask=True 的 token 直接返回 x
 
 ## 依赖
 
-- Python ≥ 3.10，`torch`、`torch_npu`
-- `cannbotdsl`（CANNBotDSL，本算子为 Python DSL 实现，无需 CMake 编译；首次调用
-  按形状 JIT/AOT 编译并缓存）
+- Python ≥ 3.10，`torch`、`torch_npu`、`cannbotdsl`
+- `cannbot-arena-net-ops` wheel（提供 `ops.engram_gate`；导出 T 集合内的形状走
+  包内 AOT 产物，其余形状与 mask 路径由包内源码 JIT）
 
 ## 使用示例
 

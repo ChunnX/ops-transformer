@@ -9,15 +9,10 @@
 import pytest
 import torch
 
-import os
-import sys
-
 import pytest
 import torch
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
-import engram_gate as _module  # noqa: E402
+import ops.engram_gate as _module
 EngramGate = _module.EngramGate
 EngramGateKernel = _module.EngramGateKernel
 engram_gate = _module.engram_gate

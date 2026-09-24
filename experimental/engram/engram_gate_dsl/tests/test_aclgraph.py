@@ -23,7 +23,7 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from engram_gate import engram_gate  # noqa: E402
+from ops.engram_gate import engram_gate  # noqa: E402
 
 torch_npu = pytest.importorskip("torch_npu", reason="torch_npu not installed")
 if not torch.npu.is_available():  # pragma: no cover - host dependent

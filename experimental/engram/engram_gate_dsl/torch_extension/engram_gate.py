@@ -6,15 +6,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-import os
-import sys
-
 import torch
 from torch.library import custom_op
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
-from engram_gate import engram_gate as _engram_gate_impl  # noqa: E402
+from ops.engram_gate import engram_gate as _engram_gate_impl
 
 
 @custom_op("engram_gate_dsl::engram_gate", mutates_args=())
