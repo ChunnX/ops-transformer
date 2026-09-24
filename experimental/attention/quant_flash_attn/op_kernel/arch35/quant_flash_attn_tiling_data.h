@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTN_TILING_REGBASE_H_
 #define FLASH_ATTN_TILING_REGBASE_H_
 
-
 namespace optiling {
 
 // #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
@@ -54,6 +53,7 @@ struct FlashAttnBaseParams {
     uint32_t t2Size;
     uint32_t n2Size;
     uint32_t gSize;
+    uint32_t gRealSize;
     uint32_t s1Size;
     uint32_t s2Size;
     uint32_t dSize;

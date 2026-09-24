@@ -236,6 +236,13 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         s = str(v).strip()
         return s if s != "" else None
 
+    def _parse_bool(v):
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        return str(v).strip().upper() in ("TRUE", "1", "YES")
+
     name = str(g("name")).strip() + testcase_suffix
     B = int(g("batch_size"))
     N_q = int(g("num_heads_q"))
@@ -267,9 +274,9 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         2147483647 if (win_right is None or int(win_right) == -1) else int(win_right)
     )
 
-    q_shape = _half_last_dim(_parse_shape(g("q_shape")))
-    k_shape = _half_last_dim(_parse_shape(g("k_shape")))
-    v_shape = _half_last_dim(_parse_shape(g("v_shape")))
+    q_shape = _parse_shape(g("q_shape"))
+    k_shape = _parse_shape(g("k_shape"))
+    v_shape = _parse_shape(g("v_shape"))
     q_descale_shape = _parse_shape(g("q_descale_shape"))
     k_descale_shape = _parse_shape(g("k_descale_shape"))
     v_descale_shape = _parse_shape(g("v_descale_shape"))
@@ -314,12 +321,12 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         return _norm_dtype(g(key)) or default
 
     dtypes = [
-        "'uint8'",
-        "'uint8'",
-        "'uint8'",  # q/k/v packed
-        "'uint8'",
-        "'uint8'",
-        "'uint8'",  # descale e8m0
+        "'float4_e2m1'",
+        "'float4_e2m1'",
+        "'float4_e2m1'",  # q/k/v (golden 写未打包 codes, TTK pack)
+        "'float8_e8m0'",
+        "'float8_e8m0'",
+        "'float8_e8m0'",  # descale e8m0
         "'int32'",  # block_table
         "'float32'",  # p_scale
         "'int32'",
@@ -367,9 +374,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         "mask_mode": mask_mode,
         "win_left": win_left_val,
         "win_right": win_right_val,
-        "return_softmax_lse": bool(g("return_softmax_lse"))
-        if g("return_softmax_lse") is not None
-        else False,
+        "return_softmax_lse": _parse_bool(g("return_softmax_lse")),
         "softmax_scale": softmax_scale,
         "inner_precise": 0,
         "device_id": 0,
@@ -377,19 +382,19 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
         "data_range_q": str(g("q_datarange")) if g("q_datarange") is not None else 1.0,
         "data_range_k": str(g("k_datarange")) if g("k_datarange") is not None else 1.0,
         "data_range_v": str(g("v_datarange")) if g("v_datarange") is not None else 1.0,
-        "block_table_shape": list(block_table_shape),
+        "block_table_shape": list(block_table_shape) if block_table_shape else [],
         "block_table_dtype": _norm_dtype(g("block_table_dtype")),
         "p_scale_value": (
             float(g("p_scale_value"))
             if g("p_scale_value") is not None and str(g("p_scale_value")).strip() != ""
             else None
         ),
-        "p_scale_shape": list(p_scale_shape),
+        "p_scale_shape": list(p_scale_shape) if p_scale_shape else [],
         "p_scale_dtype": _norm_dtype(g("p_scale_dtype")),
         "p_scale_datarange": _raw_str(g("p_scale_datarange")),
-        "sinks_shape": list(sinks_shape),
+        "sinks_shape": list(sinks_shape) if sinks_shape else [],
         "sinks_dtype": _norm_dtype(g("learnable_sink_dtype")),
-        "attn_mask_shape": list(attn_mask_shape),
+        "attn_mask_shape": list(attn_mask_shape) if attn_mask_shape else [],
         "attn_mask_dtype": _norm_dtype(g("attn_mask_dtype")),
         "q_descale_dtype": _norm_dtype(g("q_descale_dtype")),
         "k_descale_dtype": _norm_dtype(g("k_descale_dtype")),
@@ -427,7 +432,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
 
 def main():
     parser = argparse.ArgumentParser(description="Excel mxfp4 sheet -> TTK e2e CSV")
-    parser.add_argument("--excel", default="B008QFA_红线用例.xlsx", help="Excel 路径")
+    parser.add_argument("--excel", default="redline.xlsx", help="Excel 路径")
     parser.add_argument("--sheet", default="mxfp4", help="sheet 名 (默认 mxfp4)")
     args = parser.parse_args()
 

@@ -17,7 +17,6 @@
 
 #ifndef VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_H
 #define VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_H
-// #include "kernel_tensor.h"
 
 #include "vf_common_def.h"
 
@@ -38,7 +37,6 @@ __simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T *s, 
         mask_reg = CreateMask<uint16_t, MaskPattern::VL128>();
     }
     uint16_t s2Idx = 0;
-    // uint16_t idx2 = 0;
     RegTensor<T> padding_tensor1;
     Duplicate(padding_tensor1, MIN_VALUE, mask_reg);
     Muls(padding_tensor1, padding_tensor1, TWO_VALE, mask_reg);
