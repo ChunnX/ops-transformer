@@ -64,7 +64,9 @@ public:
         const VectorHead head{valueHead, context_.QueryKeyHead(valueHead), subBlock};
         const auto buffers = BindVectorBuffers();
         InitializeVectorConstants(buffers);
-        // InitializeVectorConstants 已取得 V 锁；identity/gather scratch 在本 head 结束时归还。
+        // 等待 S 写完 identity/gather；整个 head 的 V 使用期由本层成对管理。
+        const MutexID scalarMutex = MutexId(AIV_SCALAR_MUTEX);
+        Mutex::Lock<PIPE_V>(scalarMutex);
         CopyInitialStateGmToUb(head, buffers);
         PrepareVectorPrefix<false>(head, 0, buffers);
         Mutex::Lock<PIPE_V>(MutexId(AIV_STATE_MUTEX));
@@ -73,7 +75,7 @@ public:
             ComputeVectorChunk(head, chunk, buffers);
         }
         CopyFinalStateUbToGm(head, buffers);
-        Mutex::Unlock<PIPE_V>(MutexId(AIV_SCALAR_MUTEX));
+        Mutex::Unlock<PIPE_V>(scalarMutex);
     }
 
 private:
@@ -553,7 +555,7 @@ private:
         }
     }
 
-    // 每个 head 初始化一次 I/gather，保留标量 scratch 的 V 所有权直到该 head 结束。
+    // 每个 head 初始化一次 I/gather；本函数只管理初始化所需的 V/S 同步。
     __aicore__ inline void InitializeVectorConstants(const VectorBuffers &buffers)
     {
         auto identity = buffers.identity;
@@ -571,8 +573,6 @@ private:
             gather.SetValue(i, i * BLOCK_SIZE);
         }
         Mutex::Unlock<PIPE_S>(scalarMutex);
-        // identity/gather 只在每个 head 初始化一次；PIPE_V 锁由 Run 在整个 head 结束后释放。
-        Mutex::Lock<PIPE_V>(scalarMutex);
     }
 
     __aicore__ inline void CopyInitialStateGmToUb(const VectorHead &head, const VectorBuffers &buffers)

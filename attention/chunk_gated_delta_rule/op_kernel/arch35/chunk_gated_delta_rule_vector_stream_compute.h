@@ -76,8 +76,15 @@ public:
         }
         const Head head{valueHead, context_.QueryKeyHead(valueHead), subBlock};
         const auto buffers = BindStreamingBuffers();
-        // 初态升为 FP32 后，STATE 的 V 所有权跨批次保留，直到最终写回接管。
         CopyInitialStreamingStateGmToUb(head, buffers);
+        // STATE:[stateRows,DIM] 的 V 使用期覆盖初态转换、全部批次及最终量化。
+        // 在本层成对管理，两个搬运函数分别负责自身的 MTE2/MTE3 同步。
+        const MutexID stateMutex = MutexId(STATE_MUTEX);
+        Mutex::Lock<PIPE_V>(stateMutex);
+        if constexpr (!STATE_FP32) {
+            Cast(buffers.stateFp32, buffers.stateBf16, RoundMode::CAST_NONE, stateRows * DIM);
+            PipeBarrier<PIPE_V>();
+        }
         for (uint32_t token = 0; token < context_.task.seqLength; token += STREAM_BATCH_TOKENS) {
             const uint32_t remaining = context_.task.seqLength - token;
             const Batch batch{valueHead, head.queryKeyHead, subBlock * HALF_DIM, stateRows,
@@ -88,6 +95,12 @@ public:
             EvaluateStreamingBatch(batch, buffers);
             CopyStreamingOutputUbToGm(batch, buffers);
         }
+        // 与 chunk 路径一致，BF16 接口仅在整段序列结束时量化主状态。
+        if constexpr (!STATE_FP32) {
+            Cast(buffers.stateBf16, buffers.stateFp32, RoundMode::CAST_RINT, stateRows * DIM);
+            PipeBarrier<PIPE_V>();
+        }
+        Mutex::Unlock<PIPE_V>(stateMutex);
         CopyFinalStreamingStateUbToGm(head, buffers);
     }
 
@@ -161,7 +174,7 @@ private:
     }
 
     // Streaming 主状态为 FP32 [HALF_DIM,DIM]；Run 已排除空序列和无有效 Dv 行的切片。
-    // 返回时保留 STATE 的 PIPE_V 所有权，批次计算连续更新，最后由 CopyFinalStreamingStateUbToGm 释放。
+    // 清零物理状态区并加载初态；后续类型转换及递推的 V 同步由 Run 管理。
     __aicore__ inline void CopyInitialStreamingStateGmToUb(const Head &head, const Buffers &buffers)
     {
         const uint32_t stateRowBegin = head.subBlock * HALF_DIM;
@@ -182,11 +195,6 @@ private:
                           context_.params.dk, context_.params.dk);
         }
         Mutex::Unlock<PIPE_MTE2>(stateMutex);
-        Mutex::Lock<PIPE_V>(stateMutex);
-        if constexpr (!STATE_FP32) {
-            Cast(buffers.stateFp32, buffers.stateBf16, RoundMode::CAST_NONE, validRows * DIM);
-            PipeBarrier<PIPE_V>();
-        }
     }
 
     __aicore__ inline void CopyFinalStreamingStateUbToGm(const Head &head, const Buffers &buffers)
@@ -194,13 +202,7 @@ private:
         const uint32_t stateRowBegin = head.subBlock * HALF_DIM;
         const uint32_t validRows = context_.StateValidRows(head.subBlock);
         const MutexID stateMutex = MutexId(STATE_MUTEX);
-        // 初态加载后一直持有 STATE 的 PIPE_V 锁；最终量化后释放，再由 MTE3 写回。
-        // 与 chunk 路径一致，BF16 接口只在整段序列结束时量化主状态。
-        if constexpr (!STATE_FP32) {
-            Cast(buffers.stateBf16, buffers.stateFp32, RoundMode::CAST_RINT, validRows * DIM);
-            PipeBarrier<PIPE_V>();
-        }
-        Mutex::Unlock<PIPE_V>(stateMutex);
+        // Run 已完成最终量化并释放 V；此处只管理 MTE3 写回。
         Mutex::Lock<PIPE_MTE3>(stateMutex);
         const uint64_t finalStateOffset = context_.FinalStateOffset(head.valueHead, stateRowBegin);
         if constexpr (STATE_FP32) {

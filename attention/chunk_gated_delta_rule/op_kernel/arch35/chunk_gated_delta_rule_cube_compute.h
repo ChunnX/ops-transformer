@@ -263,8 +263,7 @@ private:
     __aicore__ inline void CopyStateDeltaL0CToUb(LocalTensor<float> result, uint32_t chunk)
     {
         const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
-        // 释放 ComputeStateDelta 保留的 M 锁，然后由 FIX 读取结果。
-        Mutex::Unlock<PIPE_M>(resultMutex);
+        // ComputeStateDelta 已结束 M 的使用期；此处成对管理 FIX 读取。
         Mutex::Lock<PIPE_FIX>(resultMutex);
         if (chunk != 0) {
             WaitForVector<VectorToCubeEvent::StateDeltaBufferFree>();
@@ -419,7 +418,8 @@ private:
         Mutex::Lock<PIPE_M>(resultMutex);
         Mmad(result, operands.lhs, operands.rhs, DIM, DIM, CHUNK);
         Mutex::Unlock<PIPE_M>(operands.mutex);
-        CopyStateDeltaL0CToUb(result, chunk); // 释放 result 的 M 锁，并由 FIX 分发给两个 AIV。
+        Mutex::Unlock<PIPE_M>(resultMutex);
+        CopyStateDeltaL0CToUb(result, chunk); // FIX 分发给两个 AIV。
     }
 
     __aicore__ inline void CopyResidualL0CToUb(LocalTensor<float> l0cResidual, uint32_t slot)
