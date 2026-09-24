@@ -36,7 +36,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
     __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
     __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-    __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData)
+    const QuantFlashAttnTilingData &tilingData)
 {
     using INPUT_T = fp8_e4m3fn_t;
     using OUT_T = bfloat16_t;
@@ -105,7 +105,7 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale,
     __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData)
+    __gm__ uint8_t *workspace, const QuantFlashAttnTilingData &tilingData)
 {
     fa_base_matmul::ResetIdCounter();
 
@@ -166,7 +166,7 @@ __aicore__ inline void quant_flash_attn_hif8(__gm__ uint8_t *query, __gm__ uint8
                                              __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask,
                                              __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
                                              __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                             __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData)
+                                             const QuantFlashAttnTilingData &tilingData)
 {
     using INPUT_T = hifloat8_t;
     using OUT_T = bfloat16_t;
@@ -232,8 +232,8 @@ __global__ __aicore__ void quant_flash_attn(
     __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
-    // SK/静态图兼容：tiling 在外层入口统一经宏取一次（动=GM零拷贝/静=栈拷贝），向下传参
-    GET_TILING_DATA_PTR_WITH_STRUCT(QuantFlashAttnTilingData, tilingData, tiling);
+    // 在线静态编译 tiling 参数传 nullptr, 常量 tiling 由宏提供
+    GET_TILING_DATA(tilingData, tiling);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
