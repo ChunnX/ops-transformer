@@ -32,7 +32,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo {
+struct TilingOptionalParaInfo { // LI V2: tiling params.
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
@@ -151,7 +151,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
+    uint32_t qkHeadDim = 0; // LI V2: paged-KV addresses.
     uint32_t gSize = 0;
     // PageAttention
     bool pageAttentionFlag = false;
@@ -189,7 +189,7 @@ public:
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckLiv2RequiredParameters() const;
     ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                         const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
@@ -226,7 +226,7 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_ = nullptr;
     fe::PlatFormInfos *platformInfo_ = nullptr;
-    LiV2ParaInfo opParamInfo_;
+    LiV2ParaInfo liV2Params_;
 
     // BaseParams
     int64_t bSize_ = 0;

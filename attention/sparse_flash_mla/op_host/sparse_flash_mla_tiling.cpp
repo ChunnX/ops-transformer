@@ -54,26 +54,15 @@ constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
-{
-    size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> shapeVec(shapeSize, 0);
-
-    for (size_t i = 0; i < shapeSize; i++) {
-        shapeVec[i] = shape.GetDim(i);
-    }
-    return shapeVec;
-}
-
 static std::string ToStringRaw(const gert::Shape &shape)
 {
     std::ostringstream oss;
-    auto v = ToVector(shape);
-    if (v.size() > 0) {
-        for (size_t i = 0; i < v.size() - 1; ++i) {
-            oss << v[i] << ", ";
+    const size_t dimCount = shape.GetDimNum();
+    for (size_t dimIndex = 0; dimIndex < dimCount; ++dimIndex) {
+        if (dimIndex != 0U) {
+            oss << ", ";
         }
-        oss << v[v.size() - 1];
+        oss << shape.GetDim(dimIndex);
     }
     return oss.str();
 }
@@ -513,7 +502,7 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
     if (opParamInfo_.oriKv.desc != nullptr) {
-        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType();
+        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType(); // SMLA: compressed-KV descriptors (oriKvType_).
     }
     if (opParamInfo_.cmpKv.desc != nullptr) {
         cmpKvType_ = opParamInfo_.cmpKv.desc->GetDataType();
@@ -872,7 +861,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
-    if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
+    if (opParamInfo_.cmpBlockTable.tensor != nullptr) { // SMLA: compressed-KV descriptors (tensor).
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),
