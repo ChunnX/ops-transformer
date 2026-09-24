@@ -51,7 +51,7 @@ using AscendC::Te::Get;
  * 2. 调度器使用非量化 BlockSchedulerMatmulBasic：按下标 for 循环遍历（blockIdx 步进 coreNums），
  *    GetBlockShape 返回 {m, n, k_, batch_}（K 即每 rank 的 K 段长度），尾块由 Params 静态切分，
  *    不参与尾块切分的核会收到空子片 {0,0,k_,batch_}，kernel 需 continue 跳过。
- * 3. bias 由 mmad 按 isFirstSplitK 自动只加一次，kernel 对所有调用都传真 bias，无需 zero-bias workspace。
+ * 3. bias 由 mmad 按 isFirstSplitK 自动只加一次。
  * 4. 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：调用点直接 commPolicy_.WaitTile(tileIdx)，
  *    编译期由模板参数绑定具体策略，无需继承与 static_cast。
  */
@@ -179,7 +179,7 @@ __aicore__ inline void AllToAllMmKernel<MM_KERNEL_FUNC_TEM_PARAMS>::Run(const Pa
     if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
         mmadParams.biasGmAddr = nullptr;
     }
-    mmadOp_.Init(mmadParams);
+    mmadOp_.Init(mmadParams, isBias_);
 
     ProcessSingleBatch(params, bs, 0, true);
 
