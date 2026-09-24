@@ -230,7 +230,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td><ul><li>1: BF16 scale量化布局。</li><li>2: FLOAT8_E8M0 scale量化布局。</li><li>3: TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</li></ul></td>
+      <td>本文的quant_mode对应ACLNN接口参数quantMode。<ul><li>quant_mode=1: BF16 scale量化布局。</li><li>quant_mode=2: FLOAT8_E8M0 scale量化布局。</li><li>quant_mode=3: TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -511,18 +511,18 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 ## 约束说明
 
-  - `quantMode`支持1、2、3，具体产品支持的量化模式如下。
+  - `quant_mode`支持1、2、3，具体产品支持的量化模式如下。
 
 <!-- npu="950" id7 -->
-- <term>Ascend 950PR&950DT系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quantMode=1/2`。
+- <term>Ascend 950PR&950DT系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quant_mode=1`或`quant_mode=2`。
 <!-- end id7 -->
 
 <!-- npu="A3" id8 -->
-- <term>Atlas A3系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quantMode=3`。
+- <term>Atlas A3系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quant_mode=3`。
 <!-- end id8 -->
 
 <!-- npu="910b" id9 -->
-- <term>Atlas A2系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quantMode=3`。
+- <term>Atlas A2系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quant_mode=3`。
 <!-- end id9 -->
   - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现。
   - B（Batch）表示输入样本批量大小，q、oriKvOptional、cmpKvOptional为配套的aclnnMixedQuantSparseFlashMla算子的入参，S1表示layoutQOptional=BSND时，q shape中的S轴的大小，T1表示layoutQOptional=TND时，q shape中的T轴的大小，S2表示layoutKvOptional=BSND时，oriKvOptional shape中的S轴的大小，S3表示layoutKvOptional=BSND时，cmpKvOptional shape中的S轴的大小，N2表示oriKvOptional、cmpKvOptional shape中的N轴的大小。

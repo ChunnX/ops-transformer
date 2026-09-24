@@ -154,7 +154,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | num_heads_q | int | 必选 | 表示q头数 | int32 | - | -
 | num_heads_kv | int | 必选 | 表示ori_kv/cmp_kv头数 | int32 | - | -
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
-| quant_mode | int | 必选 | 量化模式。支持1、2、3，模式3表示融合TQ4反量化的TurboQuant路径。具体产品支持的量化模式见约束说明。 | int32 | - | -
+| quant_mode | int | 必选 | 表示量化模式。当前支持1、2和3。quant_mode=1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。quant_mode=3表示为融合TQ4反量化的TurboQuant路径生成配套metadata。具体产品支持的量化模式见约束说明。 | int32 | - | -
 | cu_seqlens_q | tensor | 可选 | 表示输入q处理的变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_cmp_kv | tensor | 可选 | 表示输入cmp_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
@@ -186,9 +186,9 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | tensor | 必选 | 表示公式中的q | float16、bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
-| quant_mode | int | 必选 | 量化模式。支持1、2、3；模式1/2保持原FP8量化布局，模式3表示融合TQ4反量化。具体产品支持的量化模式见约束说明。 | int32 | - | -
-| ori_kv | tensor | 可选 | 原始KV。quant_mode=1/2时使用fp8_e4m3；quant_mode=3时必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
-| cmp_kv | tensor | 可选 | 压缩KV。quant_mode=1/2时使用fp8_e4m3；quant_mode=3时必须传入uint8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
+| quant_mode | int | 必选 | 表示量化模式。当前支持1、2和3。quant_mode=1时，量化KV依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，量化KV依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。quant_mode=1和quant_mode=2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。quant_mode=3表示融合TQ4反量化的TurboQuant路径。具体产品支持的量化模式见约束说明。 | int32 | - | -
+| ori_kv | tensor | 可选 | 原始KV。quant_mode=1或quant_mode=2时使用fp8_e4m3；quant_mode=3时必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
+| cmp_kv | tensor | 可选 | 压缩KV。quant_mode=1或quant_mode=2时使用fp8_e4m3（内部数据类型详见quant_mode）；quant_mode=3时必须传入uint8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
 | cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1；quant_mode=3时必须传入且cmp_kv_k仅支持512或1024。 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
 | ori_block_table | tensor | 可选 | 表示PageAttention场景下ori_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(ori_kv_s_max/ori_kv_block_size))</li></ul>
@@ -199,7 +199,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | seqused_q | tensor | 可选 | 表示输入q每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_ori_kv | tensor | 可选 | 表示输入ori_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_cmp_kv | tensor | 可选 | 表示输入cmp_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
-| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。quant_mode=1/2时，当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。quant_mode=3时不支持传入。 | int32 | ND | <ul><li>(b,)</li></ul>
+| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。quant_mode=1或quant_mode=2时，当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。quant_mode=3时不支持传入。 | int32 | ND | <ul><li>(b,)</li></ul>
 | ori_topk_length | tensor | 可选 | 表示ori_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | cmp_topk_length | tensor | 可选 | 表示cmp_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | sinks | tensor | 可选 | 表示各注意力头设置独立可学习虚拟偏移项，用于维持长文本推理时的稳定性 | float32 | ND | <ul><li>(q_n,)</li></ul>
@@ -238,7 +238,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
   - 当ori_mask_mode/cmp_mask_mode为0时，ori_kv_k/cmp_kv_k需要大于等于ori_topk_length/cmp_topk_length的最大值。
-  - quant_mode=1/2时，cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
+  - quant_mode=1或quant_mode=2时，cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
   - attention_out：tensor类型，公式中的输出。数据类型支持float16、bfloat16，数据格式支持ND，shape和dtype与q一致。
   - return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
@@ -249,8 +249,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 <!-- npu="950" id7 -->
 - <term>Ascend 950PR&950DT系列产品</term>：
-  - 仅支持`quant_mode=1/2`。q、attention_out的数据类型为bfloat16，ori_kv、cmp_kv的数据类型为fp8_e4m3。
-  - 下文参数组约束适用于`quant_mode=1/2`场景。
+  - 仅支持`quant_mode=1`或`quant_mode=2`。q、attention_out的数据类型为bfloat16，ori_kv、cmp_kv的数据类型为fp8_e4m3。
+  - 下文参数组约束适用于`quant_mode=1`或`quant_mode=2`场景。
 <!-- end id7 -->
 
 <!-- npu="A3" id8 -->
@@ -326,7 +326,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>q</td>
         <td>
             <ul>
-                <li>dtype支持float16、bfloat16，其中quant_mode=1/2仅支持bfloat16</li>
+                <li>dtype支持float16、bfloat16，其中quant_mode=1或quant_mode=2仅支持bfloat16</li>
                 <li>layout_q为BSND时，q的shape为(b, q_s, q_n, q_d)</li>
                 <li>layout_q为TND时，q的shape为(q_t, q_n, q_d)</li>
             </ul>
@@ -337,7 +337,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td rowspan="4">
             <ul>
                 <li>q、attention_out的dtype、shape需相同</li>
-                <li>quant_mode=1/2时，若cmp_kv传入，ori_kv与cmp_kv的dtype需一致；quant_mode=3时，q、ori_kv、attention_out的dtype需一致，cmp_kv为uint8</li>
+                <li>quant_mode=1或quant_mode=2时，若cmp_kv传入，ori_kv与cmp_kv的dtype需一致；quant_mode=3时，q、ori_kv、attention_out的dtype需一致，cmp_kv为uint8</li>
                 <li>layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致</li>
                 <li>layout_kv为PA_BBND时，layout_q可为BSND或TND</li>
             </ul>
@@ -349,7 +349,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
                 <li>q_s > 0</li>
                 <li>0 < q_n <= 128</li>
                 <li>q_d = 512</li>
-                <li>quant_mode=1/2时q_t > 0，quant_mode=3时q_t >= 0</li>
+                <li>quant_mode=1或quant_mode=2时q_t > 0，quant_mode=3时q_t >= 0</li>
                 <li>ori_kv_s > 0</li>
                 <li>cmp_kv_s > 0</li>
                 <li>kv_n = 1</li>

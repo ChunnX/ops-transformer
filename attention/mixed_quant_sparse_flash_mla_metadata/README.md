@@ -121,7 +121,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。1表示BF16 scale量化布局；2表示FLOAT8_E8M0 scale量化布局；3表示TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</td>
+      <td>表示量化模式。quant_mode=1表示BF16 scale量化布局；quant_mode=2表示FLOAT8_E8M0 scale量化布局；quant_mode=3表示TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -252,7 +252,7 @@
 - `quant_mode`支持1、2、3，具体产品支持的量化模式如下。
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR&950DT系列产品</term>：与`MixedQuantSparseFlashMla`算子配套使用时，仅支持`quant_mode=1/2`。
+- <term>Ascend 950PR&950DT系列产品</term>：与`MixedQuantSparseFlashMla`算子配套使用时，仅支持`quant_mode=1`或`quant_mode=2`。
 <!-- end id1 -->
 
 <!-- npu="A3" id2 -->
