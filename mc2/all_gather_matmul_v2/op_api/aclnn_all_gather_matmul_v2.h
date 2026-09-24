@@ -36,7 +36,7 @@ extern "C" {
  * @param [in] commTurn: 通信数据切分数，即总数据量/单次通信量。
  * @param [in] streamMode: acl流模式的枚举，类型支持：0/1。
  * @param [in] groupSize: 一个反量化系数在x1/x2中不同轴对应的值的数量, 默认值：0。
- * @param [in] commMode: 通信模式。当前支持两种模式: ccu/aiv。
+ * @param [in] commMode: 通信模式。当前支持两种模式: ccu/aiv/ai_cpu。
  * @param [out] output: 计算+通信的结果，数据类型支持：float16, bfloat16, float32。
  * @param [out] gatherOut: 仅gather通信操作的结果，数据类型：同输入。
  * @param [out] amaxOut: matmul输出的最大值，数据类型：float32。

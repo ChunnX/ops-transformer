@@ -32,7 +32,7 @@ void MMPlusAllReduce::SetCommTimeFactorForOther()
 
 void MMPlusAllReduce::SetCommTimeFactor()
 {
-    if (npuArch_ == Ops::Base::DAV_3510) { // A5, __NPU_ARCH__ == 3510
+    if (npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) { // A5, __NPU_ARCH__ == 3510 A6, __NPU_ARCH__ == 9201
         SetCommTimeFactorForA5();
         // end __NPU_ARCH__ == 3510
     } else {
