@@ -112,7 +112,6 @@ protected:
 
 private:
     // GenerateTiling 子计算（超大函数拆分）
-    ge::graphStatus CalcTokenGrouping();
     ge::graphStatus CheckUbBudget();
 };
 

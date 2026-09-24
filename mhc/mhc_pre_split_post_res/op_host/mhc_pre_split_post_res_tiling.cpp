@@ -255,25 +255,6 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckBiasValid()
     return ge::GRAPH_SUCCESS;
 }
 
-// --------------------------GenerateTiling-------------------------------------
-ge::graphStatus MhcPreSplitPostResInfoParser::CalcTokenGrouping()
-{
-    // T轴按核组分配（一组 = coresPerToken 个核处理一个token范围）
-    int64_t coreGroups = static_cast<int64_t>(coreNum_) / coresPerToken_;
-    OP_CHECK_IF(coreGroups == MHC_NUM_ZERO,
-        OP_LOGE(opName_, "coreGroups is 0, coreNum=%lu, coresPerToken=%ld.", coreNum_, coresPerToken_),
-        return ge::GRAPH_FAILED);
-
-    baseT_ = (totalLength_ + coreGroups - MHC_NUM_ONE) / coreGroups;
-    coreTAct_ = (totalLength_ + baseT_ - MHC_NUM_ONE) / baseT_;
-    tailT_ = totalLength_ - (coreTAct_ - MHC_NUM_ONE) * baseT_;
-
-    // 实际启动核数
-    blockDim_ = coreTAct_ * coresPerToken_;
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
 {
     const int64_t xElemBytes = 2;
@@ -347,9 +328,16 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GenerateTiling()
             return ge::GRAPH_FAILED);
     }
 
-    if (CalcTokenGrouping() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    // T轴按核组分配（一组 = coresPerToken 个核处理一个token范围）
+    int64_t coreGroups = static_cast<int64_t>(coreNum_) / coresPerToken_;
+    OP_CHECK_IF(coreGroups == MHC_NUM_ZERO,
+        OP_LOGE(opName_, "coreGroups is 0, coreNum=%lu, coresPerToken=%ld.", coreNum_, coresPerToken_),
+        return ge::GRAPH_FAILED);
+    baseT_ = (totalLength_ + coreGroups - MHC_NUM_ONE) / coreGroups;
+    coreTAct_ = (totalLength_ + baseT_ - MHC_NUM_ONE) / baseT_;
+    tailT_ = totalLength_ - (coreTAct_ - MHC_NUM_ONE) * baseT_;
+    // 实际启动核数
+    blockDim_ = coreTAct_ * coresPerToken_;
 
     const size_t wsBytes = 32;
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
