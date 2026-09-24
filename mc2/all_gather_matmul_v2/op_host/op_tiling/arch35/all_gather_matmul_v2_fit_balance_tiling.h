@@ -54,7 +54,7 @@ static const FitBalanceCalibration CALIBRATION = {
             //   c: 同拟合截距, chunk 1/4MB 值 34.42/20.58, 取中位 20.58
             // 旧占位值(5.841842, 8.590666, 0)系 CCU 时代混含截距, 已按 §4.37 阶段2 激活真实数据。
             {4, 6.647350, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测(CommBench)
-            // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
+                                         // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
         },
         // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
     },
@@ -71,10 +71,11 @@ static const FitBalanceCalibration CALIBRATION = {
          * (glue 恒 cType=aType → cBytes≡aBytes 零信息量; C dtype 只影响写出带宽不影响
          * MACs/cycle, §4.37 缺陷根治裁定, 详见引擎 CubeCalc 注释) */
         {
-            {MatmulDtypeKind::QUANT, false, 1, 1, 8192}, // fp8 量化(glue 真实/假设口径键天然合并)
-            // fp4 glue 真实口径: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0}
-            // [上游演化同步点] 若 GetDataTypeSize 补 fp4 条目(glue 将发 1), 此处需补
-            // {QUANT, true, 1, 1, 16384} 行, 否则 miss 落 4096(同款算力查表缺陷复发)
+            {MatmulDtypeKind::QUANT, false, 1, 1,
+             8192}, // fp8 量化(glue 真实/假设口径键天然合并)
+                    // fp4 glue 真实口径: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0}
+                    // [上游演化同步点] 若 GetDataTypeSize 补 fp4 条目(glue 将发 1), 此处需补
+                    // {QUANT, true, 1, 1, 16384} 行, 否则 miss 落 4096(同款算力查表缺陷复发)
             {MatmulDtypeKind::QUANT, true, 0, 0, 16384},
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
@@ -141,6 +142,12 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
     auto ctx = InitCtx(ToEngineArgs(args), CommPrimitive::ALL_GATHER, CommComputeOrder::COMM_FIRST, commEngine,
                        CALIBRATION, CommTopology::STANDARD_CARD);
     CutResult cut = ToLegacyCut(Schedule(ctx));
+    // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
+    // 走进 fit-balance 新引擎(kUseNewEngine=false 回退老类不打本行); 详细决策与启动税诊断
+    // 仍为 debug 级(下方两行)
+    OPS_LOG_I("AllGatherMatmul", "fit-balance cut: engine=%d, %lu rounds: %lux%lu+%lux%lu atBack=%d",
+              static_cast<int32_t>(commEngine), cut.totalTileCnt, cut.numLongTile, cut.longTileLen, cut.numShortTile,
+              cut.shortTileLen, cut.shortTileAtBack);
     OPS_LOG_D("AllGatherMatmul",
               "Input shape {M, N, K} = {%lu, %lu, %lu}, Final cut: shortTileAtBack %d, longTileLen %lu, "
               "numLongTile %lu, shortTileLen %lu, numShortTile %lu",
