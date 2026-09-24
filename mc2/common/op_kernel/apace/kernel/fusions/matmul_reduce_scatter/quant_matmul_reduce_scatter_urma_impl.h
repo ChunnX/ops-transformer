@@ -19,7 +19,7 @@
  *
  * 架构 (AIC/AIV 分工 + 逐 tile 交错 + 通算重叠流水):
  *   AIC: RunInterleavedMatmul(): for t = 0..T-1:
- *          LOCAL 片段(t) → [L1 排空] → REMOTE 片段(t) → SetFlag(tid)
+ *          LOCAL 片段(t) → [L1 布局变化时排空] → REMOTE 片段(t) → SetFlag(tid)
  *        flag 语义 = 本 block tile t 全部片段完成 (local+remote)
  *   AIV: for t = 0..T-1: RunOneTileTurn(t)
  *          = 全核 WaitFlag(tid) → SyncAll → 通信核 Commit(t)+fence(t-1)+Drain(t)
@@ -31,8 +31,9 @@
  *   - tid flag: tile 通知直接用 tid 作 flagid, 每 id 严格一次 Set ↔ 一次 Wait,
  *     无轮转复用积压; flagid 空间: tiles {0..T-1} (T ≤ QMRS_MAX_COMM_TILES=14), 14 保留给
  *     SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 保留未用
- *   - tiling 切换 L1 排空: local↔remote 片段及 head→tail tiling 切换前
- *     SetFlag/WaitFlag(MTE1_MTE2) 排空 L1, 防止新 tiling 的 MTE2 写覆盖未消费的 L1
+ *   - tiling 切换 L1 排空: 仅当前一 scope 与当前 scope 的 L1 布局字段不同时
+ *     SetFlag/WaitFlag(MTE1_MTE2) 排空 L1, 防止新布局的 MTE2 写覆盖未消费的 L1
+ *     (rank2 下 local/remote tiling 相同, 稳定轮转不排空)
  *   - 并行跨卡 fence: teamBarrier totalJobs=rankSize, R 个通信核各轮询 1 个远端 win;
  *     win 数据区起点随 barrier 区 (2*R*32) 后移对齐 128B
  *   - 通算重叠: reduceSum(t-1) 与 PUT(t) 逐 turn 重叠, 用通信时间掩盖 AIV 归约访存
@@ -164,8 +165,8 @@ private:
     // 14 保留给 SyncAll<true> (SYNC_AIV_ONLY_ALL), 15 保留未用, 二者与 tiles 不相交。
 
     // ---------------- tiling 切换 L1 排空 ----------------
-    // 不同段/不同 tile 的 matmul tiling 切分不同 (L1Params 变化), 切换前须排空 L1:
-    // SetFlag(MTE1_MTE2) 等 MTE1 (L1→L0) 此前的读全部完成, WaitFlag 让切换后新 tiling 的
+    // 仅当前一 scope 与当前 scope 的 L1 布局字段不同 (IsL1LayoutChanged) 时调用:
+    // SetFlag(MTE1_MTE2) 等 MTE1 (L1→L0) 此前的读全部完成, WaitFlag 让新布局的
     // MTE2 (GM→L1) 写等待其结束, 避免覆盖未消费的 L1 数据。
     // event id 6 说明: mmad 流水内部 (qmm_mx_block_mmad_fragment.h) 占用 MTE1_MTE2 的
     // {0..5} (INPUT_BUFFER_0..3 / SCALE_BUFFER_0..1), 本排空用 6 与之不相交; TPipe 队列
@@ -177,6 +178,19 @@ private:
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
+    }
+
+    // L1 布局相关字段判定: 仅 baseM/baseN/baseK/scaleKL1/stepK/nBufferNum/dbL0c 这 7 个
+    // 字段经 l0TileShape={baseM,baseN,baseK} 与 L1Params{kL1=stepK*baseK, scaleKL1,
+    // l1BufNum=nBufferNum} (+dbL0c 控制 L0C 乒乓) 进入 mmad, 决定 L1 缓冲几何; 其余字段
+    // (m/尾块调度/usedCoreNum) 只影响 scope 内循环次数与 L0 寻址, 不改变 L1 布局。
+    // rank2 下 (R-1)*tileM == tileM, local/remote tiling 逐字节相同 → 稳定轮转不排空。
+    static __aicore__ inline bool IsL1LayoutChanged(const QuantMatmulTilingData &a,
+                                                    const QuantMatmulTilingData &b)
+    {
+        return a.baseM != b.baseM || a.baseN != b.baseN || a.baseK != b.baseK ||
+               a.scaleKL1 != b.scaleKL1 || a.stepK != b.stepK || a.nBufferNum != b.nBufferNum ||
+               a.dbL0c != b.dbL0c;
     }
 
     // AIV 流水上下文: 角色分类 + reduceSum 形状派生 (RunAllToAllAndReduceSum 使用)
@@ -355,8 +369,11 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 // flag 语义 = 本 block 的 tile t 两个片段全部完成 (PIPE_FIX 保证 fixpipe 写出后生效);
 // AIV 侧 Wait(tid)+SyncAll 聚合后即证全 AIC 核 tile t 完成 — PUT(t) 源数据与 reduceSum 的
 // selfPartial 依赖同步就绪, 无需独立完成信号。
-// tiling 切换排空: local↔remote 片段 tiling 不同, 每次切换前排队空 L1
-// (与 mmad ctor/dtor flag 纪律冗余的防御性排空, 开销为空转 flag 对); head→tail 切换一次。
+// tiling 切换排空: 仅当前一 scope 与当前 scope 的 L1 布局字段不同 (IsL1LayoutChanged) 时
+// SetFlag/WaitFlag(MTE1_MTE2) 排空 L1, 防止新布局的 MTE2 写覆盖未消费的 L1 —
+// rank2 下 local/remote tiling 逐字节相同, 稳定轮转不触发; head→tail 切换由统一的
+// prev scope 比较覆盖 (无独立特判, 亦无重复排空)。
+// (与 mmad ctor/dtor flag 纪律冗余的防御性排空, 开销为空转 flag 对)。
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunInterleavedMatmul()
 {
@@ -366,24 +383,25 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     const auto &remoteTailT = tilingData_->remoteTailMmTilingData;
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
 
-    bool tailSwitched = false; // head→tail tiling 切换标志
+    // 前一 scope 的 tiling (首个 scope 无前排空); head→tail 切换由统一 prev 比较覆盖
+    const QuantMatmulTilingData *prevScopeT = nullptr;
     for (uint32_t tileIdx = 0; tileIdx < commTurn; ++tileIdx) {
         bool isHeadTile = (tileIdx < baseParams_.headTileCnt);
-        if (!isHeadTile && !tailSwitched) {
-            // head→tail tiling 切换, 前排空 L1
-            DrainL1BeforeTilingSwitch();
-            tailSwitched = true;
-        }
+        const QuantMatmulTilingData &localT = isHeadTile ? localHeadT : localTailT;
+        const QuantMatmulTilingData &remoteT = isHeadTile ? remoteHeadT : remoteTailT;
 
         // LOCAL 片段 (本 rank 段 → workspace 本 rank 槽位), tiling m = tileM
-        if (tileIdx > 0) {
-            DrainL1BeforeTilingSwitch(); // remote(t-1) → local(t) tiling 切换
+        if (prevScopeT != nullptr && IsL1LayoutChanged(*prevScopeT, localT)) {
+            DrainL1BeforeTilingSwitch(); // remote(t-1) → local(t) L1 布局变化 (含 head→tail)
         }
-        RunOneFragScope(tileIdx, true, isHeadTile ? localHeadT : localTailT);
+        RunOneFragScope(tileIdx, true, localT);
 
         // REMOTE 片段 (remote rank 段 → workspace 各 remote rank 槽位), tiling m = (R-1)*tileM
-        DrainL1BeforeTilingSwitch(); // local(t) → remote(t) tiling 切换
-        RunOneFragScope(tileIdx, false, isHeadTile ? remoteHeadT : remoteTailT);
+        if (IsL1LayoutChanged(localT, remoteT)) {
+            DrainL1BeforeTilingSwitch(); // local(t) → remote(t) L1 布局变化
+        }
+        RunOneFragScope(tileIdx, false, remoteT);
+        prevScopeT = &remoteT;
 
         // tile t 全部片段完成 (flagid = tid)
         CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(tileIdx);
