@@ -28,12 +28,41 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
-    // 两个lane按完全相同的分块和顺序冗余执行R1。
     float sumSq0 = 0.0f;
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
-        const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    if (dimLoop_ == 1U) {
+        // D=2560只有一个tile，跨核交换没有可分摊的计算，保持原本的本核归约。
+        sumSq0 = ReduceSumSqFromCache(0U, GetTileD(0U));
+    } else {
+        // 两个lane按tile奇偶分摊R1平方和，再交换最多三个tile的标量partial。
+        // 每个tile内部归约和最终tile累加顺序均与原实现相同；只消除全D冗余Vector计算。
+        float r1TileSum[3] = {0.0f, 0.0f, 0.0f};
+        for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
+            const uint32_t tD = GetTileD(tile);
+            const uint32_t tOff = tile * dimTile_;
+            r1TileSum[tile] = ReduceSumSqFromCache(tOff, tD);
+        }
+
+        LocalTensor<float> r1Buf = bufScalar_.Get<float>();
+        for (uint32_t tile = laneId_; tile < dimLoop_; tile += 2U) {
+            r1Buf.SetValue(tile, r1TileSum[tile]);
+        }
+        SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
+        WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
+        const uint64_t ownR1Slot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+        DataCopy(partial1Gm_[ownR1Slot], r1Buf, PARTIAL_SLOT_ELEMS);
+        CrossCoreSetFlag<0x1, PIPE_MTE3>(R1_READY_FLAG);
+        CrossCoreWaitFlag<0x1, PIPE_MTE2>(R1_READY_FLAG);
+
+        const uint64_t siblingR1Slot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
+        DataCopy(r1Buf, partial1Gm_[siblingR1Slot], PARTIAL_SLOT_ELEMS);
+        SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
+        WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
+        for (uint32_t tile = 1U - laneId_; tile < dimLoop_; tile += 2U) {
+            r1TileSum[tile] = r1Buf.GetValue(tile);
+        }
+        for (uint32_t tile = 0U; tile < dimLoop_; ++tile) {
+            sumSq0 += r1TileSum[tile];
+        }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
@@ -57,8 +86,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
+                                                              invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
