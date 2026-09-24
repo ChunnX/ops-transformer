@@ -72,7 +72,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_37_routing_supported)
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
@@ -92,7 +92,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_value_3dim_routing_rejected)
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
@@ -112,7 +112,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_mismatch_routing_reje
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
@@ -132,7 +132,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_head_dim_exceeded_routing_reje
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.05892556509887896, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
@@ -152,7 +152,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_block_size_misaligned_routing_
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
@@ -172,7 +172,7 @@ TEST_F(fused_infer_attention_score_opapi_ut, bnbd_block_size_exceeded_routing_re
         aclnnFusedInferAttentionScoreV4,
         INPUT(descs.query, descs.key, descs.value, nullptr, nullptr, descs.seqLens, descs.seqLensKv, nullptr, nullptr,
               nullptr, nullptr, nullptr, nullptr, nullptr, descs.blockTable, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
               int64_t{1}, 0.1643989873053573, int64_t{65536}, int64_t{65536}, layout, int64_t{1}, int64_t{0},
               int64_t{0}, int64_t{128}, int64_t{0}, false, int64_t{0}, int64_t{0}, int64_t{0}),
         OUTPUT(attentionOut, nullptr));
