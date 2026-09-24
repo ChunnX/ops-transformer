@@ -90,7 +90,8 @@ def _truncate_runs(runs, cap=20):
     return sorted(by_len[:cap]), len(runs) - cap
 
 
-def render_density_map(mask_np, m, n, tile, width_limit=120):
+def render_density_map(mask_np, m, n, tile, width_limit=120, title="error density map",
+                       legend=".:0  ::1-9  o:10-49  O:50-99  #:>=100 errors/cell"):
     """缩略密度图：自动粗化到 <=40 行 x <=80 列，避免超大矩阵刷屏。"""
     rows_limit, cols_limit = 40, 80
     map_tile = tile
@@ -99,9 +100,9 @@ def render_density_map(mask_np, m, n, tile, width_limit=120):
     counts = _tile_counts(mask_np, m, n, map_tile)
     tr, tc = counts.shape
     coarsen = f" (auto-coarsened from {tile}x{tile} to {map_tile}x{map_tile})" if map_tile != tile else ""
-    print(f"\n[visual] error density map  (each cell = {map_tile}x{map_tile} elements, "
+    print(f"\n[visual] {title}  (each cell = {map_tile}x{map_tile} elements, "
           f"tile grid {tr} rows x {tc} cols){coarsen}")
-    print("[visual]   symbol: .:0  ::1-9  o:10-49  O:50-99  #:>=100 errors/cell")
+    print(f"[visual]   {legend}")
     cell_w = 3  # 每列固定 3 字符（f"{c:>3}" / f"{sym:^3}"）
     page = max(1, (width_limit - 8) // cell_w)
     for c0 in range(0, tc, page):
@@ -114,18 +115,18 @@ def render_density_map(mask_np, m, n, tile, width_limit=120):
             print(line)
 
 
-def render_profiles(mask_np, m, n, tile):
-    """行/列错误 profile：元素级连续段 + 每 tile 的错误 tile 分布。"""
+def render_profiles(mask_np, m, n, tile, label="error"):
+    """行/列 profile：元素级连续段 + 每 tile 的分布。label 用于区分 error/zero-output。"""
     row_any = mask_np.any(axis=1)
     col_any = mask_np.any(axis=0)
     bad_rows = int(row_any.sum())
     bad_cols = int(col_any.sum())
-    print(f"\n[visual] row/col profile: bad rows {bad_rows}/{m} ({100.0*bad_rows/m:.1f}%), "
+    print(f"\n[visual] {label} row/col profile: bad rows {bad_rows}/{m} ({100.0*bad_rows/m:.1f}%), "
           f"bad cols {bad_cols}/{n} ({100.0*bad_cols/n:.1f}%)")
 
     # 接近全坏：折叠明细，避免刷屏
     if bad_rows >= 0.98 * m and bad_cols >= 0.98 * n:
-        print("[visual]   (corruption covers ~entire matrix; row/col runs and tile lists omitted)")
+        print(f"[visual]   ({label} covers ~entire matrix; runs and tile lists omitted)")
         return
 
     rr, dropped_r = _truncate_runs(_bool_runs(row_any))
@@ -133,15 +134,15 @@ def render_profiles(mask_np, m, n, tile):
         seg = " ".join(f"[{a},{b}]({b-a+1})" for a, b in rr)
         if dropped_r:
             seg += f" ... +{dropped_r} more"
-        print(f"[visual]   bad-row runs: {seg}")
+        print(f"[visual]   {label} bad-row runs: {seg}")
     cr, dropped_c = _truncate_runs(_bool_runs(col_any))
     if cr:
         seg = " ".join(f"[{a},{b}]({b-a+1})" for a, b in cr)
         if dropped_c:
             seg += f" ... +{dropped_c} more"
-        print(f"[visual]   bad-col runs: {seg}")
+        print(f"[visual]   {label} bad-col runs: {seg}")
 
-    # 每 tile 的错误 tile 分布（仅打印有错误的，cap 8）
+    # 每 tile 的分布（仅打印有异常的，cap 8）
     counts = _tile_counts(mask_np, m, n, tile)
     rnz = [(r, int((counts[r] > 0).sum())) for r in range(counts.shape[0]) if (counts[r] > 0).any()]
     cnz = [(c, int((counts[:, c] > 0).sum())) for c in range(counts.shape[1]) if (counts[:, c] > 0).any()]
@@ -150,13 +151,31 @@ def render_profiles(mask_np, m, n, tile):
         seg = " ".join(f"row-tile{r}({cnt})" for r, cnt in rnz[:8])
         if len(rnz) > 8:
             seg += f" ... +{len(rnz)-8} more"
-        print(f"[visual]   row-tiles containing errors (tile={tile}): {seg}")
+        print(f"[visual]   {label} row-tiles (tile={tile}): {seg}")
     if cnz:
         cnz = sorted(cnz, key=lambda x: x[1], reverse=True)
         seg = " ".join(f"col-tile{c}({cnt})" for c, cnt in cnz[:8])
         if len(cnz) > 8:
             seg += f" ... +{len(cnz)-8} more"
-        print(f"[visual]   col-tiles containing errors (tile={tile}): {seg}")
+        print(f"[visual]   {label} col-tiles (tile={tile}): {seg}")
+
+
+def render_zero_output(npu_np, m, n, tile):
+    """输出零值分析：全坏/未覆盖时最有判别力——区分'被 fixpipe 写了'和'没写（0）'。"""
+    zero = npu_np == 0.0
+    total = int(zero.sum())
+    frac = float(total) / zero.size
+    if frac < 0.01:
+        return
+    print(f"\n[visual] output-zero analysis: {total}/{zero.size} elements are EXACTLY 0.0 "
+          f"({100.0*frac:.1f}%) <- likely unwritten/zeroed by kernel")
+    if frac >= 0.99:
+        print("[visual]   ~entire output is 0.0 -> GM mostly unwritten; check fixpipe coverage / "
+              "write target, not per-element error")
+        return
+    render_density_map(zero, m, n, tile, title="zero-output map",
+                       legend=".:0 zeros  ::1-9  o:10-49  O:50-99  #:>=100 zeros/cell")
+    render_profiles(zero, m, n, tile, label="zero-output")
 
 
 def _tile_components(counts):
@@ -296,6 +315,7 @@ def render_visual(golden_tensor, npu_tensor, m, n, opts):
     counts = _tile_counts(mask, m, n, tile)
 
     print(f"\n[visual] ===== mismatch visualization (total {total} elements over tol) =====")
+    render_zero_output(npu_np, m, n, tile)
     render_profiles(mask, m, n, tile)
     render_top_n(golden_np, npu_np, mask, diff, max(1, opts.top))
 
