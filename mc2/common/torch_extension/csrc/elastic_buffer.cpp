@@ -2396,17 +2396,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string&, int64_t, int64_t, bool, bool, int64_t>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
-             pybind11::arg("explicitlyDestroy") = false,
-             pybind11::arg("fetchMode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
+             pybind11::arg("explicitlyDestroy") = false, pybind11::arg("fetchMode") = Mc2Api::ENGRAM_FETCH_MODE_SLICED)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
              pybind11::arg("sf") = pybind11::none())
-        .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor&, const at::Tensor&, int64_t, int64_t, int64_t,
-                                               const at::Tensor&, at::Tensor&, int64_t)>(
-                        &Mc2Api::ElasticBuffer::EngramFetch),
-                    pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
-                    pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode"))
+        .def_static(
+            "engram_fetch",
+            static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
+                                       const at::Tensor &, at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
+            pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
+            pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
+            pybind11::arg("fetched_sf"), pybind11::arg("fetch_mode"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"), pybind11::arg("sf_table_addr"),
