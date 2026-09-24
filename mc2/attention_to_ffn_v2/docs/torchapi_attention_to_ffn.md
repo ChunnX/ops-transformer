@@ -375,6 +375,8 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoS
 
 该大小由`get_buffer_for_attention_to_ffn`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。`ccl_buffer_size`描述对端FFN卡通信窗口大小；本卡（attention侧）通信窗口大小由`window_size`指定。
 
+- 与`ffn_to_attention`共用窗口的交叉约束：`ffn_to_attention`回传数据（单会话、2B元素）落在本卡窗口头部（staging区之前）。非量化模式下N会话数据区恒可覆盖回传区；量化模式下需满足`attnWorkerNum × 1B ≥ 2B`（即`attnWorkerNum ≥ 2`），否则tiling将拒绝该配置（单会话量化下发时数据区无法容纳回传数据区）。
+
 - 自定义通信窗口约束（`window_addr`/`window_size`）：
     - 两个参数必须成对传入，`window_size`为本卡窗口内存的实际大小（Bytes）。
     - attention卡上传入的为attention侧内存大小，需不小于attention侧接收`ffn_to_attention`回传数据所需的窗口大小；FFN侧内存大小（FFN卡需注册的窗口大小）由本接口内部计算，可通过返回buffer的`ccl_buffer_size`属性获取。

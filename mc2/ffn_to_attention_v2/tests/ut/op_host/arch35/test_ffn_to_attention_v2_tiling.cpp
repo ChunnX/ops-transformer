@@ -28,8 +28,12 @@ using OpAttr = gert::TilingContextPara::OpAttr;
 
 struct FFNToAttentionV2CompileInfo {};
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
-// 4MB covers requiredWindowSize (~2.5MB for the default shapes: token window + flag sources + address tables).
+// 4MB covers requiredWindowSize (~2.5MB for the default shapes with one attention worker:
+// N-scaled token window + flag sources + address tables).
 constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 4LL * MB_SIZE;
+// attnRankTable dim0 = 11 means the window must host all 11 sessions' dispatch receiving area
+// (~23MB) plus the F2A scratch tail; 32MB covers it.
+constexpr int64_t RANK_TABLE_CCL_BUFFER_SIZE = 32LL * MB_SIZE;
 
 enum class InvalidInput {
     NONE,
@@ -162,7 +166,10 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, NoRankTable)
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RankTable)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(), ge::GRAPH_SUCCESS, GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
+    // attnRankTable dim0 (11) is the exact attention worker count; the buffer must host all
+    // sessions' dispatch receiving area plus the F2A scratch tail.
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, false, RANK_TABLE_CCL_BUFFER_SIZE), ge::GRAPH_SUCCESS,
+                      GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
 }
 
 class FFNToAttentionV2InvalidInputTest : public testing::TestWithParam<InvalidInput> {};

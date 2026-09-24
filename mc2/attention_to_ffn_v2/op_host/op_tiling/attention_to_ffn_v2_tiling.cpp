@@ -210,6 +210,19 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
     const size_t dataRegionSize = CeilAlignSize(static_cast<size_t>(info.attentionWorkerNum) * info.microBatchNum *
                                                     info.BS * expertNumPerToken * info.HS * elemSize,
                                                 URMA_WIN_REGION_ALIGN);
+
+    const size_t f2aReturnDataBytes =
+        static_cast<size_t>(info.microBatchNum) * info.BS * expertNumPerToken * info.HS * sizeof(uint16_t);
+    OP_TILING_CHECK(dataRegionSize < f2aReturnDataBytes,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "ffn_token_data_shape", std::to_string(info.attentionWorkerNum).c_str(),
+                        (std::string("attentionWorkerNum=") + std::to_string(info.attentionWorkerNum) +
+                         " with elemSize=" + std::to_string(elemSize) +
+                         " leaves a data region of " + std::to_string(dataRegionSize) +
+                         " bytes that cannot host the ffn_to_attention_v2 return data of " +
+                         std::to_string(f2aReturnDataBytes) + " bytes")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
     const size_t commuBytes = GetUrmaCommuBytes(tilingKeyQuantMode, outDtype, static_cast<size_t>(info.H));
     const size_t stagingStride = CeilAlignSize(commuBytes, UB_ALIGN_SIZE);
     const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
