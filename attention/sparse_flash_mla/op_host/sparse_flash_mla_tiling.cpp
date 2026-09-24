@@ -2341,10 +2341,11 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint64_t oriUbSize = (isPa ? paExtraUb : 0U) + static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int64_t);
     uint64_t vectorizeUbSize = std::max(cmpUbSize, oriUbSize);
-    vectorizeFlag = static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                                           tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                          (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
+    vectorizeFlag =
+        static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                               tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                              tilingInfo->topkValueMode == 1 && (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
 
     if (vectorizeFlag == 0U) {
         return 0ULL;
@@ -2480,7 +2481,8 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64); // 64：分组拆分阈值
     }
     tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag);
+                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag,
+                                   static_cast<uint32_t>(tilingInfo->topkValueMode));
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 
