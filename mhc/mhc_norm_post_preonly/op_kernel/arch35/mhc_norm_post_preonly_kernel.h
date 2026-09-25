@@ -99,6 +99,9 @@ public:
         }
         if constexpr (DUAL_SIBLING) {
             partial1Gm_.SetGlobalBuffer((__gm__ float *)workspace, (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS);
+            const uint64_t partialElems = (uint64_t)totalTokens_ * 2U * PARTIAL_SLOT_ELEMS;
+            ibSyncGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + partialElems,
+                                      (uint64_t)totalTokens_ * IB_SYNC_SLOTS_PER_TOKEN * IB_SYNC_SLOT_ELEMS);
         }
 
         // UB空间分配
@@ -666,6 +669,7 @@ private:
     GlobalTensor<float> gamma0Gm_, gamma1Gm_, gamma2Gm_;
     GlobalTensor<float> hInF32Gm_;
     GlobalTensor<float> partial1Gm_;
+    GlobalTensor<int32_t> ibSyncGm_;
 
     // Tiling参数
     uint32_t totalTokens_ = 0, N_ = 0, D_ = 0, K_ = 0;
