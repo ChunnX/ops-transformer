@@ -120,6 +120,11 @@ public:
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
         const uint32_t gamma1CacheElems = D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
         pipe_.InitBuffer(bufGamma2Fp32_, gamma1CacheElems * sizeof(float));
+        if constexpr (DUAL_SIBLING) {
+            // 两个sibling AIV共享同一物理AI Core的L1。follower在会合前保存自己的两行x2，
+            // leader复用既有PAIR_READY_FLAG后从L1恢复，避免再次从GM回读2*D个元素。
+            pipe_.InitBuffer(bufSiblingX2L1_, 2U * D_ * sizeof(T));
+        }
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
         evtVtoMte2_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::V_MTE2>());
@@ -499,7 +504,7 @@ private:
     }
 
     // 双sibling的低精度缓存按完整输出布局寻址，但每个lane只有自己负责的两行有效；
-    // 写回x2_out时也只写这两行，leader会合后再从GM恢复follower的两行。
+    // 写回x2_out时也只写这两行，follower同时将自己的两行保存到共享L1供leader会合后恢复。
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -519,6 +524,9 @@ private:
             WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
                 DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+                if (laneId_ == 1U) {
+                    DataCopy(bufSiblingX2L1_.Get<T>()[(n - headBegin) * D_ + tOff], x2Cache[n * D_ + tOff], tD);
+                }
             }
         }
     }
@@ -658,6 +666,7 @@ private:
     TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
+    TBuf<TPosition::A1> bufSiblingX2L1_;
 
     // GM张量
     GlobalTensor<T> hOutGm_, residualGm_, hInPrimeGm_, x2OutGm_;
