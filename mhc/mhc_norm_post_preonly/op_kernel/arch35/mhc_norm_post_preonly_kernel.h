@@ -517,8 +517,14 @@ private:
         if (writeOutput) {
             SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+            // TPipe分配的A1逻辑地址不保证在两个sibling间一致。使用固定物理L1
+            // 地址0，与仓内MIX样例的共享L1布局保持一致；仅follower写入这两行。
+            LocalTensor<T> siblingX2L1(TPosition::A1, 0U, 2U * D_);
             for (uint32_t n = headBegin; n < headBegin + 2U; ++n) {
                 DataCopy(x2OutGm_[outBase + (uint64_t)n * D_], x2Cache[n * D_ + tOff], tD);
+                if (laneId_ == 1U) {
+                    DataCopy(siblingX2L1[(n - headBegin) * D_ + tOff], x2Cache[n * D_ + tOff], tD);
+                }
             }
         }
     }
