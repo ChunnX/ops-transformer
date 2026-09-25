@@ -20,9 +20,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
-    // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
-    if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
+    // 单分块gamma0由Process预载且R3不再复用该缓冲；多分块仍按token完整搬运。
+    if (dimLoop_ != 1U) {
         CacheGamma0();
     }
     const uint32_t headBegin = laneId_ * 2U;
@@ -123,7 +122,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     if constexpr (USE_RMS_MID) {
         // R2结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
         // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
-        LocalTensor<float> gammaEvenCache = bufGamma0Fp32_.Get<float>();
+        // 单分块时复用R2结束后已空闲的residual scratch缓存gamma2，
+        // 保留Process预载的gamma0供后续token复用。
+        // 多分块需要缓存完整D，继续使用容量为D的gamma0缓冲。
+        LocalTensor<float> gammaEvenCache =
+            dimLoop_ == 1U ? bufResFp32_.Get<float>() : bufGamma0Fp32_.Get<float>();
         FenceVToMte2();
         LoadGammaInto(gammaEvenCache, gamma2Gm_, headBegin * D_, D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
