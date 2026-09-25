@@ -166,7 +166,11 @@ public:
 
         for (uint32_t t = tokenStart_; t < tokenEnd_; ++t) {
             if constexpr (DUAL_SIBLING) {
-                ProcessTokenDualSiblingAiv(t);
+                if (laneId_ == 0U) {
+                    ProcessTokenDualSiblingAiv<0U>(t);
+                } else {
+                    ProcessTokenDualSiblingAiv<1U>(t);
+                }
             } else {
                 ProcessTokenSingleAiv(t);
             }
@@ -187,6 +191,7 @@ public:
     // =================================================================
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
+    template <uint32_t LANE_ID>
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
     // =================================================================
     //  共享计算模块
@@ -440,6 +445,7 @@ private:
     }
 
     // 双AIV仍需读取全部残差行，但每个lane只计算自己负责的两个输出head。
+    template <uint32_t LANE_ID>
     __aicore__ inline void ComputeX2PostTileForLane(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                     const float (&postVals)[N_MAX])
     {
@@ -447,7 +453,7 @@ private:
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
 
         // 提前发起residual搬运（MTE2），与下方h_out的scale/gamma/quantize（Vector）重叠。
-        const uint32_t headBegin = laneId_ * 2U;
+        constexpr uint32_t headBegin = LANE_ID * 2U;
         const uint64_t gmBaseOffset = (uint64_t)token * N_ * D_ + tOff;
         LocalTensor<T> residual = bufResidualBf16_.AllocTensor<T>();
         for (uint32_t n = 0; n < N_MAX; ++n) {
@@ -500,12 +506,13 @@ private:
 
     // 双sibling的低精度缓存按完整输出布局寻址，但每个lane只有自己负责的两行有效；
     // 写回x2_out时也只写这两行，leader会合后再从GM恢复follower的两行。
+    template <uint32_t LANE_ID>
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
-        const uint32_t headBegin = laneId_ * 2U;
+        constexpr uint32_t headBegin = LANE_ID * 2U;
 
         if (!USE_RMS_MID || writeOutput) {
             // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。

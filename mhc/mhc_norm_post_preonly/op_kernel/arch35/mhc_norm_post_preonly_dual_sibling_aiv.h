@@ -12,6 +12,7 @@
 #define MHC_NORM_POST_PREONLY_DUAL_SIBLING_AIV_H_
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+template <uint32_t LANE_ID>
 __aicore__ inline void
 KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
@@ -25,7 +26,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
         CacheGamma0();
     }
-    const uint32_t headBegin = laneId_ * 2U;
+    constexpr uint32_t headBegin = LANE_ID * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
     // 两个lane按完全相同的分块和顺序冗余执行R1。
@@ -57,8 +58,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
+                                                              invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -100,15 +101,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 bufResidualBf16_.FreeTensor(residual);
             }
         } else {
-            ComputeX2PostTileForLane(token, tOff, tD, invRms0, postVals);
+            ComputeX2PostTileForLane<LANE_ID>(token, tOff, tD, invRms0, postVals);
         }
-        CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
+        CacheX2TileForLane<LANE_ID>(token, tOff, tD, !USE_RMS_MID);
 
         if constexpr (USE_RMS_MID) {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-            for (uint32_t half = laneId_; half < laneId_ + 1U; ++half) {
+            for (uint32_t half = LANE_ID; half < LANE_ID + 1U; ++half) {
                 const uint32_t h0 = half * 2U;
                 const uint32_t h1 = h0 + 1;
                 MhcNormRegBase::VFPairSquareB16ToFp32(out, x2Cache[h0 * D_ + tOff], x2Cache[h1 * D_ + tOff], tD);
@@ -116,7 +117,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 midSqHalf[half] += ReduceSumPrecise(out, tD);
             }
         } else {
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, LANE_ID, LANE_ID + 1U);
         }
     }
 
@@ -129,19 +130,19 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
-        midBuf.SetValue(0, midSqHalf[laneId_]);
+        midBuf.SetValue(0, midSqHalf[LANE_ID]);
         // 32B槽的其余元素不会被sibling读取，无需在关键同步路径上做Scalar清零。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+        const uint64_t ownSlot = ((uint64_t)token * 2U + LANE_ID) * PARTIAL_SLOT_ELEMS;
         DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
         CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
         CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
-        const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
+        const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - LANE_ID)) * PARTIAL_SLOT_ELEMS;
         DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
         SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
         WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        midSqHalf[1U - laneId_] = midBuf.GetValue(0);
+        midSqHalf[1U - LANE_ID] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -163,14 +164,14 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
-            CacheX2TileForLane(token, tOff, tD, true);
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            CacheX2TileForLane<LANE_ID>(token, tOff, tD, true);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, LANE_ID, LANE_ID + 1U);
         }
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
     LocalTensor<float> partialBuf = bufScalar_.Get<float>();
-    if (laneId_ == 1U) {
+    if constexpr (LANE_ID == 1U) {
         partialBuf.SetValue(0, sumSqHalf[1]);
         for (uint32_t o = 0; o < N_MAX; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
@@ -185,7 +186,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
-    if (laneId_ == 1U) {
+    if constexpr (LANE_ID == 1U) {
         return;
     }
 
