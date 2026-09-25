@@ -220,6 +220,33 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
         tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     }
     tilingData_.mmTilingData.l1BufferStage = static_cast<uint8_t>(CanEnableThreeL1Buffer() ? TB_SIZE : DB_SIZE);
+    if (newTiling_ && tilingData_.mmTilingData.l1BufferStage == DB_SIZE &&
+        inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE &&
+        !inputParams_.transA && tilingData_.mmTilingData.scaleKAL1 >= inputParams_.kSize) {
+        uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+        uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+        if (baseASize <= baseBSize && basicTiling_.baseK > 0) {
+            uint32_t kAL1New = static_cast<uint32_t>(std::min(static_cast<uint64_t>(tilingData_.mmTilingData.kAL1) * 2UL,
+                                                              inputParams_.kSize));
+            kAL1New = (kAL1New / basicTiling_.baseK) * basicTiling_.baseK;
+            const uint64_t halfL1Size = aicoreParams_.l1Size / NUM_HALF;
+            const uint64_t aL1OneBufSize = GetSizeWithDataType(basicTiling_.baseM * kAL1New, inputParams_.aDtype);
+            const uint64_t bL1OneBufSize = GetSizeWithDataType(basicTiling_.baseN * tilingData_.mmTilingData.kBL1, inputParams_.bDtype);
+            const uint64_t scaleKSize = CeilDiv(tilingData_.mmTilingData.scaleKAL1, MXFP_BASEK_FACTOR) * MXFP_MULTI_BASE_SIZE;
+            const uint64_t scaleAL1Size = GetSizeWithDataType(basicTiling_.baseM * scaleKSize, inputParams_.perTokenScaleDtype);
+            const uint64_t scaleBL1Size = GetSizeWithDataType(basicTiling_.baseN * scaleKSize, inputParams_.scaleDtype);
+            const uint64_t biasL1Size =
+                inputParams_.hasBias ? basicTiling_.baseN * ge::GetSizeByDataType(inputParams_.biasDtype) : 0UL;
+            const uint64_t l1P0Used = aL1OneBufSize + bL1OneBufSize + scaleAL1Size + biasL1Size;
+            const uint64_t l1P1Used = aL1OneBufSize + bL1OneBufSize + scaleBL1Size;
+            if (kAL1New >= tilingData_.mmTilingData.kBL1 &&
+                kAL1New > tilingData_.mmTilingData.kAL1 &&
+                l1P0Used <= halfL1Size && l1P1Used <= halfL1Size) {
+                tilingData_.mmTilingData.kAL1 = kAL1New;
+                tilingData_.mmTilingData.mergeScales = 1;
+            }
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 

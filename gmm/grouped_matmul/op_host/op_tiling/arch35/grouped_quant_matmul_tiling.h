@@ -306,6 +306,7 @@ protected:
     int64_t LogQuantParams(const GroupedMatmulTilingData::GMMQuantParams &params) const;
     GQmmBasicTiling basicTiling_;
     GQmmInputInfo &inputParams_;
+    bool newTiling_;
 
 private:
     void CalScaleFactors();

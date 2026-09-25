@@ -1481,6 +1481,57 @@ void GroupedQmmTiling::CalBasicBlock()
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
         }
     }
+
+    // Adjust tiling for smaller per-group M
+    constexpr uint64_t newTilingNLowerNZ = 3072UL; // Based on experiments
+    constexpr uint64_t newTilingNUpperNZ = 8192UL; // Based on experiments
+    bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+    if (isFp4Input && !inputParams_.transA && inputParams_.groupType == SPLIT_M &&
+        inputParams_.groupNum > 0UL && basicTiling_.baseK >= MXFP_BASEK_FACTOR &&
+        (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
+         (inputParams_.nSize >= newTilingNLowerNZ && inputParams_.nSize <= newTilingNUpperNZ))) {
+        if (inputParams_.bDtype != ge::DT_FLOAT4_E2M1 && inputParams_.bDtype != ge::DT_FLOAT4_E1M2) {
+            return;
+        }
+
+        auto attrs = context_->GetAttrs();
+        OP_CHECK_IF(attrs == nullptr, OP_LOGD(context_->GetNodeName(), "attrs is nullptr."), return);
+        const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(ATTR_INDEX_TUNING_CONFIG);
+        if (tuningConfigPtr == nullptr || tuningConfigPtr->GetSize() == 0) {
+          return;
+        }
+        const auto tuningConfig = tuningConfigPtr->GetData();
+        const auto perGroupM = static_cast<uint64_t>(tuningConfig[0]);
+        const uint64_t newBaseM = CeilAlign(
+            std::min(perGroupM, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_128)),
+            CUBE_BLOCK);
+        const uint64_t newBaseK = CeilAlign(
+            std::min(static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_128), inputParams_.kSize),
+            MXFP_BASEK_FACTOR);
+        const uint64_t maxBaseNByL0c = aicoreParams_.l0cSize / (newBaseM * DATA_SIZE_L0C);
+        const uint64_t maxBaseNByL0b = aicoreParams_.l0bSize / DB_SIZE * EVEN_FACTOR / newBaseK;
+        const uint64_t newBaseN = std::min({maxBaseNByL0c, maxBaseNByL0b, inputParams_.nSize}) / MXFP_BASEK_FACTOR * MXFP_BASEK_FACTOR;
+        // Skip when this affects double buffer.  Just to be safe.
+        if (GetSizeWithDataType(newBaseM * newBaseK, inputParams_.aDtype) > aicoreParams_.l0aSize / DB_SIZE) {
+            return;
+        }
+        const uint64_t newMStripes = CeilDiv(perGroupM, newBaseM);
+        const uint64_t oldMStripes = CeilDiv(perGroupM, basicTiling_.baseM);
+        const uint64_t newNStripes = CeilDiv(inputParams_.nSize, newBaseN);
+        const uint64_t oldNStripes = CeilDiv(inputParams_.nSize, basicTiling_.baseN);
+        const uint64_t newTotalTiles = inputParams_.groupNum * newMStripes * newNStripes;
+        if (newNStripes >= oldNStripes ||
+            (newMStripes > oldMStripes &&
+             !(newMStripes <= 2UL && newTotalTiles <= 96UL
+               && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ)) ||
+            newBaseN == 0UL || newBaseN > inputParams_.nSize) {
+            return;
+        }
+        basicTiling_.baseM = newBaseM;
+        basicTiling_.baseN = newBaseN;
+        basicTiling_.baseK = newBaseK;
+        newTiling_ = true;
+    }
 }
 
 bool GroupedQmmTiling::IsBiasInL1() const
