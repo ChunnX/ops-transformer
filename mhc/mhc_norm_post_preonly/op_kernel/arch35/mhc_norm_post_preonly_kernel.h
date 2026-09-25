@@ -68,7 +68,7 @@ public:
             return;
         }
 
-        // 单AIV按token分区；双sibling通过aivIdx奇偶映射相邻lane，并在后半段收敛到偶数leader。
+        // 单AIV按token分区；双sibling通过aivIdx奇偶映射相邻lane，并在后半段收敛到lane1 leader。
         if (blockIdx < blockPivot_) {
             tokenStart_ = blockIdx * rowsPerCoreSp_;
             tokenEnd_ = tokenStart_ + rowsPerCoreSp_;
@@ -145,7 +145,7 @@ public:
             for (uint32_t i = 0; i < N_MAX; ++i) {
                 biasCache_[i] = biasGm_.GetValue(i);
             }
-        } else if (laneId_ == 0U) {
+        } else if (laneId_ == 1U) {
             alpha0_ = alpha0Gm_.GetValue(0);
             for (uint32_t i = 0; i < N_MAX; ++i) {
                 biasCache_[i] = biasGm_.GetValue(i);
