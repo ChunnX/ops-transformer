@@ -94,7 +94,6 @@ private:
     uint32_t totalTokens_{0U};
     uint32_t headCount_{0U};
     uint32_t embedDim_{0U};
-    uint32_t phiRows_{0U};
     uint32_t phiCols_{0U};
     uint32_t usedCoreNum_{0U};
     uint32_t rowsPerCore_{0U};
