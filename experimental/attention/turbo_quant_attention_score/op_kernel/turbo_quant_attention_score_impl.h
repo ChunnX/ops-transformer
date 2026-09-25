@@ -136,6 +136,10 @@ public:
 private:
     __aicore__ inline void InitDecode()
     {
+        // Gather reads a full vector of offsets even for a short output count.
+        // Initialize the padding spanning the three short offset tables.
+        Duplicate(evenOffsets_, static_cast<uint32_t>(0), 128);
+        PipeBarrier<PIPE_ALL>();
         const float c2[] = {-0.1335033178F, -0.04002048075F, 0.04002048075F, 0.1335033178F};
         const float c3[] = {-0.19020693F,   -0.1187859178F, -0.06682205945F, -0.02166347019F,
                             0.02166347019F, 0.06682205945F, 0.1187859178F,   0.19020693F};
@@ -190,7 +194,14 @@ private:
         DataCopyExtParams copy{static_cast<uint16_t>(rows), rowBytes, (kvHeads_ - 1) * rowBytes, 0, 0};
         DataCopyPad(bytes_, src, copy, DataCopyPadExtParams<uint8_t>{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
-        const uint32_t count = ROWS * ((rowBytes + 31) / 32 * 32);
+        const uint32_t rowStride = (rowBytes + 31) / 32 * 32;
+        const uint32_t count = ROWS * rowStride;
+        if (rows < ROWS) {
+            for (uint32_t i = rows * rowStride; i < count; ++i) {
+                bytes_.SetValue(i, 0);
+            }
+            PipeBarrier<PIPE_ALL>();
+        }
         Cast(bytesHalf_, bytes_, RoundMode::CAST_NONE, count);
         PipeBarrier<PIPE_V>();
         Cast(bytesFloat_, bytesHalf_, RoundMode::CAST_NONE, count);
@@ -229,6 +240,13 @@ private:
         DataCopyPad(normRaw_, norm_[row], copy, DataCopyPadExtParams<NormType>{false, 0, 0, 0});
         DataCopyPad(gammaRaw_, gamma_[row], copy, DataCopyPadExtParams<NormType>{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
+        if (rows < ROWS) {
+            for (uint32_t i = rows * 16; i < 256; ++i) {
+                normRaw_.SetValue(i, static_cast<NormType>(0.0F));
+                gammaRaw_.SetValue(i, static_cast<NormType>(0.0F));
+            }
+            PipeBarrier<PIPE_ALL>();
+        }
         Cast(normFloat_, normRaw_, RoundMode::CAST_NONE, 256);
         Cast(gammaFloat_, gammaRaw_, RoundMode::CAST_NONE, 256);
         PipeBarrier<PIPE_V>();
