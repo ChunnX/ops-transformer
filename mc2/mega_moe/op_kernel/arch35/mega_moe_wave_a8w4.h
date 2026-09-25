@@ -292,8 +292,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm2AddrInfo{};
     gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // 握手对象恒挂；用不用它由 NotifyCombineTileReady 模板参数编译期决定（去重开时为 false，整段裁掉）。
-        gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
+        // combine 去重开时不挂握手对象：W4 路径的握手启用位（NotifyCombineTileReady）编译期恒真
+        // （见 gmm2_combine.h 对编译器问题的说明），AIC 是否真握手靠这里挂/不挂 + mmad 处判空决定；
+        // 去重开时 AIV1 不做逐 tile 消费，挂上 AIC 会死等 credit。
+        if (!IsCombineDedupOn(params_.tilingData->dedupMode)) {
+            gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
+        }
     }
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
