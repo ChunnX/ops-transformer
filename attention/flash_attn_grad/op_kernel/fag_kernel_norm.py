@@ -1021,6 +1021,22 @@ def _run_preload2_vector_bn2(
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.MTE3, event_id=SYNC_C4_TO_V3_FLAG
                 )
+            # C3/C4 reuse mm1/mm2 for dQ/dK in BN2. Finish reading the
+            # original dP/P before V3's V->MTE3 copy and either ready event.
+            if constInfo.sinkOptional == 1:
+                headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
+                sink_val = pl.getval(tensor_sinks, headQ)
+                process_sink_partial(
+                    constInfo,
+                    vecInfo,
+                    tensor_dsink_ws,
+                    aivIdx,
+                    mm2_t,
+                    mm1_t,
+                    lse_t,
+                    sink_part_ub.current(),
+                    sink_val,
+                )
             process_vec3_bn2(
                 constInfo,
                 vecInfo,
@@ -1045,20 +1061,6 @@ def _run_preload2_vector_bn2(
                 nzp_ub.current(),
             )
             pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=SYNC_V4_TO_C5_FLAG)
-            if constInfo.sinkOptional == 1:
-                headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
-                sink_val = pl.getval(tensor_sinks, headQ)
-                process_sink_partial(
-                    constInfo,
-                    vecInfo,
-                    tensor_dsink_ws,
-                    aivIdx,
-                    mm2_t,
-                    mm1_t,
-                    lse_t,
-                    sink_part_ub.current(),
-                    sink_val,
-                )
             if is_bn2_multiblk == 1:
                 if vecInfo.dqLast == 1:
                     pl.system.wait_cross_core(
