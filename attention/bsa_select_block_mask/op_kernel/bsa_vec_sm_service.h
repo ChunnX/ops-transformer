@@ -597,20 +597,24 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
             if (foldCols == K_TILE_COLS) {
                 LocalTensor<T> dstSum = tmpSum[sl.localRowStart];
                 RowSumCascade(dstSum, tile, sl.rowCount, foldCols, reduceSharedTemp);
-            } else {
-                uint32_t sumShape[] = {sl.rowCount, foldCols};
-                if (foldCols <= FLOAT_REPEAT_NUM) {
-                    AscendC::WholeReduceSum<T, true>(tmpSum[sl.localRowStart], tile,
-                                                     static_cast<int32_t>(foldCols),
-                                                     static_cast<int32_t>(sl.rowCount), 1, 1,
-                                                     static_cast<int32_t>(foldCols / FLOAT_DATA_BLOCK_NUM));
                 } else {
-                    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum[sl.localRowStart], tile,
-                                                                              reduceSharedTemp, sumShape,
-                                                                              isSrcInnerPad);
+                    uint32_t sumShape[] = {sl.rowCount, foldCols};
+                    if (foldCols <= FLOAT_REPEAT_NUM) {
+                        AscendC::WholeReduceSum<T, true>(tmpSum[sl.localRowStart], tile,
+                                                         static_cast<int32_t>(foldCols),
+                                                         static_cast<int32_t>(sl.rowCount), 1, 1,
+                                                         static_cast<int32_t>(foldCols / FLOAT_DATA_BLOCK_NUM));
+                    } else {
+                        // isReuseSource 必须为 false：true 时 AR 实现以 src（本 tile）作 staging 缓冲，
+                        // 大行宽(>64)路径 ReduceSumInLargeLast 原地 halving 归约会覆写 tile——
+                        // 随后 w8 折叠 BRS / w16 尾 tile 折叠 DataCopy 读到混叠数据
+                        //（blk8 partSum 蝴蝶混叠值错根因，p16var/tndtail/bfvar 同源）
+                        AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, false>(tmpSum[sl.localRowStart], tile,
+                                                                                   reduceSharedTemp, sumShape,
+                                                                                   isSrcInnerPad);
+                    }
+                    AscendC::PipeBarrier<PIPE_V>();
                 }
-                AscendC::PipeBarrier<PIPE_V>();
-            }
 
             AscendC::Add(globalSum[sl.localRowStart], tmpSum[sl.localRowStart], globalSum[sl.localRowStart],
                          sl.rowCount);

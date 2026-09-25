@@ -136,12 +136,13 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.qCmpOffset = 0;
     constInfo.kCmpOffset = constInfo.qCmpOffset + outInfo.qCmpSize;
     constInfo.attnScoreOffset = constInfo.kCmpOffset + outInfo.kCmpSize;
-    constInfo.pooledScoreOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
-    constInfo.postStagingOffset = constInfo.pooledScoreOffset + outInfo.pooledScoreSize;
-    constInfo.softmaxTmpOffset = constInfo.postStagingOffset + outInfo.postStagingSize;
+    // DEBUG 实验：pooledScore/postStaging 移到 workspace 尾部（高区写持久假说验证）
+    constInfo.softmaxTmpOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
     constInfo.partSumOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
     constInfo.partMaxOffset = constInfo.partSumOffset + outInfo.partSumSize;
+    constInfo.pooledScoreOffset = constInfo.partMaxOffset + outInfo.partMaxSize;
+    constInfo.postStagingOffset = constInfo.pooledScoreOffset + outInfo.pooledScoreSize;
 
     constInfo.usePostBlockShape = baseInfo.usePostBlockShape;
     constInfo.debugOldPass2 = 0; // 诊断开关：置 1 走旧两趟（对照精度基线）
