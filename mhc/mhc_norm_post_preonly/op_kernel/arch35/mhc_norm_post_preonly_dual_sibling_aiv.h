@@ -201,11 +201,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // follower负责的两个head在UB和共享L1中均连续。既有pair barrier已经保证follower的
-    // MTE3写入完成，直接从L1恢复，避免leader再次从GM回读2*D个元素。
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
     if constexpr (USE_RMS_MID) {
-        DataCopy(x2Cache[2U * D_], bufSiblingX2L1_.Get<T>(), 2U * D_);
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
@@ -218,7 +219,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
 
     // 会合后只有leader继续执行R6、R7和最终输出。
     if constexpr (!USE_RMS_MID) {
-        DataCopy(x2Cache[2U * D_], bufSiblingX2L1_.Get<T>(), 2U * D_);
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
