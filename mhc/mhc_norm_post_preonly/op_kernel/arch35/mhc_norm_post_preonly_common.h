@@ -29,9 +29,6 @@ constexpr uint32_t SCALAR_BUF_SIZE = 256;     // 标量计算 UB buffer 大小 (
 constexpr uint32_t EXP_DIV_ELEM = 8;          // sigmoid ExpDiv 计算元素数
 constexpr uint32_t POST_COMB_SIZE = 8 + 16;   // h_post[8] + h_res[16] buffer 大小
 constexpr uint32_t PARTIAL_SLOT_ELEMS = 8;    // 每个lane的partial固定占32B
-constexpr uint32_t IB_SYNC_SLOT_ELEMS = 8;    // IBSet/IBWait每个AIV使用一个32B同步槽
-constexpr uint32_t IB_SYNC_SLOTS_PER_TOKEN = 2;
-constexpr int32_t X2_READY_IB_EVENT = 0;
 constexpr uint16_t MID_READY_FLAG = 0;        // R3/RMS_mid平方和交换完成标志
 constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
 

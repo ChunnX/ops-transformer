@@ -15,21 +15,10 @@ template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void
 KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualSiblingAiv(uint32_t token)
 {
-    const uint32_t aivIdx = GetBlockIdx();
     float postVals[N_MAX];
     float sumSqHalf[2] = {0.0f, 0.0f};
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
-    // IBSet/IBWait使用每个AIV独占的32B GM槽。follower先清零自己的槽，
-    // 本核MTE3完成后才进入后续流水，避免依赖运行时workspace初值。
-    if (laneId_ == 1U) {
-        LocalTensor<int32_t> ibSyncBuf = bufScalar_.Get<int32_t>();
-        Duplicate(ibSyncBuf, static_cast<int32_t>(0), IB_SYNC_SLOT_ELEMS);
-        PipeBarrier<PIPE_V>();
-        DataCopy(ibSyncGm_[aivIdx * IB_SYNC_SLOT_ELEMS], ibSyncBuf, IB_SYNC_SLOT_ELEMS);
-        SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-        WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
-    }
     CacheHOut((uint64_t)token * D_);
     // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
     // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
@@ -115,16 +104,6 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         }
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
-        if constexpr (!USE_RMS_MID) {
-            if (laneId_ == 1U && tile + 1U == dimLoop_) {
-                // x2_out的最后一条MTE3完成后单向通知leader；follower继续做R4/R5，
-                // 不引入实验230中双方等待的额外barrier。
-                SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-                WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
-                IBSet(ibSyncGm_, bufScalar_.Get<int32_t>(), aivIdx, X2_READY_IB_EVENT);
-            }
-        }
-
         if constexpr (USE_RMS_MID) {
             // 每个lane只归约自己负责的两个head，循环结束后交换半和。
             LocalTensor<float> out = bufResFp32_.Get<float>()[N_MAX * dimTile_];
@@ -185,23 +164,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true);
-            if (laneId_ == 1U && tile + 1U == dimLoop_) {
-                SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
-                WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
-                IBSet(ibSyncGm_, bufScalar_.Get<int32_t>(), aivIdx, X2_READY_IB_EVENT);
-            }
             AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
         }
-    }
-
-    // leader完成本地R4/R5后只等待follower的x2写回，不等待其R4/R5和partial收尾。
-    // 连续两行MTE2在最终pair会合前发射，以覆盖follower尾段计算。
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    if (laneId_ == 0U) {
-        IBWait(ibSyncGm_, bufScalar_.Get<int32_t>(), aivIdx + 1U, X2_READY_IB_EVENT);
-        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
@@ -237,8 +201,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
     }
 
-    // follower负责的两个head在GM和UB中均连续；2D回读已在pair会合前发射，
-    // 这里继续用Gate的Scalar/Vector计算隐藏剩余MTE2，R6消费x2前再等待完成。
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    if constexpr (USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
+
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
     float xHatVals[N_MAX];
     for (uint32_t o = 0; o < N_MAX; ++o) {
@@ -247,6 +218,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
+    if constexpr (!USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;

@@ -29,8 +29,6 @@ constexpr uint32_t HOST_MAX_TOKENS = 1024U * 1024U;
 constexpr uint32_t NUM_TWO = 2U;
 constexpr uint32_t PARTIAL_SLOT_BYTES = 32U;
 constexpr uint32_t PARTIAL_SLOTS_PER_TOKEN = 2U;
-constexpr uint32_t IB_SYNC_SLOT_BYTES = 32U;
-constexpr uint32_t IB_SYNC_SLOTS_PER_TOKEN = 2U;
 constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000U;
 constexpr int32_t DUAL_SIBLING_SCHEDULE_MODE = 1;
 constexpr size_t PRE_MIX_INPUT_INDEX = 7U;
@@ -369,7 +367,6 @@ ge::graphStatus MhcNormPostPreonlyTiling::GetWorkspaceSize()
     workspaceSize_ = systemWorkspaceSize_;
     if (enableDualSibling_) {
         workspaceSize_ += static_cast<size_t>(totalTokens_) * PARTIAL_SLOTS_PER_TOKEN * PARTIAL_SLOT_BYTES;
-        workspaceSize_ += static_cast<size_t>(totalTokens_) * IB_SYNC_SLOTS_PER_TOKEN * IB_SYNC_SLOT_BYTES;
     }
     return ge::GRAPH_SUCCESS;
 }
