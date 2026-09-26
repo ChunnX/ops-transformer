@@ -13,6 +13,9 @@
  * \brief
  */
 
+#include <initializer_list>
+#include <vector>
+
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -20,56 +23,24 @@ class SparseFlashAttention : public OpDef {
 public:
     explicit SparseFlashAttention(const char *name) : OpDef(name)
     {
-        this->Input("query")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("actual_seq_lengths_query")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("actual_seq_lengths_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("query_rope")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("key_rope")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sinks")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+        const auto addSfaInput = [this](const char *inputName, Option paramType,
+                                        std::initializer_list<ge::DataType> dataTypes) {
+            this->Input(inputName)
+                .ParamType(paramType)
+                .DataType(std::vector<ge::DataType>(dataTypes))
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .AutoContiguous();
+        };
+        addSfaInput("query", REQUIRED, {ge::DT_FLOAT16, ge::DT_BF16});
+        addSfaInput("key", REQUIRED, {ge::DT_FLOAT16, ge::DT_BF16});
+        addSfaInput("value", REQUIRED, {ge::DT_FLOAT16, ge::DT_BF16});
+        addSfaInput("sparse_indices", REQUIRED, {ge::DT_INT32, ge::DT_INT32});
+        addSfaInput("block_table", OPTIONAL, {ge::DT_INT32, ge::DT_INT32});
+        addSfaInput("actual_seq_lengths_query", OPTIONAL, {ge::DT_INT32, ge::DT_INT32});
+        addSfaInput("actual_seq_lengths_kv", OPTIONAL, {ge::DT_INT32, ge::DT_INT32});
+        addSfaInput("query_rope", OPTIONAL, {ge::DT_FLOAT16, ge::DT_BF16});
+        addSfaInput("key_rope", OPTIONAL, {ge::DT_FLOAT16, ge::DT_BF16});
+        addSfaInput("sinks", OPTIONAL, {ge::DT_FLOAT, ge::DT_FLOAT});
         this->Output("attention_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -82,48 +53,46 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        struct SfaIntAttribute {
+            const char *name;
+            int64_t defaultValue;
+        };
+        const SfaIntAttribute sfaPostLayoutIntAttributes[] = {
+            {"sparse_mode", 3}, {"pre_tokens", INT64_MAX}, {"next_tokens", INT64_MAX}, {"attention_mode", 0}};
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
         this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3); // 3:默认值，只计算下三角
-        this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
-        this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
-        this->Attr("attention_mode").AttrType(OPTIONAL).Int(0);
+        for (const SfaIntAttribute &attribute : sfaPostLayoutIntAttributes) {
+            this->Attr(attribute.name).AttrType(OPTIONAL).Int(attribute.defaultValue);
+        }
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
         OpAICoreConfig aicore_config;
-        aicore_config.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend910b", aicore_config);
+        const auto configureSfaAicore = [](OpAICoreConfig &config) {
+            config.DynamicCompileStaticFlag(true)
+                .DynamicFormatFlag(true)
+                .DynamicRankSupportFlag(true)
+                .DynamicShapeSupportFlag(true)
+                .NeedCheckSupportFlag(false)
+                .PrecisionReduceFlag(true);
+        };
+        configureSfaAicore(aicore_config);
+        this->AICore().AddConfig("ascend910b", aicore_config); // SFA: KV config.
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
         OpAICoreConfig aicore_config_95;
-        aicore_config_95.Input("key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("value")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.Input("key_rope")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .IgnoreContiguous();
-        aicore_config_95.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
-        this->AICore().AddConfig("ascend950", aicore_config_95);
+        const auto addSfa950KvInput = [&aicore_config_95](const char *inputName, Option paramType) {
+            aicore_config_95.Input(inputName)
+                .ParamType(paramType)
+                .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+                .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+                .IgnoreContiguous();
+        };
+        addSfa950KvInput("key", REQUIRED);
+        addSfa950KvInput("value", REQUIRED);
+        addSfa950KvInput("key_rope", OPTIONAL);
+        configureSfaAicore(aicore_config_95);
+        this->AICore().AddConfig("ascend950", aicore_config_95); // SFA: tile config.
     }
 };
 OP_ADD(SparseFlashAttention);

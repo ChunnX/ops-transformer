@@ -17,7 +17,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
-#include "opdev/op_log.h"
+#include "opdev/op_log.h" // SFA: ACLNN dependencies.
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -30,7 +30,7 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
+namespace { // SFA: inner executor.
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparse_indices,
@@ -42,7 +42,7 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  const aclrtStream stream);
+                                                  const aclrtStream stream); // SFA: LSE args.
 
 aclnnStatus aclnnSparseFlashAttentionV2GetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseIndices,
@@ -73,7 +73,7 @@ aclnnStatus aclnnSparseFlashAttentionV2GetWorkspaceSize(
             }
             if (softmaxSum == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxSum!");
-                return ge::GRAPH_FAILED;
+                return ge::GRAPH_FAILED; // SFA: softmax holders.
             }
         }
     }
