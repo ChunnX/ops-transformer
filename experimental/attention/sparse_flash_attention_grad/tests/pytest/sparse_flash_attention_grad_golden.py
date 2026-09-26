@@ -76,8 +76,16 @@ def softmax_grad(p, dp, out, out_grad):
 
 
 def get_sparse_indices_tnd(
-    T1, n2, acc_seqlen_q, acc_seqlen_kv, cur_q_len, cur_kv_len,
-    sparse_mode, sparse_block_size, sparse_block_count, device,
+    T1,
+    n2,
+    acc_seqlen_q,
+    acc_seqlen_kv,
+    cur_q_len,
+    cur_kv_len,
+    sparse_mode,
+    sparse_block_size,
+    sparse_block_count,
+    device,
 ):
     """Generate sorted sparse indices tensor for TND layout."""
     B = len(cur_q_len)
@@ -101,7 +109,7 @@ def get_sparse_indices_tnd(
                 sparse_indices[t][j][0] = valid_block_count - 1
                 sparse_indices[t][j][1:sparse_block_count] = torch.randperm(
                     valid_block_count - 1, device=device
-                )[:sparse_block_count - 1].to(torch.int32)
+                )[: sparse_block_count - 1].to(torch.int32)
             else:
                 sparse_indices[t][j][:valid_block_count] = torch.randperm(
                     valid_block_count, device=device
@@ -123,7 +131,11 @@ def gather_kv(cur_k, cur_v, topk_idx, block_size, cur_s2):
     for sparse_id in topk_idx:
         if sparse_id == -1:
             break
-        begin_idx = sparse_id.item() * block_size if isinstance(sparse_id, torch.Tensor) else sparse_id * block_size
+        begin_idx = (
+            sparse_id.item() * block_size
+            if isinstance(sparse_id, torch.Tensor)
+            else sparse_id * block_size
+        )
         end_idx = min(begin_idx + block_size, cur_s2)
         s2_sparse.extend(range(begin_idx, end_idx))
     if not s2_sparse:
@@ -139,7 +151,11 @@ def scatter_kv(dkv_out, dkv, topk_idx, block_size, cur_s2):
     for sparse_id in topk_idx:
         if sparse_id == -1:
             break
-        begin_idx = sparse_id.item() * block_size if isinstance(sparse_id, torch.Tensor) else sparse_id * block_size
+        begin_idx = (
+            sparse_id.item() * block_size
+            if isinstance(sparse_id, torch.Tensor)
+            else sparse_id * block_size
+        )
         end_idx = min(begin_idx + block_size, cur_s2)
         dkv_end = dkv_start + (end_idx - begin_idx)
         dkv_out[begin_idx:end_idx, :] += dkv[dkv_start:dkv_end, :]
@@ -148,10 +164,20 @@ def scatter_kv(dkv_out, dkv, topk_idx, block_size, cur_s2):
 
 
 def npu_sparse_flash_attention_grad_golden(
-    query, key, value, sparse_indices, out, dout,
-    scale_value, sparse_block_size,
-    acc_seqlen_q, acc_seqlen_kv, cur_q_len, cur_kv_len,
-    query_rope=None, key_rope=None,
+    query,
+    key,
+    value,
+    sparse_indices,
+    out,
+    dout,
+    scale_value,
+    sparse_block_size,
+    acc_seqlen_q,
+    acc_seqlen_kv,
+    cur_q_len,
+    cur_kv_len,
+    query_rope=None,
+    key_rope=None,
     sparse_mode=3,
 ):
     """CPU golden reference for sparse flash attention backward."""
@@ -192,11 +218,21 @@ def npu_sparse_flash_attention_grad_golden(
             cur_k = k[s2_start:s2_end, n2_idx, :]
             cur_v = v[s2_start:s2_end, n2_idx, :]
 
-            k_cal, v_cal, actual_sel_s2 = gather_kv(cur_k, cur_v, topk_idx, sparse_block_size, cur_s2)
+            k_cal, v_cal, actual_sel_s2 = gather_kv(
+                cur_k, cur_v, topk_idx, sparse_block_size, cur_s2
+            )
             if actual_sel_s2 > 0:
                 qk = torch.matmul(q_cal, k_cal.permute(1, 0)).mul(scale_value)
                 if sparse_mode == 3:
-                    atten_mask = cal_attenmask(topk_idx, s1_idx, sparse_block_size, actual_sel_s2, G, cur_s1, cur_s2)
+                    atten_mask = cal_attenmask(
+                        topk_idx,
+                        s1_idx,
+                        sparse_block_size,
+                        actual_sel_s2,
+                        G,
+                        cur_s1,
+                        cur_s2,
+                    )
                     qk = qk + atten_mask.to(device) * (-2e35)
                 _, x_max, x_sum = softmax_fwd(qk)
                 softmax_max[n2_idx][i] = x_max.squeeze(dim=-1)
@@ -221,31 +257,54 @@ def npu_sparse_flash_attention_grad_golden(
             cur_s1 = cur_q_len[b_idx]
             cur_k = k[s2_start:s2_end, n2_idx, :]
             cur_v = v[s2_start:s2_end, n2_idx, :]
-            k_cal, v_cal, actual_sel_s2 = gather_kv(cur_k, cur_v, topk_idx, sparse_block_size, cur_s2)
+            k_cal, v_cal, actual_sel_s2 = gather_kv(
+                cur_k, cur_v, topk_idx, sparse_block_size, cur_s2
+            )
 
             if actual_sel_s2 > 0:
                 qk = torch.matmul(q_cal, k_cal.permute(1, 0)).mul(scale_value)
                 if sparse_mode == 3:
-                    atten_mask = cal_attenmask(topk_idx, s1_idx, sparse_block_size, actual_sel_s2, G, cur_s1, cur_s2)
+                    atten_mask = cal_attenmask(
+                        topk_idx,
+                        s1_idx,
+                        sparse_block_size,
+                        actual_sel_s2,
+                        G,
+                        cur_s1,
+                        cur_s2,
+                    )
                     qk = qk + atten_mask.to(device) * (-2e35)
 
                 x_max = softmax_max[n2_idx][i]
                 x_sum = softmax_sum[n2_idx][i]
-                softmax_res = simple_softmax(qk, x_max.unsqueeze(-1), x_sum.unsqueeze(-1))
+                softmax_res = simple_softmax(
+                    qk, x_max.unsqueeze(-1), x_sum.unsqueeze(-1)
+                )
                 dp = torch.matmul(dout_cal, v_cal.permute(1, 0))
 
                 sg = softmax_grad(softmax_res, dp, out_cal, dout_cal).to(torch.float32)
 
                 dq = torch.matmul(sg, k_cal)
                 dk = torch.matmul(sg.permute(1, 0), q_cal)
-                dv = torch.matmul(softmax_res.permute(1, 0).to(torch.bfloat16).to(torch.float32), dout_cal)
+                dv = torch.matmul(
+                    softmax_res.permute(1, 0).to(torch.bfloat16).to(torch.float32),
+                    dout_cal,
+                )
 
                 dq_out[i][n2_idx] = dq
                 dk_out[s2_start:s2_end, n2_idx, :] = scatter_kv(
-                    dk_out[s2_start:s2_end, n2_idx, :], dk, topk_idx, sparse_block_size, cur_s2
+                    dk_out[s2_start:s2_end, n2_idx, :],
+                    dk,
+                    topk_idx,
+                    sparse_block_size,
+                    cur_s2,
                 )
                 dv_out[s2_start:s2_end, n2_idx, :] = scatter_kv(
-                    dv_out[s2_start:s2_end, n2_idx, :], dv, topk_idx, sparse_block_size, cur_s2
+                    dv_out[s2_start:s2_end, n2_idx, :],
+                    dv,
+                    topk_idx,
+                    sparse_block_size,
+                    cur_s2,
                 )
 
     dq_out = dq_out * scale_value
@@ -324,20 +383,40 @@ def gen_data(params):
         raise ValueError(f"Unsupported layout: {layout}")
 
     sparse_indices = get_sparse_indices_tnd(
-        T1, n2, acc_seqlen_q, acc_seqlen_kv, cur_q_len, cur_kv_len,
-        sparse_mode, sparse_block_size, sparse_block_count, "cpu",
+        T1,
+        n2,
+        acc_seqlen_q,
+        acc_seqlen_kv,
+        cur_q_len,
+        cur_kv_len,
+        sparse_mode,
+        sparse_block_size,
+        sparse_block_count,
+        "cpu",
     ).to(dtype=torch.int32)
 
     # Simulate forward output and upstream gradient
     out = torch.randn_like(query)
     dout = torch.randn_like(query)
 
-    softmax_max, softmax_sum, dq, dk, dv, dq_rope, dk_rope = npu_sparse_flash_attention_grad_golden(
-        query, key, value, sparse_indices, out, dout,
-        scale_value, sparse_block_size,
-        acc_seqlen_q, acc_seqlen_kv, cur_q_len, cur_kv_len,
-        query_rope, key_rope,
-        sparse_mode,
+    softmax_max, softmax_sum, dq, dk, dv, dq_rope, dk_rope = (
+        npu_sparse_flash_attention_grad_golden(
+            query,
+            key,
+            value,
+            sparse_indices,
+            out,
+            dout,
+            scale_value,
+            sparse_block_size,
+            acc_seqlen_q,
+            acc_seqlen_kv,
+            cur_q_len,
+            cur_kv_len,
+            query_rope,
+            key_rope,
+            sparse_mode,
+        )
     )
 
     # Move tensors to NPU device

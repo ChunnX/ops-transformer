@@ -120,11 +120,10 @@ ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
     auto softmaxSumType = static_cast<uint32_t>(softmaxSum->GetDataType());
 
     bool softmaxTypeCheck = (softmaxMaxType == softmaxSumType) && (softmaxMaxType == ge::DT_FLOAT);
-    OP_CHECK_IF(
-        softmaxTypeCheck != true,
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                    "softmaxMaxType should be DT_FLOAT and same with softmaxSumType"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(softmaxTypeCheck != true,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "softmaxMaxType should be DT_FLOAT and same with softmaxSumType"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -157,11 +156,10 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     }
 
     auto isShapeInValid = (t1 == 0 || n1 == 0 || d == 0 || d2 == 0 || n2 == 0);
-    OP_CHECK_IF(
-        isShapeInValid,
-        OP_LOGE("SparseFlashAttentionGrad", "input shape error, got 0 in tnd(%ld,%ld,%ld) or tnd(%ld,%ld,%ld)", t1, n1,
-                d, t1, n1, d2),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(isShapeInValid,
+                OP_LOGE("SparseFlashAttentionGrad", "input shape error, got 0 in tnd(%ld,%ld,%ld) or tnd(%ld,%ld,%ld)",
+                        t1, n1, d, t1, n1, d2),
+                return ge::GRAPH_FAILED);
 
     auto g = n1 / n2;
     auto ret = CheckTndSoftmaxMaxShape(context, t1, n2, g);

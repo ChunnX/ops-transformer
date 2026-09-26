@@ -21,31 +21,26 @@ constexpr static uint32_t ND = 0;
 constexpr static uint32_t NZ = 1;
 constexpr static uint32_t TND = 3;
 
-#define INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND)                               \
-    do {                                                                                                                \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                             \
-        GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, tiling_data_in, tiling_data);              \
-        const SparseFlashAttentionGradBasicTilingData *__restrict tilingData = &tiling_data_in;                         \
-        SFAG_BASIC::SelectedAttentionGradBasic<                                                                         \
-            SFAG_BASIC::SFAG_TYPE<SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, IS_BSND>>   \
-            op;                                                                                                         \
-        op.Process(query, key, value, out, d_out, softmax_max, softmax_sum, sparse_indices,                             \
-                   cur_seq_qlen, cur_seq_kvlen, query_rope, key_rope,                                             \
-                   dq, dk, dv, dq_rope, dk_rope, user, tilingData);                                                     \
+#define INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND) \
+    do { \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace); \
+        GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, tiling_data_in, tiling_data); \
+        const SparseFlashAttentionGradBasicTilingData *__restrict tilingData = &tiling_data_in; \
+        SFAG_BASIC::SelectedAttentionGradBasic<SFAG_BASIC::SFAG_TYPE< \
+            SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, IS_BSND>> \
+            op; \
+        op.Process(query, key, value, out, d_out, softmax_max, softmax_sum, sparse_indices, cur_seq_qlen, \
+                   cur_seq_kvlen, query_rope, key_rope, dq, dk, dv, dq_rope, dk_rope, user, tilingData); \
     } while (0)
 
-
-extern "C" __global__ __aicore__ void
-sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                            __gm__ uint8_t *sparse_indices, __gm__ uint8_t *d_out, __gm__ uint8_t *out,
-                            __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum,
-                            __gm__ uint8_t *cur_seq_qlen, __gm__ uint8_t *cur_seq_kvlen,
-                            __gm__ uint8_t *query_rope, __gm__ uint8_t *key_rope,
-                            __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
-                            __gm__ uint8_t *dq_rope, __gm__ uint8_t *dk_rope,
-                            __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+extern "C" __global__ __aicore__ void sparse_flash_attention_grad(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparse_indices,
+    __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum,
+    __gm__ uint8_t *cur_seq_qlen, __gm__ uint8_t *cur_seq_kvlen, __gm__ uint8_t *query_rope, __gm__ uint8_t *key_rope,
+    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dq_rope, __gm__ uint8_t *dk_rope,
+    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
-   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     if (TILING_KEY_IS(1000)) {
         INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, false, false);
@@ -102,4 +97,3 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
     }
 #endif
 }
-

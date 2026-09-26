@@ -16,9 +16,9 @@
  * l0_c： dimG * dimDqk * sizof(float) (0-12k / 64k-76k)
  */
 template <typename T1>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<T1>::cube5ProcessSparse(const int64_t pGmOffset, const int64_t dyGmOffset, const int64_t indicesGmOffset,
-                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5ProcessSparse(
+    const int64_t pGmOffset, const int64_t dyGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
+    const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
     uint32_t dLoopTimes = (dimDv + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
@@ -32,14 +32,16 @@ CubeOp<T1>::cube5ProcessSparse(const int64_t pGmOffset, const int64_t dyGmOffset
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDv * dimN2;
 
-    int64_t mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDv + cBlockIdx * selectedBlockCount * selectedBlockSize * dimDv;
+    int64_t mm5ResOutBaseOffset =
+        runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDv +
+        cBlockIdx * selectedBlockCount * selectedBlockSize * dimDv;
     const bool reloadDy = !runInfo.noReload && runInfo.isLastBasicBlock;
 
     uint32_t totalSel = selectedCntOffset * selectedBlockSize;
     if (runInfo.isLastBasicBlock) {
         totalSel = totalSel - selectedBlockSize + runInfo.lastBlockSize;
     }
-    for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
+    for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx += blockOffset) {
         LocalTensor<T1> current_l1_dy_tensor, l1_p_tensor;
         l1_p_tensor = l1_p_tensors[ping_pong_flag_l1_p_];
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_P_EVENT[ping_pong_flag_l1_p_]);
@@ -47,7 +49,8 @@ CubeOp<T1>::cube5ProcessSparse(const int64_t pGmOffset, const int64_t dyGmOffset
         mmParam.singleM = min(selectedBlockSize * blockOffset, totalSel - (mIdx - blkCntOffset) * selectedBlockSize);
 
         int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
-        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
+        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG,
+                   mmParam.singleM, PER_LOOP_BLOCK_SIZE);
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             if (unlikely(reloadDy)) {
                 // last block reload dy
@@ -63,9 +66,9 @@ CubeOp<T1>::cube5ProcessSparse(const int64_t pGmOffset, const int64_t dyGmOffset
             int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor, aL0TensorPingPong, bL0TensorPingPong,
+                                  mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0,
+                                  mm5ResWorkspaceGm[currentOutGmOffset]);
             UpdatePingPongFlag(ping_pong_flag_l0c_);
             if (unlikely(reloadDy)) {
                 SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
@@ -79,15 +82,15 @@ CubeOp<T1>::cube5ProcessSparse(const int64_t pGmOffset, const int64_t dyGmOffset
 }
 
 template <typename T1>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<T1>::cube5ProcessDense(const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5ProcessDense(const int32_t blkCntOffset,
+                                                                                    const int32_t mmPingPongIdx,
+                                                                                    const RunInfo &runInfo)
 {
     const int64_t pGmOffset = runInfo.mm345GmOffset;
     const int64_t dyGmOffset = runInfo.dyGmOffset;
     const int64_t indicesGmOffset = runInfo.indicesGmOffset;
     const int64_t outGmOffset = runInfo.mm5OutGmOffset;
 
-
     uint32_t dLoopTimes = (dimDv + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
     uint32_t blockOffset = M_SPLIT_SIZE / selectedBlockSize; // 128 / 1 = 128
@@ -100,21 +103,24 @@ CubeOp<T1>::cube5ProcessDense(const int32_t blkCntOffset, const int32_t mmPingPo
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDv * dimN2;
 
-    int64_t mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDv + cBlockIdx * selectedBlockCount * selectedBlockSize * dimDv;
+    int64_t mm5ResOutBaseOffset =
+        runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * dimDv +
+        cBlockIdx * selectedBlockCount * selectedBlockSize * dimDv;
     const bool reloadDy = !runInfo.noReload && runInfo.isLastBasicBlock;
 
     uint32_t totalSel = selectedCntOffset * selectedBlockSize;
     if (runInfo.isLastBasicBlock) {
         totalSel = totalSel - selectedBlockSize + runInfo.lastBlockSize;
     }
-    for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
+    for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx += blockOffset) {
         LocalTensor<T1> current_l1_dy_tensor, l1_p_tensor;
         l1_p_tensor = l1_p_tensors[ping_pong_flag_l1_p_];
         WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_P_EVENT[ping_pong_flag_l1_p_]);
         mmParam.singleM = min(selectedBlockSize * blockOffset, totalSel - (mIdx - blkCntOffset) * selectedBlockSize);
 
         int64_t mm5ResOutOffset = mm5ResOutBaseOffset + mIdx * selectedBlockSize * dimDv;
-        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG, mmParam.singleM, PER_LOOP_BLOCK_SIZE);
+        CopyGmToL1(l1_p_tensor, pWorkspaceGm[pGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG,
+                   mmParam.singleM, PER_LOOP_BLOCK_SIZE);
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             if (unlikely(reloadDy)) {
                 // last block reload dy
@@ -130,9 +136,9 @@ CubeOp<T1>::cube5ProcessDense(const int32_t blkCntOffset, const int32_t mmPingPo
             int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            MmadInnerWithSync<T1>(l0cTensor, l1_p_tensor, current_l1_dy_tensor, aL0TensorPingPong, bL0TensorPingPong,
+                                  mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0,
+                                  mm5ResWorkspaceGm[currentOutGmOffset]);
 
             UpdatePingPongFlag(ping_pong_flag_l0c_);
             if (unlikely(reloadDy)) {
@@ -147,9 +153,9 @@ CubeOp<T1>::cube5ProcessDense(const int32_t blkCntOffset, const int32_t mmPingPo
 }
 
 template <typename T1>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<T1>::cube5Process(const int64_t dsGmOffset, const int64_t keyGmOffset, const int64_t indicesGmOffset,
-                         const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
+    const int64_t dsGmOffset, const int64_t keyGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
+    const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
     if (!runInfo.s2LessThanTopkTotal) {
         cube5ProcessSparse(dsGmOffset, keyGmOffset, indicesGmOffset, outGmOffset, blkCntOffset, mmPingPongIdx, runInfo);

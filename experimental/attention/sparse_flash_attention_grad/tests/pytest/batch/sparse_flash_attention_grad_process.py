@@ -36,8 +36,14 @@ def call_npu(input_data):
     deterministic = input_data["deterministic"]
 
     npu_results = torch_npu.sparse_flash_attention_grad(
-        query, key, value, sparse_indices, dout, out,
-        softmax_max, softmax_sum,
+        query,
+        key,
+        value,
+        sparse_indices,
+        dout,
+        out,
+        softmax_max,
+        softmax_sum,
         query_rope=query_rope,
         key_rope=key_rope,
         cur_seq_lengths_query=cur_seq_lengths_query,

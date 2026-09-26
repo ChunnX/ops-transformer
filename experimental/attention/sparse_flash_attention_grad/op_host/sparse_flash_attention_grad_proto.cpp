@@ -69,8 +69,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     const gert::Shape *keyRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::K_ROPE));
 
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE("SparseFlashAttentionGrad", "attrs is nullptr."),
-                return ge::GRAPH_FAILED)
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE("SparseFlashAttentionGrad", "attrs is nullptr."), return ge::GRAPH_FAILED)
     auto scaleValue = attrs->GetFloat(static_cast<size_t>(AttrIndex::SCALE_VALUE));
     OP_CHECK_IF(scaleValue == nullptr, OP_LOGE("SparseFlashAttentionGrad", "scaleValue is nullptr."),
                 return ge::GRAPH_FAILED)
@@ -82,14 +81,11 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
                 return ge::GRAPH_FAILED)
 
     gert::Shape *dqShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DQ));
-    OP_CHECK_IF(dqShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dqShape is nullptr."),
-                return ge::GRAPH_FAILED)
+    OP_CHECK_IF(dqShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dqShape is nullptr."), return ge::GRAPH_FAILED)
     gert::Shape *dkShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DK));
-    OP_CHECK_IF(dkShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dkShape is nullptr."),
-                return ge::GRAPH_FAILED)
+    OP_CHECK_IF(dkShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dkShape is nullptr."), return ge::GRAPH_FAILED)
     gert::Shape *dvShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
-    OP_CHECK_IF(dvShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dvShape is nullptr."),
-                return ge::GRAPH_FAILED)
+    OP_CHECK_IF(dvShape == nullptr, OP_LOGE("SparseFlashAttentionGrad", "dvShape is nullptr."), return ge::GRAPH_FAILED)
     *dqShape = *queryShape;
     *dkShape = *keyShape;
     *dvShape = *valueShape;

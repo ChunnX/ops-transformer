@@ -57,7 +57,8 @@ struct AiCoreParams {
 
 class SparseFlashAttentionGradBasicTiling {
 public:
-    explicit SparseFlashAttentionGradBasicTiling(gert::TilingContext *context) : context_(context) {};
+    explicit SparseFlashAttentionGradBasicTiling(gert::TilingContext *context)
+        : context_(context) {};
     SparseFlashAttentionGradBasicTilingData tilingData;
 
 public:
