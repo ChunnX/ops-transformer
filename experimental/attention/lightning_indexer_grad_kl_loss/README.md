@@ -59,14 +59,14 @@ d_query_index, d_key_index, d_weight, loss = torch.ops.cann_ops_transformer.ligh
 这里的 `AllocEventID` 主要是给变量赋固定 `EVENT_IDx`，并预置可复用缓冲区的初始信号；
 `FreeEventID` 主要通过 Wait 消费末尾信号，不应理解为跨核 flag 的动态申请与释放。
 
-对应代码：[Vector Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h#L358)、
-[Cube Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h#L220)、
-[后处理 Vector2 Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector2.h#L138)。
+对应代码：[Vector Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h)（L386）、
+[Cube Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h)（L246）、
+[后处理 Vector2 Alloc/Free](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector2.h)（L152）。
 
 ### 2. 重新规划 flag ID，明确各阶段职责
 
-主库定义见 [common.h](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_common.h#L27)，
-实验版定义见 [common.h](op_kernel/sparse_lightning_indexer_grad_kl_loss_common.h#L17)。
+主库定义见 [common.h](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_common.h)（L27），
+实验版定义见 [common.h](op_kernel/sparse_lightning_indexer_grad_kl_loss_common.h)（L28）。
 下表的 mode 指发送端使用的模式；有些接收端使用默认模板参数。
 
 | 同步关系 | 主库 A2 | 实验版 | 调整后的作用 |
@@ -88,12 +88,12 @@ P/SY 合并释放了 `{2,3}`、`{6,7}`，为其他同步角色腾出编号。
 
 ### 3. V0 → C1：成对处理分块，将通知次数减半
 
-主库 [ProcessVector0](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_vector.h#L451)
+主库 [ProcessVector0](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_vector.h)（L437）
 先完成所有 P 分块的 gather 和通知，再完成所有 SY 分块。
 Cube 侧也先执行整个 `ComputeMm1`，再执行整个 `ComputeMm2`，分别等待各自的 flag。
 
-实验版 [ProcessVector0](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h#L415)
-按 S2 分块成对生产，Cube 侧通过 [ComputeMm12](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h#L453)
+实验版 [ProcessVector0](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h)（L445）
+按 S2 分块成对生产，Cube 侧通过 [ComputeMm12](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h)（L488）
 成对消费：
 
 ```text
@@ -120,13 +120,13 @@ P、SY 两份 GM 搬出。Cube 在 `ComputeMm1(info,i)` 中等一次，紧接着
 ### 4. C1 → V1：以一个完整就绪通知代替两次等待
 
 主库在整个 MM1 完成后发 P，在整个 MM2 完成后发 SY；
-[ProcessVector1](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_vector.h#L691)
+[ProcessVector1](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_vector.h)（L691）
 连续等待这两个信号后才开始 Vector 计算。
 
-实验版 [ComputeMm2](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h#L626)
+实验版 [ComputeMm2](op_kernel/sparse_lightning_indexer_grad_kl_loss_service_cube.h)（L593）
 只在最后一个 S2 分块结束时发送 `P_SY[taskIdMod2]`，绑定 `PIPE_FIX`。
 此前 MM1、MM2 的 Fixpipe 输出均已排在该通知之前，因而
-[ProcessVector1](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h#L639)
+[ProcessVector1](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h)（L692）
 等一次就能取得同一任务的两类结果。
 
 实验版以一个通知完整表达“P 和 SY 都已完成”，在保持两路结果依赖的同时压缩同步操作。
@@ -159,8 +159,8 @@ Wait(mode, pipe, flagId) → wait_flag_dev(flagId)
 ### 6. C/V 联合同步，隔离初始化与主循环阶段
 
 工作区初始化后，主库调用
-[`SyncAll()`](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_base.h#L345)，
-实验版改为 [`SyncAll<false>()`](op_kernel/sparse_lightning_indexer_grad_kl_loss_base.h#L310)。
+[`SyncAll()`](../../../attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_base.h)（L345），
+实验版改为 [`SyncAll<false>()`](op_kernel/sparse_lightning_indexer_grad_kl_loss_base.h)（L323）。
 
 这里的布尔参数是 `isAIVOnly`，默认值为 true。**false 表示同步 AIC 和 AIV，
 不是关闭同步。** 当前 `dav_c220` 的普通 SDK 路径使用：
@@ -183,7 +183,7 @@ Wait(mode, pipe, flagId) → wait_flag_dev(flagId)
 
 ### 7. 完善 deterministic 与跳过分支的同步配对
 
-[ProcessDeterVector2](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h#L867)
+[ProcessDeterVector2](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h)（L931）
 先等待本组 Cube 的 MM5 结果，再发 mode 0 通知并等待汇合。
 主库按任务奇偶使用 0/1，实验版使用单个 7：
 
@@ -199,13 +199,13 @@ Wait flag7
 
 接着的 mode 0 flag 2 控制 deterministic scatter 的阶段顺序。
 正常路径在 `Vector2ScatterAdd` 内对偶数 `idx` 等待；新增的
-[`maskValid == false` 分支](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h#L942)
+[`maskValid == false` 分支](op_kernel/sparse_lightning_indexer_grad_kl_loss_vector.h)（L1011）
 虽然跳过数据处理，也对偶数 `idx` 补相同 Wait，外层再按奇数 `idx` 或末任务条件 Set。
 这样 skip-padding 路径在跳过无效数据写入时，仍保持与正常路径一致的同步消费，完善了新增分支的同步保障。
 
 空任务有两层处理，需要结合调用条件理解：
 
-- [GetRunInfo](op_kernel/sparse_lightning_indexer_grad_kl_loss_base.h#L698)
+- [GetRunInfo](op_kernel/sparse_lightning_indexer_grad_kl_loss_base.h)（L673）
   对 `kRealSize==0` 标记 `isValid=false`，正常主循环会跳过对应 V0/C1/V1/C2/V2 调用；
   主循环的 flag 14 仍按轮次发送、等待。
 - `ComputeMm12` 保留 `s2LoopTimes==0` 时发送完成通知、推进相关缓冲区状态的防御分支；
@@ -235,7 +235,6 @@ deterministic 模式还保留了主循环尾部的参与核补齐逻辑，使数
 输入配置和参与核的一致性。本节未进行仅切换 event ID 的性能对照，也未新增多流或长期循环压力测试。
 两版还包含 TopK 容量、mask 语义和向量计算拆分等差异，既有精度结果及未解决问题保留在
 “验证结果与已知限制”中，不以 event ID 调整替代这些问题的独立验证。
-
 
 ## 构建
 

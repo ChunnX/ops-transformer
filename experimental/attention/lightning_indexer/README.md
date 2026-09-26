@@ -67,7 +67,7 @@ lightning_indexer/
 
 本节对比当前实验实现与主库的
 [`attention/lightning_indexer/op_kernel/arch22`](../../../attention/lightning_indexer/op_kernel/arch22)，
-不包含 `arch35` 的 TopK 实现。主库 [kernel 入口](../../../attention/lightning_indexer/op_kernel/lightning_indexer.cpp#L22)
+不包含 `arch35` 的 TopK 实现。主库 [kernel 入口](../../../attention/lightning_indexer/op_kernel/lightning_indexer.cpp)（L20）
 通过架构宏选择 `arch22` / `arch35`，A2 对应本节分析的 `arch22` 路径。
 
 **主要变化：两者都沿 S2 流式处理，但主库 A2 通常每个基本块都排序并维护有序 TopK；
@@ -76,7 +76,7 @@ lightning_indexer/
 
 ### 1. 主库 A2 已有的排序流程
 
-主库 [ProcessVec](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_service_vector_arch22.h#L369)
+主库 [ProcessVec](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_service_vector_arch22.h)（L263）
 有两条路径，不能把它概括为“把整条 S2 一次性全排”：
 
 | 条件 | 主库 A2 的实际处理 |
@@ -84,9 +84,9 @@ lightning_indexer/
 | `actS1Size > 4`，或 `sparse_count > 2048` | 对当前 S2 基本块执行 `SortAll`，再 `MergeSort` 到该 token 的有序候选中，保留 `virTopK` 项 |
 | `actS1Size <= 4` 且 `sparse_count <= 2048` | 每块仍先排序，但可缓存四块 512 项；缓存满、S2 结束或本核任务结束时，通过 `MrgBasicBlock` 和 `SparseTopK` 合并 |
 
-主库 [SortAll](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_vector.h#L185)
+主库 [SortAll](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_vector.h)（L185）
 先用 `Sort32` 生成 32 项有序段，再用 `MrgSort` 做多级四路归并；
-[MergeSort](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_vector.h#L267)
+[MergeSort](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_vector.h)（L267）
 将新块与历史候选合并后截取前 `virTopK`。
 在 `sparse_count <= 2048` 时，主库的 `virTopK` 同样固定为 2048。
 
@@ -95,9 +95,9 @@ lightning_indexer/
 
 ### 2. 无序候选与批量阈值筛选
 
-对应代码：[InitBuffers](op_kernel/lightning_indexer_service_vector.h#L169)、
-[ProcessVec 的选择分支](op_kernel/lightning_indexer_service_vector.h#L504)、
-[ExecuteQS](op_kernel/lightning_indexer_service_vector.h#L916)。
+对应代码：[InitBuffers](op_kernel/lightning_indexer_service_vector.h)（L178）、
+[ProcessVec 的选择分支](op_kernel/lightning_indexer_service_vector.h)（L550）、
+[ExecuteQS](op_kernel/lightning_indexer_service_vector.h)（L940）。
 
 定义 `K = sparse_count`、`V = virTopK`、`B = 512 / block_len`。
 当 `K <= 2048` 时，**V 固定为 2048，而不是 K**；例如测试的 K=128 仍维护 2048 项主体候选。
@@ -117,7 +117,7 @@ lightning_indexer/
 
 ### 3. 用 CompareScalar / GatherMask 替代每轮完整排序
 
-[QuickSelectPartition](op_kernel/lightning_indexer_vector.h#L453) 对一个阈值 `pivot` 执行：
+[QuickSelectPartition](op_kernel/lightning_indexer_vector.h)（L464） 对一个阈值 `pivot` 执行：
 
 ```text
 mask = (score >= pivot)
@@ -153,8 +153,8 @@ C > 2048 + 384    → 阈值偏低，需要提高
 
 ### 5. 阈值搜索的加速：历史边界、哨兵过滤、割线插值
 
-对应代码：[首次边界初始化](op_kernel/lightning_indexer_vector.h#L474)、
-[探测与阈值更新](op_kernel/lightning_indexer_vector.h#L510)。
+对应代码：[首次边界初始化](op_kernel/lightning_indexer_vector.h)（L484）、
+[探测与阈值更新](op_kernel/lightning_indexer_vector.h)（L519）。
 
 - **复用每个 token 的历史信息。** 首轮用主体候选的 `ReduceMin` 和过滤哨兵后的 `ReduceMax`
   初始化搜索范围；后续用 `lastThreshold_` 和 `sugMaxCarry_`，减少重复归约。
@@ -174,7 +174,7 @@ C > 2048 + 384    → 阈值偏低，需要提高
 
 ### 6. 正确性回退和输出格式衔接
 
-[ExecuteQS 的失败分支](op_kernel/lightning_indexer_service_vector.h#L966)
+[ExecuteQS 的失败分支](op_kernel/lightning_indexer_service_vector.h)（L991）
 会**立即**把旧主体、旧 overflow、缓存及当前新块重新拼接，执行 `SortAll(4096)`，
 再通过 `Extract` 写回前 2048+384 项的分离格式。失败时的新数据不会被直接丢弃。
 
@@ -188,10 +188,10 @@ C > 2048 + 384    → 阈值偏低，需要提高
 最终精排若仍有两块未处理缓存，最多拼入 `2048 + 384 + 2×512 = 3456` 项，
 剩余位置用 `-inf/-1` 填充，再统一做 4096 项排序。
 
-[输出前精排](op_kernel/lightning_indexer_service_vector.h#L568)
+[输出前精排](op_kernel/lightning_indexer_service_vector.h)（L580）
 在 `isS2End` **或本核任务结束**时发生，不一定整条序列只执行一次。
 若一个 token 的 S2 被分给多个核，每个局部结果都先恢复成有序的 score/index 交织格式，
-随后 [ProcessLD](op_kernel/lightning_indexer_service_vector.h#L804)
+随后 [ProcessLD](op_kernel/lightning_indexer_service_vector.h)（L745）
 仍使用四路 `MrgSort` 合并各核结果。这部分与主库的总体方法相同，并未被 QS 替代。
 
 输出前还有对角索引位置交换，因此“最终精排”也不表示输出 API 在所有位置上
@@ -215,8 +215,8 @@ C > 2048 + 384    → 阈值偏低，需要提高
 4 次 QS，最后执行 1 次 4096 项精排。**这是指定条件下的调用计数，不是加速倍数。**
 主库 decode 缓存路径、因果 mask、跨核切分或 QS 回退都会改变这个对比。
 
-配套的资源取舍也发生了变化：[实验版 K<=2048 的 S1 基本块为 4](op_kernel/lightning_indexer_kernel.h#L165)，
-[主库为 8](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_kernel_arch22.h#L180)。
+配套的资源取舍也发生了变化：[实验版 K<=2048 的 S1 基本块为 4](op_kernel/lightning_indexer_kernel.h)（L186），
+[主库为 8](../../../attention/lightning_indexer/op_kernel/arch22/lightning_indexer_kernel_arch22.h)（L186）。
 实验版为候选缓存、overflow 和 QS 工作区单独分配 UB，输入缓冲改为独立 `inQueue_`，
 不再与排序工作区共用同一布局。因此不能只根据“排序次数减少”就推导整体 kernel 一定更快；
 Query 分块、UB 占用、QS 迭代、拷贝和同步开销都要计入。
