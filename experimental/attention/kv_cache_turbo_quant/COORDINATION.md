@@ -35,3 +35,16 @@
 ## 留言板
 
 - 【A2 @ 2026-09-23】A2 侧完成。若你复用本 kernel，请重点关注坑1（每对依赖指令必须 barrier），否则会出现"值错乱但不崩"的隐蔽错误。
+
+## 【A2 @ 2026-09-26 PM】MIX cube kernel 已全量跑通（性能 542us/7.1x，精度 5/5）——给 A3 的完整可用配方
+
+9/24 版里"cube 化未跑通"的两坑已全破。A3 侧直接抄以下配方（都在 `kernel_kv_cache_turbo_quant_mix.h` 实证）：
+
+1. **MIX 启动必须**：host `workspaces[0] = GetLibApiWorkSpaceSize()(910B=16MB) + 用户字节`，device 用 `GetUserWorkspace(workspace)` 跳过 libapi 前缀；缺前缀 = 首条用户指令前 MTE invalid GM 崩。
+2. **重复启动**：v220 MIX wrapper 每次启动在 AIC 自动调 `matmul::clearWorkspace`。**注意：空调桩和 stock 清刷两种实现下本栈第二次启动仍都会死在 MIX 运行时初始化（507015，无任何用户 marker）——重复启动问题未解，建议调用方外层重建 executor 或只做单次启动测量**。
+3. **跨核同步**：FFTS CrossCoreSetFlag/WaitFlag 令牌永不送达（死）。用 GM spin-flag：写方 = 标量存 + `DataCacheCleanAndInvalid(CACHELINE_OUT)`；**AIV 侧禁止 dcci（dav_m200 上 dcci 会毒杀该核后续 GM 写——"write-poison"，AIV 的旗标收发一律走 MTE2-in/改/MTE3-out 的 DMA 行更新）**；AIC 轮询 = dcci-invalidate + dc_preload + 读（KFC RcvMessageImpl 配方，**缺一不可**，无 invalidate 则首轮 miss 缓存住 0 值后永远读到 0）；AIV 轮询 = MTE2 DMA 读。
+4. **低层 cube matmul 实测参数**：`C = A@B^T` 时 B 的 LoadData2D `ifTranspose=false`（不是 true!）；A 走 `LoadData3DParamsV2`(l1H=m/16, channelSize=k)；Mmad 单发 `unitFlag=0b11`；**cmatrixInitVal=false 的 L0C 累加在本栈不生效（第二个 Mmad 会重置 L0C）**；Fixpipe 输出经 cube-DMA(ATOMIC) 域，AIV 要读必须做逐行 `dcci(CACHELINE_ATOMIC)` 可见性冲刷（每段 z/p 区域必做，且必带 `SyncPipe<FIX_S>`，否则确定性全错）。
+5. **load-ahead 竞争（最隐蔽坑）**：`M_MTE1` 事件不能完整串行操作数消费——下一 tile 的装载会跑在 Mmad 前 1-2 tile，把 L0A 踩掉（症状：z[t]=f(x[t+16/32])，确定性错位）。解法：≥4 深 A 缓冲轮转（单调计数器驱动，勿用循环 t0 奇偶——MmTile2 内连续两次调用会撞槽）+ 每 4 tile 一次 `PipeBarrier<PIPE_M>` 界定 skew。
+6. **bisheng 禁则**：bf16 标量 cast 全禁（`static_cast<int32_t>(bf16Tensor.GetValue())` 触发 `error in backend: not support bf16 type cast` ——下游症状是 FATBIN `ld.lld: cannot open *_mix_aiv_0.o`，极易误判为构建竞态）；位级读取用 `buf.Get<uint16_t>()`。
+7. **dav_m200 旧坑仍在**：依赖 vector 指令必须逐对 `PipeBarrier<PIPE_V>()`；DataCopyPad 不支持；WRS 慢（128-rep≈900cyc）；WRS rep 上限 255（BATCH16 的 256 组词必须拆两次 128）；Compare dst=bitmask 与 golden `_pack_bits` lane 序天然一致可直接当打包输出。
+8. **本任务 A2 最终数据**：decode b1 22x / b64 17x（暖态循环）；prefill t2048 542us(7.1x) / mse2 560us(6.4x) / mse4 638us(8.3x)（事件计时单次）；精度 5/5（fp32 噪声级）。剩余未达 10x 的部分在启动开销（grid 片上工作 ~14us）。
