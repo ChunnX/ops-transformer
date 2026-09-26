@@ -14,15 +14,19 @@
 #include "kernel_kv_cache_turbo_quant_mix.h"
 
 // The v220 MIX wrapper auto-generates a matmul::clearWorkspace(workspace) call
-// on AIC blocks. The stock implementation kills every second launch of the
-// same executor (bisected 2026-09-24); this kernel runs no KFC server, so a
-// no-op stub satisfies the wrapper and keeps repeat launches alive.
+// on every launch. The stock implementation's per-launch STATE RESETS
+// (SetAtomicNone / SetMaskNorm / load-boundary) are MANDATORY for repeat
+// launches - without them the MIX runtime dies at the second launch's start
+// (bisected 2026-09-26 PM: a bare no-op stub killed every 2nd launch before
+// any user code ran). The stock's actual workspace wipe is skipped: this
+// kernel's workspace protocol is self-cleaning.
 namespace matmul {
 __aicore__ inline void clearWorkspace(__gm__ uint8_t *workspace)
 {
     (void)workspace;
 }
 } // namespace matmul
+
 
 extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kv_vectors, GM_ADDR rotation_matrix,
                                                            GM_ADDR qjl_matrix, GM_ADDR quant_idx, GM_ADDR quant_qjl,

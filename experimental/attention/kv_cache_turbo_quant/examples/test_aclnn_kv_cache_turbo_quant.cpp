@@ -207,14 +207,8 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
     st = aclnnKvCacheTurboQuant(workspace, workspaceSize, executor, stream);
     CHECK_RET(st == ACL_SUCCESS, ci.name + " aclnn ret=" + std::to_string(st));
     aclrtRecordEvent(evB, stream);
-    aclrtSynchronizeEvent(evB);
-    {
-        float ms = 0.0f;
-        aclrtEventElapsedTime(&ms, evA, evB);
-        printf("[TIME1] %s kernel %.1f us (single launch, event-timed)\n", ci.name.c_str(), ms * 1000.0f);
-    }
-    aclrtDestroyEvent(evA);
-    aclrtDestroyEvent(evB);
+    // NOTE: the event sync moved after the PEEK block so a hung kernel still
+    // gets its workspace dumped
 
     // ---- KVTQ_PEEK: dump live workspace from a second stream while the
     // (possibly hung) kernel is still running, to observe cross-core flags ----
@@ -236,7 +230,7 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
                        *reinterpret_cast<const int32_t *>(f + (g * 8 + k) * 64));
             }
         }
-        const int32_t *mrk = reinterpret_cast<const int32_t *>(u + 3584 * 4);
+        const int32_t *mrk = reinterpret_cast<const int32_t *>(u);
         printf("[PEEK] AIC: %d %d %d %d | AIV: %d %d %d %d %d | init: %d %d %d %d %d %d %d\n", mrk[0],
                mrk[1], mrk[2], mrk[3], mrk[8], mrk[9], mrk[10], mrk[11], mrk[12], mrk[16], mrk[17], mrk[18],
                mrk[19], mrk[20], mrk[21], mrk[22]);
@@ -282,6 +276,29 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
                *reinterpret_cast<const float *>(&dbg[126]), *reinterpret_cast<const float *>(&dbg[127]));
         printf("[PEEK] evtIDs m2m1=%d m1m=%d mm1=%d m1m2=%d fixs=%d fixm=%d mfix=%d\n", dbg[32], dbg[33], dbg[34],
                dbg[35], dbg[36], dbg[37], dbg[38]);
+        printf("[PEEK] L0A[0,1,256]=%04x %04x %04x L0B[0]=%04x | cL0[0..2]=%f %f %f\n", dbg[200], dbg[201],
+               dbg[202], dbg[203], *reinterpret_cast<const float *>(&dbg[204]),
+               *reinterpret_cast<const float *>(&dbg[205]), *reinterpret_cast<const float *>(&dbg[206]));
+        printf("[PEEK] cycles: AIC x0=%d x1=%d xr=%d rp=%d pend=%d | AIV up=%d rset=%d\n", dbg[300], dbg[301],
+               dbg[302], dbg[303], dbg[305], dbg[306], dbg[307]);
+        printf("[PEEK] flags g0:\n");
+        for (int ci = 0; ci < 64; ci += 8) {
+            printf("  [%d] %08x %08x %08x %08x %08x %08x %08x %08x\n", ci, mrk[ci], mrk[ci + 1], mrk[ci + 2],
+                   mrk[ci + 3], mrk[ci + 4], mrk[ci + 5], mrk[ci + 6], mrk[ci + 7]);
+        }
+        printf("[PEEK] AIC tiles:\n");
+        for (int ci = 240; ci < 284; ci += 11) {
+            printf("  [%d] %d %d %d %d %d %d %d %d %d %d %d\n", ci, dbg[ci], dbg[ci + 1], dbg[ci + 2], dbg[ci + 3],
+                   dbg[ci + 4], dbg[ci + 5], dbg[ci + 6], dbg[ci + 7], dbg[ci + 8], dbg[ci + 9], dbg[ci + 10]);
+        }
+        printf("[PEEK] pipe AIV: up=%d %d %d %d | zw=%d %d %d %d | cz=%d %d %d %d | pw=%d %d %d %d\n", dbg[240],
+               dbg[241], dbg[242], dbg[243], dbg[250], dbg[251], dbg[252], dbg[253], dbg[260], dbg[261], dbg[262],
+               dbg[263], dbg[270], dbg[271], dbg[272], dbg[273]);
+        printf("[PEEK] pipe cells 200-273:\n");
+        for (int ci = 200; ci < 274; ci += 8) {
+            printf("  [%d] %d %d %d %d %d %d %d %d\n", ci, dbg[ci], dbg[ci + 1], dbg[ci + 2], dbg[ci + 3],
+                   dbg[ci + 4], dbg[ci + 5], dbg[ci + 6], dbg[ci + 7]);
+        }
         printf("[PEEK] k-addr norm=%08x%08x gamma=%08x%08x idx=%08x%08x qjl=%08x%08x\n", dbg[41], dbg[40],
                dbg[43], dbg[42], dbg[45], dbg[44], dbg[47], dbg[46]);
         printf("[PEEK] AICg1 A(t0)=%04x %04x A(t16)=%04x %04x\n", dbg[64], dbg[65], dbg[68], dbg[69]);
@@ -348,6 +365,14 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
         exit(0);
     }
 
+    aclrtSynchronizeEvent(evB);
+    {
+        float ms = 0.0f;
+        aclrtEventElapsedTime(&ms, evA, evB);
+        printf("[TIME1] %s kernel %.1f us (single launch, event-timed)\n", ci.name.c_str(), ms * 1000.0f);
+    }
+    aclrtDestroyEvent(evA);
+    aclrtDestroyEvent(evB);
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, "sync");
 
     std::vector<uint8_t> idxOut(idxOutBytes), qjlOut(qjlOutBytes);
@@ -594,6 +619,20 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
         aclnnStatus syncSt = aclrtSynchronizeStream(stream);
         if (syncSt != ACL_SUCCESS) {
             const char *em = aclGetRecentErrMsg();
+            {
+                std::vector<int32_t> lc(8, -1);
+                aclrtMemcpy(lc.data(), 32, reinterpret_cast<const uint8_t *>(workspace) + 16UL * 1024 * 1024 +
+                                                     3584 * 4 + 300 * 4,
+                            32, ACL_MEMCPY_DEVICE_TO_HOST);
+                std::vector<int32_t> ev(16, -1);
+                aclrtMemcpy(ev.data(), 64, reinterpret_cast<const uint8_t *>(workspace) + 16UL * 1024 * 1024 +
+                                                     3584 * 4 + 310 * 4,
+                            64, ACL_MEMCPY_DEVICE_TO_HOST);
+                std::cerr << "[CRASHDUMP] launchNo=" << lc[0] << " x=" << lc[1] << " xhi=" << lc[2]
+                          << " z=" << lc[3] << " p=" << lc[4] << "\n";
+                std::cerr << "[CRASHDUMP] L2 evtIDs=" << ev[0] << " " << ev[1] << " " << ev[2] << " " << ev[3]
+                          << " " << ev[4] << " " << ev[5] << " " << ev[6] << "\n";
+            }
             std::cerr << "[FATAL] warmup sync st=" << syncSt << " msg=" << (em != nullptr ? em : "(null)")
                       << std::endl;
             return false;
