@@ -401,7 +401,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // KV-SFA: query matmul.
     crossCoreSyncBufId++;
 
     if ASCEND_IS_AIC {
@@ -693,7 +693,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx;
+            ++multiCoreInnerIdx; // KV-SFA: tile state.
         }
         gS1StartIdx = 0;
     }
