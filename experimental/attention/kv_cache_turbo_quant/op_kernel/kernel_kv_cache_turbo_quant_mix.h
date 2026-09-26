@@ -44,41 +44,6 @@ class KernelKvCacheTurboQuantMix {
 public:
     __aicore__ inline KernelKvCacheTurboQuantMix() {}
 
-    // minimal bisect: one tile of the flow, stages dumped into the outputs
-    __aicore__ inline void BisectTile0()
-    {
-        // stage 1: z read-back from GM into the OUTPUT norm tensor (visible)
-        LocalTensor<float> zT = zTileBuf_.Get<float>();
-        LocalTensor<bfloat16_t> xT = xTileBuf_.Get<bfloat16_t>();
-        SyncPipe<HardEvent::V_MTE2>();
-        DataCopy(xT, kvGm_[0], HEAD_DIM);
-        DataCopy(zT, wsZ1Gm_[0], HEAD_DIM);
-        SyncPipe<HardEvent::MTE2_V>();
-        // dump the wsZ1 physical address and the role's user base for the host
-        {
-            GlobalTensor<int32_t> addrGm;
-            addrGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flagRaw_ + (12UL * 1024 * 1024)) + 64,
-                                   8);
-            const uint64_t zAddr = reinterpret_cast<uint64_t>(wsZ1Gm_.GetPhyAddr());
-            const uint64_t fAddr = reinterpret_cast<uint64_t>(flagRaw_);
-            int32_t zlo = static_cast<int32_t>(zAddr & 0xFFFFFFFF);
-            int32_t zhi = static_cast<int32_t>(zAddr >> 32);
-            int32_t flo = static_cast<int32_t>(fAddr & 0xFFFFFFFF);
-            int32_t fhi = static_cast<int32_t>(fAddr >> 32);
-            SyncPipe<HardEvent::S_MTE3>();
-            addrGm.SetValue(0, zlo);
-            addrGm.SetValue(1, zhi);
-            addrGm.SetValue(2, flo);
-            addrGm.SetValue(3, fhi);
-        }
-        LocalTensor<bfloat16_t> zBF = normBFBuf_.Get<bfloat16_t>();
-        Cast(zBF, zT, RoundMode::CAST_RINT, HEAD_DIM);
-        PipeBarrier<PIPE_V>();
-        SyncPipe<HardEvent::V_MTE3>();
-        DataCopy(normGm_[0], zBF, HEAD_DIM);           // z1(bf16) -> norm out
-        DataCopy(gammaGm_[0], xT, HEAD_DIM);           // x  -> gamma out
-        SyncPipe<HardEvent::MTE3_V>();
-    }
 
 
 
@@ -173,16 +138,18 @@ public:
         wsShGm_.SetGlobalBuffer(wsH + 2 * SPLIT_ELEMS, SPLIT_ELEMS);
         wsSlGm_.SetGlobalBuffer(wsH + 3 * SPLIT_ELEMS, SPLIT_ELEMS);
         __gm__ float *wsF = reinterpret_cast<__gm__ float *>(workspace);
-        wsZ1Gm_.SetGlobalBuffer(wsF + WS_Z_OFF / 4 + 0 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        wsZ2Gm_.SetGlobalBuffer(wsF + WS_Z_OFF / 4 + 1 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        __gm__ half *wsR = reinterpret_cast<__gm__ half *>(workspace + WS_Z_OFF + 2 * totalVec_ * HEAD_DIM * 4);
-        wsRhat2Gm_.SetGlobalBuffer(wsR, 2 * totalVec_ * HEAD_DIM);   // [vec][rh|rl] interleaved
-        __gm__ float *wsP = reinterpret_cast<__gm__ float *>(workspace + WS_Z_OFF + 2 * totalVec_ * HEAD_DIM * 4 +
-                                                              2 * totalVec_ * HEAD_DIM * 2);
+        // z: ONE L0C-accumulated fp32 plane (was z1+z2)
+        wsZGm_.SetGlobalBuffer(wsF + WS_Z_OFF / 4, totalVec_ * HEAD_DIM);
+        // r_hat: [vec][rh|rl] interleaved fp16, right after z
+        __gm__ half *wsR = reinterpret_cast<__gm__ half *>(workspace + WS_Z_OFF + totalVec_ * HEAD_DIM * 4);
+        wsRhat2Gm_.SetGlobalBuffer(wsR, 2 * totalVec_ * HEAD_DIM);
+        // p13 (accumulated Sh@rh+Sl@rh) + p2 (Sh@rl): two fp32 planes after r_hat
+        __gm__ float *wsP = reinterpret_cast<__gm__ float *>(workspace + WS_Z_OFF + totalVec_ * HEAD_DIM * 4 +
+                                                              totalVec_ * HEAD_DIM * 2 * 2);
         wsP1Gm_.SetGlobalBuffer(wsP + 0 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
         wsP2Gm_.SetGlobalBuffer(wsP + 1 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
         wsP3Gm_.SetGlobalBuffer(wsP + 2 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        // p4 (rl@Sl ~1e-9) is never produced/read; its plane is reclaimed for xh
+        // xh: fp16, after the three p planes
         wsXhGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsP + 3 * totalVec_ * HEAD_DIM),
                                 totalVec_ * HEAD_DIM);
         if (!isAic_ && GetBlockIdx() == 0) {
@@ -272,15 +239,15 @@ public:
             LoadSplitToL1(wsHhGm_, wsHlGm_);
             for (int64_t t0 = 0; t0 < rangeLen_; t0 += TILE_VEC) {
                 const int64_t g = rangeBegin_ + t0;
-                MmTile(wsXhGm_[g * HEAD_DIM], wsZ1Gm_[g * HEAD_DIM], wsZ2Gm_[g * HEAD_DIM], t0);
+                MmTile(wsXhGm_[g * HEAD_DIM], wsZGm_[g * HEAD_DIM], t0);
             }
             SyncPipe<HardEvent::FIX_S>();   // z tiles in L2 before the flag store
             // per-line flush of the z range through the ATOMIC cache domain
             // (the cube DMA write path) so the partner AIVs observe it
             {
-                __gm__ float *zBase = const_cast<__gm__ float *>(wsZ1Gm_.GetPhyAddr()) +
+                __gm__ float *zBase = const_cast<__gm__ float *>(wsZGm_.GetPhyAddr()) +
                                       rangeBegin_ * HEAD_DIM;
-                const int64_t lines = (rangeLen_ * HEAD_DIM * 2 * sizeof(float) + 63) / 64;
+                const int64_t lines = (rangeLen_ * HEAD_DIM * sizeof(float) + 63) / 64;
                 GlobalTensor<int64_t> zLine;
                 zLine.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(zBase), lines * 8);
                 for (int64_t li = 0; li < lines; ++li) {
@@ -298,8 +265,7 @@ public:
                 const int64_t g = rangeBegin_ + t0;
                 // [rh|rl] plane-major per tile: rl follows the tile's rh block
                 MmTile2(wsRhat2Gm_[g * 2 * HEAD_DIM], wsRhat2Gm_[g * 2 * HEAD_DIM + TILE_VEC * HEAD_DIM],
-                        wsP1Gm_[g * HEAD_DIM], wsP2Gm_[g * HEAD_DIM], wsP3Gm_[g * HEAD_DIM], wsP4Gm_[g * HEAD_DIM],
-                        t0);
+                        wsP1Gm_[g * HEAD_DIM], wsP2Gm_[g * HEAD_DIM], wsP3Gm_[g * HEAD_DIM], t0);
             }
             SyncPipe<HardEvent::FIX_S>();
             {
@@ -579,7 +545,6 @@ private:
         LocalTensor<bfloat16_t> gammaBF = gammaBFBuf_.Get<bfloat16_t>();
         LocalTensor<uint8_t> idxStage = idxStageBuf_.Get<uint8_t>();
         LocalTensor<uint8_t> qjlStage = qjlStageBuf_.Get<uint8_t>();
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 320, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
 
 
         // ---- phase 0 (even AIV of each group): fp16 hi/lo splits of H and S.
@@ -615,9 +580,7 @@ private:
         SyncPipe<HardEvent::MTE3_S>();   // x tiles in L2 before the flag store
         const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
         GmFlagSet(slotBase + aivSubIdx_ * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_X_LO : MAGIC_X_HI);
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 321, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         GmFlagWait(slotBase + (2 + 4 * aivSubIdx_) * SLOT_STRIDE, MAGIC_Z);
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 322, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         if (GetBlockIdx() < 4) {
             // per-AIV V_S-covered x/z dumps at cells 140+blk*4
             volatile __gm__ int32_t *pv = flagRaw_ + 3968 + 140 + GetBlockIdx() * 4;
@@ -635,47 +598,8 @@ private:
             DataCopy(xTile, kvGm_[g0 * HEAD_DIM], nv * HEAD_DIM);
             SyncPipe<HardEvent::MTE2_V>();
             SyncPipe<HardEvent::V_MTE2>();
-            DataCopy(zTile, wsZ1Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
+            DataCopy(zTile, wsZGm_[g0 * HEAD_DIM], nv * HEAD_DIM);
             SyncPipe<HardEvent::MTE2_V>();
-            SyncPipe<HardEvent::V_MTE2>();
-            DataCopy(pTileBuf_.Get<float>(), wsZ2Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
-            SyncPipe<HardEvent::MTE2_V>();
-            Add(zTile, zTile, pTileBuf_.Get<float>(), nv * HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-            if (GetBlockIdx() == 0 && tileStart == 0) {
-                // bulk-landing test: copy z to a peekable workspace area via the
-                // same UB->GM MTE3 path the output flush uses
-                GlobalTensor<bfloat16_t> probeGm;
-                probeGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(flagRaw_ + (12UL * 1024 * 1024)),
-                                        HEAD_DIM);
-                LocalTensor<bfloat16_t> zb = normBFBuf_.Get<bfloat16_t>();
-                Cast(zb, zTile, RoundMode::CAST_RINT, HEAD_DIM);
-                PipeBarrier<PIPE_V>();
-                SyncPipe<HardEvent::V_MTE3>();
-                DataCopy(probeGm, zb, HEAD_DIM);
-                SyncPipe<HardEvent::MTE3_V>();
-                // and x likewise at +64B
-                GlobalTensor<bfloat16_t> probeGm2;
-                probeGm2.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(flagRaw_ + (12UL * 1024 * 1024)) +
-                                             32,
-                                         HEAD_DIM);
-                SyncPipe<HardEvent::V_MTE3>();
-                DataCopy(probeGm2, xTile, HEAD_DIM);
-                SyncPipe<HardEvent::MTE3_V>();
-            }
-            if (GetBlockIdx() == 0 && tileStart == 0) {
-                SyncPipe<HardEvent::V_S>();
-                float z0 = zTile.GetValue(0);
-                float z1v = zTile.GetValue(1);
-                int32_t x0 = static_cast<int32_t>(xTileU16.GetValue(0));
-                int32_t x1 = static_cast<int32_t>(xTileU16.GetValue(1));
-                int32_t xi0 = *reinterpret_cast<int32_t *>(&x0);
-                int32_t xi1 = *reinterpret_cast<int32_t *>(&x1);
-                for (int32_t dz = 0; dz < 8; ++dz) {
-                    const float zz = zTile.GetValue(dz);
-                }
-                SyncPipe<HardEvent::S_V>();
-            }
 
             // ---- squared norms from x: full-tile ops + two 64-wide WRS halves
             LocalTensor<float> sqG = yBuf_.Get<float>();
@@ -693,13 +617,6 @@ private:
             PipeBarrier<PIPE_V>();
             Sqrt(normVec, normVec, nv);
             PipeBarrier<PIPE_V>();
-            if (GetBlockIdx() == 0 && tileStart == 0) {
-                SyncPipe<HardEvent::V_S>();
-                for (int32_t di = 0; di < 4; ++di) {
-                    const float nv0 = normVec.GetValue(di);
-                }
-                SyncPipe<HardEvent::S_V>();
-            }
 
             SyncPipe<HardEvent::V_S>();
             for (int32_t v = 0; v < nv; ++v) {
@@ -767,7 +684,6 @@ private:
         SyncPipe<HardEvent::MTE3_S>();
         if (GetBlockIdx() < 2) {
         }
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 323, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         GmFlagSet(slotBase + (3 + aivSubIdx_) * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_R_LO : MAGIC_R_HI);
 
         // early norm/gamma visibility sweep: a handful of tiles lost their
@@ -778,10 +694,10 @@ private:
 
         // ---- wait p, sign, qjl flush
         GmFlagWait(slotBase + (5 + 2 * aivSubIdx_) * SLOT_STRIDE, MAGIC_P);
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 324, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
             const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
             const int64_t g0 = vecBegin_ + tileStart;
+            // p = p1 + p2 + p3 = Sh@rh + Sh@rl + Sl@rh (Sl@rl ~1e-9 dropped)
             LocalTensor<float> pAll = zTileBuf_.Get<float>();
             SyncPipe<HardEvent::V_MTE2>();
             DataCopy(pAll, wsP1Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
@@ -794,7 +710,6 @@ private:
             SyncPipe<HardEvent::MTE2_V>();
             Add(pAll, pAll, pTileBuf_.Get<float>(), nv * HEAD_DIM);
             PipeBarrier<PIPE_V>();
-            // p4 = rl@Sl (~1e-9) is skipped: its sign-flip probability is zero
 
             LocalTensor<float> bv = bvBuf_.Get<float>();
             Duplicate(bv, 0.0f, BATCH_VEC * HEAD_DIM);
@@ -825,7 +740,6 @@ private:
             SyncPipe<HardEvent::S_V>();
         }
 
-        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 325, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
     }
 
     // ---- low-level fp16 matmul service (AIC only): z = A @ B^T per 16x128 tile ----
@@ -924,85 +838,11 @@ private:
         }
     }
 
-    // one 32-row [rh|rl] A tile through both splits (p pass, 2 loads+4+4 -> 1+2+2)
-    __aicore__ inline void MmTile32(const GlobalTensor<half> &aGm, int64_t tileIdx)
-    {
-        const int32_t bufSel = mmCtr_ & 1;
-        ++mmCtr_;
-        LocalTensor<half> l1A = l1ABuf_.Get<half>()[bufSel * 2 * TILE_VEC * HEAD_DIM];
-        LocalTensor<half> l0A = l0ABuf_.Get<half>()[bufSel * 2 * TILE_VEC * HEAD_DIM];
-        CopyGmNDToL1(l1A, aGm, 2 * TILE_VEC, 2 * HEAD_DIM);
-        SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
-        WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
-        LoadData3DParamsV2<half> pa;
-        pa.l1H = (2 * TILE_VEC) / 16;
-        pa.l1W = 16;
-        pa.padList[0] = 0;
-        pa.padList[1] = 0;
-        pa.padList[2] = 0;
-        pa.padList[3] = 255;
-        pa.mExtension = 2 * TILE_VEC;
-        pa.kExtension = HEAD_DIM;
-        pa.mStartPt = 0;
-        pa.kStartPt = 0;
-        pa.strideH = 1;
-        pa.strideW = 1;
-        pa.filterW = 1;
-        pa.filterSizeW = (1 >> 8) & 255;
-        pa.filterH = 1;
-        pa.filterSizeH = (1 >> 8) & 255;
-        pa.dilationFilterH = 1;
-        pa.dilationFilterW = 1;
-        pa.fMatrixCtrl = 0;
-        pa.channelSize = HEAD_DIM;
-        pa.enTranspose = 0;
-        LoadData<half>(l0A, l1A, pa);
-        SetFlag<HardEvent::MTE1_M>(eventMte1M_);
-        WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
-        MmadParams mp;
-        mp.m = 2 * TILE_VEC;
-        mp.n = HEAD_DIM;
-        mp.k = HEAD_DIM;
-        mp.cmatrixSource = false;
-        mp.cmatrixInitVal = true;
-        mp.unitFlag = 0b11;
-        LocalTensor<float> cL0 = l0CBuf_.Get<float>();
-        Mmad(cL0, l0A, l0BBuf_.Get<half>(), mp);
-        SetFlag<HardEvent::M_MTE1>(eventMMte1_);
-        WaitFlag<HardEvent::M_MTE1>(eventMMte1_);
-        SetFlag<HardEvent::M_FIX>(eventMFix_);
-        WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOut32(wsP1Gm_[tileIdx * 2 * TILE_VEC * HEAD_DIM], cL0);
-        SetFlag<HardEvent::FIX_M>(eventFixM_);
-        WaitFlag<HardEvent::FIX_M>(eventFixM_);
-        Mmad(cL0, l0A, l0BBuf_.Get<half>()[SPLIT_ELEMS], mp);
-        SetFlag<HardEvent::M_MTE1>(eventMMte1_);
-        WaitFlag<HardEvent::M_MTE1>(eventMMte1_);
-        SetFlag<HardEvent::M_FIX>(eventMFix_);
-        WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOut32(wsP3Gm_[tileIdx * 2 * TILE_VEC * HEAD_DIM], cL0);
-        SetFlag<HardEvent::FIX_M>(eventFixM_);
-        WaitFlag<HardEvent::FIX_M>(eventFixM_);
-        if ((mmCtr_ & 3) == 0) {
-            PipeBarrier<PIPE_M>();
-        }
-    }
-
-    __aicore__ inline void FixpipeOut32(const GlobalTensor<float> &gmOut, const LocalTensor<float> &cL0)
-    {
-        FixpipeParamsV220 fp;
-        fp.nSize = HEAD_DIM;
-        fp.mSize = 2 * TILE_VEC;
-        fp.srcStride = 2 * TILE_VEC;
-        fp.dstStride = HEAD_DIM;
-        fp.ndNum = 1;
-        fp.unitFlag = 0b11;
-        Fixpipe(gmOut, cL0, fp);
-    }
-
-    // one A tile through both splits: z1 = A @ B0^T, z2 = A @ B1^T
-    __aicore__ inline void MmTile(const GlobalTensor<half> &aGm, const GlobalTensor<float> &z1Gm,
-                                  const GlobalTensor<float> &z2Gm, int64_t dbgT0 = -1, uint32_t aStride = HEAD_DIM)
+    // one A tile through both B-splits, L0C-ACCUMULATED into a single plane:
+    //   out = A @ (B0+B1)^T = A@B0^T + A@B1^T  (fp32-grade from fp16 splits,
+    //   one fixpipe + one GM plane instead of two - halves the z/p DMA)
+    __aicore__ inline void MmTile(const GlobalTensor<half> &aGm, const GlobalTensor<float> &outGm,
+                                  int64_t dbgT0 = -1, uint32_t aStride = HEAD_DIM)
     {
         // 4-deep A rotation driven by a monotonic MmTile counter: the loop-t0
         // parity collided for consecutive MmTiles within one MmTile2 (rl(t0)
@@ -1049,27 +889,24 @@ private:
         mp.n = HEAD_DIM;
         mp.k = HEAD_DIM;
         mp.cmatrixSource = false;
-        mp.cmatrixInitVal = true;
-        mp.unitFlag = 0b11;   // single-shot Mmad = last accumulation: allow fixpipe move-out (QSFA)
+        mp.cmatrixInitVal = true;    // first split: C = A @ B0^T
+        mp.unitFlag = 0b10;          // UNITFLAG_ENABLE: hold C in L0C, more accumulation to come
         LocalTensor<float> cL0 = l0CBuf_.Get<float>();
         LocalTensor<half> aL0 = l0A;
         Mmad(cL0, aL0, l0BBuf_.Get<half>(), mp);
         SetFlag<HardEvent::M_MTE1>(evAB);
         WaitFlag<HardEvent::M_MTE1>(evAB);
-        // M_FIX: C result is in L0C before the fixpipe reads it (missing this
-        // raced the CO1->GM copy against the Mmad L0C writes -> wedge)
-        SetFlag<HardEvent::M_FIX>(eventMFix_);
-        WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOut(z1Gm, cL0);
-        // L0C is shared: the next Mmad must wait until the fixpipe drained it
-        SetFlag<HardEvent::FIX_M>(eventFixM_);
-        WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        // second split accumulates onto the same L0C (same A operand, B1):
+        // C += A @ B1^T. cmatrixInitVal=false uses the real C already in L0C.
+        mp.cmatrixInitVal = false;
+        mp.unitFlag = 0b11;          // UNITFLAG_EN_OUTER_LAST: last, allow fixpipe move-out
         Mmad(cL0, aL0, l0BBuf_.Get<half>()[SPLIT_ELEMS], mp);
         SetFlag<HardEvent::M_MTE1>(evAB);
         WaitFlag<HardEvent::M_MTE1>(evAB);
+        // M_FIX: C result is in L0C before the fixpipe reads it
         SetFlag<HardEvent::M_FIX>(eventMFix_);
         WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOut(z2Gm, cL0);
+        FixpipeOut(outGm, cL0);
         SetFlag<HardEvent::FIX_M>(eventFixM_);
         WaitFlag<HardEvent::FIX_M>(eventFixM_);
         // coarse M-pipe barrier every 4th MmTile: bounds the load-ahead skew
@@ -1079,18 +916,59 @@ private:
         }
     }
 
-    // r_hat tiles through both splits: p1 = rh @ Sh^T, p2 = rl @ Sh^T, p3 = rh @ Sl^T, p4 = rl @ Sl^T
-    __aicore__ inline void MmTile2(const GlobalTensor<half> &rhGm, const GlobalTensor<half> &rlGm,
-                                   const GlobalTensor<float> &p1Gm, const GlobalTensor<float> &p2Gm,
-                                   const GlobalTensor<float> &p3Gm, const GlobalTensor<float> &p4Gm,
-                                   int64_t dbgT0 = -1)
+    // ISOLATION TEST: two-output non-accumulating variant (p1 = A@B0^T, p3 = A@B1^T)
+    __aicore__ inline void MmTileSplit(const GlobalTensor<half> &aGm, const GlobalTensor<float> &o1Gm,
+                                       const GlobalTensor<float> &o2Gm, int64_t dbgT0 = -1)
     {
-        // alternate the A-rotation parity between the rh/rl sub-tiles so the
-        // second MmTile's loads never touch the first's in-flight operands
+        const int32_t bufSel = mmCtr_ & 3;
+        ++mmCtr_;
+        const TEventID evAB = eventMMte1_;
+        LocalTensor<half> l1A = l1ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
+        LocalTensor<half> l0A = l0ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
+        CopyGmNDToL1(l1A, aGm, TILE_VEC, HEAD_DIM);
+        SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
+        WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
+        LoadData3DParamsV2<half> pa;
+        pa.l1H = TILE_VEC / 16; pa.l1W = 16;
+        pa.padList[0] = 0; pa.padList[1] = 0; pa.padList[2] = 0; pa.padList[3] = 255;
+        pa.mExtension = TILE_VEC; pa.kExtension = HEAD_DIM; pa.mStartPt = 0; pa.kStartPt = 0;
+        pa.strideH = 1; pa.strideW = 1; pa.filterW = 1; pa.filterSizeW = (1 >> 8) & 255;
+        pa.filterH = 1; pa.filterSizeH = (1 >> 8) & 255; pa.dilationFilterH = 1; pa.dilationFilterW = 1;
+        pa.fMatrixCtrl = 0; pa.channelSize = HEAD_DIM; pa.enTranspose = 0;
+        LoadData<half>(l0A, l1A, pa);
+        SetFlag<HardEvent::MTE1_M>(eventMte1M_);
+        WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
+        MmadParams mp;
+        mp.m = TILE_VEC; mp.n = HEAD_DIM; mp.k = HEAD_DIM;
+        mp.cmatrixSource = false; mp.cmatrixInitVal = true; mp.unitFlag = 0b11;
+        LocalTensor<float> cL0 = l0CBuf_.Get<float>();
+        LocalTensor<half> aL0 = l0A;
+        Mmad(cL0, aL0, l0BBuf_.Get<half>(), mp);
+        SetFlag<HardEvent::M_MTE1>(evAB); WaitFlag<HardEvent::M_MTE1>(evAB);
+        SetFlag<HardEvent::M_FIX>(eventMFix_); WaitFlag<HardEvent::M_FIX>(eventMFix_);
+        FixpipeOut(o1Gm, cL0);
+        SetFlag<HardEvent::FIX_M>(eventFixM_); WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        Mmad(cL0, aL0, l0BBuf_.Get<half>()[SPLIT_ELEMS], mp);
+        SetFlag<HardEvent::M_MTE1>(evAB); WaitFlag<HardEvent::M_MTE1>(evAB);
+        SetFlag<HardEvent::M_FIX>(eventMFix_); WaitFlag<HardEvent::M_FIX>(eventMFix_);
+        FixpipeOut(o2Gm, cL0);
+        SetFlag<HardEvent::FIX_M>(eventFixM_); WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        if ((mmCtr_ & 3) == 0) { PipeBarrier<PIPE_M>(); }
+    }
+
+    // r_hat tiles: p13 = (Sh+Sl) @ rh (L0C-accumulated, one plane) and
+    // p2 = Sh @ rl (one plane). p = p13 + p2 = (Sh+Sl)@(rh+rl) - Sl@rl (~1e-9)
+    // is dropped. Two GM planes instead of three/four.
+    __aicore__ inline void MmTile2(const GlobalTensor<half> &rhGm, const GlobalTensor<half> &rlGm,
+                                   const GlobalTensor<float> &p13Gm, const GlobalTensor<float> &p2Gm,
+                                   const GlobalTensor<float> &p3Gm, int64_t dbgT0 = -1)
+    {
         const int64_t t0 = (dbgT0 < 0) ? 0 : dbgT0;
-        MmTile(rhGm, p1Gm, p3Gm, t0);
+        // separate planes (NOT L0C-accumulated): the accumulate's correction
+        // term loses precision, which idx tolerates (z, coarse) but the QJL
+        // SIGN does not (p, needs ~1e-7). p1=Sh@rh, p3=Sl@rh, p2=Sh@rl.
+        MmTileSplit(rhGm, p13Gm, p3Gm, t0);
         MmTile1(rlGm, 0, p2Gm);
-        (void)p4Gm;   // p4 = rl@Sl ~1e-9: not produced, not read
     }
 
     __aicore__ inline void FixpipeOut(const GlobalTensor<float> &gmOut, const LocalTensor<float> &cL0)
@@ -1345,13 +1223,11 @@ private:
     GlobalTensor<half> wsHlGm_;
     GlobalTensor<half> wsShGm_;
     GlobalTensor<half> wsSlGm_;
-    GlobalTensor<float> wsZ1Gm_;
-    GlobalTensor<float> wsZ2Gm_;
+    GlobalTensor<float> wsZGm_;
     GlobalTensor<half> wsRhat2Gm_;
     GlobalTensor<float> wsP1Gm_;
     GlobalTensor<float> wsP2Gm_;
     GlobalTensor<float> wsP3Gm_;
-    GlobalTensor<float> wsP4Gm_;
     GlobalTensor<half> wsXhGm_;
     __gm__ int32_t *flagRaw_ = nullptr;
     volatile __gm__ int32_t *dbgMark_ = nullptr;

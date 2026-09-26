@@ -142,9 +142,10 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     // user code runs (bisected 2026-09-24).
     size_t wsBytes = 32 * 1024;
     if (useCube) {
-        // flags 16KB + splits 128KB + z 2x512B + r 2x256B + p 3x512B + x 256B per vector
+        // flags 16KB + splits 128KB + per-vector: z 512B (1 L0C-accumulated fp32
+        // plane) + r_hat 512B (rh|rl fp16) + p1/p2/p3 3x512B (fp32) + xh 256B
         wsBytes = static_cast<size_t>(144 * 1024) +
-                  static_cast<size_t>(totalVec) * (2 * 512 + 2 * 256 + 3 * 512 + 256);
+                  static_cast<size_t>(totalVec) * (512 + 512 + 512 + 512 + 512 + 256);
     }
     workspaces[0] = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize()) + wsBytes;
 
