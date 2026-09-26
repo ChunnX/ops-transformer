@@ -198,7 +198,7 @@ __simd_callee__ inline void MulWeightAndReduceSumEvenVF(__ubuf__ uint32_t *out_,
     AscendC::Reg::RegTensor<float> regQK[2];
     AscendC::Reg::RegTensor<float> regW;
     AscendC::Reg::RegTensor<float> regSum0[2];
-    AscendC::Reg::RegTensor<float> regSum1[2];
+    AscendC::Reg::RegTensor<float> regSum1[2]; // LI V2: mask layout (regSum1).
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<float> fp32Ctx;
@@ -223,7 +223,7 @@ __simd_callee__ inline void MulWeightAndReduceSumOddVF(__ubuf__ uint32_t *out_, 
     AscendC::Reg::RegTensor<float> regQK[2];
     AscendC::Reg::RegTensor<float> regW;
     AscendC::Reg::RegTensor<float> regSum0[2];
-    AscendC::Reg::RegTensor<float> regSum1[2];
+    AscendC::Reg::RegTensor<float> regSum1[2]; // LI V2: mask layout (regSum1).
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<float> fp32Ctx;
