@@ -43,7 +43,6 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 系统 | mtos 22.03 LTS-SP1，x86_64 |
 | NPU | Ascend 910B2C |
 | 驱动 / npu-smi | 25.0.rc1.1 |
 | CANN | `/usr/local/Ascend/cann` → `cann-8.5.0` |
