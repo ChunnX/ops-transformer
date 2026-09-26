@@ -17,7 +17,7 @@
 
 #include "tiling_case_executor.h"
 #include "gmm_csv_ge_parse_utils.h"
-#include "../../../op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_data.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
@@ -115,7 +115,7 @@ const ::GMMSwigluQuantSwigluParams *GetSwigluParams(const TilingInfo &result)
 }
 
 void ExpectSwigluParams(const ::GMMSwigluQuantSwigluParams &params, int64_t mode, uint8_t scaleAlg,
-                       float clampLimit = 7.0F, float gluAlpha = 1.702F, float gluBias = 1.0F)
+                        float clampLimit = 7.0F, float gluAlpha = 1.702F, float gluBias = 1.0F)
 {
     EXPECT_EQ(params.swigluMode, mode);
     EXPECT_EQ(params.scaleAlg, scaleAlg);
@@ -202,11 +202,11 @@ TEST(GroupedMatmulSwigluQuantV3Route, AttributesShareBackendKeys)
             SCOPED_TRACE(::testing::Message() << "key=" << c.key << ",alg=" << scaleAlg);
             optiling::GMMSwigluV2CompileInfo info{};
             auto context = MakeContext(c, &info, scaleAlg);
-            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_CLAMP_LIMIT].attr_ =
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_CLAMP_LIMIT].attr_ =
                 Value::CreateFrom<float>(3.0F);
-            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_GLU_ALPHA].attr_ =
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_GLU_ALPHA].attr_ =
                 Value::CreateFrom<float>(0.5F);
-            context.attrs_[optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_GLU_BIAS].attr_ =
+            context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_GLU_BIAS].attr_ =
                 Value::CreateFrom<float>(-1.0F);
             TilingInfo result;
             ASSERT_TRUE(ExecuteTiling(context, result));
@@ -398,8 +398,8 @@ TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesV2Template)
     for (bool tensorApi : {false, true}) {
         for (bool trans : {false, true}) {
             for (bool explicitMode : {false, true}) {
-                SCOPED_TRACE(::testing::Message() << "tensorApi=" << tensorApi << ",trans=" << trans
-                                                  << ",explicitMode=" << explicitMode);
+                SCOPED_TRACE(::testing::Message()
+                             << "tensorApi=" << tensorApi << ",trans=" << trans << ",explicitMode=" << explicitMode);
                 const int64_t key = (tensorApi ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY) + (trans ? 1 : 0);
                 optiling::GMMSwigluV2CompileInfo info{};
                 auto context = MakeContext({1024, 128, 128, 1, trans, key}, &info, 0, 64, 0);
@@ -408,13 +408,12 @@ TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesV2Template)
                     // the same key family for its supported weight-NZ input.
                     const std::vector<int64_t> weightShape = {1, 128, 128};
                     context.inputTensorDesc_[3] = gert::TilingContextPara::TensorDescription(
-                        ops::ut::MakeGertStorageShape(weightShape, weightShape), ge::DT_FLOAT8_E4M3FN,
-                        ge::FORMAT_ND);
+                        ops::ut::MakeGertStorageShape(weightShape, weightShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
                 }
                 if (!explicitMode) {
-                    context.attrs_.erase(context.attrs_.begin() +
-                                             optiling::GroupedMatmulSwigluQuantV3Tiling::ATTR_INDEX_SWIGLU_MODE,
-                                         context.attrs_.end());
+                    context.attrs_.erase(
+                        context.attrs_.begin() + optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_SWIGLU_MODE,
+                        context.attrs_.end());
                 }
                 TilingInfo result;
                 ASSERT_TRUE(ExecuteTiling(context, result));
@@ -422,6 +421,41 @@ TEST(GroupedMatmulSwigluQuantV3Route, LegacyModeUsesV2Template)
                 const auto *params = GetSwigluParams(result);
                 ASSERT_NE(params, nullptr);
                 ExpectSwigluParams(*params, 0, 0);
+            }
+        }
+    }
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, SharedTemplateResetsEpilogueAndKernelRoute)
+{
+    // V2 NZ and V3 now reuse template 2. Alternate the epilogue and kernel
+    // route to check that cross-call input state does not leak into legacy V2.
+    for (bool trans : {false, true}) {
+        for (int64_t mode : {0, 2, 0, 2, 0}) {
+            for (int64_t m : {1024, 1}) {
+                SCOPED_TRACE(::testing::Message() << "trans=" << trans << ",mode=" << mode << ",M=" << m);
+                const int scaleAlg = mode == 2 ? 1 : 0;
+                const int64_t key = (mode == 2 && m == 1024 ? V3_TENSOR_API_NZ_KEY : V3_CGMCT_NZ_KEY) + (trans ? 1 : 0);
+                optiling::GMMSwigluV2CompileInfo info{};
+                auto context = MakeContext({m, 128, 128, 1, trans, key}, &info, scaleAlg, 64, mode);
+                if (mode == 2) {
+                    context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_CLAMP_LIMIT].attr_ =
+                        Ops::Transformer::AnyValue::CreateFrom<float>(3.0F);
+                    context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_GLU_ALPHA].attr_ =
+                        Ops::Transformer::AnyValue::CreateFrom<float>(0.5F);
+                    context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_GLU_BIAS].attr_ =
+                        Ops::Transformer::AnyValue::CreateFrom<float>(-1.0F);
+                }
+                TilingInfo result;
+                ASSERT_TRUE(ExecuteTiling(context, result));
+                EXPECT_EQ(result.tilingKey, key);
+                const auto *params = GetSwigluParams(result);
+                ASSERT_NE(params, nullptr);
+                if (mode == 2) {
+                    ExpectSwigluParams(*params, mode, scaleAlg, 3.0F, 0.5F, -1.0F);
+                } else {
+                    ExpectSwigluParams(*params, 0, 0);
+                }
             }
         }
     }
@@ -438,6 +472,19 @@ TEST(GroupedMatmulSwigluQuantV3Route, RejectsUnsupportedModeAndPlatform)
     auto invalidPlatformContext = MakeContext({512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &invalidPlatformInfo, 0);
     invalidPlatformInfo.npuArch_ = static_cast<int32_t>(NpuArch::DAV_2201);
     EXPECT_FALSE(ExecuteTiling(invalidPlatformContext, result));
+}
+
+TEST(GroupedMatmulSwigluQuantV3Route, RejectsDequantDtypeBeforeEnumNarrowing)
+{
+    for (int64_t dtype : {1LL << 32, -(1LL << 32), 1LL}) {
+        SCOPED_TRACE(::testing::Message() << "dequant_dtype=" << dtype);
+        optiling::GMMSwigluV2CompileInfo info{};
+        auto context = MakeContext({512, 128, 128, 1, false, V3_CGMCT_NZ_KEY}, &info, 0);
+        context.attrs_[optiling::GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_DEQUANT_DTYPE].attr_ =
+            Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtype);
+        TilingInfo result;
+        EXPECT_FALSE(ExecuteTiling(context, result));
+    }
 }
 
 TEST(GroupedMatmulSwigluQuantV3Route, RejectsMissingRequiredInputs)

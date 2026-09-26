@@ -8,8 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <exception>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -52,9 +55,10 @@ int Init(int32_t deviceId, aclrtStream *stream)
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ret=%d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ret=%d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ret=%d\n", ret); aclFinalize(); return ret);
     ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ret=%d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ret=%d\n", ret); aclrtResetDevice(deviceId);
+              aclFinalize(); return ret);
     return ACL_SUCCESS;
 }
 
@@ -116,7 +120,7 @@ bool DumpFile(const std::string &path, const std::vector<uint8_t> &data)
     return true;
 }
 
-int main(int argc, char **argv)
+int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scaleAlg, aclrtStream stream)
 {
     const int64_t dequantMode = 2;
     const int64_t dequantDtype = 0;
@@ -132,17 +136,6 @@ int main(int argc, char **argv)
     const aclTensor *bias = nullptr;
     const aclTensor *smoothScale = nullptr;
     const aclIntArray *tuningConfigOptional = nullptr;
-    const bool transposeWeight = argc > 1 ? std::stoll(argv[1]) != 0 : false;
-    const std::string dumpPrefix = argc > 2 ? argv[2] : "";
-    const int64_t scaleAlg = argc > 3 ? std::stoll(argv[3]) : 0;
-    if (scaleAlg < 0 || scaleAlg > 1) {
-        LOG_PRINT("invalid scale_alg=%ld\n", scaleAlg);
-        return 2;
-    }
-    int32_t deviceId = 0;
-    aclrtStream stream = nullptr;
-    auto ret = Init(deviceId, &stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init failed\n"); return ret);
     int64_t E = 1;
     int64_t M = 2048;
     int64_t K = 64;
@@ -175,7 +168,6 @@ int main(int argc, char **argv)
     }
     std::vector<uint8_t> weightScaleHostData(GetShapeSize(weightScaleShape), 127);
     std::vector<uint8_t> xScaleHostData(GetShapeSize(xScaleShape), 127);
-    // std::vector<int64_t> groupListHostData(E, 1);
     std::vector<int64_t> groupListHostData = {M};
     std::vector<uint8_t> outputHostData(GetShapeSize(outputShape), 0);
     std::vector<uint8_t> outputScaleHostData(GetShapeSize(outputScaleShape), 0);
@@ -199,7 +191,7 @@ int main(int argc, char **argv)
     aclTensorList *weight = nullptr;
     aclTensorList *weightScale = nullptr;
 
-    ret = CreateAclTensorND<uint8_t>(xHostData, xShape, &xDeviceAddr, ACL_FLOAT8_E4M3FN, &x);
+    auto ret = CreateAclTensorND<uint8_t>(xHostData, xShape, &xDeviceAddr, ACL_FLOAT8_E4M3FN, &x);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -216,6 +208,8 @@ int main(int argc, char **argv)
     CHECK_RET(weight != nullptr, LOG_PRINT("aclCreateTensorList(weight) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorListPtr(weight,
                                                                                                aclDestroyTensorList);
+    // aclDestroyTensorList also destroys its member tensors.
+    weightTensorPtr.release();
     // The ZN scale view is obtained by transposing an [E, N, scaleK, 2]
     // source. Its API entry view remains [E, scaleK, N, 2].
     std::vector<int64_t> weightScaleViewStrides = transposeWeight ?
@@ -233,6 +227,7 @@ int main(int argc, char **argv)
     CHECK_RET(weightScale != nullptr, LOG_PRINT("aclCreateTensorList(weightScale) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightScaleTensorListPtr(
         weightScale, aclDestroyTensorList);
+    weightScaleTensorPtr.release();
 
     ret = CreateAclTensorND<uint8_t>(xScaleHostData, xScaleShape, &xScaleDeviceAddr, ACL_FLOAT8_E8M0, &xScale);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xScaleTensorPtr(xScale, aclDestroyTensor);
@@ -269,15 +264,14 @@ int main(int argc, char **argv)
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("workspace malloc failed\n"); return ret);
     }
+    std::unique_ptr<void, aclError (*)(void *)> workspacePtr(workspaceAddr, aclrtFree);
 
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3(workspaceAddr, workspaceSize, executor, stream);
+    // Synchronize even if launch reports an error, before releasing device buffers.
+    const auto syncRet = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("run op failed. ret=%d\n", ret); return ret);
+    CHECK_RET(syncRet == ACL_SUCCESS, LOG_PRINT("sync stream failed. ret=%d\n", syncRet); return syncRet);
 
-    ret = aclrtSynchronizeStream(stream);
-    if (ret != ACL_SUCCESS) {
-        LOG_PRINT("sync stream failed ret=%d\n", ret);
-        std::_Exit(3);
-    }
     LOG_PRINT("run success\n");
 
     ret = aclrtMemcpy(outputHostData.data(), outputHostData.size() * sizeof(uint8_t), outputDeviceAddr,
@@ -285,8 +279,8 @@ int main(int argc, char **argv)
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy output failed. ret=%d\n", ret); return ret);
 
-    ret = aclrtMemcpy(outputScaleHostData.data(), outputScaleHostData.size() * sizeof(int8_t), outputScaleDeviceAddr,
-                      outputScaleHostData.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(outputScaleHostData.data(), outputScaleHostData.size() * sizeof(uint8_t), outputScaleDeviceAddr,
+                      outputScaleHostData.size() * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputScale failed. ret=%d\n", ret); return ret);
 
     PrintVector<uint8_t>(outputHostData, "output", 64);
@@ -294,13 +288,56 @@ int main(int argc, char **argv)
     PrintVector<uint8_t>(outputScaleHostData, "outputScale", 64);
 
     if (!dumpPrefix.empty()) {
-        CHECK_RET(DumpFile(dumpPrefix + "_output.bin", outputHostData), std::_Exit(4));
-        CHECK_RET(DumpFile(dumpPrefix + "_output_scale.bin", outputScaleHostData), std::_Exit(4));
+        CHECK_RET(DumpFile(dumpPrefix + "_output.bin", outputHostData), return ACL_ERROR_FAILURE);
+        CHECK_RET(DumpFile(dumpPrefix + "_output_scale.bin", outputScaleHostData), return ACL_ERROR_FAILURE);
         LOG_PRINT("dumpPrefix=%s\n", dumpPrefix.c_str());
     }
 
-    // The short-lived validation demo has already copied and dumped all
-    // results.  Avoid device/ACL teardown here: the 950 debug runtime can wait
-    // indefinitely while releasing a successful custom-op context.
-    std::_Exit(0);
+    // Tensor lists, tensors, workspace and device buffers are released by RAII
+    // before main destroys the stream and resets the device.
+    return ACL_SUCCESS;
+}
+
+int main(int argc, char **argv)
+{
+    bool transposeWeight = false;
+    int64_t scaleAlg = 0;
+    const std::string dumpPrefix = argc > 2 ? argv[2] : "";
+    try {
+        const std::string transposeArg = argc > 1 ? argv[1] : "0";
+        const std::string scaleAlgArg = argc > 3 ? argv[3] : "0";
+        if (argc > 4 || (transposeArg != "0" && transposeArg != "1") || (scaleAlgArg != "0" && scaleAlgArg != "1")) {
+            LOG_PRINT("usage: %s [transposeWeight: 0|1] [dumpPrefix] [scaleAlg: 0|1]\n", argv[0]);
+            return 2;
+        }
+        transposeWeight = transposeArg == "1";
+        scaleAlg = scaleAlgArg == "1" ? 1 : 0;
+    } catch (const std::exception &error) {
+        LOG_PRINT("invalid arguments: %s\n", error.what());
+        return 2;
+    }
+
+    // Initialize the device and stream before creating tensors.
+    const int32_t deviceId = 0;
+    aclrtStream stream = nullptr;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    try {
+        ret = RunExample(transposeWeight, dumpPrefix, scaleAlg, stream);
+    } catch (const std::exception &error) {
+        LOG_PRINT("example failed: %s\n", error.what());
+        ret = ACL_ERROR_FAILURE;
+    }
+
+    // Release every initialized runtime resource, including on failure.
+    const auto destroyRet = aclrtDestroyStream(stream);
+    const auto resetRet = aclrtResetDevice(deviceId);
+    const auto finalizeRet = aclFinalize();
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(destroyRet == ACL_SUCCESS, LOG_PRINT("aclrtDestroyStream failed. ret=%d\n", destroyRet);
+              return destroyRet);
+    CHECK_RET(resetRet == ACL_SUCCESS, LOG_PRINT("aclrtResetDevice failed. ret=%d\n", resetRet); return resetRet);
+    CHECK_RET(finalizeRet == ACL_SUCCESS, LOG_PRINT("aclFinalize failed. ret=%d\n", finalizeRet); return finalizeRet);
+    LOG_PRINT("resource cleanup success\n");
+    return ACL_SUCCESS;
 }
