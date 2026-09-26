@@ -18,7 +18,7 @@
 ### 环境配置
 #### 前置要求
 1. 确认TorchNPU为最新版本
-2. 参考[Attention融合算子Experimental使用说明](../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
+2. 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 
 ## 文件结构
 ### pytest文件结构说明
