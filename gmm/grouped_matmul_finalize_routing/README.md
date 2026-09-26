@@ -248,7 +248,7 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing](examples/test_aclnn_grouped_matmul_finalize_routing_v3.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子。 |
+| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_v3](examples/test_aclnn_grouped_matmul_finalize_routing_v3.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子。 |
 | aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_weight_nz](examples/arch35/test_aclnn_grouped_matmul_finalize_routing_weightnz.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)接口方式调用GroupedMatmulFinalizeRoutingWeightNz算子。 |
-| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_mx](examples/arch35/test_aclnn_grouped_matmul_finalize_routing_v3_mx.cpp) | <term>Ascend 950PR&950DT系列产品</term>下通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子（MX量化场景）。 |
+| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_v3_mx](examples/arch35/test_aclnn_grouped_matmul_finalize_routing_v3_mx.cpp) | <term>Ascend 950PR&950DT系列产品</term>下通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子（MX量化场景）。 |
 | aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4](examples/arch35/test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4.cpp) | <term>Ascend 950PR&950DT系列产品</term>下通过[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)接口方式调用GroupedMatmulFinalizeRoutingWeightNz算子（MxA8W4量化场景）。 |
