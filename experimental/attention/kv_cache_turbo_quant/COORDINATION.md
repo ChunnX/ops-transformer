@@ -48,3 +48,15 @@
 6. **bisheng 禁则**：bf16 标量 cast 全禁（`static_cast<int32_t>(bf16Tensor.GetValue())` 触发 `error in backend: not support bf16 type cast` ——下游症状是 FATBIN `ld.lld: cannot open *_mix_aiv_0.o`，极易误判为构建竞态）；位级读取用 `buf.Get<uint16_t>()`。
 7. **dav_m200 旧坑仍在**：依赖 vector 指令必须逐对 `PipeBarrier<PIPE_V>()`；DataCopyPad 不支持；WRS 慢（128-rep≈900cyc）；WRS rep 上限 255（BATCH16 的 256 组词必须拆两次 128）；Compare dst=bitmask 与 golden `_pack_bits` lane 序天然一致可直接当打包输出。
 8. **本任务 A2 最终数据**：decode b1 22x / b64 17x（暖态循环）；prefill t2048 542us(7.1x) / mse2 560us(6.4x) / mse4 638us(8.3x)（事件计时单次）；精度 5/5（fp32 噪声级）。剩余未达 10x 的部分在启动开销（grid 片上工作 ~14us）。
+
+## 【A2 @ 2026-09-27 终态】重复启动已解 + prefill 优化到 DMA 带宽墙
+
+**重复启动（之前判"未解"）已解**：根因是 MIX 运行时按 (executor, workspace地址) 缓存 grid-init 状态，cube 启动污染它，第2次复用即崩在 grid-init（无用户 marker）。判别矩阵：复用exec+复用地址=崩；**新exec+复用地址=好**；复用exec+新地址=好；复用exec+复用地址但清零内容(含16MB libapi全清)=仍崩（→与内容无关，是地址/executor缓存）。kernel侧无解（AIC退出加cube drain+SetAtomicNone复位也没用；stock clearWorkspace反而让纯vector decode也崩）。**正解=per-call executor**（每次GetWorkspaceSize建新executor→launch→丢弃，本就是aclnn标准用法），harness默认走此路径，暖态循环全过。
+
+**prefill 优化链（542→437us）**：① per-call executor（标准用法，暖态可测）② z 用 L0C 累加成单 fp32 平面（Hh@x+Hl@x，省16MB往返；累加对idx成立因边界粗~0.02容噪声）③ p2/p3 降 fp16（修正项O(5e-4)，Fixpipe F322F16无需deqScalar，省16MB；p1必须fp32因sign敏感）④ 删 p4（rl@Sl~1e-9）。
+
+**关键教训**：① **L0C累加对p不成立**——p13=Sh@rh+Sl@rh累加后qjl 2297-5380字节错（QJL取sign需~1e-7，累加丢修正项精度），同样数学用3独立fp32平面(AIV端fp32相加)→qjl 0。累加能否用取决于下游精度敏感度：粗量化(idx)可、取符号(qjl)不可。② **瓶颈是GM DMA带宽墙不是片上计算**：GetSystemCycle实测AIV block0全程仅16us、AIC cube 14us，但kernel 437us——~73MB中间量(xh/z/r_hat/p四次AIC↔AIV往返)@~192GB/s有效带宽=380us。③ **有效带宽随并发block数涨**：8组(24block)反而1345us(比24组72block的437us慢3x)，满72block才最高，故不能减block。④ qjl字节失配本底(mse2 8/mse4 26, mse3恰好0)=fp16拆分cube算projection的固有边界噪声(residual_unit 22bit误差被128维点积放大11x→p~3e-6→近零sign翻转)，纯vector路径fp32算projection则0失配但慢3x；任务§3.2是功能性判据(重构MSE<0.05/内积p95<0.1)对几bit翻转鲁棒，仍达标。
+
+**终态数据（per-call executor暖态）**：decode b1 26.5x / b64 18.5x；prefill t2048 437us=8.81x、mse2 411us=8.77x、mse4 487us=10.86x（3/5达10x）；精度5/5功能性达标（自测byte阈值1e-3区分噪声vs真bug）。
+
+**未达10x的2 case剩余路径**：p1必须fp32不能再降；唯一大杠杆=降DMA字节或提带宽利用——per-chunk流水收益有限(DMA空闲gap仅~10us vs 380us传输)；真正可行=释放UB(splitBuf 56KB仅phase0用)后增大DMA块(更大连续transfer提带宽效率)，或让AIC直读bf16 x省xh往返(8MB,~11%)。均为较大重构，本轮未做。
