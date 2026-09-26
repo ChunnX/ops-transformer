@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 /*!
  * \file lightning_indexer_tiling.cpp
  * \brief
@@ -210,10 +220,10 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr block_len must in [1, 2, 4, 8, 16]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(*opParamInfo_.qBlockLen == 1), // TODO: 暂时关闭q block indexer
                OP_LOGE(opName_, "input attr q_block_len must be 1."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= TOPK_2K)) && (*opParamInfo_.sparseCount > TOPK_8K) && (*opParamInfo_.sparseCount % 128 != 0)),
-               OP_LOGE(opName_, "input attr sparse_count must in [1 ~ 2048], or must be divisible by 128."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.sparseCount > TOPK_4K,
-               OP_LOGE(opName_, "input attr sparse_count must not exceed 4096."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((*opParamInfo_.sparseCount < 1) || (*opParamInfo_.sparseCount > TOPK_4K) ||
+               (*opParamInfo_.sparseCount % 128 != 0),
+               OP_LOGE(opName_, "input attr sparse_count must be in [1, 4096] and divisible by 128."),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(*opParamInfo_.initNum >= 0 && *opParamInfo_.initNum <= 16 && (*opParamInfo_.initNum) % (*opParamInfo_.blockLen) == 0),
                OP_LOGE(opName_, "input attr init_num invalid."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(*opParamInfo_.localNum >= 0 && *opParamInfo_.localNum <= 2048 && (*opParamInfo_.localNum) % (*opParamInfo_.blockLen) == 0),
