@@ -15,14 +15,18 @@ namespace AiInfraMegaMhc::Schedule {
 using namespace AscendC;
 
 /** Enqueue one complete producer input row: hOut=x[row], residual=r[row], coefficients=H[row].
- * The caller waits for the slot's V_MTE2 credit; MTE2_V publishes all inputs together.
+ * Wait for V_MTE2 input credit or MTE3_MTE2 aliased output credit; MTE2_V publishes all inputs together.
  */
-template <typename T>
+template <typename T, bool OUTPUT_CREDIT = false>
 __aicore__ inline void PrefetchStagedProducer(Kernel::Tensors<T> &tensors, uint64_t row,
     const MegaMhcTilingData &tiling, const LocalTensor<T> &hOut, const LocalTensor<T> &residual,
     const LocalTensor<float> &coefficients, event_t event)
 {
-    WaitFlag<HardEvent::V_MTE2>(event);
+    if constexpr (OUTPUT_CREDIT) {
+        WaitFlag<HardEvent::MTE3_MTE2>(event);
+    } else {
+        WaitFlag<HardEvent::V_MTE2>(event);
+    }
     Kernel::EnqueueGlobalToUb(hOut, tensors.hOut, row * tiling.d, tiling.d);
     Kernel::EnqueueGlobalToUb(residual, tensors.residual, row * tiling.k, tiling.k);
     Kernel::EnqueueGlobalToUb(coefficients, tensors.hPost, row * 4U, 4U);
@@ -119,10 +123,10 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors,
         Kernel::CopyGlobalToUb(gamma, tensors.gamma0, 0U, tiling.d);
         Kernel::CopyGlobalToUb(gamma2, tensors.gamma2, 0U, tiling.k);
         const uint32_t firstRow = GetBlockIdx();
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID4);
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID5);
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
         if (firstRow < tiling.totalRows) {
-            PrefetchStagedProducer(tensors, firstRow, tiling, input, residual, coefficients, EVENT_ID4);
+            PrefetchStagedProducer<T, true>(tensors, firstRow, tiling, input, residual, coefficients, EVENT_ID4);
         }
         uint32_t slot = 0U;
         for (uint64_t row = firstRow; row < tiling.totalRows; row += tiling.activeAiv) {
@@ -130,7 +134,7 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors,
             WaitFlag<HardEvent::MTE2_V>(event);
             const uint32_t next = slot ^ 1U;
             if (row + tiling.activeAiv < tiling.totalRows) {
-                PrefetchStagedProducer(tensors, row + tiling.activeAiv, tiling,
+                PrefetchStagedProducer<T, true>(tensors, row + tiling.activeAiv, tiling,
                     input[next * tiling.d], residual[next * tiling.k], coefficients[next * 128U],
                     next == 0U ? EVENT_ID4 : EVENT_ID5);
             }
@@ -151,13 +155,19 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors,
                 reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()),
                 reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()) + 1U,
                 reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()));
-            Kernel::CopyUbToGlobal(tensors.x2Out, row * tiling.k, post, tiling.k);
-            // Residual is also the output: return input credit after MTE3 completes.
-            SetFlag<HardEvent::V_MTE2>(event);
+            // x2[row,k]=post[k]. Publish slot credit on MTE3; only reuse waits for completion.
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            DataCopyExtParams params{1U, static_cast<uint32_t>(tiling.k * sizeof(T)), 0U, 0U, 0U};
+            DataCopyPad(tensors.x2Out[row * tiling.k], post, params);
+            SetFlag<HardEvent::MTE3_MTE2>(event);
             slot = next;
         }
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID4);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID5);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
+        // Drain both output reads before releasing UB, including unused/empty input slots.
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
     }
 }
 
