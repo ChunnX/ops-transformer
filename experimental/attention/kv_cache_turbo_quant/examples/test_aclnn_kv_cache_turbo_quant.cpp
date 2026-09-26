@@ -534,12 +534,40 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
 
     // ---- performance run ----
     const int warmup = std::min(20, std::max(3, perfIters / 10));
+    // KVTQ_WS_RING=N: pre-allocate a ring of N workspaces and rotate WITHOUT
+    // zeroing. Discriminates "stale content" (ring crashes) from "workspace
+    // identity / just-used state" (ring works) as the repeat-launch root cause.
+    const int wsRing = getenv("KVTQ_WS_RING") != nullptr ? atoi(getenv("KVTQ_WS_RING")) : 0;
+    std::vector<void *> wsRingBufs;
+    if (wsRing > 1 && workspace != nullptr) {
+        for (int r = 0; r < wsRing; ++r) {
+            void *wsp = nullptr;
+            CHECK_RET(aclrtMalloc(&wsp, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, "ring malloc");
+            wsRingBufs.push_back(wsp);
+        }
+    }
     for (int i = 0; i < warmup; ++i) {
-        if (getenv("KVTQ_ZERO_WS") != nullptr && workspace != nullptr) {
-            // host-side pre-zero of the libapi area head + tail per launch
-            aclrtMemsetAsync(workspace, 512 * 1024, 0, 512 * 1024, stream);
-            aclrtMemsetAsync(reinterpret_cast<uint8_t *>(workspace) + 15UL * 1024 * 1024, 1024 * 1024, 0,
-                             1024 * 1024, stream);
+        void *wsIter = workspace;
+        if (wsRing > 1 && !wsRingBufs.empty()) {
+            wsIter = wsRingBufs[i % wsRingBufs.size()];
+            // serialize FIRST: drain any in-flight launch (esp. the one that
+            // last used this ring slot) before re-zeroing it, else the zero
+            // races the running kernel
+            aclrtSynchronizeStream(stream);
+            // SYNCHRONOUS full zero: the MIX runtime's grid init reads the
+            // workspace through a path that can bypass stream ordering, so an
+            // async memset is not guaranteed committed before the launch's
+            // runtime init. A blocking aclrtMemset is.
+            aclrtMemset(wsIter, workspaceSize, 0, workspaceSize);
+        } else if (getenv("KVTQ_FRESH_WS") != nullptr && workspace != nullptr) {
+            // discriminating cell: same executor, brand-new workspace per launch
+            aclrtMalloc(&wsIter, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            aclrtMemset(wsIter, workspaceSize, 0, workspaceSize);
+        }
+        if (getenv("KVTQ_ZERO_WS") != nullptr && wsRing <= 1 && workspace != nullptr) {
+            // host-side pre-zero of the FULL workspace (incl. the whole 16MB
+            // libapi/KFC prefix) per launch - stale-content fix candidate
+            aclrtMemsetAsync(wsIter, workspaceSize, 0, workspaceSize, stream);
         }
         if (getenv("KVTQ_FRESH_EXEC") != nullptr) {
             // probe mode: brand-new executor per launch to bisect repeat-launch crashes
@@ -548,9 +576,13 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
             CHECK_RET(aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT,
                                                              gammaT, &ws2, &ex2) == ACL_SUCCESS,
                       "fresh GetWorkspaceSize");
-            aclnnKvCacheTurboQuant(workspace, workspaceSize, ex2, stream);
+            aclnnKvCacheTurboQuant(wsIter, workspaceSize, ex2, stream);
         } else {
-            aclnnKvCacheTurboQuant(workspace, workspaceSize, executor, stream);
+            aclnnKvCacheTurboQuant(wsIter, workspaceSize, executor, stream);
+        }
+        if (getenv("KVTQ_FRESH_WS") != nullptr && wsIter != workspace && wsRing <= 1) {
+            aclrtSynchronizeStream(stream);
+            aclrtFree(wsIter);
         }
     }
     if (getenv("KVTQ_PEEK2") != nullptr && workspace != nullptr && totalVec >= 1024) {
@@ -640,12 +672,25 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
     }
     const auto t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < perfIters; ++i) {
-        if (getenv("KVTQ_ZERO_WS") != nullptr && workspace != nullptr) {
-            aclrtMemsetAsync(workspace, 512 * 1024, 0, 512 * 1024, stream);
-            aclrtMemsetAsync(reinterpret_cast<uint8_t *>(workspace) + 15UL * 1024 * 1024, 1024 * 1024, 0,
-                             1024 * 1024, stream);
+        void *wsPerf = workspace;
+        if (wsRing > 1 && !wsRingBufs.empty()) {
+            wsPerf = wsRingBufs[i % wsRingBufs.size()];
         }
-        aclnnKvCacheTurboQuant(workspace, workspaceSize, executor, stream);
+        if (getenv("KVTQ_ZERO_WS") != nullptr && wsPerf != nullptr) {
+            aclrtMemsetAsync(wsPerf, workspaceSize, 0, workspaceSize, stream);
+        }
+        if (getenv("KVTQ_FRESH_EXEC") != nullptr) {
+            // fresh executor per launch: the MIX runtime's executor caches
+            // per-launch state that corrupts on reuse (repeat launch dies at
+            // grid init). A new executor re-inits cleanly.
+            aclOpExecutor *exP = nullptr;
+            uint64_t wsP = 0;
+            aclnnKvCacheTurboQuantGetWorkspaceSize(kvT, rotT, qjlT, ci.mseBits, idxT, qjlOutT, normT, gammaT, &wsP,
+                                                   &exP);
+            aclnnKvCacheTurboQuant(wsPerf, workspaceSize, exP, stream);
+        } else {
+            aclnnKvCacheTurboQuant(wsPerf, workspaceSize, executor, stream);
+        }
     }
     const auto tEnq = std::chrono::steady_clock::now();
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, "perf sync");
@@ -654,6 +699,9 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
     if (getenv("KVTQ_ENQ") != nullptr) {
         printf("[ENQ] %s host-enqueue=%.2f us/call, device-total=%.2f us/call\n", ci.name.c_str(),
                std::chrono::duration<double, std::micro>(tEnq - t0).count() / perfIters, res.avgUs);
+    }
+    for (void *wsp : wsRingBufs) {
+        aclrtFree(wsp);
     }
 
     if (workspace) {

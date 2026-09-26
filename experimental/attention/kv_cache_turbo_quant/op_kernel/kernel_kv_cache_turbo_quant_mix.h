@@ -200,24 +200,28 @@ public:
             pipe_.InitBuffer(l0ABuf_, L0_A_BYTES);
             pipe_.InitBuffer(l0BBuf_, L0_B_BYTES);
             pipe_.InitBuffer(l0CBuf_, L0_C_BYTES);
-            eventMte2Mte1_ = GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1);
-            eventMte1M_ = GetTPipePtr()->FetchEventID(HardEvent::MTE1_M);
-            eventMMte1_ = GetTPipePtr()->FetchEventID(HardEvent::M_MTE1);
-            eventMMte1B_ = GetTPipePtr()->FetchEventID(HardEvent::M_MTE1);
-            eventMte1Mte2_ = GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2);
-            eventFixS_ = GetTPipePtr()->FetchEventID(HardEvent::FIX_S);
-            eventFixM_ = GetTPipePtr()->FetchEventID(HardEvent::FIX_M);
-            eventMFix_ = GetTPipePtr()->FetchEventID(HardEvent::M_FIX);
+            // static event ids: the MIX runtime + the wrapper's workspace wipe
+            // use the low (0-2) dynamic range; QUE_MAX_EVENT is only 8 and the
+            // pool is shared - per-launch FetchEventID contributes to the repeat
+            // crash. Static ids in the free 4-7 range avoid both parties.
+            eventMte2Mte1_ = 4;
+            eventMte1M_ = 4;
+            eventMMte1_ = 4;
+            eventMMte1B_ = 5;
+            eventMte1Mte2_ = 4;
+            eventFixS_ = 4;
+            eventFixM_ = 4;
+            eventMFix_ = 4;
 
         } else {
-            eventVS_ = GetTPipePtr()->FetchEventID(HardEvent::V_S);
-            eventSV_ = GetTPipePtr()->FetchEventID(HardEvent::S_V);
-            eventMte2V_ = GetTPipePtr()->FetchEventID(HardEvent::MTE2_V);
-            eventVMte2_ = GetTPipePtr()->FetchEventID(HardEvent::V_MTE2);
-            eventVMte3_ = GetTPipePtr()->FetchEventID(HardEvent::V_MTE3);
-            eventMte3V_ = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
-            eventMte3Mte2_ = GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2);
-            eventMte3S_ = GetTPipePtr()->FetchEventID(HardEvent::MTE3_S);
+            eventVS_ = 4;
+            eventSV_ = 4;
+            eventMte2V_ = 4;
+            eventVMte2_ = 4;
+            eventVMte3_ = 4;
+            eventMte3V_ = 4;
+            eventMte3Mte2_ = 4;
+            eventMte3S_ = 4;
             pipe_.InitBuffer(zTileBuf_, TILE_VEC * HEAD_DIM * sizeof(float));
             pipe_.InitBuffer(pTileBuf_, TILE_VEC * HEAD_DIM * sizeof(float));
             pipe_.InitBuffer(xTileBuf_, TILE_VEC * HEAD_DIM * sizeof(bfloat16_t));
