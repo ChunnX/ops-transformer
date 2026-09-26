@@ -46,3 +46,20 @@ smoke 同时检查 CPU 长度数组与 INT64 Tensor 路径；invalid 使用 CPU 
 python generate_reports.py --full full.json --edge edge.json --invalid invalid.json \
   --output /path/to/task_submission
 ```
+
+## 最终安装包回归
+
+在上述 CANN、算子包及 `TURBOQUANT_OPAPI` 环境配置完成后执行：
+
+```bash
+python test_submission_regression.py --output extended.json
+python test_submission_regression.py --perf --output performance.json
+```
+
+扩展测试覆盖 2/3/4-bit、BF16/FP16 norm、INT32/INT64 Tensor 长度、CPU 长度数组、单序列 prefill 与批量 decode，共 48 组配置；每组重新创建 executor 连续调用三次，并要求结果逐元素一致。
+输入按 physical page、位置、head、query token 构造可区分的数据，页表倒序；每组还故意交换页表，要求参考比较能够检出错误，避免恒定 cache 掩盖地址映射错误。
+另有 12 组负向测试，分别缩短 qjl、norm、gamma 的物理块数，覆盖两种 norm dtype 和两种长度接口，要求第一阶段返回错误。
+CPU 长度数组接口不以 Tensor 的 INT32/INT64 作为其底层类型；矩阵中对应重复项用于确认输入准备一致，不表示存在额外的 CPU-array dtype 分派。
+
+性能模式独立于精度测试，对每组输入预热 5 次、采样 20 次，报告设备事件 median、p95 和原始样本，包含短尾块、长 decode、prefill。每次调用重新创建 executor。
+性能模式本身不做精度验收；应先完成 smoke/edge/invalid/full 及扩展精度测试。对照两个安装包时分别在独立进程加载，记录包 SHA256、源码提交和环境版本。
