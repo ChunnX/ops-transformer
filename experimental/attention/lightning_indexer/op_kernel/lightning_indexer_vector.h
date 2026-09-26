@@ -25,7 +25,7 @@ constexpr int32_t NEG_INF = 0xFF800000;
 constexpr int32_t INVALID_INDEX = -1;
 // SECOND_MAX_LOGITS = MAX_LOGITS/2 = 0x7F7FFFFF 指数 -1。哨兵分数有两档：sink/local=MAX/2、
 // 对角=MAX，均 ≥ 此值；有效分数被 service 侧 Mins 钳到 ≤ MAX/4 < 此值。用作 firstQS 滤哨兵的界。
-constexpr uint32_t SECOND_MAX_LOGITS_BITS = 0x7EFFFFFF;  // 0x7F7FFFFF 的 1/2（指数 -1）
+constexpr uint32_t SECOND_MAX_LOGITS_BITS = 0x7EFFFFFF; // 0x7F7FFFFF 的 1/2（指数 -1）
 constexpr uint8_t VEC_REPEAT_MAX = 255;
 constexpr uint8_t B32_VEC_ELM_NUM = 64;
 constexpr uint8_t B32_BLOCK_ALIGN_NUM = 8;
@@ -68,7 +68,6 @@ __aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, LocalTensor<T> &weigh
     AscendC::DataCopyPad(weightsUb, weightScaleGm[weights_gmoffset], dataCopyweightParams, padTParams);
 }
 
-
 template <typename T>
 __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
 {
@@ -80,10 +79,9 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
     AscendC::DataCopyPad(dstGm, srcUb, dataCopyOutyParams);
 }
 
-
 __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &weightsUb, LocalTensor<float> &tmpBuff,
-                               int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
+                               LocalTensor<float> &weightsUb, LocalTensor<float> &tmpBuff, int64_t groupInner,
+                               int64_t s2Inner, int32_t outerGidx)
 {
     // weight broadcast: [groupInner, 1] -> [groupInner, 8]
     AscendC::Brcb(tmpBuff, weightsUb, LICommon::CeilDiv(groupInner, static_cast<int64_t>(B32_BLOCK_ALIGN_NUM)),
@@ -110,7 +108,6 @@ __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTe
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
 {
     if (value <= CONST_TWO) {
@@ -120,7 +117,6 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
         return (1 << pow);
     }
 }
-
 
 // dstTensor 需要初始化0
 __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor<float> &dstTensor, int32_t rNum,
@@ -148,7 +144,6 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
@@ -161,10 +156,10 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
     int64_t forLoop = repeatNum / VEC_REPEAT_MAX;
     int64_t forRemain = repeatNum % VEC_REPEAT_MAX;
     for (int i = 0; i < forLoop; i++) {
-        AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[i * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], NEG_INF, mask1, VEC_REPEAT_MAX, 1,
-                           B32_VEC_REPEAT_STRIDE);
-        AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[i * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], INVALID_INDEX, mask0, VEC_REPEAT_MAX, 1,
-                           B32_VEC_REPEAT_STRIDE);
+        AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[i * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], NEG_INF,
+                           mask1, VEC_REPEAT_MAX, 1, B32_VEC_REPEAT_STRIDE);
+        AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[i * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], INVALID_INDEX,
+                           mask0, VEC_REPEAT_MAX, 1, B32_VEC_REPEAT_STRIDE);
     }
     if (forRemain > 0) {
         AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[forLoop * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], NEG_INF,
@@ -175,13 +170,12 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   初始化 globalTopkUb_ 为分离格式: [scores(-inf) × slotSize | indices(0) × slotSize] per token
   slotSize = virTopK + QS_OVF, tokenStride = slotSize * 2
  */
-__aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float> &src, int32_t numTokens,
-                                               int32_t tokenStride, int32_t slotSize)
+__aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float> &src, int32_t numTokens, int32_t tokenStride,
+                                               int32_t slotSize)
 {
     for (int t = 0; t < numTokens; t++) {
         int32_t base = t * tokenStride;
@@ -192,7 +186,6 @@ __aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float> &src, in
     }
     AscendC::PipeBarrier<PIPE_V>();
 }
-
 
 /**
   src: logits和索引，前logitsNum为logits，后logitsNum为索引
@@ -260,7 +253,6 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
     }
 }
 
-
 /**
   dst: 输出全排序的结果，排布方式为value，index
   srcValue：输入的待排序浮点数
@@ -275,7 +267,6 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
     AscendC::Sort<float, true>(dst, srcValue, srcIndex, tmpTensor, sort32Repeats);
     AscendC::PipeBarrier<PIPE_V>();
 }
-
 
 /**
   mrgDst: 合并进的Tensor
@@ -334,9 +325,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
         AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    
 }
-
 
 /**
  * @brief 合并基础块函数
@@ -377,7 +366,6 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
     AscendC::MrgSort<float>(dst, srcList, params);
 }
 
-
 /**
  * @brief 从两个队列中选择topk
  * @param dst 已经归并好的topk数据
@@ -412,7 +400,6 @@ __aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTens
     AscendC::DataCopy(dst, tmp, topk * VALUE_AND_INDEX_NUM);
 }
 
-
 __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, const LocalTensor<uint32_t> &sortLocal,
                                     int64_t extractNum)
 {
@@ -427,7 +414,6 @@ __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, cons
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 template <HardEvent event>
 __aicore__ inline void SetWaitFlag(HardEvent evt)
 {
@@ -437,21 +423,36 @@ __aicore__ inline void SetWaitFlag(HardEvent evt)
 }
 
 struct QSParams {
-    int32_t target;         // 目标保留数（virTopK）
-    int32_t overflowCap;    // 容差（QS_OVF）
-    int32_t newDataLen;     // 新数据长度（blockS2LenVecAlign，64 对齐）
-    int32_t maxIter;        // 最大迭代次数
-    float lastThreshold;    // 上轮收敛 pivot（作为非首次 QS 的二分下界，单调递增）
-    float suggestedMax;     // 非首次 QS 的 curMax 上界：carry（上轮实测紧上界）或兜底 128；firstQS 内部自算
-    int32_t firstQS;        // 本 token 首次 QS：内部用 ReduceMin(glob) 算下界 + 滤哨兵 ReduceMax(glob) 算上界
-    int32_t carrySafeCnt;   // 安全计数线 = target+ovf-maxNewData；aboveCnt≤此值的 pivot 下轮仍是合法上界
+    int32_t target;      // 目标保留数（virTopK）
+    int32_t overflowCap; // 容差（QS_OVF）
+    int32_t newDataLen;  // 新数据长度（blockS2LenVecAlign，64 对齐）
+    int32_t maxIter;     // 最大迭代次数
+    float lastThreshold; // 上轮收敛 pivot（作为非首次 QS 的二分下界，单调递增）
+    float suggestedMax; // 非首次 QS 的 curMax 上界：carry（上轮实测紧上界）或兜底 128；firstQS 内部自算
+    int32_t firstQS; // 本 token 首次 QS：内部用 ReduceMin(glob) 算下界 + 滤哨兵 ReduceMax(glob) 算上界
+    int32_t carrySafeCnt; // 安全计数线 = target+ovf-maxNewData；aboveCnt≤此值的 pivot 下轮仍是合法上界
 
-    __aicore__ inline int32_t cap() const { return target + overflowCap + newDataLen; }
-    __aicore__ inline int32_t workingNAlign() const { return (cap() + 63) / 64 * 64; }
-    __aicore__ inline int32_t newDataOffset() const { return target + overflowCap; }
+    __aicore__ inline int32_t cap() const
+    {
+        return target + overflowCap + newDataLen;
+    }
+    __aicore__ inline int32_t workingNAlign() const
+    {
+        return (cap() + 63) / 64 * 64;
+    }
+    __aicore__ inline int32_t newDataOffset() const
+    {
+        return target + overflowCap;
+    }
     // tmpBuf 中各段起始（float offset）
-    __aicore__ inline int32_t srcIndicesOff() const { return cap(); }
-    __aicore__ inline int32_t dstScoresOff() const { return cap() * 2; }
+    __aicore__ inline int32_t srcIndicesOff() const
+    {
+        return cap();
+    }
+    __aicore__ inline int32_t dstScoresOff() const
+    {
+        return cap() * 2;
+    }
 };
 
 /**
@@ -460,9 +461,8 @@ struct QSParams {
  * @param auxBuf   辅助工作区: [dstIndices(cap) | cmpMask] (放在 tmpSortBuf 中)
  * @return above 总数 (>=target 表示收敛), 0 = 未收敛
  */
-__aicore__ inline int32_t QuickSelectPartition(
-    LocalTensor<float> &tmpBuf, LocalTensor<float> &auxBuf,
-    const QSParams &params, float &outThreshold, float &outCarryMax)
+__aicore__ inline int32_t QuickSelectPartition(LocalTensor<float> &tmpBuf, LocalTensor<float> &auxBuf,
+                                               const QSParams &params, float &outThreshold, float &outCarryMax)
 {
     int32_t cap = params.cap();
     int32_t workingN = params.workingNAlign();
@@ -476,7 +476,7 @@ __aicore__ inline int32_t QuickSelectPartition(
     LocalTensor<float> dstScores = tmpBuf[cap * 2];
     // 辅助工作区切分: auxBuf = [dstIndices(cap) | cmpMask(cap/8 bytes)]
     LocalTensor<int32_t> dstIndices = auxBuf.template ReinterpretCast<int32_t>();
-    int32_t cmpMaskFloatOff = cap;  // cmpMask 紧接 dstIndices 之后
+    int32_t cmpMaskFloatOff = cap; // cmpMask 紧接 dstIndices 之后
     LocalTensor<uint8_t> cmpMask = auxBuf[cmpMaskFloatOff].template ReinterpretCast<uint8_t>();
 
     float curMin;
@@ -492,15 +492,14 @@ __aicore__ inline int32_t QuickSelectPartition(
         LocalTensor<float> selBuf = dstIndices.template ReinterpretCast<float>();
         CompareScalar(cmpMask, srcScores, SENTINEL_BOUND, CMPMODE::LT, target);
         PipeBarrier<PIPE_V>();
-        Select(selBuf, cmpMask, srcScores, -3.4e38f, SELMODE::VSEL_TENSOR_SCALAR_MODE,
-               static_cast<uint32_t>(target));
+        Select(selBuf, cmpMask, srcScores, -3.4e38f, SELMODE::VSEL_TENSOR_SCALAR_MODE, static_cast<uint32_t>(target));
         PipeBarrier<PIPE_V>();
         ReduceMax(dstScores, selBuf, dstScores[target], target, false);
         PipeBarrier<PIPE_V>();
         SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
         curMax = dstScores.GetValue(0);
         SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
-        curMax = max(curMax, curMin);   // 防 bracket 反转（极端：glob 全哨兵→有效 max=-inf）
+        curMax = max(curMax, curMin); // 防 bracket 反转（极端：glob 全哨兵→有效 max=-inf）
     } else {
         curMin = params.lastThreshold;
         curMax = max(params.suggestedMax, curMin);
@@ -512,7 +511,7 @@ __aicore__ inline int32_t QuickSelectPartition(
     uint32_t wNA = static_cast<uint32_t>(workingN);
     // 割线插值状态：最近一个真实测量点 (pivot, aboveCnt)，用 aboveCnt 大小信息外推真阈值。
     float prevPivot = 0.0f;
-    int32_t prevAbove = -1;   // -1 = 尚无有效上一轮点
+    int32_t prevAbove = -1; // -1 = 尚无有效上一轮点
     // carry: 跟踪 aboveCnt≤carrySafeCnt 中 pivot 最低（=aboveCnt 最大）的点，作下轮 curMax。
     float bestCarry = 3.4e38f;
     bool haveCarry = false;
@@ -523,8 +522,7 @@ __aicore__ inline int32_t QuickSelectPartition(
 
         LocalTensor<uint32_t> pattern = cmpMask.template ReinterpretCast<uint32_t>();
         uint64_t rsvdCnt = 0;
-        GatherMask(dstScores.template ReinterpretCast<uint16_t>(),
-                   srcScores.template ReinterpretCast<uint16_t>(),
+        GatherMask(dstScores.template ReinterpretCast<uint16_t>(), srcScores.template ReinterpretCast<uint16_t>(),
                    cmpMask.template ReinterpretCast<uint16_t>(), true, wNA, gp, rsvdCnt);
         PipeBarrier<PIPE_V>();
 
@@ -555,23 +553,23 @@ __aicore__ inline int32_t QuickSelectPartition(
                 } else {
                     // count(≥curMax)<target：curMax 是合法上界，切入二分相。
                     probing = false;
-                    prevPivot = pivot;        // 记录 (curMax, aboveCnt) 作为割线第一个真实点
+                    prevPivot = pivot; // 记录 (curMax, aboveCnt) 作为割线第一个真实点
                     prevAbove = aboveCnt;
                     pivot = (curMax + curMin) * 0.5f;
                 }
             } else {
                 // 二分相：收窄 bracket。
                 if (aboveCnt < target) {
-                    curMax = pivot;   // 选少 → 压上界
+                    curMax = pivot; // 选少 → 压上界
                 } else {
-                    curMin = pivot;   // 选多 → 抬下界
+                    curMin = pivot; // 选多 → 抬下界
                 }
                 // 割线：用最近两真实点 (prevPivot,prevAbove)-(pivot,aboveCnt) 外推到 count=target。
                 // count 随 pivot 单调下降 → 分母 (aboveCnt-prevAbove) 与 (pivot-prevPivot) 反号、非 0。
                 int32_t denom = aboveCnt - prevAbove;
-                float nextPivot = (denom != 0)
-                    ? pivot + (pivot - prevPivot) * (float)(target - aboveCnt) / (float)denom
-                    : (curMax + curMin) * 0.5f;
+                float nextPivot = (denom != 0) ?
+                                      pivot + (pivot - prevPivot) * (float)(target - aboveCnt) / (float)denom :
+                                      (curMax + curMin) * 0.5f;
                 // 有向 clamp：secant 越界说明真阈值紧贴该侧端点，直接钉到端点附近（偏置 1/8），
                 // 而非退回中点。BIAS 越小越贴边、越激进。
                 constexpr float GUARD_BIAS = 0.125f;
@@ -585,7 +583,7 @@ __aicore__ inline int32_t QuickSelectPartition(
                 pivot = nextPivot;
             }
             if (!probing && (pivot == curMin || pivot == curMax)) {
-                outThreshold = pivot;   // 区间夹死：返回 0（未收敛），由 SortAll 兜底
+                outThreshold = pivot; // 区间夹死：返回 0（未收敛），由 SortAll 兜底
                 outCarryMax = haveCarry ? bestCarry : params.suggestedMax;
                 return 0;
             }
@@ -599,8 +597,7 @@ __aicore__ inline int32_t QuickSelectPartition(
         GatherMask(dstScores, srcScores, pattern, true, wNA, gp, rsvdCnt);
         PipeBarrier<PIPE_V>();
         uint64_t tmp = 0;
-        GatherMask(dstIndices.template ReinterpretCast<uint32_t>(),
-                   srcIndices.template ReinterpretCast<uint32_t>(),
+        GatherMask(dstIndices.template ReinterpretCast<uint32_t>(), srcIndices.template ReinterpretCast<uint32_t>(),
                    pattern, true, wNA, gp, tmp);
         PipeBarrier<PIPE_V>();
         outThreshold = pivot;

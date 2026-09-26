@@ -15,20 +15,12 @@
 
 namespace op_api {
 
-
-at::Tensor gmm(const at::Tensor &a,
-                   const at::Tensor &b,
-                   const at::Tensor &batch_sizes,
-                   const bool trans_a,
-                   const bool trans_b,
-                   const c10::optional<at::Tensor>& c,
-                   const int64_t aicore_num,
-                   bool type_promotion)
+at::Tensor gmm(const at::Tensor &a, const at::Tensor &b, const at::Tensor &batch_sizes, const bool trans_a,
+               const bool trans_b, const c10::optional<at::Tensor> &c, const int64_t aicore_num, bool type_promotion)
 {
     TORCH_CHECK(a.device().type() == at::kPrivateUse1, "a must be on NPU");
     TORCH_CHECK(b.device() == a.device(), "a and b must be on the same device");
-    TORCH_CHECK(a.scalar_type() == at::kHalf || a.scalar_type() == at::kBFloat16,
-                "a must be float16 or bfloat16");
+    TORCH_CHECK(a.scalar_type() == at::kHalf || a.scalar_type() == at::kBFloat16, "a must be float16 or bfloat16");
     TORCH_CHECK(b.scalar_type() == a.scalar_type(), "a and b must have the same dtype");
     TORCH_CHECK(a.is_contiguous(), "a should be contiguous.");
     TORCH_CHECK(b.is_contiguous(), "b should be contiguous.");
@@ -58,8 +50,9 @@ at::Tensor gmm(const at::Tensor &a,
         // Backward-bgrad: c[g] += X_g.T @ W_g  (in-place)
         at::Tensor c_tensor = c.value();
         TORCH_CHECK(c_tensor.device() == a.device(), "c must be on the same NPU");
-        TORCH_CHECK(c_tensor.dim() == 3 && c_tensor.size(0) == batch_sizes.size(0) &&
-                    c_tensor.size(1) == m && c_tensor.size(2) == b.size(1), "c shape must be [groups, M, N]");
+        TORCH_CHECK(c_tensor.dim() == 3 && c_tensor.size(0) == batch_sizes.size(0) && c_tensor.size(1) == m &&
+                        c_tensor.size(2) == b.size(1),
+                    "c shape must be [groups, M, N]");
         TORCH_CHECK(c_tensor.scalar_type() == at::kFloat || c_tensor.scalar_type() == a.scalar_type(),
                     "c dtype must be float32 or the input dtype");
         TORCH_CHECK(c_tensor.is_contiguous(), "c_tensor should be contiguous.");
@@ -80,8 +73,9 @@ at::Tensor gmm(const at::Tensor &a,
     }
 }
 
-}  // namespace op_api
+} // namespace op_api
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
     m.def("gmm", &op_api::gmm);
 }

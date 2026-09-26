@@ -11,6 +11,7 @@
 Uses the source tests' group semantics and manually packed NZ layout.
 Raises on numerical failure, checks GmmAdd aliasing and WithZero inactive rows.
 """
+
 import importlib
 import os
 
@@ -43,7 +44,9 @@ def test_k_groups(device):
     count = 0
     for dtype in (torch.float16, torch.bfloat16):
         for trans_a in (False, True):
-            a = (torch.randn((total_k, m) if trans_a else (m, total_k)) * 0.25).to(dtype)
+            a = (torch.randn((total_k, m) if trans_a else (m, total_k)) * 0.25).to(
+                dtype
+            )
             b = (torch.randn(total_k, n) * 0.25).to(dtype)
             ref = torch.zeros(len(sizes), m, n)
             start = 0
@@ -57,13 +60,21 @@ def test_k_groups(device):
             for promoted in (False, True):
                 output_dtype = torch.float32 if promoted else dtype
                 label = f"{dtype} trans_a={trans_a} output={output_dtype}"
-                y = ops.gmm(a_npu, b_npu, groups, trans_a=trans_a, type_promotion=promoted)
+                y = ops.gmm(
+                    a_npu, b_npu, groups, trans_a=trans_a, type_promotion=promoted
+                )
                 check("GmmKDim " + label, y, ref)
-                assert torch.count_nonzero(y[1]).item() == 0, "empty K group must stay zero"
+                assert torch.count_nonzero(y[1]).item() == 0, (
+                    "empty K group must stay zero"
+                )
                 c_cpu = (torch.randn(len(sizes), m, n) * 0.25).to(output_dtype)
                 c_npu = c_cpu.to(device)
-                y = ops.gmm(a_npu, b_npu, groups, trans_a=trans_a, c=c_npu, aicore_num=0)
-                assert y.data_ptr() == c_npu.data_ptr(), "GmmAdd must return the input c storage"
+                y = ops.gmm(
+                    a_npu, b_npu, groups, trans_a=trans_a, c=c_npu, aicore_num=0
+                )
+                assert y.data_ptr() == c_npu.data_ptr(), (
+                    "GmmAdd must return the input c storage"
+                )
                 check("GmmAdd " + label, y, ref + c_cpu.float())
                 torch.testing.assert_close(y[1].cpu(), c_cpu[1], rtol=0, atol=0)
                 count += 2
@@ -83,14 +94,21 @@ def test_local_experts(device):
         offset = begin
         for i in range(start_exp, end_exp):
             next_offset = offset + sizes[i]
-            ref[offset:next_offset] = a[offset:next_offset].float() @ w[i - start_exp].float().T
+            ref[offset:next_offset] = (
+                a[offset:next_offset].float() @ w[i - start_exp].float().T
+            )
             offset = next_offset
         a_npu = a.to(device)
         groups = torch.tensor(sizes, dtype=torch.int32, device=device)
         for layout in ("ND_transposed", "ND", "NZ_packed"):
             if layout == "NZ_packed":
                 # Original source test packing, passed as a logical 3-D tensor.
-                weight = w.reshape(w.shape[0], n, k // 16, 16).permute(0, 2, 1, 3).contiguous().reshape_as(w)
+                weight = (
+                    w.reshape(w.shape[0], n, k // 16, 16)
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                    .reshape_as(w)
+                )
             elif layout == "ND":
                 weight = w.transpose(1, 2).contiguous()
             else:
@@ -100,9 +118,16 @@ def test_local_experts(device):
                 for zero in (False, True):
                     func = ops.local_exp_gmm_with_zero if zero else ops.local_exp_gmm
                     label = f"{'GmmLocalExpWithZero' if zero else 'GmmLocalExp'} {dtype} {layout} fp32={promoted}"
-                    y = func(a_npu, weight_npu, groups, start_exp, end_exp,
-                             trans_b=layout != "ND", is_b_nz=layout == "NZ_packed",
-                             type_promotion=promoted)
+                    y = func(
+                        a_npu,
+                        weight_npu,
+                        groups,
+                        start_exp,
+                        end_exp,
+                        trans_b=layout != "ND",
+                        is_b_nz=layout == "NZ_packed",
+                        type_promotion=promoted,
+                    )
                     if zero:
                         check(label, y, ref)
                         assert torch.count_nonzero(y[:begin]).item() == 0
@@ -136,8 +161,14 @@ if __name__ == "__main__":
     device = torch.device(os.environ.get("NPU_DEVICE", "npu:11"))
     torch_npu.npu.set_device(device)
     torch.use_deterministic_algorithms(True)
-    print(f"package={PACKAGE}, device={device}, torch={torch.__version__}, torch_npu={torch_npu.__version__}", flush=True)
+    print(
+        f"package={PACKAGE}, device={device}, torch={torch.__version__}, torch_npu={torch_npu.__version__}",
+        flush=True,
+    )
     test_meta()
     count = test_k_groups(device) + test_local_experts(device)
     torch.npu.synchronize()
-    print(f"OVERALL PASS: {count} NPU cases; peak_allocated={torch.npu.max_memory_allocated(device) / 2**20:.2f} MiB", flush=True)
+    print(
+        f"OVERALL PASS: {count} NPU cases; peak_allocated={torch.npu.max_memory_allocated(device) / 2**20:.2f} MiB",
+        flush=True,
+    )

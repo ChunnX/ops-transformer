@@ -7,6 +7,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 """Torch interfaces adapted from LightningIndexerGradKlLossNpuOpApi.cpp."""
+
 import os
 
 import torch
@@ -47,12 +48,27 @@ class LightningIndexerGradKlLossOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), "lightning_indexer_grad_kl_loss", "Meta")
-        def grad_meta(query, key, query_index, key_index, weights, sparse_indices,
-                      softmax_max, softmax_sum, query_rope, key_rope,
-                      cur_seq_lengths_query=None, cur_seq_lengths_key=None,
-                      scale_value=1., layout="BSND", sparse_mode=3,
-                      pre_tokens=2147483647, next_tokens=2147483647,
-                      block_size=1, deterministic=False):
+        def grad_meta(
+            query,
+            key,
+            query_index,
+            key_index,
+            weights,
+            sparse_indices,
+            softmax_max,
+            softmax_sum,
+            query_rope,
+            key_rope,
+            cur_seq_lengths_query=None,
+            cur_seq_lengths_key=None,
+            scale_value=1.0,
+            layout="BSND",
+            sparse_mode=3,
+            pre_tokens=2147483647,
+            next_tokens=2147483647,
+            block_size=1,
+            deterministic=False,
+        ):
             return (
                 torch.empty_like(query_index, device="meta"),
                 torch.empty_like(key_index, device="meta"),
@@ -61,20 +77,49 @@ class LightningIndexerGradKlLossOpBuilder(OpBuilder):
             )
 
         @impl(get_as_library(), "lightning_indexer_grad_kl_loss_skip_padding", "Meta")
-        def grad_skip_meta(query, key, query_index, key_index, weights, sparse_indices,
-                           softmax_max, softmax_sum, query_rope, key_rope, mask,
-                           cur_seq_lengths_query=None, cur_seq_lengths_key=None,
-                           scale_value=1., layout="BSND", sparse_mode=3,
-                           pre_tokens=2147483647, next_tokens=2147483647,
-                           block_size=1, deterministic=False, validTokenNum=-1):
-            return grad_meta(query, key, query_index, key_index, weights, sparse_indices,
-                             softmax_max, softmax_sum, query_rope, key_rope)
+        def grad_skip_meta(
+            query,
+            key,
+            query_index,
+            key_index,
+            weights,
+            sparse_indices,
+            softmax_max,
+            softmax_sum,
+            query_rope,
+            key_rope,
+            mask,
+            cur_seq_lengths_query=None,
+            cur_seq_lengths_key=None,
+            scale_value=1.0,
+            layout="BSND",
+            sparse_mode=3,
+            pre_tokens=2147483647,
+            next_tokens=2147483647,
+            block_size=1,
+            deterministic=False,
+            validTokenNum=-1,
+        ):
+            return grad_meta(
+                query,
+                key,
+                query_index,
+                key_index,
+                weights,
+                sparse_indices,
+                softmax_max,
+                softmax_sum,
+                query_rope,
+                key_rope,
+            )
 
 
 def _format_inputs(*tensors):
     # Use the registered public API: bundled C++ headers and libtorch_npu can
     # expose different private npu_format_cast signatures.
-    return tuple(torch_npu.npu_format_cast(t, 2) if t is not None else None for t in tensors)
+    return tuple(
+        torch_npu.npu_format_cast(t, 2) if t is not None else None for t in tensors
+    )
 
 
 lightning_indexer_grad_kl_loss_op_builder = LightningIndexerGradKlLossOpBuilder()
@@ -83,40 +128,143 @@ lightning_indexer_grad_kl_loss_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "lightning_indexer_grad_kl_loss", "PrivateUse1")
 def lightning_indexer_grad_kl_loss(
-    query, key, query_index, key_index, weights, sparse_indices,
-    softmax_max, softmax_sum, query_rope, key_rope,
-    cur_seq_lengths_query=None, cur_seq_lengths_key=None,
-    scale_value=1., layout="BSND", sparse_mode=3,
-    pre_tokens=2147483647, next_tokens=2147483647,
-    block_size=1, deterministic=False,
+    query,
+    key,
+    query_index,
+    key_index,
+    weights,
+    sparse_indices,
+    softmax_max,
+    softmax_sum,
+    query_rope,
+    key_rope,
+    cur_seq_lengths_query=None,
+    cur_seq_lengths_key=None,
+    scale_value=1.0,
+    layout="BSND",
+    sparse_mode=3,
+    pre_tokens=2147483647,
+    next_tokens=2147483647,
+    block_size=1,
+    deterministic=False,
 ):
-    query, key, query_index, key_index, weights, sparse_indices, softmax_max, softmax_sum, query_rope, key_rope = _format_inputs(
-        query, key, query_index, key_index, weights, sparse_indices, softmax_max, softmax_sum, query_rope, key_rope)
+    (
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+    ) = _format_inputs(
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+    )
     module = lightning_indexer_grad_kl_loss_op_builder.load()
     return module.lightning_indexer_grad_kl_loss(
-        query, key, query_index, key_index, weights, sparse_indices,
-        softmax_max, softmax_sum, query_rope, key_rope,
-        cur_seq_lengths_query, cur_seq_lengths_key, scale_value, layout,
-        sparse_mode, pre_tokens, next_tokens, block_size, deterministic,
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+        cur_seq_lengths_query,
+        cur_seq_lengths_key,
+        scale_value,
+        layout,
+        sparse_mode,
+        pre_tokens,
+        next_tokens,
+        block_size,
+        deterministic,
     )
 
 
 @impl(get_as_library(), "lightning_indexer_grad_kl_loss_skip_padding", "PrivateUse1")
 def lightning_indexer_grad_kl_loss_skip_padding(
-    query, key, query_index, key_index, weights, sparse_indices,
-    softmax_max, softmax_sum, query_rope, key_rope, mask,
-    cur_seq_lengths_query=None, cur_seq_lengths_key=None,
-    scale_value=1., layout="BSND", sparse_mode=3,
-    pre_tokens=2147483647, next_tokens=2147483647,
-    block_size=1, deterministic=False, validTokenNum=-1,
+    query,
+    key,
+    query_index,
+    key_index,
+    weights,
+    sparse_indices,
+    softmax_max,
+    softmax_sum,
+    query_rope,
+    key_rope,
+    mask,
+    cur_seq_lengths_query=None,
+    cur_seq_lengths_key=None,
+    scale_value=1.0,
+    layout="BSND",
+    sparse_mode=3,
+    pre_tokens=2147483647,
+    next_tokens=2147483647,
+    block_size=1,
+    deterministic=False,
+    validTokenNum=-1,
 ):
-    query, key, query_index, key_index, weights, sparse_indices, softmax_max, softmax_sum, query_rope, key_rope, mask = _format_inputs(
-        query, key, query_index, key_index, weights, sparse_indices, softmax_max, softmax_sum, query_rope, key_rope, mask)
+    (
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+        mask,
+    ) = _format_inputs(
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+        mask,
+    )
     module = lightning_indexer_grad_kl_loss_op_builder.load()
     return module.lightning_indexer_grad_kl_loss_skip_padding(
-        query, key, query_index, key_index, weights, sparse_indices,
-        softmax_max, softmax_sum, query_rope, key_rope, mask,
-        cur_seq_lengths_query, cur_seq_lengths_key, scale_value, layout,
-        sparse_mode, pre_tokens, next_tokens, block_size, deterministic,
+        query,
+        key,
+        query_index,
+        key_index,
+        weights,
+        sparse_indices,
+        softmax_max,
+        softmax_sum,
+        query_rope,
+        key_rope,
+        mask,
+        cur_seq_lengths_query,
+        cur_seq_lengths_key,
+        scale_value,
+        layout,
+        sparse_mode,
+        pre_tokens,
+        next_tokens,
+        block_size,
+        deterministic,
         validTokenNum,
     )

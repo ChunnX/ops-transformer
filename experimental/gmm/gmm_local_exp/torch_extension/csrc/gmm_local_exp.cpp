@@ -29,22 +29,13 @@
 
 namespace op_api {
 
-
-
-at::Tensor local_exp_gmm(const at::Tensor &a,
-                             const at::Tensor &b,
-                             const at::Tensor &problemList,
-                             const int64_t expStartIdx,
-                             const int64_t expEndIdx,
-                             const bool trans_a,
-                             const bool trans_b,
-                             const bool is_b_nz,
-                             bool type_promotion)
+at::Tensor local_exp_gmm(const at::Tensor &a, const at::Tensor &b, const at::Tensor &problemList,
+                         const int64_t expStartIdx, const int64_t expEndIdx, const bool trans_a, const bool trans_b,
+                         const bool is_b_nz, bool type_promotion)
 {
     TORCH_CHECK(a.device().type() == at::kPrivateUse1, "a must be on NPU");
     TORCH_CHECK(b.device() == a.device(), "a and b must be on the same device");
-    TORCH_CHECK(a.scalar_type() == at::kHalf || a.scalar_type() == at::kBFloat16,
-                "a must be float16 or bfloat16");
+    TORCH_CHECK(a.scalar_type() == at::kHalf || a.scalar_type() == at::kBFloat16, "a must be float16 or bfloat16");
     TORCH_CHECK(b.scalar_type() == a.scalar_type(), "a and b must have the same dtype");
     TORCH_CHECK(a.is_contiguous(), "a should be contiguous.");
     TORCH_CHECK(b.is_contiguous(), "b should be contiguous.");
@@ -88,9 +79,9 @@ at::Tensor local_exp_gmm(const at::Tensor &a,
         return out;
     }
 }
-}  // namespace op_api
+} // namespace op_api
 
-
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
     m.def("local_exp_gmm", &op_api::local_exp_gmm);
 }

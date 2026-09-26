@@ -48,7 +48,9 @@ using namespace matmul;
     op.Init(); \
     op.Process();
 
-extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling) {
+extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR y,
+                                                GM_ADDR workspace, GM_ADDR tiling)
+{
     // @lg: only cube core can go through
     if (g_coreType == AIV) {
         return;
@@ -61,22 +63,22 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
     // TODO: SetOverflow?
     AscendCUtils::SetOverflow(1);
 
-    const TCubeTiling* __restrict mmTiling = &(tiling_data.mmTilingData);
+    const TCubeTiling *__restrict mmTiling = &(tiling_data.mmTilingData);
 
     if (TILING_KEY_IS(0)) {
         constexpr bool trans_a = false;
         using tensor_type = half;
         EXEC_GMM_KDIM_STEP0
-    #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-        PRELOAD(4);  // If comment this line, the program will be blocked.
-    #endif
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+        PRELOAD(4); // If comment this line, the program will be blocked.
+#endif
         EXEC_GMM_KDIM_STEP1
     } else if (TILING_KEY_IS(1)) {
         constexpr bool trans_a = true;
         using tensor_type = half;
         EXEC_GMM_KDIM_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1
     } else if (TILING_KEY_IS(2)) {
@@ -84,7 +86,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using tensor_type = bfloat16_t;
         EXEC_GMM_KDIM_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1
     } else if (TILING_KEY_IS(3)) {
@@ -92,7 +94,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using tensor_type = bfloat16_t;
         EXEC_GMM_KDIM_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1
     } else if (TILING_KEY_IS(4)) {
@@ -101,7 +103,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using output_type = float;
         EXEC_GMM_KDIM_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(5)) {
@@ -110,7 +112,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using output_type = float;
         EXEC_GMM_KDIM_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(6)) {
@@ -119,7 +121,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using output_type = float;
         EXEC_GMM_KDIM_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(7)) {
@@ -128,7 +130,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
         using output_type = float;
         EXEC_GMM_KDIM_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_KDIM_STEP1_MIXED_OUTPUT(output_type)
     }

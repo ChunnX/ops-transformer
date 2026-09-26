@@ -49,10 +49,10 @@ struct AiCoreParams {
     uint64_t l0cSize = 0;
 };
 
-
 class TilingBaseClass {
 public:
-    explicit TilingBaseClass(gert::TilingContext* context) : context_(context)
+    explicit TilingBaseClass(gert::TilingContext *context)
+        : context_(context)
     {}
 
     virtual ~TilingBaseClass() = default;
@@ -88,7 +88,7 @@ public:
     }
 
     // 更新 context
-    virtual void Reset(gert::TilingContext* context)
+    virtual void Reset(gert::TilingContext *context)
     {
         context_ = context;
     }
@@ -112,7 +112,7 @@ protected:
         if (enable != 1) {
             return;
         }
-        auto buf = (uint32_t*)context_->GetRawTilingData()->GetData();
+        auto buf = (uint32_t *)context_->GetRawTilingData()->GetData();
         auto bufLen = context_->GetRawTilingData()->GetDataSize();
         std::ostringstream oss;
         oss << "Start to dump tiling info. tilingkey:" << context_->GetTilingKey() << ", tiling data size:" << bufLen
@@ -138,7 +138,7 @@ protected:
     }
 
     template <typename T>
-    [[nodiscard]] std::string GetShapeDebugStr(const T& shape) const
+    [[nodiscard]] std::string GetShapeDebugStr(const T &shape) const
     {
         std::ostringstream oss;
         oss << "[";
@@ -152,8 +152,8 @@ protected:
         return oss.str();
     }
 
-    [[nodiscard]] std::string GetTensorDebugStr(
-        const gert::StorageShape* shape, const gert::CompileTimeTensorDesc* tensor)
+    [[nodiscard]] std::string GetTensorDebugStr(const gert::StorageShape *shape,
+                                                const gert::CompileTimeTensorDesc *tensor)
     {
         if (shape == nullptr || tensor == nullptr) {
             return "nil ";
@@ -189,7 +189,7 @@ protected:
     {
         auto rawTilingData = context_->GetRawTilingData();
         auto rawTilingDataSize = rawTilingData->GetDataSize();
-        auto data = reinterpret_cast<const int32_t*>(rawTilingData->GetData());
+        auto data = reinterpret_cast<const int32_t *>(rawTilingData->GetData());
         size_t len = rawTilingDataSize / sizeof(int32_t);
         std::ostringstream oss;
         for (size_t i = 0; i < len; i++) {
@@ -199,7 +199,7 @@ protected:
     }
 
 protected:
-    gert::TilingContext* context_ = nullptr;
+    gert::TilingContext *context_ = nullptr;
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
@@ -207,7 +207,7 @@ protected:
     AiCoreParams aicoreParams_;
 };
 
-// 具体SFAGtiling定义 继承上面的TilingBaseClass 
+// 具体SFAGtiling定义 继承上面的TilingBaseClass
 struct SparseLightningIndexerGradKLLossCompileInfo {
     int64_t core_num;
 
@@ -222,7 +222,8 @@ struct SparseLightningIndexerGradKLLossCompileInfo {
 
 class SparseLightningIndexerGradKLLossTilingBase : public TilingBaseClass {
 public:
-    explicit SparseLightningIndexerGradKLLossTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit SparseLightningIndexerGradKLLossTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
         Reset();
     }
@@ -235,7 +236,8 @@ public:
     }
 
 protected:
-    void Reset() {
+    void Reset()
+    {
         bSize = 0;
         gSizeQuery = 0;
         gSizeQueryIndex = 0;
@@ -280,25 +282,24 @@ protected:
     void GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t> &res, int64_t &actualLen) const;
     ge::graphStatus CheckContext();
     bool AnalyzeAttrs();
-    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &queryIndexShape,
-        const gert::Shape &topKShape, size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
+    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
+                          const gert::Shape &queryIndexShape, const gert::Shape &topKShape, size_t layoutLen,
+                          const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-                            const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
-    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, 
-                    const int64_t balanceNum);
-    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
-                       int64_t maxCoreNum);
+                              const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
+    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &localValue,
+                     std::vector<int64_t> &sparseStartIdx);
+    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
+                       const int64_t balanceNum);
+    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
     void InitOutputSplit();
-
 
     // 基础输入参数
     int32_t bSize;
@@ -343,10 +344,11 @@ protected:
     std::vector<int64_t> actualSeqLenData;
     std::vector<int64_t> actualSeqLenKData;
 
-    SparseLightningIndexerGradKLLossTilingData *tilingData = context_->GetTilingData<SparseLightningIndexerGradKLLossTilingData>();
+    SparseLightningIndexerGradKLLossTilingData *tilingData =
+        context_->GetTilingData<SparseLightningIndexerGradKLLossTilingData>();
     SLIGradKLLossBaseParams *sliGradkllossBaseParams_ = &tilingData->baseParams;
     SLIGradKLLossMultiCoreParams *sliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 
-} // optiling
+} // namespace optiling
 #endif

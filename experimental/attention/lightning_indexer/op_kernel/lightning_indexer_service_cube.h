@@ -45,7 +45,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5;         // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -128,9 +128,10 @@ __aicore__ inline void LIMatmul<LIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename LIT>
-__aicore__ inline void
-LIMatmul<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                   const GlobalTensor<Q_T> &queryGm, const GlobalTensor<float> &mm1ResGm)
+__aicore__ inline void LIMatmul<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
+                                                          const GlobalTensor<K_T> &keyGm,
+                                                          const GlobalTensor<Q_T> &queryGm,
+                                                          const GlobalTensor<float> &mm1ResGm)
 {
     blkTableGm_ = blkTableGm;
     keyGm_ = keyGm;
@@ -150,7 +151,7 @@ __aicore__ inline void LIMatmul<LIT>::ComputeMm1(const LICommon::RunInfo &runInf
             s2GmOffset + S2_BASIC_BLOCK > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK;
         if (PAGE_ATTENTION) {
             KeyNd2NzForPA(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
-        }else {
+        } else {
             KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
         }
 
@@ -204,7 +205,7 @@ __aicore__ inline void LIMatmul<LIT>::ComputeMm1(const LICommon::RunInfo &runInf
 
 template <typename LIT>
 __aicore__ inline void LIMatmul<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                    const LICommon::RunInfo &runInfo)
+                                               const LICommon::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {

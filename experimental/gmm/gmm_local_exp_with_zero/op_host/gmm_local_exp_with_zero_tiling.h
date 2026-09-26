@@ -17,15 +17,15 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(GmmLocalExpWithZeroBaseParams)
-  TILING_DATA_FIELD_DEF(uint32_t, groupNum);
-  TILING_DATA_FIELD_DEF(uint32_t, N);
-  TILING_DATA_FIELD_DEF(uint32_t, K);
-  TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
-  TILING_DATA_FIELD_DEF(uint32_t, trans_b);
-  TILING_DATA_FIELD_DEF(uint32_t, singleM);
-  TILING_DATA_FIELD_DEF(uint32_t, singleN);
-  TILING_DATA_FIELD_DEF(uint32_t, expStartIdx);
-  TILING_DATA_FIELD_DEF(uint32_t, expEndIdx);
+TILING_DATA_FIELD_DEF(uint32_t, groupNum);
+TILING_DATA_FIELD_DEF(uint32_t, N);
+TILING_DATA_FIELD_DEF(uint32_t, K);
+TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, trans_b);
+TILING_DATA_FIELD_DEF(uint32_t, singleM);
+TILING_DATA_FIELD_DEF(uint32_t, singleN);
+TILING_DATA_FIELD_DEF(uint32_t, expStartIdx);
+TILING_DATA_FIELD_DEF(uint32_t, expEndIdx);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GmmLocalExpWithZeroBaseParamsOp, GmmLocalExpWithZeroBaseParams)
 
@@ -37,5 +37,5 @@ TILING_DATA_FIELD_DEF(uint32_t, eleNumPerCore);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GmmLocalExpWithZero, GmmLocalExpWithZeroTilingData)
-}
+} // namespace optiling
 #endif

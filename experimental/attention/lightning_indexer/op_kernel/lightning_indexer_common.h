@@ -105,11 +105,11 @@ struct ConstInfo {
     int64_t nextTokens = 9223372036854775807;
     int8_t returnValue = 0;
 
-    uint32_t curLenQDims = 0U; // query的curSeqLength 的维度
-    uint32_t curLenDims = 0U;  // KV的curSeqLength 的维度
+    uint32_t curLenQDims = 0U;    // query的curSeqLength 的维度
+    uint32_t curLenDims = 0U;     // KV的curSeqLength 的维度
     bool isAccumSeqS1 = false;    // 是否累加模式
     bool isAccumSeqS2 = false;    // 是否累加模式
-    bool sparseCountFlag = false; //sparseCount小于等于2048为false
+    bool sparseCountFlag = false; // sparseCount小于等于2048为false
 };
 
 struct SplitCoreInfo {
@@ -119,7 +119,7 @@ struct SplitCoreInfo {
     uint32_t bN2End = 0U;
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
-    bool isLD = false;     // 当前核是否需要进行Decode归约任务
+    bool isLD = false; // 当前核是否需要进行Decode归约任务
 };
 
 template <typename T>

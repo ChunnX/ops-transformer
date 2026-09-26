@@ -19,13 +19,10 @@
 
 namespace op_api {
 std::tuple<at::Tensor, at::Tensor> LightningIndexer(
-    const at::Tensor& query, const at::Tensor& key, const at::Tensor& weights,
-    const c10::optional<at::Tensor>& curSeqLengthsQuery,
-    const c10::optional<at::Tensor>& curSeqLengthsKey,
-    const c10::optional<at::Tensor>& blockTable,
-    const std::string& layoutQuery, const std::string& layoutKey,
-    int64_t sparseCount, int64_t kvBlockLen, int64_t qBlockLen,
-    int64_t initNum, int64_t localNum, int64_t sparseMode,
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights,
+    const c10::optional<at::Tensor> &curSeqLengthsQuery, const c10::optional<at::Tensor> &curSeqLengthsKey,
+    const c10::optional<at::Tensor> &blockTable, const std::string &layoutQuery, const std::string &layoutKey,
+    int64_t sparseCount, int64_t kvBlockLen, int64_t qBlockLen, int64_t initNum, int64_t localNum, int64_t sparseMode,
     int64_t preTokens, int64_t nextTokens, bool returnValue)
 {
     TORCH_CHECK(query.device().type() == at::kPrivateUse1, "query must be on NPU");
@@ -35,8 +32,7 @@ std::tuple<at::Tensor, at::Tensor> LightningIndexer(
     TORCH_CHECK(key.is_contiguous(), "key should be contiguous");
     TORCH_CHECK(weights.is_contiguous(), "weights should be contiguous");
     TORCH_CHECK(layoutQuery == "BSND" || layoutQuery == "TND", "unsupported layout_query");
-    TORCH_CHECK(layoutKey == "BSND" || layoutKey == "TND" || layoutKey == "PA_BSND",
-                "unsupported layout_key");
+    TORCH_CHECK(layoutKey == "BSND" || layoutKey == "TND" || layoutKey == "PA_BSND", "unsupported layout_key");
     TORCH_CHECK(query.dim() == (layoutQuery == "BSND" ? 4 : 3), "invalid query rank");
     TORCH_CHECK(key.dim() == (layoutKey == "TND" ? 3 : 4), "invalid key rank");
     TORCH_CHECK(sparseCount > 0, "sparse_count must be positive");
@@ -61,11 +57,11 @@ std::tuple<at::Tensor, at::Tensor> LightningIndexer(
     if (curSeqLengthsKey.has_value() && curSeqLengthsKey->defined()) {
         seqK = curSeqLengthsKey->to(at::kLong);
     }
-    char* queryLayout = const_cast<char*>(layoutQuery.c_str());
-    char* keyLayout = const_cast<char*>(layoutKey.c_str());
-    ACLNN_CMD(aclnnLightningIndexer, query, key, weights, seqQ, seqK, blockTable,
-              queryLayout, keyLayout, sparseCount, kvBlockLen, qBlockLen, initNum,
-              localNum, sparseMode, preTokens, nextTokens, returnValue, indices, values);
+    char *queryLayout = const_cast<char *>(layoutQuery.c_str());
+    char *keyLayout = const_cast<char *>(layoutKey.c_str());
+    ACLNN_CMD(aclnnLightningIndexer, query, key, weights, seqQ, seqK, blockTable, queryLayout, keyLayout, sparseCount,
+              kvBlockLen, qBlockLen, initNum, localNum, sparseMode, preTokens, nextTokens, returnValue, indices,
+              values);
     return {indices, values};
 }
 } // namespace op_api
