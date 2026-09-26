@@ -158,8 +158,8 @@ public:
         stats_ = statsBuffer_.template Get<float>();
         sync_ = syncBuffer_.template Get<int32_t>();
         Kernel::CopyGlobalToUb(gamma_, tensors.gamma0, 0U, tiling.d);
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID4);
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID5);
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
     }
 
     /** Begin one planned producer batch: rows belong to member%groupSize within the M group. */
@@ -180,7 +180,7 @@ public:
     {
         const auto &t = *tiling_;
         const event_t event = slot == 0U ? EVENT_ID4 : EVENT_ID5;
-        WaitFlag<HardEvent::V_MTE2>(event);
+        WaitFlag<HardEvent::MTE3_MTE2>(event);
         Kernel::EnqueueGlobalToUb(input_[slot * t.d], tensors_->hOut, row * t.d, t.d);
         Kernel::EnqueueGlobalToUb(residual_[slot * t.k], tensors_->residual, row * t.k, t.k);
         Kernel::EnqueueGlobalToUb(coefficients_[slot * 128U], tensors_->hPost, row * 4U, 4U);
@@ -188,7 +188,7 @@ public:
         SetFlag<HardEvent::MTE2_V>(event);
     }
 
-    /** Compute one rounded RMS0/Post row and publish x2[row,:] after its store completes. */
+    /** Compute one rounded RMS0/Post row and enqueue x2[row,:]; slot reuse waits for its store. */
     __aicore__ inline void ProduceOne()
     {
         const auto &t = *tiling_;
@@ -210,8 +210,11 @@ public:
             reinterpret_cast<__ubuf__ T *>(residual_[slot_ * t.k].GetPhyAddr()), 1U, t.d, 0U, t.d);
         // All four sources for each column are read before stores in the shared Post VF.
         // Return input-slot credit only after MTE3 finishes reading this aliased output.
-        Kernel::CopyUbToGlobal(tensors_->x2Out, row_ * t.k, residual_[slot_ * t.k], t.k);
-        SetFlag<HardEvent::V_MTE2>(event);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        DataCopyExtParams copy{1U, static_cast<uint32_t>(t.k * sizeof(T)), 0U, 0U, 0U};
+        DataCopyPad(tensors_->x2Out[row_ * t.k], residual_[slot_ * t.k], copy);
+        SetFlag<HardEvent::MTE3_MTE2>(event);
         slot_ = next;
         ++row_;
         ++produced_;
@@ -267,8 +270,10 @@ public:
     /** Consume both input-slot credits after the final producer batch to close event lifetimes. */
     __aicore__ inline void End()
     {
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID4);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID5);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
     }
 private:
     Kernel::Tensors<T> *tensors_;

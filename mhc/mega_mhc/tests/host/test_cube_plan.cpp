@@ -37,10 +37,26 @@ int run_plan_tests()
                     request.l0BBytes = 64 * 1024;
                     request.l0CBytes = 128 * 1024;
                     request.mode = static_cast<ProjectionMode>(mode);
+                    request.wavePipeline = !request.hasMid && m == 3072 && d == 5120 && cores == 32;
                     CubePlan p;
                     REQUIRE(BuildCubePlan(request, p));
                     REQUIRE(p.activeAic <= cores && p.activeAic == p.mGrid * p.kGrid);
                     REQUIRE(p.activeAiv == 2 * p.activeAic);
+                    if (request.wavePipeline) {
+                        // Each producer batch must finish before the next wave's projection reads it.
+                        const uint32_t members = p.kGrid * 2U;
+                        const uint32_t producerRows = p.mTile / members;
+                        REQUIRE(producerRows > 0 && producerRows * members == p.mTile);
+                        REQUIRE(p.lastWaveRows == p.rowsPerWave);
+                        REQUIRE(p.l1KFullLoops >= producerRows);
+                        const uint32_t tickStride = p.l1KFullLoops / producerRows;
+                        REQUIRE(1U + (producerRows - 1U) * tickStride < p.l1KFullLoops);
+                        const uint64_t producerUb = UbAllocation(2ULL * d * 2U) +
+                            UbAllocation(2ULL * request.k * 2U) + UbAllocation(d * 2U) +
+                            UbAllocation(d * 4U) + UbAllocation(256U * 4U) +
+                            UbAllocation(8U) + UbAllocation(32U);
+                        REQUIRE(producerUb + ProjectionUbBytes(request.k, p.l1K, p.mTile / 2U) <= 248U * 1024U);
+                    }
                     REQUIRE((uint64_t(p.mWaveCount) - 1) * p.rowsPerWave + p.lastWaveRows == m);
                     REQUIRE((p.lastWaveMGrid - 1) * p.mTile + p.lastMCoreRows == p.lastWaveRows);
                     REQUIRE(p.lastMCoreRows > 0 && p.lastMCoreRows <= p.mTile);

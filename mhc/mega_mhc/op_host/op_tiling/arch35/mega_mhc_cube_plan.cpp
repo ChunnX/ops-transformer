@@ -77,7 +77,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
     const uint64_t largeMTile = request.hasMid ? kFiveCubeMTile : kLargeCubeMTile;
-    const uint64_t selectedMTile = request.wavePipeline ? 192U :
+    const uint64_t selectedMTile = request.wavePipeline ? 128U :
         (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
     const uint64_t selectedMGrid = std::min(request.wavePipeline ? active / 4U : active, CeilDiv(request.rows, selectedMTile));
     const uint64_t kBlocks = CeilDiv(request.k, kKAlign);
