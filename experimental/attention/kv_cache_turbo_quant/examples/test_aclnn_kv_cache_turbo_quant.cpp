@@ -281,6 +281,13 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
                *reinterpret_cast<const float *>(&dbg[205]), *reinterpret_cast<const float *>(&dbg[206]));
         printf("[PEEK] cycles: AIC x0=%d x1=%d xr=%d rp=%d pend=%d | AIV up=%d rset=%d\n", dbg[300], dbg[301],
                dbg[302], dbg[303], dbg[305], dbg[306], dbg[307]);
+        {
+            const int32_t c0 = dbg[320], c1 = dbg[321], c2 = dbg[322], c3 = dbg[323], c4 = dbg[324], c5 = dbg[325];
+            const double GHZ = 1.5;
+            printf("[AIVCYC] upload=%.1fus zwait=%.1fus quant=%.1fus pwait=%.1fus qjl=%.1fus TOTAL=%.1fus\n",
+                   (c1 - c0) / 1000.0 / GHZ, (c2 - c1) / 1000.0 / GHZ, (c3 - c2) / 1000.0 / GHZ,
+                   (c4 - c3) / 1000.0 / GHZ, (c5 - c4) / 1000.0 / GHZ, (c5 - c0) / 1000.0 / GHZ);
+        }
         printf("[PEEK] flags g0:\n");
         for (int ci = 0; ci < 64; ci += 8) {
             printf("  [%d] %08x %08x %08x %08x %08x %08x %08x %08x\n", ci, mrk[ci], mrk[ci + 1], mrk[ci + 2],
@@ -569,7 +576,7 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
             // libapi/KFC prefix) per launch - stale-content fix candidate
             aclrtMemsetAsync(wsIter, workspaceSize, 0, workspaceSize, stream);
         }
-        if (getenv("KVTQ_FRESH_EXEC") != nullptr) {
+        if (getenv("KVTQ_REUSE_EXEC") == nullptr) {
             // probe mode: brand-new executor per launch to bisect repeat-launch crashes
             aclOpExecutor *ex2 = nullptr;
             uint64_t ws2 = 0;
@@ -679,7 +686,7 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
         if (getenv("KVTQ_ZERO_WS") != nullptr && wsPerf != nullptr) {
             aclrtMemsetAsync(wsPerf, workspaceSize, 0, workspaceSize, stream);
         }
-        if (getenv("KVTQ_FRESH_EXEC") != nullptr) {
+        if (getenv("KVTQ_REUSE_EXEC") == nullptr) {
             // fresh executor per launch: the MIX runtime's executor caches
             // per-launch state that corrupts on reuse (repeat launch dies at
             // grid init). A new executor re-inits cleanly.

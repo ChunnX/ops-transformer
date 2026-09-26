@@ -182,8 +182,8 @@ public:
         wsP1Gm_.SetGlobalBuffer(wsP + 0 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
         wsP2Gm_.SetGlobalBuffer(wsP + 1 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
         wsP3Gm_.SetGlobalBuffer(wsP + 2 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        wsP4Gm_.SetGlobalBuffer(wsP + 3 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        wsXhGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsP + 4 * totalVec_ * HEAD_DIM),
+        // p4 (rl@Sl ~1e-9) is never produced/read; its plane is reclaimed for xh
+        wsXhGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsP + 3 * totalVec_ * HEAD_DIM),
                                 totalVec_ * HEAD_DIM);
         if (!isAic_ && GetBlockIdx() == 0) {
             // dump the kernel's view of the output tensor addresses
@@ -305,7 +305,7 @@ public:
             {
                 __gm__ float *pBase = const_cast<__gm__ float *>(wsP1Gm_.GetPhyAddr()) +
                                       rangeBegin_ * HEAD_DIM;
-                const int64_t lines = (rangeLen_ * HEAD_DIM * 4 * sizeof(float) + 63) / 64;
+                const int64_t lines = (rangeLen_ * HEAD_DIM * 3 * sizeof(float) + 63) / 64;
                 GlobalTensor<int64_t> pLine;
                 pLine.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(pBase), lines * 8);
                 for (int64_t li = 0; li < lines; ++li) {
@@ -315,6 +315,25 @@ public:
             }
             GmFlagSet(slotBase + 5 * SLOT_STRIDE, MAGIC_P);   // P_LO
             GmFlagSet(slotBase + 7 * SLOT_STRIDE, MAGIC_P);   // P_HI
+            // ---- AIC cube epilogue: drain every cube pipe and reset the
+            // load/atomic state so the NEXT launch's MIX runtime init sees a
+            // clean AIC. Without this the cube state persists across launches
+            // and a reused (executor, workspace) pair dies at grid init
+            // (507015/507057) before any user code - the repeat-launch crash.
+            // Scoped to the cube path so the pure-vector decode path (idle AIC)
+            // is untouched.
+            SyncPipe<HardEvent::FIX_S>();
+            SetFlag<HardEvent::FIX_M>(eventFixM_);
+            WaitFlag<HardEvent::FIX_M>(eventFixM_);
+            SetFlag<HardEvent::M_MTE1>(eventMMte1_);
+            WaitFlag<HardEvent::M_MTE1>(eventMMte1_);
+            SetFlag<HardEvent::MTE1_M>(eventMte1M_);
+            WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
+            PipeBarrier<PIPE_M>();
+            SetAtomicNone();
+            SetMaskNorm();
+            SetLoadDataBoundary((uint64_t)0);
+            SetLoadDataPaddingValue((uint64_t)0);
         } else {
             ProcessAiv();
         }
@@ -560,6 +579,7 @@ private:
         LocalTensor<bfloat16_t> gammaBF = gammaBFBuf_.Get<bfloat16_t>();
         LocalTensor<uint8_t> idxStage = idxStageBuf_.Get<uint8_t>();
         LocalTensor<uint8_t> qjlStage = qjlStageBuf_.Get<uint8_t>();
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 320, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
 
 
         // ---- phase 0 (even AIV of each group): fp16 hi/lo splits of H and S.
@@ -595,7 +615,9 @@ private:
         SyncPipe<HardEvent::MTE3_S>();   // x tiles in L2 before the flag store
         const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
         GmFlagSet(slotBase + aivSubIdx_ * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_X_LO : MAGIC_X_HI);
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 321, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         GmFlagWait(slotBase + (2 + 4 * aivSubIdx_) * SLOT_STRIDE, MAGIC_Z);
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 322, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         if (GetBlockIdx() < 4) {
             // per-AIV V_S-covered x/z dumps at cells 140+blk*4
             volatile __gm__ int32_t *pv = flagRaw_ + 3968 + 140 + GetBlockIdx() * 4;
@@ -745,6 +767,7 @@ private:
         SyncPipe<HardEvent::MTE3_S>();
         if (GetBlockIdx() < 2) {
         }
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 323, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         GmFlagSet(slotBase + (3 + aivSubIdx_) * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_R_LO : MAGIC_R_HI);
 
         // early norm/gamma visibility sweep: a handful of tiles lost their
@@ -755,6 +778,7 @@ private:
 
         // ---- wait p, sign, qjl flush
         GmFlagWait(slotBase + (5 + 2 * aivSubIdx_) * SLOT_STRIDE, MAGIC_P);
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 324, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
         for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
             const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
             const int64_t g0 = vecBegin_ + tileStart;
@@ -801,6 +825,7 @@ private:
             SyncPipe<HardEvent::S_V>();
         }
 
+        if (GetBlockIdx() == 0) { GmFlagSet(3584 + 325, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF)); }
     }
 
     // ---- low-level fp16 matmul service (AIC only): z = A @ B^T per 16x128 tile ----

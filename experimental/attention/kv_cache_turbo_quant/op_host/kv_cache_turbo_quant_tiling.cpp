@@ -118,6 +118,9 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     // single tiling key 0 with runtime dispatch; always launch the full tri-core
     // grid (out-of-range groups idle out in-kernel). usedCoreNum for key-0 vector
     // path = AIV count (2*aicNum), for the mix path = logical tri-core groups.
+    // Measured: fewer cube groups is SLOWER (8 groups -> 1345us vs 24 -> 494us
+    // for t2048) - the grid-launch overhead is not block-count dominated and
+    // fewer groups overloads the serial AIV vector phase, so use all AICs.
     const uint32_t usedAic = aicNum;
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(2 * usedAic, usedAic, 2 * usedAic));
     usedCoreNum = useCube ? usedAic : (2 * usedAic);
@@ -139,9 +142,9 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     // user code runs (bisected 2026-09-24).
     size_t wsBytes = 32 * 1024;
     if (useCube) {
-        // flags 16KB + splits 128KB + z 2x512B + r 2x256B + p 4x512B + x 256B per vector
+        // flags 16KB + splits 128KB + z 2x512B + r 2x256B + p 3x512B + x 256B per vector
         wsBytes = static_cast<size_t>(144 * 1024) +
-                  static_cast<size_t>(totalVec) * (2 * 512 + 2 * 256 + 4 * 512 + 256);
+                  static_cast<size_t>(totalVec) * (2 * 512 + 2 * 256 + 3 * 512 + 256);
     }
     workspaces[0] = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize()) + wsBytes;
 
