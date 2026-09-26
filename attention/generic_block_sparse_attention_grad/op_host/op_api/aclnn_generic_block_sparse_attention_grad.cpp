@@ -40,8 +40,38 @@ aclnnStatus CheckRequiredTensor(const aclTensor *t, const char *name)
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (t->GetViewShape().GetDimNum() == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GenericBlockSparseAttentionGrad: %s is empty.", name);
-        return ACLNN_ERR_PARAM_NULLPTR;
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: %s is empty (rank=0 / shape=[]), not supported.", name);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckTensorPositiveDims(const aclTensor *t, const char *name)
+{
+    const auto &shape = t->GetViewShape();
+    const size_t dimNum = shape.GetDimNum();
+    for (size_t i = 0; i < dimNum; ++i) {
+        const int64_t dim = shape.GetDim(static_cast<int64_t>(i));
+        if (dim <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GenericBlockSparseAttentionGrad: %s dim[%zu]=%ld must be > 0, shape[%s].", name, i, dim,
+                    op::ToString(shape).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckLayoutTensorRank(const aclTensor *t, const char *name, const char *layout, size_t expectRank)
+{
+    const auto &shape = t->GetViewShape();
+    const size_t dimNum = shape.GetDimNum();
+    if (dimNum != expectRank) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: %s rank=%zu must be %zu for layout=%s, shape[%s].", name, dimNum,
+                expectRank, layout, op::ToString(shape).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
@@ -82,6 +112,39 @@ bool IsSupportedLayout(const char *layout)
            (strcmp(layout, "TND") == 0 || strcmp(layout, "BNSD") == 0 || strcmp(layout, "BSND") == 0);
 }
 
+aclnnStatus CheckQkvShapesByLayout(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                   const aclTensor *dout, const aclTensor *out, const aclTensor *dQuery,
+                                   const aclTensor *dKey, const aclTensor *dValue, const char *layout)
+{
+    const size_t expectQRank = (strcmp(layout, "TND") == 0) ? 3U : 4U;
+    const size_t expectKvRank = expectQRank;
+    const aclTensor *qLike[] = {query, dout, out, dQuery};
+    const char *qLikeNames[] = {"query", "dout", "out", "dQuery"};
+    for (size_t i = 0; i < sizeof(qLike) / sizeof(qLike[0]); ++i) {
+        aclnnStatus st = CheckLayoutTensorRank(qLike[i], qLikeNames[i], layout, expectQRank);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+        st = CheckTensorPositiveDims(qLike[i], qLikeNames[i]);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+    }
+    const aclTensor *kvLike[] = {key, value, dKey, dValue};
+    const char *kvLikeNames[] = {"key", "value", "dKey", "dValue"};
+    for (size_t i = 0; i < sizeof(kvLike) / sizeof(kvLike[0]); ++i) {
+        aclnnStatus st = CheckLayoutTensorRank(kvLike[i], kvLikeNames[i], layout, expectKvRank);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+        st = CheckTensorPositiveDims(kvLike[i], kvLikeNames[i]);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout,
                      const aclTensor *out, const aclTensor *lse, const aclTensor *sparseBlockIdx,
                      const aclTensor *sparseBlockCount, const aclTensor *metadataOptional,
@@ -112,6 +175,22 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "GenericBlockSparseAttentionGrad: layout must be TND/BSND/BNSD, got layoutQ=%s.", layoutQ);
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    {
+        aclnnStatus st = CheckQkvShapesByLayout(query, key, value, dout, out, dQuery, dKey, dValue, layoutQ);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+    }
+    {
+        const aclTensor *otherTensors[] = {lse, sparseBlockIdx, sparseBlockCount, metadataOptional};
+        const char *otherNames[] = {"lse", "sparseBlockIdx", "sparseBlockCount", "metadata"};
+        for (size_t i = 0; i < sizeof(otherTensors) / sizeof(otherTensors[0]); ++i) {
+            aclnnStatus st = CheckTensorPositiveDims(otherTensors[i], otherNames[i]);
+            if (st != ACLNN_SUCCESS) {
+                return st;
+            }
+        }
     }
     if (isPackedGQA != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: only support isPackedGQA == 1, got %ld.",

@@ -184,7 +184,7 @@ public:
         SET_FLAG(M, MTE1, evnet_id);
 
         AscendC::FixpipeParamsV220 fixToSel;
-        fixToSel.mSize = static_cast<uint16_t>(mProcessAlign);
+        fixToSel.mSize = static_cast<uint16_t>(mProcess);
         fixToSel.nSize = static_cast<uint16_t>(head_dim_);
         fixToSel.srcStride = static_cast<uint16_t>(mProcessAlign);
         fixToSel.dstStride = static_cast<uint32_t>(head_dim_);
