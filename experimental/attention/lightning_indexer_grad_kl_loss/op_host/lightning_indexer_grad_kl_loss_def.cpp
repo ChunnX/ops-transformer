@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- 
+
 /*!
  * \file sparse_lightning_indexer_grad_kl_loss_def.cpp
  * \brief

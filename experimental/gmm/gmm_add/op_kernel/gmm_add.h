@@ -17,12 +17,12 @@ using namespace AscendC;
 
 namespace ops_gmm_add {
 
-constexpr uint32_t thresholdBlockNum = 8;   // 8 is obtained by tests, indicating the threshold of basic block numbers
-                                            // in both directions when assigning data blocks to cube cores when using
-                                            // diagnal strategy
+constexpr uint32_t thresholdBlockNum = 8; // 8 is obtained by tests, indicating the threshold of basic block numbers
+                                          // in both directions when assigning data blocks to cube cores when using
+                                          // diagnal strategy
 
 /*@brief store variables for core split configuration
-*/
+ */
 struct MNConfig {
     uint32_t m;
     uint32_t k;
@@ -40,20 +40,23 @@ struct MNConfig {
 };
 
 /** @brief GroupMatmul operator Class
-*/
+ */
 template <typename ComputeType>
 class GMMProcess {
- private:
-     __aicore__ inline void Process_();
+private:
+    __aicore__ inline void Process_();
 
-    ComputeType& computeOp;   // inernal computation operator
-    const GmmAddTilingData& tilingData;
+    ComputeType &computeOp; // inernal computation operator
+    const GmmAddTilingData &tilingData;
     uint32_t coreIdx;
     MNConfig mnConfig;
 
- public:
+public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType& computeOp_, const GmmAddTilingData& tilingData) : computeOp(computeOp_), tilingData(tilingData) {}
+    __aicore__ inline GMMProcess(ComputeType &computeOp_, const GmmAddTilingData &tilingData)
+        : computeOp(computeOp_),
+          tilingData(tilingData)
+    {}
 
     __aicore__ inline void Init();
 
@@ -61,7 +64,8 @@ class GMMProcess {
 };
 
 template <typename ComputeType>
- __aicore__ inline void GMMProcess<ComputeType>::Init() {
+__aicore__ inline void GMMProcess<ComputeType>::Init()
+{
     coreIdx = GetBlockIdx();
     mnConfig.m = tilingData.gmmBaseParams.M;
     mnConfig.n = tilingData.gmmBaseParams.N;
@@ -69,12 +73,14 @@ template <typename ComputeType>
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::Process() {
+__aicore__ inline void GMMProcess<ComputeType>::Process()
+{
     Process_();
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::Process_() {
+__aicore__ inline void GMMProcess<ComputeType>::Process_()
+{
     uint32_t count = 0;
 
     uint32_t dimM = Ceil(mnConfig.m, tilingData.gmmBaseParams.singleM);
@@ -83,7 +89,7 @@ __aicore__ inline void GMMProcess<ComputeType>::Process_() {
     mnConfig.blockDimN = dimN;
     mnConfig.singleM = tilingData.gmmBaseParams.singleM;
     mnConfig.singleN = tilingData.gmmBaseParams.singleN;
-    
+
     for (uint32_t groupIdx(0); groupIdx < tilingData.gmmBaseParams.groupNum; ++groupIdx) {
         mnConfig.k = computeOp.CalcKForThisGroup(groupIdx);
         if (mnConfig.k == 0) {
@@ -98,14 +104,21 @@ __aicore__ inline void GMMProcess<ComputeType>::Process_() {
             // https://km.sankuai.com/collabpage/2704497243
             if ((dimM >= 12 && dimN >= 12) || (dimN > 6 && dimM / dimN >= 2) || (dimM > 6 && dimN / dimM >= 3)) {
                 uint32_t relativeBlock = curBlock - count;
-                uint32_t curThresholdM = relativeBlock >= gmm_utils::AlignDown(dimM * dimN, thresholdM_dimN) ? dimM % thresholdBlockNum : thresholdBlockNum;
+                uint32_t curThresholdM = relativeBlock >= gmm_utils::AlignDown(dimM * dimN, thresholdM_dimN) ?
+                                             dimM % thresholdBlockNum :
+                                             thresholdBlockNum;
                 uint32_t curThresholdM_thresholdN = curThresholdM * thresholdBlockNum;
-                uint32_t curThresholdN = relativeBlock % thresholdM_dimN >= gmm_utils::AlignDown(curThresholdM * dimN, curThresholdM_thresholdN) ? dimN % thresholdBlockNum : thresholdBlockNum;
+                uint32_t curThresholdN = relativeBlock % thresholdM_dimN >=
+                                                 gmm_utils::AlignDown(curThresholdM * dimN, curThresholdM_thresholdN) ?
+                                             dimN % thresholdBlockNum :
+                                             thresholdBlockNum;
                 uint32_t localRelativeBlock = relativeBlock % thresholdM_dimN % curThresholdM_thresholdN;
-                mnConfig.mIdx = localRelativeBlock % curThresholdM + relativeBlock / thresholdM_dimN * thresholdBlockNum;
-                mnConfig.nIdx = (localRelativeBlock + localRelativeBlock /
-                    gmm_utils::LeastCommonMultiple(curThresholdM, curThresholdN)) % curThresholdN + relativeBlock %
-                    thresholdM_dimN / curThresholdM_thresholdN * thresholdBlockNum;
+                mnConfig.mIdx =
+                    localRelativeBlock % curThresholdM + relativeBlock / thresholdM_dimN * thresholdBlockNum;
+                mnConfig.nIdx = (localRelativeBlock +
+                                 localRelativeBlock / gmm_utils::LeastCommonMultiple(curThresholdM, curThresholdN)) %
+                                    curThresholdN +
+                                relativeBlock % thresholdM_dimN / curThresholdM_thresholdN * thresholdBlockNum;
             } else {
                 mnConfig.mIdx = (curBlock - count) / dimN;
                 mnConfig.nIdx = (curBlock - count) % dimN;
@@ -121,31 +134,39 @@ __aicore__ inline void GMMProcess<ComputeType>::Process_() {
 }
 
 /** @brief intenal computation class
-*/
-template <typename mmType, typename AT, typename CT, typename GT = int64_t,  bool trans_a = false, bool sync = false>
+ */
+template <typename mmType, typename AT, typename CT, typename GT = int64_t, bool trans_a = false, bool sync = false>
 class GMMCompute {
- public:
+public:
     using BT = AT;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(mmType& mm_, TPipe& pipe_, const GmmAddTilingData& tilingData_) : mm(mm_), pipe(pipe_), tilingData(tilingData_) {}
+    __aicore__ inline GMMCompute(mmType &mm_, TPipe &pipe_, const GmmAddTilingData &tilingData_)
+        : mm(mm_),
+          pipe(pipe_),
+          tilingData(tilingData_)
+    {}
 
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group, GM_ADDR weightGrad, GM_ADDR y, GM_ADDR workspace);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group, GM_ADDR weightGrad, GM_ADDR y,
+                                GM_ADDR workspace);
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig& mnConfig);
+    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig &mnConfig);
 
-    __aicore__ inline int32_t CalcKForThisGroup(int group_id) {
+    __aicore__ inline int32_t CalcKForThisGroup(int group_id)
+    {
         return static_cast<int32_t>(groupGm.GetValue(group_id));
     }
 
-    __aicore__ inline void CopyInMatmulRes() {
+    __aicore__ inline void CopyInMatmulRes()
+    {
         // 从GM搬运real_rows * curSingleN到ub，inner轴对齐到curSingleN,右侧补零
         DataCopyExtParams copyParams;
         // 实际的行数
         copyParams.blockCount = real_rows;
         // 这里的单位是字节，即Byte
         copyParams.blockLen = curSingleN * sizeof(float);
-        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes), 如果源操作数的逻辑位置为GM,则单位为Byte
+        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes),
+        // 如果源操作数的逻辑位置为GM,则单位为Byte
         copyParams.srcStride = (tilingData.gmmBaseParams.singleN - curSingleN) * sizeof(float);
         // 目的操作数，相邻连续数据块间的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果目的操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes)，如果目的操作数的逻辑位置为GM，则单位为Byte
         copyParams.dstStride = 0;
@@ -157,17 +178,20 @@ class GMMCompute {
         // 连续搬运数据块右侧需要补充的数据范围，单位为元素个数。leftPadding+rightPadding的字节数之和不能超过32Bytes。
         padParams.rightPadding = curSingleNAligned - curSingleN;
 
-        DataCopyPad(matmulResTensor, workspaceGm[static_cast<uint64_t>(offsetM) * tilingData.gmmBaseParams.singleN], copyParams, padParams);
+        DataCopyPad(matmulResTensor, workspaceGm[static_cast<uint64_t>(offsetM) * tilingData.gmmBaseParams.singleN],
+                    copyParams, padParams);
     }
 
-    __aicore__ inline void CopyInWeightGrad(const MNConfig& mnConfig) {
+    __aicore__ inline void CopyInWeightGrad(const MNConfig &mnConfig)
+    {
         // 从GM搬运real_rows * curSingleN到ub，inner轴对齐到curSingleN,右侧补零
         DataCopyExtParams copyParams;
         // 实际的行数
         copyParams.blockCount = real_rows;
         // 这里的单位是字节，即Byte
         copyParams.blockLen = curSingleN * sizeof(float);
-        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes), 如果源操作数的逻辑位置为GM,则单位为Byte
+        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes),
+        // 如果源操作数的逻辑位置为GM,则单位为Byte
         copyParams.srcStride = (mnConfig.n - curSingleN) * sizeof(float);
         // 目的操作数，相邻连续数据块间的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果目的操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes)，如果目的操作数的逻辑位置为GM，则单位为Byte
         copyParams.dstStride = 0;
@@ -178,32 +202,37 @@ class GMMCompute {
         padParams.paddingValue = 0;
         // 连续搬运数据块右侧需要补充的数据范围，单位为元素个数。leftPadding+rightPadding的字节数之和不能超过32Bytes。
         padParams.rightPadding = curSingleNAligned - curSingleN;
-        DataCopyPad(weightGradTensor, weightGradGm[static_cast<uint64_t>(yOffset) + static_cast<uint64_t>(offsetM) * mnConfig.n + cuN], copyParams, padParams);
+        DataCopyPad(weightGradTensor,
+                    weightGradGm[static_cast<uint64_t>(yOffset) + static_cast<uint64_t>(offsetM) * mnConfig.n + cuN],
+                    copyParams, padParams);
     }
 
-    __aicore__ inline void CopyOut(const MNConfig& mnConfig) {
+    __aicore__ inline void CopyOut(const MNConfig &mnConfig)
+    {
         // 从ub搬运real_rows * curSingleN到GM
         DataCopyExtParams copyParams;
         // 实际的行数
         copyParams.blockCount = real_rows;
         // 这里的单位是字节，即Byte
         copyParams.blockLen = curSingleN * sizeof(float);
-        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes), 如果源操作数的逻辑位置为GM,则单位为Byte
+        // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果源操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes),
+        // 如果源操作数的逻辑位置为GM,则单位为Byte
         copyParams.srcStride = 0;
         // 目的操作数，相邻连续数据块间的间隔（前面一个数据块的尾与后面数据块的头的间隔），如果目的操作数的逻辑位置为VECIN/VECOUT，则单位为dataBlock(32Bytes)，如果目的操作数的逻辑位置为GM，则单位为Byte
         copyParams.dstStride = (mnConfig.n - curSingleN) * sizeof(float);
         // 写回到输出。注意：y可以和weightGradGm使用相同地址
-        DataCopyPad(yGm[static_cast<uint64_t>(yOffset) + static_cast<uint64_t>(offsetM) * mnConfig.n + cuN], weightGradTensor, copyParams);
+        DataCopyPad(yGm[static_cast<uint64_t>(yOffset) + static_cast<uint64_t>(offsetM) * mnConfig.n + cuN],
+                    weightGradTensor, copyParams);
     }
 
- private:
+private:
     // matmul operator
-    mmType& mm;
+    mmType &mm;
     // memory manager
     TPipe &pipe;
     // tiling
-    const GmmAddTilingData& tilingData;
-    
+    const GmmAddTilingData &tilingData;
+
     // inputs & workspace & outputs
     GlobalTensor<AT> xGm;
     GlobalTensor<BT> weightGm;
@@ -211,7 +240,7 @@ class GMMCompute {
     GlobalTensor<float> weightGradGm;
     GlobalTensor<CT> yGm;
     GlobalTensor<float> workspaceGm;
-    
+
     // ub tmp buffer
     TBuf<> weightGradBuf;
     TBuf<> matmulResBuf;
@@ -250,17 +279,20 @@ class GMMCompute {
 };
 
 template <typename mmType, typename AT, typename CT, typename GT, bool trans_a, bool sync>
-__aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group, GM_ADDR weightGrad, GM_ADDR y, GM_ADDR workspace) {
-    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT*>(x));
-    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT*>(weight));
-    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT*>(group));
-    weightGradGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(weightGrad));
-    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(y));
+__aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group,
+                                                                           GM_ADDR weightGrad, GM_ADDR y,
+                                                                           GM_ADDR workspace)
+{
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT *>(x));
+    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT *>(weight));
+    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT *>(group));
+    weightGradGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightGrad));
+    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(y));
 
     // workspace offset: elements count
     const auto workspaceOffset = GetBlockIdx() * tilingData.gmmBaseParams.singleM * tilingData.gmmBaseParams.singleN;
-    workspaceGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace) + workspaceOffset);
-    
+    workspaceGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace) + workspaceOffset);
+
     // 64kb
     pipe.InitBuffer(weightGradBuf, NUMS_PER_ADD * sizeof(float));
     // 64kb
@@ -268,7 +300,9 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::Init(GM_AD
 }
 
 template <typename mmType, typename AT, typename CT, typename GT, bool trans_a, bool sync>
-__aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::MMCompute(uint32_t groupIdx, const MNConfig& mnConfig) {
+__aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::MMCompute(uint32_t groupIdx,
+                                                                                const MNConfig &mnConfig)
+{
     curSingleN = mnConfig.singleN;
     cuN = mnConfig.nIdx * mnConfig.singleN;
     if (mnConfig.nIdx == mnConfig.blockDimN - 1) {
@@ -286,7 +320,8 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::MMCompute(
         xOffset = static_cast<uint64_t>(cuM) * mnConfig.totalK + mnConfig.cuK;
     }
     wOffset = static_cast<uint64_t>(mnConfig.cuK) * mnConfig.n + cuN;
-    yOffset = static_cast<uint64_t>(mnConfig.groupIdx) * mnConfig.m * mnConfig.n + static_cast<uint64_t>(cuM) * mnConfig.n;
+    yOffset =
+        static_cast<uint64_t>(mnConfig.groupIdx) * mnConfig.m * mnConfig.n + static_cast<uint64_t>(cuM) * mnConfig.n;
     // 注意，这里的gemm结果存放到workspace里，输出C矩阵的N需要设置成singeN，这样的话，向gm里写入tensorc时，每一行跳singeN这么多个元素
     mm.SetOrgShape(mnConfig.m, mnConfig.n, mnConfig.totalK, mnConfig.totalK, tilingData.gmmBaseParams.singleN);
     // @lg: 这里的single k，是每个专家对应的token数量
@@ -332,6 +367,6 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::MMCompute(
     }
 }
 
-}
+} // namespace ops_gmm_add
 
 #endif

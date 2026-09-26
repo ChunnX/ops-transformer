@@ -50,7 +50,7 @@ constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t CUR_SEQ_Q_INDEX = 3;
 constexpr uint32_t CUR_SEQ_K_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
-//Outputs Index
+// Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
 // Attributes Index
@@ -99,7 +99,6 @@ TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int8_t, returnValue)
 
-
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
 
@@ -129,7 +128,6 @@ struct LiParaInfo {
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
     const bool *returnValue = nullptr;
-
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -174,16 +172,15 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetCurSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                        const std::string &curSeqLenName);
+    ge::graphStatus GetCurSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &curSeqLenName);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -243,7 +240,8 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
 
 private:

@@ -63,7 +63,7 @@ public:
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(9223372036854775807);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(9223372036854775807);
         this->Attr("return_value").AttrType(OPTIONAL).Bool(false);
-        
+
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

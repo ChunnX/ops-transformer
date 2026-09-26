@@ -45,7 +45,7 @@ enum OutputIdx {
 ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseLightningIndexerGradKLLoss", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(queryEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     const gert::Shape *keyShape = context->GetInputShape(keyEnum);
@@ -75,7 +75,7 @@ ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeConte
 ge::graphStatus InferDataTypeSparseLightningIndexerGradKLLoss(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseLightningIndexerGradKLLoss", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(queryEnum);
     context->SetOutputDataType(0, inputDataType);
     context->SetOutputDataType(1, context->GetInputDataType(keyIndexEnum));
@@ -84,7 +84,7 @@ ge::graphStatus InferDataTypeSparseLightningIndexerGradKLLoss(gert::InferDataTyp
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(LightningIndexerGradKLLoss).InferShape(InferShapeSparseLightningIndexerGradKLLoss).InferDataType(InferDataTypeSparseLightningIndexerGradKLLoss);
+IMPL_OP(LightningIndexerGradKLLoss)
+    .InferShape(InferShapeSparseLightningIndexerGradKLLoss)
+    .InferDataType(InferDataTypeSparseLightningIndexerGradKLLoss);
 } // namespace ops
-  
-

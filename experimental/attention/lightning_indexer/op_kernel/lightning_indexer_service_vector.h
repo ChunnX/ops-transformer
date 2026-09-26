@@ -56,12 +56,12 @@ public:
     __aicore__ inline void InitLDBuffers(TPipe *pipe);
 
     // QS 辅助：拼接数据 + 执行 QS + 写回结果
-    __aicore__ inline void ExecuteQS(
-        LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
-        LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
-        int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
-        LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices, int32_t extraLen,
-        float sugMax, int32_t innerS1Idx, LocalTensor<float> &tmpSortBuf);
+    __aicore__ inline void ExecuteQS(LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
+                                     LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
+                                     int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
+                                     LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices,
+                                     int32_t extraLen, float sugMax, int32_t innerS1Idx,
+                                     LocalTensor<float> &tmpSortBuf);
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -81,8 +81,8 @@ private:
     TBuf<TPosition::VECCALC> sortOutBuf_;
     TBuf<TPosition::VECCALC> sortedBlockBuf_;
     TBuf<TPosition::VECCALC> tmpBuf_;
-    TQue<QuePosition::VECIN, 2> inQueue_;   // 输入双缓冲(depth2)：输入搬运与 DoScale 计算自动流水重叠
-    TBuf<TPosition::VECCALC> overflowBuf_;  // QS 容差窗候选独立 buffer
+    TQue<QuePosition::VECIN, 2> inQueue_;  // 输入双缓冲(depth2)：输入搬运与 DoScale 计算自动流水重叠
+    TBuf<TPosition::VECCALC> overflowBuf_; // QS 容差窗候选独立 buffer
     TBuf<TPosition::VECCALC> indexBuf_;
     TBuf<TPosition::VECCALC> reduceOutBuf_;
     TBuf<TPosition::VECCALC> brcBuf_;
@@ -98,7 +98,7 @@ private:
     LocalTensor<int32_t> globalTopkIndice_;
     LocalTensor<float> globalTopkUb_;
     LocalTensor<float> SortedBasicBlock_;
-    LocalTensor<float> overflowUb_;  // QS overflow 独立存储
+    LocalTensor<float> overflowUb_; // QS overflow 独立存储
     // globalTopkUb_ per-token 布局: [scores(virTopK) | indices(virTopK)]
     // overflowUb_  per-token 布局: [scores(QS_OVF) | indices(QS_OVF)]，共 activeTokens_ 份
     //   QS 选出 top-virTopK 后，落在容差窗内、暂未截断的候选存这里；末轮 SortAll 再精确截断。
@@ -107,7 +107,7 @@ private:
     //   窗越宽，QS 平均迭代轮数越少；OVF 段是宽容窗、不参与最终截断，不影响精度。
     //   约束：须为 64 的倍数（CompareScalar 对齐），上限由 QS 工作区容量决定（见下方 static_assert）。
     static constexpr int32_t QS_OVF = 384;
-    static constexpr int32_t MAX_TOKENS_PER_AIV = 4;  // per-token 标量状态数组上界（与 buffer 分配解耦）
+    static constexpr int32_t MAX_TOKENS_PER_AIV = 4; // per-token 标量状态数组上界（与 buffer 分配解耦）
 
     // ── QS 工作区容量校核（编译期 guard）──────────────────────────────────────
     // QS 在 tmpUb_ 内切三段 [srcScores(cap) | srcIndices(cap) | dstScores]。前两段满额各 cap；
@@ -115,25 +115,24 @@ private:
     // 故真实写入水位 = 2*cap + 2*BASE_TOPK，tmpUb_ 据此精确分配。
     // 下面用最坏配置（blockLen=1: blockS2BaseSize=S2_BASE_SIZE、numCacheSlots=QS_NUM_CACHE_SLOTS）取最大 cap 做断言：
     // 调大 QS_OVF / numCacheSlots 一旦越界即编译失败，避免运行时静默 UB 越界。
-    static constexpr int32_t QS_NUM_CACHE_SLOTS = 2;   // 攒批槽数（cap ≤ 4096 约束下取上限）
-    // 最坏新数据量：numCacheSlots 槽 + 当前块；blockLen=1 时 blockS2BaseSize=S2_BASE_SIZE（blockLen≥1 故 ≤ S2_BASE_SIZE）。
-    // ⚠️ 此处 512 须与 kernel.h 的 S2_BASE_SIZE 保持一致（架构常量，极少变动）；若 S2_BASE_SIZE 调大，需同步修改并重核 cap≤4096。
+    static constexpr int32_t QS_NUM_CACHE_SLOTS = 2; // 攒批槽数（cap ≤ 4096 约束下取上限）
+    // 最坏新数据量：numCacheSlots 槽 + 当前块；blockLen=1 时 blockS2BaseSize=S2_BASE_SIZE（blockLen≥1 故 ≤
+    // S2_BASE_SIZE）。 ⚠️ 此处 512 须与 kernel.h 的 S2_BASE_SIZE 保持一致（架构常量，极少变动）；若 S2_BASE_SIZE
+    // 调大，需同步修改并重核 cap≤4096。
     static constexpr int32_t QS_NEWDATA_MAX = (QS_NUM_CACHE_SLOTS + 1) * 512;
-    static constexpr int32_t QS_CAP_MAX     = BASE_TOPK + QS_OVF + QS_NEWDATA_MAX;  // 最坏 cap
-    static constexpr int32_t QS_DST_USED    = 2 * BASE_TOPK;                 // 第三段实际占用（Reduce work 区）
-    static constexpr int32_t QS_TMPUB_NEED  = 2 * QS_CAP_MAX + QS_DST_USED;  // QS 真实写入水位
-    static constexpr int32_t QS_TMPUB_FLOATS = QS_TMPUB_NEED;                // tmpBuf_ 按真实水位精确分配
-    static_assert(QS_TMPUB_NEED <= QS_TMPUB_FLOATS,
-                  "QS_OVF/numCacheSlots 过大：QS 工作区超出 tmpUb_。"
-                  "可收缩第三段 dstScores（仅需 2*BASE_TOPK）或减 numCacheSlots。");
+    static constexpr int32_t QS_CAP_MAX = BASE_TOPK + QS_OVF + QS_NEWDATA_MAX; // 最坏 cap
+    static constexpr int32_t QS_DST_USED = 2 * BASE_TOPK;                  // 第三段实际占用（Reduce work 区）
+    static constexpr int32_t QS_TMPUB_NEED = 2 * QS_CAP_MAX + QS_DST_USED; // QS 真实写入水位
+    static constexpr int32_t QS_TMPUB_FLOATS = QS_TMPUB_NEED;              // tmpBuf_ 按真实水位精确分配
+    static_assert(QS_TMPUB_NEED <= QS_TMPUB_FLOATS, "QS_OVF/numCacheSlots 过大：QS 工作区超出 tmpUb_。"
+                                                    "可收缩第三段 dstScores（仅需 2*BASE_TOPK）或减 numCacheSlots。");
     // 兜底约束：QS 未收敛时退化成 SortAll(4096) 全排截 topk，cap 必须 ≤ 4096 才装得下。
     //   QS_NUM_CACHE_SLOTS=2 + S2_BASE_SIZE=512 → cap=3968 < 4096。
     //   若调 numCacheSlots 或 QS_OVF 使 cap > 4096，编译失败，防止运行时兜底装不下。
-    static_assert(QS_CAP_MAX <= 4096,
-                  "QS cap 超过 4096：未收敛兜底 SortAll(4096) 装不下。"
-                  "需减 numCacheSlots 或 QS_OVF 使 cap ≤ 4096。");
+    static_assert(QS_CAP_MAX <= 4096, "QS cap 超过 4096：未收敛兜底 SortAll(4096) 装不下。"
+                                      "需减 numCacheSlots 或 QS_OVF 使 cap ≤ 4096。");
     // ──────────────────────────────────────────────────────────────────────────
-    int32_t tokenStride_ = 0;       // = virTopK * 2
+    int32_t tokenStride_ = 0; // = virTopK * 2
     int32_t overflowCnt_[MAX_TOKENS_PER_AIV] = {};
     float lastThreshold_[MAX_TOKENS_PER_AIV] = {};
     int32_t cacheCnt_[MAX_TOKENS_PER_AIV] = {};
@@ -150,7 +149,7 @@ private:
     int32_t groupInner_ = 0;
     int64_t blockS2StartIdx_ = 0;
     int32_t numCacheSlots_ = 0;
-    int32_t activeTokens_ = 0;      // = CeilDiv(s1BaseSize_,2)，每 AIV 实际活跃 token 数（overflow buffer 分配口径）
+    int32_t activeTokens_ = 0; // = CeilDiv(s1BaseSize_,2)，每 AIV 实际活跃 token 数（overflow buffer 分配口径）
     int32_t gSize_ = 0;
     int32_t kHeadNum_ = 0;
     int32_t s1BaseSize_ = 0;
@@ -184,7 +183,7 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
 
     virTopK = constInfo_.sparseCountFlag ? constInfo_.sparseCount : BASE_TOPK;
     tokenStride_ = virTopK * 2;
-    activeTokens_ = CeilDiv(s1BaseSize_, 2);    // 每 AIV 实际活跃 token 数，overflow buffer 按此分配
+    activeTokens_ = CeilDiv(s1BaseSize_, 2); // 每 AIV 实际活跃 token 数，overflow buffer 按此分配
 
     uint32_t blockS2BaseSize = s2BaseSize_ / constInfo_.blockLen;
     uint32_t sortOutBufSize = CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float);
@@ -193,14 +192,14 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
     //   numCacheSlots_=3 是 UB 预算下能容纳的槽数上限；槽越多，攒批收益越足。
     numCacheSlots_ = QS_NUM_CACHE_SLOTS;
     pipe->InitBuffer(outQueue_, 1, outNeedBufSize);
-    uint32_t tmpBufFloats = constInfo_.sparseCountFlag
-                                ? (virTopK + s2BaseSize_) * 2
-                                : static_cast<uint32_t>(QS_TMPUB_NEED);
+    uint32_t tmpBufFloats =
+        constInfo_.sparseCountFlag ? (virTopK + s2BaseSize_) * 2 : static_cast<uint32_t>(QS_TMPUB_NEED);
     pipe->InitBuffer(tmpBuf_, tmpBufFloats * sizeof(float));
     pipe->InitBuffer(inQueue_, 2, (groupInner_ * s2BaseSize_ + s2BaseSize_) * sizeof(float));
     pipe->InitBuffer(sortOutBuf_, sortOutBufSize);
     if (!constInfo_.sparseCountFlag) {
-        pipe->InitBuffer(sortedBlockBuf_, CeilDiv(s1BaseSize_, 2) * numCacheSlots_ * blockS2BaseSize * 2 * sizeof(float));
+        pipe->InitBuffer(sortedBlockBuf_,
+                         CeilDiv(s1BaseSize_, 2) * numCacheSlots_ * blockS2BaseSize * 2 * sizeof(float));
     }
     pipe->InitBuffer(overflowBuf_, activeTokens_ * QS_OVF * 2 * sizeof(float));
     pipe->InitBuffer(indexBuf_, s2BaseSize_ * sizeof(int32_t));
@@ -222,7 +221,8 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
     } else {
         InitSortOutBufSeparated(globalTopkUb_, CeilDiv(s1BaseSize_, 2), tokenStride_, virTopK);
         Duplicate(overflowUb_.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, activeTokens_ * QS_OVF);
-        Duplicate(overflowUb_[activeTokens_ * QS_OVF].template ReinterpretCast<int32_t>(), static_cast<int32_t>(-1), activeTokens_ * QS_OVF);
+        Duplicate(overflowUb_[activeTokens_ * QS_OVF].template ReinterpretCast<int32_t>(), static_cast<int32_t>(-1),
+                  activeTokens_ * QS_OVF);
     }
     PipeBarrier<PIPE_V>();
 
@@ -265,10 +265,9 @@ __aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInf
 }
 
 template <typename LIT>
-__aicore__ inline void
-LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
-                                    GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<float> weightsGm,
-                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
+__aicore__ inline void LIVector<LIT>::InitVec1GlobalTensor(
+    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm, GlobalTensor<int64_t> vec1ParamGm,
+    GlobalTensor<float> weightsGm, GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -307,7 +306,7 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
     indiceULocal = outQueue_.DeQue<float>();
     LIServiceVec::CopyOut(indiceOutGm[invalidS1offset], idxULocal1, constInfo_.sparseCount);
     outQueue_.FreeTensor(indiceULocal);
-    
+
     if (constInfo_.returnValue) {
         K_T invalidValue = 0;
         LocalTensor<float> valueULocal = outQueue_.AllocTensor<float>();
@@ -316,7 +315,7 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
         outQueue_.EnQue<float>(valueULocal);
         valueULocal = outQueue_.DeQue<float>();
         LIServiceVec::CopyOut(valueOutGm[invalidS1offset], valULocal1, constInfo_.sparseCount);
-        outQueue_.FreeTensor(valueULocal);  
+        outQueue_.FreeTensor(valueULocal);
     }
 }
 
@@ -334,7 +333,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 
     PipeBarrier<PIPE_V>();
     int32_t cuS1BeginIdxPerAiv = cuBaseS1Idx;
-    int32_t cuS1ProcNum = cuS1BeginIdxPerAiv + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int32_t cuS1ProcNum =
+        cuS1BeginIdxPerAiv + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int32_t cuS1ProcNumPerAiv = blockId_ % 2 == 0 ? CeilDiv(cuS1ProcNum, 2) : (cuS1ProcNum / 2);
     cuS1BeginIdxPerAiv += (blockId_ % 2) * CeilDiv(cuS1ProcNum, 2);
 
@@ -355,7 +355,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             // QS：分离格式 + overflowUb_ 重置
             InitSortOutBufSeparated(globalTopkUb_, CeilDiv(s1BaseSize_, 2), tokenStride_, virTopK);
             Duplicate(overflowUb_.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, activeTokens_ * QS_OVF);
-            Duplicate(overflowUb_[activeTokens_ * QS_OVF].template ReinterpretCast<int32_t>(), static_cast<int32_t>(-1), activeTokens_ * QS_OVF);
+            Duplicate(overflowUb_[activeTokens_ * QS_OVF].template ReinterpretCast<int32_t>(), static_cast<int32_t>(-1),
+                      activeTokens_ * QS_OVF);
             PipeBarrier<PIPE_V>();
             // 重置 per-token QS 状态（新 S1 batch 不能复用旧 threshold/overflow）
             for (int32_t t = 0; t < MAX_TOKENS_PER_AIV; t++) {
@@ -409,8 +410,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 inQueue_.EnQue<float>(mmInUb);
                 mmInUb = inQueue_.DeQue<float>();
                 weightsInUb = mmInUb[procGnum * s2BaseSize_];
-                LIServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb,
-                                      brcBuf, procGnum, s2BaseSize_, outerGidx);
+                LIServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb, brcBuf, procGnum,
+                                      s2BaseSize_, outerGidx);
                 inQueue_.FreeTensor(mmInUb);
             }
 
@@ -439,7 +440,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 // 得到 cuS2LenVecAlign / BLOCK_LEN个结果
                 AscendC::Sum(reduceOutInner, tmpSortBuf, tmpUb_.template ReinterpretCast<uint8_t>(), params);
                 PipeBarrier<PIPE_V>();
-                AscendC::Muls(reduceOutInner, reduceOutInner, static_cast<float>(1.0f / (8 * constInfo_.blockLen)), blockS2LenVecAlign);
+                AscendC::Muls(reduceOutInner, reduceOutInner, static_cast<float>(1.0f / (8 * constInfo_.blockLen)),
+                              blockS2LenVecAlign);
                 PipeBarrier<PIPE_V>();
             } else if (constInfo_.blockLen > 4) { // blockLen is 8 or 16
                 // 用高阶api Sum对s2维度reduce(不支持源操作数与目的操作数地址重叠)
@@ -450,13 +452,14 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 // 得到 cuS2LenVecAlign / BLOCK_LEN个结果
                 AscendC::Sum(tmpSortBuf, reduceOutInner, tmpUb_.template ReinterpretCast<uint8_t>(), params);
                 PipeBarrier<PIPE_V>();
-                AscendC::Muls(reduceOutInner, tmpSortBuf, static_cast<float>(1.0f / constInfo_.blockLen), blockS2LenVecAlign);
+                AscendC::Muls(reduceOutInner, tmpSortBuf, static_cast<float>(1.0f / constInfo_.blockLen),
+                              blockS2LenVecAlign);
                 PipeBarrier<PIPE_V>();
             }
             // 对logits做clip，避免冲撞SECOND_MAX_LOGITS
             AscendC::Mins(reduceOutInner, reduceOutInner, CLIP_MAX_LOGITS, blockS2LenVecAlign);
             PipeBarrier<PIPE_V>();
-            
+
             /// ---- sink & swa处理 ---- ///
             // 1. 指定head区域全选，赋予第二高分数
             if (info.s2Idx == 0 && constInfo_.initNum > 0) {
@@ -471,7 +474,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             if (constInfo_.localNum > 0 && hasLocal) {
                 // 部分落在local 区间
                 if (cuBaseS2Idx < localStart) {
-                    int32_t nonLocalBlockNum = (localStart - cuBaseS2Idx + constInfo_.blockLen - 1) / constInfo_.blockLen;
+                    int32_t nonLocalBlockNum =
+                        (localStart - cuBaseS2Idx + constInfo_.blockLen - 1) / constInfo_.blockLen;
                     int32_t localBlockNum = blockS2Len - nonLocalBlockNum;
                     if (nonLocalBlockNum % 8 == 0) {
                         Duplicate(reduceOutInner[nonLocalBlockNum], SECOND_MAX_LOGITS, localBlockNum);
@@ -484,10 +488,10 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                         Adds(reduceOutInner, tmpSortBuf, 0.0f, blockS2Len);
                         PipeBarrier<PIPE_V>();
                     }
- 
-                } else {  // 当前block 全落在local 区间
+
+                } else { // 当前block 全落在local 区间
                     Duplicate(reduceOutInner, SECOND_MAX_LOGITS, blockS2Len);
-                    PipeBarrier<PIPE_V>();   
+                    PipeBarrier<PIPE_V>();
                 }
             }
             // 3. 最后一个block必选，赋予最高分数
@@ -508,7 +512,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 Duplicate(sortIndiceUbInt, -1, blockS2LenVecAlign); // 无效数据索引填充为-1
             }
             PipeBarrier<PIPE_V>();
-            Adds(sortIndiceUbInt, globalTopkIndice_, static_cast<int32_t>(cuBaseS2Idx / constInfo_.blockLen), blockS2Len);
+            Adds(sortIndiceUbInt, globalTopkIndice_, static_cast<int32_t>(cuBaseS2Idx / constInfo_.blockLen),
+                 blockS2Len);
             PipeBarrier<PIPE_V>();
 
             /// ---- QuickSelect (攒批触发) / 大 topk MergeSort ---- ///
@@ -548,17 +553,18 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                         // 缓存未满：暂存本块
                         int32_t slot = cacheCnt_[innerS1Idx];
                         PipeBarrier<PIPE_V>();
-                        Adds(SortedBasicBlock_[cacheScoreBase + slot * blockS2BaseSize], sortScoreUb, 0.0f, blockS2LenVecAlign);
-                        Adds(SortedBasicBlock_[cacheIdxBase + slot * blockS2BaseSize].template ReinterpretCast<int32_t>(),
+                        Adds(SortedBasicBlock_[cacheScoreBase + slot * blockS2BaseSize], sortScoreUb, 0.0f,
+                             blockS2LenVecAlign);
+                        Adds(SortedBasicBlock_[cacheIdxBase + slot * blockS2BaseSize]
+                                 .template ReinterpretCast<int32_t>(),
                              sortIndiceUbInt, static_cast<int32_t>(0), blockS2LenVecAlign);
                         PipeBarrier<PIPE_V>();
                         cacheCnt_[innerS1Idx]++;
                     } else {
                         // 缓存已满：连同本块（作 extra）一起拼入 QS，重选 top-virTopK
-                        ExecuteQS(globScores, globIndices, ovfScores, ovfIndices,
-                                  cacheScoreBase, cacheIdxBase, cacheCnt_[innerS1Idx] * blockS2BaseSize,
-                                  sortScoreUb, sortIndiceUbInt, blockS2LenVecAlign,
-                                  128.0f, innerS1Idx, tmpSortBuf);
+                        ExecuteQS(globScores, globIndices, ovfScores, ovfIndices, cacheScoreBase, cacheIdxBase,
+                                  cacheCnt_[innerS1Idx] * blockS2BaseSize, sortScoreUb, sortIndiceUbInt,
+                                  blockS2LenVecAlign, 128.0f, innerS1Idx, tmpSortBuf);
                         cacheCnt_[innerS1Idx] = 0;
                     }
 
@@ -578,7 +584,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
             bool needCopyOutGm = blockS2StartIdx_ == 0 && isS2End;
             bool needCopyWsGm = info.isAllLoopEnd || isS2End;
             if ((needCopyOutGm || needCopyWsGm) && !constInfo_.sparseCountFlag) {
-                constexpr int32_t SORT_LEN = 4096;   // SortAll 定长工作区（scores | indices 各一段）
+                constexpr int32_t SORT_LEN = 4096; // SortAll 定长工作区（scores | indices 各一段）
                 // 工作区填充哨兵：scores=-inf、indices=-1，余量不参与排序
                 Duplicate(tmpUb_.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, SORT_LEN);
                 Duplicate(tmpUb_[SORT_LEN].template ReinterpretCast<int32_t>(), static_cast<int32_t>(-1), SORT_LEN);
@@ -586,8 +592,10 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 // 搬入待排数据：候选段 globScores(virTopK) + 容差窗(QS_OVF) + 末块保留的 cache，indices 同步
                 Adds(tmpUb_, globScores, 0.0f, virTopK);
                 Adds(tmpUb_[virTopK], ovfScores, 0.0f, QS_OVF);
-                Adds(tmpUb_[SORT_LEN].template ReinterpretCast<int32_t>(), globIndices, static_cast<int32_t>(0), virTopK);
-                Adds(tmpUb_[SORT_LEN + virTopK].template ReinterpretCast<int32_t>(), ovfIndices, static_cast<int32_t>(0), QS_OVF);
+                Adds(tmpUb_[SORT_LEN].template ReinterpretCast<int32_t>(), globIndices, static_cast<int32_t>(0),
+                     virTopK);
+                Adds(tmpUb_[SORT_LEN + virTopK].template ReinterpretCast<int32_t>(), ovfIndices,
+                     static_cast<int32_t>(0), QS_OVF);
                 // 末块 cache 兜底：末块不再走 QS，cache（含哨兵块）原样并入 SortAll 全排，绝不丢块。
                 //   末块 cacheCnt < numCacheSlots（满槽已在 565 触发 QS），cache ≤ (numSlots-1)*blockS2BaseSize，
                 //   glob+ovf+cache ≤ 2432 + 2*512 = 3456 < SORT_LEN=4096，安全。
@@ -595,10 +603,10 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 if (cacheLen > 0) {
                     Adds(tmpUb_[virTopK + QS_OVF], SortedBasicBlock_[cacheScoreBase], 0.0f, cacheLen);
                     Adds(tmpUb_[SORT_LEN + virTopK + QS_OVF].template ReinterpretCast<int32_t>(),
-                         SortedBasicBlock_[cacheIdxBase].template ReinterpretCast<int32_t>(),
-                         static_cast<int32_t>(0), cacheLen);
+                         SortedBasicBlock_[cacheIdxBase].template ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                         cacheLen);
                     PipeBarrier<PIPE_V>();
-                    cacheCnt_[innerS1Idx] = 0;   // 末块 cache 已并入 SortAll，清空
+                    cacheCnt_[innerS1Idx] = 0; // 末块 cache 已并入 SortAll，清空
                 }
                 PipeBarrier<PIPE_V>();
                 LocalTensor<float> tmpSortBuf2 = outQueue_.AllocTensor<float>();
@@ -617,7 +625,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 float lhsValue = globalTopkUb_[tokenBase].GetValue(0);
                 int32_t lhsIdx = (globalTopkUb_[tokenBase].template ReinterpretCast<int32_t>()).GetValue(1);
                 float rhsValue = globalTopkUb_[tokenBase].GetValue(2 * validS2Block - 2);
-                int32_t rhsIdx = (globalTopkUb_[tokenBase].template ReinterpretCast<int32_t>()).GetValue(2 * validS2Block - 1);
+                int32_t rhsIdx =
+                    (globalTopkUb_[tokenBase].template ReinterpretCast<int32_t>()).GetValue(2 * validS2Block - 1);
                 globalTopkUb_[tokenBase].SetValue(0, rhsValue);
                 (globalTopkUb_[tokenBase].template ReinterpretCast<int32_t>()).SetValue(1, rhsIdx);
                 globalTopkUb_[tokenBase].SetValue(2 * validS2Block - 2, lhsValue);
@@ -626,7 +635,8 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 
                 // 结果提取 & 搬出
                 int64_t offset = (constInfo_.sparseCount <= 4096) ? virTopK : constInfo_.sparseCount / 2;
-                int64_t copyLen = (constInfo_.sparseCount <= 4096) ? constInfo_.sparseCount : constInfo_.sparseCount / 2;
+                int64_t copyLen =
+                    (constInfo_.sparseCount <= 4096) ? constInfo_.sparseCount : constInfo_.sparseCount / 2;
                 int64_t copyNum = (constInfo_.sparseCount <= 4096) ? 1 : 2;
                 for (int64_t i = 0; i < copyNum; i++) {
                     LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
@@ -644,9 +654,13 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                     outQueue_.EnQue<float>(outValueUb);
                     outValueUb = outQueue_.DeQue<float>();
 
-                    LIServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset], idxULocal1, copyLen);
+                    LIServiceVec::CopyOut(
+                        indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset], idxULocal1,
+                        copyLen);
                     if (constInfo_.returnValue) {
-                        LIServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset], valueULocal1, copyLen);
+                        LIServiceVec::CopyOut(
+                            valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                            valueULocal1, copyLen);
                     }
                     outQueue_.FreeTensor(outValueUb);
                 }
@@ -655,10 +669,10 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                 // vec1Param Gm = [aic, s1BaseSize_, 2, 16] int64
                 //     16 = [needFd, s2AcSeq, s2Start, s2End, isS2End, bn2idx, s1Idx, S1ProcNum, ......]
 
-                int64_t wsOffset = (blockId_ / 2) * s1BaseSize_ * 2 * 2 * BASE_TOPK +       // 2个AIV共同地址偏移
+                int64_t wsOffset = (blockId_ / 2) * s1BaseSize_ * 2 * 2 * BASE_TOPK + // 2个AIV共同地址偏移
                                    (blockId_ % 2) * (s1BaseSize_ / 2) * 2 * 2 * BASE_TOPK + // 每个AIV的地址偏移，S1方向
                                    (ldS1Offset + innerS1Idx) * 2 * 2 * BASE_TOPK;
-                int64_t wsInfoOffset = (blockId_ / 2) * s1BaseSize_ * 2 * paramNum_ +       // 2个AIV共同地址偏移
+                int64_t wsInfoOffset = (blockId_ / 2) * s1BaseSize_ * 2 * paramNum_ + // 2个AIV共同地址偏移
                                        (blockId_ % 2) * (s1BaseSize_ / 2) * 2 * paramNum_ + // 每个AIV的地址偏移，S1方向
                                        (ldS1Offset + innerS1Idx) * 2 * paramNum_;
 
@@ -923,20 +937,19 @@ __aicore__ inline void LIVector<LIT>::ProcessLD()
 //   调 QuickSelectPartition 重选 top-virTopK；收敛则把新候选写回 glob/ovf，未收敛则保持候选不变。
 //   per-token 维护 lastThreshold_（下界）、sugMaxCarry_（上界）跨轮加速二分收敛。
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::ExecuteQS(
-    LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
-    LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
-    int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
-    LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices, int32_t extraLen,
-    float sugMax, int32_t innerS1Idx, LocalTensor<float> &tmpSortBuf)
+__aicore__ inline void LIVector<LIT>::ExecuteQS(LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
+                                                LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
+                                                int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
+                                                LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices,
+                                                int32_t extraLen, float sugMax, int32_t innerS1Idx,
+                                                LocalTensor<float> &tmpSortBuf)
 {
     int32_t mergedLen = cachedLen + extraLen;
     int32_t maxNewData = numCacheSlots_ * (s2BaseSize_ / constInfo_.blockLen);
     int32_t carrySafeCnt = virTopK + QS_OVF - maxNewData;
     float effSugMax = (sugMaxCarry_[innerS1Idx] < 3.0e38f) ? sugMaxCarry_[innerS1Idx] : sugMax;
-    LIServiceVec::QSParams qsParams = {virTopK, QS_OVF, mergedLen, 32,
-                                        lastThreshold_[innerS1Idx], effSugMax, firstQS_[innerS1Idx],
-                                        carrySafeCnt};
+    LIServiceVec::QSParams qsParams = {
+        virTopK, QS_OVF, mergedLen, 32, lastThreshold_[innerS1Idx], effSugMax, firstQS_[innerS1Idx], carrySafeCnt};
     int32_t slotSize = qsParams.newDataOffset();
     LocalTensor<float> srcScores = tmpUb_;
     LocalTensor<int32_t> srcIndices = tmpUb_[qsParams.srcIndicesOff()].template ReinterpretCast<int32_t>();
@@ -958,10 +971,10 @@ __aicore__ inline void LIVector<LIT>::ExecuteQS(
     float newThreshold = lastThreshold_[innerS1Idx];
     float carryMax = 3.4e38f;
     int32_t totalAbove = LIServiceVec::QuickSelectPartition(tmpUb_, tmpSortBuf, qsParams, newThreshold, carryMax);
-    sugMaxCarry_[innerS1Idx] = carryMax;   // 携带给该 token 下一次 QS
+    sugMaxCarry_[innerS1Idx] = carryMax; // 携带给该 token 下一次 QS
     // totalAbove < virTopK 表示未收敛：放弃本轮写回，候选集保持不变，留待末块 SortAll 兜底
     if (totalAbove >= virTopK) {
-        lastThreshold_[innerS1Idx] = newThreshold;  // 收敛阈值作为下轮二分下界（单调递增）
+        lastThreshold_[innerS1Idx] = newThreshold; // 收敛阈值作为下轮二分下界（单调递增）
         firstQS_[innerS1Idx] = 0;
         overflowCnt_[innerS1Idx] = totalAbove - virTopK;
         LocalTensor<float> dstScores = tmpUb_[qsParams.dstScoresOff()];
@@ -987,19 +1000,20 @@ __aicore__ inline void LIVector<LIT>::ExecuteQS(
         Adds(tmpUb_[virTopK], ovfScores, 0.0f, QS_OVF);
         Adds(tmpUb_[virTopK + QS_OVF], SortedBasicBlock_[cacheScoreBase], 0.0f, cachedLen);
         Adds(tmpUb_[FB_SORT_LEN].template ReinterpretCast<int32_t>(), globIndices, static_cast<int32_t>(0), virTopK);
-        Adds(tmpUb_[FB_SORT_LEN + virTopK].template ReinterpretCast<int32_t>(), ovfIndices, static_cast<int32_t>(0), QS_OVF);
+        Adds(tmpUb_[FB_SORT_LEN + virTopK].template ReinterpretCast<int32_t>(), ovfIndices, static_cast<int32_t>(0),
+             QS_OVF);
         Adds(tmpUb_[FB_SORT_LEN + virTopK + QS_OVF].template ReinterpretCast<int32_t>(),
              SortedBasicBlock_[cacheIdxBase].template ReinterpretCast<int32_t>(), static_cast<int32_t>(0), cachedLen);
         if (extraLen > 0) {
             Adds(tmpUb_[virTopK + QS_OVF + cachedLen], extraScores, 0.0f, extraLen);
-            Adds(tmpUb_[FB_SORT_LEN + virTopK + QS_OVF + cachedLen].template ReinterpretCast<int32_t>(),
-                 extraIndices, static_cast<int32_t>(0), extraLen);
+            Adds(tmpUb_[FB_SORT_LEN + virTopK + QS_OVF + cachedLen].template ReinterpretCast<int32_t>(), extraIndices,
+                 static_cast<int32_t>(0), extraLen);
         }
         PipeBarrier<PIPE_V>();
-        LIServiceVec::SortAll(tmpUb_, tmpSortBuf, FB_SORT_LEN);   // 结果落回 tmpUb_[0:8192] 交织
+        LIServiceVec::SortAll(tmpUb_, tmpSortBuf, FB_SORT_LEN); // 结果落回 tmpUb_[0:8192] 交织
         PipeBarrier<PIPE_V>();
         // de-interleave：tmpSortBuf 复用作 Extract 输出（scores+indices 各 extLen）
-        int32_t extLen = virTopK + QS_OVF;   // 2432，32 的倍数
+        int32_t extLen = virTopK + QS_OVF; // 2432，32 的倍数
         LocalTensor<float> outValueUb = tmpSortBuf;
         LocalTensor<uint32_t> outIdxUb = tmpSortBuf[extLen].template ReinterpretCast<uint32_t>();
         Extract(outValueUb, outIdxUb, tmpUb_, (extLen / 32));

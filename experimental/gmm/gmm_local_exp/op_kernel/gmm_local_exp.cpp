@@ -42,7 +42,8 @@ using namespace matmul;
 
 #define EXEC_GMM_RL_STEP1_NZ \
     mm.Init(mmTiling, &tPipe); \
-    ops_gmm_local_exp::GMMCompute<decltype(mm), tensor_type, tensor_type, int32_t, trans_b, false, true> computeOp(mm); \
+    ops_gmm_local_exp::GMMCompute<decltype(mm), tensor_type, tensor_type, int32_t, trans_b, false, true> computeOp( \
+        mm); \
     computeOp.Init(x, weight, group_list, y); \
     ops_gmm_local_exp::GMMProcess<decltype(computeOp)> op(computeOp, tiling_data); \
     op.Init(); \
@@ -76,13 +77,16 @@ using namespace matmul;
 
 #define EXEC_GMM_RL_STEP1_NZ_MIXED_OUTPUT(output_type) \
     mm.Init(mmTiling, &tPipe); \
-    ops_gmm_local_exp::GMMCompute<decltype(mm), tensor_type, output_type, int32_t, trans_b, false, true> computeOp(mm); \
+    ops_gmm_local_exp::GMMCompute<decltype(mm), tensor_type, output_type, int32_t, trans_b, false, true> computeOp( \
+        mm); \
     computeOp.Init(x, weight, group_list, y); \
     ops_gmm_local_exp::GMMProcess<decltype(computeOp)> op(computeOp, tiling_data); \
     op.Init(); \
     op.Process();
 
-extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling) {
+extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR y,
+                                                    GM_ADDR workspace, GM_ADDR tiling)
+{
     // @lg: only cube core can go through
     if (g_coreType == AIV) {
         return;
@@ -95,22 +99,22 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
     // TODO: SetOverflow?
     AscendCUtils::SetOverflow(1);
 
-    const TCubeTiling* __restrict mmTiling = &(tiling_data.mmTilingData);
+    const TCubeTiling *__restrict mmTiling = &(tiling_data.mmTilingData);
 
     if (TILING_KEY_IS(0)) {
         constexpr bool trans_b = false;
         using tensor_type = half;
         EXEC_GMM_RL_STEP0
-    #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-        PRELOAD(4);  // If comment this line, the program will be blocked.
-    #endif
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+        PRELOAD(4); // If comment this line, the program will be blocked.
+#endif
         EXEC_GMM_RL_STEP1
     } else if (TILING_KEY_IS(1)) {
         constexpr bool trans_b = true;
         using tensor_type = half;
         EXEC_GMM_RL_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1
     } else if (TILING_KEY_IS(2)) {
@@ -118,7 +122,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using tensor_type = bfloat16_t;
         EXEC_GMM_RL_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1
     } else if (TILING_KEY_IS(3)) {
@@ -126,7 +130,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using tensor_type = bfloat16_t;
         EXEC_GMM_RL_STEP0
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1
     } else if (TILING_KEY_IS(4)) {
@@ -134,15 +138,15 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using tensor_type = half;
         EXEC_GMM_RL_STEP0_NZ
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_NZ
-    }  else if (TILING_KEY_IS(5)) {
+    } else if (TILING_KEY_IS(5)) {
         constexpr bool trans_b = true;
         using tensor_type = bfloat16_t;
         EXEC_GMM_RL_STEP0_NZ
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_NZ
     } else if (TILING_KEY_IS(6)) {
@@ -151,7 +155,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(7)) {
@@ -160,7 +164,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(8)) {
@@ -169,7 +173,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(9)) {
@@ -178,7 +182,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(10)) {
@@ -187,7 +191,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_NZ_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_NZ_MIXED_OUTPUT(output_type)
     } else if (TILING_KEY_IS(11)) {
@@ -196,7 +200,7 @@ extern "C" __global__ __aicore__ void gmm_local_exp(GM_ADDR x, GM_ADDR weight, G
         using output_type = float;
         EXEC_GMM_RL_STEP0_NZ_MIXED_OUTPUT(output_type)
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    PRELOAD(4);  // If comment this line, the program will be blocked.
+        PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
         EXEC_GMM_RL_STEP1_NZ_MIXED_OUTPUT(output_type)
     }

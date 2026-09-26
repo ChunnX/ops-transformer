@@ -23,7 +23,8 @@ using namespace matmul;
     using matmulType = matmul::Matmul<xType, weightType, yType, biasType, CFG_MDL>; \
     matmulType mm; \
     REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), mm, mmTiling); \
-    ops_gmm_add::GMMCompute<decltype(mm), tensor_type, float, int32_t, trans_a, true> computeOp(mm, tPipe, tiling_data); \
+    ops_gmm_add::GMMCompute<decltype(mm), tensor_type, float, int32_t, trans_a, true> computeOp(mm, tPipe, \
+                                                                                                tiling_data); \
     computeOp.Init(x, weight, group_list, weightGrad, y, user); \
     ops_gmm_add::GMMProcess<decltype(computeOp)> op(computeOp, tiling_data); \
     op.Init(); \
@@ -37,23 +38,26 @@ using namespace matmul;
     using matmulType = matmul::Matmul<xType, weightType, yType, biasType, CFG_MDL>; \
     matmulType mm; \
     REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), mm, mmTiling); \
-    ops_gmm_add_c_16::GMMCompute<decltype(mm), tensor_type, tensor_type, int32_t, trans_a, true> computeOp(mm, tPipe, tiling_data); \
+    ops_gmm_add_c_16::GMMCompute<decltype(mm), tensor_type, tensor_type, int32_t, trans_a, true> computeOp( \
+        mm, tPipe, tiling_data); \
     computeOp.Init(x, weight, group_list, weightGrad, y, user); \
     ops_gmm_add_c_16::GMMProcess<decltype(computeOp)> op(computeOp, tiling_data); \
     op.Init(); \
     op.Process();
 
-extern "C" __global__ __aicore__ void gmm_add(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR weightGrad, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling) {
+extern "C" __global__ __aicore__ void gmm_add(GM_ADDR x, GM_ADDR weight, GM_ADDR group_list, GM_ADDR weightGrad,
+                                              GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+{
     GET_TILING_DATA(tiling_data, tiling);
 
     TPipe tPipe;
     // TODO: SetOverflow?
     AscendCUtils::SetOverflow(1);
 
-    const TCubeTiling* __restrict mmTiling = &(tiling_data.mmTilingData);
+    const TCubeTiling *__restrict mmTiling = &(tiling_data.mmTilingData);
 
     SetSysWorkspace(workspace);
-    __gm__ uint8_t* user = GetUserWorkspace(workspace);
+    __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if (TILING_KEY_IS(0)) {
         constexpr bool trans_a = false;
