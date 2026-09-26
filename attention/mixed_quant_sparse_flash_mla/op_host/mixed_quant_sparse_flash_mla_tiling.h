@@ -29,8 +29,6 @@
 
 namespace optiling {
 
-std::vector<int64_t> ToVector(const gert::Shape &shape);
-std::string ToStringRaw(const gert::Shape &shape);
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout);
 
 // -----------算子TilingData定义---------------
@@ -42,7 +40,7 @@ TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)
 TILING_DATA_FIELD_DEF(uint32_t, paOriBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, paCmpBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, oriMaxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
+TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch) // MQSMLA: compressed-KV state.
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
 TILING_DATA_FIELD_DEF(uint32_t, oriSparseBlockCount)
 TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)
@@ -56,7 +54,7 @@ TILING_DATA_FIELD_DEF(uint32_t, oriMaskMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpMaskMode)
 TILING_DATA_FIELD_DEF(int32_t, oriWinLeft)
 TILING_DATA_FIELD_DEF(int32_t, oriWinRight)
-TILING_DATA_FIELD_DEF(uint32_t, sparseBlockSize)
+TILING_DATA_FIELD_DEF(uint32_t, sparseBlockSize) // MQSMLA: LSE state.
 TILING_DATA_FIELD_DEF(uint32_t, dSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
