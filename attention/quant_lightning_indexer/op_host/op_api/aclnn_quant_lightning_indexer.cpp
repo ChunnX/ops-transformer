@@ -17,7 +17,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
-#include "opdev/op_log.h"
+#include "opdev/op_log.h" // QLI: ACLNN dependencies.
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
