@@ -25,6 +25,7 @@
 #include <cstring>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <algorithm>
 #include <array>
 #include <mutex>
@@ -700,6 +701,8 @@ private:
     static void MapSfTableBuffer(EngramContextResources &resources, void *sfHostPtr, int64_t sfBytes)
     {
         aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
+        printf("[sf-debug][host] MapSfTableBuffer: sfHostPtr=%p sfBytes=%lld registerV2 ret=%d\n", sfHostPtr,
+               static_cast<long long>(sfBytes), static_cast<int>(ar));
         if (ar != ACL_SUCCESS) {
             ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration", sfBytes,
                         static_cast<int>(ar));
@@ -712,6 +715,8 @@ private:
                     ", storage host memory cannot be mapped to device");
 
         resources.sfDeviceBufPtr = devPtr;
+        printf("[sf-debug][host] MapSfTableBuffer: mapped devPtr=0x%llx\n",
+               static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(devPtr)));
     }
 
     void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim, uint32_t channelsPerRank,
@@ -1810,8 +1815,15 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     sfExternalRegistered_ = resources.sfExternalRegistered;
     if (sfDeviceBufPtr_ != nullptr) {
         int64_t sfAddrValue = reinterpret_cast<int64_t>(sfDeviceBufPtr_);
+        printf("[sf-debug][host] EnsureEngramContext: sfDeviceBufPtr_=0x%llx packed sfAddrValue=0x%llx\n",
+               static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(sfDeviceBufPtr_)),
+               static_cast<unsigned long long>(static_cast<uint64_t>(sfAddrValue)));
         auto hostSfAddrTensor = at::full({1}, sfAddrValue, at::TensorOptions().dtype(at::kLong));
         localSfTableTensor_ = hostSfAddrTensor.to(c10::DeviceType::PrivateUse1);
+        printf("[sf-debug][host] EnsureEngramContext: sfAddrTensor devPtr=0x%llx\n",
+               static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(localSfTableTensor_.data_ptr())));
+    } else {
+        printf("[sf-debug][host] EnsureEngramContext: sfDeviceBufPtr_ is nullptr, sf addr tensor NOT created\n");
     }
     engramExternalBytes_ = externalBytes;
     engramBufferPooled_ = (engramHostBufPtr_ != nullptr);
@@ -1870,6 +1882,8 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
         TORCH_CHECK(storage.nbytes() > 0, "engram_write in with_grad mode requires non-empty storage, got ",
                     storage.nbytes(), " bytes");
         if (engramContextInitialized_) {
+            printf("[sf-debug][host] EngramWrite: context already initialized, sf.has_value=%d dropped (not mapped)\n",
+                   static_cast<int>(sf.has_value()));
             TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr(),
                         "engram_write: engram storage is already initialized from a different address, expected "
                         "ptr=",
@@ -1887,6 +1901,9 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
                 sfHostPtr = sf.value().data_ptr();
                 sfBytes = static_cast<int64_t>(sf.value().nbytes());
             }
+            printf(
+                "[sf-debug][host] EngramWrite first-init: storagePtr=%p externalBytes=%lld sfHostPtr=%p sfBytes=%lld\n",
+                externalHostPtr, static_cast<long long>(externalBytes), sfHostPtr, static_cast<long long>(sfBytes));
         }
     }
     EnsureEngramContext(externalHostPtr, externalBytes, sfHostPtr, sfBytes);
@@ -1971,6 +1988,13 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
         int64_t zero = 0;
+        printf("[sf-debug][host] EngramFetchTrain: sfTableAddr defined=%d numel=%lld dtype=%d devPtr=0x%llx\n",
+               static_cast<int>(sfTableAddr.defined()),
+               sfTableAddr.defined() ? static_cast<long long>(sfTableAddr.numel()) : -1LL,
+               sfTableAddr.defined() ? static_cast<int>(sfTableAddr.scalar_type()) : -1,
+               sfTableAddr.defined() ?
+                   static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(sfTableAddr.data_ptr())) :
+                   0ULL);
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, sfTableAddr, fetched, perm, sendCounts,
                   recvCounts, recvLocalEntry, numRecv, fetchedSf, hiddenSize, numEntries, numMaxTokensPerRank,
                   commBufferSize, withGrad);

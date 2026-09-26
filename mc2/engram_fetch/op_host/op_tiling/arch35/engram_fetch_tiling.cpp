@@ -17,6 +17,7 @@
 #include <climits>
 #include <cstdint>
 #include <algorithm>
+#include <cstdio>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
@@ -637,6 +638,15 @@ static void SetTilingKey(gert::TilingContext *context, bool isTraining)
     hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
             fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
             fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    printf("[sf-debug][tiling] sfTableDesc=%d sfTableShape=%d sfTableDim0=%ld fetchedSfDimNum=%ld "
+           "fetchedSfDim1=%ld hasSf=%d isTraining=%d\n",
+           static_cast<int>(sfTableDesc != nullptr), static_cast<int>(sfTableShape != nullptr),
+           (sfTableShape != nullptr) ? static_cast<long>(sfTableShape->GetStorageShape().GetDim(0)) : -1L,
+           (fetchedSfShape != nullptr) ? static_cast<long>(fetchedSfShape->GetStorageShape().GetDimNum()) : -1L,
+           (fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO) ?
+               static_cast<long>(fetchedSfShape->GetStorageShape().GetDim(1)) :
+               -1L,
+           static_cast<int>(hasSf), static_cast<int>(isTraining));
     const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
                                             GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     context->SetTilingKey(tilingKey);

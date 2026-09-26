@@ -350,6 +350,15 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
     }
     hasSf_ = numSfPacks_ > 0 && sfElemSize_ > 0 && sfTableGM_ != nullptr && fetchedSfGM_ != nullptr;
     rowStride_ = hasSf_ ? (static_cast<uint64_t>(hiddenBytes_) + sfBytes_) : static_cast<uint64_t>(hiddenBytes_);
+    if (aivId_ == 0U) {
+        AscendC::printf("[sf-debug][kernel] sfTableAddr=0x%llx sfTableGM_=0x%llx numSfPacks=%lld sfElemSize=%lld "
+                        "hasSf=%d rowStride=%llu hiddenBytes=%llu sfBytes=%llu\n",
+                        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(sfTableAddr)),
+                        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(sfTableGM_)),
+                        static_cast<long long>(numSfPacks_), static_cast<long long>(sfElemSize_),
+                        static_cast<int>(hasSf_), static_cast<unsigned long long>(rowStride_),
+                        static_cast<unsigned long long>(hiddenBytes_), static_cast<unsigned long long>(sfBytes_));
+    }
 
     numSendCores_ = totalBlocks_ / 2U;
     if (numSendCores_ == 0U) {
