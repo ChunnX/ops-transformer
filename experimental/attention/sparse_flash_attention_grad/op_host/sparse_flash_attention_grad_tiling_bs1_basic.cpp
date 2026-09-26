@@ -180,7 +180,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     workspaces[0] = sysLen;
     // gather ws
     workspaces[0] += (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
-    workspaces[0] += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
