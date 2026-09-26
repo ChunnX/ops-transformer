@@ -34,7 +34,7 @@ enum class QSMLA_LAYOUT {
     PA_BBND = 2
 };
 
-enum class QSMLATemplateMode {
+enum class QSMLATemplateMode { // QSMLA: tile params.
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
     CSA_TEMPLATE_MODE = 2,

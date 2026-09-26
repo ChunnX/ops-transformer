@@ -29,9 +29,9 @@ using namespace AscendC;
 #define QSMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockCube<__VA_ARGS__>, \
-                                      BaseApi::CSABlockCubeDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QsmlaCsaBlockCube<__VA_ARGS__>, \
+                                      BaseApi::QsmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
+        using VecBlockType = /* QSMLA: tiling dispatch. */ \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockVecDummy<__VA_ARGS__>, \
                                       BaseApi::CSABlockVec<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
