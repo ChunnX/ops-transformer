@@ -1294,10 +1294,6 @@ void SFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_Q_INPUT_INDEX);
     opParamInfo_.actualSeqLengths.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_KV_INPUT_INDEX);
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
-    opParamInfo_.queryRope.tensor = context_->GetOptionalInputTensor(QUERY_ROPE_INPUT_INDEX);
-    opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INPUT_INDEX);
-    opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INPUT_INDEX);
-    opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INPUT_INDEX);
 }
 void SFAInfoParser::GetInputParaInfo()
 {
@@ -1309,6 +1305,10 @@ void SFAInfoParser::GetInputParaInfo()
     opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
     opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
     opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
+    opParamInfo_.queryRope.tensor = context_->GetInputTensor(QUERY_ROPE_INPUT_INDEX);
+    opParamInfo_.queryRope.desc = context_->GetInputDesc(QUERY_ROPE_INPUT_INDEX);
+    opParamInfo_.keyRope.tensor = context_->GetInputTensor(KEY_ROPE_INPUT_INDEX);
+    opParamInfo_.keyRope.desc = context_->GetInputDesc(KEY_ROPE_INPUT_INDEX);
     GetOptionalInputParaInfo();
 }
 void SFAInfoParser::GetOutputParaInfo()

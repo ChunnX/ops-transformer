@@ -38,8 +38,8 @@
 | block_table            | 可选输入       | PageAttention场景下的块映射表，shape为[B, MaxBlockNum]。      | INT32                           | ND       |
 | cur_seq_lengths_query  | 可选输入       | query累积序列长度（前缀和，首元素为0），shape为[B+1]。        | INT64                           | ND       |
 | cur_seq_lengths_kv     | 可选输入       | KV累积序列长度（前缀和，首元素为0），shape为[B+1]。           | INT64                           | ND       |
-| query_rope             | 可选输入       | query的RoPE编码部分，拼接到query参与QK^T计算，layout_query为"BSND"时shape为[B, S1, N1, D_rope]；layout_query为"TND"时shape为[T1, N1, D_rope]。 | FLOAT16、BFLOAT16               | ND       |
-| key_rope               | 可选输入       | key的RoPE编码部分，拼接到key参与QK^T计算，shape规则与key一致。 | FLOAT16、BFLOAT16               | ND       |
+| query_rope             | 必选输入       | query的RoPE编码部分，拼接到query参与QK^T计算，layout_query为"BSND"时shape为[B, S1, N1, D_rope]；layout_query为"TND"时shape为[T1, N1, D_rope]。 | FLOAT16、BFLOAT16               | ND       |
+| key_rope               | 必选输入       | key的RoPE编码部分，拼接到key参与QK^T计算，shape规则与key一致。 | FLOAT16、BFLOAT16               | ND       |
 | scale_value            | 可选属性       | 缩放因子，通常取head_dim^(-0.5)，默认值为1.0。                | FLOAT                           | -        |
 | sparse_block_size      | 可选属性       | 稀疏块大小，每个sparse_index对应连续的KV token数，取值范围[1,128]且为2的幂次方，默认值为1。 | INT64                           | -        |
 | layout_query           | 可选属性       | query和输出的数据布局，支持"BSND"和"TND"，默认值为"BSND"。    | STRING                          | -        |
@@ -59,6 +59,7 @@
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
 - `query`、`key`、`value`的dtype必须一致。
+- `query_rope`、`key_rope`为必选输入，dtype需与`query`、`key`一致。
 - `query`的head维度D固定为512，RoPE head维度固定为64（MLA架构约束）。
 - `key`和`value`的形状必须完全一致。
 - GQA分组约束：`N1`（query head数）必须是`N2`（KV head数）的整数倍，即`G = N1 / N2`，其中N2仅支持1。
