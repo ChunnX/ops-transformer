@@ -30,9 +30,9 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
     /*
     Get all shape info and attr
     */
-    OPS_ERR_IF(context_ == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is nullptr."),
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is nullptr."),
                return ge::GRAPH_FAILED);
-    OPS_ERR_IF(context_->GetAttrs() == nullptr, OP_LOGE("SparseFlashAttentionGrad", "GetAttrs is nullptr."),
+    OP_CHECK_IF(context_->GetAttrs() == nullptr, OP_LOGE("SparseFlashAttentionGrad", "GetAttrs is nullptr."),
                return ge::GRAPH_FAILED);
 
     auto status = GetBaseShapeInfo();
@@ -53,7 +53,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetPlatformInfo()
     uint64_t l2CacheSize;
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseFlashAttentionGradCompileInfo *>(context_->GetCompileInfo());
-        OPS_ERR_IF(compileInfoPtr == nullptr, OP_LOGE("SparseFlashAttentionGrad", "compile_info is null."),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE("SparseFlashAttentionGrad", "compile_info is null."),
                    return ge::GRAPH_FAILED);
         aicoreParams_.blockDim = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
@@ -76,12 +76,12 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
     }
 
-    OPS_ERR_IF((aicoreParams_.blockDim == 0) || (aicoreParams_.aicNum == 0),
+    OP_CHECK_IF((aicoreParams_.blockDim == 0) || (aicoreParams_.aicNum == 0),
                OP_LOGE("SparseFlashAttentionGrad", "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
                                            aicoreParams_.blockDim, aicoreParams_.aicNum),
                return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
+    OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
                OP_LOGE("SparseFlashAttentionGrad", "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -151,7 +151,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.blockDim);
-    OPS_ERR_IF(blockdim == 0,
+    OP_CHECK_IF(blockdim == 0,
                OP_LOGE("SparseFlashAttentionGrad", "blockdim is 0, aicNum is %lu, aivNum is %lu.",
                                            aicoreParams_.aicNum, aicoreParams_.blockDim),
                return ge::GRAPH_FAILED);
@@ -207,12 +207,12 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 ge::graphStatus SparseFlashAttentionGradBasicTiling::PostTiling()
 {
     // 判断如果GetDataSize > GetCapacity的异常情况,其中确定性计算下终止流程，非确定性计算流入下一个模板判断
-    OPS_ERR_IF((tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) &&
+    OP_CHECK_IF((tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) &&
                    (context_->GetDeterministic() == 1),
                OP_LOGE("SparseFlashAttentionGrad", "The size of TilingDataSize[%zu] is larger than the size of MaxDataCapacity[%zu].",
                          tilingData.GetDataSize(), context_->GetRawTilingData()->GetCapacity()),
                return ge::GRAPH_FAILED);
-    OPS_ERR_IF((tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) &&
+    OP_CHECK_IF((tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) &&
                    (context_->GetDeterministic() != 1),
                OP_LOGE("SparseFlashAttentionGrad", "The size of TilingDataSize[%zu] is larger than the size of MaxDataCapacity[%zu].",
                          tilingData.GetDataSize(), context_->GetRawTilingData()->GetCapacity()),
@@ -324,8 +324,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
                      BASE_LEN_256 * BASE_LEN_256;
     qPostBaseNum = postUbBaseSize / typeSize / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
 
-    OPS_ERR_IF(qPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
-    OPS_ERR_IF(usedCoreNum == 0, OP_LOGE("SparseFlashAttentionGrad", "castUsedCoreNum is 0."),
+    OP_CHECK_IF(qPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(usedCoreNum == 0, OP_LOGE("SparseFlashAttentionGrad", "castUsedCoreNum is 0."),
                return ge::GRAPH_FAILED);
     int64_t qPostBlockTotal = allNumQuery / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
     int64_t qSizeAlign = (qPostBlockTotal + BASE_LEN_256 - 1) / GM_ALIGN * GM_ALIGN * typeSize;
@@ -335,7 +335,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
     int64_t qPostBlockFactor = (qPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t kPostBaseNum = qPostBaseNum;
-    OPS_ERR_IF(kPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "kPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "kPostBaseNum is 0."), return ge::GRAPH_FAILED);
     //int64_t kPostBlockTotal = allNumKey / dAlign * tilingData.opInfo.get_D();
     int64_t kPostBlockTotal = allNumKey / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
     int64_t kSizeAlign = (kPostBlockTotal + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN * typeSize;
@@ -345,7 +345,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
     int64_t kPostBlockFactor = (kPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t vPostBaseNum = postUbBaseSize / typeSize / d2Align * tilingData.opInfo.get_D2();
-    OPS_ERR_IF(vPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "vPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(vPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "vPostBaseNum is 0."), return ge::GRAPH_FAILED);
     int64_t vPostBlockTotal = allNumValue / d2Align * tilingData.opInfo.get_D2();
     int64_t vSizeAlign = (vPostBlockTotal + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN * typeSize;
     int64_t vPostTailNumTmp = vPostBlockTotal % vPostBaseNum;
@@ -393,7 +393,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
 {
-    OPS_ERR_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
+    OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
                 (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
                 (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
                OP_LOGE("SparseFlashAttentionGrad", "InputShape of query, key or value is nullptr."),
@@ -448,7 +448,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     }
 
     if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
-        OPS_LOG_D(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");
+        OP_LOGD("SparseFlashAttentionGrad", "qRope and kRope is not nullptr, rope is enabled.");
         tmpData.ropeEnable = true;
         const gert::Shape &qRopeShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE))->GetStorageShape();
         const gert::Shape &kRopeShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE))->GetStorageShape();

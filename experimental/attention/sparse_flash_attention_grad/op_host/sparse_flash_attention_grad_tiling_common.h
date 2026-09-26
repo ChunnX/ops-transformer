@@ -22,7 +22,6 @@
 #include <register/op_impl_registry.h>
 #include <tiling/tiling_api.h>
 #include <tiling/platform/platform_ascendc.h>
-#include "error/ops_error.h"
 #include "err/ops_err.h"
 #include "log/log.h"
 #include <type_traits>
