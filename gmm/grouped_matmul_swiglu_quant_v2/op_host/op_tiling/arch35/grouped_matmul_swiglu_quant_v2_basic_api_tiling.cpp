@@ -305,16 +305,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoOpTiling()
 {
-    auto &params = tilingData_.gmmQuantParams;
-    params.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
-    params.activeType = static_cast<uint32_t>(inputParams_.actType);
-    params.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
-    params.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
-    params.singleX = static_cast<uint8_t>(inputParams_.isSingleX);
-    params.singleW = static_cast<uint8_t>(inputParams_.isSingleW);
-    params.singleY = static_cast<uint8_t>(inputParams_.isSingleY);
-    params.groupType = static_cast<int8_t>(inputParams_.groupType);
-    params.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
+    GroupedMatmulSwigluQuantTensorApiTiling::FillQuantParams(tilingData_.gmmQuantParams, inputParams_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -326,22 +317,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
     GroupedMatmulSwigluQuantTensorApiTiling::RestoreBasicBlockAfterL1(basicTiling_);
 
-    auto &mmTiling = tilingData_.mmTilingData;
-    mmTiling.m = static_cast<uint32_t>(inputParams_.mSize);
-    mmTiling.n = static_cast<uint32_t>(inputParams_.nSize);
-    mmTiling.k = static_cast<uint32_t>(inputParams_.kSize);
-    mmTiling.baseM = static_cast<uint32_t>(basicTiling_.baseM);
-    mmTiling.baseN = static_cast<uint32_t>(basicTiling_.baseN);
-    mmTiling.baseK = static_cast<uint32_t>(basicTiling_.baseK);
-    mmTiling.kAL1 = static_cast<uint32_t>(basicTiling_.stepKa * basicTiling_.baseK);
-    mmTiling.kBL1 = static_cast<uint32_t>(basicTiling_.stepKb * basicTiling_.baseK);
-    const uint64_t scaleKL1 = std::min(
-        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) *
-            basicTiling_.baseK,
-        inputParams_.kSize);
-    mmTiling.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
-    mmTiling.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
-    mmTiling.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
+    GroupedMatmulSwigluQuantTensorApiTiling::FillMatmulTiling(tilingData_.mmTilingData, inputParams_, basicTiling_,
+                                                              basicTiling_.scaleFactorA, basicTiling_.scaleFactorB);
     return ge::GRAPH_SUCCESS;
 }
 

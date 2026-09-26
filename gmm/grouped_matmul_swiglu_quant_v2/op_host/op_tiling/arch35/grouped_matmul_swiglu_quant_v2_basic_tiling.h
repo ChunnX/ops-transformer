@@ -24,6 +24,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
@@ -47,6 +48,7 @@ protected:
     {
         return "GroupedMatmulSwigluQuantV2";
     }
+    ge::graphStatus GetPlatformInfo() override;
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
@@ -62,6 +64,18 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
 
 private:
+    bool IsV3() const
+    {
+        return swigluParams_.swigluMode == 2;
+    }
+    bool AnalyzeV3Attrs();
+    bool AnalyzeV3Dtype();
+    bool AnalyzeV3Inputs();
+    bool CheckV3ShapeAndScale(const gert::Shape &xShape, const gert::Shape &xScaleShape, const gert::Shape &weightShape,
+                              const gert::Shape &weightStorageShape, const gert::Shape &weightScaleShape,
+                              const gert::Shape &groupListShape) const;
+    bool CheckV3OutputShape() const;
+    bool IsTensorApiCapable() const;
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
@@ -109,6 +123,10 @@ private:
                                      const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
     bool isMxWeightNzMultiTensor_ = false;
+    ::GMMSwigluQuantSwigluParams swigluParams_;
+    GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tensorApiTilingData_;
+    uint32_t aivNum_ = 0;
+    bool useTensorApi_ = false;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};

@@ -12,7 +12,6 @@
 
 #include <c10/core/DeviceGuard.h>
 
-#include <cmath>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -22,11 +21,8 @@
 namespace op_api {
 namespace {
 constexpr int64_t kDim0 = 0;
-constexpr int64_t kDim1 = 1;
 constexpr int64_t kDim2 = 2;
-constexpr int64_t kDim3 = 3;
 constexpr int64_t kMxGroupSize = 64;
-constexpr int64_t kSwigluMode = 2;
 constexpr int64_t kGeDtypeFloat8E4M3Fn = 36;
 constexpr int64_t kGeDtypeFloat8E8M0 = 37;
 constexpr int64_t kAclDtypeOffset = 256;
@@ -37,12 +33,6 @@ constexpr double kDefaultGluBias = 1.0;
 int64_t CeilDiv(int64_t value, int64_t divisor)
 {
     return (value + divisor - 1) / divisor;
-}
-
-bool IsNzWeight(const at::Tensor &weight)
-{
-    const aclFormat format = static_cast<aclFormat>(at_npu::native::get_npu_format(weight));
-    return format == ACL_FORMAT_FRACTAL_NZ || format == ACL_FORMAT_FRACTAL_NZ_C0_16;
 }
 
 int64_t NormalizeGeDtype(int64_t dtype)
@@ -68,20 +58,33 @@ aclDataType GetAclDtypeFromValue(int64_t dtype)
     return GetAclDataType(dtype);
 }
 
-aclDataType GetTensorAclDtype(const c10::optional<int64_t> &dtype, const at::Tensor &tensor)
+aclDataType GetTensorAclDtype(const c10::optional<int64_t> &dtype, const at::Tensor &tensor, const char *name)
 {
-    return dtype.has_value() ? GetAclDtypeFromValue(dtype.value()) : ConvertToAclDataType(tensor.scalar_type());
+    const aclDataType storageDtype = ConvertToAclDataType(tensor.scalar_type());
+    // TensorWrapper changes the descriptor, not the underlying storage. Do not
+    // let a dtype override hide an incompatible tensor from the ACLNN checks.
+    TORCH_CHECK(!dtype.has_value() || GetAclDtypeFromValue(dtype.value()) == storageDtype, name,
+                "_dtype must match the actual tensor dtype.");
+    return storageDtype;
 }
 
-aclDataType GetMxScaleAclDtype(const c10::optional<int64_t> &dtype)
+aclDataType GetMxScaleAclDtype(const c10::optional<int64_t> &dtype, const at::Tensor &tensor, const char *name)
 {
-    return dtype.has_value() ? GetAclDtypeFromValue(dtype.value()) : ACL_FLOAT8_E8M0;
+    // E8M0 is reinterpreted from its raw bytes, not converted numerically. Both
+    // signed and unsigned byte storage preserve that bit pattern.
+    TORCH_CHECK(tensor.defined(), name, " must be defined.");
+    TORCH_CHECK(tensor.scalar_type() == at::ScalarType::Char || tensor.scalar_type() == at::ScalarType::Byte, name,
+                " must use torch.int8 or torch.uint8 storage for torch_npu.float8_e8m0fnu.");
+    TORCH_CHECK(!dtype.has_value() || GetAclDtypeFromValue(dtype.value()) == ACL_FLOAT8_E8M0, name,
+                "_dtype must describe the E8M0 byte storage.");
+    return ACL_FLOAT8_E8M0;
 }
 
-void CheckList(const std::vector<at::Tensor> &tensors, const char *name)
+void CheckListForIndexing(const std::vector<at::Tensor> &tensors, const char *name)
 {
-    TORCH_CHECK(tensors.size() == 1, name, " must contain exactly one Tensor in the V3 MXFP8 scenario, but got ",
-                tensors.size(), ".");
+    // ACLNN validates the supported TensorList cardinality. The wrapper only
+    // needs its first tensor to infer the descriptor and output shape safely.
+    TORCH_CHECK(!tensors.empty(), name, " must not be empty.");
     TORCH_CHECK(tensors[0].defined(), name, "[0] must be defined.");
 }
 
@@ -92,64 +95,6 @@ int64_t InferLogicalN(const at::Tensor &weightScale)
     // Both the non-transposed scale and the view produced by
     // weightScaleSource.transpose(-3, -2) are [E, ceil(K / 64), N, 2].
     return weightScale.size(kDim2);
-}
-
-void CheckV3Args(const at::Tensor &x, const std::vector<at::Tensor> &weight, const std::vector<at::Tensor> &weightScale,
-                 const at::Tensor &xScale, const c10::optional<std::vector<at::Tensor>> &weightAssistMatrix,
-                 const c10::optional<std::vector<at::Tensor>> &bias, const c10::optional<at::Tensor> &smoothScale,
-                 const c10::optional<std::vector<int64_t>> &tuningConfig, const c10::optional<int64_t> &dequantMode,
-                 const c10::optional<int64_t> &dequantDtype, const c10::optional<int64_t> &quantMode,
-                 const c10::optional<int64_t> &groupListType, const c10::optional<int64_t> &xDtype,
-                 const c10::optional<int64_t> &weightDtype, const c10::optional<int64_t> &weightScaleDtype,
-                 const c10::optional<int64_t> &xScaleDtype, const c10::optional<int64_t> &swigluMode, double clampLimit,
-                 const std::string &roundMode, int64_t scaleAlg, double dstTypeMax)
-{
-    CheckList(weight, "weight");
-    CheckList(weightScale, "weight_scale");
-    TORCH_CHECK(swigluMode.has_value() && swigluMode.value() == kSwigluMode,
-                "cann_ops_transformer.grouped_matmul_swiglu_quant_v2 currently only supports swiglu_mode=2.");
-    TORCH_CHECK(x.scalar_type() == at::ScalarType::Float8_e4m3fn,
-                "swiglu_mode=2 requires x dtype torch.float8_e4m3fn.");
-    TORCH_CHECK(weight[0].scalar_type() == at::ScalarType::Float8_e4m3fn,
-                "swiglu_mode=2 requires weight dtype torch.float8_e4m3fn.");
-    TORCH_CHECK(IsNzWeight(weight[0]), "swiglu_mode=2 requires weight in FRACTAL_NZ format.");
-    // E8M0 is interpreted from its 8-bit bit pattern by the explicit wrapper
-    // dtype. Both signed and unsigned 8-bit Torch storage preserve that pattern.
-    TORCH_CHECK(xScale.scalar_type() == at::ScalarType::Char || xScale.scalar_type() == at::ScalarType::Byte,
-                "swiglu_mode=2 requires x_scale to use torch.int8 or torch.uint8 storage for "
-                "torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(
-        weightScale[0].scalar_type() == at::ScalarType::Char || weightScale[0].scalar_type() == at::ScalarType::Byte,
-        "swiglu_mode=2 requires weight_scale to use torch.int8 or torch.uint8 storage for "
-        "torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(!weightAssistMatrix.has_value() || weightAssistMatrix->empty(),
-                "swiglu_mode=2 does not support weight_assist_matrix.");
-    TORCH_CHECK(!bias.has_value() || bias->empty(), "swiglu_mode=2 does not support a non-empty bias TensorList.");
-    TORCH_CHECK(!smoothScale.has_value() || !smoothScale->defined(), "swiglu_mode=2 does not support smooth_scale.");
-    TORCH_CHECK(!tuningConfig.has_value() || tuningConfig->empty(), "swiglu_mode=2 does not support tuning_config.");
-    TORCH_CHECK(!dequantMode.has_value() || dequantMode.value() == 2, "swiglu_mode=2 requires dequant_mode=2.");
-    // The public Torch API accepts torch.float32, whose ScalarType value is
-    // different from the ACL/GE DT_FLOAT value (0).  The dispatcher schema
-    // also historically used 0 as its default.  Accept both representations
-    // here, then always pass the ACL/GE representation to ACLNN below.
-    TORCH_CHECK(!dequantDtype.has_value() || dequantDtype.value() == static_cast<int64_t>(ACL_FLOAT) ||
-                    dequantDtype.value() == static_cast<int64_t>(at::ScalarType::Float),
-                "swiglu_mode=2 requires dequant_dtype=torch.float32.");
-    TORCH_CHECK(!quantMode.has_value() || quantMode.value() == 2, "swiglu_mode=2 requires quant_mode=2.");
-    TORCH_CHECK(!groupListType.has_value() || groupListType.value() == 0 || groupListType.value() == 1,
-                "group_list_type only supports 0 or 1.");
-    TORCH_CHECK(!xDtype.has_value() || GetAclDtypeFromValue(xDtype.value()) == ACL_FLOAT8_E4M3FN,
-                "x_dtype only supports torch_npu.float8_e4m3fn.");
-    TORCH_CHECK(!weightDtype.has_value() || GetAclDtypeFromValue(weightDtype.value()) == ACL_FLOAT8_E4M3FN,
-                "weight_dtype only supports torch_npu.float8_e4m3fn.");
-    TORCH_CHECK(!weightScaleDtype.has_value() || GetAclDtypeFromValue(weightScaleDtype.value()) == ACL_FLOAT8_E8M0,
-                "weight_scale_dtype only supports torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(!xScaleDtype.has_value() || GetAclDtypeFromValue(xScaleDtype.value()) == ACL_FLOAT8_E8M0,
-                "x_scale_dtype only supports torch_npu.float8_e8m0fnu.");
-    TORCH_CHECK(std::isfinite(clampLimit) && clampLimit > 0.0, "clamp_limit must be a finite positive number.");
-    TORCH_CHECK(roundMode == "rint", "round_mode currently only supports rint.");
-    TORCH_CHECK(scaleAlg == 0 || scaleAlg == 1, "MXFP8 only supports scale_alg 0 or 1.");
-    TORCH_CHECK(std::isfinite(dstTypeMax) && dstTypeMax == 0.0, "MXFP8 only supports dst_type_max=0.0.");
 }
 
 } // namespace
@@ -169,15 +114,28 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     const double clampLimitValue = clampLimit.value_or(kDefaultClampLimit);
     const double gluAlphaValue = gluAlpha.value_or(kDefaultGluAlpha);
     const double gluBiasValue = gluBias.value_or(kDefaultGluBias);
-    CheckV3Args(x, weight, weightScale, xScale, weightAssistMatrix, bias, smoothScale, tuningConfig, dequantMode,
-                dequantDtype, quantMode, groupListType, xDtype, weightDtype, weightScaleDtype, xScaleDtype, swigluMode,
-                clampLimitValue, roundMode, scaleAlg, dstTypeMax);
-    TORCH_CHECK(!quantDtype.has_value() || GetAclDtypeFromValue(quantDtype.value()) == ACL_FLOAT8_E4M3FN,
+    CheckListForIndexing(weight, "weight");
+    CheckListForIndexing(weightScale, "weight_scale");
+    TORCH_CHECK(x.defined() && x.dim() > kDim0, "x must be defined and have a dimension for output shape inference.");
+    TORCH_CHECK(swigluMode.has_value(), "swiglu_mode must be specified; use torch_npu for legacy V2 calls.");
+    // The Torch schema has a TensorList bias, while ACLNN takes one Tensor.
+    // Keep the empty-list bridge explicit instead of silently discarding input.
+    TORCH_CHECK(!bias.has_value() || bias->empty(), "The V3 wrapper requires an empty bias TensorList.");
+    // ACLNN has no quant_dtype attribute: the caller provides the output tensor.
+    // Its dtype must agree with the FP8 allocation below.
+    TORCH_CHECK(!quantDtype.has_value() || NormalizeGeDtype(quantDtype.value()) == kGeDtypeFloat8E4M3Fn,
                 "swiglu_mode=2 only supports torch.float8_e4m3fn output.");
+    // ACLNN takes a C string: reject embedded NUL bytes instead of silently
+    // validating only the prefix of the Python/std::string value.
+    TORCH_CHECK(roundMode.find('\0') == std::string::npos, "round_mode must not contain embedded NUL bytes.");
 
     const int64_t m = x.size(kDim0);
     const int64_t n = InferLogicalN(weightScale[0]);
     TORCH_CHECK(n > 0 && n % 2 == 0, "The logical N dimension must be positive and even, but got ", n, ".");
+    const aclDataType xAclDtype = GetTensorAclDtype(xDtype, x, "x");
+    const aclDataType weightAclDtype = GetTensorAclDtype(weightDtype, weight[0], "weight");
+    const aclDataType weightScaleAclDtype = GetMxScaleAclDtype(weightScaleDtype, weightScale[0], "weight_scale");
+    const aclDataType xScaleAclDtype = GetMxScaleAclDtype(xScaleDtype, xScale, "x_scale");
 
     at::Tensor output;
     at::Tensor outputScale;
@@ -207,21 +165,23 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
         tuningConfigRef = at::IntArrayRef(tuningConfig.value());
     }
 
-    TensorWrapper xWrapper = {x, GetTensorAclDtype(xDtype, x)};
-    TensorListWrapper weightWrapper = {weightRef, GetTensorAclDtype(weightDtype, weight[0])};
-    TensorListWrapper weightScaleWrapper = {weightScaleRef, GetMxScaleAclDtype(weightScaleDtype)};
-    TensorWrapper xScaleWrapper = {xScale, GetMxScaleAclDtype(xScaleDtype)};
+    TensorWrapper xWrapper = {x, xAclDtype};
+    TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
+    TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
+    TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
     TensorWrapper outputWrapper = {output, ACL_FLOAT8_E4M3FN};
     TensorWrapper outputScaleWrapper = {outputScale, ACL_FLOAT8_E8M0};
-    const char *roundModePtr = "rint";
+    const char *roundModePtr = roundMode.c_str();
     // ACLNN_CMD forwards every argument through the ACL type converter, whose
     // interface takes non-const lvalue references.  Keep the scalar attributes
     // in named variables instead of passing value_or() / temporary expressions.
     int64_t dequantModeValue = dequantMode.value_or(2);
-    // ACLNN takes a GE/ACL dtype enum rather than an at::ScalarType enum.
-    // V3 only permits FP32, so normalize both accepted Torch representations
-    // to DT_FLOAT instead of forwarding the raw optional value.
-    int64_t dequantDtypeValue = static_cast<int64_t>(ACL_FLOAT);
+    // Preserve the legacy Torch FP32 enum alias, but forward every other value
+    // unchanged so ACLNN, not this bridge, validates the dequantization mode.
+    int64_t dequantDtypeValue = dequantDtype.value_or(static_cast<int64_t>(ACL_FLOAT));
+    if (dequantDtypeValue == static_cast<int64_t>(at::ScalarType::Float)) {
+        dequantDtypeValue = static_cast<int64_t>(ACL_FLOAT);
+    }
     int64_t quantModeValue = quantMode.value_or(2);
     int64_t groupListTypeValue = groupListType.value_or(0);
     int64_t swigluModeValue = swigluMode.value();

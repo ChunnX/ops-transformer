@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -147,20 +146,18 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
                     "The cann_ops_transformer wrapper currently requires swiglu_mode=2; "
                     "legacy V2 calls remain available through torch_npu."
                 )
-            if swiglu_mode != 2:
+            # Meta only checks the bridge inputs needed for output inference.
+            # ACLNN validates supported modes, tensor counts and input dtypes.
+            if not weight or not weight_scale:
                 raise ValueError(
-                    "When swiglu_mode is specified, only swiglu_mode=2 is supported."
+                    "weight and weight_scale must not be empty for output inference."
                 )
-            if len(weight) != 1 or len(weight_scale) != 1:
-                raise ValueError(
-                    "swiglu_mode=2 supports exactly one weight and one weight_scale tensor."
-                )
-            if x.dtype != torch.float8_e4m3fn or weight[0].dtype != torch.float8_e4m3fn:
-                raise TypeError(
-                    "swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn."
-                )
+            if x.dim() == 0:
+                raise ValueError("x must have a dimension for output shape inference.")
             _normalize_v3_quant_dtype(quant_dtype)
             n = _infer_v3_n(weight_scale[0])
+            if n <= 0 or n % 2 != 0:
+                raise ValueError("The logical N dimension must be positive and even.")
             m = x.shape[0]
             return (
                 torch.empty((m, n // 2), dtype=torch.float8_e4m3fn, device="meta"),
@@ -279,26 +276,8 @@ def grouped_matmul_swiglu_quant_v2(
             "cann_ops_transformer.grouped_matmul_swiglu_quant_v2 currently requires swiglu_mode=2; "
             "use torch_npu.npu_grouped_matmul_swiglu_quant_v2 for legacy V2 scenarios."
         )
-    if swiglu_mode != 2:
-        raise ValueError(f"Only swiglu_mode=2 is supported, but got {swiglu_mode}.")
-    if len(weight) != 1 or len(weight_scale) != 1:
-        raise ValueError(
-            "swiglu_mode=2 supports exactly one weight and one weight_scale tensor."
-        )
-    if x.dtype != torch.float8_e4m3fn or weight[0].dtype != torch.float8_e4m3fn:
-        raise TypeError(
-            "swiglu_mode=2 requires x and weight to use torch.float8_e4m3fn."
-        )
-    if clamp_limit is not None and (not math.isfinite(clamp_limit) or clamp_limit <= 0):
-        raise ValueError("clamp_limit must be a finite positive number.")
-    if round_mode != "rint":
-        raise ValueError("round_mode currently only supports 'rint'.")
-    if scale_alg not in (0, 1):
-        raise ValueError("MXFP8 only supports scale_alg 0 or 1.")
-    if dst_type_max != 0.0:
-        raise ValueError("MXFP8 only supports dst_type_max=0.0.")
-
-    quant_dtype = _normalize_v3_quant_dtype(quant_dtype)
+    # Normalize Python/dispatcher representations here. The C++ bridge guards
+    # descriptor construction/output allocation; ACLNN owns scenario checks.
     return torch.ops.cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
         x,
         weight,
@@ -311,7 +290,7 @@ def grouped_matmul_swiglu_quant_v2(
         dequant_mode=dequant_mode,
         dequant_dtype=_normalize_dtype(dequant_dtype),
         quant_mode=quant_mode,
-        quant_dtype=quant_dtype,
+        quant_dtype=_normalize_dtype(quant_dtype),
         group_list_type=group_list_type,
         tuning_config=tuning_config,
         x_dtype=_normalize_wrapper_dtype(x_dtype),
