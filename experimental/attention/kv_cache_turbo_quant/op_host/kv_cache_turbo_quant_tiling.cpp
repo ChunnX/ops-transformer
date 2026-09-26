@@ -13,11 +13,34 @@
  */
 #include "kv_cache_turbo_quant_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
 
 using namespace ge;
 
 namespace optiling {
+
+// Cube tiling for the matmul-lib calls: z = x @ (Hh|Hl)^T and p = r @ (Sh|Sl)^T
+// per tri-core group, fp16 in / fp32 out, C straight to GM. Mirrors the
+// conservative 64-capped tile shape proven by compute_wy on dav m200.
+static ge::graphStatus FillCubeTiling(gert::TilingContext *context, TCubeTiling &out)
+{
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    matmul_tiling::MatmulApiTiling mm(ascendcPlatform);
+    mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16,
+                false);
+    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16,
+                true);
+    mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    mm.SetBias(false);
+    mm.SetOrgShape(64, 128, 128);
+    mm.SetShape(64, 128, 128);
+    mm.SetBufferSpace(-1, -1, -1);
+    if (mm.GetTiling(out) == -1) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 constexpr uint32_t KV_INPUT_INDEX = 0;
 constexpr uint32_t QJL_INPUT_INDEX = 2;
@@ -28,6 +51,8 @@ constexpr int64_t MATRIX_DIMS = 2;
 constexpr int64_t MIN_KV_HEADS = 4;
 constexpr int64_t MAX_KV_HEADS = 32;
 constexpr int64_t QJL_DIM_ALIGN = 8;
+constexpr int64_t CUBE_MIN_VEC = 1024;
+
 
 
 static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
@@ -70,36 +95,55 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
     const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     const int64_t mseBits = (pBits != nullptr) ? *pBits : 3;
-    if (mseBits != 2 && mseBits != 3 && mseBits != 4) {
+    if (mseBits != 2 && mseBits != 3 && mseBits != 4 && mseBits != 8 && mseBits != 9) {
         return ge::GRAPH_FAILED;
     }
 
-    // each (token, head) vector is independent; assign whole vectors to vector cores
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t availableCoreNum = ascendcPlatform.GetCoreNumAiv();
-    if (availableCoreNum == 0) {
-        availableCoreNum = 1;
-    }
-    const uint32_t blockDim =
-        (totalVec < static_cast<int64_t>(availableCoreNum)) ? static_cast<uint32_t>(totalVec) : availableCoreNum;
+    const bool useCube = (totalVec >= CUBE_MIN_VEC) && (qjlDim == HEAD_DIM);
 
     KvCacheTurboQuantTilingData tiling;
     tiling.set_totalVec(totalVec);
     tiling.set_qjlDim(qjlDim);
     tiling.set_mseBits(mseBits);
-    tiling.set_coreNum(blockDim);
-    context->SetBlockDim(blockDim);
+    if (FillCubeTiling(context, tiling.mmTiling) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t usedCoreNum = 1;
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    if (aicNum == 0) {
+        aicNum = 1;
+    }
+    // single tiling key 0 with runtime dispatch; always launch the full tri-core
+    // grid (out-of-range groups idle out in-kernel). usedCoreNum for key-0 vector
+    // path = AIV count (2*aicNum), for the mix path = logical tri-core groups.
+    const uint32_t usedAic = aicNum;
+    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(2 * usedAic, usedAic, 2 * usedAic));
+    usedCoreNum = useCube ? usedAic : (2 * usedAic);
     context->SetTilingKey(0);
+    tiling.set_coreNum(usedCoreNum);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    // no GM workspace: both matrices and all intermediates are resident in UB
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    workspaces[0] = 0;
+    // NOTE: the MIX-channel wrapper auto-generates matmul::clearWorkspace on AIC
+    // blocks, so a non-null workspace is required even for the vector-only path.
+    // The MIX runtime (KFC channel) owns the first GetLibApiWorkSpaceSize() bytes
+    // of the workspace; the kernel skips them via GetUserWorkspace(). Launching
+    // with less than that reserved prefix crashes the runtime MTE before any
+    // user code runs (bisected 2026-09-24).
+    size_t wsBytes = 32 * 1024;
+    if (useCube) {
+        // flags 16KB + splits 128KB + z 2x512B + r 2x256B + p 4x512B + x 256B per vector
+        wsBytes = static_cast<size_t>(144 * 1024) +
+                  static_cast<size_t>(totalVec) * (2 * 512 + 2 * 256 + 4 * 512 + 256);
+    }
+    workspaces[0] = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize()) + wsBytes;
 
     return ge::GRAPH_SUCCESS;
 }
