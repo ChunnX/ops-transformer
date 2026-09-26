@@ -76,7 +76,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // Wider M tiles amortize FP32 MMAD setup for large M. L1 K shrinks to fit
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
-    const uint64_t largeMTile = request.hasMid ? kFiveCubeMTile : kLargeCubeMTile;
+    const uint64_t largeMTile = request.preferWideTile ? kFiveCubeMTile : kLargeCubeMTile;
     const uint64_t selectedMTile = request.wavePipeline ? 128U :
         (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
     const uint64_t selectedMGrid = std::min(request.wavePipeline ? active / 4U : active, CeilDiv(request.rows, selectedMTile));

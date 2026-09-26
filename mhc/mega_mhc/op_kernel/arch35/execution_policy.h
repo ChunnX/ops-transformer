@@ -11,6 +11,5 @@ namespace AiInfraMegaMhc {
 enum class ProjectionTransport : uint32_t { GmStage = 0U, UbToL1 = 1U };
 constexpr ProjectionTransport kFourProjectionTransport = ProjectionTransport::GmStage;
 constexpr ProjectionTransport kFiveProjectionTransport = ProjectionTransport::GmStage;
-constexpr bool kOverlapFourEpilogue = true;
 } // namespace AiInfraMegaMhc
 #endif

@@ -8,18 +8,10 @@
 #include "../../../op_kernel/arch35/execution_policy.h"
 
 namespace optiling::mega_mhc {
-/** Bound partial rows by their stage-local storage: four-op aliases the projection tile;
- * five-op caps the independent batch at 48 rows to preserve room for x2/gamma/coefficients at D=5120.
- */
-inline uint32_t ReductionRows(uint32_t projectionRows, uint32_t kL1, uint32_t groups,
-                              uint32_t stride, bool hasMid)
+/** Bound the separate Pre/RMS1 epilogue batch to leave room for complete rows and coefficients. */
+inline uint32_t ReductionRows(uint32_t projectionRows)
 {
-    if (hasMid) {
-        return projectionRows < 48U ? projectionRows : 48U;
-    }
-    const uint64_t capacity = static_cast<uint64_t>(projectionRows) * kL1 /
-                              (static_cast<uint64_t>(groups) * stride);
-    return capacity < projectionRows ? static_cast<uint32_t>(capacity) : projectionRows;
+    return projectionRows < 48U ? projectionRows : 48U;
 }
 
 /** Round each live UB allocation to 256B: DMA alignment plus one full FP32 register for small arrays. */
@@ -28,26 +20,18 @@ inline uint64_t UbAllocation(uint64_t bytes)
     return (bytes + 255U) / 256U * 256U;
 }
 
-/** Sum all simultaneously live producer buffers, in the same order as the scheduler's allocations. */
-inline uint64_t ProducerUbBytes(uint32_t rows, uint32_t d, uint32_t kL1, bool hasMid,
-                                uint32_t projectionRows, bool prefetchInput = false)
+/** Count the live full-row producer buffers, including double input and coefficient slots.
+ * Mid aliases the residual/output row and adds gamma2; wave production additionally owns epoch storage.
+ */
+inline uint64_t ProducerUbBytes(uint32_t d, bool hasMid, bool wavePipeline = false)
 {
-    const uint64_t r = rows;
     const uint64_t k = 4ULL * d;
-    const uint64_t projectionPrefix = hasMid ? 0U : UbAllocation(projectionRows * 4U) +
-        UbAllocation(static_cast<uint64_t>(projectionRows) * kL1 * 4U) +
-        UbAllocation(static_cast<uint64_t>(projectionRows) * kL1 * 2U) +
-        (AiInfraMegaMhc::kOverlapFourEpilogue ? 2U * UbAllocation(128U) : 0U);
-    const uint64_t producerPrefetch = prefetchInput ? UbAllocation(r * (d + k) * 2U) : 0U;
-    return projectionPrefix + producerPrefetch + 2U * UbAllocation(r * d * 2U) + 2U * UbAllocation(r * k * 2U) +
-        UbAllocation(d * 4U) + (hasMid ? UbAllocation(k * 4U) : 0U) +
-        UbAllocation(!hasMid && AiInfraMegaMhc::kOverlapFourEpilogue ?
-            static_cast<uint64_t>((projectionRows + 7U) / 8U * 8U) * 24U * 4U : r * 4U * 4U) +
-        UbAllocation(!hasMid && AiInfraMegaMhc::kOverlapFourEpilogue ?
-            ((projectionRows > r * 16U ? projectionRows : r * 16U) * 4U) : r * 16U * 4U) + UbAllocation(hasMid ? r * 8U : 8U);
+    return UbAllocation(4ULL * d) + UbAllocation(4ULL * k) + UbAllocation(2ULL * d) +
+        UbAllocation(4ULL * d) + UbAllocation(256U * 4U) + UbAllocation(8U) +
+        (hasMid ? UbAllocation(4ULL * k) : (wavePipeline ? UbAllocation(32U) : UbAllocation(2ULL * k)));
 }
 
-/** Five-op projection owns row statistics plus packed input and FP32 transfer half-tiles. */
+/** Materialized-row projection owns row statistics plus packed input and FP32 transfer half-tiles. */
 inline uint64_t ProjectionUbBytes(uint32_t k, uint32_t kL1, uint32_t projectionRows)
 {
     const uint64_t stageElements = static_cast<uint64_t>(projectionRows) * kL1;

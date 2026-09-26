@@ -26,7 +26,8 @@ int run_plan_tests()
                     const uint32_t mode = variant & 1U;
                     CubePlanRequest request;
                     request.rows = m;
-                    request.hasMid = (variant & 2U) != 0U;
+                    const bool hasMid = (variant & 2U) != 0U;
+                    request.preferWideTile = true;
                     request.k = 4 * d;
                     request.q = 24;
                     request.aicCount = cores;
@@ -37,7 +38,7 @@ int run_plan_tests()
                     request.l0BBytes = 64 * 1024;
                     request.l0CBytes = 128 * 1024;
                     request.mode = static_cast<ProjectionMode>(mode);
-                    request.wavePipeline = !request.hasMid && m == 3072 && d == 5120 && cores == 32;
+                    request.wavePipeline = !hasMid && m == 3072 && d == 5120 && cores == 32;
                     CubePlan p;
                     REQUIRE(BuildCubePlan(request, p));
                     REQUIRE(p.activeAic <= cores && p.activeAic == p.mGrid * p.kGrid);
@@ -80,29 +81,17 @@ int run_plan_tests()
                     REQUIRE(uint64_t(p.l0CSlotElements) * 4 * 2 <= request.l0CBytes);
                     REQUIRE(p.baseM == p.nzM && p.fixpipeRowStride == p.nzN && p.nzN >= request.q);
                     for (bool mid : midModes) {
-                        uint32_t r = p.mTile / 2;
-                        while (r && ProducerUbBytes(r, d, p.l1K, mid, p.mTile / 2) > 248 * 1024) { --r; }
-                        REQUIRE(r > 0);
-                        REQUIRE(ProducerUbBytes(r, d, p.l1K, mid, p.mTile / 2) <= 248 * 1024);
-                        REQUIRE(r == p.mTile / 2 || ProducerUbBytes(r + 1, d, p.l1K, mid, p.mTile / 2) > 248 * 1024);
-                        const uint32_t reduceRows = ReductionRows(p.mTile / 2, p.l1K, p.partialGroupCount, p.fixpipeRowStride, mid);
+                        REQUIRE(ProducerUbBytes(d, mid) <= 248U * 1024U);
+                        const uint32_t reduceRows = ReductionRows(p.mTile / 2);
                         REQUIRE(reduceRows > 0 && reduceRows <= p.mTile / 2);
-                        REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <= 248 * 1024);
-                        // Overlapped four-op epilogue aliases the FP32 stage tile only after its transfer completes.
-                        REQUIRE(mid || uint64_t(reduceRows) * p.partialGroupCount * p.fixpipeRowStride <= (p.mTile / 2) * p.l1K);
-                        REQUIRE(ProjectionUbBytes(4 * d, p.l1K, p.mTile / 2) <= 248 * 1024);
-                        // Four-op reuses its Post output allocation for a packed projection half-tile.
-                        REQUIRE(mid || p.kGrid != 1 || uint64_t(r) * 4 * d >= (p.mTile / 2) * p.l1K);
+                        REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <= 248U * 1024U);
+                        REQUIRE(ProjectionUbBytes(4 * d, p.l1K, p.mTile / 2) <= 248U * 1024U);
                     }
                 }
             }
         }
     }
     CubePlanRequest invalid;
-    // A complete second input row fits the target M96 plan, but must fall back for a wider K-L1 tile.
-    REQUIRE(ProducerUbBytes(1, 5120, 256, false, 48, true) <= 248U * 1024U);
-    REQUIRE(ProducerUbBytes(1, 5120, 1024, false, 16, true) > 248U * 1024U);
-    REQUIRE(ProducerUbBytes(1, 5120, 1024, false, 16, false) <= 248U * 1024U);
     CubePlan unused;
     REQUIRE(!BuildCubePlan(invalid, unused));
     return 0;

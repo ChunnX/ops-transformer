@@ -310,7 +310,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     request.rows = totalRows_;
     request.wavePipeline = !hasMid_ && totalRows_ == 3072U && d_ == 5120U &&
         aicCount_ == 32U && aivCount_ == 64U;
-    request.hasMid = true; // Experiment: keep the five-op projection grid for both variants.
+    request.preferWideTile = true; // Both variants project materialized rows; wave tiling overrides this preference.
     request.k = k_;
     request.q = kProjectionQ;
     request.aicCount = aicCount_;
@@ -350,24 +350,12 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     // RMS0, producer/projection and epilogue lifetimes, so their peaks do not add.
     const uint64_t availableUb = std::min<uint64_t>(ubBytes_, kUbLimitBytes);
     const uint32_t projectionRows = static_cast<uint32_t>(CeilDiv(cubePlan_.mTile, 2));
-    uint32_t postRows = projectionRows;
-    while (postRows != 0U && mega_mhc::ProducerUbBytes(postRows, d_, cubePlan_.l1K, true, projectionRows) > availableUb) {
-        --postRows;
-    }
-    if (postRows == 0U) {
-        OP_LOGE(context_->GetNodeName(), "one producer row does not fit available UB");
-        return ge::GRAPH_FAILED;
-    }
-    // Use a second complete input slot only when it fits; smaller/tail plans retain the single-slot path.
-    const bool producerPrefetch = false && !hasMid_ && cubePlan_.kGrid == 1U &&
-        mega_mhc::ProducerUbBytes(postRows, d_, cubePlan_.l1K, true, projectionRows, true) <= availableUb;
-    tilingData_.set_producerPrefetch(producerPrefetch ? 1U : 0U);
-    postRows = 1U; // Both prefetched producers compute one complete row at a time.
-    tilingData_.set_postRows(postRows);
+    // Producer rows are complete tokens; double input slots are always enabled in the scheduler.
+    tilingData_.set_producerPrefetch(0U); // Reserved legacy field; keep the TilingData ABI stable.
+    tilingData_.set_postRows(1U);
     tilingData_.set_projectionRows(projectionRows);
     // Keep the epilogue's reduction batch explicit, independently of its one-row compute tile.
-    const uint32_t reduceRows = mega_mhc::ReductionRows(projectionRows, cubePlan_.l1K,
-        cubePlan_.partialGroupCount, cubePlan_.fixpipeRowStride, true);
+    const uint32_t reduceRows = mega_mhc::ReductionRows(projectionRows);
     if (reduceRows == 0U) {
         return ge::GRAPH_FAILED;
     }
@@ -378,18 +366,12 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
         cubePlan_.fixpipeRowStride * sizeof(float) >= k_ * 2ULL ? 1U : 0U);
     tilingData_.set_slotCount(kSlotCount);
     tilingData_.set_ubReservedBytes(0);
-    // Four-op staged producer: double input slots, one x1/post row, gamma and double coefficients.
-    const uint64_t stagedFourPeak = mega_mhc::UbAllocation(2ULL * d_ * 2U) +
-        mega_mhc::UbAllocation(2ULL * k_ * 2U) + mega_mhc::UbAllocation(d_ * 2ULL) +
-        mega_mhc::UbAllocation(k_ * 2ULL) + mega_mhc::UbAllocation(d_ * 4ULL) +
-        mega_mhc::UbAllocation(256U * 4U) + mega_mhc::UbAllocation(8U);
-    const uint64_t producerPeak = hasMid_ ?
-        stagedFourPeak - mega_mhc::UbAllocation(k_ * 2ULL) + mega_mhc::UbAllocation(k_ * 4ULL) : stagedFourPeak;
-    const uint64_t projectionPeak = true ? mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows) : producerPeak;
+    const uint64_t producerPeak = mega_mhc::ProducerUbBytes(d_, hasMid_);
+    const uint64_t projectionPeak = mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows);
     const uint64_t epiloguePeak = mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount,
                                                         cubePlan_.fixpipeRowStride, reduceRows, cubePlan_.kGrid);
     const uint64_t rms0Peak = mega_mhc::UbAllocation(d_ * 2U) + mega_mhc::UbAllocation(8U);
-    const uint64_t pipelinePeak = request.wavePipeline ? producerPeak - mega_mhc::UbAllocation(k_ * 2ULL) + projectionPeak + 256U : 0U;
+    const uint64_t pipelinePeak = request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) + projectionPeak : 0U;
     const uint64_t ubPeak = std::max({producerPeak, projectionPeak, epiloguePeak, rms0Peak, pipelinePeak});
     if (ubPeak > availableUb) {
         OP_LOGE(context_->GetNodeName(), "planned stage peak UB %llu exceeds available UB %llu",

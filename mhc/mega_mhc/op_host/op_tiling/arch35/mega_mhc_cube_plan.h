@@ -23,7 +23,7 @@ struct CubePlanRequest {
     uint64_t l0ABytes = 0;
     uint64_t l0BBytes = 0;
     uint64_t l0CBytes = 0;
-    bool hasMid = false;
+    bool preferWideTile = false;
     bool wavePipeline = false;
     ProjectionMode mode = ProjectionMode::FP32;
 };

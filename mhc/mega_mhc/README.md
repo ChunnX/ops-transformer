@@ -9,9 +9,9 @@
 - op_host/op_api：aclnnAiInfraMegaMhc 参数校验、Contiguous、L0 launch、ViewCopy。
 - op_host/op_tiling：GE总注册与arch35 host分块；memory_plan逐buffer计数，TilingData负责下发。
 - op_kernel/arch35/compute：五阶段RegBase数学函数，公式与舍入点写在函数注释中。
-- op_kernel/arch35/schedule：四/五调度、行归属、分片及同步。
-- op_kernel/arch35/projection_cube.h：Cube Basic API微流水，读取host给定L1/L0/Mmad/LoadData参数。
-- op_kernel/arch35/transfer：GM、UB→L1双槽传输及READY/credit协议。
+- op_kernel/arch35/schedule_mk.h、epilogue.h：四/五调度、行归属、同步和最终归约。
+- op_kernel/arch35/compute/projection_cube.h：Cube Basic API微流水，读取host给定L1/L0/Mmad/LoadData参数。
+- op_kernel/arch35/transfer.h：GM、UB→L1双槽传输及READY/credit协议。
 - torch_extension：仓内自动收集的mega_mhc Python、Meta、PrivateUse1/JIT C++封装。
 - tests：host分块、Python metadata合约、NPU数值及确定性测试。
 

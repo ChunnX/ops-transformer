@@ -5,9 +5,9 @@
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
 
-#include "../compute/mhc_pre.h"
-#include "../compute/rms_norm_1.h"
-#include "../mega_mhc_kernel_context.h"
+#include "compute/mhc_pre.h"
+#include "compute/rms_norm_1.h"
+#include "mega_mhc_kernel_context.h"
 
 namespace AiInfraMegaMhc::Schedule {
 using namespace AscendC;
@@ -155,29 +155,6 @@ __aicore__ inline void FinalizeMhcRows(Kernel::Tensors<T> &tensors, const MegaMh
     WaitFlag<HardEvent::V_MTE2>(EVENT_ID5);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID4);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID5);
-}
-
-/** Finalize one paired AIV's completed wave using producer buffers whose row data are no longer live. */
-template <typename T>
-__aicore__ inline void FinalizePairedRows(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
-    uint64_t start, uint32_t rows, const LocalTensor<T> &x2, const LocalTensor<T> &hIn,
-    const LocalTensor<T> &hInPrime, const LocalTensor<float> &gamma,
-    const LocalTensor<float> &partial, const LocalTensor<float> &coefficients,
-    const LocalTensor<float> &rmsPartials, const LocalTensor<float> &alpha,
-    const LocalTensor<float> &bias, const LocalTensor<float> &stats)
-{
-    if (rows == 0U) {
-        return;
-    }
-    Kernel::CopyGlobalToUb<float>(gamma, tensors.gamma1, 0U, tiling.d);
-    Kernel::CopyGlobalToUb<float>(alpha, tensors.alpha, 0U, 3U);
-    Kernel::CopyGlobalToUb<float>(bias, tensors.bias, 0U, tiling.q);
-    for (uint32_t offset = 0; offset < rows; offset += tiling.reduceRows) {
-        const uint32_t batchRows = rows - offset < tiling.reduceRows ? rows - offset : tiling.reduceRows;
-        PrepareEpilogueRows(tensors, tiling, start + offset, batchRows, partial, rmsPartials, coefficients, alpha, bias);
-        FinalizeMhcRows(tensors, tiling, start + offset, batchRows, x2, hIn, hInPrime,
-            gamma, partial, coefficients, stats);
-    }
 }
 
 /** Assign complete final rows to AIVs after all Cube and statistic partials are globally visible. */

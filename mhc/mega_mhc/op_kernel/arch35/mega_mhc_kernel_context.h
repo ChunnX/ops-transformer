@@ -15,7 +15,6 @@ using namespace AscendC;
 constexpr uint32_t kRowsPerMSubblock = 16;
 constexpr uint16_t kPairReadyFlag = 8;
 constexpr uint16_t kPairConsumedFlag = 9;
-constexpr uint16_t kPairWaveDoneFlag = 10;
 constexpr uint16_t kSubblockFlagOffset = 16;
 constexpr uint8_t kPairSyncMode = 4;
 
@@ -69,27 +68,6 @@ __aicore__ inline void CopyGlobalToUb(const LocalTensor<T> &destination, const G
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 }
 
-/** Load one producer row and its Post coefficients under one MTE2 completion event.
- * Formula: hOut=x[row,:], residual=r[row,:,:], hRes=Hres[row,:,:], optionally hPost=Hpost[row,:].
- * All destinations are disjoint; the caller has completed their previous MTE3 use before entering.
- */
-template <typename T, bool LOAD_POST>
-__aicore__ inline void LoadProducerRow(Tensors<T> &tensors, uint64_t row, uint32_t d,
-    const LocalTensor<T> &hOut, const LocalTensor<T> &residual,
-    const LocalTensor<float> &hPost, const LocalTensor<float> &hRes)
-{
-    SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
-    EnqueueGlobalToUb(hOut, tensors.hOut, row * d, d);
-    EnqueueGlobalToUb(residual, tensors.residual, row * 4U * d, 4U * d);
-    if constexpr (LOAD_POST) {
-        EnqueueGlobalToUb(hPost, tensors.hPost, row * 4U, 4U);
-    }
-    EnqueueGlobalToUb(hRes, tensors.hRes, row * 16U, 16U);
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-}
-
 /** Publish a contiguous UB range to GM after RegBase and MTE3 have completed the store. */
 template <typename T>
 __aicore__ inline void CopyUbToGlobal(const GlobalTensor<T> &destination, uint64_t destinationOffset,
@@ -101,28 +79,6 @@ __aicore__ inline void CopyUbToGlobal(const GlobalTensor<T> &destination, uint64
     DataCopyPad(destination[destinationOffset], source, copyParams);
     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-}
-
-/** Convert a host-sized low-precision tile to FP32 for deterministic projection staging. */
-template <typename T>
-__aicore__ inline void ConvertInputTileToFloat(__ubuf__ T *input, uint32_t elementCount,
-                                              __ubuf__ float *output)
-{
-    const uint16_t repeatTimes = static_cast<uint16_t>(
-        (elementCount + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
-    __VEC_SCOPE__
-    {
-        Reg::RegTensor<T> inputReg;
-        Reg::RegTensor<float> valueReg;
-        uint32_t remaining = elementCount;
-        for (uint16_t repeat = 0; repeat < repeatTimes; ++repeat) {
-            const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
-            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(inputReg, input + offset);
-            Reg::Cast<float, T, Compute::kCastInputToFloat>(valueReg, inputReg, mask);
-            Reg::StoreAlign<float>(output + offset, valueReg, mask);
-        }
-    }
 }
 
 /** Initialize one or more FP32 values before an ordered Vector reduction. */

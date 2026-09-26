@@ -6,19 +6,16 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mega_mhc_kernel_context.h"
-#include "arch35/schedule/mk_epilogue.h"
-#include "arch35/schedule/mk_four.h"
-#include "arch35/schedule/mk_five.h"
-#include "arch35/schedule/rms0_statistics.h"
+#include "arch35/epilogue.h"
+#include "arch35/schedule_mk.h"
 
 using namespace AscendC;
 using namespace AiInfraMegaMhc;
 
 /**
  * Total entry for the 950 four-op/five-op m-k families.
- * Four-op: local RMS0/Post -> Cube pipeline with the prior wave's Pre/RMS1 on paired AIVs.
- * Multiple K owners retain the RMS0 statistics barrier and global epilogue fallback.
- * Five-op: local RMS0/Post/Mid -> barrier -> Cube projection -> barrier.
+ * Four-op: complete RMS0/Post rows -> overlapped m-k projection when wave tiling is selected.
+ * Five-op: complete RMS0/Post/Mid -> barrier -> m-k projection -> barrier.
  * Both variants reuse the same ordered Pre/RMS1 compute routines.
  */
 __global__ __aicore__ void ai_infra_mega_mhc(
@@ -56,17 +53,15 @@ __global__ __aicore__ void ai_infra_mega_mhc(
 
     if (tilingData.hasMid == 0U) {
         TPipe fourOpPipe;
-        Schedule::RunMkFiveSchedule<T, false>(tensors, tilingData, &fourOpPipe);
+        Schedule::RunMkSchedule<T, false>(tensors, tilingData, &fourOpPipe);
     } else {
         TPipe fiveOpPipe;
-        Schedule::RunMkFiveSchedule<T>(tensors, tilingData, &fiveOpPipe);
+        Schedule::RunMkSchedule<T>(tensors, tilingData, &fiveOpPipe);
     }
 
-    if (true) {
-        TPipe epiloguePipe;
-        Schedule::RunMkEpilogue<T>(tensors, tilingData, &epiloguePipe);
-        epiloguePipe.Destroy();
-    }
+    TPipe epiloguePipe;
+    Schedule::RunMkEpilogue<T>(tensors, tilingData, &epiloguePipe);
+    epiloguePipe.Destroy();
 }
 
 #endif  // defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
