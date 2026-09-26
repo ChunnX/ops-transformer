@@ -59,6 +59,10 @@ public:
                                 GM_ADDR quantQjl, GM_ADDR quantNorm, GM_ADDR quantGamma,
                                 const KvCacheTurboQuantTilingData *tiling)
     {
+        if ASCEND_IS_AIC {
+            vecNum_ = 0;
+            return;
+        }
         totalVec_ = tiling->totalVec;
         qjlDim_ = tiling->qjlDim;
         mseBits_ = tiling->mseBits;
@@ -115,7 +119,6 @@ public:
         pipe_.InitBuffer(bvBuf_, BATCH_VEC * HEAD_DIM * sizeof(float));
         pipe_.InitBuffer(wtLBuf_, BATCH_VEC * HEAD_DIM * sizeof(float));
         pipe_.InitBuffer(wtHBuf_, BATCH_VEC * HEAD_DIM * sizeof(float));
-        pipe_.InitBuffer(w1Buf_, BATCH_VEC * HEAD_DIM * sizeof(float));
         pipe_.InitBuffer(indBBuf_, BATCH_VEC * HEAD_DIM * sizeof(uint8_t));
         pipe_.InitBuffer(wordIdxLoBuf_, TILE_VEC * WORDS_PER_VEC * sizeof(float));
         pipe_.InitBuffer(wordIdxHiBuf_, TILE_VEC * WORDS_PER_VEC * sizeof(float));
@@ -310,7 +313,6 @@ private:
         //   qjl: 2^lane. The fp32 sums stay exact integers for all bit widths.
         LocalTensor<float> wtL = wtLBuf_.Get<float>();
         LocalTensor<float> wtH = wtHBuf_.Get<float>();
-        LocalTensor<float> w1 = w1Buf_.Get<float>();
         for (int32_t d = 0; d < BATCH_VEC * HEAD_DIM; ++d) {
             const int32_t lane = d & 7;
             const float lo = (lane < 4) ? static_cast<float>(static_cast<int32_t>(1) << (mseBits_ * lane)) : 0.0f;
@@ -318,7 +320,6 @@ private:
                                          : 0.0f;
             wtL.SetValue(d, lo);
             wtH.SetValue(d, hi);
-            w1.SetValue(d, static_cast<float>(static_cast<int32_t>(1) << lane));
         }
         SyncPipe<HardEvent::S_V>();
     }
@@ -505,7 +506,6 @@ private:
     TBuf<QuePosition::VECCALC> bvBuf_;
     TBuf<QuePosition::VECCALC> wtLBuf_;
     TBuf<QuePosition::VECCALC> wtHBuf_;
-    TBuf<QuePosition::VECCALC> w1Buf_;
     TBuf<QuePosition::VECCALC> indBBuf_;
     TBuf<QuePosition::VECCALC> wordIdxLoBuf_;
     TBuf<QuePosition::VECCALC> wordIdxHiBuf_;

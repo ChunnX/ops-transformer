@@ -58,8 +58,11 @@ public:
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+            .NeedCheckSupportFlag(false);
+        // NOTE: no "aclnnSupport.value" cfg here - the op ships a hand-written
+        // op_api (op_api/aclnn_kv_cache_turbo_quant.cpp); the cfg would make the
+        // build ALSO autogenerate nnopbase aclnn glue and the two collide at
+        // link time (duplicate aclnnKvCacheTurboQuant* symbols).
         this->AICore().AddConfig("ascend910b", aicore_config);
     }
 };

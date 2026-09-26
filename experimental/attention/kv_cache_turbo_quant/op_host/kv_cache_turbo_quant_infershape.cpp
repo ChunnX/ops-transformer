@@ -84,9 +84,14 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     if (pBits != nullptr) {
         mseBits = *pBits;
     }
-    OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4,
+    // 8/9 are accepted as internal probe paths (not real bit widths); their
+    // output shapes follow the 3-bit layout so probe tensors match
+    OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4 && mseBits != 8 && mseBits != 9,
                 OP_LOGE("KvCacheTurboQuant", "mse_bits must be 2, 3 or 4, got %ld.", mseBits),
                 return ge::GRAPH_FAILED);
+    if (mseBits >= 8) {
+        mseBits = 3;
+    }
 
     gert::Shape *idxShape = context->GetOutputShape(IDX_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, idxShape);
