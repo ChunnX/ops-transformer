@@ -71,7 +71,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE("SparseFlashAttentionGrad", "attrs is nullptr."),
                 return ge::GRAPH_FAILED)
-    auto scaleValue = attrs->GetInt(static_cast<size_t>(AttrIndex::SCALE_VALUE));
+    auto scaleValue = attrs->GetFloat(static_cast<size_t>(AttrIndex::SCALE_VALUE));
     OP_CHECK_IF(scaleValue == nullptr, OP_LOGE("SparseFlashAttentionGrad", "scaleValue is nullptr."),
                 return ge::GRAPH_FAILED)
     auto selectedBlockSize = attrs->GetInt(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
