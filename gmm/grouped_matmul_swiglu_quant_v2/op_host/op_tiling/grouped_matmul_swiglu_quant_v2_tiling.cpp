@@ -56,7 +56,6 @@ constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
                              GMMSQ_TENSOR_API_TILING_TEMPLATE);
 
-constexpr int64_t GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE = 5;
 constexpr int64_t SWIGLU_MODE_V3 = 2;
 
 static ge::graphStatus CheckRequiredDynamicInput(const gert::TilingContext *context, size_t irIndex,
@@ -150,8 +149,8 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(compileInfoPtr->npuArch_ != static_cast<int32_t>(NpuArch::DAV_3510),
                     OP_LOGE(context->GetNodeName(), "swiglu_mode=2 only supports Ascend 950"), return ge::GRAPH_FAILED);
-        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the MXFP8 weight-NZ V3 tiling");
-        return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_WEIGHT_NZ_V3_TILING_TEMPLATE});
+        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the shared MXFP8 weight-NZ tiling with V3 attributes");
+        return TilingRegistry::GetInstance().DoTilingImpl(context, {GMMSQ_950_TILING_TEMPLATE});
     }
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
