@@ -33,9 +33,14 @@ struct SageAttnPvParams {
 };
 
 // 参数校验
+// 评审意见修复：q/k/v/o 指针仅在调用方真实传入张量时校验；
+// host 侧骨架/离线 tiling 调试模式下指针为占位 nullptr，不应因此判失败。
 static int ValidateParams(const SageAttnPvParams& params) {
-    if (params.q == nullptr || params.k == nullptr || params.v == nullptr || params.o == nullptr) {
-        std::cerr << "[ERROR] q/k/v/o must not be null" << std::endl;
+    const bool hasTensor = (params.q != nullptr || params.k != nullptr ||
+                            params.v != nullptr || params.o != nullptr);
+    if (hasTensor && (params.q == nullptr || params.k == nullptr ||
+                      params.v == nullptr || params.o == nullptr)) {
+        std::cerr << "[ERROR] q/k/v/o must all be provided together" << std::endl;
         return -1;
     }
     if (params.batch <= 0 || params.qSeqlen <= 0 || params.kvSeqlen <= 0) {

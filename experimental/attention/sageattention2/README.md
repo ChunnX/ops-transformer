@@ -1,6 +1,16 @@
-# sageattention2 — SageAttention2（INT8 QK + FP8 PV）NPU 算子
+# sageattention2
 
-昇腾 NPU（Atlas 950PR，CANN 9.2.0-beta.1）上的 SageAttention2 量化注意力算子，仅实现 **INT8 QK^T + FP8 PV** 路径（不含 FP16 PV / varlen / triton）。Kernel 基于 **AscendC + CATLASS**；性能基线为同仓 FIA（`FusedInferAttentionScore`，950PR 用 `aclnnFusedInferAttentionScoreV5` / `torch_npu.npu_fused_infer_attention_score`），两条接口路径均须 Speedup ≥ 1.6×。
+## 功能说明
+
+- 算子功能：对标开源 [SageAttention2](https://github.com/thu-ml/SageAttention)（main 分支 / PyPI sageattention==2.2.0）的 **INT8 QK^T + FP8 PV** 路径，在昇腾 NPU（Atlas 950PR，CANN 9.2.0-beta.1）实现接口对标、功能对齐的量化注意力实验算子。不含 FP16 PV / varlen / triton 路径。
+
+- 计算公式：
+
+  $$
+  Attention(Q,K,V)=Softmax(sm\_scale \cdot (Q_{int8} \cdot K_{int8}^T)) \cdot (V_{fp8} \cdot v\_scale + v\_mean)
+  $$
+
+  其中 Q/K 经 INT8 per-thread/per-warp 量化，V 经 FP8 E4M3 量化；Kernel 基于 **AscendC + CATLASS**。性能基线为同仓 FIA（`FusedInferAttentionScore`，950PR 用 `aclnnFusedInferAttentionScoreV5` / `torch_npu.npu_fused_infer_attention_score`），两条接口路径均须 Speedup ≥ 1.6×。
 
 ## 目录结构
 
@@ -23,7 +33,7 @@ experimental/attention/sageattention2/
 └── README.md
 ```
 
-## 接口
+## 函数原型
 
 ### `sageattn`
 

@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 """NPU kernel 后端：加载 sageattn_fp8（AscendC+CATLASS）编译产物并执行。
 
 当前实现：使用 torch_npu 在 NPU 上执行量化注意力计算（INT8 QK + FP8 PV）。
@@ -50,12 +57,15 @@ def _quantized_attention(
     qk_quant_gran: str,
     sm_scale: float,
     return_lse: bool,
+    out_dtype: torch.dtype | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """量化注意力计算：INT8 QK → softmax → FP8 PV。
 
-    返回 (output, lse)。
+    返回 (output, lse)。out_dtype 为输出精度（默认 fp16，保持旧行为；
+    评审意见：不应 hardcode，调用方应传入与输入一致 dtype）。
     """
     # 统一为 HND [B, H, S, D] 计算
+    out_dtype = out_dtype or torch.float16
     if tensor_layout == "HND":
         q = q_int8  # [B, Hq, Sq, D]
         k = k_int8  # [B, Hk, Sk, D]
@@ -74,6 +84,8 @@ def _quantized_attention(
         # v_fp8 也广播
         v = v_fp8.repeat_interleave(reps, dim=1) if v_fp8.dim() >= 4 else v_fp8
         vs = v_scale.repeat_interleave(reps, dim=1) if v_scale.dim() >= 3 else v_scale
+        # vm（smooth_v 均值）与 v_scale 走相同的 GQA 广播，保持 Hk -> Hq 维对齐
+        vm = vm.repeat_interleave(reps, dim=1) if vm is not None and vm.dim() >= 3 else vm
     else:
         v = v_fp8
         vs = v_scale
@@ -133,7 +145,7 @@ def _quantized_attention(
     if tensor_layout == "NHD":
         o = o.transpose(1, 2).contiguous()  # [B, Sq, Hq, D]
 
-    return o.to(torch.float16), lse
+    return o.to(out_dtype), lse
 
 
 if not _kernel_ready():
@@ -162,6 +174,7 @@ def npu_attn(
     o_ref, lse = _quantized_attention(
         q_int8, k_int8, v_fp8, q_scale, k_scale, v_scale, vm,
         tensor_layout, is_causal, qk_quant_gran, sm_scale, return_lse,
+        out_dtype=o.dtype,
     )
 
     # 裁回 head_dim_og
