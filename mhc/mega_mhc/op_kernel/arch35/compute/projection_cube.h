@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_PROJECTION_CUBE_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_PROJECTION_CUBE_H
@@ -26,17 +30,14 @@ public:
         bL1_ = l1Base[tiling_->l1BOffsetElements];
 
         aL0_[0] = LocalTensor<float>(TPosition::A2, 0, tiling_->l0ASlotElements);
-        aL0_[1] = LocalTensor<float>(TPosition::A2,
-                                     static_cast<uint64_t>(tiling_->l0ASlotElements) * sizeof(float),
+        aL0_[1] = LocalTensor<float>(TPosition::A2, static_cast<uint64_t>(tiling_->l0ASlotElements) * sizeof(float),
                                      tiling_->l0ASlotElements);
         bL0_[0] = LocalTensor<float>(TPosition::B2, 0, tiling_->l0BSlotElements);
-        bL0_[1] = LocalTensor<float>(TPosition::B2,
-                                     static_cast<uint64_t>(tiling_->l0BSlotElements) * sizeof(float),
+        bL0_[1] = LocalTensor<float>(TPosition::B2, static_cast<uint64_t>(tiling_->l0BSlotElements) * sizeof(float),
                                      tiling_->l0BSlotElements);
         cL0_[0] = LocalTensor<float>(TPosition::CO1, 0, tiling_->l0CSlotElements);
-        cL0_[1] = LocalTensor<float>(TPosition::CO1,
-                                    static_cast<uint64_t>(tiling_->l0CSlotElements) * sizeof(float),
-                                    tiling_->l0CSlotElements);
+        cL0_[1] = LocalTensor<float>(TPosition::CO1, static_cast<uint64_t>(tiling_->l0CSlotElements) * sizeof(float),
+                                     tiling_->l0CSlotElements);
 
         SetFlag<HardEvent::MTE1_MTE2>(0);
         SetFlag<HardEvent::MTE1_MTE2>(1);
@@ -55,8 +56,8 @@ public:
     }
 
     /** Copy the planned [M,K] FP32 activation slice from GM staging into an L1 NZ slot. */
-    __aicore__ inline void LoadA(const GlobalTensor<float> &stageGm, uint64_t stageOffset, uint32_t mRows,
-                                 uint32_t nzM, uint32_t kCount, uint32_t slot)
+    __aicore__ inline void LoadA(const GlobalTensor<float> &stageGm, uint64_t stageOffset, uint32_t mRows, uint32_t nzM,
+                                 uint32_t kCount, uint32_t slot)
     {
         WaitFlag<HardEvent::MTE1_MTE2>(slot + 2);
         LocalTensor<float> destination = aL1_[slot * tiling_->l1ASlotElements];
@@ -81,8 +82,7 @@ public:
     }
 
     /** Copy the planned [Q,K] FP32 projection-weight slice into its transposed L1 NZ slot. */
-    __aicore__ inline void LoadB(const GlobalTensor<float> &phiGm, uint32_t kStart, uint32_t kCount,
-                                 uint32_t slot)
+    __aicore__ inline void LoadB(const GlobalTensor<float> &phiGm, uint32_t kStart, uint32_t kCount, uint32_t slot)
     {
         LocalTensor<float> destination = bL1_[slot * tiling_->l1BSlotElements];
         WaitFlag<HardEvent::MTE1_MTE2>(slot);
@@ -101,12 +101,11 @@ public:
     }
 
     /** Compute one host-sized L1 tile and Fixpipe the completed K partial to padded [group,M,NZ_N]. */
-    __aicore__ inline void ComputeL1Tile(uint32_t mRows, uint32_t nzM,
-                                         uint32_t l0FullLoops, uint32_t l0Tail, uint32_t tailLoadKStep,
-                                         uint32_t fullMmadLoops, uint32_t tailMmadLoops,
-                                         uint32_t tailMmadKStep, uint32_t tailMmadFinalKStep,
-                                         bool firstInPartial, bool lastInPartial, uint32_t l1Slot,
-                                         const GlobalTensor<float> &partialGm, uint64_t partialOffset)
+    __aicore__ inline void ComputeL1Tile(uint32_t mRows, uint32_t nzM, uint32_t l0FullLoops, uint32_t l0Tail,
+                                         uint32_t tailLoadKStep, uint32_t fullMmadLoops, uint32_t tailMmadLoops,
+                                         uint32_t tailMmadKStep, uint32_t tailMmadFinalKStep, bool firstInPartial,
+                                         bool lastInPartial, uint32_t l1Slot, const GlobalTensor<float> &partialGm,
+                                         uint64_t partialOffset)
     {
         if (firstInPartial) {
             WaitFlag<HardEvent::FIX_M>(cSlot_);
@@ -129,9 +128,10 @@ public:
             uint32_t innerKOffset = 0;
             for (uint32_t inner = 0; inner < madLoops; ++inner) {
                 const bool innerIsTail = l0IsTail && inner + 1 == madLoops && tailMmadLoops != 0;
-                const uint32_t madK = innerIsTail ? tailMmadFinalKStep :
-                    (projectionMode_ == 0 ? tiling_->fullMmadKStep :
-                                            (l0IsTail ? tailMmadKStep : tiling_->baseK));
+                const uint32_t madK =
+                    innerIsTail ?
+                        tailMmadFinalKStep :
+                        (projectionMode_ == 0 ? tiling_->fullMmadKStep : (l0IsTail ? tailMmadKStep : tiling_->baseK));
                 MmadParams params;
                 params.m = nzM;
                 params.n = tiling_->q;
@@ -142,8 +142,7 @@ public:
                 // M_FIX/FIX_M own L0C synchronization. Fixpipe may emit fewer M rows
                 // than the padded Mmad tile, so it must not leave unit flags occupied.
                 params.unitFlag = 0;
-                Mmad(cL0_[cSlot_], aL0_[l0Slot][innerKOffset * nzM],
-                     bL0_[l0Slot][innerKOffset * tiling_->nzN], params);
+                Mmad(cL0_[cSlot_], aL0_[l0Slot][innerKOffset * nzM], bL0_[l0Slot][innerKOffset * tiling_->nzN], params);
                 PipeBarrier<PIPE_M>();
                 innerKOffset += madK;
             }
@@ -238,6 +237,6 @@ private:
     uint32_t cSlot_ = 0;
 };
 
-}  // namespace AiInfraMegaMhc::Cube
+} // namespace AiInfraMegaMhc::Cube
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_PROJECTION_CUBE_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_PROJECTION_CUBE_H

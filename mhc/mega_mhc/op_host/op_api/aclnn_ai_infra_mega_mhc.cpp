@@ -1,6 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "aclnn_ai_infra_mega_mhc.h"
 #include "ai_infra_mega_mhc.h"
@@ -27,11 +32,10 @@ using Inputs = std::array<const aclTensor *, INPUT_COUNT>;
 using Outputs = std::array<const aclTensor *, OUTPUT_COUNT>;
 
 /** Validate one public ND tensor against its exact shape and dtype before making it contiguous. */
-bool CheckTensor(const aclTensor *tensor, const char *name,
-                 const std::vector<int64_t> &shape, op::DataType dtype)
+bool CheckTensor(const aclTensor *tensor, const char *name, const std::vector<int64_t> &shape, op::DataType dtype)
 {
-    if (tensor == nullptr || tensor->GetDataType() != dtype ||
-        op::IsPrivateFormat(tensor->GetViewFormat()) || tensor->GetViewShape().GetDimNum() != shape.size()) {
+    if (tensor == nullptr || tensor->GetDataType() != dtype || op::IsPrivateFormat(tensor->GetViewFormat()) ||
+        tensor->GetViewShape().GetDimNum() != shape.size()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must be non-null, public format, and have the expected rank/dtype", name);
         return false;
     }
@@ -45,8 +49,7 @@ bool CheckTensor(const aclTensor *tensor, const char *name,
 }
 
 /** Check N=4, D=2560/5120, optional Mid, and four output contracts; M is the product of leading axes. */
-aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs,
-                          double normEps, double hcEps, int64_t mode)
+aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double normEps, double hcEps, int64_t mode)
 {
     for (size_t i = 0; i < MID_INDEX; ++i) {
         CHECK_RET(inputs[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -56,8 +59,8 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs,
     }
     const float norm = static_cast<float>(normEps);
     const float hc = static_cast<float>(hcEps);
-    CHECK_RET(std::isfinite(norm) && norm > 0 && std::isfinite(hc) && hcEps >= 0 &&
-              (mode == 0 || mode == 1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(std::isfinite(norm) && norm > 0 && std::isfinite(hc) && hcEps >= 0 && (mode == 0 || mode == 1),
+              ACLNN_ERR_PARAM_INVALID);
     const auto &shape = inputs[0]->GetViewShape();
     const auto rank = shape.GetDimNum();
     CHECK_RET(rank == 2 || rank == 3, ACLNN_ERR_PARAM_INVALID);
@@ -81,12 +84,17 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs,
     resShape.push_back(HEADS);
     auto x2Shape = postShape;
     x2Shape.push_back(d);
-    const std::array<std::vector<int64_t>, INPUT_COUNT> shapes = {
-        xShape, x2Shape, postShape, resShape, std::vector<int64_t>{PROJECTION, HEADS * d},
-        std::vector<int64_t>{3}, std::vector<int64_t>{PROJECTION},
-        std::vector<int64_t>{d}, std::vector<int64_t>{d}, std::vector<int64_t>{HEADS * d}};
-    const char *names[] = {"hOut", "residual", "hPost", "hRes", "phi", "alpha", "bias",
-                           "gamma1", "gamma0", "gamma2"};
+    const std::array<std::vector<int64_t>, INPUT_COUNT> shapes = {xShape,
+                                                                  x2Shape,
+                                                                  postShape,
+                                                                  resShape,
+                                                                  std::vector<int64_t>{PROJECTION, HEADS * d},
+                                                                  std::vector<int64_t>{3},
+                                                                  std::vector<int64_t>{PROJECTION},
+                                                                  std::vector<int64_t>{d},
+                                                                  std::vector<int64_t>{d},
+                                                                  std::vector<int64_t>{HEADS * d}};
+    const char *names[] = {"hOut", "residual", "hPost", "hRes", "phi", "alpha", "bias", "gamma1", "gamma0", "gamma2"};
     for (size_t i = 0; i < INPUT_COUNT; ++i) {
         if (i == MID_INDEX && inputs[i] == nullptr) {
             continue;
@@ -98,14 +106,15 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs,
     const char *outputNames[] = {"hInPrime", "hPostNew", "hResNew", "x2Out"};
     for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
         CHECK_RET(CheckTensor(outputs[i], outputNames[i], shapes[outputSources[i]],
-                               i == 0 || i == 3 ? dtype : op::DataType::DT_FLOAT), ACLNN_ERR_PARAM_INVALID);
+                              i == 0 || i == 3 ? dtype : op::DataType::DT_FLOAT),
+                  ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
 }
 
 /** Materialize strided inputs, launch to contiguous outputs, then ViewCopy back to the caller's output views. */
-aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps, double hcEps,
-                           int64_t mode, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps, double hcEps, int64_t mode,
+                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     const auto status = CheckContract(inputs, outputs, normEps, hcEps, mode);
@@ -120,8 +129,8 @@ aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps
     }
     Outputs contiguousOutputs{};
     for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
-        contiguousOutputs[i] = owner->AllocTensor(outputs[i]->GetViewShape(), outputs[i]->GetDataType(),
-                                                  op::Format::FORMAT_ND);
+        contiguousOutputs[i] =
+            owner->AllocTensor(outputs[i]->GetViewShape(), outputs[i]->GetDataType(), op::Format::FORMAT_ND);
         CHECK_RET(contiguousOutputs[i] != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     const bool launched = AiInfraMegaMhcl0op::AiInfraMegaMhc(
@@ -140,18 +149,21 @@ aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps
 
 /** Build the execution graph and report its workspace; no kernel executes in this phase. */
 aclnnStatus aclnnAiInfraMegaMhcGetWorkspaceSize(const aclTensor *hOut, const aclTensor *residual,
-    const aclTensor *hPost, const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha,
-    const aclTensor *bias, const aclTensor *gamma1, const aclTensor *gamma0Optional,
-    const aclTensor *gamma2Optional, double normEps, double hcEps, int64_t computeMode,
-    const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut, const aclTensor *hResNewOut, const aclTensor *x2Out,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                const aclTensor *hPost, const aclTensor *hRes, const aclTensor *phi,
+                                                const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
+                                                const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
+                                                double normEps, double hcEps, int64_t computeMode,
+                                                const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut,
+                                                const aclTensor *hResNewOut, const aclTensor *x2Out,
+                                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnAiInfraMegaMhc,
-        DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
-               normEps, hcEps, computeMode), DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out));
+                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
+                          normEps, hcEps, computeMode),
+                   DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out));
     return BuildExecution({hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional},
-                           {hInPrimeOut, hPostNewOut, hResNewOut, x2Out},
-                           normEps, hcEps, computeMode, workspaceSize, executor);
+                          {hInPrimeOut, hPostNewOut, hResNewOut, x2Out}, normEps, hcEps, computeMode, workspaceSize,
+                          executor);
 }
 
 /** Execute the prepared graph on the caller's stream using its allocated workspace. */

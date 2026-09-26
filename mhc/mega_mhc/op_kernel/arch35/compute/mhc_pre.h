@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_PRE_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_PRE_H
@@ -16,8 +20,8 @@ namespace AiInfraMegaMhc::Compute {
  * COMPENSATE retains the compensated variant for numerical/performance comparisons.
  */
 template <typename T, bool COMPENSATE = false>
-__aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows,
-    uint32_t kCount, uint32_t stageStride, __ubuf__ float *stage, __ubuf__ float *squares)
+__aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, uint32_t kCount, uint32_t stageStride,
+                                             __ubuf__ float *stage, __ubuf__ float *squares)
 {
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     const uint16_t repeats = static_cast<uint16_t>((kCount + 63U) / 64U);
@@ -64,16 +68,15 @@ __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows,
     }
 }
 
-
 using namespace AscendC;
 
 /** Normalize a row batch in place in group zero.
  * Formula: z[r,q] = ordered_sum_g(P[g,r,q]) * rsqrt(ordered_sum_k(S[k,r])/K + eps).
  * RMS refinement and partial addition order match the scalar-row path exactly.
  */
-__aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__ float *rms,
-    uint32_t rows, uint32_t rowStride, uint32_t groupStride, uint32_t groups,
-    uint32_t rmsStride, uint32_t kGrid, uint32_t k, float eps)
+__aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__ float *rms, uint32_t rows,
+                                               uint32_t rowStride, uint32_t groupStride, uint32_t groups,
+                                               uint32_t rmsStride, uint32_t kGrid, uint32_t k, float eps)
 {
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     const uint16_t groupCount = static_cast<uint16_t>(groups);
@@ -117,9 +120,8 @@ __aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__
  * Inputs: normalizedProjection[0:4], alpha[0], bias[0:4].
  * Output: four FP32 hPre coefficients used by the later weighted input mix.
  */
-__simd_callee__ inline void ComputePreGates(__ubuf__ float *normalizedProjection,
-                                       __ubuf__ float *alpha, __ubuf__ float *bias,
-                                       float hcEps, __ubuf__ float *hPre)
+__simd_callee__ inline void ComputePreGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
+                                            __ubuf__ float *bias, float hcEps, __ubuf__ float *hPre)
 {
     Reg::RegTensor<float> projected;
     Reg::RegTensor<float> scale;
@@ -154,9 +156,8 @@ __simd_callee__ inline void ComputePreGates(__ubuf__ float *normalizedProjection
  * Inputs: normalizedProjection[4:8], alpha[1], bias[4:8].
  * Output: four FP32 hPostNew coefficients.
  */
-__simd_callee__ inline void ComputePostGates(__ubuf__ float *normalizedProjection,
-                                        __ubuf__ float *alpha, __ubuf__ float *bias,
-                                        __ubuf__ float *hPostNew)
+__simd_callee__ inline void ComputePostGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
+                                             __ubuf__ float *bias, __ubuf__ float *hPostNew)
 {
     Reg::RegTensor<float> projected;
     Reg::RegTensor<float> scale;
@@ -189,9 +190,8 @@ __simd_callee__ inline void ComputePostGates(__ubuf__ float *normalizedProjectio
  * Inputs: normalizedProjection[8:24], alpha[2], bias[8:24].
  * Output: sixteen FP32 values in row-major [4,4] order; Sinkhorn is not applied.
  */
-__simd_callee__ inline void ComputeResidualGates(__ubuf__ float *normalizedProjection,
-                                            __ubuf__ float *alpha, __ubuf__ float *bias,
-                                            __ubuf__ float *hResNew)
+__simd_callee__ inline void ComputeResidualGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
+                                                 __ubuf__ float *bias, __ubuf__ float *hResNew)
 {
     Reg::RegTensor<float> projected;
     Reg::RegTensor<float> scale;
@@ -212,9 +212,9 @@ __simd_callee__ inline void ComputeResidualGates(__ubuf__ float *normalizedProje
  * Formula: pre=sigmoid(a0*z[0:4]+b)+eps; post=2*sigmoid(a1*z[4:8]+b); res=a2*z[8:24]+b.
  * Output planes are [pre:4*alignedRows, post:4*alignedRows, res:16*alignedRows].
  */
-__aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ float *alpha,
-    __ubuf__ float *bias, float eps, uint32_t rows, uint32_t rowStride, uint32_t alignedRows,
-    __ubuf__ float *coefficients)
+__aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ float *alpha, __ubuf__ float *bias,
+                                       float eps, uint32_t rows, uint32_t rowStride, uint32_t alignedRows,
+                                       __ubuf__ float *coefficients)
 {
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     __VEC_SCOPE__
@@ -222,7 +222,8 @@ __aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ floa
         for (uint16_t row = 0; row < rowCount; ++row) {
             ComputePreGates(normalized + row * rowStride, alpha, bias, eps, coefficients + row * 4U);
             ComputePostGates(normalized + row * rowStride, alpha, bias, coefficients + alignedRows * 4U + row * 4U);
-            ComputeResidualGates(normalized + row * rowStride, alpha, bias, coefficients + alignedRows * 8U + row * 16U);
+            ComputeResidualGates(normalized + row * rowStride, alpha, bias,
+                                 coefficients + alignedRows * 8U + row * 16U);
         }
     }
 }
@@ -235,12 +236,10 @@ __aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ floa
  * Output: hIn is T[dCount]; sumSquares = Σ_d FP32(hIn[d])² after the Cast<T> rounding point.
  */
 template <typename T>
-__aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2,
-                                      uint32_t d, uint32_t dStart, uint32_t dCount,
-                                      __ubuf__ T *hIn, __ubuf__ float *sumSquares)
+__aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint32_t d, uint32_t dStart,
+                                      uint32_t dCount, __ubuf__ T *hIn, __ubuf__ float *sumSquares)
 {
-    const uint16_t repeatTimes = static_cast<uint16_t>(
-        (dCount + kRegCastVectorLanes - 1U) / kRegCastVectorLanes);
+    const uint16_t repeatTimes = static_cast<uint16_t>((dCount + kRegCastVectorLanes - 1U) / kRegCastVectorLanes);
     const uint16_t pairedRepeats = static_cast<uint16_t>(repeatTimes / 2U);
     const uint16_t tailStart = static_cast<uint16_t>(pairedRepeats * 2U);
     __VEC_SCOPE__
@@ -348,6 +347,6 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2,
     }
 }
 
-}  // namespace AiInfraMegaMhc::Compute
+} // namespace AiInfraMegaMhc::Compute
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_PRE_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_PRE_H

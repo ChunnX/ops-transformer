@@ -82,7 +82,8 @@ repos:
       - id: oat-check
         name: OAT Compliance Check
         entry: bash scripts/oat_check.sh
-        language: system
+        language: python
+        additional_dependencies: ["oat-py>=1.0.1"]
         require_serial: true
         pass_filenames: true
         types: [file]

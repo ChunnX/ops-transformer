@@ -1,22 +1,34 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "../../op_host/op_tiling/arch35/mega_mhc_cube_plan.h"
 #include "../../op_host/op_tiling/arch35/mega_mhc_memory_plan.h"
 
 using namespace optiling::mega_mhc;
-#define REQUIRE(condition) do { if (!(condition)) { return __LINE__; } } while (false)
+#define REQUIRE(condition) \
+    do { \
+        if (!(condition)) { \
+            return __LINE__; \
+        } \
+    } while (false)
 
 /** Exercise the actual host planner: exact M/K coverage, partial ownership, tails and physical capacities. */
 extern "C"
 #if defined(_WIN32)
-__declspec(dllexport)
+    __declspec(dllexport)
 #endif
-int run_plan_tests()
+    int
+    run_plan_tests()
 {
     const bool midModes[] = {false, true};
-    const uint64_t rows[] = {1, 2, 15, 16, 17, 31, 32, 33, 63, 257, 768, 1537, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};
+    const uint64_t rows[] = {1,   2,   15,   16,   17,   31,   32,   33,   63,
+                             257, 768, 1537, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};
     const uint64_t widths[] = {2560, 5120};
     const uint64_t coreCounts[] = {1, 7, 24, 32, 48};
     for (auto m : rows) {
@@ -52,10 +64,9 @@ int run_plan_tests()
                         REQUIRE(p.l1KFullLoops >= producerRows);
                         const uint32_t tickStride = p.l1KFullLoops / producerRows;
                         REQUIRE(1U + (producerRows - 1U) * tickStride < p.l1KFullLoops);
-                        const uint64_t producerUb = UbAllocation(2ULL * d * 2U) +
-                            UbAllocation(2ULL * request.k * 2U) + UbAllocation(d * 2U) +
-                            UbAllocation(d * 4U) + UbAllocation(256U * 4U) +
-                            UbAllocation(8U) + UbAllocation(32U);
+                        const uint64_t producerUb = UbAllocation(2ULL * d * 2U) + UbAllocation(2ULL * request.k * 2U) +
+                                                    UbAllocation(d * 2U) + UbAllocation(d * 4U) +
+                                                    UbAllocation(256U * 4U) + UbAllocation(8U) + UbAllocation(32U);
                         REQUIRE(producerUb + ProjectionUbBytes(request.k, p.l1K, p.mTile / 2U) <= 248U * 1024U);
                     }
                     REQUIRE((uint64_t(p.mWaveCount) - 1) * p.rowsPerWave + p.lastWaveRows == m);
@@ -84,7 +95,8 @@ int run_plan_tests()
                         REQUIRE(ProducerUbBytes(d, mid) <= 248U * 1024U);
                         const uint32_t reduceRows = ReductionRows(p.mTile / 2);
                         REQUIRE(reduceRows > 0 && reduceRows <= p.mTile / 2);
-                        REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <= 248U * 1024U);
+                        REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <=
+                                248U * 1024U);
                         REQUIRE(ProjectionUbBytes(4 * d, p.l1K, p.mTile / 2) <= 248U * 1024U);
                     }
                 }
@@ -99,5 +111,8 @@ int run_plan_tests()
 
 #ifndef MEGA_MHC_TEST_DLL
 /** Return zero only when every independent plan invariant passed. */
-int main() { return run_plan_tests(); }
+int main()
+{
+    return run_plan_tests();
+}
 #endif

@@ -30,24 +30,23 @@ OP_TYPE_REGISTER(AiInfraMegaMhc);
 
 /** Launch RMS0 -> Post -> optional Mid -> Pre -> RMS1 with supplied contiguous output views. */
 bool AiInfraMegaMhc(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
-    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps, int64_t computeMode,
-    const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut, const aclTensor *hResNewOut, const aclTensor *x2Out,
-    aclOpExecutor *executor)
+                    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
+                    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps,
+                    int64_t computeMode, const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut,
+                    const aclTensor *hResNewOut, const aclTensor *x2Out, aclOpExecutor *executor)
 {
     L0_DFX(AiInfraMegaMhc, hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
-        normEps, hcEps, computeMode, hInPrimeOut, hPostNewOut, hResNewOut, x2Out);
-    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(AiInfraMegaMhc,
-        OP_INPUT(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional),
+           normEps, hcEps, computeMode, hInPrimeOut, hPostNewOut, hResNewOut, x2Out);
+    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
+        AiInfraMegaMhc, OP_INPUT(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional),
         OP_OUTPUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out),
         OP_ATTR(static_cast<float>(normEps), static_cast<float>(hcEps), computeMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(static_cast<int32_t>(ret),
-            "AddToLauncherList result invalid: actual=%d, expected=%d(ACLNN_SUCCESS)", static_cast<int32_t>(ret),
-            static_cast<int32_t>(ACLNN_SUCCESS));
+        OP_LOGE(static_cast<int32_t>(ret), "AddToLauncherList result invalid: actual=%d, expected=%d(ACLNN_SUCCESS)",
+                static_cast<int32_t>(ret), static_cast<int32_t>(ACLNN_SUCCESS));
         return false;
     }
     return true;
 }
 
-}  // namespace AiInfraMegaMhcl0op
+} // namespace AiInfraMegaMhcl0op

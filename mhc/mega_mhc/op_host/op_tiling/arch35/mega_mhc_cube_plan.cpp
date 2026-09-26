@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "mega_mhc_cube_plan.h"
 
@@ -49,7 +53,7 @@ bool FitsL1(uint64_t m, uint64_t q, uint64_t kL1, const CubePlanRequest &request
            kPingPong * AlignUp(q, kNzNAlign) * kL1 * kFp32Bytes <= request.l1BBytes;
 }
 
-}  // namespace
+} // namespace
 
 /*
  * Formula/plan: for M>=3072, use M96 (four-op) or M192 (five-op); otherwise M32.
@@ -62,9 +66,9 @@ bool FitsL1(uint64_t m, uint64_t q, uint64_t kL1, const CubePlanRequest &request
  */
 bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
 {
-    if (request.rows == 0 || request.k == 0 || request.q == 0 || request.aicCount == 0 ||
-        request.aivCount < 2 || request.l1ABytes == 0 || request.l1BBytes == 0 || request.l0ABytes == 0 ||
-        request.l0BBytes == 0 || request.l0CBytes < kFp32Bytes * 32 * 32) {
+    if (request.rows == 0 || request.k == 0 || request.q == 0 || request.aicCount == 0 || request.aivCount < 2 ||
+        request.l1ABytes == 0 || request.l1BBytes == 0 || request.l0ABytes == 0 || request.l0BBytes == 0 ||
+        request.l0CBytes < kFp32Bytes * 32 * 32) {
         return false;
     }
 
@@ -77,9 +81,10 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
     const uint64_t largeMTile = request.preferWideTile ? kFiveCubeMTile : kLargeCubeMTile;
-    const uint64_t selectedMTile = request.wavePipeline ? 128U :
-        (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
-    const uint64_t selectedMGrid = std::min(request.wavePipeline ? active / 4U : active, CeilDiv(request.rows, selectedMTile));
+    const uint64_t selectedMTile =
+        request.wavePipeline ? 128U : (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
+    const uint64_t selectedMGrid =
+        std::min(request.wavePipeline ? active / 4U : active, CeilDiv(request.rows, selectedMTile));
     const uint64_t kBlocks = CeilDiv(request.k, kKAlign);
     uint64_t selectedKGrid = std::min(active / selectedMGrid, kBlocks);
     if (selectedKGrid == 0) {
@@ -94,9 +99,9 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t selectedActive = selectedMGrid * selectedKGrid;
     const uint64_t rowsPerWave = selectedMGrid * selectedMTile;
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
-    const uint64_t l1KMax = std::min<uint64_t>({request.wavePipeline ? 128U : 1024U,
-                                                request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
-                                                request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
+    const uint64_t l1KMax =
+        std::min<uint64_t>({request.wavePipeline ? 128U : 1024U, request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
+                            request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
     // A projection partial must fit wholly inside one L1 transfer. Small K
     // splits can be smaller than the otherwise optimal 1024-element L1 tile.
     uint64_t l1K = AlignDown(std::min(l1KMax, partialGroupK), kL1KAlign);
@@ -118,9 +123,8 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
         }
     }
 
-    const uint64_t baseM = AlignDown(std::min<uint64_t>(selectedMTile,
-                                                        request.l0CBytes / (2 * 32 * kFp32Bytes)),
-                                     kMAlign);
+    const uint64_t baseM =
+        AlignDown(std::min<uint64_t>(selectedMTile, request.l0CBytes / (2 * 32 * kFp32Bytes)), kMAlign);
     constexpr uint64_t baseN = 32;
     // Both L0C slots hold a complete M tile. Reject a smaller
     // hardware footprint instead of silently introducing an unplanned M loop.
@@ -165,15 +169,16 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t fullMmadKStep = request.mode == ProjectionMode::FP32 ? kL0KAlign : baseK;
     const uint64_t l0TailMmadKStep = request.mode == ProjectionMode::FP32 ? kL0KAlign : l0Tail;
     const uint64_t tailL1TailMmadKStep = request.mode == ProjectionMode::FP32 ? kL0KAlign : tailL1L0Tail;
-    const uint64_t lastCoreTailMmadKStep = request.mode == ProjectionMode::FP32 ? kL0KAlign :
-                                          lastCoreTailL1L0Tail;
-    const uint64_t l0TailMmadFinalKStep = request.mode == ProjectionMode::FP32 ?
-        (l0Tail % kL0KAlign == 0 ? kL0KAlign : l0Tail % kL0KAlign) : l0Tail;
-    const uint64_t tailL1TailMmadFinalKStep = request.mode == ProjectionMode::FP32 ?
-        (tailL1L0Tail % kL0KAlign == 0 ? kL0KAlign : tailL1L0Tail % kL0KAlign) : tailL1L0Tail;
-    const uint64_t lastCoreTailMmadFinalKStep = request.mode == ProjectionMode::FP32 ?
-        (lastCoreTailL1L0Tail % kL0KAlign == 0 ? kL0KAlign : lastCoreTailL1L0Tail % kL0KAlign) :
-        lastCoreTailL1L0Tail;
+    const uint64_t lastCoreTailMmadKStep = request.mode == ProjectionMode::FP32 ? kL0KAlign : lastCoreTailL1L0Tail;
+    const uint64_t l0TailMmadFinalKStep =
+        request.mode == ProjectionMode::FP32 ? (l0Tail % kL0KAlign == 0 ? kL0KAlign : l0Tail % kL0KAlign) : l0Tail;
+    const uint64_t tailL1TailMmadFinalKStep =
+        request.mode == ProjectionMode::FP32 ? (tailL1L0Tail % kL0KAlign == 0 ? kL0KAlign : tailL1L0Tail % kL0KAlign) :
+                                               tailL1L0Tail;
+    const uint64_t lastCoreTailMmadFinalKStep =
+        request.mode == ProjectionMode::FP32 ?
+            (lastCoreTailL1L0Tail % kL0KAlign == 0 ? kL0KAlign : lastCoreTailL1L0Tail % kL0KAlign) :
+            lastCoreTailL1L0Tail;
 
     plan.activeAic = static_cast<uint32_t>(selectedActive);
     plan.activeAiv = static_cast<uint32_t>(2 * selectedActive);
@@ -217,22 +222,21 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // the first columns and reserve the full 32-column destination stride.
     plan.fixpipeRowStride = static_cast<uint32_t>(nzN);
     plan.fullMmadKStep = static_cast<uint32_t>(fullMmadKStep);
-    plan.fullMmadKLoopCount = static_cast<uint32_t>(request.mode == ProjectionMode::FP32 ?
-                                                        baseK / kL0KAlign : 1);
+    plan.fullMmadKLoopCount = static_cast<uint32_t>(request.mode == ProjectionMode::FP32 ? baseK / kL0KAlign : 1);
     plan.l0TailMmadKStep = static_cast<uint32_t>(l0TailMmadKStep);
-    plan.l0TailMmadKLoopCount = static_cast<uint32_t>(l0Tail == 0 ? 0 :
-        (request.mode == ProjectionMode::FP32 ? CeilDiv(l0Tail, kL0KAlign) : 1));
+    plan.l0TailMmadKLoopCount = static_cast<uint32_t>(
+        l0Tail == 0 ? 0 : (request.mode == ProjectionMode::FP32 ? CeilDiv(l0Tail, kL0KAlign) : 1));
     plan.l0TailMmadFinalKStep = static_cast<uint32_t>(l0Tail == 0 ? 0 : l0TailMmadFinalKStep);
     plan.tailL1TailMmadKStep = static_cast<uint32_t>(tailL1TailMmadKStep);
-    plan.tailL1TailMmadKLoopCount = static_cast<uint32_t>(tailL1L0Tail == 0 ? 0 :
-        (request.mode == ProjectionMode::FP32 ? CeilDiv(tailL1L0Tail, kL0KAlign) : 1));
-    plan.tailL1TailMmadFinalKStep = static_cast<uint32_t>(tailL1L0Tail == 0 ? 0 :
-        tailL1TailMmadFinalKStep);
+    plan.tailL1TailMmadKLoopCount = static_cast<uint32_t>(
+        tailL1L0Tail == 0 ? 0 : (request.mode == ProjectionMode::FP32 ? CeilDiv(tailL1L0Tail, kL0KAlign) : 1));
+    plan.tailL1TailMmadFinalKStep = static_cast<uint32_t>(tailL1L0Tail == 0 ? 0 : tailL1TailMmadFinalKStep);
     plan.lastCoreTailMmadKStep = static_cast<uint32_t>(lastCoreTailMmadKStep);
-    plan.lastCoreTailMmadKLoopCount = static_cast<uint32_t>(lastCoreTailL1L0Tail == 0 ? 0 :
-        (request.mode == ProjectionMode::FP32 ? CeilDiv(lastCoreTailL1L0Tail, kL0KAlign) : 1));
-    plan.lastCoreTailMmadFinalKStep = static_cast<uint32_t>(lastCoreTailL1L0Tail == 0 ? 0 :
-        lastCoreTailMmadFinalKStep);
+    plan.lastCoreTailMmadKLoopCount = static_cast<uint32_t>(
+        lastCoreTailL1L0Tail == 0 ?
+            0 :
+            (request.mode == ProjectionMode::FP32 ? CeilDiv(lastCoreTailL1L0Tail, kL0KAlign) : 1));
+    plan.lastCoreTailMmadFinalKStep = static_cast<uint32_t>(lastCoreTailL1L0Tail == 0 ? 0 : lastCoreTailMmadFinalKStep);
     plan.l0KLoops = static_cast<uint32_t>(l0FullLoops);
     plan.l0KTail = static_cast<uint32_t>(l0Tail);
     plan.tailL1L0FullLoops = static_cast<uint32_t>(tailL1L0FullLoops);
@@ -244,4 +248,4 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     return true;
 }
 
-}  // namespace optiling::mega_mhc
+} // namespace optiling::mega_mhc

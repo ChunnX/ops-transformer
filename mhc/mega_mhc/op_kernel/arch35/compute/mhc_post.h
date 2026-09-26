@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_POST_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_POST_H
@@ -16,11 +20,11 @@ using namespace AscendC;
  * Keep four independent Mul/Add chains so the Post stage retains its original rounding order.
  */
 template <typename T>
-__simd_callee__ inline void AccumulatePostSource(__ubuf__ T *source,
-    Reg::RegTensor<float> &w0, Reg::RegTensor<float> &w1,
-    Reg::RegTensor<float> &w2, Reg::RegTensor<float> &w3,
-    Reg::RegTensor<float> &sum0, Reg::RegTensor<float> &sum1,
-    Reg::RegTensor<float> &sum2, Reg::RegTensor<float> &sum3, Reg::MaskReg &mask)
+__simd_callee__ inline void AccumulatePostSource(__ubuf__ T *source, Reg::RegTensor<float> &w0,
+                                                 Reg::RegTensor<float> &w1, Reg::RegTensor<float> &w2,
+                                                 Reg::RegTensor<float> &w3, Reg::RegTensor<float> &sum0,
+                                                 Reg::RegTensor<float> &sum1, Reg::RegTensor<float> &sum2,
+                                                 Reg::RegTensor<float> &sum3, Reg::MaskReg &mask)
 {
     Reg::RegTensor<T> input;
     Reg::RegTensor<float> value;
@@ -39,8 +43,7 @@ __simd_callee__ inline void AccumulatePostSource(__ubuf__ T *source,
 
 /** Store one rounded Post head: output[d] = Cast<T>(sum[d]) for the active lanes. */
 template <typename T>
-__simd_callee__ inline void StorePostHead(__ubuf__ T *output,
-    Reg::RegTensor<float> &sum, Reg::MaskReg &mask)
+__simd_callee__ inline void StorePostHead(__ubuf__ T *output, Reg::RegTensor<float> &sum, Reg::MaskReg &mask)
 {
     Reg::RegTensor<T> result;
     Reg::Cast<T, float, kCastFloatToInput>(result, sum, mask);
@@ -49,8 +52,7 @@ __simd_callee__ inline void StorePostHead(__ubuf__ T *output,
 
 /** Store Cast<T>(sum) and reuse its consumed register for FP32(Cast<T>(sum)), the RMSMid input. */
 template <typename T>
-__simd_callee__ inline void StorePostHeadRounded(__ubuf__ T *output,
-    Reg::RegTensor<float> &sum, Reg::MaskReg &mask)
+__simd_callee__ inline void StorePostHeadRounded(__ubuf__ T *output, Reg::RegTensor<float> &sum, Reg::MaskReg &mask)
 {
     Reg::RegTensor<T> result;
     Reg::Cast<T, float, kCastFloatToInput>(result, sum, mask);
@@ -66,9 +68,9 @@ __simd_callee__ inline void StorePostHeadRounded(__ubuf__ T *output,
  * FP16/BF16 share this order and retain Cast<T> before squaring.
  */
 template <typename T, bool ACCUMULATE_SQUARES = false>
-__aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual,
-    __ubuf__ float *hPost, __ubuf__ float *hRes, __ubuf__ T *output,
-    uint32_t rows, uint32_t d, uint32_t dStart, uint32_t dCount, __ubuf__ float *sumSquares = nullptr)
+__aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual, __ubuf__ float *hPost,
+                                            __ubuf__ float *hRes, __ubuf__ T *output, uint32_t rows, uint32_t d,
+                                            uint32_t dStart, uint32_t dCount, __ubuf__ float *sumSquares = nullptr)
 {
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     const uint16_t repeatTimes = static_cast<uint16_t>((dCount + 63U) / 64U);
@@ -136,14 +138,14 @@ __aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual
                 Reg::Mul(sum2, value, post2, mask);
                 Reg::RegTensor<float> sum3;
                 Reg::Mul(sum3, value, post3, mask);
-                AccumulatePostSource<T>(residual + (row * 4U + 0U) * d + column,
-                    w00, w01, w02, w03, sum0, sum1, sum2, sum3, mask);
-                AccumulatePostSource<T>(residual + (row * 4U + 1U) * d + column,
-                    w10, w11, w12, w13, sum0, sum1, sum2, sum3, mask);
-                AccumulatePostSource<T>(residual + (row * 4U + 2U) * d + column,
-                    w20, w21, w22, w23, sum0, sum1, sum2, sum3, mask);
-                AccumulatePostSource<T>(residual + (row * 4U + 3U) * d + column,
-                    w30, w31, w32, w33, sum0, sum1, sum2, sum3, mask);
+                AccumulatePostSource<T>(residual + (row * 4U + 0U) * d + column, w00, w01, w02, w03, sum0, sum1, sum2,
+                                        sum3, mask);
+                AccumulatePostSource<T>(residual + (row * 4U + 1U) * d + column, w10, w11, w12, w13, sum0, sum1, sum2,
+                                        sum3, mask);
+                AccumulatePostSource<T>(residual + (row * 4U + 2U) * d + column, w20, w21, w22, w23, sum0, sum1, sum2,
+                                        sum3, mask);
+                AccumulatePostSource<T>(residual + (row * 4U + 3U) * d + column, w30, w31, w32, w33, sum0, sum1, sum2,
+                                        sum3, mask);
                 if constexpr (ACCUMULATE_SQUARES) {
                     StorePostHeadRounded<T>(output + (row * 4U + 0U) * d + column, sum0, mask);
                     Reg::Mul(sum0, sum0, sum0, fullMask);
@@ -182,11 +184,9 @@ __aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual
  * Ownership: caller owns buffers, block mapping, and publication to x2 output/Cube staging.
  */
 template <typename T>
-__aicore__ inline void ComputePostTile(__ubuf__ T *x1, __ubuf__ T *residual,
-                                      __ubuf__ float *hPost, __ubuf__ float *hRes,
-                                      __ubuf__ T *output, uint32_t rows, uint32_t d,
-                                      uint32_t headStart, uint32_t headCount,
-                                      uint32_t dStart, uint32_t dCount)
+__aicore__ inline void ComputePostTile(__ubuf__ T *x1, __ubuf__ T *residual, __ubuf__ float *hPost,
+                                       __ubuf__ float *hRes, __ubuf__ T *output, uint32_t rows, uint32_t d,
+                                       uint32_t headStart, uint32_t headCount, uint32_t dStart, uint32_t dCount)
 {
     if (headStart == 0U && headCount == 4U) {
         ComputePostFourHeads<T>(x1, residual, hPost, hRes, output, rows, d, dStart, dCount);
@@ -221,23 +221,19 @@ __aicore__ inline void ComputePostTile(__ubuf__ T *x1, __ubuf__ T *residual,
                     Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x1 + row * d + column);
                     Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                     Reg::Mul(sum, value, postWeight, mask);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input,
-                        residual + (row * 4U + 0U) * d + column);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, residual + (row * 4U + 0U) * d + column);
                     Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                     Reg::Mul(product, value, weight0, mask);
                     Reg::Add(sum, sum, product, mask);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input,
-                        residual + (row * 4U + 1U) * d + column);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, residual + (row * 4U + 1U) * d + column);
                     Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                     Reg::Mul(product, value, weight1, mask);
                     Reg::Add(sum, sum, product, mask);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input,
-                        residual + (row * 4U + 2U) * d + column);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, residual + (row * 4U + 2U) * d + column);
                     Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                     Reg::Mul(product, value, weight2, mask);
                     Reg::Add(sum, sum, product, mask);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input,
-                        residual + (row * 4U + 3U) * d + column);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, residual + (row * 4U + 3U) * d + column);
                     Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                     Reg::Mul(product, value, weight3, mask);
                     Reg::Add(sum, sum, product, mask);
@@ -248,6 +244,6 @@ __aicore__ inline void ComputePostTile(__ubuf__ T *x1, __ubuf__ T *residual,
     }
 }
 
-}  // namespace AiInfraMegaMhc::Compute
+} // namespace AiInfraMegaMhc::Compute
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_POST_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_POST_H

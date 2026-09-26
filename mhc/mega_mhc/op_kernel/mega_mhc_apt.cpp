@@ -1,6 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This file is distributed under the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 
@@ -18,11 +23,10 @@ using namespace AiInfraMegaMhc;
  * Five-op: complete RMS0/Post/Mid -> barrier -> m-k projection -> barrier.
  * Both variants reuse the same ordered Pre/RMS1 compute routines.
  */
-__global__ __aicore__ void ai_infra_mega_mhc(
-    GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
-    GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR gamma0, GM_ADDR gamma2,
-    GM_ADDR hInPrime, GM_ADDR hPostNew, GM_ADDR hResNew, GM_ADDR x2Out,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
+                                             GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR gamma0,
+                                             GM_ADDR gamma2, GM_ADDR hInPrime, GM_ADDR hPostNew, GM_ADDR hResNew,
+                                             GM_ADDR x2Out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     GET_TILING_DATA(tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -64,4 +68,4 @@ __global__ __aicore__ void ai_infra_mega_mhc(
     epiloguePipe.Destroy();
 }
 
-#endif  // defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#endif // defined(__CCE_AICORE__) && __CCE_AICORE__ == 310

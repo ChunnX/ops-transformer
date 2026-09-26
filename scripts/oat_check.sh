@@ -31,12 +31,18 @@ set -e
 # 0. Locate Python interpreter
 # ---------------------------------------------------------------------------
 _PYTHON=""
-for _candidate in python3 python py; do
+for _candidate in python.exe python3 python py; do
     if command -v "$_candidate" >/dev/null 2>&1; then
-        _VER=$("$_candidate" -c "import sys; print(sys.version_info >= (3,7))" 2>/dev/null || echo "False")
+        _VER=$("$_candidate" -c "import sys; print(sys.version_info >= (3,7))" 2>/dev/null | tr -d '\r' || echo "False")
         if [ "$_VER" = "True" ]; then
-            _PYTHON="$_candidate"
-            break
+            # Git Bash may provide python3 without pip while the user Python has it.
+            if [ -z "$_PYTHON" ]; then
+                _PYTHON="$_candidate"
+            fi
+            if "$_candidate" -m pip --version >/dev/null 2>&1; then
+                _PYTHON="$_candidate"
+                break
+            fi
         fi
     fi
 done
@@ -50,7 +56,7 @@ fi
 # ---------------------------------------------------------------------------
 # 1. Ensure oat-py is installed (serialized via flock to prevent parallel pip conflicts)
 # ---------------------------------------------------------------------------
-_OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
+_OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null | tr -d '\r' || echo "missing")
 if [ "$_OAT_OK" != "ok" ]; then
     echo "[OAT] oat-py not found. Installing oat-py>=1.0.1 ..."
     _LOCK_FILE="/tmp/oat_pip_install.lock"
@@ -59,7 +65,7 @@ if [ "$_OAT_OK" != "ok" ]; then
     if command -v flock >/dev/null 2>&1; then
         (
             flock -w 120 9
-            _RECHECK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
+            _RECHECK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null | tr -d '\r' || echo "missing")
             if [ "$_RECHECK" != "ok" ]; then
                 "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1"
             fi
@@ -67,7 +73,7 @@ if [ "$_OAT_OK" != "ok" ]; then
     else
         "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1"
     fi
-    _OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
+    _OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null | tr -d '\r' || echo "missing")
     if [ "$_OAT_OK" != "ok" ]; then
         echo "[OAT] [WARNING] Failed to install oat-py. Please run: pip install oat-py>=1.0.1"
         echo "[OAT] Skipping OAT check, continuing commit..."
@@ -251,16 +257,37 @@ echo "[OAT] Checking $FILE_COUNT staged file(s)..."
 # ---------------------------------------------------------------------------
 # 4. Ensure report directories exist
 # ---------------------------------------------------------------------------
+if command -v wslpath >/dev/null 2>&1 && [ "${_PYTHON##*.}" = "exe" ]; then
+    # A Windows pre-commit venv can run from WSL, but oat needs Windows paths.
+    OAT_REPORT_DIR="$REPO_ROOT/oat_reports/.tmp_$$"
+    _WINDOWS_OAT=1
+fi
 mkdir -p "$OAT_REPORT_DIR"
 mkdir -p "$OAT_RESULT_DIR"
 
 # ---------------------------------------------------------------------------
 # 5. Build oat command — use OAT.xml if present in repo root
 # ---------------------------------------------------------------------------
-_OAT_BASE_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $OAT_REPORT_DIR -n $REPO_NAME -w 1"
+_OAT_SOURCE="$REPO_ROOT"
+_OAT_REPORT="$OAT_REPORT_DIR"
+if [ "${_WINDOWS_OAT:-0}" -eq 1 ]; then
+    _OAT_SOURCE=$(wslpath -m "$REPO_ROOT")
+    _OAT_REPORT=$(wslpath -m "$OAT_REPORT_DIR")
+    _WINDOWS_FILES=""
+    _OLD_IFS="$IFS"
+    IFS=,
+    for _f in $FILE_LIST; do
+        _wf=$(wslpath -m "$_f")
+        if [ -z "$_WINDOWS_FILES" ]; then _WINDOWS_FILES="$_wf"; else _WINDOWS_FILES="$_WINDOWS_FILES,$_wf"; fi
+    done
+    IFS="$_OLD_IFS"
+    FILE_LIST="$_WINDOWS_FILES"
+fi
+_OAT_BASE_CMD="$_PYTHON -m oat -mode s -s $_OAT_SOURCE -r $_OAT_REPORT -n $REPO_NAME -w 1"
 
 _OAT_XML="$REPO_ROOT/OAT.xml"
 if [ -f "$_OAT_XML" ]; then
+    if [ "${_WINDOWS_OAT:-0}" -eq 1 ]; then _OAT_XML=$(wslpath -m "$_OAT_XML"); fi
     _OAT_BASE_CMD="$_OAT_BASE_CMD -oatconfig $_OAT_XML"
 fi
 

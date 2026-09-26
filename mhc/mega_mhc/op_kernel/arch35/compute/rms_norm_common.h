@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_COMMON_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_COMMON_H
@@ -20,25 +24,24 @@ __simd_callee__ inline Reg::MaskReg MaskForCount(uint32_t count)
     return Reg::UpdateMask<float>(count);
 }
 
-constexpr Reg::CastTrait kCastInputToFloat = {
-    Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr Reg::CastTrait kCastFloatToInput = {
-    Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+constexpr Reg::CastTrait kCastInputToFloat = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                              RoundMode::UNKNOWN};
+constexpr Reg::CastTrait kCastFloatToInput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                              RoundMode::CAST_RINT};
 
 /**
  * What: add the squared FP32 values of one aligned UB range to an FP32 scalar.
  * Formula: sumOut = (INITIALIZE ? 0 : sumOut) + Σ_i FP32(x[i])² over [0, rowLength).
- * Inputs: inputRow is input type T; rowLength is the valid element count; INITIALIZE selects first range at compile time.
- * Output: one FP32 scalar at sumOut. Tail lanes are masked and excluded.
- * Precision: both input types use two independent FP32 chains (even/odd 64-element blocks), then sum the chains.
- * Formula: sumOut = sum_even(x*x) + sum_odd(x*x); only input/output casts depend on T.
+ * Inputs: inputRow is input type T; rowLength is the valid element count; INITIALIZE selects first range at compile
+ * time. Output: one FP32 scalar at sumOut. Tail lanes are masked and excluded. Precision: both input types use two
+ * independent FP32 chains (even/odd 64-element blocks), then sum the chains. Formula: sumOut = sum_even(x*x) +
+ * sum_odd(x*x); only input/output casts depend on T.
  */
 template <typename T, bool INITIALIZE>
-__aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t rowLength,
-                                              __ubuf__ float *sumOut)
+__aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t rowLength, __ubuf__ float *sumOut)
 {
-    const uint16_t repeatTimes = static_cast<uint16_t>(
-        (rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
+    const uint16_t repeatTimes =
+        static_cast<uint16_t>((rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
     const uint16_t pairedRepeats = static_cast<uint16_t>(repeatTimes / 2U);
     const uint16_t tailStart = static_cast<uint16_t>(pairedRepeats * 2U);
     __VEC_SCOPE__
@@ -101,8 +104,7 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
  * Output: one FP32 scalar at sumOut, initialized to zero before accumulation.
  */
 template <typename T>
-__aicore__ inline void AccumulateRowSquares(__ubuf__ T *inputRow, uint32_t rowLength,
-                                           __ubuf__ float *sumOut)
+__aicore__ inline void AccumulateRowSquares(__ubuf__ T *inputRow, uint32_t rowLength, __ubuf__ float *sumOut)
 {
     AccumulateValuesSquares<T, true>(inputRow, rowLength, sumOut);
 }
@@ -176,12 +178,11 @@ __aicore__ inline void FinalizeInverseRms(__ubuf__ float *sumSquares, uint32_t r
  * Output: outputRow is T. This is the explicit stage rounding point for RMSNorm.
  */
 template <typename T>
-__aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float *gammaRow,
-                                           uint32_t rowLength, __ubuf__ float *invRms,
-                                           __ubuf__ T *outputRow)
+__aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float *gammaRow, uint32_t rowLength,
+                                            __ubuf__ float *invRms, __ubuf__ T *outputRow)
 {
-    const uint16_t repeatTimes = static_cast<uint16_t>(
-        (rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
+    const uint16_t repeatTimes =
+        static_cast<uint16_t>((rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> input;
@@ -206,6 +207,6 @@ __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float
     }
 }
 
-}  // namespace AiInfraMegaMhc::Compute
+} // namespace AiInfraMegaMhc::Compute
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_COMMON_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_COMMON_H

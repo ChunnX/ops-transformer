@@ -1,6 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <torch/extension.h>
 #include <c10/core/DeviceGuard.h>
@@ -10,10 +15,10 @@
 namespace op_api {
 /** Allocate the four public outputs on h_out.device and dispatch the ACLNN forward operation. */
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
-    const at::Tensor &h_out, const at::Tensor &residual, const at::Tensor &h_post,
-    const at::Tensor &h_res, const at::Tensor &phi, const at::Tensor &alpha,
-    const at::Tensor &bias, const at::Tensor &gamma_1, const at::Tensor &gamma_0,
-    const c10::optional<at::Tensor> &gamma_2, double norm_eps, double hc_eps, int64_t compute_mode)
+    const at::Tensor &h_out, const at::Tensor &residual, const at::Tensor &h_post, const at::Tensor &h_res,
+    const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias, const at::Tensor &gamma_1,
+    const at::Tensor &gamma_0, const c10::optional<at::Tensor> &gamma_2, double norm_eps, double hc_eps,
+    int64_t compute_mode)
 {
     constexpr int64_t HEADS = 4;
     constexpr int64_t PROJECTION = 24;
@@ -42,8 +47,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
     auto x2_shape = post_shape;
     x2_shape.push_back(d);
     // ACLNN repeats the contract for callers bypassing this Torch wrapper.
-    const auto check = [&](const at::Tensor &value, const char *name,
-                           const std::vector<int64_t> &shape, at::ScalarType dtype) {
+    const auto check = [&](const at::Tensor &value, const char *name, const std::vector<int64_t> &shape,
+                           at::ScalarType dtype) {
         TORCH_CHECK(value.defined(), name, " is required");
         TORCH_CHECK(value.device() == h_out.device(), name, " must be on h_out.device");
         TORCH_CHECK(value.scalar_type() == dtype, name, " has incorrect dtype");
@@ -67,9 +72,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
         h_post_new = at::empty(post_shape, h_out.options().dtype(at::kFloat));
         h_res_new = at::empty(res_shape, h_out.options().dtype(at::kFloat));
         x_2_out = at::empty(x2_shape, h_out.options());
-        ACLNN_CMD(aclnnAiInfraMegaMhc, h_out, residual, h_post, h_res, phi, alpha, bias,
-                  gamma_1, gamma_0, gamma_2, norm_eps, hc_eps, compute_mode,
-                  h_in_prime, h_post_new, h_res_new, x_2_out);
+        ACLNN_CMD(aclnnAiInfraMegaMhc, h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0, gamma_2,
+                  norm_eps, hc_eps, compute_mode, h_in_prime, h_post_new, h_res_new, x_2_out);
     }
     return {h_in_prime, h_post_new, h_res_new, x_2_out};
 }

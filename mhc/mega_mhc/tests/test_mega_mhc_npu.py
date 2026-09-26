@@ -1,10 +1,18 @@
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# Licensed under the CANN Open Software License Agreement Version 2.0.
-"""Hardware acceptance tests. Run after installing the operator and Torch package.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
+"""Hardware acceptance tests. Run after installing the operator and Torch package.
 Tolerance is a provisional baseline (HF32 is intentionally looser), not a measured
 performance or accuracy guarantee. No 910 bitwise equality is asserted.
 """
+
 import unittest
 import importlib
 import os
@@ -13,25 +21,44 @@ import ctypes
 try:
     import torch
     import torch_npu  # registers the NPU backend
-    cann_ops_transformer = importlib.import_module(os.getenv("MEGA_MHC_TORCH_PACKAGE", "cann_ops_transformer"))
+
+    cann_ops_transformer = importlib.import_module(
+        os.getenv("MEGA_MHC_TORCH_PACKAGE", "cann_ops_transformer")
+    )
     AVAILABLE = torch.npu.is_available()
 except ImportError:
     AVAILABLE = False
 
 
-def reference(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
-              gamma_2=None, norm_eps=1e-6, hc_eps=1e-6):
+def reference(
+    h_out,
+    residual,
+    h_post,
+    h_res,
+    phi,
+    alpha,
+    bias,
+    gamma_1,
+    gamma_0,
+    gamma_2=None,
+    norm_eps=1e-6,
+    hc_eps=1e-6,
+):
     """Independent unfused FP32 reference, preserving every stage's input-type cast."""
     dtype = h_out.dtype
 
     def rms(x, gamma):
         f = x.float()
-        return (f * torch.rsqrt(f.square().mean(-1, keepdim=True) + norm_eps) * gamma).to(dtype)
+        return (
+            f * torch.rsqrt(f.square().mean(-1, keepdim=True) + norm_eps) * gamma
+        ).to(dtype)
 
     x1 = rms(h_out, gamma_0)
     post = h_post.unsqueeze(-1) * x1.float().unsqueeze(-2)
     for source in range(4):
-        post = post + h_res[..., source, :].unsqueeze(-1) * residual[..., source, :].float().unsqueeze(-2)
+        post = post + h_res[..., source, :].unsqueeze(-1) * residual[
+            ..., source, :
+        ].float().unsqueeze(-2)
     x2 = post.to(dtype)
     flat = x2.flatten(-2)
     if gamma_2 is not None:
@@ -41,14 +68,18 @@ def reference(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0
     projected = (f @ phi.T) * torch.rsqrt(f.square().mean(-1, keepdim=True) + norm_eps)
     pre = torch.sigmoid(alpha[0] * projected[..., :4] + bias[:4]) + hc_eps
     post_new = 2 * torch.sigmoid(alpha[1] * projected[..., 4:8] + bias[4:8])
-    res_new = (alpha[2] * projected[..., 8:] + bias[8:]).reshape(*h_out.shape[:-1], 4, 4)
+    res_new = (alpha[2] * projected[..., 8:] + bias[8:]).reshape(
+        *h_out.shape[:-1], 4, 4
+    )
     h_in = torch.zeros_like(h_out, dtype=torch.float32)
     for head in range(4):
         h_in = h_in + pre[..., head, None] * x2[..., head, :].float()
     return rms(h_in.to(dtype), gamma_1), post_new, res_new, x2
 
 
-@unittest.skipUnless(AVAILABLE, "requires installed CANN operator, Torch extension and Ascend 950")
+@unittest.skipUnless(
+    AVAILABLE, "requires installed CANN operator, Torch extension and Ascend 950"
+)
 class TestMegaMhcNpu(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -66,26 +97,43 @@ class TestMegaMhcNpu(unittest.TestCase):
             if aic_limit <= 0:
                 raise ValueError("MEGA_MHC_TEST_AIC_LIMIT must be positive")
             runtime = ctypes.CDLL("libascendcl.so")
-            runtime.aclrtGetDeviceResLimit.argtypes = [ctypes.c_int32, ctypes.c_int,
-                                                      ctypes.POINTER(ctypes.c_uint32)]
-            runtime.aclrtSetDeviceResLimit.argtypes = [ctypes.c_int32, ctypes.c_int, ctypes.c_uint32]
+            runtime.aclrtGetDeviceResLimit.argtypes = [
+                ctypes.c_int32,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_uint32),
+            ]
+            runtime.aclrtSetDeviceResLimit.argtypes = [
+                ctypes.c_int32,
+                ctypes.c_int,
+                ctypes.c_uint32,
+            ]
 
             def set_limit(kind, value):
                 status = runtime.aclrtSetDeviceResLimit(device, kind, value)
                 if status != 0:
-                    raise RuntimeError(f"aclrtSetDeviceResLimit({kind}, {value}) failed: {status}")
+                    raise RuntimeError(
+                        f"aclrtSetDeviceResLimit({kind}, {value}) failed: {status}"
+                    )
 
             for kind, value in ((0, aic_limit), (1, 2 * aic_limit)):
                 previous = ctypes.c_uint32()
-                status = runtime.aclrtGetDeviceResLimit(device, kind, ctypes.byref(previous))
+                status = runtime.aclrtGetDeviceResLimit(
+                    device, kind, ctypes.byref(previous)
+                )
                 if status != 0 or value > previous.value:
-                    raise RuntimeError(f"invalid test resource limit: kind={kind}, value={value}, "
-                                       f"available={previous.value}, status={status}")
+                    raise RuntimeError(
+                        f"invalid test resource limit: kind={kind}, value={value}, "
+                        f"available={previous.value}, status={status}"
+                    )
                 cls.addClassCleanup(set_limit, kind, previous.value)
                 set_limit(kind, value)
-            print(f"TEST_RESOURCE_LIMIT AIC={aic_limit} AIV={2 * aic_limit}", flush=True)
+            print(
+                f"TEST_RESOURCE_LIMIT AIC={aic_limit} AIV={2 * aic_limit}", flush=True
+            )
         if not callable(getattr(cann_ops_transformer, "mega_mhc", None)):
-            raise RuntimeError(f"mega_mhc was not collected in {cann_ops_transformer.__file__}")
+            raise RuntimeError(
+                f"mega_mhc was not collected in {cann_ops_transformer.__file__}"
+            )
 
     def test_precision_and_fixed_configuration_determinism(self):
         """Cover dtype/mode/stages, short/tail/multiwave M, both ranks, and strided inputs."""
@@ -94,32 +142,78 @@ class TestMegaMhcNpu(unittest.TestCase):
             for d in (2560, 5120):
                 for mid in (False, True):
                     for mode in (0, 1):
-                        for leading in ((1,), (15,), (16,), (17,), (31,), (32,), (33,), (128,), (1537,), (3073,), (2, 17)):
-                            with self.subTest(dtype=dtype, d=d, mid=mid, mode=mode, leading=leading):
-                                print(f"CASE dtype={dtype} D={d} mid={mid} mode={mode} leading={leading}", flush=True)
+                        for leading in (
+                            (1,),
+                            (15,),
+                            (16,),
+                            (17,),
+                            (31,),
+                            (32,),
+                            (33,),
+                            (128,),
+                            (1537,),
+                            (3073,),
+                            (2, 17),
+                        ):
+                            with self.subTest(
+                                dtype=dtype, d=d, mid=mid, mode=mode, leading=leading
+                            ):
+                                print(
+                                    f"CASE dtype={dtype} D={d} mid={mid} mode={mode} leading={leading}",
+                                    flush=True,
+                                )
                                 # Noncontiguous h_out checks the ACLNN Contiguous path.
-                                h_out = torch.randn((*leading, d * 2), dtype=dtype)[..., ::2]
-                                inputs = [h_out, torch.randn((*leading, 4, d), dtype=dtype),
-                                          torch.randn((*leading, 4)) * 0.1,
-                                          torch.randn((*leading, 4, 4)) * 0.1,
-                                          torch.randn((24, 4 * d)) / (4 * d)**0.5,
-                                          torch.tensor([0.1, 0.2, 0.3]), torch.randn(24) * 0.1,
-                                          0.9 + 0.2 * torch.rand(d), 0.9 + 0.2 * torch.rand(d)]
+                                h_out = torch.randn((*leading, d * 2), dtype=dtype)[
+                                    ..., ::2
+                                ]
+                                inputs = [
+                                    h_out,
+                                    torch.randn((*leading, 4, d), dtype=dtype),
+                                    torch.randn((*leading, 4)) * 0.1,
+                                    torch.randn((*leading, 4, 4)) * 0.1,
+                                    torch.randn((24, 4 * d)) / (4 * d) ** 0.5,
+                                    torch.tensor([0.1, 0.2, 0.3]),
+                                    torch.randn(24) * 0.1,
+                                    0.9 + 0.2 * torch.rand(d),
+                                    0.9 + 0.2 * torch.rand(d),
+                                ]
                                 gamma2 = 0.9 + 0.2 * torch.rand(4 * d) if mid else None
                                 expected = reference(*inputs, gamma_2=gamma2)
                                 device_inputs = [x.npu() for x in inputs]
                                 # Device conversion may make a view contiguous; force a strided NPU view too.
-                                doubled = torch.stack((device_inputs[0], device_inputs[0]), dim=-1)
+                                doubled = torch.stack(
+                                    (device_inputs[0], device_inputs[0]), dim=-1
+                                )
                                 device_inputs[0] = doubled[..., 0]
-                                kwargs = {"gamma_2": gamma2.npu() if mid else None, "compute_mode": mode}
-                                actual = cann_ops_transformer.mega_mhc(*device_inputs, **kwargs)
-                                repeated = cann_ops_transformer.mega_mhc(*device_inputs, **kwargs)
+                                kwargs = {
+                                    "gamma_2": gamma2.npu() if mid else None,
+                                    "compute_mode": mode,
+                                }
+                                actual = cann_ops_transformer.mega_mhc(
+                                    *device_inputs, **kwargs
+                                )
+                                repeated = cann_ops_transformer.mega_mhc(
+                                    *device_inputs, **kwargs
+                                )
                                 torch.npu.synchronize()
-                                tolerance = 0.02 if dtype == torch.bfloat16 or mode == 1 else 0.005
-                                for result, repeat, want in zip(actual, repeated, expected):
+                                tolerance = (
+                                    0.02
+                                    if dtype == torch.bfloat16 or mode == 1
+                                    else 0.005
+                                )
+                                for result, repeat, want in zip(
+                                    actual, repeated, expected
+                                ):
                                     host_result = result.cpu()
-                                    torch.testing.assert_close(host_result, want, atol=tolerance, rtol=tolerance)
-                                    self.assertTrue(torch.equal(host_result, repeat.cpu()))
+                                    torch.testing.assert_close(
+                                        host_result,
+                                        want,
+                                        atol=tolerance,
+                                        rtol=tolerance,
+                                    )
+                                    self.assertTrue(
+                                        torch.equal(host_result, repeat.cpu())
+                                    )
                                 print("CASE_PASS", flush=True)
 
     def test_zero_small_large_and_epsilon(self):
@@ -129,29 +223,67 @@ class TestMegaMhcNpu(unittest.TestCase):
             for d in (2560, 5120):
                 for mid in (False, True):
                     for mode in (0, 1):
-                        for scale, epsilon in ((0.0, 1e-6), (1e-6, 1e-12), (1.0, 1e-3), (1000.0, 1e-6)):
-                            with self.subTest(dtype=dtype, d=d, mid=mid, mode=mode,
-                                              scale=scale, epsilon=epsilon):
-                                print(f"EDGE dtype={dtype} D={d} mid={mid} mode={mode} "
-                                      f"scale={scale} epsilon={epsilon}", flush=True)
-                                inputs = [(torch.randn(2, d) * scale).to(dtype),
-                                          (torch.randn(2, 4, d) * scale).to(dtype),
-                                          torch.full((2, 4), 0.2),
-                                          torch.eye(4).expand(2, 4, 4).contiguous() * 0.9,
-                                          torch.randn(24, 4 * d) / (4 * d)**0.5,
-                                          torch.tensor([0.1, 0.2, 0.3]), torch.randn(24) * 0.1,
-                                          torch.ones(d), torch.ones(d)]
+                        for scale, epsilon in (
+                            (0.0, 1e-6),
+                            (1e-6, 1e-12),
+                            (1.0, 1e-3),
+                            (1000.0, 1e-6),
+                        ):
+                            with self.subTest(
+                                dtype=dtype,
+                                d=d,
+                                mid=mid,
+                                mode=mode,
+                                scale=scale,
+                                epsilon=epsilon,
+                            ):
+                                print(
+                                    f"EDGE dtype={dtype} D={d} mid={mid} mode={mode} "
+                                    f"scale={scale} epsilon={epsilon}",
+                                    flush=True,
+                                )
+                                inputs = [
+                                    (torch.randn(2, d) * scale).to(dtype),
+                                    (torch.randn(2, 4, d) * scale).to(dtype),
+                                    torch.full((2, 4), 0.2),
+                                    torch.eye(4).expand(2, 4, 4).contiguous() * 0.9,
+                                    torch.randn(24, 4 * d) / (4 * d) ** 0.5,
+                                    torch.tensor([0.1, 0.2, 0.3]),
+                                    torch.randn(24) * 0.1,
+                                    torch.ones(d),
+                                    torch.ones(d),
+                                ]
                                 gamma2 = torch.ones(4 * d) if mid else None
-                                expected = reference(*inputs, gamma_2=gamma2, norm_eps=epsilon, hc_eps=0.0)
+                                expected = reference(
+                                    *inputs,
+                                    gamma_2=gamma2,
+                                    norm_eps=epsilon,
+                                    hc_eps=0.0,
+                                )
                                 actual = cann_ops_transformer.mega_mhc(
-                                    *[x.npu() for x in inputs], gamma_2=gamma2.npu() if mid else None,
-                                    norm_eps=epsilon, hc_eps=0.0, compute_mode=mode)
+                                    *[x.npu() for x in inputs],
+                                    gamma_2=gamma2.npu() if mid else None,
+                                    norm_eps=epsilon,
+                                    hc_eps=0.0,
+                                    compute_mode=mode,
+                                )
                                 torch.npu.synchronize()
-                                tolerance = 0.02 if dtype == torch.bfloat16 or mode == 1 else 0.005
+                                tolerance = (
+                                    0.02
+                                    if dtype == torch.bfloat16 or mode == 1
+                                    else 0.005
+                                )
                                 for result, want in zip(actual, expected):
                                     host_result = result.cpu()
-                                    self.assertTrue(torch.isfinite(host_result).all().item())
-                                    torch.testing.assert_close(host_result, want, atol=tolerance, rtol=tolerance)
+                                    self.assertTrue(
+                                        torch.isfinite(host_result).all().item()
+                                    )
+                                    torch.testing.assert_close(
+                                        host_result,
+                                        want,
+                                        atol=tolerance,
+                                        rtol=tolerance,
+                                    )
                                 print("EDGE_PASS", flush=True)
 
 

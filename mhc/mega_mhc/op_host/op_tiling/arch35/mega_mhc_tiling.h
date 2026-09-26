@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_H
@@ -17,7 +21,8 @@ class MegaMhcTiling final : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     /** Bind the shared graph tiling context before host planning begins. */
     explicit MegaMhcTiling(gert::TilingContext *context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    {}
     ~MegaMhcTiling() override = default;
 
 protected:
@@ -54,6 +59,6 @@ private:
     float hcEps_ = 1.0e-6f;
     uint64_t workspaceBytes_ = 0;
 };
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_H

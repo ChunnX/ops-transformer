@@ -1,6 +1,15 @@
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# Licensed under the CANN Open Software License Agreement Version 2.0.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """Ascend 950 mega_mhc: four/five-stage forward with explicit rounding boundaries."""
+
 import math
 from typing import Optional, Tuple
 
@@ -9,12 +18,27 @@ from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
-def _check_inputs(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1,
-                  gamma_0, gamma_2, norm_eps, hc_eps, compute_mode):
+def _check_inputs(
+    h_out,
+    residual,
+    h_post,
+    h_res,
+    phi,
+    alpha,
+    bias,
+    gamma_1,
+    gamma_0,
+    gamma_2,
+    norm_eps,
+    hc_eps,
+    compute_mode,
+):
     """Validate the common eager/Meta contract; leading token axes remain symbolic."""
     torch._check(h_out.dim() in (2, 3), lambda: "h_out must be [T,D] or [B,S,D]")
-    torch._check(h_out.dtype in (torch.float16, torch.bfloat16),
-                 lambda: "h_out must have float16 or bfloat16 dtype")
+    torch._check(
+        h_out.dtype in (torch.float16, torch.bfloat16),
+        lambda: "h_out must have float16 or bfloat16 dtype",
+    )
     d = h_out.shape[-1]
     torch._check((d == 2560) | (d == 5120), lambda: "D must be 2560 or 5120")
     leading = h_out.shape[:-1]
@@ -38,15 +62,25 @@ def _check_inputs(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1,
     for name, value, shape, dtype in tensors:
         torch._check(value is not None, lambda: f"{name} is required")
         torch._check(value.dtype == dtype, lambda: f"{name} has incorrect dtype")
-        torch._check(value.device == h_out.device, lambda: f"{name} must be on h_out.device")
+        torch._check(
+            value.device == h_out.device, lambda: f"{name} must be on h_out.device"
+        )
         torch._check(value.dim() == len(shape), lambda: f"{name} has incorrect rank")
         for actual, expected in zip(value.shape, shape):
             torch._check(actual == expected, lambda: f"{name} has incorrect shape")
-    torch._check(compute_mode in (0, 1), lambda: "compute_mode must be 0 (FP32) or 1 (HF32)")
-    torch._check(math.isfinite(norm_eps) and 0 < norm_eps <= 3.4028234663852886e38
-                 and norm_eps > 2**-150, lambda: "norm_eps must remain finite and positive in FP32")
-    torch._check(math.isfinite(hc_eps) and 0 <= hc_eps <= 3.4028234663852886e38,
-                 lambda: "hc_eps must remain finite and nonnegative in FP32")
+    torch._check(
+        compute_mode in (0, 1), lambda: "compute_mode must be 0 (FP32) or 1 (HF32)"
+    )
+    torch._check(
+        math.isfinite(norm_eps)
+        and 0 < norm_eps <= 3.4028234663852886e38
+        and norm_eps > 2**-150,
+        lambda: "norm_eps must remain finite and positive in FP32",
+    )
+    torch._check(
+        math.isfinite(hc_eps) and 0 <= hc_eps <= 3.4028234663852886e38,
+        lambda: "hc_eps must remain finite and nonnegative in FP32",
+    )
 
 
 class MegaMhcOpBuilder(OpBuilder):
@@ -71,17 +105,46 @@ class MegaMhcOpBuilder(OpBuilder):
 
     def register_meta(self):
         """Infer four output shapes/types without loading the NPU extension."""
+
         @impl(get_as_library(), self.name, "Meta")
-        def mega_mhc_meta(h_out, residual, h_post, h_res, phi, alpha, bias,
-                          gamma_1, gamma_0, *, gamma_2=None, norm_eps=1e-6,
-                          hc_eps=1e-6, compute_mode=0):
-            _check_inputs(h_out, residual, h_post, h_res, phi, alpha, bias,
-                          gamma_1, gamma_0, gamma_2, norm_eps, hc_eps, compute_mode)
+        def mega_mhc_meta(
+            h_out,
+            residual,
+            h_post,
+            h_res,
+            phi,
+            alpha,
+            bias,
+            gamma_1,
+            gamma_0,
+            *,
+            gamma_2=None,
+            norm_eps=1e-6,
+            hc_eps=1e-6,
+            compute_mode=0,
+        ):
+            _check_inputs(
+                h_out,
+                residual,
+                h_post,
+                h_res,
+                phi,
+                alpha,
+                bias,
+                gamma_1,
+                gamma_0,
+                gamma_2,
+                norm_eps,
+                hc_eps,
+                compute_mode,
+            )
             leading = h_out.shape[:-1]
-            return (h_out.new_empty(h_out.shape),
-                    h_out.new_empty((*leading, 4), dtype=torch.float32),
-                    h_out.new_empty((*leading, 4, 4), dtype=torch.float32),
-                    h_out.new_empty(residual.shape))
+            return (
+                h_out.new_empty(h_out.shape),
+                h_out.new_empty((*leading, 4), dtype=torch.float32),
+                h_out.new_empty((*leading, 4, 4), dtype=torch.float32),
+                h_out.new_empty(residual.shape),
+            )
 
 
 _mega_mhc_op_builder = MegaMhcOpBuilder()
@@ -89,22 +152,70 @@ _mega_mhc_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _mega_mhc_op_builder.name, "PrivateUse1")
-def _mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1,
-              gamma_0, *, gamma_2=None, norm_eps=1e-6, hc_eps=1e-6, compute_mode=0):
+def _mega_mhc(
+    h_out,
+    residual,
+    h_post,
+    h_res,
+    phi,
+    alpha,
+    bias,
+    gamma_1,
+    gamma_0,
+    *,
+    gamma_2=None,
+    norm_eps=1e-6,
+    hc_eps=1e-6,
+    compute_mode=0,
+):
     """Dispatch validated NPU tensors to the ACLNN wrapper, compiling on first use."""
-    _check_inputs(h_out, residual, h_post, h_res, phi, alpha, bias,
-                  gamma_1, gamma_0, gamma_2, norm_eps, hc_eps, compute_mode)
+    _check_inputs(
+        h_out,
+        residual,
+        h_post,
+        h_res,
+        phi,
+        alpha,
+        bias,
+        gamma_1,
+        gamma_0,
+        gamma_2,
+        norm_eps,
+        hc_eps,
+        compute_mode,
+    )
     return _mega_mhc_op_builder.load().mega_mhc(
-        h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
-        gamma_2, norm_eps, hc_eps, compute_mode)
+        h_out,
+        residual,
+        h_post,
+        h_res,
+        phi,
+        alpha,
+        bias,
+        gamma_1,
+        gamma_0,
+        gamma_2,
+        norm_eps,
+        hc_eps,
+        compute_mode,
+    )
 
 
 def mega_mhc(
-    h_out: torch.Tensor, residual: torch.Tensor, h_post: torch.Tensor,
-    h_res: torch.Tensor, phi: torch.Tensor, alpha: torch.Tensor,
-    bias: torch.Tensor, gamma_1: torch.Tensor, gamma_0: torch.Tensor, *,
-    gamma_2: Optional[torch.Tensor] = None, norm_eps: float = 1e-6,
-    hc_eps: float = 1e-6, compute_mode: int = 0,
+    h_out: torch.Tensor,
+    residual: torch.Tensor,
+    h_post: torch.Tensor,
+    h_res: torch.Tensor,
+    phi: torch.Tensor,
+    alpha: torch.Tensor,
+    bias: torch.Tensor,
+    gamma_1: torch.Tensor,
+    gamma_0: torch.Tensor,
+    *,
+    gamma_2: Optional[torch.Tensor] = None,
+    norm_eps: float = 1e-6,
+    hc_eps: float = 1e-6,
+    compute_mode: int = 0,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute RMS0 -> Post -> optional RMSMid -> Pre -> RMS1 on Ascend 950.
 
@@ -129,5 +240,17 @@ def mega_mhc(
         Noncontiguous inputs are accepted. Forward only; no Sinkhorn stage.
     """
     return torch.ops.cann_ops_transformer.mega_mhc(
-        h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
-        gamma_2=gamma_2, norm_eps=norm_eps, hc_eps=hc_eps, compute_mode=compute_mode)
+        h_out,
+        residual,
+        h_post,
+        h_res,
+        phi,
+        alpha,
+        bias,
+        gamma_1,
+        gamma_0,
+        gamma_2=gamma_2,
+        norm_eps=norm_eps,
+        hc_eps=hc_eps,
+        compute_mode=compute_mode,
+    )

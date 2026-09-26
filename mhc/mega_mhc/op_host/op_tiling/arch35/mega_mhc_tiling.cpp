@@ -1,7 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under
- * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include "mega_mhc_tiling.h"
 #include "mega_mhc_memory_plan.h"
@@ -62,7 +66,7 @@ bool CheckedBytes(uint64_t first, uint64_t second, uint64_t third, uint64_t elem
     return true;
 }
 
-}  // namespace
+} // namespace
 
 REGISTER_OPS_TILING_TEMPLATE(AiInfraMegaMhc, MegaMhcTiling, 1000);
 
@@ -88,8 +92,8 @@ ge::graphStatus MegaMhcTiling::GetPlatformInfo()
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, l0ABytes_);
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0BBytes_);
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CBytes_);
-    if (aicCount_ == 0 || aivCount_ < 2 || ubBytes_ == 0 || l1Bytes_ == 0 ||
-        l0ABytes_ == 0 || l0BBytes_ == 0 || l0CBytes_ == 0) {
+    if (aicCount_ == 0 || aivCount_ < 2 || ubBytes_ == 0 || l1Bytes_ == 0 || l0ABytes_ == 0 || l0BBytes_ == 0 ||
+        l0CBytes_ == 0) {
         OP_LOGE(context_->GetNodeName(), "Ascend 950 returned incomplete per-core resources for mega_mhc");
         return ge::GRAPH_FAILED;
     }
@@ -145,8 +149,7 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
     }
 
     const gert::Shape &residual = context_->GetInputShape(1)->GetStorageShape();
-    if (residual.GetDimNum() != xShape.GetDimNum() + 1 ||
-        residual.GetDim(residual.GetDimNum() - 2) != kHeadCount ||
+    if (residual.GetDimNum() != xShape.GetDimNum() + 1 || residual.GetDim(residual.GetDimNum() - 2) != kHeadCount ||
         residual.GetDim(residual.GetDimNum() - 1) != d_) {
         OP_LOGE(context_->GetNodeName(), "residual must be [T,4,D] or [B,S,4,D]");
         return ge::GRAPH_FAILED;
@@ -308,8 +311,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
 {
     mega_mhc::CubePlanRequest request;
     request.rows = totalRows_;
-    request.wavePipeline = !hasMid_ && totalRows_ == 3072U && d_ == 5120U &&
-        aicCount_ == 32U && aivCount_ == 64U;
+    request.wavePipeline = !hasMid_ && totalRows_ == 3072U && d_ == 5120U && aicCount_ == 32U && aivCount_ == 64U;
     request.preferWideTile = true; // Both variants project materialized rows; wave tiling overrides this preference.
     request.k = k_;
     request.q = kProjectionQ;
@@ -328,8 +330,8 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
 
     tilingData_.set_hasMid(hasMid_ ? 1U : 0U);
     tilingData_.set_projectionMode(static_cast<uint32_t>(projectionMode_));
-    tilingData_.set_stagingKind(static_cast<uint32_t>(hasMid_ ?
-        AiInfraMegaMhc::kFiveProjectionTransport : AiInfraMegaMhc::kFourProjectionTransport));
+    tilingData_.set_stagingKind(static_cast<uint32_t>(hasMid_ ? AiInfraMegaMhc::kFiveProjectionTransport :
+                                                                AiInfraMegaMhc::kFourProjectionTransport));
     tilingData_.set_totalRows(static_cast<uint32_t>(totalRows_));
     tilingData_.set_n(kHeadCount);
     tilingData_.set_d(d_);
@@ -363,15 +365,19 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_reduceRowsAligned((reduceRows + 7U) / 8U * 8U);
     // Once gates are complete, the partial batch can hold a second x2 row.
     tilingData_.set_epiloguePrefetch(static_cast<uint64_t>(reduceRows) * cubePlan_.partialGroupCount *
-        cubePlan_.fixpipeRowStride * sizeof(float) >= k_ * 2ULL ? 1U : 0U);
+                                                 cubePlan_.fixpipeRowStride * sizeof(float) >=
+                                             k_ * 2ULL ?
+                                         1U :
+                                         0U);
     tilingData_.set_slotCount(kSlotCount);
     tilingData_.set_ubReservedBytes(0);
     const uint64_t producerPeak = mega_mhc::ProducerUbBytes(d_, hasMid_);
     const uint64_t projectionPeak = mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows);
-    const uint64_t epiloguePeak = mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount,
-                                                        cubePlan_.fixpipeRowStride, reduceRows, cubePlan_.kGrid);
+    const uint64_t epiloguePeak = mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount, cubePlan_.fixpipeRowStride,
+                                                            reduceRows, cubePlan_.kGrid);
     const uint64_t rms0Peak = mega_mhc::UbAllocation(d_ * 2U) + mega_mhc::UbAllocation(8U);
-    const uint64_t pipelinePeak = request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) + projectionPeak : 0U;
+    const uint64_t pipelinePeak =
+        request.wavePipeline ? mega_mhc::ProducerUbBytes(d_, false, true) + projectionPeak : 0U;
     const uint64_t ubPeak = std::max({producerPeak, projectionPeak, epiloguePeak, rms0Peak, pipelinePeak});
     if (ubPeak > availableUb) {
         OP_LOGE(context_->GetNodeName(), "planned stage peak UB %llu exceeds available UB %llu",
@@ -393,12 +399,12 @@ ge::graphStatus MegaMhcTiling::BuildWorkspacePlan()
         return ge::GRAPH_FAILED;
     }
     if (hasMid_) {
-        invRms0Bytes = 0;  // RMS0 stays local to the five-op producer.
+        invRms0Bytes = 0; // RMS0 stays local to the five-op producer.
     }
     uint64_t partialMmBytes = 0;
     uint64_t partialRmsBytes = 0;
-    if (!CheckedBytes(cubePlan_.partialGroupCount, totalRows_, cubePlan_.fixpipeRowStride,
-                      sizeof(float), partialMmBytes) ||
+    if (!CheckedBytes(cubePlan_.partialGroupCount, totalRows_, cubePlan_.fixpipeRowStride, sizeof(float),
+                      partialMmBytes) ||
         !CheckedBytes(cubePlan_.kGrid, totalRows_, 1, sizeof(float), partialRmsBytes)) {
         OP_LOGE(context_->GetNodeName(), "mega_mhc workspace size overflows uint64");
         return ge::GRAPH_FAILED;
@@ -506,4 +512,4 @@ ge::graphStatus MegaMhcTiling::PostTiling()
     workspaces[0] = static_cast<size_t>(workspaceBytes_);
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace optiling
+} // namespace optiling

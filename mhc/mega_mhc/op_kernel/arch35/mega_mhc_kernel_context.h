@@ -1,6 +1,11 @@
-/*
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This file is distributed under the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 #ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_KERNEL_CONTEXT_H
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_KERNEL_CONTEXT_H
@@ -49,7 +54,7 @@ __aicore__ inline void InitUbBuffer(TPipe *pipe, TBuf<TPosition::VECCALC> &buffe
 /** Enqueue destination[i] = source[sourceOffset+i]; caller owns UB reuse and completion events. */
 template <typename T>
 __aicore__ inline void EnqueueGlobalToUb(const LocalTensor<T> &destination, const GlobalTensor<T> &source,
-                                        uint64_t sourceOffset, uint32_t elementCount)
+                                         uint64_t sourceOffset, uint32_t elementCount)
 {
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(elementCount * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
@@ -122,8 +127,7 @@ __aicore__ inline uint32_t PlannedL1TileCount(const MegaMhcTilingData &tiling, u
 }
 
 /** Select the precomputed K length for one L1 tile without rebuilding its descriptor. */
-__aicore__ inline uint32_t PlannedL1TileKCount(const MegaMhcTilingData &tiling, uint32_t kIndex,
-                                              uint32_t tileIndex)
+__aicore__ inline uint32_t PlannedL1TileKCount(const MegaMhcTilingData &tiling, uint32_t kIndex, uint32_t tileIndex)
 {
     const bool lastKCore = kIndex + 1U == tiling.kGrid;
     const uint32_t fullLoops = lastKCore ? tiling.lastKCoreL1FullLoops : tiling.l1KFullLoops;
@@ -132,10 +136,9 @@ __aicore__ inline uint32_t PlannedL1TileKCount(const MegaMhcTilingData &tiling, 
 }
 
 /** Select the precomputed K, L0 and Mmad descriptor for one L1 transfer index. */
-__aicore__ inline void GetPlannedL1Tile(const MegaMhcTilingData &tiling, uint32_t kIndex,
-                                        uint32_t tileIndex, uint32_t &kCount,
-                                        uint32_t &l0FullLoops, uint32_t &l0Tail, uint32_t &tailLoadKStep,
-                                        uint32_t &mmadFullLoops, uint32_t &mmadTailLoops,
+__aicore__ inline void GetPlannedL1Tile(const MegaMhcTilingData &tiling, uint32_t kIndex, uint32_t tileIndex,
+                                        uint32_t &kCount, uint32_t &l0FullLoops, uint32_t &l0Tail,
+                                        uint32_t &tailLoadKStep, uint32_t &mmadFullLoops, uint32_t &mmadTailLoops,
                                         uint32_t &tailMmadKStep, uint32_t &tailMmadFinalKStep)
 {
     const bool lastKCore = kIndex + 1U == tiling.kGrid;
@@ -180,6 +183,6 @@ __aicore__ inline void GetPlannedL1Tile(const MegaMhcTilingData &tiling, uint32_
     }
 }
 
-}  // namespace AiInfraMegaMhc::Kernel
+} // namespace AiInfraMegaMhc::Kernel
 
-#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_KERNEL_CONTEXT_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_KERNEL_CONTEXT_H
