@@ -49,7 +49,7 @@ __aicore__ inline void ProcessVec1NoUpdate(const LocalTensor<T2> &dstTensor, con
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
                                                                   inMaxTensor, sharedTmpBuffer, indexesTensor, m,
@@ -59,7 +59,7 @@ __aicore__ inline void ProcessVec1NoUpdate(const LocalTensor<T2> &dstTensor, con
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
                                                                  inMaxTensor, sharedTmpBuffer, indexesTensor, m,
@@ -69,7 +69,7 @@ __aicore__ inline void ProcessVec1NoUpdate(const LocalTensor<T2> &dstTensor, con
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, expSumTensor, maxTensor,
                                                                          inMaxTensor, sharedTmpBuffer, indexesTensor, m,
@@ -90,7 +90,7 @@ __aicore__ inline void ProcessVec1Update(const LocalTensor<T2> &dstTensor, const
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1UpdateImpl128<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer,
                                                                 indexesTensor, m, originN, scale, minValue);
@@ -99,7 +99,7 @@ __aicore__ inline void ProcessVec1Update(const LocalTensor<T2> &dstTensor, const
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize>(dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer,
                                                                indexesTensor, m, originN, scale, minValue);
@@ -108,7 +108,7 @@ __aicore__ inline void ProcessVec1Update(const LocalTensor<T2> &dstTensor, const
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor =
-                vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+                vselrIndexesBuf[static_cast<int>(SfaVselrIndex::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize>(
             dstTensor, srcTensor, inMaxTensor, sharedTmpBuffer, indexesTensor, m, originN, scale, minValue);
