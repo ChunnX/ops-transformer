@@ -145,7 +145,9 @@ __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, _
 }
 
 /*
- * FP32 chunk 主状态常驻行主序 UB；Cube 增量通过 Fixpipe 以 FP32 直接送达。
+ * [9a] S_next=exp(G_last)*S+delta，delta 来自 Cube [7] 的 R16.T@Kg。
+ * 每个 AIV 更新 FP32 [HALF_DIM,DIM]=[64,128] 的状态行片，主状态常驻行主序 UB。
+ * FP32 接口的 delta 经 FIX 直接送达；BF16 接口的 delta 由调用方先转回 FP32。
  * 保持先乘后加的递推顺序，中间不做 BF16 舍入；但 Cube 的矩阵输入仍是 BF16，并非全链路 FP32。
  */
 __simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf__ float *updateAddr,

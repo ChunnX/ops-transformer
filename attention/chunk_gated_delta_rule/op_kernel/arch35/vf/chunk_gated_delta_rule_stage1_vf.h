@@ -77,6 +77,7 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
 }
 
 /*
+ * [2a] G=cumsum(g)，expG=exp(G)，逻辑 shape 均为 [C]，物理 C=64。
  * 融合路径中两个 AIV 各自保留完整 64 元素的 G 和 exp(G)，以少量重复计算消除跨 AIV 的前缀和传递。
  * 使用寄存器内 Hillis-Steele 扫描，步长 1/2/4/8/16/32；Gamma 不在此物化，由分数后处理按行生成。
  */
@@ -109,7 +110,8 @@ __simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *
 }
 
 /*
- * Dk=Dv=128 的常用维度特化：同一固定宽度循环加载 Q/K/V，在 FP32 寄存器中生成四个 BF16 矩阵：
+ * [2b] ComputeGatedChunkOperandRows 调用的 Dk=Dv=128 常用维度特化。
+ * 同一固定宽度循环加载 Q/K/V，在 FP32 寄存器中生成四个 BF16 矩阵：
  * rawKcd=-beta*exp(G)*K，vBeta=beta*V，qPrime=scale*exp(G)*Q，kg=exp(G_last-G)*K。
  * 缩放、类型转换和 compact zN 写出融合在一次 VF 内，省去多个中间 UB 张量和独立的格式转换。
  */
@@ -167,6 +169,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             Cast<float, bfloat16_t, castBf16ToFp32>(kReg, kBf16Reg, mask);
             Cast<float, bfloat16_t, castBf16ToFp32>(vReg, vBf16Reg, mask);
 
+            // [2b] rawKcd_i=-beta_i*exp(G_i)*K_i；负号用于 [6a] 的残差相加。
             Mul(rawKcdReg, betaReg, gExpReg, mask);
             Muls(rawKcdReg, rawKcdReg, static_cast<float>(-1.0f), mask);
             Mul(rawKcdReg, kReg, rawKcdReg, mask);
@@ -176,6 +179,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(rawKcdZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] Kg_i=exp(G_last-G_i)*K_i，供 [7] 累积块末状态增量。
             Mul(kReg, kReg, tmpReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, kReg, mask);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
@@ -183,6 +187,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(kgZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] Q'_i=scale*exp(G_i)*Q_i，供 [6b] 计算初态对输出的贡献。
             Muls(qReg, qReg, scale, mask);
             Mul(qReg, qReg, gExpReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, qReg, mask);
@@ -191,6 +196,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(qPrimeZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] vBeta_i=beta_i*V_i，供 [5b] 计算 U。
             Mul(vReg, vReg, betaReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, vReg, mask);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
@@ -202,7 +208,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
 }
 
 /*
- * 上述四个矩阵的通用维度版本：Q/K 与 V 分别按 Dk/Dv 建掩码，只处理有效特征。
+ * [2b] 上述四个矩阵的通用维度版本：Q/K 与 V 分别按 Dk/Dv 建掩码，只处理有效特征。
  * 输入为行主序，输出直接按整个 32 行切片的 compact zN 步长写入；两次 16 行输入可填充同一输出 tile。
  * 无效行列由调用方预先清零，避免固定 128 维的后续 Cube 计算读到旧数据。
  */
@@ -308,6 +314,8 @@ __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf_
 }
 
 /*
+ * [3a] L_ij=beta_i*KKT_ij*exp(G_i-G_j) (j<i)，M_ij=scale*QKT_ij*exp(G_i-G_j) (j<=i)。
+ * 每个 AIV 生成 L/M:[32,64]；attnAddr 存 L，inverseAddr 暂存 -L，maskedQktZnAddr 存 M。
  * 一次计算 exp(G_i-G_j)，同时用于严格下三角 KKT（L，求逆输入）和含对角线的 QKT（输出注意力）。
  * 前者必须排除当前 token，后者必须包含当前 token；两种 mask 不可混用。
  * 直接对前缀和之差取 exp，避免先算 exp(G_i)/exp(G_j) 时的小数相除；上三角在取 exp 前置零，
@@ -941,7 +949,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
 }
 
 /*
- * 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
+ * [3b] 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
  * attnUb/invResUb/eiUb 均为 FP32 [32,64]；offset=0/32 选择当前 AIV 的 32x32 对角子块。
  * 每个 invRow 为 32 个有效 FP32 lane，表示 A 的一行；A=(I+L)^(-1)。
  * 优化方案：每组共同依赖的旧逆行仅加载一次，新求得的八行留在寄存器中供后续行复用。
@@ -1060,6 +1068,7 @@ __simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *attnUb, 
 #undef CGDR_INVERSE_DIRECT_FMA
 }
 
+// [3b] 只求当前 AIV 的 A00/A11:[32,32]；A10 由 Cube [4a/4b] 补齐。
 __aicore__ inline void InverseAIVPanel8VF(const LocalTensor<float> &attnUb, const LocalTensor<float> &invResUb,
                                           const LocalTensor<float> &eiUb, uint32_t offset, uint32_t chunkSize)
 {
