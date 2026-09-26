@@ -208,17 +208,7 @@ public:
             eventFixS_ = GetTPipePtr()->FetchEventID(HardEvent::FIX_S);
             eventFixM_ = GetTPipePtr()->FetchEventID(HardEvent::FIX_M);
             eventMFix_ = GetTPipePtr()->FetchEventID(HardEvent::M_FIX);
-            if (logicalIdx_ == 0) {
-                // dump the fetched event IDs per launch: pool exhaustion theory
-                const int32_t base = (launchNo_ > 1) ? 310 : 32;
-                GmFlagSet(3584 + base + 0, static_cast<int32_t>(eventMte2Mte1_));
-                GmFlagSet(3584 + base + 1, static_cast<int32_t>(eventMte1M_));
-                GmFlagSet(3584 + base + 2, static_cast<int32_t>(eventMMte1_));
-                GmFlagSet(3584 + base + 3, static_cast<int32_t>(eventMte1Mte2_));
-                GmFlagSet(3584 + base + 4, static_cast<int32_t>(eventFixS_));
-                GmFlagSet(3584 + base + 5, static_cast<int32_t>(eventFixM_));
-                GmFlagSet(3584 + base + 6, static_cast<int32_t>(eventMFix_));
-            }
+
         } else {
             eventVS_ = GetTPipePtr()->FetchEventID(HardEvent::V_S);
             eventSV_ = GetTPipePtr()->FetchEventID(HardEvent::S_V);
@@ -270,24 +260,7 @@ public:
         if (totalVec_ <= 0 || rangeLen_ <= 0) {
             return;
         }
-        // launch counter for repeat-launch debugging: first AIV increments a
-        // GM cell; every core reads the current launch number into launchNo_
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                volatile __gm__ int32_t *cnt = flagRaw_ + 3584 + 300;
-                const int32_t prev = *cnt;
-                __asm__ __volatile__("" ::: "memory");
-                *cnt = prev + 1;
-                __asm__ __volatile__("" ::: "memory");
-                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                    flagGm_[3584 + 300]);
-            }
-        }
-        launchNo_ = flagRaw_[3584 + 300];
         if (isAic_) {
-            if (logicalIdx_ == 0) {
-                GmFlagSet(3584 + 0, 10);
-            }
             const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
             // ---- phase 1 (AIC): z1 = Hh @ x, z2 = Hl @ x for the whole range
             GmFlagWait(slotBase + 0 * SLOT_STRIDE, MAGIC_X_LO);
@@ -298,9 +271,6 @@ public:
                 MmTile(wsXhGm_[g * HEAD_DIM], wsZ1Gm_[g * HEAD_DIM], wsZ2Gm_[g * HEAD_DIM], t0);
             }
             SyncPipe<HardEvent::FIX_S>();   // z tiles in L2 before the flag store
-            if (logicalIdx_ == 0) {
-                GmFlagSet(3584 + 3, 13);
-            }
             // per-line flush of the z range through the ATOMIC cache domain
             // (the cube DMA write path) so the partner AIVs observe it
             {
@@ -316,7 +286,6 @@ public:
             }
             GmFlagSet(slotBase + 2 * SLOT_STRIDE, MAGIC_Z);   // Z_LO
             GmFlagSet(slotBase + 6 * SLOT_STRIDE, MAGIC_Z);   // Z_HI
-            if (logicalIdx_ == 0) { GmFlagSet(3584 + 303, launchNo_); }
             // ---- phase 3 (AIC): waits r_hat splits, then p = (Sh+Sl) @ (rh+rl)
             GmFlagWait(slotBase + 3 * SLOT_STRIDE, MAGIC_R_LO);
             GmFlagWait(slotBase + 4 * SLOT_STRIDE, MAGIC_R_HI);
@@ -342,7 +311,6 @@ public:
             }
             GmFlagSet(slotBase + 5 * SLOT_STRIDE, MAGIC_P);   // P_LO
             GmFlagSet(slotBase + 7 * SLOT_STRIDE, MAGIC_P);   // P_HI
-            if (logicalIdx_ == 0) { GmFlagSet(3584 + 304, launchNo_); }
         } else {
             ProcessAiv();
         }
@@ -594,15 +562,9 @@ private:
         // All groups write identical content to the shared splits area (benign
         // identical write-write race); the group's X_LO flag then implies the
         // splits are complete for this group's AIC.
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 8, 1);
-        }
         // every AIV computes the (identical) splits into the shared area; a
         // core's own writes guarantee the content its AIC reads is valid
         SplitMatrices();
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 9, 2);
-        }
 
         // ---- phase 0.5 (AIV): x bf16 -> fp16 tiles to GM for the cube A feed,
         // with a per-chunk X flag so the AIC starts z after the first chunk
@@ -627,17 +589,8 @@ private:
             DataCopy(wsXhGm_[gx * HEAD_DIM], xh, nvx * HEAD_DIM);
         }
         SyncPipe<HardEvent::MTE3_S>();   // x tiles in L2 before the flag store
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 10, 3);
-        }
         const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
         GmFlagSet(slotBase + aivSubIdx_ * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_X_LO : MAGIC_X_HI);
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 306, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF));
-        }
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 11, 4);
-        }
         GmFlagWait(slotBase + (2 + 4 * aivSubIdx_) * SLOT_STRIDE, MAGIC_Z);
         if (GetBlockIdx() < 4) {
             // per-AIV V_S-covered x/z dumps at cells 140+blk*4
@@ -648,7 +601,6 @@ private:
         for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
             const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
             const int64_t g0 = vecBegin_ + tileStart;
-            dbgT0f_ = static_cast<int32_t>(tileStart);
             if (GetBlockIdx() == 0) {
             }
 
@@ -790,9 +742,6 @@ private:
         if (GetBlockIdx() < 2) {
         }
         GmFlagSet(slotBase + (3 + aivSubIdx_) * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_R_LO : MAGIC_R_HI);
-        if (GetBlockIdx() == 0) {
-            GmFlagSet(3584 + 307, static_cast<int32_t>(GetSystemCycle() & 0x7FFFFFFF));
-        }
 
         // early norm/gamma visibility sweep: a handful of tiles lost their
         // phase-1 scalar stores to later cache activity before the final
@@ -1075,25 +1024,9 @@ private:
         mp.unitFlag = 0b11;   // single-shot Mmad = last accumulation: allow fixpipe move-out (QSFA)
         LocalTensor<float> cL0 = l0CBuf_.Get<float>();
         LocalTensor<half> aL0 = l0A;
-        if (logicalIdx_ == 0 && dbgT0 == 0) {
-            LocalTensor<uint16_t> aU = l0ABuf_.Get<uint16_t>();
-            GmFlagSet(3584 + 200, static_cast<int32_t>(aU.GetValue(0)));
-            GmFlagSet(3584 + 201, static_cast<int32_t>(aU.GetValue(1)));
-            GmFlagSet(3584 + 202, static_cast<int32_t>(aU.GetValue(256)));
-            LocalTensor<uint16_t> bU = l0BBuf_.Get<uint16_t>();
-            GmFlagSet(3584 + 203, static_cast<int32_t>(bU.GetValue(0)));
-        }
         Mmad(cL0, aL0, l0BBuf_.Get<half>(), mp);
         SetFlag<HardEvent::M_MTE1>(evAB);
         WaitFlag<HardEvent::M_MTE1>(evAB);
-        if (logicalIdx_ == 0 && dbgT0 == 0) {
-            const float c0 = cL0.GetValue(0);
-            const float c1 = cL0.GetValue(1);
-            const float c2 = cL0.GetValue(2);
-            GmFlagSet(3584 + 204, *reinterpret_cast<int32_t *>(const_cast<float *>(&c0)));
-            GmFlagSet(3584 + 205, *reinterpret_cast<int32_t *>(const_cast<float *>(&c1)));
-            GmFlagSet(3584 + 206, *reinterpret_cast<int32_t *>(const_cast<float *>(&c2)));
-        }
         // M_FIX: C result is in L0C before the fixpipe reads it (missing this
         // raced the CO1->GM copy against the Mmad L0C writes -> wedge)
         SetFlag<HardEvent::M_FIX>(eventMFix_);
@@ -1208,20 +1141,6 @@ private:
         PipeBarrier<PIPE_V>();
         Mul(zTile[vb * HEAD_DIM], zTile[vb * HEAD_DIM], sg, w);
         PipeBarrier<PIPE_V>();
-        if (GetBlockIdx() == 0 && vb == 0 && dbgT0f_ == 0) {
-            SyncPipe<HardEvent::V_S>();
-            for (int32_t di = 0; di < 4; ++di) {
-                const float sgv = sg.GetValue(di);
-                GmFlagSet(3584 + 40 + di, *reinterpret_cast<int32_t *>(const_cast<float *>(&sgv)));
-                const float yhv = yhat.GetValue(di);
-                GmFlagSet(3584 + 44 + di, *reinterpret_cast<int32_t *>(const_cast<float *>(&yhv)));
-                const float yv = y.GetValue(di);
-                GmFlagSet(3584 + 48 + di, *reinterpret_cast<int32_t *>(const_cast<float *>(&yv)));
-                const float zv = zTile.GetValue(di);
-                GmFlagSet(3584 + 52 + di, *reinterpret_cast<int32_t *>(const_cast<float *>(&zv)));
-            }
-            SyncPipe<HardEvent::S_V>();
-        }
         Mul(y, zTile[vb * HEAD_DIM], zTile[vb * HEAD_DIM], w);
         PipeBarrier<PIPE_V>();
         LocalTensor<float> rnTmp = pBuf_.Get<float>();
@@ -1449,9 +1368,7 @@ private:
     TEventID eventMMte1B_ = 0;
     int32_t mmCtr_ = 0;
     int64_t prevG0_ = 0;
-    int32_t launchNo_ = 0;
     int32_t prevNv_ = 0;
-    int32_t dbgT0f_ = 0;
 
     float cent_[16] = {0.0f};
     float bound_[15] = {0.0f};
