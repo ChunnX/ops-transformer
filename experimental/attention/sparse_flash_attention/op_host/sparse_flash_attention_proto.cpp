@@ -91,7 +91,8 @@ ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *co
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashAttention", "InferDataTypeContext is nullptr"),
                return ge::GRAPH_FAILED);
-    bool ifOutFloat = *(context->GetAttrs()->GetAttrPointer<bool>(RETURN_FLOAT_RESULT_INDEX));
+    const bool *floatOutputFlag = context->GetAttrs()->GetAttrPointer<bool>(RETURN_FLOAT_RESULT_INDEX);
+    bool ifOutFloat = (floatOutputFlag != nullptr) ? *floatOutputFlag : false;
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     if (ifOutFloat) {
         context->SetOutputDataType(OUTPUT_INDEX_0, ge::DT_FLOAT);
