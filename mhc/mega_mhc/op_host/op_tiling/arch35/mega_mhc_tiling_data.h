@@ -1,0 +1,116 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ */
+#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_DATA_H
+#define OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_DATA_H
+
+#include "register/tilingdata_base.h"
+
+namespace optiling {
+
+BEGIN_TILING_DATA_DEF(MegaMhcTilingData)
+TILING_DATA_FIELD_DEF(uint32_t, hasMid);
+TILING_DATA_FIELD_DEF(uint32_t, projectionMode);
+TILING_DATA_FIELD_DEF(uint32_t, stagingKind);
+TILING_DATA_FIELD_DEF(uint32_t, totalRows);
+TILING_DATA_FIELD_DEF(uint32_t, n);
+TILING_DATA_FIELD_DEF(uint32_t, d);
+TILING_DATA_FIELD_DEF(uint32_t, k);
+TILING_DATA_FIELD_DEF(uint32_t, q);
+TILING_DATA_FIELD_DEF(float, normEps);
+TILING_DATA_FIELD_DEF(float, hcEps);
+
+TILING_DATA_FIELD_DEF(uint32_t, activeAic);
+TILING_DATA_FIELD_DEF(uint32_t, activeAiv);
+TILING_DATA_FIELD_DEF(uint32_t, mGrid);
+TILING_DATA_FIELD_DEF(uint32_t, kGrid);
+TILING_DATA_FIELD_DEF(uint32_t, mWaveCount);
+TILING_DATA_FIELD_DEF(uint32_t, rowsPerWave);
+TILING_DATA_FIELD_DEF(uint32_t, lastWaveMGrid);
+TILING_DATA_FIELD_DEF(uint32_t, lastWaveRows);
+TILING_DATA_FIELD_DEF(uint32_t, mTile);
+TILING_DATA_FIELD_DEF(uint32_t, splitK);
+
+TILING_DATA_FIELD_DEF(uint32_t, kL1);
+TILING_DATA_FIELD_DEF(uint32_t, l1KFullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, l1KTail);
+TILING_DATA_FIELD_DEF(uint32_t, lastKCoreL1FullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, lastKCoreL1Tail);
+TILING_DATA_FIELD_DEF(uint32_t, lastMCoreRows);
+TILING_DATA_FIELD_DEF(uint32_t, lastKCoreElements);
+TILING_DATA_FIELD_DEF(uint32_t, mL0FullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, mL0TailRows);
+TILING_DATA_FIELD_DEF(uint32_t, lastMCoreL0FullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, lastMCoreL0TailRows);
+
+TILING_DATA_FIELD_DEF(uint32_t, loadMStride);
+TILING_DATA_FIELD_DEF(uint32_t, loadNStride);
+TILING_DATA_FIELD_DEF(uint32_t, fullL0LoadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, l0TailLoadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1TailLoadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailLoadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, baseM);
+TILING_DATA_FIELD_DEF(uint32_t, baseN);
+TILING_DATA_FIELD_DEF(uint32_t, baseK);
+TILING_DATA_FIELD_DEF(uint32_t, nzM);
+TILING_DATA_FIELD_DEF(uint32_t, nzN);
+TILING_DATA_FIELD_DEF(uint32_t, l1ASlotElements);
+TILING_DATA_FIELD_DEF(uint32_t, l1BOffsetElements);
+TILING_DATA_FIELD_DEF(uint32_t, l1BSlotElements);
+TILING_DATA_FIELD_DEF(uint32_t, l0ASlotElements);
+TILING_DATA_FIELD_DEF(uint32_t, l0BSlotElements);
+TILING_DATA_FIELD_DEF(uint32_t, l0CSlotElements);
+TILING_DATA_FIELD_DEF(uint32_t, fixpipeRowStride);
+TILING_DATA_FIELD_DEF(uint32_t, fullMmadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, fullMmadKLoopCount);
+TILING_DATA_FIELD_DEF(uint32_t, l0TailMmadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, l0TailMmadKLoopCount);
+TILING_DATA_FIELD_DEF(uint32_t, l0TailMmadFinalKStep);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1TailMmadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1TailMmadKLoopCount);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1TailMmadFinalKStep);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailMmadKStep);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailMmadKLoopCount);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailMmadFinalKStep);
+TILING_DATA_FIELD_DEF(uint32_t, l0KFullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, l0KTail);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1L0FullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, tailL1L0Tail);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailL1L0FullLoops);
+TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailL1L0Tail);
+TILING_DATA_FIELD_DEF(uint32_t, partialGroupK);
+TILING_DATA_FIELD_DEF(uint32_t, partialGroupCount);
+
+TILING_DATA_FIELD_DEF(uint32_t, wavePipeline);
+TILING_DATA_FIELD_DEF(uint32_t, waveProducerRows);
+TILING_DATA_FIELD_DEF(uint32_t, waveProducerTileStride);
+TILING_DATA_FIELD_DEF(uint32_t, waveGroupSize);
+TILING_DATA_FIELD_DEF(uint32_t, postRows);
+TILING_DATA_FIELD_DEF(uint32_t, producerPrefetch);
+TILING_DATA_FIELD_DEF(uint32_t, projectionRows);
+TILING_DATA_FIELD_DEF(uint32_t, reduceRows);
+TILING_DATA_FIELD_DEF(uint32_t, reduceRowsAligned);
+TILING_DATA_FIELD_DEF(uint32_t, epiloguePrefetch);
+TILING_DATA_FIELD_DEF(uint32_t, slotCount);
+TILING_DATA_FIELD_DEF(uint32_t, ubReservedBytes);
+
+TILING_DATA_FIELD_DEF(uint64_t, invRms0Offset);
+TILING_DATA_FIELD_DEF(uint64_t, invRms0Bytes);
+TILING_DATA_FIELD_DEF(uint64_t, partialMmOffset);
+TILING_DATA_FIELD_DEF(uint64_t, partialRmsOffset);
+TILING_DATA_FIELD_DEF(uint64_t, stageOffset);
+TILING_DATA_FIELD_DEF(uint64_t, partialMmBytes);
+TILING_DATA_FIELD_DEF(uint64_t, partialRmsBytes);
+TILING_DATA_FIELD_DEF(uint64_t, stageBytes);
+TILING_DATA_FIELD_DEF(uint64_t, userWorkspaceBytes);
+TILING_DATA_FIELD_DEF(uint64_t, ubPeakBytes);
+TILING_DATA_FIELD_DEF(uint64_t, l1PeakBytes);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(AiInfraMegaMhc, MegaMhcTilingData);
+
+} // namespace optiling
+
+#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_TILING_DATA_H

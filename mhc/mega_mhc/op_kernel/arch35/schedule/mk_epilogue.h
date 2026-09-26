@@ -1,0 +1,239 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This file is distributed under the CANN Open Software License Agreement Version 2.0.
+ */
+#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
+#define OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
+
+#include "../compute/mhc_pre.h"
+#include "../compute/rms_norm_1.h"
+#include "../mega_mhc_kernel_context.h"
+
+namespace AiInfraMegaMhc::Schedule {
+using namespace AscendC;
+
+/** Load consecutive rows from each projection group; UB layout is [group, planned rows, stride]. */
+template <typename T, bool WAIT_READY = true>
+__aicore__ inline void LoadPrePartialRows(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t row, uint32_t rows, const LocalTensor<float> &partialBuffer)
+{
+    const uint64_t gap = static_cast<uint64_t>(tiling.totalRows - rows) * tiling.fixpipeRowStride * sizeof(float);
+    if (gap <= 0xFFFFFFFFULL) {
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        DataCopyExtParams copyParams{static_cast<uint16_t>(tiling.partialGroupCount),
+            static_cast<uint32_t>(rows * tiling.fixpipeRowStride * sizeof(float)), static_cast<uint32_t>(gap),
+            (tiling.reduceRows - rows) * tiling.fixpipeRowStride / 8U, 0};
+        DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+        DataCopyPad(partialBuffer, tensors.partialMm[row * tiling.fixpipeRowStride], copyParams, padParams);
+        if constexpr (WAIT_READY) {
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        }
+    } else {
+        for (uint32_t group = 0; group < tiling.partialGroupCount; ++group) {
+            Kernel::CopyGlobalToUb<float>(partialBuffer[group * tiling.reduceRows * tiling.fixpipeRowStride],
+                tensors.partialMm, (static_cast<uint64_t>(group) * tiling.totalRows + row) * tiling.fixpipeRowStride,
+                rows * tiling.fixpipeRowStride);
+        }
+    }
+}
+
+/** Load all RMS shards once per row batch; each shard retains its increasing-index ownership. */
+template <typename T>
+__aicore__ inline void PrepareEpilogueRows(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t row, uint32_t rows, const LocalTensor<float> &partial, const LocalTensor<float> &rms,
+    const LocalTensor<float> &coefficients, const LocalTensor<float> &alpha, const LocalTensor<float> &bias)
+{
+    LoadPrePartialRows<T, false>(tensors, tiling, row, rows, partial);
+    const uint64_t gap = static_cast<uint64_t>(tiling.totalRows - rows) * sizeof(float);
+    if (gap <= 0xFFFFFFFFULL) {
+        // One DMA covers all K shards; destination rows retain the host-planned aligned stride.
+        const uint32_t paddedRows = (rows + 7U) / 8U * 8U;
+        DataCopyExtParams params{static_cast<uint16_t>(tiling.kGrid), static_cast<uint32_t>(rows * sizeof(float)),
+            static_cast<uint32_t>(gap), (tiling.reduceRowsAligned - paddedRows) / 8U, 0U};
+        DataCopyPadExtParams<float> padding{true, 0U, static_cast<uint8_t>(paddedRows - rows), 0.0f};
+        DataCopyPad(rms, tensors.partialRms[row], params, padding);
+    } else {
+        for (uint32_t shard = 0; shard < tiling.kGrid; ++shard) {
+            Kernel::CopyGlobalToUb<float>(rms[shard * tiling.reduceRowsAligned], tensors.partialRms,
+                static_cast<uint64_t>(shard) * tiling.totalRows + row, rows);
+        }
+    }
+    // Both projection and RMS partials are ready before the first reduction VF.
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    Compute::NormalizeProjectionRows(reinterpret_cast<__ubuf__ float *>(partial.GetPhyAddr()),
+        reinterpret_cast<__ubuf__ float *>(rms.GetPhyAddr()), rows, tiling.fixpipeRowStride,
+        tiling.reduceRows * tiling.fixpipeRowStride, tiling.partialGroupCount,
+        tiling.reduceRowsAligned, tiling.kGrid, tiling.k, tiling.normEps);
+    Compute::ComputeGateRows(reinterpret_cast<__ubuf__ float *>(partial.GetPhyAddr()),
+        reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr()), reinterpret_cast<__ubuf__ float *>(bias.GetPhyAddr()),
+        tiling.hcEps, rows, tiling.fixpipeRowStride, tiling.reduceRowsAligned,
+        reinterpret_cast<__ubuf__ float *>(coefficients.GetPhyAddr()));
+    Kernel::CopyUbToGlobal<float>(tensors.hPostNew, row * 4U, coefficients[tiling.reduceRowsAligned * 4U], rows * 4U);
+    Kernel::CopyUbToGlobal<float>(tensors.hResNew, row * 16U, coefficients[tiling.reduceRowsAligned * 8U], rows * 16U);
+}
+
+/** Mix x2 using precomputed gates, round h_in, then normalize: output=RMSNorm(Cast<T>(sum_n pre[n]*x2[n])). */
+template <typename T>
+__aicore__ inline void FinalizeMhcRow(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t row, const LocalTensor<T> &x2Row, const LocalTensor<T> &hIn, const LocalTensor<T> &hInPrime,
+    const LocalTensor<float> &gamma1, const LocalTensor<float> &pre, const LocalTensor<float> &statsBuffer)
+{
+    __ubuf__ float *stats = reinterpret_cast<__ubuf__ float *>(statsBuffer.GetPhyAddr());
+    Kernel::CopyGlobalToUb<T>(x2Row, tensors.x2Out, row * tiling.k, tiling.k);
+    Compute::ComputeHInTile<T>(reinterpret_cast<__ubuf__ float *>(pre.GetPhyAddr()),
+        reinterpret_cast<__ubuf__ T *>(x2Row.GetPhyAddr()), tiling.d, 0U, tiling.d,
+        reinterpret_cast<__ubuf__ T *>(hIn.GetPhyAddr()), stats);
+    Compute::ComputeRmsNorm1FromSquares<T>(reinterpret_cast<__ubuf__ T *>(hIn.GetPhyAddr()),
+        reinterpret_cast<__ubuf__ float *>(gamma1.GetPhyAddr()), tiling.d, tiling.normEps,
+        stats, stats + 1, reinterpret_cast<__ubuf__ T *>(hInPrime.GetPhyAddr()));
+    Kernel::CopyUbToGlobal<T>(tensors.hInPrime, row * tiling.d, hInPrime, tiling.d);
+}
+
+/** Issue one complete x2 row load into an available ping-pong slot; x2[r,n,d] stays in input dtype. */
+template <typename T>
+__aicore__ inline void PrefetchEpilogueRow(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t row, const LocalTensor<T> &buffer, event_t event)
+{
+    WaitFlag<HardEvent::V_MTE2>(event);
+    DataCopyExtParams params{1, static_cast<uint32_t>(tiling.k * sizeof(T)), 0, 0, 0};
+    DataCopyPadExtParams<T> padding{false, 0, 0, 0};
+    DataCopyPad(buffer, tensors.x2Out[row * tiling.k], params, padding);
+    SetFlag<HardEvent::MTE2_V>(event);
+}
+
+/** Finalize a precomputed gate batch while overlapping next-row loads and previous-row output stores.
+ * Formula: y[r]=RMSNorm(Cast<T>(sum_n pre[r,n]*x2[r,n])); both explicit input-type roundings remain.
+ * The host enables reuse of dead partial storage only when it fits a complete x2 row.
+ */
+template <typename T>
+__aicore__ inline void FinalizeMhcRows(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t start, uint32_t rows, const LocalTensor<T> &x2, const LocalTensor<T> &hIn,
+    const LocalTensor<T> &hInPrime, const LocalTensor<float> &gamma, const LocalTensor<float> &partial,
+    const LocalTensor<float> &coefficients, const LocalTensor<float> &statsBuffer)
+{
+    if (tiling.epiloguePrefetch == 0U) {
+        for (uint32_t row = 0; row < rows; ++row) {
+            FinalizeMhcRow(tensors, tiling, start + row, x2, hIn, hInPrime, gamma, coefficients[row * 4U], statsBuffer);
+        }
+        return;
+    }
+    LocalTensor<T> alternate = partial.template ReinterpretCast<T>();
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID4);
+    SetFlag<HardEvent::V_MTE2>(EVENT_ID5);
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID4);
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID5);
+    PrefetchEpilogueRow(tensors, tiling, start, x2, EVENT_ID4);
+    __ubuf__ float *stats = reinterpret_cast<__ubuf__ float *>(statsBuffer.GetPhyAddr());
+    for (uint32_t row = 0; row < rows; ++row) {
+        const event_t event = (row & 1U) == 0U ? EVENT_ID4 : EVENT_ID5;
+        const event_t nextEvent = (row & 1U) == 0U ? EVENT_ID5 : EVENT_ID4;
+        const LocalTensor<T> input = (row & 1U) == 0U ? x2 : alternate;
+        const LocalTensor<T> next = (row & 1U) == 0U ? alternate : x2;
+        const LocalTensor<T> output = (row & 1U) == 0U ? hIn : hInPrime;
+        WaitFlag<HardEvent::MTE2_V>(event);
+        if (row + 1U < rows) {
+            PrefetchEpilogueRow(tensors, tiling, start + row + 1U, next, nextEvent);
+        }
+        WaitFlag<HardEvent::MTE3_V>(event);
+        Compute::ComputeHInTile<T>(reinterpret_cast<__ubuf__ float *>(coefficients.GetPhyAddr()) + row * 4U,
+            reinterpret_cast<__ubuf__ T *>(input.GetPhyAddr()), tiling.d, 0U, tiling.d,
+            reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()), stats);
+        SetFlag<HardEvent::V_MTE2>(event);
+        Compute::ComputeRmsNorm1FromSquares<T>(reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ float *>(gamma.GetPhyAddr()), tiling.d, tiling.normEps,
+            stats, stats + 1, reinterpret_cast<__ubuf__ T *>(output.GetPhyAddr()));
+        SetFlag<HardEvent::V_MTE3>(event);
+        WaitFlag<HardEvent::V_MTE3>(event);
+        DataCopyExtParams params{1, static_cast<uint32_t>(tiling.d * sizeof(T)), 0, 0, 0};
+        DataCopyPad(tensors.hInPrime[(start + row) * tiling.d], output, params);
+        SetFlag<HardEvent::MTE3_V>(event);
+    }
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID4);
+    WaitFlag<HardEvent::V_MTE2>(EVENT_ID5);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID4);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID5);
+}
+
+/** Finalize one paired AIV's completed wave using producer buffers whose row data are no longer live. */
+template <typename T>
+__aicore__ inline void FinalizePairedRows(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling,
+    uint64_t start, uint32_t rows, const LocalTensor<T> &x2, const LocalTensor<T> &hIn,
+    const LocalTensor<T> &hInPrime, const LocalTensor<float> &gamma,
+    const LocalTensor<float> &partial, const LocalTensor<float> &coefficients,
+    const LocalTensor<float> &rmsPartials, const LocalTensor<float> &alpha,
+    const LocalTensor<float> &bias, const LocalTensor<float> &stats)
+{
+    if (rows == 0U) {
+        return;
+    }
+    Kernel::CopyGlobalToUb<float>(gamma, tensors.gamma1, 0U, tiling.d);
+    Kernel::CopyGlobalToUb<float>(alpha, tensors.alpha, 0U, 3U);
+    Kernel::CopyGlobalToUb<float>(bias, tensors.bias, 0U, tiling.q);
+    for (uint32_t offset = 0; offset < rows; offset += tiling.reduceRows) {
+        const uint32_t batchRows = rows - offset < tiling.reduceRows ? rows - offset : tiling.reduceRows;
+        PrepareEpilogueRows(tensors, tiling, start + offset, batchRows, partial, rmsPartials, coefficients, alpha, bias);
+        FinalizeMhcRows(tensors, tiling, start + offset, batchRows, x2, hIn, hInPrime,
+            gamma, partial, coefficients, stats);
+    }
+}
+
+/** Assign complete final rows to AIVs after all Cube and statistic partials are globally visible. */
+template <typename T>
+__aicore__ inline void RunMkEpilogue(Kernel::Tensors<T> &tensors,
+                                      const MegaMhcTilingData &tiling, TPipe *pipe)
+{
+    if ASCEND_IS_AIV {
+        TBuf<TPosition::VECCALC> x2Buffer;
+        TBuf<TPosition::VECCALC> hInBuffer;
+        TBuf<TPosition::VECCALC> hInPrimeBuffer;
+        TBuf<TPosition::VECCALC> gamma1Buffer;
+        TBuf<TPosition::VECCALC> partialBuffer;
+        TBuf<TPosition::VECCALC> rmsPartialBuffer;
+        TBuf<TPosition::VECCALC> coefficientBuffer;
+        TBuf<TPosition::VECCALC> alphaBuffer;
+        TBuf<TPosition::VECCALC> biasBuffer;
+        TBuf<TPosition::VECCALC> statsBuffer;
+        Kernel::InitUbBuffer(pipe, x2Buffer, tiling.k * sizeof(T));
+        Kernel::InitUbBuffer(pipe, hInBuffer, tiling.d * sizeof(T));
+        Kernel::InitUbBuffer(pipe, hInPrimeBuffer, tiling.d * sizeof(T));
+        Kernel::InitUbBuffer(pipe, gamma1Buffer, tiling.d * sizeof(float));
+        Kernel::InitUbBuffer(pipe, partialBuffer,
+                            (tiling.partialGroupCount * tiling.reduceRows * tiling.fixpipeRowStride + 64U) * sizeof(float));
+        Kernel::InitUbBuffer(pipe, rmsPartialBuffer, tiling.reduceRowsAligned * tiling.kGrid * sizeof(float));
+        Kernel::InitUbBuffer(pipe, coefficientBuffer, tiling.reduceRowsAligned * 24U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, alphaBuffer, 4U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, biasBuffer, 32U * sizeof(float));
+        Kernel::InitUbBuffer(pipe, statsBuffer, 4U * sizeof(float));
+
+        LocalTensor<T> x2 = x2Buffer.Get<T>();
+        LocalTensor<T> hIn = hInBuffer.Get<T>();
+        LocalTensor<T> hInPrime = hInPrimeBuffer.Get<T>();
+        LocalTensor<float> gamma1 = gamma1Buffer.Get<float>();
+        LocalTensor<float> partial = partialBuffer.Get<float>();
+        LocalTensor<float> rmsPartials = rmsPartialBuffer.Get<float>();
+        LocalTensor<float> coefficients = coefficientBuffer.Get<float>();
+        LocalTensor<float> alpha = alphaBuffer.Get<float>();
+        LocalTensor<float> bias = biasBuffer.Get<float>();
+        LocalTensor<float> stats = statsBuffer.Get<float>();
+        Kernel::CopyGlobalToUb<float>(gamma1, tensors.gamma1, 0, tiling.d);
+        Kernel::CopyGlobalToUb<float>(alpha, tensors.alpha, 0, 3U);
+        Kernel::CopyGlobalToUb<float>(bias, tensors.bias, 0, tiling.q);
+
+        const uint32_t aivIndex = GetBlockIdx();
+        for (uint64_t start = static_cast<uint64_t>(aivIndex) * tiling.reduceRows;
+             start < tiling.totalRows; start += static_cast<uint64_t>(tiling.activeAiv) * tiling.reduceRows) {
+            const uint32_t rows = tiling.totalRows - start < tiling.reduceRows ?
+                static_cast<uint32_t>(tiling.totalRows - start) : tiling.reduceRows;
+            PrepareEpilogueRows(tensors, tiling, start, rows, partial, rmsPartials, coefficients, alpha, bias);
+            FinalizeMhcRows(tensors, tiling, start, rows, x2, hIn, hInPrime,
+                gamma1, partial, coefficients, stats);
+        }
+    }
+}
+
+}  // namespace AiInfraMegaMhc::Schedule
+
+#endif  // OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H

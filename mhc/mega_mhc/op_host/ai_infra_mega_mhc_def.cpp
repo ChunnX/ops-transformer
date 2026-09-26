@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms and conditions of the CANN Open Software License Agreement Version 2.0.
+ */
+#include "register/op_def_registry.h"
+
+namespace ops {
+class AiInfraMegaMhc : public OpDef {
+public:
+    explicit AiInfraMegaMhc(const char *name) : OpDef(name)
+    {
+        this->Input("h_out").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("residual").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("h_post").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("h_res").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("phi").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("alpha").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("bias").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("gamma_1").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("gamma_0").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("gamma_2").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+
+        this->Output("h_in_prime").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("h_post_new").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("h_res_new").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("x_2_out").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+
+        OpAICoreConfig config;
+        config.DynamicCompileStaticFlag(true).DynamicFormatFlag(false).DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true).NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("opFile.value", "mega_mhc_apt")
+            .ExtendCfgInfo("opInterface.value", "ai_infra_mega_mhc");
+        this->AICore().AddConfig("ascend950", config);
+        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("compute_mode").AttrType(OPTIONAL).Int(0);
+    }
+};
+
+OP_ADD(AiInfraMegaMhc);
+}  // namespace ops
