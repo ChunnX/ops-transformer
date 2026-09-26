@@ -1095,6 +1095,28 @@ __aicore__ inline void BSAVecSmService<BSAT>::GeneralFinalize(const PostRowSlice
             }
         }
 
+        // 行均值：acc=Σ_rows 部分和，需除以 px 实际行数（对齐 SoftmaxFinalizeBatch 的 1/unitRows 语义）。
+        // 遗漏导致 pooledScore 暂存 = 行和而非行均值（postBlockShapeX=8 时恰 8×，dump 实证）；
+        // top-k 尺度不变故 mask/boundary 未暴露，仅 pooled_score 输出张量受影响。
+        // 置于标量读 acc 的 PIPE_ALL 屏障之前，避免 V 写后标量读（2201 挂死模式）。
+        if (validXBlocks % unitRows == 0) {
+            AscendC::Muls(acc, acc, 1.0f / static_cast<float>(static_cast<int32_t>(unitRows)),
+                          nUnits * groupsWinA);
+        } else {
+            for (uint32_t s = 0; s < sliceNum; s++) {
+                const PostRowSlice &sl = slices[s];
+                for (uint32_t uo = 0; uo < sl.rowCount; uo += unitRows) {
+                    const uint32_t chunkRow = sl.chunkRowStart + uo;
+                    const uint32_t px = (qChunkStart + chunkRow) / unitRows;
+                    const uint32_t rowsInPx = BSAMin(unitRows, validXBlocks - px * unitRows);
+                    const uint32_t u = (sl.localRowStart + uo) / unitRows;
+                    AscendC::Muls(acc[u * groupsWinA], acc[u * groupsWinA],
+                                  1.0f / static_cast<float>(static_cast<int32_t>(rowsInPx)), winGroups);
+                }
+            }
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+
         // —— 列组装（列均值按实际宽度）+ Cast + 写出 ——
         AscendC::PipeBarrier<PIPE_ALL>(); // 标量读 acc 前排空 V
         for (uint32_t s = 0; s < sliceNum; s++) {
