@@ -15,6 +15,11 @@
 - torch_extension：仓内自动收集的mega_mhc Python、Meta、PrivateUse1/JIT C++封装。
 - tests：host分块、Python metadata合约、NPU数值及确定性测试。
 
+FP16/BF16 共用同一套 RegBase 计算与归约顺序，仅加载/写回的类型转换不同。
+RMS0/RMS1 平方和使用双链累加；Post 内融合的 RMSMid 平方和按 head 0/1、2/3
+先用 FMA 求局部平方和再累计，复用已消费的 Post 寄存器，仅保留一个累加寄存器。
+该顺序缩短长累加链，无 BF16 专用补偿分支。
+
 ## 当前调度
 
 四算子在 M=3072、D=5120、32 AIC/64 AIV 时采用 M128/K4、L1 K128 的三批投影，

@@ -25,33 +25,13 @@ constexpr Reg::CastTrait kCastInputToFloat = {
 constexpr Reg::CastTrait kCastFloatToInput = {
     Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-/** Accumulate lane square sums in a fixed order.
- * Formula: sum += square; BF16 keeps compensated additions to stabilize later BF16 rounding thresholds.
- * The input-type policy is compile-time only; FP16 uses ordinary FP32 addition.
- */
-template <typename T>
-__simd_callee__ inline void AddSquareSum(Reg::RegTensor<float> &sum, Reg::RegTensor<float> &square,
-    Reg::RegTensor<float> &compensation, Reg::MaskReg &mask)
-{
-    if constexpr (IsSameType<T, half>::value) {
-        Reg::Add(sum, sum, square, mask);
-    } else {
-        Reg::RegTensor<float> corrected, next, difference;
-        Reg::Sub(corrected, square, compensation, mask);
-        Reg::Add(next, sum, corrected, mask);
-        Reg::Sub(difference, next, sum, mask);
-        Reg::Sub(compensation, difference, corrected, mask);
-        Reg::Adds(sum, next, 0.0f, mask);
-    }
-}
-
 /**
  * What: add the squared FP32 values of one aligned UB range to an FP32 scalar.
  * Formula: sumOut = (INITIALIZE ? 0 : sumOut) + Σ_i FP32(x[i])² over [0, rowLength).
  * Inputs: inputRow is input type T; rowLength is the valid element count; INITIALIZE selects first range at compile time.
  * Output: one FP32 scalar at sumOut. Tail lanes are masked and excluded.
- * Precision: FP16 uses two independent chains (even/odd 64-element blocks), then sums the chains.
- * Formula: sumOut = sum_even(x*x) + sum_odd(x*x); BF16 retains compensated sequential accumulation.
+ * Precision: both input types use two independent FP32 chains (even/odd 64-element blocks), then sum the chains.
+ * Formula: sumOut = sum_even(x*x) + sum_odd(x*x); only input/output casts depend on T.
  */
 template <typename T, bool INITIALIZE>
 __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t rowLength,
@@ -59,6 +39,8 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
 {
     const uint16_t repeatTimes = static_cast<uint16_t>(
         (rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
+    const uint16_t pairedRepeats = static_cast<uint16_t>(repeatTimes / 2U);
+    const uint16_t tailStart = static_cast<uint16_t>(pairedRepeats * 2U);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> input;
@@ -66,56 +48,43 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
         Reg::RegTensor<float> square;
         Reg::RegTensor<float> partial;
         Reg::RegTensor<float> sum;
-        Reg::RegTensor<float> compensation;
         Reg::MaskReg scalarMask = Compute::MaskForCount(1);
         Reg::MaskReg fullMask = Compute::MaskForCount(kRegFloatLanes);
-        Reg::Duplicate(compensation, 0.0f, fullMask);
         Reg::Duplicate(sum, 0.0f, fullMask);
         uint32_t remaining = rowLength;
-        if constexpr (IsSameType<T, half>::value) {
-            Reg::RegTensor<float> sumOdd;
-            Reg::Duplicate(sumOdd, 0.0f, fullMask);
-            for (uint16_t repeat = 0; repeat < repeatTimes / 2U; ++repeat) {
-                {
-                    const uint32_t offset = (repeat * 2U + 0U) * Compute::kRegCastVectorLanes;
-                    Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
-                    Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
-                    // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
-                    Reg::Mul(square, value, value, fullMask);
-                    Reg::Add(sum, sum, square, fullMask);
-                }
-                {
-                    const uint32_t offset = (repeat * 2U + 1U) * Compute::kRegCastVectorLanes;
-                    Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
-                    Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
-                    // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
-                    Reg::Mul(square, value, value, fullMask);
-                    Reg::Add(sumOdd, sumOdd, square, fullMask);
-                }
-            }
-            for (uint16_t repeat = (repeatTimes / 2U) * 2U; repeat < repeatTimes; ++repeat) {
-                const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
+        Reg::RegTensor<float> sumOdd;
+        Reg::Duplicate(sumOdd, 0.0f, fullMask);
+        for (uint16_t repeat = 0; repeat < pairedRepeats; ++repeat) {
+            {
+                const uint32_t offset = (repeat * 2U + 0U) * Compute::kRegCastVectorLanes;
                 Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
                 Reg::Mul(square, value, value, fullMask);
-                AddSquareSum<T>(sum, square, compensation, fullMask);
+                Reg::Add(sum, sum, square, fullMask);
             }
-            Reg::Add(sum, sum, sumOdd, fullMask);
-        } else {
-            for (uint16_t repeat = 0; repeat < repeatTimes; ++repeat) {
-                const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
+            {
+                const uint32_t offset = (repeat * 2U + 1U) * Compute::kRegCastVectorLanes;
                 Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
                 Reg::Mul(square, value, value, fullMask);
-                AddSquareSum<T>(sum, square, compensation, fullMask);
+                Reg::Add(sumOdd, sumOdd, square, fullMask);
             }
         }
+        for (uint16_t repeat = tailStart; repeat < repeatTimes; ++repeat) {
+            const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
+            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
+            Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
+            // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
+            Reg::Mul(square, value, value, fullMask);
+            Reg::Add(sum, sum, square, fullMask);
+        }
+        Reg::Add(sum, sum, sumOdd, fullMask);
+
         Reg::Reduce<Reg::ReduceType::SUM>(partial, sum, fullMask);
         if constexpr (!INITIALIZE) {
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(sum, sumOut);

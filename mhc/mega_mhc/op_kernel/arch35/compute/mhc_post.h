@@ -47,24 +47,23 @@ __simd_callee__ inline void StorePostHead(__ubuf__ T *output,
     Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(output, result, mask);
 }
 
-/** Store Cast<T>(sum), then accumulate FP32(Cast<T>(sum))² in the same VF. */
+/** Store Cast<T>(sum) and reuse its consumed register for FP32(Cast<T>(sum)), the RMSMid input. */
 template <typename T>
-__simd_callee__ inline void StorePostHeadAndSquares(__ubuf__ T *output,
-    Reg::RegTensor<float> &sum, Reg::RegTensor<float> &squares,
-    Reg::RegTensor<float> &compensation, Reg::MaskReg &mask, Reg::MaskReg &fullMask)
+__simd_callee__ inline void StorePostHeadRounded(__ubuf__ T *output,
+    Reg::RegTensor<float> &sum, Reg::MaskReg &mask)
 {
     Reg::RegTensor<T> result;
-    Reg::RegTensor<float> value, square;
     Reg::Cast<T, float, kCastFloatToInput>(result, sum, mask);
     Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(output, result, mask);
-    Reg::Cast<float, T, kCastInputToFloat>(value, result, mask);
-    Reg::Mul(square, value, value, fullMask);
-    AddSquareSum<T>(squares, square, compensation, fullMask);
+    Reg::Cast<float, T, kCastInputToFloat>(sum, result, mask);
 }
 
 /** Compute all four heads together: load/cast x1 and each residual slice once per 64 columns.
  * Formula: output[row,n,d] = Cast<T>(hPost[row,n]*x1[row,d] + sum_j hRes[row,j,n]*residual[row,j,d]).
  * Weights are broadcast once per row; source heads accumulate strictly in order 0,1,2,3.
+ * RMSMid first forms the FP32 pairs x0*x0+x1*x1 and x2*x2+x3*x3 using FMA, then accumulates pairs.
+ * Consumed Post sum registers hold each pair; one persistent square-sum register is sufficient.
+ * FP16/BF16 share this order and retain Cast<T> before squaring.
  */
 template <typename T, bool ACCUMULATE_SQUARES = false>
 __aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual,
@@ -76,11 +75,10 @@ __aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual
     __VEC_SCOPE__
     {
         for (uint16_t row = 0; row < rowCount; ++row) {
-            Reg::RegTensor<float> squares, compensation;
+            Reg::RegTensor<float> squares;
             Reg::MaskReg fullMask = Compute::MaskForCount(kRegFloatLanes);
             if constexpr (ACCUMULATE_SQUARES) {
                 Reg::Duplicate(squares, 0.0f, fullMask);
-                Reg::Duplicate(compensation, 0.0f, fullMask);
             }
             Reg::RegTensor<float> post0;
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(post0, hPost + row * 4U + 0U);
@@ -147,14 +145,16 @@ __aicore__ inline void ComputePostFourHeads(__ubuf__ T *x1, __ubuf__ T *residual
                 AccumulatePostSource<T>(residual + (row * 4U + 3U) * d + column,
                     w30, w31, w32, w33, sum0, sum1, sum2, sum3, mask);
                 if constexpr (ACCUMULATE_SQUARES) {
-                    StorePostHeadAndSquares<T>(output + (row * 4U + 0U) * d + column,
-                        sum0, squares, compensation, mask, fullMask);
-                    StorePostHeadAndSquares<T>(output + (row * 4U + 1U) * d + column,
-                        sum1, squares, compensation, mask, fullMask);
-                    StorePostHeadAndSquares<T>(output + (row * 4U + 2U) * d + column,
-                        sum2, squares, compensation, mask, fullMask);
-                    StorePostHeadAndSquares<T>(output + (row * 4U + 3U) * d + column,
-                        sum3, squares, compensation, mask, fullMask);
+                    StorePostHeadRounded<T>(output + (row * 4U + 0U) * d + column, sum0, mask);
+                    Reg::Mul(sum0, sum0, sum0, fullMask);
+                    StorePostHeadRounded<T>(output + (row * 4U + 1U) * d + column, sum1, mask);
+                    Reg::MulAddDst(sum0, sum1, sum1, fullMask);
+                    Reg::Add(squares, squares, sum0, fullMask);
+                    StorePostHeadRounded<T>(output + (row * 4U + 2U) * d + column, sum2, mask);
+                    Reg::Mul(sum2, sum2, sum2, fullMask);
+                    StorePostHeadRounded<T>(output + (row * 4U + 3U) * d + column, sum3, mask);
+                    Reg::MulAddDst(sum2, sum3, sum3, fullMask);
+                    Reg::Add(squares, squares, sum2, fullMask);
                 } else {
                     StorePostHead<T>(output + (row * 4U + 0U) * d + column, sum0, mask);
                     StorePostHead<T>(output + (row * 4U + 1U) * d + column, sum1, mask);
