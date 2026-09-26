@@ -20,7 +20,6 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "grouped_matmul_swiglu_quant_v2.h"
-#include "grouped_matmul_swiglu_quant_v3_common.h"
 #include "mc2_log_compat.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"

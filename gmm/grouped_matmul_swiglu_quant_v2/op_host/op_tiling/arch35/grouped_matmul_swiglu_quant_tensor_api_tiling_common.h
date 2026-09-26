@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 #include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 
@@ -63,6 +64,40 @@ inline void PrepareBasicBlockForL1(GQmmBasicTiling &tiling)
 inline void RestoreBasicBlockAfterL1(GQmmBasicTiling &tiling)
 {
     tiling.baseN /= SWIGLU_SPLIT;
+}
+
+inline void FillQuantParams(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiQuantParams &params,
+                            const GQmmInputInfo &input)
+{
+    params = {};
+    params.groupNum = static_cast<uint32_t>(input.groupNum);
+    params.activeType = static_cast<uint32_t>(input.actType);
+    params.aQuantMode = static_cast<uint32_t>(input.aQuantMode);
+    params.bQuantMode = static_cast<uint32_t>(input.bQuantMode);
+    params.singleX = static_cast<uint8_t>(input.isSingleX);
+    params.singleW = static_cast<uint8_t>(input.isSingleW);
+    params.singleY = static_cast<uint8_t>(input.isSingleY);
+    params.groupType = static_cast<int8_t>(input.groupType);
+    params.groupListType = static_cast<uint8_t>(input.groupListType);
+}
+
+inline void FillMatmulTiling(GroupedMatmulSwigluQuantV2TensorApi::GMMTensorApiMMTiling &mm, const GQmmInputInfo &input,
+                             const GQmmBasicTiling &basic, uint64_t scaleFactorA, uint64_t scaleFactorB)
+{
+    mm = {};
+    mm.m = static_cast<uint32_t>(input.mSize);
+    mm.n = static_cast<uint32_t>(input.nSize);
+    mm.k = static_cast<uint32_t>(input.kSize);
+    mm.baseM = static_cast<uint32_t>(basic.baseM);
+    mm.baseN = static_cast<uint32_t>(basic.baseN);
+    mm.baseK = static_cast<uint32_t>(basic.baseK);
+    mm.kAL1 = static_cast<uint32_t>(basic.stepKa * basic.baseK);
+    mm.kBL1 = static_cast<uint32_t>(basic.stepKb * basic.baseK);
+    const uint64_t scaleKL1 =
+        std::min(std::max(scaleFactorA * basic.stepKa, scaleFactorB * basic.stepKb) * basic.baseK, input.kSize);
+    mm.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
+    mm.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
+    mm.dbL0C = static_cast<uint8_t>(basic.dbL0c);
 }
 
 } // namespace GroupedMatmulSwigluQuantTensorApiTiling

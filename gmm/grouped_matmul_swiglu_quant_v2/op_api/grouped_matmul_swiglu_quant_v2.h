@@ -10,7 +10,37 @@
 #ifndef OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_V2_H
 #define OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_V2_H
 
+#include <cstddef>
+#include <cstdint>
+
 #include "opdev/op_executor.h"
+
+namespace gmm_swiglu_quant_v3 {
+constexpr size_t SINGLE_TENSOR_SIZE = 1UL;
+constexpr size_t FIRST_TENSOR_INDEX = 0UL;
+constexpr size_t X_DIM_NUM = 2UL;
+constexpr size_t X_SCALE_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_VIEW_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
+constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
+constexpr size_t OUTPUT_DIM_NUM = 2UL;
+constexpr size_t OUTPUT_SCALE_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_STORAGE_DIM_NUM = 5UL;
+
+constexpr int64_t MX_GROUP_SIZE = 64L;
+constexpr int64_t MX_SCALE_PAIR = 2L;
+constexpr int64_t NZ_INNER_SIZE = 16L;
+constexpr int64_t NZ_C0_SIZE = 32L;
+constexpr int64_t SWIGLU_SPLIT_FACTOR = 2L;
+constexpr int64_t MXFP8_N_ALIGN = 64L;
+constexpr int64_t MAX_GROUP_NUM = 1024L;
+constexpr int64_t QUANT_MODE_MX = 2L;
+constexpr int64_t DEQUANT_DTYPE_FLOAT = 0L;
+constexpr int64_t SCALE_ALG_OCP = 0L;
+constexpr int64_t SCALE_ALG_CUBLAS = 1L;
+constexpr double DEFAULT_DST_TYPE_MAX = 0.0;
+constexpr char DEFAULT_ROUND_MODE[] = "rint";
+} // namespace gmm_swiglu_quant_v3
 
 namespace l0op {
 
