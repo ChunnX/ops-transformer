@@ -736,7 +736,7 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, QuantGroupedMatmulAllToAllvTilingCommon::DoOpTiling());
     // 公共 tiling 完成后 localParams_/taskTilingInfo 已齐备，此处裁决 apace 选路
-    // （PostTiling/GetTilingKey 均晚于此，保证读到一致的 usingApaceImpl_）
+    // （GetTilingKey 晚于此，保证读到一致的 usingApaceImpl_）
     usingApaceImpl_ = CheckApaceImplCapable();
     OP_LOGI(opName_, "QuantGroupedMatMulAlltoAllv MX implementation: %s.",
             usingApaceImpl_ ? "APACE AIC-only HCCL+Blaze" : "legacy");
@@ -759,19 +759,6 @@ bool MxQuantGroupedMatmulAllToAllvTiling::CheckApaceImplCapable() const
     const bool xIsFp4 = localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1;
     const bool weightIsFp4 = localParams_.gmmWeightDtype == ge::DT_FLOAT4_E2M1;
     return xSupported && weightSupported && xIsFp4 == weightIsFp4;
-}
-
-ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::PostTiling()
-{
-    MC2_CHECK_LOG_RET(opName_, QuantGroupedMatmulAllToAllvTilingCommon::PostTiling());
-    if (!usingApaceImpl_) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // apace 通路直接消费 legacy tiling 数据（无独立紧凑结构、不覆写 tiling buffer），
-    // 仅切换调度模式并收敛 blockDim 至 AIC 核数
-    context_->SetScheduleMode(1);
-    context_->SetBlockDim(localParams_.aicCoreNum);
-    return ge::GRAPH_SUCCESS;
 }
 
 // 注册tiling类

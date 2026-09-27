@@ -48,7 +48,6 @@ protected:
     uint64_t GetTilingKey() const override;
     ge::graphStatus CheckAndSetInputOutputInfo() override;
     ge::graphStatus DoOpTiling() override;
-    ge::graphStatus PostTiling() override;
 
     ge::graphStatus CheckAndSetLocalParamsGmm() override;
     ge::graphStatus CheckAndSetLocalParamsMm() override;
