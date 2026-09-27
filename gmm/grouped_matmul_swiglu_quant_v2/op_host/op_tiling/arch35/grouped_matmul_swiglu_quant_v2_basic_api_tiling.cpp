@@ -288,7 +288,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
                          checkTensorApiScaleShapes && commonCapable;
     OP_LOGD(
         context_->GetNodeName(),
-        "Tensor API capability: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, "
+        "Tiling conditions: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, "
         "averageMPerGroup=%lu, mPerGroupLowerLimit=%lu, transB=%d, N=%lu, "
         "cores=%lu:%u, "
         "checkTensorApiShapes=%d, checkKSize=%d, checkKSizeAlign=%d, "
