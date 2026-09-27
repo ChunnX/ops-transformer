@@ -342,17 +342,15 @@ private:
         params.gmmParams = mmTiling;
         params.groupOffsetTables = {};
 
-        // [临时诊断] 共享专家卡点二分（block0 门控共 2 条，ringbuffer 可靠预算内；
-        // 上轮 S-param/S-addr 已采集：参数与 64B 对齐全部正常，5 条超出 ringbuffer
-        // 容量致 S-stage 静默丢弃）。S-A 覆盖 ctor+Init，S-B 覆盖 Run：
-        // 仅 S-A 出现 → 挂在 Run 内部（与 409d5e04a 历史 P3-post-init 后挂一致）；
-        // S-A 也缺失 → ctor/Init 新断裂点
-        MmKernel kernel;
-        kernel.Init(params);
+        // 共享专家持久成员（ctor 于 op 构造期干净状态执行，与路由 gmmKernel_ 及
+        // 409d5e04a 时代一致——该形态下历史结论为 ctor+Init 正常、挂点在 Run 内；
+        // 提交通信后栈上构造为本侧未验证模式，消除该变量）
+        // [临时诊断] 卡点二分（block0 门控 2 条）：S-A=Init 后，S-B=Run 后
+        mmKernel_.Init(params);
         if (AscendC::GetBlockIdx() == 0U) {
             AscendC::printf("[S-A] init-done\n");
         }
-        kernel.Run();
+        mmKernel_.Run();
         if (AscendC::GetBlockIdx() == 0U) {
             AscendC::printf("[S-B] run-done\n");
         }
@@ -445,6 +443,7 @@ private:
 
     const TilingDataType *tilingData_{nullptr};
     GmmKernel gmmKernel_;
+    MmKernel mmKernel_;
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle a2avHandles_[GMM_A2AV_MAX_BATCH_NUM]{};
     uint32_t submitted_{0};
