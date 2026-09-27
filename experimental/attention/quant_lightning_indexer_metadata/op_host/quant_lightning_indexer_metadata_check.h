@@ -16,6 +16,7 @@
 #include "opdev/format_utils.h"
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
+#include "opdev/platform.h"
 #include "opdev/tensor_view_utils.h"
 #include "../../quant_lightning_indexer/op_kernel/quant_lightning_indexer_metadata.h"
 
@@ -26,7 +27,7 @@ extern "C" {
 aclnnStatus CheckSingleParamQli(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, int64_t numHeadsQ,
                                 int64_t numHeadsK, char* layoutQueryOptional, char* layoutKeyOptional,
                                 int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio,
-                                const char* socVersion)
+                                NpuArch npuArch)
 {
     // batch_size 非负校验
     if (batchSize < 0) {
@@ -93,7 +94,7 @@ aclnnStatus CheckSingleParamQli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be [1, 128], but got %d", cmpRatio);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (strstr(socVersion, "Ascend950") != nullptr) {
+    if (npuArch == NpuArch::DAV_3510) {
         if (cmpRatio != 1 && cmpRatio != 4 && cmpRatio != 128) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For Ascend950, cmp_ratio should be 1/4/128, but got %d", cmpRatio);
             return ACLNN_ERR_PARAM_INVALID;
@@ -267,11 +268,11 @@ static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional,
                                int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize,
                                int64_t maxSeqlenQ, int64_t maxSeqlenK, char* layoutQueryOptional,
                                char* layoutKeyOptional, int64_t sparseCount, int64_t sparseMode, int64_t preTokens,
-                               int64_t nextTokens, int64_t cmpRatio, const char* socVersion, const aclTensor* metadata)
+                               int64_t nextTokens, int64_t cmpRatio, NpuArch npuArch, const aclTensor* metadata)
 {
     if (CheckSingleParamQli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, layoutQueryOptional,
                             layoutKeyOptional, sparseMode, preTokens, nextTokens, cmpRatio,
-                            socVersion) == ACLNN_SUCCESS &&
+                            npuArch) == ACLNN_SUCCESS &&
         CheckExistenceQli(layoutQueryOptional, layoutKeyOptional, actualSeqLengthsQueryOptional,
                           actualSeqLengthsKeyOptional, metadata) == ACLNN_SUCCESS &&
         CheckConsistencyQli(layoutQueryOptional, layoutKeyOptional, actualSeqLengthsQueryOptional,

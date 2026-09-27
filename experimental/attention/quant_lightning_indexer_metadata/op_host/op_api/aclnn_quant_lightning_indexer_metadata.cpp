@@ -55,10 +55,11 @@ aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char* socVersion = npuInfo.GetSocLongVersion().c_str();
+    auto npuArch = npuInfo.GetCurNpuArch();
 
     auto ret = ParamsCheck(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim,
                            queryQuantMode, keyQuantMode, batchSize, maxSeqlenQ, maxSeqlenK, layoutQueryOptional,
-                           layoutKeyOptional, sparseCount, sparseMode, preTokens, nextTokens, cmpRatio, socVersion,
+                           layoutKeyOptional, sparseCount, sparseMode, preTokens, nextTokens, cmpRatio, npuArch,
                            metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
