@@ -92,6 +92,8 @@ TILING_DATA_FIELD_DEF(uint32_t, partialGroupCount);
 
 TILING_DATA_FIELD_DEF(uint32_t, wavePipeline);
 TILING_DATA_FIELD_DEF(uint32_t, waveProducerRows);
+TILING_DATA_FIELD_DEF(uint32_t, lastWaveFullProducers);
+TILING_DATA_FIELD_DEF(uint32_t, lastWaveProducerTailRows);
 TILING_DATA_FIELD_DEF(uint32_t, waveProducerTileStride);
 TILING_DATA_FIELD_DEF(uint32_t, waveGroupSize);
 TILING_DATA_FIELD_DEF(uint32_t, waveProducerRowsPerTick);

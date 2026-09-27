@@ -32,6 +32,7 @@ struct CubePlanRequest {
     uint64_t l0CBytes = 0;
     bool preferWideTile = false;
     bool wavePipeline = false;
+    bool preferCompleteWaves = true;
     ProjectionMode mode = ProjectionMode::FP32;
 };
 

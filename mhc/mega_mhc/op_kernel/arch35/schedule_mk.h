@@ -134,7 +134,9 @@ public:
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
     }
 
-    /** Begin one planned producer batch: rows belong to member%groupSize within the M group. */
+    /** Begin a producer batch: full members own R rows; Host supplies the final member count and tail.
+     * Empty tail members skip data access but still publish completion and participate in group synchronization.
+     */
     __aicore__ inline void Begin(uint32_t wave)
     {
         const auto &t = *tiling_;
@@ -144,7 +146,13 @@ public:
         produced_ = 0U;
         slot_ = 0U;
         nextTick_ = 1U;
-        Prefetch(row_, 0U);
+        const uint32_t member = GetBlockIdx();
+        rows_ = wave + 1U != t.mWaveCount || member < t.lastWaveFullProducers ?
+                    t.waveProducerRows :
+                    (member == t.lastWaveFullProducers ? t.lastWaveProducerTailRows : 0U);
+        if (rows_ != 0U) {
+            Prefetch(row_, 0U);
+        }
     }
 
     /** Prefetch hOut, residual and coefficients for one row into a free input slot. */
@@ -167,7 +175,7 @@ public:
         const event_t event = slot_ == 0U ? EVENT_ID4 : EVENT_ID5;
         WaitFlag<HardEvent::MTE2_V>(event);
         const uint32_t next = slot_ ^ 1U;
-        if (produced_ + 1U < t.waveProducerRows) {
+        if (produced_ + 1U < rows_) {
             Prefetch(row_ + 1U, next);
         }
         Compute::ComputeRmsNorm0Row<T>(reinterpret_cast<__ubuf__ T *>(input_[slot_ * t.d].GetPhyAddr()),
@@ -196,7 +204,7 @@ public:
     /** Fill the prologue batch completely before the first projection tile can read it. */
     __aicore__ inline void Fill()
     {
-        while (produced_ < tiling_->waveProducerRows) {
+        while (produced_ < rows_) {
             ProduceOne();
         }
     }
@@ -206,9 +214,8 @@ public:
      */
     __aicore__ inline void Tick(uint32_t tile)
     {
-        if (tile >= nextTick_ && produced_ < tiling_->waveProducerRows) {
-            for (uint32_t row = 0U; row < tiling_->waveProducerRowsPerTick && produced_ < tiling_->waveProducerRows;
-                 ++row) {
+        if (tile >= nextTick_ && produced_ < rows_) {
+            for (uint32_t row = 0U; row < tiling_->waveProducerRowsPerTick && produced_ < rows_; ++row) {
                 ProduceOne();
             }
             nextTick_ += tiling_->waveProducerTileStride;
@@ -261,7 +268,7 @@ private:
     LocalTensor<float> gamma_, coefficients_, stats_;
     LocalTensor<int32_t> sync_;
     uint64_t row_;
-    uint32_t produced_, slot_, nextTick_;
+    uint32_t produced_, slot_, nextTick_, rows_;
 };
 
 /**

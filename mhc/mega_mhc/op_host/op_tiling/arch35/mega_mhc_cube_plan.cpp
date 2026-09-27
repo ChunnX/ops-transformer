@@ -57,6 +57,15 @@ bool FitsL1(uint64_t m, uint64_t q, uint64_t kL1, const CubePlanRequest &request
            kPingPong * AlignUp(q, kNzNAlign) * kL1 * kFp32Bytes <= request.l1BBytes;
 }
 
+/** Check whether aligned K ownership retains every lane: sequential partials use quotient/remainder;
+ * otherwise ceil(K/align256(ceil(K/g))) must equal g to preserve the complete-row wave layout.
+ */
+bool KeepsWaveKGrid(uint64_t k, uint64_t grid)
+{
+    const uint64_t shard = AlignUp(CeilDiv(k, grid), kKAlign);
+    return shard >= kSequentialPartialThreshold || CeilDiv(k, shard) == grid;
+}
+
 } // namespace
 
 /*
@@ -94,6 +103,12 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     while (waveRowsPerAiv * 2U <= rowBudget) {
         waveRowsPerAiv *= 2U;
     }
+    // Prefer complete waves when the minimum full-core batch divides T; otherwise retain capacity for a tail.
+    if (request.preferCompleteWaves && request.rows % (2U * active) == 0U) {
+        while (waveRowsPerAiv > 1U && request.rows % (2U * active * waveRowsPerAiv) != 0U) {
+            waveRowsPerAiv /= 2U;
+        }
+    }
     const uint64_t waveKProduct = kWaveProjectionElements / waveRowsPerAiv;
     // Since M=2*R*g, busiest-core M*K work is proportional to g*ceil(partials/g).
     // Ties retain the larger M tile; the two candidates follow the same transfer budget.
@@ -102,7 +117,15 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t partialCount = CeilDiv(request.k, kSequentialPartialK);
     const uint64_t preferredWaveKGrid =
         AlignUp(partialCount, minWaveKGrid) < AlignUp(partialCount, maxWaveKGrid) ? minWaveKGrid : maxWaveKGrid;
-    const uint64_t waveKGrid = std::gcd(preferredWaveKGrid, active);
+    uint64_t waveKGrid = std::gcd(preferredWaveKGrid, active);
+    // Try the other existing transfer-budget candidate before falling back to staged execution.
+    // This is a legality check, not a shape-specific performance exception.
+    if (request.wavePipeline && !KeepsWaveKGrid(request.k, waveKGrid)) {
+        const uint64_t alternate = std::gcd(preferredWaveKGrid == minWaveKGrid ? maxWaveKGrid : minWaveKGrid, active);
+        if (alternate >= minWaveKGrid && KeepsWaveKGrid(request.k, alternate)) {
+            waveKGrid = alternate;
+        }
+    }
     if (request.wavePipeline && waveKGrid < minWaveKGrid) {
         return false;
     }
@@ -124,7 +147,11 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t splitK = useSequentialPartials ?
                                 CeilDiv(CeilDiv(request.k, kSequentialPartialK), selectedKGrid) * kSequentialPartialK :
                                 rawSplitK;
-    selectedKGrid = CeilDiv(request.k, splitK);
+    // Ordered partials can fill every wave lane with quotient/remainder ownership;
+    // compacting ceil-sized shards here would discard usable lanes before balancing them.
+    if (!request.wavePipeline || !useSequentialPartials) {
+        selectedKGrid = CeilDiv(request.k, splitK);
+    }
     // Distribute ordered partials by quotient/remainder; keep the launch grid and partial size unchanged.
     const uint64_t remainder = useSequentialPartials ? partialCount % selectedKGrid : 0U;
     const uint64_t largeKCoreCount = remainder == 0U ? selectedKGrid : remainder;

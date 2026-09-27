@@ -10,6 +10,9 @@
 #include "../../op_host/op_tiling/arch35/mega_mhc_cube_plan.h"
 #include "../../op_host/op_tiling/arch35/mega_mhc_memory_plan.h"
 
+#include <algorithm>
+#include <initializer_list>
+
 using namespace optiling::mega_mhc;
 #define REQUIRE(condition) \
     do { \
@@ -58,8 +61,8 @@ extern "C"
                     CubePlan p;
                     REQUIRE(BuildCubePlan(request, p));
                     // K-tail compaction can invalidate complete-row ownership; the host then uses its non-wave plan.
-                    if (request.wavePipeline && (p.mTile % (2U * p.kGrid) != 0U || p.lastWaveRows != p.rowsPerWave ||
-                                                 p.mWaveCount <= 1U || p.lastKCoreL1FullLoops < 2U)) {
+                    if (request.wavePipeline &&
+                        (p.mTile % (2U * p.kGrid) != 0U || p.mWaveCount <= 1U || p.lastKCoreL1FullLoops < 2U)) {
                         request.wavePipeline = false;
                         REQUIRE(BuildCubePlan(request, p));
                     }
@@ -70,7 +73,10 @@ extern "C"
                         const uint32_t members = p.kGrid * 2U;
                         const uint32_t producerRows = p.mTile / members;
                         REQUIRE(producerRows > 0 && producerRows * members == p.mTile);
-                        REQUIRE(p.lastWaveRows == p.rowsPerWave);
+                        const uint32_t fullProducers = p.lastWaveRows / producerRows;
+                        const uint32_t tailProducerRows = p.lastWaveRows % producerRows;
+                        REQUIRE(fullProducers <= p.activeAiv);
+                        REQUIRE(fullProducers * producerRows + tailProducerRows == p.lastWaveRows);
                         const uint32_t ticksAvailable = p.lastKCoreL1FullLoops - 1U;
                         const uint32_t rowsPerTick = (producerRows + ticksAvailable - 1U) / ticksAvailable;
                         const uint32_t ticks = (producerRows + rowsPerTick - 1U) / rowsPerTick;
@@ -125,12 +131,12 @@ extern "C"
                         REQUIRE(gammaTile > 0U && gammaTile % 64U == 0U);
                         REQUIRE(ProducerUbBytes(d, mid, false, gammaTile) <= 248U * 1024U);
                         const uint32_t reductionRowLimit =
-                            request.wavePipeline ? static_cast<uint32_t>((m + p.activeAiv - 1U) / p.activeAiv) :
-                                                   p.mTile / 2U;
+                            request.wavePipeline ?
+                                static_cast<uint32_t>((m + p.activeAiv - 1U) / p.activeAiv) :
+                                std::min(p.mTile / 2U, static_cast<uint32_t>((m + p.activeAiv - 1U) / p.activeAiv));
                         const uint32_t capacityRows = FitReductionRows(reductionRowLimit, d, p.partialGroupCount,
                                                                        p.fixpipeRowStride, p.kGrid, 248U * 1024U);
-                        const uint32_t reduceRows =
-                            request.wavePipeline ? BalanceReductionRows(reductionRowLimit, capacityRows) : capacityRows;
+                        const uint32_t reduceRows = BalanceReductionRows(reductionRowLimit, capacityRows);
                         REQUIRE(reduceRows > 0 && reduceRows <= reductionRowLimit);
                         REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <=
                                 248U * 1024U);
@@ -138,6 +144,43 @@ extern "C"
                     }
                 }
             }
+        }
+    }
+    // Tail plans must cover each producer row exactly once, including empty producer members.
+    for (uint64_t m : {513ULL, 576ULL, 640ULL, 1023ULL, 1025ULL, 2176ULL, 2560ULL, 2561ULL, 8192ULL, 8193ULL}) {
+        for (auto d : widths) {
+            CubePlanRequest request;
+            request.rows = m;
+            request.k = 4U * d;
+            request.q = 24U;
+            request.l1ABytes = request.l1BBytes = 256U * 1024U;
+            request.l0ABytes = request.l0BBytes = 64U * 1024U;
+            request.l0CBytes = 128U * 1024U;
+            request.wavePipeline = true;
+            CubePlan p;
+            request.aicCount = 32U;
+            request.aivCount = 64U;
+            bool found = false;
+            for (bool complete : {true, false}) {
+                request.preferCompleteWaves = complete;
+                if (BuildCubePlan(request, p) && p.mTile % (2U * p.kGrid) == 0U && p.mWaveCount > 1U &&
+                    p.lastKCoreL1FullLoops >= 2U &&
+                    ProducerUbBytes(d, false, true) + ProjectionUbBytes(request.k, p.l1K, p.mTile / 2U) <=
+                        248U * 1024U) {
+                    found = true;
+                    break;
+                }
+            }
+            REQUIRE(found);
+            const uint32_t rowsPerProducer = p.mTile / (2U * p.kGrid);
+            REQUIRE(p.activeAiv * rowsPerProducer == p.rowsPerWave);
+            const uint32_t full = p.lastWaveRows / rowsPerProducer;
+            const uint32_t tail = p.lastWaveRows % rowsPerProducer;
+            uint64_t covered = (p.mWaveCount - 1ULL) * p.rowsPerWave;
+            for (uint32_t member = 0U; member < p.activeAiv; ++member) {
+                covered += member < full ? rowsPerProducer : (member == full ? tail : 0U);
+            }
+            REQUIRE(covered == m);
         }
     }
     // Equal 64-row ownership must use two 32-row batches instead of stranding cores with 96 versus 48 rows.

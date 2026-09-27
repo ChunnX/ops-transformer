@@ -334,17 +334,21 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     const uint64_t availableUb = std::min<uint64_t>(ubBytes_, kUbLimitBytes);
     // Try waves only when every producer owns complete rows and all live buffers fit.
     if (!hasMid_ && std::min(aicCount_, aivCount_ / 2U) >= 4U) {
-        auto waveRequest = request;
-        waveRequest.wavePipeline = true;
-        mega_mhc::CubePlan wavePlan;
-        if (mega_mhc::BuildCubePlan(waveRequest, wavePlan) && wavePlan.mTile % (2U * wavePlan.kGrid) == 0U &&
-            wavePlan.lastWaveRows == wavePlan.rowsPerWave && wavePlan.mWaveCount > 1U &&
-            wavePlan.lastKCoreL1FullLoops >= 2U &&
-            mega_mhc::ProducerUbBytes(d_, false, true) +
-                    mega_mhc::ProjectionUbBytes(k_, wavePlan.l1K, wavePlan.mTile / 2U) <=
-                availableUb) {
-            request = waveRequest;
-            cubePlan_ = wavePlan;
+        // Prefer a complete-wave plan; if alignment invalidates it, retain the larger batch and use its tail.
+        for (uint32_t candidate = 0U; candidate < 2U; ++candidate) {
+            auto waveRequest = request;
+            waveRequest.wavePipeline = true;
+            waveRequest.preferCompleteWaves = candidate == 0U;
+            mega_mhc::CubePlan wavePlan;
+            if (mega_mhc::BuildCubePlan(waveRequest, wavePlan) && wavePlan.mTile % (2U * wavePlan.kGrid) == 0U &&
+                wavePlan.mWaveCount > 1U && wavePlan.lastKCoreL1FullLoops >= 2U &&
+                mega_mhc::ProducerUbBytes(d_, false, true) +
+                        mega_mhc::ProjectionUbBytes(k_, wavePlan.l1K, wavePlan.mTile / 2U) <=
+                    availableUb) {
+                request = waveRequest;
+                cubePlan_ = wavePlan;
+                break;
+            }
         }
     }
     tilingData_.set_hasMid(hasMid_ ? 1U : 0U);
@@ -368,6 +372,8 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_waveProducerRowsPerTick(rowsPerTick);
     tilingData_.set_wavePipeline(request.wavePipeline ? 1U : 0U);
     tilingData_.set_waveProducerRows(waveProducerRows);
+    tilingData_.set_lastWaveFullProducers(request.wavePipeline ? cubePlan_.lastWaveRows / waveProducerRows : 0U);
+    tilingData_.set_lastWaveProducerTailRows(request.wavePipeline ? cubePlan_.lastWaveRows % waveProducerRows : 0U);
     tilingData_.set_waveProducerTileStride(request.wavePipeline ? (waveTileCount - 1U) / tickCount : 0U);
     tilingData_.set_waveGroupSize(request.wavePipeline ? cubePlan_.kGrid * 2U : 0U);
 
@@ -390,11 +396,12 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_midGammaLastTile(k_ - (gammaCount - 1U) * gammaTile);
     // Wave projection rows do not constrain the independent epilogue lifetime or token ownership.
     const uint32_t reductionRowLimit =
-        request.wavePipeline ? static_cast<uint32_t>(CeilDiv(totalRows_, cubePlan_.activeAiv)) : projectionRows;
+        request.wavePipeline ?
+            static_cast<uint32_t>(CeilDiv(totalRows_, cubePlan_.activeAiv)) :
+            std::min(projectionRows, static_cast<uint32_t>(CeilDiv(totalRows_, cubePlan_.activeAiv)));
     const uint32_t capacityRows = mega_mhc::FitReductionRows(reductionRowLimit, d_, cubePlan_.partialGroupCount,
                                                              cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb);
-    const uint32_t reduceRows =
-        request.wavePipeline ? mega_mhc::BalanceReductionRows(reductionRowLimit, capacityRows) : capacityRows;
+    const uint32_t reduceRows = mega_mhc::BalanceReductionRows(reductionRowLimit, capacityRows);
     if (reduceRows == 0U) {
         return ge::GRAPH_FAILED;
     }
