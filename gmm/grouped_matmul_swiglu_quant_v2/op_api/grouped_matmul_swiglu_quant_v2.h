@@ -16,6 +16,9 @@
 #include "opdev/op_executor.h"
 
 namespace gmm_swiglu_quant_v3 {
+constexpr float DEFAULT_CLAMP_LIMIT = 7.0F;
+constexpr float DEFAULT_GLU_ALPHA = 1.702F;
+constexpr float DEFAULT_GLU_BIAS = 1.0F;
 constexpr size_t SINGLE_TENSOR_SIZE = 1;
 constexpr size_t FIRST_TENSOR_INDEX = 0;
 constexpr size_t X_DIM_NUM = 2;

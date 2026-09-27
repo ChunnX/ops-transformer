@@ -20,6 +20,32 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 
+namespace {
+constexpr int64_t SHAPE_PRODUCT_IDENTITY = 1;
+constexpr int64_t ELEMENT_STRIDE = 1;
+constexpr int64_t LAST_DIM_OFFSET = 1;
+constexpr int64_t PENULTIMATE_DIM_OFFSET = 2;
+constexpr int64_t DEFAULT_PRINT_ELEMENTS = 32;
+constexpr int64_t OUTPUT_PRINT_ELEMENTS = 64;
+constexpr int64_t NZ_K0 = 16;
+constexpr int64_t NZ_C0 = 32;
+constexpr int64_t MX_GROUP_SIZE = 64;
+constexpr int64_t SCALE_PAIR_SIZE = 2;
+constexpr int64_t SWIGLU_SPLIT_FACTOR = 2;
+constexpr size_t SINGLE_TENSOR_COUNT = 1;
+constexpr uint8_t E8M0_ONE = 127;
+constexpr size_t X_PATTERN_MULTIPLIER = 7;
+constexpr size_t X_PATTERN_OFFSET = 3;
+constexpr size_t WEIGHT_PATTERN_MULTIPLIER = 5;
+constexpr size_t WEIGHT_PATTERN_OFFSET = 1;
+constexpr int ARG_TRANSPOSE = 1;
+constexpr int ARG_DUMP_PREFIX = 2;
+constexpr int ARG_SCALE_ALG = 3;
+constexpr int MAX_ARGUMENT_COUNT = 4;
+constexpr int INVALID_ARGUMENT_EXIT = 2;
+constexpr int64_t SCALE_ALG_CUBLAS = 1;
+} // namespace
+
 #define CHECK_RET(cond, return_expr) \
     do { \
         if (!(cond)) { \
@@ -34,7 +60,7 @@
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
-    int64_t shapeSize = 1;
+    int64_t shapeSize = SHAPE_PRODUCT_IDENTITY;
     for (auto v : shape) {
         shapeSize *= v;
     }
@@ -47,7 +73,7 @@ auto Ceil(T1 a, T2 b) -> T1
     if (b == 0) {
         return a;
     }
-    return (a + b - 1) / b;
+    return (a + b - LAST_DIM_OFFSET) / b;
 }
 
 int Init(int32_t deviceId, aclrtStream *stream)
@@ -72,9 +98,9 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ret=%d\n", ret); return ret);
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ret=%d\n", ret); return ret);
-    std::vector<int64_t> strides(logicalShape.size(), 1);
-    for (int64_t i = logicalShape.size() - 2; i >= 0; --i) {
-        strides[i] = logicalShape[i + 1] * strides[i + 1];
+    std::vector<int64_t> strides(logicalShape.size(), ELEMENT_STRIDE);
+    for (int64_t i = logicalShape.size() - PENULTIMATE_DIM_OFFSET; i >= 0; --i) {
+        strides[i] = logicalShape[i + LAST_DIM_OFFSET] * strides[i + LAST_DIM_OFFSET];
     }
     if (customStrides != nullptr) {
         strides = *customStrides;
@@ -93,7 +119,7 @@ int CreateAclTensorND(const std::vector<T> &hostData, const std::vector<int64_t>
 }
 
 template <typename T>
-void PrintVector(const std::vector<T> &data, const std::string &name, int64_t printNum = 32)
+void PrintVector(const std::vector<T> &data, const std::string &name, int64_t printNum = DEFAULT_PRINT_ELEMENTS)
 {
     LOG_PRINT("======== %s ========\n", name.c_str());
     int64_t size = static_cast<int64_t>(data.size());
@@ -122,52 +148,54 @@ bool DumpFile(const std::string &path, const std::vector<uint8_t> &data)
 
 int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scaleAlg, aclrtStream stream)
 {
-    const int64_t dequantMode = 2;
+    constexpr int64_t dequantMode = 2;
     const int64_t dequantDtype = 0;
-    const int64_t quantMode = 2;
+    constexpr int64_t quantMode = 2;
     const int64_t groupListType = 0;
-    const int64_t swigluMode = 2;
-    const double clampLimit = 7.0;
-    const double gluAlpha = 1.702;
-    const double gluBias = 1.0;
+    constexpr int64_t swigluMode = 2;
+    constexpr double clampLimit = 7.0;
+    constexpr double gluAlpha = 1.702;
+    constexpr double gluBias = 1.0;
     const char *roundMode = "rint";
     const double dstTypeMax = 0.0;
     const aclTensorList *weightAssistMatrix = nullptr;
     const aclTensor *bias = nullptr;
     const aclTensor *smoothScale = nullptr;
     const aclIntArray *tuningConfigOptional = nullptr;
-    int64_t E = 1;
-    int64_t M = 2048;
-    int64_t K = 64;
-    int64_t N = 128;
+    constexpr int64_t E = 1;
+    constexpr int64_t M = 2048;
+    constexpr int64_t K = 64;
+    constexpr int64_t N = 128;
 
     std::vector<int64_t> xShape = {M, K};
     // The API entry view is always [E, K, N]. A transposed (ZN) weight is
     // distinguished by its view stride and physical FRACTAL_NZ storage.
     std::vector<int64_t> weightLogicalShape = {E, K, N};
-    std::vector<int64_t> weightStorageShape = transposeWeight ?
-                                                  std::vector<int64_t>{E, Ceil(K, 32), Ceil(N, 16), 16, 32} :
-                                                  std::vector<int64_t>{E, Ceil(N, 32), Ceil(K, 16), 16, 32};
-    const int64_t scaleK = Ceil(K, 64);
-    std::vector<int64_t> weightScaleShape = {E, scaleK, N, 2};
+    std::vector<int64_t> weightStorageShape =
+        transposeWeight ? std::vector<int64_t>{E, Ceil(K, NZ_C0), Ceil(N, NZ_K0), NZ_K0, NZ_C0} :
+                          std::vector<int64_t>{E, Ceil(N, NZ_C0), Ceil(K, NZ_K0), NZ_K0, NZ_C0};
+    const int64_t scaleK = Ceil(K, MX_GROUP_SIZE);
+    std::vector<int64_t> weightScaleShape = {E, scaleK, N, SCALE_PAIR_SIZE};
     std::vector<int64_t> weightScaleStorageShape =
-        transposeWeight ? std::vector<int64_t>{E, N, scaleK, 2} : weightScaleShape;
-    std::vector<int64_t> xScaleShape = {M, Ceil(K, 64), 2};
+        transposeWeight ? std::vector<int64_t>{E, N, scaleK, SCALE_PAIR_SIZE} : weightScaleShape;
+    std::vector<int64_t> xScaleShape = {M, Ceil(K, MX_GROUP_SIZE), SCALE_PAIR_SIZE};
     std::vector<int64_t> groupListShape = {E};
-    std::vector<int64_t> outputShape = {M, N / 2};
-    std::vector<int64_t> outputScaleShape = {M, Ceil(N / 2, 64), 2};
+    std::vector<int64_t> outputShape = {M, N / SWIGLU_SPLIT_FACTOR};
+    std::vector<int64_t> outputScaleShape = {M, Ceil(N / SWIGLU_SPLIT_FACTOR, MX_GROUP_SIZE), SCALE_PAIR_SIZE};
 
     constexpr uint8_t fp8Pattern[] = {0x38, 0xb8, 0x40, 0x30, 0xc0, 0x28, 0x3c, 0xbc, 0x48, 0xc8, 0x50, 0x20};
     std::vector<uint8_t> xHostData(GetShapeSize(xShape));
     std::vector<uint8_t> weightHostData(GetShapeSize(weightStorageShape));
     for (size_t i = 0; i < xHostData.size(); ++i) {
-        xHostData[i] = fp8Pattern[(i * 7 + 3) % (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
+        xHostData[i] =
+            fp8Pattern[(i * X_PATTERN_MULTIPLIER + X_PATTERN_OFFSET) % (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
     }
     for (size_t i = 0; i < weightHostData.size(); ++i) {
-        weightHostData[i] = fp8Pattern[(i * 5 + 1) % (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
+        weightHostData[i] = fp8Pattern[(i * WEIGHT_PATTERN_MULTIPLIER + WEIGHT_PATTERN_OFFSET) %
+                                       (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
     }
-    std::vector<uint8_t> weightScaleHostData(GetShapeSize(weightScaleShape), 127);
-    std::vector<uint8_t> xScaleHostData(GetShapeSize(xScaleShape), 127);
+    std::vector<uint8_t> weightScaleHostData(GetShapeSize(weightScaleShape), E8M0_ONE);
+    std::vector<uint8_t> xScaleHostData(GetShapeSize(xScaleShape), E8M0_ONE);
     std::vector<int64_t> groupListHostData = {M};
     std::vector<uint8_t> outputHostData(GetShapeSize(outputShape), 0);
     std::vector<uint8_t> outputScaleHostData(GetShapeSize(outputScaleShape), 0);
@@ -196,15 +224,15 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    std::vector<int64_t> weightViewStrides =
-        transposeWeight ? std::vector<int64_t>{K * N, 1, K} : std::vector<int64_t>{K * N, N, 1};
+    std::vector<int64_t> weightViewStrides = transposeWeight ? std::vector<int64_t>{K * N, ELEMENT_STRIDE, K} :
+                                                               std::vector<int64_t>{K * N, N, ELEMENT_STRIDE};
     ret = CreateAclTensor<uint8_t>(weightHostData, weightLogicalShape, weightStorageShape, &weightDeviceAddr,
                                    ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ, &weightTensor, &weightViewStrides);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightTensorPtr(weightTensor, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     aclTensor *weightArray[] = {weightTensor};
-    weight = aclCreateTensorList(weightArray, 1);
+    weight = aclCreateTensorList(weightArray, SINGLE_TENSOR_COUNT);
     CHECK_RET(weight != nullptr, LOG_PRINT("aclCreateTensorList(weight) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorListPtr(weight,
                                                                                                aclDestroyTensorList);
@@ -212,9 +240,11 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
     weightTensorPtr.release();
     // The ZN scale view is obtained by transposing an [E, N, scaleK, 2]
     // source. Its API entry view remains [E, scaleK, N, 2].
-    std::vector<int64_t> weightScaleViewStrides = transposeWeight ?
-                                                      std::vector<int64_t>{N * scaleK * 2, 2, scaleK * 2, 1} :
-                                                      std::vector<int64_t>{scaleK * N * 2, N * 2, 2, 1};
+    std::vector<int64_t> weightScaleViewStrides =
+        transposeWeight ?
+            std::vector<int64_t>{N * scaleK * SCALE_PAIR_SIZE, SCALE_PAIR_SIZE, scaleK * SCALE_PAIR_SIZE,
+                                 ELEMENT_STRIDE} :
+            std::vector<int64_t>{scaleK * N * SCALE_PAIR_SIZE, N * SCALE_PAIR_SIZE, SCALE_PAIR_SIZE, ELEMENT_STRIDE};
     ret =
         CreateAclTensor<uint8_t>(weightScaleHostData, weightScaleShape, weightScaleStorageShape, &weightScaleDeviceAddr,
                                  ACL_FLOAT8_E8M0, ACL_FORMAT_ND, &weightScaleTensor, &weightScaleViewStrides);
@@ -223,7 +253,7 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
     std::unique_ptr<void, aclError (*)(void *)> weightScaleDeviceAddrPtr(weightScaleDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     aclTensor *weightScaleArray[] = {weightScaleTensor};
-    weightScale = aclCreateTensorList(weightScaleArray, 1);
+    weightScale = aclCreateTensorList(weightScaleArray, SINGLE_TENSOR_COUNT);
     CHECK_RET(weightScale != nullptr, LOG_PRINT("aclCreateTensorList(weightScale) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightScaleTensorListPtr(
         weightScale, aclDestroyTensorList);
@@ -283,9 +313,9 @@ int RunExample(bool transposeWeight, const std::string &dumpPrefix, int64_t scal
                       outputScaleHostData.size() * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputScale failed. ret=%d\n", ret); return ret);
 
-    PrintVector<uint8_t>(outputHostData, "output", 64);
+    PrintVector<uint8_t>(outputHostData, "output", MX_GROUP_SIZE);
 
-    PrintVector<uint8_t>(outputScaleHostData, "outputScale", 64);
+    PrintVector<uint8_t>(outputScaleHostData, "outputScale", MX_GROUP_SIZE);
 
     if (!dumpPrefix.empty()) {
         CHECK_RET(DumpFile(dumpPrefix + "_output.bin", outputHostData), return ACL_ERROR_FAILURE);
@@ -302,19 +332,20 @@ int main(int argc, char **argv)
 {
     bool transposeWeight = false;
     int64_t scaleAlg = 0;
-    const std::string dumpPrefix = argc > 2 ? argv[2] : "";
+    const std::string dumpPrefix = argc > ARG_DUMP_PREFIX ? argv[ARG_DUMP_PREFIX] : "";
     try {
-        const std::string transposeArg = argc > 1 ? argv[1] : "0";
-        const std::string scaleAlgArg = argc > 3 ? argv[3] : "0";
-        if (argc > 4 || (transposeArg != "0" && transposeArg != "1") || (scaleAlgArg != "0" && scaleAlgArg != "1")) {
+        const std::string transposeArg = argc > ARG_TRANSPOSE ? argv[ARG_TRANSPOSE] : "0";
+        const std::string scaleAlgArg = argc > ARG_SCALE_ALG ? argv[ARG_SCALE_ALG] : "0";
+        if (argc > MAX_ARGUMENT_COUNT || (transposeArg != "0" && transposeArg != "1") ||
+            (scaleAlgArg != "0" && scaleAlgArg != "1")) {
             LOG_PRINT("usage: %s [transposeWeight: 0|1] [dumpPrefix] [scaleAlg: 0|1]\n", argv[0]);
-            return 2;
+            return INVALID_ARGUMENT_EXIT;
         }
         transposeWeight = transposeArg == "1";
-        scaleAlg = scaleAlgArg == "1" ? 1 : 0;
+        scaleAlg = scaleAlgArg == "1" ? SCALE_ALG_CUBLAS : 0;
     } catch (const std::exception &error) {
         LOG_PRINT("invalid arguments: %s\n", error.what());
-        return 2;
+        return INVALID_ARGUMENT_EXIT;
     }
 
     // Initialize the device and stream before creating tensors.
