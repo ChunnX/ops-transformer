@@ -371,6 +371,30 @@ qCmp+kCmp=16KB，pooledScore 紧随其后…16,384 也在"低区"却可见！→
 3. 兜底工程方案：把 pooledScore/qCmp/kCmp 全部挪到 workspace 高区（>16MB）——
    若高区写全部持久，一次布局重排绕过硬件异常
 
+## 第十六轮（2026-09-27 深夜，**bfvar 破案 + 套件 29/29 全绿——项目首次 perfect run**）
+
+### 根因（6b3ce58a9）：FillPass1Ctx 缓存键仅含 qChunkStart，忽略批切换
+多批变长（seqlen/block_len）下批间 validXBlocks 不同（bfvar B0=31、B1=32）：B1H3 的
+qChunkStart=24 与 B0H3 相同 → 缓存命中 B0H3 的陈旧 slice（尾 unit 仅 7 行，validX=31 所致）
+→ B1 的第 32 个 q block（row31）被当作不存在跳过：partSum/partMax=0 → pooled 尾行 ×7/8 →
+mask 错 16 处。B1H0-2 与 B0H0-2 的 unit 几何恰好相同故侥幸正确——与失败分布完全吻合。
+
+修复：缓存键补 validXBlocks 维度（cachedValidXBlocks），pass1/SoftmaxFinalize 两处 refill
+条件同步补充。
+
+### 取证历程（教训-rich）
+1. ws dump 分层比对定位 AIV6 尾行=0（partSum/partMax 双零）；
+2. **中途重大自查**：发现 ws 含 16MB WORK_SPACE_RESERVE，早期 @18-28MB 扫描全落预留区，
+   "row31 缺失/M 拆分 aic32-35"等虚假结论全部自我纠正作废（偏移链必须含 reserve！）；
+3. 正确偏移重扫：scratch 完整无缺（AIC 无辜）、AIV6 尾行=0 实锤 → 缓存键代码审计破案。
+4. **方法论教训入档**：dump 取证前必须钉死 section 偏移链（含 reserve）；"值域巧合匹配"
+   不足以定位真身；黑盒 EXACT/TOL PASS 才是修复的金标准。
+
+### 终态
+- **套件 29/29 全绿（18 EXACT + 11 BOUNDARY_TOLERANT）——项目首次无 FAIL**；
+- bfvar 3/3 TOL-PASS、p16var EXACT、客户 3/3 PASS；
+- 残留仅：blk8/n1/客户偶发 MTE3 写丢弃竞态（第十四轮 bit 级定性，首触假说待实验）。
+
 ## 第十五轮（2026-09-27，**p16var 根因双杀**：w16 尾折叠链节距错位 + finalize 批内几何）
 
 ### 根因 1：w16 尾 tile 折叠路径节距错位（结构性，对所有 foldCols<512 生效）
@@ -639,12 +663,10 @@ inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上�
 1. ~~blk8 级联修复~~（第十三轮，9238a7b19）
 2. ~~GeneralFinalize 行均值~~（第十四轮，366b5c986）
 3. ~~p16var 双根因~~（第十五轮，6ff511963：w16 尾折叠链重写 + finalize 批内几何）
-4. **bfvar**（唯一确定性 FAIL）：第十五轮已排除 pass1/partSum/partMax/pooled 值层（全部对 CPU
-   逐位/容差吻合，"+3 行移位" 系扫描偏移误判已澄清）——**剩余 = TopK 选择层**：同值 tie 的
-   选择差异（golden stable-argsort vs NPU radix）+ 疑变长批下 TopK 线性 sortLen 读/count 推导，
-   专查 bsa_radix_topk_service.h；pooled 布局=紧排 validPostY 节距（写读自洽，勿改 stride 对齐）
-5. **MTE3 写丢弃竞态**：bit 级定性完成（第十四轮）——① memset/首触预热实验 ② 冗余双写
-   ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 扰动时序（复现消失≠修复教训）
+4. ~~bfvar~~（第十六轮，6b3ce58a9：FillPass1Ctx 缓存键补 validXBlocks——**套件 29/29 全绿**）
+5. **MTE3 写丢弃竞态**（唯一残留）：bit 级定性完成（第十四轮）——① memset/首触预热实验
+   ② 冗余双写 ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 扰动时序（复现消失≠修复教训）
+6. 推送本地提交（第十六轮后累计 17 个未推送）
 
 ## 09-08~09-23 性能优化链存档摘要（本 session 摘要抢救，防丢失）
 
