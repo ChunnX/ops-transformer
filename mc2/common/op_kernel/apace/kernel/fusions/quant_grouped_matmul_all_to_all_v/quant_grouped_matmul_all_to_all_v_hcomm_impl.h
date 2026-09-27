@@ -44,6 +44,8 @@
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "apace/kernel/matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
+#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
+#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/communication/a2av_comm_params.h"
 
 namespace Apace {
 
@@ -108,7 +110,7 @@ public:
             // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信；
             // 空批也照常提交，保证各 rank 集合通信次数对齐
             AscendC::SyncAll();
-            SubmitBatchComm(batch, tokenPrefix);
+            SubmitBatchComm(batch);
             // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再复用参数数组
             AscendC::PipeBarrier<PIPE_ALL>();
             tokenPrefix += batchTokens;
@@ -133,7 +135,9 @@ public:
     }
 
 private:
-    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = 256U;
+    // rank 维数组容量沿用 legacy MAX_EP_RANK_SIZE(128)：SUPPORT_RANK_SIZE 上限 128，
+    // 且 AIC 栈帧 32KB 受限（HcclMsgExt 注释明示），栈数组不得随意扩容
+    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = MC2KernelTemplate::MAX_EP_RANK_SIZE;
     static constexpr uint32_t GMM_A2AV_MAX_BATCH_NUM = 8U;
     static constexpr uint32_t MX_BASIC_FACTOR = 64U;
     static constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
@@ -344,51 +348,62 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    __aicore__ inline void SubmitBatchComm(uint32_t batch, uint64_t tokenPrefix)
+    __aicore__ inline void SubmitBatchComm(uint32_t batch)
     {
-        // 通信参数为提交期临时数据（局部变量，避免成员占用 kernel 全生命周期栈空间）
-        uint64_t sendCnt[A2AV_GMM_MAX_RANK_NUM] = {0};
-        uint64_t sendOffset[A2AV_GMM_MAX_RANK_NUM] = {0};
-        uint64_t recvCnt[A2AV_GMM_MAX_RANK_NUM] = {0};
-        uint64_t recvOffset[A2AV_GMM_MAX_RANK_NUM] = {0};
-        const uint32_t rankSize = RankSize();
-        const uint32_t expertNum = ExpertNum();
+        // 通信参数逐字节对齐 409d5e04a / 非 apace 通路：legacy A2avCommParams
+        // （128 rank 容量、4KB 栈），公式为 CalcA2avCommAfterParams 同款伸缩和形态
+        MC2KernelTemplate::A2avCommParams commParams;
+        const uint32_t e = ExpertNum();
+        const uint32_t rankDim = RankSize();
         const uint64_t n1 = tilingData_->taskTilingInfo.N1;
-        const uint32_t n = static_cast<uint32_t>(n1);
-        const uint32_t batchExpertNum = GetBatchExpertNum(batch);
+        const int32_t *sendCounts = tilingData_->taskTilingInfo.sendCnt;
+        const int32_t *recvCounts = tilingData_->taskTilingInfo.recvCnt;
         const uint32_t start = batch * BatchExpertNum();
+        const uint32_t expertNum = GetBatchExpertNum(batch);
 
-        // send：gmmOutput 批间串接、批内 rank-major（sendOffset[0] = 批前缀，批内 peer 段前缀累加）
-        // recv：y 全局 [peer][expert] rank-major（peer 段基 + peer 段内本批专家前缀）
-        uint64_t sendRunning = tokenPrefix * n;
-        uint64_t peerBase = 0;
-        for (uint32_t peer = 0U; peer < rankSize; ++peer) {
-            uint64_t sendBatchRows = 0;
-            uint64_t recvBatchRows = 0;
-            for (uint32_t jj = 0U; jj < batchExpertNum; ++jj) {
-                sendBatchRows += GetSendRows(start + jj, peer);
-                recvBatchRows += GetRecvRows(start + jj, peer);
+        // 本批 send/recv 计数（元素单位，axis = N1）
+        for (uint32_t i = 0U; i < rankDim; i++) {
+            commParams.sendCnt[i] = 0UL;
+            commParams.recvCnt[i] = 0UL;
+            for (uint32_t expertIdx = start; expertIdx < start + expertNum; expertIdx++) {
+                commParams.sendCnt[i] += static_cast<uint64_t>(sendCounts[expertIdx + i * e]) * n1;
+                commParams.recvCnt[i] += static_cast<uint64_t>(recvCounts[expertIdx + i * e]) * n1;
             }
-            uint64_t expertPrefix = 0;
-            for (uint32_t j = 0U; j < start; ++j) {
-                expertPrefix += GetRecvRows(j, peer);
-            }
-            sendCnt[peer] = sendBatchRows * n;
-            sendOffset[peer] = sendRunning;
-            sendRunning += sendBatchRows * n;
-            recvCnt[peer] = recvBatchRows * n;
-            recvOffset[peer] = (peerBase + expertPrefix) * n;
-
-            uint64_t peerRows = 0;
-            for (uint32_t j = 0U; j < expertNum; ++j) {
-                peerRows += GetRecvRows(j, peer);
-            }
-            peerBase += peerRows * n;
         }
 
-        a2avHandles_[submitted_] =
-            hccl_.template AlltoAllV<true>(gmmOutputGM_, sendCnt, sendOffset, Y_HCCL_DATA_TYPE, yGM_, recvCnt,
-                                           recvOffset, Y_HCCL_DATA_TYPE, static_cast<uint8_t>(1));
+        // send 偏移：GMM 输出为批间串接、批内 rank-major 布局
+        // （本批起点 = 批前全部 token 累计；批内 rank 段首 = 本批起点 + 前 rank 段累计）
+        uint64_t batchStartOffset = 0UL;
+        for (uint32_t i = 0U; i < start; i++) {
+            for (uint32_t j = 0U; j < rankDim; j++) {
+                batchStartOffset += static_cast<uint64_t>(sendCounts[i + j * e]);
+            }
+        }
+        batchStartOffset *= n1;
+        commParams.sendOffset[0] = batchStartOffset;
+        uint64_t rankRunningOffset = 0UL;
+        for (uint32_t i = 1U; i < rankDim; i++) {
+            for (uint32_t expertIdx = start; expertIdx < start + expertNum; expertIdx++) {
+                rankRunningOffset += static_cast<uint64_t>(sendCounts[expertIdx + (i - 1) * e]) * n1;
+            }
+            commParams.sendOffset[i] = batchStartOffset + rankRunningOffset;
+        }
+
+        // recv 偏移：y 按 recvCounts 源 rank 聚合顺序（rank-major，伸缩和恒等式）
+        commParams.recvOffset[0] = 0UL;
+        for (uint32_t i = 0U; i < start; i++) {
+            commParams.recvOffset[0] += static_cast<uint64_t>(recvCounts[i]) * n1;
+        }
+        for (uint32_t i = 1U; i < rankDim; i++) {
+            commParams.recvOffset[i] = commParams.recvOffset[i - 1];
+            for (uint32_t j = 0U; j < e; j++) {
+                commParams.recvOffset[i] += static_cast<uint64_t>(recvCounts[start + (i - 1) * e + j]) * n1;
+            }
+        }
+
+        a2avHandles_[submitted_] = hccl_.template AlltoAllV<true>(
+            gmmOutputGM_, commParams.sendCnt, commParams.sendOffset, Y_HCCL_DATA_TYPE, yGM_, commParams.recvCnt,
+            commParams.recvOffset, Y_HCCL_DATA_TYPE, static_cast<uint8_t>(1));
         submitted_++;
     }
 
