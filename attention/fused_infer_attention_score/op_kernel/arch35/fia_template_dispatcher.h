@@ -182,16 +182,16 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 宏指针(动=GM零拷贝/静=栈拷贝)以普通指针传入kernel,
+    // kernel直读结构体成员(baseTiling/fiaMetaData) — 与noquant regbase路径同款读法。
+    // 不用__tiling_data_ptr__注解(在线opcompile codegen挂死)、不用GlobalTensor+指针算址
+    // (静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -254,16 +254,16 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 宏指针(动=GM零拷贝/静=栈拷贝)以普通指针传入kernel,
+    // kernel直读结构体成员(baseTiling/fiaMetaData) — 与noquant regbase路径同款读法。
+    // 不用__tiling_data_ptr__注解(在线opcompile codegen挂死)、不用GlobalTensor+指针算址
+    // (静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -319,16 +319,16 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 宏指针(动=GM零拷贝/静=栈拷贝)以普通指针传入kernel,
+    // kernel直读结构体成员(baseTiling/fiaMetaData) — 与noquant regbase路径同款读法。
+    // 不用__tiling_data_ptr__注解(在线opcompile codegen挂死)、不用GlobalTensor+指针算址
+    // (静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
-            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, fiaMetaData,
-            tilingData, &tPipe);
+            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, tilingData,
+            &tPipe);
     op.Process();
 }
 #endif
