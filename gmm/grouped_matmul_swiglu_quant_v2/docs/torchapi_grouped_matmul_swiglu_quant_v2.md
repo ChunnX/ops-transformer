@@ -105,7 +105,7 @@ cann_ops_transformer.grouped_matmul_swiglu_quant_v2(
 | `glu_alpha` | float | 可选 | Sigmoid输入的缩放系数，默认值为`None`，此时按1.702处理。必须为有限且可由`torch.float32`表示的值。 | float | - |
 | `glu_bias` | float | 可选 | 线性分支的偏置，默认值为`None`，此时按1.0处理。必须为有限且可由`torch.float32`表示的值。 | float | - |
 | `round_mode` | str | 可选 | MX量化舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
-| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。0表示OCP实现，1表示cuBLAS实现；当前MXFP8输出仅支持0或1，不支持2。 | int | - |
+| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。0表示OCP实现，1表示cuBLAS实现；当前MXFP8输出仅支持0或1。 | int | - |
 | `dst_type_max` | float | 可选 | 表示目标数据类型的最大值，默认值为0.0。当前MXFP8输出仅支持0.0。 | float | - |
 
 ## 返回值说明

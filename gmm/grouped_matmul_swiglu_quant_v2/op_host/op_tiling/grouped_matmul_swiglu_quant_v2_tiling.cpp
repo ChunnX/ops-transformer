@@ -58,8 +58,10 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 
 constexpr int64_t SWIGLU_MODE_V3 = 2;
 
-static ge::graphStatus CheckRequiredDynamicInput(const gert::TilingContext *context, size_t irIndex,
-                                                 const char *inputName)
+// Check every list instance before routing: a present tensor list does not imply
+// that every descriptor and shape exists. Reject missing metadata before use.
+static ge::graphStatus CheckRequiredDynamicInputMetadata(const gert::TilingContext *context, size_t irIndex,
+                                                         const char *inputName)
 {
     constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
     const auto *instanceInfo = context->GetIrInputInstanceInfo(irIndex);
@@ -97,8 +99,8 @@ static ge::graphStatus CheckRequiredTilingContext(gert::TilingContext *context)
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, input.name, "does not support nullptr"),
                     return ge::GRAPH_FAILED);
     }
-    if (CheckRequiredDynamicInput(context, WEIGHT_INDEX, "weight") != ge::GRAPH_SUCCESS ||
-        CheckRequiredDynamicInput(context, WEIGHT_SCALE_INDEX, "weightScale") != ge::GRAPH_SUCCESS) {
+    if (CheckRequiredDynamicInputMetadata(context, WEIGHT_INDEX, "weight") != ge::GRAPH_SUCCESS ||
+        CheckRequiredDynamicInputMetadata(context, WEIGHT_SCALE_INDEX, "weightScale") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
