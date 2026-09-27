@@ -12,6 +12,7 @@
  * \file grouped_mat_mul_all_reduce.cpp
  * \brief
  */
+// mc2 operator kernel entry
 #define K_MAX_SHAPE_DIM 0
 
 #if ASC_DEVKIT_MAJOR >= 9

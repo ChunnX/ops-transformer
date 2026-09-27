@@ -15,6 +15,7 @@
  *        - A2 (910B):   INT8 (int8 weight), BF16/FP16 weight
  *        Note: W4A8 on A2 is reserved but not yet implemented.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

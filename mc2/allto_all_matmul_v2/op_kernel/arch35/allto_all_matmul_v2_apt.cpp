@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+// mc2 operator kernel entry
 
 #include <kernel_operator.h>
 #include "allto_all_matmul_v2_tiling_key.h"

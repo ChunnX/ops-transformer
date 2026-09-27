@@ -12,6 +12,7 @@
  * \file quant_grouped_mat_mul_allto_allv.cpp
  * \brief
  */
+// mc2 operator kernel entry
 #include "basic_api/kernel_basic_intf.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_key.h"

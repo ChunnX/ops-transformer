@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+// mc2 operator kernel entry
 
 /*! * moe_distribute_dispatch_v2_a2.cpp */
 #if ASC_DEVKIT_MAJOR >= 9
