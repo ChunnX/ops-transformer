@@ -280,6 +280,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(const gert::T
         OP_LOGE(context->GetNodeName(), "The length of group string is 0.");
         return GRAPH_FAILED;
     }
+    OP_CHECK_NULL_WITH_CONTEXT(context, isTransposeX1);
     OP_CHECK_NULL_WITH_CONTEXT(context, isTransposeX2);
     OP_CHECK_NULL_WITH_CONTEXT(context, isTransposeX1);
 
