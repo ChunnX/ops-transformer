@@ -64,8 +64,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
-    OP_CHECK_IF(uniqueExecutor.get() == nullptr,
-                OP_LOGE(MQSMLA_ACLNN_OP_NAME, "Failed to create executor"),
+    OP_CHECK_IF(uniqueExecutor.get() == nullptr, OP_LOGE(MQSMLA_ACLNN_OP_NAME, "Failed to create executor"),
                 return ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -94,8 +93,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
                            maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, ropeHeadDim, cmpRatio, oriMaskMode,
                            cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
                            aicCoreNum, aivCoreNum, socVersion, metaData);
-    OP_CHECK_IF(ret != ACLNN_SUCCESS,
-                OP_LOGE(MQSMLA_ACLNN_OP_NAME, "Parameter check failed: %d", ret), return ret);
+    OP_CHECK_IF(ret != ACLNN_SUCCESS, OP_LOGE(MQSMLA_ACLNN_OP_NAME, "Parameter check failed: %d", ret), return ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
