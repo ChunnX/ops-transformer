@@ -418,9 +418,14 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
   → **AIC matmul/fixpipe 对变长批最后 chunk 的最后一行丢写**（curQChunkSize=8 小 m chunk 的
   m 尾行）。B0（chunkRows=7 尾单元）最后行正常——7 行 chunk 好、8 行 chunk 丢尾行，疑 m 尾
   处理与 fixpipe mSize 对齐交互。
-- 下轮首查：ComputeMatmulChunk 的 m 维尾部（curQChunkSize=8）+ scratch tile 布局标定
-  （tile70=_HW 52 AIC 中哪个、ring/偏移公式实证——本轮 BSAScratchTileOffset 假设偏移未命中，
-  row30 值域搜索已定位真实落点）。
+- 下轮首查：ComputeMatmulChunk 的 m 维尾部（curQChunkSize=8）+ **AIC scratch 布局取证**
+  （本轮关键线索：FixCopyOut mSize=8→16 对齐会写 tile rows[0,16)（含 L0C 垃圾行），覆盖 row31
+  理论无害；但实证 **row31 原始分数全域缺失、row30 命中 @tile70**——tile70=18.37MB 处与
+  BSAScratchTileOffset 公式（aic3 应 @1.59MB、aic35 应 idle）**矛盾**：either (a) AIC 实际
+  chunk→aic 映射/scratch 布局与公式不符（52 硬件 AIC、activeCore=20 之下的分配），(b) tile70
+  为前次 run 残留巧合，或 (c) mSize 对齐的 fixpipe 在某条件下覆盖/丢行——三者待实验区分：
+  ①单批次两行手工 case（排除变长批噪声）②改 FixCopyOut 打印 tileBase ③dump 全局搜多行分数
+  特征反推 scratch 实布局。
 - blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
 
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
