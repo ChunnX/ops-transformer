@@ -92,6 +92,8 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // MIX 诊断实验：AIV 不参与 apace 路径（通信已改 AIC 核内），直接退出
             return;
         }
+        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                           gmmArrayAddr_, tilingGM);
         HcommImpl hcommImpl;
         hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM,
                        tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
