@@ -15,7 +15,7 @@ import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from ..common import CommContextManager
+from ..common import CommContextManager, get_quant_mte_context
 
 
 TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
@@ -62,8 +62,8 @@ class QuantReduceScatterOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "npu_quant_reduce_scatter(Tensor context, Tensor x, Tensor scales, int hccl_buffer_size, "
-            "int world_size, *, str? reduce_op='sum', int? output_dtype=None, int? x_dtype=None, "
-            "int? scales_dtype=None) -> Tensor"
+            "int world_size, *, str hcom, str? reduce_op='sum', int? output_dtype=None, "
+            "int? x_dtype=None, int? scales_dtype=None) -> Tensor"
         ]
 
     def register_meta(self):
@@ -79,6 +79,7 @@ class QuantReduceScatterOpBuilder(OpBuilder):
             scales,
             hccl_buffer_size,
             world_size,
+            hcom,
             reduce_op="sum",
             output_dtype=None,
             x_dtype=None,
@@ -123,6 +124,8 @@ class QuantReduceScatterOpBuilder(OpBuilder):
 quant_reduce_scatter_op_builder = QuantReduceScatterOpBuilder()
 quant_reduce_scatter_op_builder._ensure_initialized()
 
+_QUANT_MTE_CONTEXT_PLACEHOLDER_NUM = 4100
+
 
 @impl(get_as_library(), quant_reduce_scatter_op_builder.name, "PrivateUse1")
 def npu_quant_reduce_scatter(
@@ -131,6 +134,7 @@ def npu_quant_reduce_scatter(
     scales,
     hccl_buffer_size,
     world_size,
+    hcom,
     reduce_op="sum",
     output_dtype=None,
     x_dtype=None,
@@ -312,27 +316,33 @@ def quant_reduce_scatter(
     x_dtype: Optional[int] = None,
     scales_dtype: Optional[int] = None,
 ):
-    global _buffer_seq
-    # 不再每次销毁重建buffer：优先复用缓存（_get_or_create_buffer），仅尺寸不足时才重建
-    _buffer_seq += 1
-    op_name = f"quant_reduce_scatter_{_buffer_seq}"
-    group = torch.distributed.distributed_c10d._get_default_group()
-    group_name = (
-        hcom
-        if isinstance(hcom, str)
-        else group._get_backend(torch.device("npu")).get_hccl_comm_name(
+    if isinstance(hcom, str):
+        group_name = hcom
+    else:
+        group = torch.distributed.distributed_c10d._get_default_group()
+        group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             torch.distributed.get_rank(group), init_comm=False
         )
-    )
-    buffer = _get_or_create_buffer(
-        group_name, group, world_size, x, scales, op_name=op_name
-    )
+
+    if torch.compiler.is_compiling():
+        # Dynamo trace 阶段只保留算子节点；converter 会创建真实 context 并覆写
+        # hccl_buffer_size，因此这里使用无业务语义的占位数据。
+        context = torch.zeros(
+            _QUANT_MTE_CONTEXT_PLACEHOLDER_NUM,
+            dtype=torch.int32,
+            device=x.device,
+        )
+        hccl_buffer_size = 0
+    else:
+        context, hccl_buffer_size = get_quant_mte_context(group_name)
+
     return torch.ops.cann_ops_transformer.npu_quant_reduce_scatter(
-        buffer.context,
+        context,
         x,
         scales,
-        buffer.hccl_buffer_size,
-        buffer.world_size,
+        hccl_buffer_size,
+        world_size,
+        hcom=group_name,
         reduce_op=reduce_op,
         output_dtype=output_dtype,
         x_dtype=x_dtype,
