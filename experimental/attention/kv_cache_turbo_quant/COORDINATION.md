@@ -72,3 +72,17 @@
 4. **打包用 vcgadd**（`BlockReduceSum(words, idx*wLo, nv*2, 64, 1, 1, 8)` 每 repeat 64 元素出 8 个 8-lane 组和）替代 128-rep WRS（AIV 打包时间 ~4x 省）；字节拆分用 `__ubuf__` 裸指针走（避开 GetValue/SetValue 标量管道）。
 5. **x 只读一次**：pre-pass 融合 norms+xh 上传（原 quant 阶段不再读 x）。
 6. 尾块安全：Nd2Nz `nValue=有效行`（dstNzC0Stride 按 16 对齐上取整），不再越界读输入；pad 行进 L0C 出垃圾但 AIV 不消费；ws 按 chunk 上取整多分配 128 行。
+
+## 【A2 @ 2026-09-27 深夜 终态】prefill 174/137/161us（22-33x）——A3 直接可移植清单
+
+A2 最终数据（commit 42729ea25，per-call executor 暖态）：decode b1 56.2us=26.5x / b64 84.6us=18.4x；prefill t2048 174.6us=22.1x / mse2 137.4us=26.3x / mse4 160.6us=32.9x。精度 9/9 全过（含扫描/边界形状）。
+
+相对 v6（c3716965）的增量（全部实证过）：
+1. **x 由 AIC 以 bf16 直读输入** + H 改 **bf16 三连拆分**（3×8bit mantissa 恰好=fp32 全 24 位，offline 残差 0.0、idx 0 翻转）——xh 上传平面和 XH 握手相位整体删除，z 相位从 t=0 起全异步。**bf16-pair 别用**（2^-17 → ~23 翻转）。
+2. **范数移入 quant 相位**：H 正交 ⇒ ‖z‖=‖H x‖=‖x‖（~2^-24），pre-pass 相位删除（少读一遍 x + 少一轮握手 + 无跨相位持久标量）。
+3. **量化=二分查找+质心表 Gather**（严格大于中点，与 golden 逐字节同源；**每次 Compare 前必须 `set_mask_norm()`**，WRS 残留的 mask=64 会让 2048 元素只比 64 车道——v13.1/13.2 的 96%-错根因）。**别在 QuantizeBatch 里把 r² 写进 y==zTile 的别名**（会平方覆盖残差——写进已死的 yhat）。
+4. **idx 打包全向量化**（标量字节循环实测 40-86us/launch = AIV 最大单项；AIV 标量管道 ~5cyc/op）：vcgadd 出组词 → Cast RINT → ShiftLeft+Add 合并 → mse4 1:1 int32 直存 / mse2 偶奇 Gather+移位 / mse3 公式三 int32 一组。**mse3 别用 Gather 重组**（6 gather/tile 比公式走还慢，build279 实证回退）。
+5. **读侧预取双缓冲**（MTE2 提前一拍 + eventID 4/5 交替）z/x/p 平面读各 -12us；写侧双缓冲的事件簿记小心（build256 死锁，先别做）。
+6. m=64 大 tile、L0C 双缓冲、相位融合（v7）：本栈全部零增益或更慢，勿再试。**L0C 累加对 p 两次实证致死**（93%+ qjl 翻），z 可以 p 不行。
+
+**竞对 12860 画像（供 A3 对照）**：其注册 aclnn 核是空桩，计时路径=host 侧 11 次裸 launch（kvtq_* + stock aclnnLinalgVectorNorm/Div/Mul + AIC-only fp32 GEMM 模板）；910B1 实测 190/189/191/190/195us（decode 两 case 过不了 10x 上限），A3 上 39/69/326/272/411us。其 quantize 内核单测 113/120/133us（bits 2/3/4，Gather ~8us/轮/launch）。
