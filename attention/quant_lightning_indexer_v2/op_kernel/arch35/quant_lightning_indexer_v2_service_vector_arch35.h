@@ -564,11 +564,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
 
 #if QLIV2_HIF4_DEBUG_DUMP
-    // 6211/6212 = the real BF16 Fixpipe output in UB, split by G rows to keep each record below 32 KiB.
-    // For S2=128 each 256-BF16 physical row contains logical columns at:
-    //   physical [0, 64)   -> logical S2 [0, 64)
-    //   physical [128,192) -> logical S2 [64,128)
-    // The two holes [64,128) and [192,256) are not QK data and must not be compared with Golden.
+    // 6211/6212 = raw BF16 Fixpipe output in UB, split by G rows to keep each record below 32 KiB.
+    // For S2=128, qkBase points at the selected ping/pong buffer. In every 256-BF16 row stride:
+    //   relative physical [0,128) -> this buffer's contiguous logical S2 [0,128)
+    //   relative physical [128,256) -> data from the interleaved opposite ping/pong buffer
+    // To compare with Golden, reshape each dump to [rows, 256] and use only columns [0,128).
     if constexpr (IS_HIFLOAT4) {
         bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
                            info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
