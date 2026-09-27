@@ -561,9 +561,10 @@ TEST_PARAMS = {
         "p_scale": [1.0],
         "enable_lse": [False],
     },
-    # ===== seq_used=0 空批系列（2026-09-27 上板 8/8 全过自 debug 迁入，DEAL_ZERO 清零已落地）=====
-    # 某些 batch 的 seqused_q/kv 为 0：kv=0 批（q 有效）输出严格对比须为 0——由 kernel
-    # DEAL_ZERO 分支 AIV 整行清零保障（消费 metadata needInitOutput）；q=0 批走对比掩码。
+    # ===== seq_used=0 空批系列（2026-09-27 上板 8/8 全过自 debug 迁入，ClearOutput 预清零保障）=====
+    # 某些 batch 的 seqused_q/kv 为 0：输出须为 0——由 kernel ClearOutput 全量预清零保障
+    # （needInitOutput 门控，2026-09-27 对齐主线 block_vec_mxfp8：AIV 分片 memset + SyncAll，
+    # 空批行与 padding 行同覆盖），对比无掩码、整张量严格比较。
     # A 组 q=0（KV 有效）：首批空 Q——batch0 q=0（DEAL_ZERO）× batch1 正常
     "BNSD_B2_QS0x256_KVS256x256_Nq1_Nkv1_D128_qm3": {
         "B": [2],

@@ -66,10 +66,9 @@ private:
     static constexpr uint32_t UB_SUBMAX_BASE = UB_BSMAX_BASE + UB_SMAX_SLOT * sizeof(SOFTMAX_T);
     static constexpr uint32_t UB_PSCALE_BASE = UB_SUBMAX_BASE + UB_SMAX_SLOT * UB_PSCALE_SUBLOOPS * sizeof(SOFTMAX_T);
     static constexpr uint32_t UB_NZIDX_BASE = UB_PSCALE_BASE + UB_PSCALE_SLOT * UB_PSCALE_RINGS;
-    // 零批输出清零源（2026-09-27 seq_used=0 泛化，DEAL_ZERO TODO 落地）：
-    // [64 行 × dVBaseSize 列] OUT_T 零源，分块整行清零 GM（colCount=dVBaseSize → srcStride=0 纯连续）
-    static constexpr uint32_t UB_ZERO_OUT_ROWS = 64;
-    static constexpr uint32_t UB_ZERO_OUT_SIZE = UB_ZERO_OUT_ROWS * dVBaseSize;   // OUT_T 元素
+    // 零源槽（2026-09-27 对齐主线 ClearOutput 全量预清零，消费 needInitOutput）：
+    // [64 行 × dVBaseSize 列] OUT_T 零源，AIV 分片整张量分块 memset GM（16KB/块）
+    static constexpr uint32_t UB_ZERO_OUT_SIZE = 64 * dVBaseSize;   // OUT_T 元素
     static constexpr uint32_t UB_ZERO_OUT_BASE = UB_NZIDX_BASE + 256;
     // pNzIdxUB 索引表 256B 计入总量（原实现漏计）
     static constexpr uint32_t UB_TOTAL = UB_ZERO_OUT_BASE + UB_ZERO_OUT_SIZE * sizeof(OUT_T);
@@ -87,7 +86,7 @@ private:
     LocalTensor<SOFTMAX_T> subLoopUsedMaxUB_;  // [2][128] half，各 subLoop k_i（供末 subLoop 算 pscale）
     LocalTensor<SCALE_T> pscaleGridUB_;  // [6][768B] pscale L1 网格影像（[ring]，VF 散布 + 连续整槽发 L1）
     LocalTensor<uint8_t> pNzIdxUB_;      // P NZ 打包 Gather 索引表（pscale 改字节对后唯一消费者是 P 存储）
-    LocalTensor<OUT_T> zeroOutUB_;       // 零批输出清零源 [64,128]（DEAL_ZERO 行整段清零 GM）
+    LocalTensor<OUT_T> zeroOutUB_;       // 全量预清零零源 [64,128]（ClearOutput 分片 memset GM）
 
     // ===== L1 共享区视图成员（AIC L1，V1 经 MTE3 写入 P/pscale 的目标地址）=====
     // P 槽核间交错布局（common_def L1_PSLOT 宏）下双核槽不连续——统一走宽视图 + 计算基址
@@ -109,7 +108,7 @@ private:
     // ===== 核内事件 ID（对齐设计 §4 事件表）=====
     static constexpr uint32_t EVT_P_COPY = 0;   // V↔MTE3：P/pscale MTE3 前后 + 顶部等待
     static constexpr uint32_t EVT_GM_OUT = 1;   // V→MTE3：GM 输出前
-    static constexpr uint32_t EVT_ZERO_OUT = 2; // V→MTE3：零批清零源 Duplicate 就绪后放行
+    static constexpr uint32_t EVT_ZERO_OUT = 2; // V↔MTE3：ClearOutput 零源就绪 + 清零排空
 
 public:
     __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo &constInfo)
@@ -315,38 +314,52 @@ public:
     }
 
     /*
-     * 零批输出清零（2026-09-27 seq_used=0 泛化：DEAL_ZERO TODO 落地，消费 metadata
-     * needInitOutput 语义）。batch 的 seqused_q/kv 为 0 时该 bN2 行无任何计算任务，
-     * 输出必须为 0——kv=0 批 q 有效行为严格对比区（原实现不写=未初始化内存，
-     * PctRlt 随内存状态漂移：B2_KVS0x256 实测 50%）。整行 [0, s1Size) 清零
-     *（含 padding 尾行，语义完备）；行范围按 V0/V1 对半分摊（镜像 S1 半语义）；
-     * 64 行/块循环支持任意 s1Size。
-     * 流水安全：零源为专用 UB 槽（与流水线缓冲无交集），[Dup,Set]@V / [Wait,Copy]@MTE3
-     * 成对追加于队尾——既有跨管道 Wait 均由更早已入队的 Set 满足，无环（EVT_GM_OUT 同款论证）
+     * 全量输出预清零（2026-09-27 对齐主线 block_vec_mxfp8 ClearOutput/InitOutputSingleCore，
+     * 消费 metadata needInitOutput 语义）。置位（存在空批/padding 行）时每个 AIV 认领
+     * 输出张量 1/aivNum 连续切片，专用 UB 零源分块 MTE3 清零，末对 Set/Wait<MTE3_V>
+     * 排空 + SyncAll 跨 AIV 屏障——屏障通过即全张量 0 基线就绪，后续计算只覆写有效行，
+     * 空批行与 padding 行保持 0（原 DEAL_ZERO 行级清零被其覆盖移除，test 掩码同步移除）。
+     * 同步安全：AIC 不参与屏障（其产物仅为 AIV UB 的 fixpipe，GM 写全在 AIV MTE3；
+     * AIC 先行分发至 V1_P_READY 等跨核 flag 自然阻塞，无死锁环）；SyncAll() 默认
+     * AIV-only（arch38 惯例：AIC+V 双侧才用 SyncAll<false>）
      */
-    __aicore__ inline void ZeroOutputRows(uint32_t bIdx, uint32_t realN2Idx)
+    __aicore__ inline void ClearOutput()
     {
-        uint32_t half = (constInfo_.s1Size + 1U) / 2U;
-        uint32_t rowStart = (constInfo_.subBlockIdx == 0U) ? 0U : half;
-        uint32_t rowCount = (constInfo_.subBlockIdx == 0U) ? half : constInfo_.s1Size - half;
-        if (rowCount == 0U) {
+        if (!constInfo_.needInitOutput) {
             return;
         }
+        int64_t totalSize = static_cast<int64_t>(constInfo_.bSize) * constInfo_.realN2Size *
+                            constInfo_.realGSize * constInfo_.s1Size * constInfo_.dSizeV;
+        // AIV 数 = 2×coreNum（MIX_AIC_1_2，coreNum 为 AIC 数——主线同款公式）
+        uint32_t aivNum = 2U * constInfo_.coreNum;
+        int64_t sliceSize = (totalSize + aivNum - 1) / aivNum;
+        // 切片界 32B 对齐（D=128 ⇒ totalSize 恒 16 倍数，尾块天然对齐，块界 8192 亦 16 倍数）
+        sliceSize = (sliceSize + 15) / 16 * 16;
+        int64_t offset = static_cast<int64_t>(constInfo_.aivIdx) * sliceSize;
+        if (offset < totalSize) {
+            int64_t count = totalSize - offset;
+            if (count > sliceSize) {
+                count = sliceSize;
+            }
 
-        // 零源整备（V 管道 Duplicate）→ V→MTE3 事件放行
-        Duplicate(zeroOutUB_, static_cast<OUT_T>(0.0f), UB_ZERO_OUT_SIZE);
-        SetFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
-        WaitFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
+            // 零源整备（V 管道）→ V→MTE3 事件放行（EVT_ZERO_OUT 惯用法）
+            Duplicate(zeroOutUB_, static_cast<OUT_T>(0.0f), UB_ZERO_OUT_SIZE);
+            SetFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
+            WaitFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
 
-        // 分块整行清零：colCount=dVBaseSize、dDealSize=dSizeV ≤ dVBaseSize → 源侧紧凑
-        while (rowCount > 0U) {
-            uint32_t chunkRows = AttentionCommon::Min(rowCount, UB_ZERO_OUT_ROWS);
-            FaUbTensor<OUT_T> ubTensor{zeroOutUB_, chunkRows, dVBaseSize};
-            GmCoordS1Only gmCoord{bIdx, realN2Idx, 0U, rowStart, 0U, chunkRows, constInfo_.dSizeV};
-            attenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
-            rowStart += chunkRows;
-            rowCount -= chunkRows;
+            // 分块清零（16KB/块）
+            while (count > 0) {
+                uint32_t chunk = static_cast<uint32_t>(
+                    AttentionCommon::Min(count, static_cast<int64_t>(UB_ZERO_OUT_SIZE)));
+                DataCopy(attentionOutGm_[offset], zeroOutUB_, chunk);
+                offset += chunk;
+                count -= chunk;
+            }
+            // 本核清零 MTE3 排空后才过 SyncAll（主线末对 Set/Wait<MTE3_V> 同款）
+            SetFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
+            WaitFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
         }
+        SyncAll();  // 切片为空的 AIV 也须到屏障（全 AIV 参与配平）
     }
 
     __aicore__ inline void ReleaseTensorsVec()

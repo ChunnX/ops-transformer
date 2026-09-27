@@ -320,6 +320,14 @@ bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
     if (hasSeqKv) {
         seqUsedKv = GetTensorDataAsInt64(sequsedKv_, bSize);
     }
+    // BNSD/BSND 张量 S1 = max(seqused_q)（调用方按 max 分配；保持本函数纯读原始数据风格，
+    // 不用 ParamsInit 可能被改写的 baseInfo 字段）
+    int64_t maxSeqUsedQ = 0;
+    if (hasSeqQ) {
+        for (uint32_t i = 0; i < bSize; ++i) {
+            maxSeqUsedQ = std::max(maxSeqUsedQ, seqUsedQ[i]);
+        }
+    }
     for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
         // Q 侧: cu_seqlens_q 差分为 0 → 零长 batch
         int64_t qAllocLen = hasCuQ ? cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx] : -1;
@@ -332,6 +340,13 @@ bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
             return true;
         }
         if (qAllocLen > 0 && qUsedLen < qAllocLen) {
+            return true;
+        }
+        // BNSD/BSND 补充（2026-09-27）：无 cu_seqlens_q 时张量 S1 = max(seqused_q)，批次
+        // qUsedLen < 张量 S1 即存在 padding 行——原检查仅覆盖 cu_seqlens 场景，BNSD
+        // per-batch 变长漏判（Qstep/Qmix 用例 padding 行未清零，实测垃圾值；
+        // 主线 attention/quant_flash_attn_metadata 同款漏判，本修复仅落实验版）
+        if (qAllocLen < 0 && hasSeqQ && qUsedLen < maxSeqUsedQ) {
             return true;
         }
         // KV 侧: cu_seqlens_kv 差分为 0 → 零长 batch
