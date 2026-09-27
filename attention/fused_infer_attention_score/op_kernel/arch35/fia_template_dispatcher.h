@@ -189,6 +189,13 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
     // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
     GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    // [SK禁用开关] 刻意写一次tiling结构体: 动态模式下该宏产出非const局部拷贝(mocker) →
+    // 编译通过(自赋值零语义影响); 静态模式(在线opcompile)下宏产出const烘焙常量对象 →
+    // 对const写 → 编译报错。op_compiler失败被框架容忍(torchair static_kernel仅告警并
+    // 回退动态), 由此FIA fullquant强制走动态执行 — 其分核调度(FiaMetaData)烘焙于tiling,
+    // 静态产物实证崩溃(507011/精度大错), 且tiling层拒绝会导致GE图编译致命错误, 故选此
+    // kernel编译层开关。
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
     const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
@@ -264,6 +271,13 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
     // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
     GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    // [SK禁用开关] 刻意写一次tiling结构体: 动态模式下该宏产出非const局部拷贝(mocker) →
+    // 编译通过(自赋值零语义影响); 静态模式(在线opcompile)下宏产出const烘焙常量对象 →
+    // 对const写 → 编译报错。op_compiler失败被框架容忍(torchair static_kernel仅告警并
+    // 回退动态), 由此FIA fullquant强制走动态执行 — 其分核调度(FiaMetaData)烘焙于tiling,
+    // 静态产物实证崩溃(507011/精度大错), 且tiling层拒绝会导致GE图编译致命错误, 故选此
+    // kernel编译层开关。
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
     const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
@@ -332,6 +346,13 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
     // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
     // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
     GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    // [SK禁用开关] 刻意写一次tiling结构体: 动态模式下该宏产出非const局部拷贝(mocker) →
+    // 编译通过(自赋值零语义影响); 静态模式(在线opcompile)下宏产出const烘焙常量对象 →
+    // 对const写 → 编译报错。op_compiler失败被框架容忍(torchair static_kernel仅告警并
+    // 回退动态), 由此FIA fullquant强制走动态执行 — 其分核调度(FiaMetaData)烘焙于tiling,
+    // 静态产物实证崩溃(507011/精度大错), 且tiling层拒绝会导致GE图编译致命错误, 故选此
+    // kernel编译层开关。
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
     const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
