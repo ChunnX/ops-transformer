@@ -109,8 +109,12 @@ void QuantFlashAttnTilingFp8Impl::InitImplParam()
     uint32_t actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
     const gert::Tensor *actSeqLenQTensor = qfaInfo_->opParamInfo.cuSeqlensQ.tensor;
     const gert::Tensor *seqUsedQTensor = qfaInfo_->opParamInfo.sequsedQ.tensor;
+    const gert::Tensor *actSeqLenKVTensor = qfaInfo_->opParamInfo.cuSeqlensKv.tensor;
+    const gert::Tensor *seqUsedKvTensor = qfaInfo_->opParamInfo.sequsedKv.tensor;
     bool hasAnyData = (actSeqLenQTensor != nullptr && actSeqLenQTensor->GetData<int32_t>() != nullptr) ||
-                      (seqUsedQTensor != nullptr && seqUsedQTensor->GetData<int32_t>() != nullptr);
+                      (actSeqLenKVTensor != nullptr && actSeqLenKVTensor->GetData<int32_t>() != nullptr) ||
+                      (seqUsedQTensor != nullptr && seqUsedQTensor->GetData<int32_t>() != nullptr) ||
+                      (seqUsedKvTensor != nullptr && seqUsedKvTensor->GetData<int32_t>() != nullptr);
     if (!hasAnyData) {
         // 静态编译: 无运行时数据, 按 shape 判定
         cuSeqLenQFlag_ = (actSeqLenQTensor != nullptr) && (actSeqLenQTensor->GetShapeSize() > 0);
