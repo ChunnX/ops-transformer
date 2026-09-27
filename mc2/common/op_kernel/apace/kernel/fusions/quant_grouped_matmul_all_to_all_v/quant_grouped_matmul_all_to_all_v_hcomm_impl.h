@@ -82,6 +82,8 @@ public:
         // Hccl 内部 workingFlag_ 门控：仅 block0 写参数/敲 doorbell，各核获得一致 handle
         a2avHandles_[submitted_] = CommitAlltoAllV(startExpertIdx, expertNum);
         submitted_++;
+        __asc_aicore::printf("[ApaceDBG] H-proc post-commit core=%u submitted=%u\n", AscendC::GetBlockIdx(),
+                             submitted_);
         // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再进入下一批，
         // 保证 commParams_ 参数数组被下一批复用时的写入有序
         AscendC::PipeBarrier<PIPE_ALL>();

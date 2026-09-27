@@ -31,6 +31,7 @@
 
 #include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 #include "apace/kernel/matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
+#include "utils/debug/asc_printf.h"
 
 namespace Apace {
 
@@ -111,9 +112,20 @@ private:
     uint64_t bs_ = 0;
     uint64_t a_ = 0;
     uint64_t mMaxSize_ = 0;
-    // dbg=9/10：B/scaleB 多组偏移表（全部指向同一专家权重，即偏移 0），
-    // 布局 [groupList 256B][bTable 256B][scaleBTable 256B] 于共享 workspace 内
-    GM_ADDR shBTableGM_{};
+    // [临时诊断] InitApaceKernel 填充的 GMMTiling 快照（printf 定位用）
+    int64_t dbgM{0};
+    int64_t dbgN{0};
+    int64_t dbgK{0};
+    uint32_t dbgBaseM{0};
+    uint32_t dbgBaseN{0};
+    uint32_t dbgBaseK{0};
+    uint32_t dbgKAL1{0};
+    uint32_t dbgKBL1{0};
+    uint32_t dbgScaleKAL1{0};
+    uint32_t dbgDbL0C{0};
+    uint32_t dbgL1Stage{0};
+    uint32_t dbgGroupNum{0};
+    uint32_t dbgGroupListType{0};
     MxApaceKernel mxKernel_;
 };
 
@@ -204,10 +216,21 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
         }
     }
 
+    __asc_aicore::printf("[ApaceDBG] P-enter isLocal=%d core=%u start=%u num=%u\n", isLocal ? 1 : 0,
+                         AscendC::GetBlockIdx(), startExpertIdx, expertNum);
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
     UpdateAddr(startExpertIdx, expertNum);
     InitApaceKernel(startExpertIdx, expertNum);
+    __asc_aicore::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
+                         "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
+                         isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
+                         dbgBaseM, dbgBaseN, dbgBaseK, dbgKAL1, dbgKBL1, dbgScaleKAL1, dbgDbL0C, dbgL1Stage,
+                         dbgGroupNum, dbgGroupListType);
     mxKernel_.Run();
+    __asc_aicore::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
+    // Run 返回后 L0C→GM 的 fixpipe 为异步收尾，排空本核管线确保 C 落 GM（对齐参考实现）
+    AscendC::PipeBarrier<PIPE_ALL>();
+    __asc_aicore::printf("[ApaceDBG] post-Bar isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
@@ -342,6 +365,19 @@ QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType,
     // 共享专家单组用 OFFSET 格式（groupList 存终点偏移，单组值 = BS），
     // 与参考实现一致；路由专家沿用 tiling 的 LENGTH 格式
     gmmParams.groupListType = isLocal ? GMM_A2AV_GROUP_LIST_TYPE_OFFSET : gmmQuantParams->groupListType;
+    dbgM = gmmParams.m;
+    dbgN = gmmParams.n;
+    dbgK = gmmParams.k;
+    dbgBaseM = gmmParams.baseM;
+    dbgBaseN = gmmParams.baseN;
+    dbgBaseK = gmmParams.baseK;
+    dbgKAL1 = gmmParams.kAL1;
+    dbgKBL1 = gmmParams.kBL1;
+    dbgScaleKAL1 = gmmParams.scaleKAL1;
+    dbgDbL0C = gmmParams.dbL0C;
+    dbgL1Stage = gmmParams.l1BufferStage;
+    dbgGroupNum = gmmParams.groupNum;
+    dbgGroupListType = gmmParams.groupListType;
 
     typename MxApaceKernel::BlockMmadParams mmadParams;
     mmadParams.aGmAddr = xGM_;
