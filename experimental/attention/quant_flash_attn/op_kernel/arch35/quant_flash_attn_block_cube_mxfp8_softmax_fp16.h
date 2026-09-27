@@ -838,7 +838,11 @@ public:
             : (runInfo.actMSize > S1_SUB_BLOCK_SIZE ? runInfo.actMSize - S1_SUB_BLOCK_SIZE : 0U);
         uint32_t actVecS1SizeAlign32 = (actVecS1Size + 31U) / 32U * 32U;
         mmadParams.n = actVecS1SizeAlign32;
-        mmadParams.k = subKSize;
+        // MmadMx K 必须是 64 的倍数（950 MmadMx 文档约束）——任意 S2 泛化（2026-09-24）：
+        // 尾 subK 的 actSubKSize 任意（如 100/65/4），向上对齐到 64。扩展行 [validRows, k)
+        // 的 P 已由 V1 侧尾 subLoop 清零（ComputeVec1），0×陈旧 V 数据 = 0，累加与 rowsum
+        // 均不受影响；与 LoadPToL0B/LoadVToL0A 的 mStep（actSubKSizeAlign64/16）天然同宽
+        mmadParams.k = (subKSize + 63U) / 64U * 64U;
         mmadParams.cmatrixInitVal = isFirstSubK;
         mmadParams.cmatrixSource   = false;
         mmadParams.disableGemv = true;
