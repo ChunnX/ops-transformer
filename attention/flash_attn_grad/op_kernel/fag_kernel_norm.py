@@ -62,8 +62,6 @@ def _run_preload3_cube_normal(
     buf,
     runInfos,
 ):
-    meta = sched.meta
-    fagOff = sched.fagOff
     cBlockIdx = sched.cBlockIdx
     coreNum = sched.coreNum
     blockStart = sched.blockStart
@@ -102,27 +100,25 @@ def _run_preload3_cube_normal(
     isLastLoop = 0
     drainDone = 0
     nFetched = 0
-    roundId = pl.const(0, pl.DT_INT64)
     while True:
         gIdx = pl.const(-1, pl.DT_INT64)
-        fetchedGIdx, fetchedDenseCursor = fetch_work_gidx(
-            constInfo,
-            meta,
-            fagOff,
-            cBlockIdx,
-            coreNum,
-            blockStart,
-            blockEnd,
-            localIdx,
-            denseCursor,
-            numBlocks,
-            roundId,
-        )
+        # Drain pending work without rescanning the trailing invalid tiles.
         if isLastLoop == 0:
-            gIdx = fetchedGIdx
-            denseCursor = fetchedDenseCursor
+            gIdx = next_work_gidx(
+                constInfo,
+                cBlockIdx,
+                coreNum,
+                blockStart,
+                blockEnd,
+                localIdx,
+                denseCursor,
+                numBlocks,
+            )
             if gIdx < 0:
                 isLastLoop = 1
+            else:
+                if swizzle == 0:
+                    denseCursor = gIdx + 1
         doFix = 0
         mm2_cur = mm2_res.next()
         mm1_cur = mm1_res.next()
@@ -265,8 +261,6 @@ def _run_preload3_vector_normal(
     buf,
     runInfos,
 ):
-    meta = sched.meta
-    fagOff = sched.fagOff
     cBlockIdx = sched.cBlockIdx
     coreNum = sched.coreNum
     blockStart = sched.blockStart
@@ -299,31 +293,42 @@ def _run_preload3_vector_normal(
     isLastLoop = 0
     drainDone = 0
     nFetched = 0
-    roundId = pl.const(0, pl.DT_INT64)
     while True:
+        mm2_res.next()
+        mm1_res.next()
+        # Start V1 for task N-2 before scalar scheduling for task N.
+        if taskId > 1:
+            prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
+            process_vec1(
+                constInfo,
+                prevInfo,
+                subIdx,
+                tensor_y,
+                tensor_dy,
+                y_ub.current(),
+                dy_ub.current(),
+                sfmg_ub.current(),
+                v1w,
+            )
         gIdx = pl.const(-1, pl.DT_INT64)
-        fetchedGIdx, fetchedDenseCursor = fetch_work_gidx(
-            constInfo,
-            meta,
-            fagOff,
-            cBlockIdx,
-            coreNum,
-            blockStart,
-            blockEnd,
-            localIdx,
-            denseCursor,
-            numBlocks,
-            roundId,
-        )
         if isLastLoop == 0:
-            gIdx = fetchedGIdx
-            denseCursor = fetchedDenseCursor
+            gIdx = next_work_gidx(
+                constInfo,
+                cBlockIdx,
+                coreNum,
+                blockStart,
+                blockEnd,
+                localIdx,
+                denseCursor,
+                numBlocks,
+            )
             if gIdx < 0:
                 isLastLoop = 1
+            else:
+                if swizzle == 0:
+                    denseCursor = gIdx + 1
         skipPipe = 0
         if skipPipe == 0:
-            mm2_res.next()
-            mm1_res.next()
             if gIdx >= 0:
                 curInfo = runInfos[taskId % PRELOAD_TIMES]
                 set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
@@ -347,17 +352,6 @@ def _run_preload3_vector_normal(
                 mm2_t = mm2_res.current()
                 mm1_t = mm1_res.current()
                 lse_t = lse_ub.previous()
-                process_vec1(
-                    constInfo,
-                    vecInfo,
-                    subIdx,
-                    tensor_y,
-                    tensor_dy,
-                    y_ub.current(),
-                    dy_ub.current(),
-                    sfmg_ub.current(),
-                    v1w,
-                )
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V,
                     event_id=SYNC_C2_TO_V2_FLAG[vecEventTaskId % 2],
@@ -419,6 +413,11 @@ def _run_preload3_vector_normal(
                     sfmg_ub.current(),
                     nzp_ub.current(),
                 )
+                # GS1S2 C3/C4 read L1 and write GM/L0C, not mm1/mm2 UB.
+                # Let Cube overlap dsink; release UB only after its last read.
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
+                )
                 if constInfo.sinkOptional == 1:
                     headQ = vecInfo.n2oIdx * constInfo.gSize + vecInfo.goIdx
                     sink_val = pl.getval(tensor_sinks, headQ)
@@ -442,9 +441,6 @@ def _run_preload3_vector_normal(
                         pipe=pl.PipeType.V,
                         event_id=SYNC_V2_TO_C2_FLAG[vecEventTaskId % 2],
                     )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3, event_id=SYNC_V3_TO_C3_FLAG
-                )
         if isLastLoop == 1:
             drainDone = drainDone + 1
             if drainDone >= 2:

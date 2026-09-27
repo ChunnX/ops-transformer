@@ -785,8 +785,9 @@ def flash_attn_grad_preload2(
                     )
             pl.system.sync_all()
         else:
-            with pl.section_vector():
-                if constInfo.sinkOptional == 1:
+            # No output pre-clear and no sink: BN2 needs no pre barrier.
+            if constInfo.sinkOptional == 1:
+                with pl.section_vector():
                     sink_zero_ub = make_pre_zero_buffer_f32()
                     process_sink_zero(
                         tensor_dsink_ws,
@@ -794,7 +795,7 @@ def flash_attn_grad_preload2(
                         sink_zero_ub.current(),
                         pl.get_block_idx(),
                     )
-            pl.system.sync_all()
+                pl.system.sync_all()
     else:
         with pl.section_vector():
             zero_ub = make_pre_zero_buffer_f32()
@@ -1130,9 +1131,10 @@ def flash_attn_grad_preload2(
                         constInfo.aivCount,
                     )
     if template == Tmpl.BN2:
-        pl.system.sync_all()
-        with pl.section_vector():
-            if constInfo.sinkOptional == 1:
+        # BN2 writes dQ/dK/dV directly; only dsink needs a global reduction.
+        if constInfo.sinkOptional == 1:
+            pl.system.sync_all()
+            with pl.section_vector():
                 if pl.get_block_idx() == 0:
                     sink_red_ub = make_sink_red_post_ub(HEAD_DIM_ALIGN)
                     sink_row_ub = make_sink_row_post_ub(HEAD_DIM_ALIGN)
