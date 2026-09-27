@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <tuple>
 #include "acl/acl.h"
 #include "acl/acl_rt.h"
 #include "hccl_common.h"
@@ -39,6 +40,15 @@ struct CommContext {
     ApaceCommUdmaContext udmaCtx;
     ApaceCommUbmemContext ubmemCtx;
 };
+
+struct QuantMteContext {
+    uint32_t epRankId = 0;
+    uint32_t rankSizePerServer = 0;
+    uint64_t kfcContextAddr = 0;
+    uint64_t epHcclBuffer_[1024] = {};
+    uint64_t hcommHandle_[1024] = {};
+};
+static_assert(sizeof(QuantMteContext) == 16400, "QuantMteContext layout must match QuantReduceScatterContext");
 
 using DefaultCommChannelBuilder = CommChannelBuilder<ChannelMode::URMA, ChannelMode::UBMEM>;
 
@@ -88,6 +98,67 @@ public:
     }
 
     /*!
+     * \brief 创建 quant MTE 算子族公共 context，使用 HCCL 内置 buffer 作为 win 区
+     *
+     * 固定 ctxTag 保证 eager/静态图/动态图共享同一份 context。命中时仅查询返回，
+     * 未命中时交换各 rank 内置 buffer 地址并拷贝到 engine context。
+     */
+    std::tuple<at::Tensor, int64_t> CreateQuantMteContext(const std::string &ctxTag)
+    {
+        TORCH_CHECK(builder_ != nullptr, "builder_ is not initialized");
+        constexpr uint32_t quantMteMaxRank = 1024U;
+        const CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+
+        void *ctx = nullptr;
+        uint64_t ctxSize = 0;
+        if (HcclEngineCtxGetFunc(comm_, ctxTag.c_str(), engine, &ctx, &ctxSize) == HCCL_SUCCESS) {
+            TORCH_CHECK(ctx != nullptr, "HcclEngineCtxGet returned null context, tag: ", ctxTag);
+            TORCH_CHECK(ctxSize >= sizeof(QuantMteContext), "Invalid quant MTE context size, expected at least ",
+                        sizeof(QuantMteContext), ", got ", ctxSize);
+            return {WrapQuantMteContext(ctx), static_cast<int64_t>(GetHcclBufferSize())};
+        }
+
+        TORCH_CHECK(builder_->Init(), "Init CommChannelBuilder failed, tag: ", ctxTag);
+
+        uint64_t remoteAddrs[quantMteMaxRank] = {};
+        const std::string memTag = ctxTag + "_winbuf";
+        TORCH_CHECK(builder_->AllocRegAndBuildChannels(ChannelMode::URMA, memTag.c_str(), nullptr, remoteAddrs),
+                    "Build quant MTE HCCL buffer address table failed, tag: ", ctxTag);
+
+        auto hcclRet = HcclEngineCtxCreateFunc(comm_, ctxTag.c_str(), engine, sizeof(QuantMteContext), &ctx);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclEngineCtxCreate failed, tag: ", ctxTag, ", ret: ", hcclRet);
+        TORCH_CHECK(ctx != nullptr, "HcclEngineCtxCreate returned null context, tag: ", ctxTag);
+
+        const uint32_t rankId = builder_->GetRankId();
+        const uint32_t rankSize = builder_->GetRankSize();
+        TORCH_CHECK(rankSize > 0 && rankSize <= quantMteMaxRank, "Invalid quant MTE rank size: ", rankSize);
+        TORCH_CHECK(rankId < rankSize, "Invalid quant MTE rank id ", rankId, " for rank size ", rankSize);
+
+        uint32_t *layers = nullptr;
+        uint32_t layerNum = 0;
+        hcclRet = HcclRankGraphGetLayersFunc(comm_, &layers, &layerNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS && layers != nullptr && layerNum > 0,
+                    "HcclRankGraphGetLayers failed, ret: ", hcclRet);
+
+        uint32_t rankSizePerServer = 0;
+        hcclRet = HcclRankGraphGetRankSizeByLayerFunc(comm_, layers[0], &rankSizePerServer);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS && rankSizePerServer > 0 && rankSizePerServer <= rankSize,
+                    "HcclRankGraphGetRankSizeByLayer failed, ret: ", hcclRet);
+
+        QuantMteContext hostContext = {};
+        hostContext.epRankId = rankId;
+        hostContext.rankSizePerServer = rankSizePerServer;
+        for (uint32_t i = 0; i < rankSize; ++i) {
+            hostContext.epHcclBuffer_[i] = remoteAddrs[i];
+        }
+
+        hcclRet = HcclEngineCtxCopyFunc(comm_, engine, ctxTag.c_str(), &hostContext, sizeof(hostContext), 0);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclEngineCtxCopy failed, tag: ", ctxTag, ", ret: ", hcclRet);
+
+        return {WrapQuantMteContext(ctx), static_cast<int64_t>(GetHcclBufferSize())};
+    }
+
+    /*!
      * \brief 获取 HCCL 内置 buffer 大小
      */
     uint64_t GetHcclBufferSize()
@@ -100,6 +171,15 @@ public:
     }
 
 private:
+    static at::Tensor WrapQuantMteContext(void *ctx)
+    {
+        auto options = at::TensorOptions()
+                           .dtype(at::kInt)
+                           .device(c10::DeviceType::PrivateUse1)
+                           .memory_format(c10::MemoryFormat::Contiguous);
+        return at::from_blob(ctx, {sizeof(QuantMteContext) / sizeof(int32_t)}, options);
+    }
+
     HcclComm comm_ = nullptr;
     std::string group_;
     std::unique_ptr<DefaultCommChannelBuilder> builder_;
@@ -112,6 +192,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_rank_id", &CommChannelBuilderManager::GetRankId)
         .def("get_rank_size", &CommChannelBuilderManager::GetRankSize)
         .def("create_context", &CommChannelBuilderManager::CreateContext, py::arg("ctx_tag"))
+        .def("create_quant_mte_context", &CommChannelBuilderManager::CreateQuantMteContext, py::arg("ctx_tag"))
         .def("get_hccl_buffer_size", &CommChannelBuilderManager::GetHcclBufferSize);
 }
 

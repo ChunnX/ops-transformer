@@ -58,6 +58,8 @@ class CommChannelBuilderManagerOpBuilder(OpBuilder):
 
 comm_channel_builder_manager_op_builder = CommChannelBuilderManagerOpBuilder()
 
+QUANT_MTE_CONTEXT_TAG = "quant_lowbit_mte"
+
 
 class _LazyClassProxy:
     def __init__(self, name, builder):
@@ -83,3 +85,10 @@ def __getattr__(name):
             "CommChannelBuilderManager", comm_channel_builder_manager_op_builder
         )
     raise AttributeError(f"module '{__name__}' has no attribute {name}")
+
+
+def get_quant_mte_context(group: str):
+    """Get the idempotent shared context for the quant low-bit MTE op family."""
+    module = comm_channel_builder_manager_op_builder.load()
+    manager = module.CommChannelBuilderManager(group)
+    return manager.create_quant_mte_context(QUANT_MTE_CONTEXT_TAG)
