@@ -390,6 +390,19 @@ mask 错 16 处。B1H0-2 与 B0H0-2 的 unit 几何恰好相同故侥幸正确�
 4. **方法论教训入档**：dump 取证前必须钉死 section 偏移链（含 reserve）；"值域巧合匹配"
    不足以定位真身；黑盒 EXACT/TOL PASS 才是修复的金标准。
 
+### 非 post 覆盖补齐（同日深夜）——**暴露变长 block_len 池化新 bug**
+0828 套件新增 3 个非 post 用例（补齐对照泛化脚本 run_pp_generalized.sh 的覆盖缺口）：
+- **basebt**（sp0.98 bottom-k 非 post）：EXACT_PASS ✓
+- **basebf16**（bf16+B3+尾块 4032/3904+block_len 非 post）：FAIL——mask 散点 39 硬错（B0H2/H3）
+- **basevar**（fp16+seqlen/block_len 变长+多批 非 post）：FAIL——**B1H1 row11 整行 mask 错**（~19 连续）
+
+→ 指向 **变长 block_len 池化（poolQ/poolK 的 actual_len 路径）值错**（交接文档第二轮遗留嫌疑
+"poolQ 变长路径逐 op 对齐审计（Cast/ReduceMean RA {actualLen,128} counter 模式）"——非 post 与
+post 共用池化服务，但 post 用例的 block_len 场景未被 29 用例覆盖到该分支）。basevar 的 row11
+整行错 = q block 11 池化向量错（该行 scores/softmax/选择全错）的特征。
+下轮：pool 变长路径审计（pool_blocks 语义 vs NPU FastPoolingQRange/PoolingSingleQBlock 的
+actual_len 处理）+ basebf16 的散点模式区分（dtype 层 vs block_len 层）。
+
 ### 终态
 - **套件 29/29 全绿（18 EXACT + 11 BOUNDARY_TOLERANT）——项目首次无 FAIL**；
 - bfvar 3/3 TOL-PASS、p16var EXACT、客户 3/3 PASS；
