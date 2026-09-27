@@ -52,6 +52,7 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 from .quant_reduce_scatter import *
+from ..common import get_quant_mte_context
 import logging
 
 if _TORCHAIR_AVAILABLE:
@@ -157,34 +158,22 @@ if _TORCHAIR_AVAILABLE:
         scales: Tensor,
         hccl_buffer_size: int,
         world_size: int,
+        hcom: str,
         reduce_op: Optional[str] = "sum",
         output_dtype: Optional[int] = None,
         x_dtype: Optional[int] = None,
         scales_dtype: Optional[int] = None,
         meta_outputs: TensorSpec = None,
     ):
-        # 补充SymInt处理，添加hasattr(x, 'node')的校验，
-        # 支持graph_type=2动态shape模式下hccl_buffer_size/world_size可能是SymInt的情况
-        if hasattr(hccl_buffer_size, "node"):
-            hccl_buffer_size = int(hccl_buffer_size.node)
+        # graph_type=2 动态 shape 模式下 world_size 仍可能是 SymInt；
+        # hccl_buffer_size 来自环境内置 buffer，与 shape 无关。
         if hasattr(world_size, "node"):
             world_size = int(world_size.node)
 
-        # 图模式下context张量被捕获为图输入占位符(arg)，编译期tiling读nPerServer读到野指针，
-        # 改用wrapper缓存的CommContext int32数据构建ge.Const注入，保证tiling/运行期数据可用
-        cached_ctx = get_cached_context_data(world_size, hccl_buffer_size)
-        if cached_ctx is None:
-            # 缓存未命中时context仍是图占位符，tiling会读到野指针，引发不可定位的kernel卡死，此处直接让其快速失败
-            # 经wrapper调用时缓存必定已在其trace前写入，正常流程不会走到这里
-            raise RuntimeError(
-                "QuantReduceScatter graph mode: CommContext cache miss "
-                f"(world_size={world_size}, hccl_buffer_size={hccl_buffer_size}). "
-                "The context tensor would be captured as a graph placeholder and tiling "
-                "would read a wild pointer. Please invoke the op through the "
-                "cann_ops_transformer.ops.quant_reduce_scatter() wrapper so the "
-                "CommContext cache is populated before graph tracing."
-            )
-        context = ge.Const(cached_ctx, dtype=int(DataType.DT_INT32))
+        # trace 阶段 context 是占位 tensor、hccl_buffer_size 是 0；
+        # converter 在 GE 序列化/tiling 前创建幂等 context，并固化真实查询值。
+        context, hccl_buffer_size = get_quant_mte_context(hcom)
+        context = ge.Const(context.cpu().tolist(), dtype=int(DataType.DT_INT32))
 
         if x_dtype is not None:
             if x_dtype == 296 or x_dtype == 297:
