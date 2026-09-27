@@ -99,7 +99,11 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
     const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     const int64_t mseBits = (pBits != nullptr) ? *pBits : 3;
-    if (mseBits != 2 && mseBits != 3 && mseBits != 4 && mseBits != 8 && mseBits != 9) {
+    const bool plainOk = (mseBits == 2 || mseBits == 3 || mseBits == 4 || mseBits == 8 || mseBits == 9 ||
+                          mseBits == 10 || mseBits == 11 || mseBits == 12);
+    // dev-only phase probes can carry the real width: mseBits = probe*16 + bits
+    const bool encOk = (mseBits >= 32 && mseBits <= 200 && (mseBits & 15) >= 2 && (mseBits & 15) <= 4);
+    if (!plainOk && !encOk) {
         return ge::GRAPH_FAILED;
     }
 
@@ -146,11 +150,11 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     // user code runs (bisected 2026-09-24).
     size_t wsBytes = 32 * 1024;
     if (useCube) {
-        // flags 264KB + fp16 splits 128KB + per-padded-vector: z 512B (fp32,
-        // L0C-accumulated single plane) + r_hat 512B (rh|rl fp16) + p13 512B
-        // (fp32) + p2 256B (fp16) + xh 256B (fp16) = 2048B
+        // flags 264KB + splits 160KB (H bf16-triple + S fp16-pair) +
+        // per-padded-vector: z 512B (fp32) + r_hat 512B (rh|rl fp16) +
+        // p1/p2/p3 3x256B (fp16) = 1792B; x is read directly (no xh plane)
         const int64_t wsVec = (totalVec + CUBE_CHUNK_ROWS - 1) / CUBE_CHUNK_ROWS * CUBE_CHUNK_ROWS;
-        wsBytes = static_cast<size_t>(392 * 1024) + static_cast<size_t>(wsVec) * 2048;
+        wsBytes = static_cast<size_t>(424 * 1024) + static_cast<size_t>(wsVec) * 1792 + 8 * 1024;
     }
     workspaces[0] = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize()) + wsBytes;
 

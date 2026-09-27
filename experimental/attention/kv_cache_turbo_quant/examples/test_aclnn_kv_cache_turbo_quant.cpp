@@ -56,6 +56,10 @@ struct CaseInfo {
 };
 
 const std::vector<CaseInfo> kCases = {
+    {"gqa_probe_t128", 128, 8, 3, 2000.0},
+    {"gqa_probe_t512", 512, 8, 3, 2000.0},
+    {"gqa_probe_t512_m4", 512, 8, 4, 2000.0},
+    {"gqa_probe_t2048_m4", 2048, 8, 4, 5286.502},
     {"gqa_decode_b1", 1, 8, 3, 1491.676},
     {"gqa_decode_b64", 64, 8, 3, 1552.784},
     {"gqa_prefill_t2048", 2048, 8, 3, 3855.422},
@@ -108,11 +112,14 @@ struct CaseResult {
     double avgUs = 0.0;
 };
 
-bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclrtStream stream, CaseResult &res)
+bool RunCase(const std::string &dataDir, CaseInfo ci, int perfIters, aclrtStream stream, CaseResult &res)
 {
+    if (getenv("KVTQ_BITS") != nullptr) {
+        ci.mseBits = atoi(getenv("KVTQ_BITS"));
+    }
     const std::string dir = dataDir + "/" + ci.name + "/";
     const int64_t totalVec = ci.numTokens * ci.numKvHeads;
-    const int64_t sizeBits = (ci.mseBits == 9) ? 3 : ci.mseBits;
+    const int64_t sizeBits = (ci.mseBits >= 16) ? (ci.mseBits & 15) : ((ci.mseBits == 9) ? 3 : ci.mseBits);
     const int64_t idxBytes = HEAD_DIM / 8 * sizeBits;
     const int64_t qjlBytes = HEAD_DIM / 8;
 
@@ -184,6 +191,9 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
                                                             gammaT, &workspaceSize, &executor);
     CHECK_RET(st == ACL_SUCCESS, ci.name + " GetWorkspaceSize ret=" + std::to_string(st));
 
+    if (getenv("KVTQ_WS_PAD") != nullptr) {
+        workspaceSize += static_cast<uint64_t>(atol(getenv("KVTQ_WS_PAD"))) * 1024 * 1024;
+    }
     void *workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK_RET(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, "malloc ws");
@@ -767,6 +777,9 @@ int main(int argc, char **argv)
     int failed = 0;
     std::cout << "==== KvCacheTurboQuant aclnn self-test ====" << std::endl;
     for (const auto &ci : kCases) {
+        if (getenv("KVTQ_ONLY") != nullptr && std::string(ci.name).find(getenv("KVTQ_ONLY")) == std::string::npos) {
+            continue;
+        }
         CaseResult res;
         if (!RunCase(dataDir, ci, perfIters, stream, res)) {
             std::cout << "[FATAL] case " << ci.name << " aborted" << std::endl;
