@@ -103,9 +103,10 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
+        (npuArch_ != NpuArch::DAV_3510)) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
@@ -229,7 +230,7 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
                     ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)),
                 OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
                        SPARSE_LIMIT, *opParamInfo_.sparseCount),return ge::GRAPH_FAILED);
@@ -290,6 +291,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     socVersion_ = ascendcPlatform.GetSocVersion();
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
                OP_LOGE(opName_, "The data types of the input query and key must be the same."),
@@ -307,7 +309,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
             inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
             return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
                return ge::GRAPH_FAILED);
@@ -321,7 +323,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         (socVersion_ == platform_ascendc::SocVersion::ASCEND910_93)) {
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
                 OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
-    } else if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    } else if (npuArch_ == NpuArch::DAV_3510) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
                 OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
     }
