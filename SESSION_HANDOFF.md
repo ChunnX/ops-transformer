@@ -398,7 +398,17 @@ qCmp+kCmp=16KB，pooledScore 紧随其后…16,384 也在"低区"却可见！→
 ### 工具链备忘
 - dbg harness dump 触发行（pooledScoreOffset/pooledScoreSize 两行）会被 `run_pp_cpu_golden_0828.sh`
   的 gen_data.py 重写丢失——套件后需重新 append（本次已踩：blk8 ws dump 消失一次）。
-  workspaceSize=28662740（当前 tiling 不变）。
+  workspaceSize：blk8=28662740、p16var=27972692（其他用例跑一次普通版从 log 取）。
+
+### 原套件 FAIL 清单重大修正（第十四轮末）
+- **tndtail：4/4 EXACT_PASS（被 AR 修复顺带治愈）**——TND 尾 chunk kChunkSize∈(64,512) 恰走
+  AR 归约路径（isReuseSource 踩 tile），"v2 遗留值错"对其不成立；tndvar 3/3 EXACT（昨日套件
+  FAIL 系卡 4 污染）。
+- **剩余确定性 FAIL 仅 bfvar / p16var**（各 3/3 FAIL）：p16var（B2N2 S4096 bx=by=64 post16×16，
+  TND+use_seqlen，16/32 mask 错、确定性、四 (B,H) 均有错位）；bf16 同族。ws 尾部取证显示
+  pooled/postStaging 值域异常（0.84/0.41 级 vs golden 0.05/0.014 级），但 postStaging 布局未标定，
+  需专门一轮：按 tiling section sizes 标定 pooled 偏移 → 分层定位（kCmp 变长尾块值 vs fold vs TopK）。
+  注意 qCmp/kCmp 低区 dump 不可见（round 11），kCmp 值验证须经 score/pooled 间接做。
 
 ## blk8 第十三轮（2026-09-25，**根因破案 + 修复合入**：AR ReduceSum isReuseSource=true 踩毁折叠源 tile）
 
@@ -543,11 +553,12 @@ inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上�
 ### 下轮任务（按序）
 1. ~~blk8 级联修复~~（第十三轮已完成：根因=AR ReduceSum isReuseSource=true，见第十三轮章节；
    1/2/3 项已闭环——提交 9238a7b19）
-2. **GeneralFinalize 行均值缺失决策**（pooled_score 输出 8×，mask 免疫——修否需用户确认，
-   修法参照 SoftmaxFinalizeBatch 的 uniform/rowsInPx 两分支）
-3. MTE3 写丢弃竞态（blk8 ~30%/bigsq/n1 ~10% 同家族——msprof aic-metrics 抓 MTE3 队列异常态）
-4. tndtail/bfvar/p16var（v2 遗留，可用 pooledScore dump 分 head/batch 对比 golden 定位；
-   注意三者 foldCols≤64 走 WholeReduceSum，与 AR 根因无关）
+2. ~~GeneralFinalize 行均值~~（第十四轮完成，366b5c986）
+3. **MTE3 写丢弃竞态**：bit 级定性完成（第十四轮：fp32 域 partSum 组列散点丢失+首触假说）——
+   下一步按 ① memset/首触预热实验 ② 冗余双写 ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 会
+   扰动时序（复现消失≠修复教训）
+4. **bfvar/p16var**（现仅剩这两个确定性 FAIL，tndtail/tndvar 已被 AR 修复治愈）——先按 tiling
+   section sizes 标定 pooled/postStaging 偏移，分层定位 kCmp 变长尾块值 vs fold vs TopK
 
 ## 09-08~09-23 性能优化链存档摘要（本 session 摘要抢救，防丢失）
 
