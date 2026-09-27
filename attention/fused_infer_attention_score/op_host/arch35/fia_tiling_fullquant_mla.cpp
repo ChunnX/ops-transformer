@@ -114,13 +114,24 @@ ge::graphStatus FiaTilingFullQuantMlaArch35::DoOpTiling()
     }
 
     if (fiaInfo_->isMaxWorkspace) {
-        // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
+        // [SK静态编译修复] tiling下沉/在线静态编译(无数据)场景不再返回占位空tiling:
+        // 占位路径跳过 FillTiling/SetTilingData 会使静态编译"成功"但烘焙全零分核
+        // metadata, kernel 运行时崩溃并污染 stream(表现为后续无关 aclnn 算子报 561103)。
+        // 改为走完整 tiling 流程: InitImplParam 的 flags=false 分支回退 shape 上界
+        // (s1Size/s2Size)作保守 seqlens(只增不减, 覆盖任意真实数据), SplitPolicy 产出
+        // 数据无关分核, FillTiling 写完整 tilingData。kernel 侧已有运行时 seqlen 边界
+        // (qActSeqLensParser), 烘焙结果对任意真实数据正确(负载按 shape 上界切分, 次优)。
+        // workspace 仍取最大值, 兜底保守分核(含 FD 路径)的空间需求。
+        InitImplParam();
+        SplitPolicy();
+        FillTiling();
+        CalcScheduleMode();
         CalcMaxWorkspaceSize();
         GenTilingKey();
-        CalcNumBlocks(platformInfo_.aicNum);
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
             (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
+            (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
             (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }

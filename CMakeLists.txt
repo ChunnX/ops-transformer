@@ -683,23 +683,26 @@ if (BUILD_OPS_RTY_KERNEL)
         )
         endif()
 
+        # [SK静态编译兼容] kernel 源码安装路径对齐官方包扁平布局(ascendc/<op>/):
+        # op_compiler 在线静态编译按官方约定在 ascendc/<op>/ 下查找 kernel 入口源码,
+        # 旧的 /op_kernel 嵌套布局会导致 SK 源码编译失败(只能动态回退)。
         install(FILES ${KERNEL_FILES}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch22
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
             OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch35
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch38
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
                 OPTIONAL
         )
 
