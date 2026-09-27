@@ -183,15 +183,15 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
     // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
-    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
-    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
-    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    // 宏变量本身作为唯一 __tiling_data_ptr__ 指针直传 kernel(零成员取址, 调用点无codegen改写),
+    // kernel 内直读 baseTiling 与 fiaMetaData 成员 — 修复原"(__gm__*)宏指针+offsetof"在静态图
+    // 下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核数据的问题(aicore 507011)。
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -255,15 +255,15 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
     // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
-    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
-    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
-    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    // 宏变量本身作为唯一 __tiling_data_ptr__ 指针直传 kernel(零成员取址, 调用点无codegen改写),
+    // kernel 内直读 baseTiling 与 fiaMetaData 成员 — 修复原"(__gm__*)宏指针+offsetof"在静态图
+    // 下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核数据的问题(aicore 507011)。
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -320,15 +320,15 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
     // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
-    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
-    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
-    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    // 宏变量本身作为唯一 __tiling_data_ptr__ 指针直传 kernel(零成员取址, 调用点无codegen改写),
+    // kernel 内直读 baseTiling 与 fiaMetaData 成员 — 修复原"(__gm__*)宏指针+offsetof"在静态图
+    // 下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核数据的问题(aicore 507011)。
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
-            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
+            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, tilingData,
+            &tPipe);
     op.Process();
 }
 #endif

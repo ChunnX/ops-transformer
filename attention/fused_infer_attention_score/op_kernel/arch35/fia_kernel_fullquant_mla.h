@@ -75,15 +75,14 @@ public:
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
-    // [SK静态编译兼容] fiaMetaData 位于 tiling 结构体内: 静态图下 tiling 为编译期常量(栈拷贝),
-    // 不能经 GlobalTensor/GM 指针访问, 改以 __tiling_data_ptr__ 地址空间指针直读结构体成员
-    __tiling_data_ptr__ FiaMetaData *fiaMetaData = nullptr;
+    // [SK静态编译兼容] tiling 为编译期常量字节数组(静态图下经宏拷栈), 不能经 GM 指针访问:
+    // kernel 持有整结构体唯一 __tiling_data_ptr__ 指针, 直读 baseTiling 与 fiaMetaData 成员
     GlobalTensor<float> softmaxLseGm;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
     ConstInfoX constInfo;
-    __tiling_data_ptr__ FullQuantTiling *tilingData = nullptr;
+    __tiling_data_ptr__ FusedInferAttentionScoreFullQuantTilingData *tilingData = nullptr;
     TPipe *pipe = nullptr;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -118,12 +117,10 @@ public:
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                __tiling_data_ptr__ FiaMetaData *fiaMetaData,
-                                __tiling_data_ptr__ FullQuantTiling *tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ FusedInferAttentionScoreFullQuantTilingData *tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
-        this->fiaMetaData = fiaMetaData;
 
         InitConstInfo();
 
@@ -199,11 +196,11 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &fiaBaseParams = this->tilingData->fiaBaseParams;
-        const auto &fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
-        const auto &fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
-        const auto &fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
-        const auto &fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
+        const auto &fiaBaseParams = this->tilingData->baseTiling.fiaBaseParams;
+        const auto &fiaAttenMaskParams = this->tilingData->baseTiling.fiaAttenMaskParams;
+        const auto &fiaPageAttentionParams = this->tilingData->baseTiling.fiaPageAttentionParams;
+        const auto &fiaWorkspaceParams = this->tilingData->baseTiling.fiaWorkspaceParams;
+        const auto &fiaEmptyTensorParams = this->tilingData->baseTiling.fiaEmptyTensorParams;
 
         constInfo.bSize = fiaBaseParams.bSize;
         constInfo.t1Size = fiaBaseParams.t1Size;
@@ -252,14 +249,14 @@ public:
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
 
         // 任务起始位置
-        constInfo.bN2Start = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_BN2_START_INDEX];
-        constInfo.gS1OStart = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_M_START_INDEX];
-        constInfo.s2OStart = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_S2_START_INDEX];
-        constInfo.bN2End = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_BN2_END_INDEX];
-        constInfo.gS1OEnd = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_M_END_INDEX];
-        constInfo.s2OEnd = fiaMetaData->FAMetadata[constInfo.aicIdx][FA_S2_END_INDEX];
-        constInfo.coreFirstTmpOutWsPos =
-            fiaMetaData->FAMetadata[constInfo.aicIdx][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX];
+        const auto &fiaMetaData = this->tilingData->fiaMetaData;
+        constInfo.bN2Start = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_BN2_START_INDEX];
+        constInfo.gS1OStart = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_M_START_INDEX];
+        constInfo.s2OStart = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_S2_START_INDEX];
+        constInfo.bN2End = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_BN2_END_INDEX];
+        constInfo.gS1OEnd = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_M_END_INDEX];
+        constInfo.s2OEnd = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_S2_END_INDEX];
+        constInfo.coreFirstTmpOutWsPos = fiaMetaData.FAMetadata[constInfo.aicIdx][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX];
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
@@ -632,13 +629,14 @@ public:
     {
         vecFdBlock.InitBuffers(this->pipe);
         AscendC::ICachePreLoad(2);
-        uint32_t fdCoreEnable = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_CORE_ENABLE_INDEX];
-        uint32_t fdBN2Idx = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_BN2_IDX_INDEX];
-        uint32_t fdMIdx = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_M_IDX_INDEX];
-        uint32_t fdS2SplitNum = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_S2_SPLIT_NUM_INDEX];
-        uint32_t mStart = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_M_START_INDEX];
-        uint32_t mLen = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_M_NUM_INDEX];
-        uint32_t fdWorkspaceIdx = fiaMetaData->FDMetadata[constInfo.aivIdx][FD_WORKSPACE_IDX_INDEX];
+        const auto &fiaMetaData = this->tilingData->fiaMetaData;
+        uint32_t fdCoreEnable = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_CORE_ENABLE_INDEX];
+        uint32_t fdBN2Idx = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_BN2_IDX_INDEX];
+        uint32_t fdMIdx = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_M_IDX_INDEX];
+        uint32_t fdS2SplitNum = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_S2_SPLIT_NUM_INDEX];
+        uint32_t mStart = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_M_START_INDEX];
+        uint32_t mLen = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_M_NUM_INDEX];
+        uint32_t fdWorkspaceIdx = fiaMetaData.FDMetadata[constInfo.aivIdx][FD_WORKSPACE_IDX_INDEX];
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock.AllocEventID();
