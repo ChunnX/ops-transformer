@@ -27,6 +27,10 @@ static constexpr int64_t HEAD_DIM = 128;
 static constexpr int64_t BASE_M = 128;
 static constexpr int64_t MAX_HEAD_NUM = 128;
 static constexpr uint32_t SUPPORTED_MASK_TYPE = 1;
+// Metadata layout, keep in sync with op_kernel/arc35/gsag_common_header.h:
+// header = GRAD_METADATA_SIZE(8) + 2 * AIC_CORE_MAX_NUM(36), then TASK_ENTRY_SIZE int32 per task.
+static constexpr int64_t METADATA_HEADER_SIZE = 80;
+static constexpr int64_t TASK_ENTRY_SIZE = 4;
 
 int64_t AlignTo(int64_t x, int64_t align)
 {
@@ -133,37 +137,69 @@ protected:
         const int64_t *data = blockShapeList->GetData();
         blockShapeX_ = static_cast<int32_t>(data[0]);
         blockShapeY_ = static_cast<int32_t>(data[1]);
+        // IsCapable enforces the full BlockY constraints, but it runs after this method and the sparse
+        // table checks below divide by BlockY.
+        if (blockShapeY_ <= 0) {
+            OP_LOGE(context_->GetNodeName(), "block_shape[1] must be positive, got %d.", blockShapeY_);
+            return ge::GRAPH_FAILED;
+        }
 
         if (idxShape->GetOriginShape().GetDimNum() != 4 || cntShape->GetOriginShape().GetDimNum() != 3) {
             OP_LOGE(context_->GetNodeName(), "sparse_block_idx must be 4D and sparse_block_count must be 3D.");
             return ge::GRAPH_FAILED;
         }
-        batchNum_ = idxShape->GetStorageShape().GetDim(0);
-        kvHeadNum_ = idxShape->GetStorageShape().GetDim(1);
-        numJ_ = idxShape->GetStorageShape().GetDim(2);
-        maxS1_ = idxShape->GetStorageShape().GetDim(3);
+        const auto &idxStorage = idxShape->GetStorageShape();
+        const auto &cntStorage = cntShape->GetStorageShape();
+        const int64_t idxBatchNum = idxStorage.GetDim(0);
+        const int64_t idxKvHeadNum = idxStorage.GetDim(1);
+        numJ_ = idxStorage.GetDim(2);
+        maxS1_ = idxStorage.GetDim(3);
+        // The kernel reads sparse_block_count with the (b, n2, j) triple taken from sparse_block_idx.
+        if (cntStorage.GetDim(0) != idxBatchNum || cntStorage.GetDim(1) != idxKvHeadNum ||
+            cntStorage.GetDim(2) != numJ_) {
+            OP_LOGE(context_->GetNodeName(), "sparse_block_count must match sparse_block_idx [B, N2, J] = [%ld, %ld, %ld].",
+                    idxBatchNum, idxKvHeadNum, numJ_);
+            return ge::GRAPH_FAILED;
+        }
+        batchNum_ = idxBatchNum;
+        kvHeadNum_ = idxKvHeadNum;
 
         if (strcmp(qLayout_, TND_STR) == 0) {
             if (queryShape->GetOriginShape().GetDimNum() != 3) {
                 OP_LOGE(context_->GetNodeName(), "TND query must be 3D.");
                 return ge::GRAPH_FAILED;
             }
-            auto cuQ = context_->GetOptionalInputTensor(10);
-            auto cuKv = context_->GetOptionalInputTensor(11);
-            if (cuQ == nullptr || cuKv == nullptr) {
+            const gert::StorageShape *cuQShape = context_->GetOptionalInputShape(10);
+            const gert::StorageShape *cuKvShape = context_->GetOptionalInputShape(11);
+            if (cuQShape == nullptr || cuKvShape == nullptr) {
                 OP_LOGE(context_->GetNodeName(), "TND requires cu_seq_lengths_q and cu_seq_lengths_kv.");
+                return ge::GRAPH_FAILED;
+            }
+            // The kernel reads cu[b] and cu[b + 1] per task, so both tensors must describe the same batch
+            // as the sparse table.
+            const int64_t cuQElems = cuQShape->GetStorageShape().GetShapeSize();
+            const int64_t cuKvElems = cuKvShape->GetStorageShape().GetShapeSize();
+            if (cuQElems != idxBatchNum + 1 || cuKvElems != idxBatchNum + 1) {
+                OP_LOGE(context_->GetNodeName(),
+                        "cu_seq_lengths_q/kv must hold B+1=%ld prefix offsets, got %ld and %ld.", idxBatchNum + 1,
+                        cuQElems, cuKvElems);
                 return ge::GRAPH_FAILED;
             }
             // seqused_q/kv (inputs 12/13) are dynamic device values. They are
             // consumed by the kernel, while cu tensors retain packed-TND offsets.
+            for (int32_t idx = 12; idx <= 13; ++idx) {
+                const gert::StorageShape *shape = context_->GetOptionalInputShape(idx);
+                if (shape != nullptr && shape->GetStorageShape().GetShapeSize() != idxBatchNum) {
+                    OP_LOGE(context_->GetNodeName(), "seqused (input %d) must hold B=%ld lengths, got %ld.", idx,
+                            idxBatchNum, shape->GetStorageShape().GetShapeSize());
+                    return ge::GRAPH_FAILED;
+                }
+            }
             qSeqLen_ = queryShape->GetStorageShape().GetDim(0);
             qHeadNum_ = queryShape->GetStorageShape().GetDim(1);
             headDim_ = queryShape->GetStorageShape().GetDim(2);
             kvSeqLen_ = keyShape->GetStorageShape().GetDim(0);
-            if (static_cast<int64_t>(keyShape->GetStorageShape().GetDim(1)) != kvHeadNum_) {
-                OP_LOGE(context_->GetNodeName(), "key N2 mismatch with sparse_block_idx.");
-                return ge::GRAPH_FAILED;
-            }
+            kvHeadNum_ = keyShape->GetStorageShape().GetDim(1);
         } else if (strcmp(qLayout_, BSND_STR) == 0) {
             batchNum_ = queryShape->GetStorageShape().GetDim(0);
             qSeqLen_ = queryShape->GetStorageShape().GetDim(1);
@@ -188,6 +224,40 @@ protected:
             return ge::GRAPH_FAILED;
         }
         qGroup_ = qHeadNum_ / kvHeadNum_;
+
+        // The sparse table must describe the same (B, N2) grid as query/key, otherwise the kernel walks
+        // the table with out-of-range (b, n2) pairs.
+        if (batchNum_ != idxBatchNum || kvHeadNum_ != idxKvHeadNum) {
+            OP_LOGE(context_->GetNodeName(),
+                    "sparse_block_idx [B, N2] = [%ld, %ld] mismatch with query/key [B, N2] = [%ld, %ld].",
+                    idxBatchNum, idxKvHeadNum, batchNum_, kvHeadNum_);
+            return ge::GRAPH_FAILED;
+        }
+        // J indexes KV blocks of BlockY tokens. TND only exposes the packed total T2, which bounds
+        // max(S2), so it can only be checked as an upper bound there.
+        const bool isTnd = strcmp(qLayout_, TND_STR) == 0;
+        const int64_t expectNumJ = (kvSeqLen_ + blockShapeY_ - 1) / blockShapeY_;
+        if (isTnd ? (numJ_ > expectNumJ) : (numJ_ != expectNumJ)) {
+            OP_LOGE(context_->GetNodeName(),
+                    "sparse_block_idx J=%ld must %s ceilDiv(kvSeqLen=%ld, BlockY=%d)=%ld.", numJ_,
+                    isTnd ? "be <=" : "equal", kvSeqLen_, blockShapeY_, expectNumJ);
+            return ge::GRAPH_FAILED;
+        }
+        // maxS1 is the capacity of the per-(b, n2, j) q-token list, so it must cover the whole q sequence.
+        if (!isTnd && maxS1_ < qSeqLen_) {
+            OP_LOGE(context_->GetNodeName(), "sparse_block_idx maxS1=%ld must be >= qSeqLen=%ld.", maxS1_, qSeqLen_);
+            return ge::GRAPH_FAILED;
+        }
+        // The kernel reads the metadata header, then one TASK_ENTRY_SIZE entry per task; the task list
+        // upper bound is B * N1 * J (see generic_block_sparse_attention_grad_metadata).
+        const int64_t metaElems = metaShape->GetStorageShape().GetShapeSize();
+        const int64_t requiredMetaElems = METADATA_HEADER_SIZE + batchNum_ * qHeadNum_ * numJ_ * TASK_ENTRY_SIZE;
+        if (metaElems < requiredMetaElems) {
+            OP_LOGE(context_->GetNodeName(),
+                    "metadata must hold at least %ld int32 elements (80 + B * N1 * J * 4), got %ld.",
+                    requiredMetaElems, metaElems);
+            return ge::GRAPH_FAILED;
+        }
 
         tilingData_.set_batchNum(batchNum_);
         tilingData_.set_qSeqLen(qSeqLen_);
