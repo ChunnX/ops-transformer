@@ -64,9 +64,10 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
 
 private:
-    bool IsV3() const
+    bool IsSplitSwigluMode() const
     {
-        return swigluParams_.swigluMode == 2;
+        constexpr int64_t SPLIT_SWIGLU_MODE = 2;
+        return swigluParams_.swigluMode == SPLIT_SWIGLU_MODE;
     }
     bool AnalyzeV3Attrs();
     bool AnalyzeV3Dtype();

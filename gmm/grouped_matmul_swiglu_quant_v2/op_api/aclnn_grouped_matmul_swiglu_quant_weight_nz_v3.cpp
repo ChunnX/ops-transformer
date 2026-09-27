@@ -16,6 +16,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
@@ -642,6 +643,17 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     if (status != ACLNN_SUCCESS) {
         return status;
     }
+
+    CHECK_RET(gmm::CheckTensorStorageBounds(x, "x"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weight, "weight"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightScale, "weightScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorListStorageBounds(weightAssistMatrix, "weightAssistMatrix"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(bias, "bias"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(xScale, "xScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(smoothScale, "smoothScale"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(groupList, "groupList"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(output, "output"), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(gmm::CheckTensorStorageBounds(outputScale, "outputScale"), ACLNN_ERR_PARAM_INVALID);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);

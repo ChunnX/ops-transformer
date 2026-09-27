@@ -57,6 +57,15 @@
 
   本接口当前固定沿最后一维拆分，具体约束见“约束说明”。
 
+  - MX 量化先将 `swigluOut_i` 按 `roundMode="rint"`（最近偶数舍入）转换为 BF16，再按每 32 个元素一组计算 scale。设组内 BF16 绝对值最大值为 $a$，其指数位为 $b$（含偏置 127）、尾数位为 $t$（7 位）。当前输出固定为 FLOAT8_E4M3FN。
+
+    - `scaleAlg=0`（OCP）：对非零有限值，E8M0 编码为 $s=\max(b-8,0)$；即正常范围内 scale 为 $2^{\lfloor\log_2 a\rfloor-8}$。
+    - `scaleAlg=1`（cuBLAS）：对非零有限值，E8M0 编码为 $s=\max(b+\mathbf{1}_{t>96}-8,0)$。尾数阈值对应 E4M3FN 最大有限值 448 的归一化尾数 1.75；阈值处不进位。
+    - 全零组使用编码 0；含 Inf/NaN 的组使用编码 255。有限 scale 的解码值为 $2^{s-127}$。量化使用 BF16 倒数 scale，并将乘积按最近偶数舍入转换为 FLOAT8_E4M3FN；因此不能用无限精度除法替代实现中的倒数乘法。OCP 对最大指数位为 0 的组（全零或仅包含 BF16 次正规数）将倒数置 0；cuBLAS 仅对全零组将倒数置 0。
+    - `dstTypeMax=0.0` 表示使用输出类型的默认最大值（E4M3FN 为 448），不是用 0 做除数。当前接口不支持非零自定义值。
+
+  `FRACTAL_NZ` 是接口的格式枚举。下文中的 NZ/ZN 仅用于区分非转置和转置权重的物理排列，不是两个不同的 ACL 格式；两者都传入 `ACL_FORMAT_FRACTAL_NZ`。
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize` 获取计算所需的 workspace 大小以及包含算子计算流程的执行器，再调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3` 执行计算。
@@ -143,7 +152,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>gluAlpha</td><td>输入</td><td>表示Sigmoid输入的缩放系数。</td><td>必选参数，必须为有限且可由FLOAT表示的值。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>gluBias</td><td>输入</td><td>表示线性分支的偏置。</td><td>必选参数，必须为有限且可由FLOAT表示的值。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>roundMode</td><td>输入</td><td>MX量化舍入模式。</td><td>可选参数，传入nullptr或空字符串时按`"rint"`处理；当前仅支持`"rint"`。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>当前接口支持 0（OCP）和 1（cuBLAS）；其他值（包括 2）会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>当前接口支持 0（OCP）和 1（cuBLAS）；其他值会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>dstTypeMax</td><td>输入</td><td>MX 量化目标类型最大值。</td><td>当前 MXFP8 输出仅支持 0.0。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>output</td><td>输出</td><td>MXFP8 量化结果。</td><td>调用方创建并传入，当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, N / 2)</td><td>√</td></tr>
       <tr><td>outputScale</td><td>输出</td><td>MXFP8 输出 scale。</td><td>调用方创建并传入。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil((N / 2) / 64), 2)</td><td>√</td></tr>
