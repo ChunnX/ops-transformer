@@ -26,6 +26,7 @@
 #include "../utils/status_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../tile/tile_copy_policy.h"
+#include "mx_quant_reduce.h"
 
 namespace Cgmct {
 namespace Gemm {
@@ -307,41 +308,8 @@ QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExp(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr, uint32_t totalCountInUB, uint16_t loopNum)
 {
-    __VEC_SCOPE__
-    {
-        AscendC::Reg::RegTensor<bfloat16_t> vdExp0;
-        AscendC::Reg::RegTensor<bfloat16_t> vdExp1;
-        AscendC::Reg::RegTensor<uint16_t> vdExpExtract0;
-        AscendC::Reg::RegTensor<uint16_t> vdExpExtract1;
-
-        AscendC::Reg::RegTensor<uint16_t> expMaskBF16;
-        AscendC::Reg::Duplicate(expMaskBF16, MAX_EXP_FOR_BF16);
-
-        AscendC::Reg::RegTensor<uint16_t> vdMaxExp;
-        AscendC::Reg::MaskReg scaleMask1;
-        AscendC::Reg::MaskReg scaleMask2;
-        AscendC::Reg::UnalignReg u1;
-        static constexpr AscendC::Reg::CastTrait castTraitHalf2Bf16 = {
-            AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_TRUNC};
-        for (uint16_t i = 0; i < loopNum; i++) {
-            scaleMask1 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
-            scaleMask2 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
-            AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
-                                                                            vlForHalfNumber_ * INTERLEAVED_REG_FACTOR);
-            AscendC::Reg::And(vdExpExtract0, (AscendC::Reg::RegTensor<uint16_t> &)vdExp0, expMaskBF16, scaleMask1);
-            AscendC::Reg::And(vdExpExtract1, (AscendC::Reg::RegTensor<uint16_t> &)vdExp1, expMaskBF16, scaleMask1);
-
-            AscendC::Reg::Max(vdMaxExp, vdExpExtract0, vdExpExtract1, scaleMask1);
-            AscendC::Reg::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, scaleMask1);
-
-            AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                maxExpAddr, vdMaxExp, u1, elementAfterReduce_);
-        }
-        AscendC::Reg::DataCopyUnAlignPost(maxExpAddr, u1, 0);
-    }
-    return;
+    MxQuantDetail::ReduceBf16MaxExponent(srcAddr, maxExpAddr, totalCountInUB, loopNum, vlForHalfNumber_,
+                                         elementAfterReduce_);
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
