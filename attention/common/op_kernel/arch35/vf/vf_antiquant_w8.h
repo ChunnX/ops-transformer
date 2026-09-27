@@ -207,6 +207,8 @@ __simd_vf__ void AntiquantVFImplFp8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T 
                                                            (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
             Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vCastRes0, vScale, qTypeMaskAll);
             // 将输出结果copy到UB
+            uint32_t validElements = (dealRowCount - rowLoopIdx * rowBaseSize) * colBaseSize;
+            Reg::MaskReg storeMask = Reg::UpdateMask<Q_T>(validElements);
             Reg::StoreAlign<Q_T, Reg::StoreDist::DIST_NORM_B16>(ubDstAddrTmp, vRes, qTypeMaskAll);
         }
     }
