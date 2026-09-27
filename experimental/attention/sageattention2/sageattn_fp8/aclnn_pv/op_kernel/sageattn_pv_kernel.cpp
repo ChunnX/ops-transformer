@@ -1,0 +1,33 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ * aclnn 骨架：统一 FP8 PV 入口 kernel 占位
+ * 待 P1 修通后接真 kernel（FAInferInt8QK 或 mm1_qk_int8 + FA pipeline 组合）
+ */
+
+#include "kernel_operator.h"
+using namespace AscendC;
+
+// kernel 占位：仅打印参数，不做实际计算
+extern "C" __attribute__((visibility("default"))) void SageAttnPvKernel(uint8_t *q, uint8_t *k, uint8_t *v,
+                                                                        uint8_t *qScale, uint8_t *kScale,
+                                                                        uint8_t *vScale, uint8_t *o, uint8_t *lse,
+                                                                        uint8_t *tiling)
+{
+    (void)q;
+    (void)k;
+    (void)v;
+    (void)qScale;
+    (void)kScale;
+    (void)vScale;
+    (void)o;
+    (void)lse;
+    (void)tiling;
+    // 占位：空操作，只验证编译通过
+    // TODO: 接真 kernel（FAInferInt8QK 或 mm1_qk_int8 + softmax + PV + rescale）
+}
