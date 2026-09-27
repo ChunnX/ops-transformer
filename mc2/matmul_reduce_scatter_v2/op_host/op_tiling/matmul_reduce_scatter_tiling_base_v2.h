@@ -33,7 +33,7 @@ constexpr size_t QUANT_SCALE = 5;
 
 // Output
 constexpr size_t OUTPUT_Y = 0;
-constexpr size_t OUTPUT_AMAX = 2;
+constexpr size_t OUTPUT_AMAX = 1;
 
 // Attr
 constexpr size_t GROUPSIZE_IDX = 7;
@@ -114,7 +114,7 @@ protected:
     uint64_t tailMValue_{0};  // mc2 切块后尾块M的大小；
     uint64_t longTileLen_{0}; // mc2 切块后长块的大小；
     uint64_t mmResultLen_{0};
-    uint32_t libApiWorkSpaceSize_{0};
+    uint64_t libApiWorkSpaceSize_{0};
 #if MC2_DFX_ENABLE
     Utils::DfxWorkspaceLayoutInfo workspaceLayout_{};
 #endif

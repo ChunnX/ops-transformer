@@ -552,7 +552,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(),
-                                              "The value of rankDim must be positive and divisible by orgMValue"),
+                                              "rankDim must be positive and orgMValue must be divisible by rankDim"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 };
