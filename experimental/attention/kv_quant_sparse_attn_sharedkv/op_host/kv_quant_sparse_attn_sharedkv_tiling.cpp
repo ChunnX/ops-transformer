@@ -38,7 +38,10 @@ ge::graphStatus KvQuantSASInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus KvQuantSASInfoParser::CheckRequiredAttrExistence() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus KvQuantSASInfoParser::CheckRequiredParaExistence() const
 {
