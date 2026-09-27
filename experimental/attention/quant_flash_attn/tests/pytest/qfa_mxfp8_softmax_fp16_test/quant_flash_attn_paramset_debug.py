@@ -1,54 +1,111 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
 from quant_flash_attn_paramset_common import expand_paramset_to_cases
 
-# 调试用例集（当前为空）
-# =====================================================================
-# 修复存档（本文件历史上承载的 FAIL 用例及根因，均已修复并迁至 func_rdv）
-# =====================================================================
-# ① 2026-09-24（首批）S1 非对齐·V1 部分列（QS192/QS444，自 func_rdv 回流）
-#    失败模式：actMSize ∈ (128,256) 时 V1 subBlock 输出全错（QS192 通过率 67.2%≈128/192）
-#    根因：LoadPToL0B 固定满宽 pitch（kStep=4/dstStride=8/xStep=8）与 MatmulVP 动态 n
-#    不匹配——转置加载下 Mmad 按自身 n 紧凑分形距读 L0B，呈现宽度须整体 = n
-#    修复：LoadPToL0B 三参数随 actVecS1SizeAlign32 动态化（详见 cube block 头注释）
-#
-# ② 2026-09-24 S1 极小 × 多块（QS1_KVS832）：C2_V2 释放竞态
-#    失败模式：非末块 V2 释放 mm2Res 挂 PIPE_MTE3 但无 V→MTE3 屏障，flag 提前触发，
-#    AIC 下一次 FixpipeMm2 覆写在途 VfFlashUpdateAcc 读（窄 n 时窗口放大，时变指纹）
-#    修复：释放管道按任务类型区分——末块 PIPE_MTE3（corrections #8 原语义）、非末块 PIPE_V
-#
-# ③ 2026-09-24 S2 任意长度（KVS100/65/388/556，设备崩溃 / 丢 key）
-#    根因三处：MatmulVP k 未对齐 64（MmadMx K∈64Z 硬约束 → 崩溃）；P 槽尾行陈旧数据
-#    混入 k 对齐扩展行；VfSoftmaxFp16ToFp8 P 循环缺尾行处理（validRows%4 余量被丢弃）
-#    修复：k=align64 + V1 尾 subLoop 整槽清零 + P 尾行配对链（含奇数余量零补位）
-#    配套：golden _get_v_block_scale 改 ceil 组 + 尾组 0 补齐
-#
-# ④ 2026-09-24 per-batch seqused（B2/B3 变长组合）
-#    kernel 零修改即正确（actSeqLens 按 batch 解析为设计内能力）；
-#    golden cpu_mxfp8_golden 改逐 batch 循环（原为满 shape 全量循环），
-#    test_runner 对无效 query 行双侧清零（kernel 不写该区域，DEAL_ZERO 清零为 TODO）
-#
-# ⑤ 2026-09-27 S2=1 边界系列（GQA G=4/16、MHA Nq2Nkv2、B2 双批、per-batch 混合、B32 满核）
-#    上板 6/6 全过（100% PctRlt），已迁至 func_rdv——kernel 零修改即正确
-#    （k=align64(1)=64 + P 零填充 + softmax 尾行单行链均为 ③ 修复的既有路径）
-# =====================================================================
-# ⑥ 2026-09-27 seq_used=0 空批系列（A 组 q=0 / B 组 kv=0 / C 组双轴混合，共 8 个）
-#    探索发现两层空白并修复后上板 8/8 全过，已迁至 func_rdv：
-#    - golden：kv=0 批 m_acc=None → lse 行 AttributeError（空批保护：输出 0 / lse=-inf）
-#    - kernel：DEAL_ZERO 行不写输出=未初始化内存（PctRlt 随内存漂移，B2_KVS0x256 实测
-#      50%）；修复：DEAL_ZERO 分支 AIV 整行清零（消费 metadata needInitOutput，
-#      VectorBlock.ZeroOutputRows 专用 UB 零源 + EVT_ZERO_OUT）
-# =====================================================================
-TEST_PARAMS = {}
+TEST_PARAMS = {
+    "BNSD_B1_QS256_KVS256_Nq1_Nkv1_D128_qm3": {
+        "B": [1], "N_q": [1], "N_kv": [1], "D": [128],
+        "cu_seqlens_q": [None], "cu_seqlens_kv": [None],
+        "seqused_q": [[256]], "seqused_kv": [[256]],
+        "enable_pa": [False], "kv_cache_layout": [None], "block_size": [None],
+        "mask_mode": [0], "q_scale_layout": ["BNSD"], "p_scale": [1.0], "enable_lse": [False],
+    },
+}
 
 CASES = expand_paramset_to_cases(TEST_PARAMS)
+
+# ===== 辅助函数 =====
+def _sq(s, n):   return [s]*n
+def _sq0(n):     return [0]*n
+def _sq_zf(s, n): return [0] + [s]*(n-1)            # 首 batch=0
+def _sq_zl(s, n): return [s]*(n-1) + [0]            # 末 batch=0
+def _sq_alt(s, n): return [s if i%2==0 else 0 for i in range(n)]  # 交替 0
+def _sq_step(n):  return [i*64+1 for i in range(n)] # 递增不定长
+def _sq_mix(s, n): return [s]*n if n<=1 else [1]+[s]*(n-2)+[1]  # 两头窄中间宽
+
+def _c(name, b, nq, sq_q, sq_kv):
+    return {"name": name, "B": b, "N_q": nq, "N_kv": 1, "D": 128,
+            "cu_seqlens_q": None, "cu_seqlens_kv": None,
+            "seqused_q": sq_q, "seqused_kv": sq_kv,
+            "enable_pa": False, "kv_cache_layout": None, "block_size": None,
+            "mask_mode": 0, "q_scale_layout": "BNSD", "p_scale": 1.0, "enable_lse": False}
+
+# ===== 边值集 =====
+_S1 = [1, 2, 31, 32, 33, 63, 64, 65, 95, 96, 97,
+       127, 128, 129, 159, 160, 161, 191, 192, 193,
+       223, 224, 225, 255, 256, 257, 319, 320, 383,
+       384, 385, 447, 448, 511, 512]
+_S2 = [1, 2, 31, 32, 33, 63, 64, 65, 95, 96, 97,
+       127, 128, 129, 159, 160, 191, 192, 193, 223,
+       224, 255, 256, 257, 319, 320, 383, 384, 385,
+       447, 448, 511, 512]
+_S2_L = [256, 512, 767, 768, 769, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096]
+_B  = [1, 2, 3, 4, 8, 16, 32]
+_G  = [1, 2, 3, 4, 8, 16, 32]
+
+# ===== 1. S1 独立扫描 =====
+for s1 in _S1:
+    CASES.append(_c(f"S1_{s1}_B1_G1",    1, 1, [s1], [256]))
+
+# ===== 2. S2 独立扫描 =====
+for s2 in _S2 + _S2_L:
+    CASES.append(_c(f"S2_{s2}_B1_G1",    1, 1, [256], [s2]))
+
+# ===== 3. G 独立扫描 =====
+for g in _G:
+    CASES.append(_c(f"G_{g}_B1",         1, g, [256], [256]))
+
+# ===== 4. B 独立扫描(全等长) =====
+for b in _B:
+    CASES.append(_c(f"B_{b}_uniform",    b, 1, _sq(256,b), _sq(256,b)))
+
+# ===== 5. seq_used 零长模式 =====
+for b in _B:
+    if b < 2: continue
+    CASES.append(_c(f"B{b}_Q0first",     b, 1, _sq_zf(256,b), _sq(256,b)))
+    CASES.append(_c(f"B{b}_K0first",     b, 1, _sq(256,b), _sq_zf(256,b)))
+    CASES.append(_c(f"B{b}_Q0last",      b, 1, _sq_zl(256,b), _sq(256,b)))
+    CASES.append(_c(f"B{b}_K0last",      b, 1, _sq(256,b), _sq_zl(256,b)))
+    CASES.append(_c(f"B{b}_Q0alt",       b, 1, _sq_alt(256,b), _sq(256,b)))
+    CASES.append(_c(f"B{b}_K0alt",       b, 1, _sq(256,b), _sq_alt(256,b)))
+    CASES.append(_c(f"B{b}_Qstep",       b, 1, _sq_step(b), _sq(256,b)))
+    CASES.append(_c(f"B{b}_Kstep",       b, 1, _sq(256,b), _sq_step(b)))
+    CASES.append(_c(f"B{b}_Qmix",        b, 1, _sq_mix(256,b), _sq(256,b)))
+    CASES.append(_c(f"B{b}_Kmix",        b, 1, _sq(256,b), _sq_mix(256,b)))
+
+# ===== 6. S1×S2 关键边值交叉（仅边值子集，含零长）=====
+_S1_X = [1, 32, 64, 128, 192, 256, 320, 384, 512]
+_S2_X = [1, 64, 128, 192, 256, 384, 512, 768, 1024, 2048, 4096]
+for s1 in _S1_X:
+    for s2 in _S2_X:
+        CASES.append(_c(f"S1{s1}_S2{s2}_X",  1, 1, [s1], [s2]))
+
+# ===== 7. S1×G 交叉 =====
+for s1 in [1, 32, 64, 128, 192, 256, 384, 512]:
+    for g in [1, 2, 4, 8, 32]:
+        CASES.append(_c(f"S1{s1}_G{g}_X",    1, g, [s1], [256]))
+
+# ===== 8. S2×G 交叉 =====
+for s2 in [1, 64, 128, 192, 256, 384, 512, 2048, 4096]:
+    for g in [1, 2, 4, 8, 32]:
+        CASES.append(_c(f"S2{s2}_G{g}_X",    1, g, [256], [s2]))
+
+# ===== 9. B×G 交叉 =====
+for b in _B:
+    for g in _G:
+        CASES.append(_c(f"B{b}_G{g}_X",      b, g, _sq(256,b), _sq(256,b)))
+
+# ===== 10. B×S1 交叉(含零长) =====
+for b in _B:
+    for s1 in [1, 64, 128, 256, 384, 512]:
+        CASES.append(_c(f"B{b}_S1{s1}_X",     b, 1, _sq(s1,b), _sq(256,b)))
+        if b >= 2:
+            CASES.append(_c(f"B{b}_S1{s1}_0f_X",  b, 1, _sq_zf(s1,b), _sq(256,b)))
+
+# ===== 11. B×S2 交叉(含零长) =====
+for b in _B:
+    for s2 in [1, 64, 128, 256, 384, 512, 2048]:
+        CASES.append(_c(f"B{b}_S2{s2}_X",     b, 1, _sq(256,b), _sq(s2,b)))
+        if b >= 2:
+            CASES.append(_c(f"B{b}_S2{s2}_0f_X",  b, 1, _sq(256,b), _sq_zf(s2,b)))
+
+print(f"Total debug+brute cases: {len(CASES)}")
