@@ -85,7 +85,9 @@ def _resolve_max_seqlen_q(
     if max_seqlen_q is not None:
         value = int(max_seqlen_q)
         if value < 0:
-            raise ValueError(f"{_OP_PREFIX}: max_seqlen_q must be >= 0, but got {value}")
+            raise ValueError(
+                f"{_OP_PREFIX}: max_seqlen_q must be >= 0, but got {value}"
+            )
         return value
     if seqused_q is not None:
         return int(seqused_q.max().item())
@@ -111,7 +113,9 @@ def _resolve_max_seqlen_kv(
     if max_seqlen_kv is not None:
         value = int(max_seqlen_kv)
         if value < 0:
-            raise ValueError(f"{_OP_PREFIX}: max_seqlen_kv must be >= 0, but got {value}")
+            raise ValueError(
+                f"{_OP_PREFIX}: max_seqlen_kv must be >= 0, but got {value}"
+            )
         return value
     if seqused_kv is not None:
         return int(seqused_kv.max().item())

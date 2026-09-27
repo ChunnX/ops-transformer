@@ -150,8 +150,9 @@ protected:
         maxS1_ = idxStorage.GetDim(3);
         if (cntStorage.GetDim(0) != idxBatchNum || cntStorage.GetDim(1) != idxKvHeadNum ||
             cntStorage.GetDim(2) != numJ_) {
-            OP_LOGE(context_->GetNodeName(), "sparse_block_count must match sparse_block_idx [B, N2, J] = [%ld, %ld, %ld].",
-                    idxBatchNum, idxKvHeadNum, numJ_);
+            OP_LOGE(context_->GetNodeName(),
+                    "sparse_block_count must match sparse_block_idx [B, N2, J] = [%ld, %ld, %ld].", idxBatchNum,
+                    idxKvHeadNum, numJ_);
             return ge::GRAPH_FAILED;
         }
         batchNum_ = idxBatchNum;
@@ -216,16 +217,15 @@ protected:
 
         if (batchNum_ != idxBatchNum || kvHeadNum_ != idxKvHeadNum) {
             OP_LOGE(context_->GetNodeName(),
-                    "sparse_block_idx [B, N2] = [%ld, %ld] mismatch with query/key [B, N2] = [%ld, %ld].",
-                    idxBatchNum, idxKvHeadNum, batchNum_, kvHeadNum_);
+                    "sparse_block_idx [B, N2] = [%ld, %ld] mismatch with query/key [B, N2] = [%ld, %ld].", idxBatchNum,
+                    idxKvHeadNum, batchNum_, kvHeadNum_);
             return ge::GRAPH_FAILED;
         }
         const bool isTnd = strcmp(qLayout_, TND_STR) == 0;
         const int64_t expectNumJ = (kvSeqLen_ + blockShapeY_ - 1) / blockShapeY_;
         if (isTnd ? (numJ_ > expectNumJ) : (numJ_ != expectNumJ)) {
-            OP_LOGE(context_->GetNodeName(),
-                    "sparse_block_idx J=%ld must %s ceilDiv(kvSeqLen=%ld, BlockY=%d)=%ld.", numJ_,
-                    isTnd ? "be <=" : "equal", kvSeqLen_, blockShapeY_, expectNumJ);
+            OP_LOGE(context_->GetNodeName(), "sparse_block_idx J=%ld must %s ceilDiv(kvSeqLen=%ld, BlockY=%d)=%ld.",
+                    numJ_, isTnd ? "be <=" : "equal", kvSeqLen_, blockShapeY_, expectNumJ);
             return ge::GRAPH_FAILED;
         }
         if (!isTnd && maxS1_ < qSeqLen_) {
@@ -236,8 +236,8 @@ protected:
         const int64_t requiredMetaElems = METADATA_HEADER_SIZE + batchNum_ * qHeadNum_ * numJ_ * TASK_ENTRY_SIZE;
         if (metaElems < requiredMetaElems) {
             OP_LOGE(context_->GetNodeName(),
-                    "metadata must hold at least %ld int32 elements (80 + B * N1 * J * 4), got %ld.",
-                    requiredMetaElems, metaElems);
+                    "metadata must hold at least %ld int32 elements (80 + B * N1 * J * 4), got %ld.", requiredMetaElems,
+                    metaElems);
             return ge::GRAPH_FAILED;
         }
 
