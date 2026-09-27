@@ -16,7 +16,9 @@ def main():
     op_name = "MixedQuantSparseFlashMlaMetadata"
     metadata = json.loads(args.source.read_text(encoding="utf-8"))[op_name]
     metadata["opInfo"]["kernelSo"] = args.kernel_name
-    args.destination.write_text(json.dumps({op_name: metadata}, indent=4) + "\n", encoding="utf-8")
+    args.destination.write_text(
+        json.dumps({op_name: metadata}, indent=4) + "\n", encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
