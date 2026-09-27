@@ -387,9 +387,20 @@ private:
     __aicore__ inline void ProcessSingleGroup(BlockScheduler &scheduler, const GroupListTensor &gmGroupList,
                                               uint32_t groupIdx)
     {
+        // [临时诊断] 共享专家（groupNum==1 单组调用）Run 内卡点定位，block0 门控：
+        // G-enter=调度器就绪+偏移推导前，G-blk1=首个 mmadOp_ 块（含块坐标），
+        // G-done=全部块完成
+        const bool sharedDiag = (groupNum_ == 1U) && (AscendC::GetBlockIdx() == 0U);
+        bool diagBlockPrinted = false;
         BlockCoord blockCoord;
         if (!scheduler.GetNextBlockCoord(blockCoord)) {
             return;
+        }
+        if (sharedDiag) {
+            const int64_t diagM = asc::te::get<MNK_M>(problemShape_);
+            const int64_t diagN = asc::te::get<MNK_N>(problemShape_);
+            const int64_t diagK = asc::te::get<MNK_K>(problemShape_);
+            AscendC::printf("[G-enter] M=%lld N=%lld K=%lld\n", diagM, diagN, diagK);
         }
         UpdateBaseOffsets(gmGroupList, groupIdx);
 
@@ -451,8 +462,15 @@ private:
             auto gmBlockBias = gmBias.slice(asc::te::make_coord(static_cast<int64_t>(0), nPos),
                                             asc::te::make_shape(static_cast<int64_t>(1), blockN));
             auto gmBlockC = gmC.slice(asc::te::make_coord(mPos, nPos), asc::te::make_shape(blockM, blockN));
+            if (sharedDiag && !diagBlockPrinted) {
+                diagBlockPrinted = true;
+                AscendC::printf("[G-blk1] bM=%lld bN=%lld mP=%lld nP=%lld\n", blockM, blockN, mPos, nPos);
+            }
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, blockShape);
         } while (scheduler.GetNextBlockCoord(blockCoord));
+        if (sharedDiag) {
+            AscendC::printf("[G-done]\n");
+        }
     }
 
 private:
