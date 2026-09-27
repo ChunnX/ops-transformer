@@ -75,7 +75,6 @@ GENOP_TYPE=""
 GENOP_NAME=""
 INCREMENTAL_BUILD=FALSE
 PR_CHANGED_FILES=""  # PR场景, 修改文件清单, 可用于标识是否PR场景
-UT_SOC_ARRAY=()
 UT_TEST_CNT=0
 PR_UT_FLAG=FALSE
 CI_MODE=FALSE
@@ -1854,10 +1853,6 @@ while [[ $# -gt 0 ]]; do
         PR_UT_FLAG=TRUE
         TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_mc2)
         TEST_EXCLUDE_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_exclude_mc2)
-        ut_soc_version=$(python3 "$CURRENT_DIR"/cmake/scripts/get_soc_version.py -c "$CURRENT_DIR"/tests/test_soc_config.yaml -f "$PR_CHANGED_FILES" get_related_soc)
-        ut_soc_version="ascend${ut_soc_version#*ascend}"
-        IFS=',' read -ra UT_SOC_ARRAY <<< "$ut_soc_version"
-        echo "UT_SOC_ARRAY = ${UT_SOC_ARRAY[@]}"
 
         CI_MODE=TRUE
         shift 2
@@ -2370,20 +2365,9 @@ function build_pr_ut_mc2()
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST_CI_PR=ON"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_UT_OPS_TEST=${TEST_MC2}"
-    for element in "${UT_SOC_ARRAY[@]}"; do
-            if [ $UT_TEST_CNT -eq 0 ]; then
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=TRUE"
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=TRUE"
-            else
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DUT_INFERSHAPE_FLAG=FALSE"
-                CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_API_UT=FALSE"
-            fi
-            echo "start to test $element"
-            process_soc_input "$element"
-            set_compute_unit_option_ut
-            build_ut ${BUILD}
-            UT_TEST_CNT=$((UT_TEST_CNT +1))
-    done
+    process_soc_input "ascend310p,ascend910b,ascend950,ascend350"
+    set_compute_unit_option_ut
+    build_ut ${BUILD}
 }
 
 function build_pr_ut_exclude_mc2()
