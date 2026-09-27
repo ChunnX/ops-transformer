@@ -225,8 +225,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
                     nextGs1Idx = constInfo.gS1End + 1;
                 }
             }
-            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, workspace,
-                                        constInfo);
+            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, workspace, constInfo);
         }
     }
     /* UB buffer 在 GetKVPhyAddr（含 tPipe->Reset）之后初始化，避免 buffer 池被重置导致重叠 */
