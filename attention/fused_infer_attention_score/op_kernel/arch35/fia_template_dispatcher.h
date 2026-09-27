@@ -182,6 +182,19 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
+    // [SK能力声明] FIA fullquant 不支持在线静态编译: 分核调度(FiaMetaData)烘焙于
+    // tiling结构体, 静态烘焙产物实证崩溃(aicore 507011/精度大错)。以宏输出的const性
+    // 探测编译模式(GET_TILING_DATA_WITH_STRUCT动态展开为非const引用、静态展开为const
+    // 烘焙常量, 见CANN generate_tiling_code.py), static_assert在静态编译时报错, 由
+    // op_compiler按算子失败处理(torchair对op_compiler失败仅告警并回退动态执行);
+    // 包构建/GE图编译/动态执行不受影响。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    static_assert(!std::is_const<std::remove_reference<decltype(tilingDataIn)>::type>::value,
+                  "FIA fullquant does not support online static compilation: per-core split metadata "
+                  "(FiaMetaData) is baked into the tiling struct and the statically baked product "
+                  "is proven to crash (aicore 507011 / precision corruption). Dynamic execution "
+                  "is required.");
+
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
@@ -254,6 +267,19 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
+    // [SK能力声明] FIA fullquant 不支持在线静态编译: 分核调度(FiaMetaData)烘焙于
+    // tiling结构体, 静态烘焙产物实证崩溃(aicore 507011/精度大错)。以宏输出的const性
+    // 探测编译模式(GET_TILING_DATA_WITH_STRUCT动态展开为非const引用、静态展开为const
+    // 烘焙常量, 见CANN generate_tiling_code.py), static_assert在静态编译时报错, 由
+    // op_compiler按算子失败处理(torchair对op_compiler失败仅告警并回退动态执行);
+    // 包构建/GE图编译/动态执行不受影响。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    static_assert(!std::is_const<std::remove_reference<decltype(tilingDataIn)>::type>::value,
+                  "FIA fullquant does not support online static compilation: per-core split metadata "
+                  "(FiaMetaData) is baked into the tiling struct and the statically baked product "
+                  "is proven to crash (aicore 507011 / precision corruption). Dynamic execution "
+                  "is required.");
+
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
@@ -319,6 +345,19 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
+    // [SK能力声明] FIA fullquant 不支持在线静态编译: 分核调度(FiaMetaData)烘焙于
+    // tiling结构体, 静态烘焙产物实证崩溃(aicore 507011/精度大错)。以宏输出的const性
+    // 探测编译模式(GET_TILING_DATA_WITH_STRUCT动态展开为非const引用、静态展开为const
+    // 烘焙常量, 见CANN generate_tiling_code.py), static_assert在静态编译时报错, 由
+    // op_compiler按算子失败处理(torchair对op_compiler失败仅告警并回退动态执行);
+    // 包构建/GE图编译/动态执行不受影响。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    static_assert(!std::is_const<std::remove_reference<decltype(tilingDataIn)>::type>::value,
+                  "FIA fullquant does not support online static compilation: per-core split metadata "
+                  "(FiaMetaData) is baked into the tiling struct and the statically baked product "
+                  "is proven to crash (aicore 507011 / precision corruption). Dynamic execution "
+                  "is required.");
+
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
