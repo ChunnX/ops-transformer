@@ -122,7 +122,7 @@ private:
 
     __aicore__ inline ChunkMatrices BindChunkMatrices(uint32_t chunk)
     {
-        const uint32_t base = (chunk & 1) * L1_SLOT_BYTES;
+        const uint32_t base = (chunk & 1) * L1_SLOT_STRIDE_BYTES;
         return {BufferViews::L1<bfloat16_t>(base + L1_INVERSE_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_LOWER_TMP_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_RAW_KCD_OFFSET),
@@ -526,7 +526,7 @@ private:
     __aicore__ inline void CopyPrefixQkGmToL1(uint32_t qkHead, uint32_t chunk)
     {
         const uint32_t slot = chunk & 1;
-        const uint32_t slotBase = slot * L1_SLOT_BYTES;
+        const uint32_t slotBase = slot * L1_SLOT_STRIDE_BYTES;
         const uint32_t validRows = context_.ChunkValidRows(chunk);
         const uint64_t tokenStart = context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK;
         const uint64_t qkOffset = tokenStart * context_.params.nk * context_.params.dk + qkHead * context_.params.dk;
@@ -551,7 +551,7 @@ private:
     __aicore__ inline void ComputeKeyKeyAndQueryKeyScores(uint32_t chunk)
     {
         const uint32_t slot = chunk & 1;
-        const uint32_t slotBase = slot * L1_SLOT_BYTES;
+        const uint32_t slotBase = slot * L1_SLOT_STRIDE_BYTES;
         auto l1Q = BufferViews::L1<bfloat16_t>(slotBase + L1_Q_OFFSET);
         auto l1K = BufferViews::L1<bfloat16_t>(slotBase + L1_K_OFFSET);
 

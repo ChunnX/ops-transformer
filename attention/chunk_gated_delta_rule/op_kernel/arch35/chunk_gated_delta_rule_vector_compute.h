@@ -436,7 +436,7 @@ private:
     // [2c] 将 [2b] 的四个 BF16 矩阵送至 L1：rawKcd/vBeta -> [5]，Q' -> [6b]，Kg -> [7]。
     __aicore__ inline void CopyPrefixTransformsUbToL1(const VectorHead &head, const PrefixBuffers &prefix)
     {
-        const uint32_t base = prefix.slot * L1_SLOT_BYTES;
+        const uint32_t base = prefix.slot * L1_SLOT_STRIDE_BYTES;
         const uint32_t tokenBegin = head.subBlock * HALF_CHUNK;
         const MutexID prefixMutex = MutexId(AIV_STAGE1_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_MTE3>(prefixMutex);
@@ -483,7 +483,7 @@ private:
     // M 后到 L1，CausalScoresReady 唤醒 [8]。两个通知对应不同数学消费者，保留先后顺序。
     __aicore__ inline void CopyInverseAndScoresUbToL1(const VectorHead &head, const PrefixBuffers &prefix)
     {
-        const uint32_t base = prefix.slot * L1_SLOT_BYTES;
+        const uint32_t base = prefix.slot * L1_SLOT_STRIDE_BYTES;
         const uint32_t tokenBegin = head.subBlock * HALF_CHUNK;
         const MutexID prefixMutex = MutexId(AIV_PREFIX_PUB_MUTEX_BASE + prefix.slot);
         Mutex::Lock<PIPE_MTE3>(prefixMutex);
@@ -546,7 +546,7 @@ private:
         PipeBarrier<PIPE_V>();
         Mutex::Unlock<PIPE_V>(residualMutex);
         Mutex::Lock<PIPE_MTE3>(residualMutex);
-        auto l1Residual = BufferViews::L1<bfloat16_t>(slot * L1_SLOT_BYTES + L1_RESIDUAL_OFFSET);
+        auto l1Residual = BufferViews::L1<bfloat16_t>(slot * L1_SLOT_STRIDE_BYTES + L1_RESIDUAL_OFFSET);
         CopyCompactNzUbToL1<HALF_CHUNK, DIM, CHUNK>(residualBf16, l1Residual, subBlockIdx * HALF_CHUNK);
         NotifyCube<PIPE_MTE3, VectorToCubeEvent::ResidualReady>();
         Mutex::Unlock<PIPE_MTE3>(residualMutex);
