@@ -90,12 +90,15 @@ ge::graphStatus FiaTilingFullQuantGqaArch35::DoOpTiling()
         // (s1Size/s2Size)作保守 seqlens(只增不减, 覆盖任意真实数据), SplitPolicy 产出
         // 数据无关分核, FillTiling 写完整 tilingData。kernel 侧已有运行时 seqlen 边界
         // (qActSeqLensParser), 烘焙结果对任意真实数据正确(负载按 shape 上界切分, 次优)。
-        // workspace 仍取最大值, 兜底保守分核(含 FD 路径)的空间需求。
+        // [精度修复] workspace 用 CalcWorkspaceSize(不能用 CalcMaxWorkspaceSize):
+        // 该函数同时把 fiaWorkspaceParams.accumOutSize/logSumExpSize 写入 tilingData
+        // (kernel 的 FD sum/max workspace 偏移依据), CalcMaxWorkspaceSize 只算尺寸不写
+        // 参数 → 偏移全零 → FD 缓冲区与 accumOut 区重叠踩踏 → 精度大错。
         InitImplParam();
         SplitPolicy();
         FillTiling();
         CalcScheduleMode();
-        CalcMaxWorkspaceSize();
+        CalcWorkspaceSize();
         GenTilingKey();
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
