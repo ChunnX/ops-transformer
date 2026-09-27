@@ -182,16 +182,16 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
+    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
+    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
+    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
     op.Process();
 }
 
@@ -254,16 +254,16 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
+    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
+    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
+    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
     op.Process();
 }
 
@@ -319,16 +319,16 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译兼容] 宏按动态/静态图自动展开(动=GM零拷贝强转/静=栈拷贝), 指针两模式均有效;
+    // fiaMetaData/baseTiling 改取宏变量成员地址并以 __tiling_data_ptr__ 地址空间传入 kernel 直读,
+    // 修复原"(__gm__*)宏指针+offsetof"在静态图下把栈拷贝地址强转 __gm__ 导致 kernel 读垃圾分核
+    // 数据的问题(aicore 507011, 参考 flash_attn !8627 同款修复)。
+    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingData, tiling);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
-            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, fiaMetaData,
-            tilingData, &tPipe);
+            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace,
+            &tilingData->fiaMetaData, &tilingData->baseTiling, &tPipe);
     op.Process();
 }
 #endif
