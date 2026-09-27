@@ -390,18 +390,26 @@ mask 错 16 处。B1H0-2 与 B0H0-2 的 unit 几何恰好相同故侥幸正确�
 4. **方法论教训入档**：dump 取证前必须钉死 section 偏移链（含 reserve）；"值域巧合匹配"
    不足以定位真身；黑盒 EXACT/TOL PASS 才是修复的金标准。
 
-### 非 post 覆盖补齐（同日深夜）——**暴露变长 block_len 池化新 bug**
+### 非 post 覆盖补齐（同日深夜）+ 第十七轮排雷
 0828 套件新增 3 个非 post 用例（补齐对照泛化脚本 run_pp_generalized.sh 的覆盖缺口）：
 - **basebt**（sp0.98 bottom-k 非 post）：EXACT_PASS ✓
 - **basebf16**（bf16+B3+尾块 4032/3904+block_len 非 post）：FAIL——mask 散点 39 硬错（B0H2/H3）
 - **basevar**（fp16+seqlen/block_len 变长+多批 非 post）：FAIL——**B1H1 row11 整行 mask 错**（~19 连续）
 
-→ 指向 **变长 block_len 池化（poolQ/poolK 的 actual_len 路径）值错**（交接文档第二轮遗留嫌疑
-"poolQ 变长路径逐 op 对齐审计（Cast/ReduceMean RA {actualLen,128} counter 模式）"——非 post 与
-post 共用池化服务，但 post 用例的 block_len 场景未被 29 用例覆盖到该分支）。basevar 的 row11
-整行错 = q block 11 池化向量错（该行 scores/softmax/选择全错）的特征。
-下轮：pool 变长路径审计（pool_blocks 语义 vs NPU FastPoolingQRange/PoolingSingleQBlock 的
-actual_len 处理）+ basebf16 的散点模式区分（dtype 层 vs block_len 层）。
+**第十七轮排雷结果（两层重大澄清）**：
+1. **🅰 内核 ws 基址 = ws + 16MB（WORK_SPACE_RESERVE 在前）**——workspaces[0] = total+16MB，
+   内核 section 从 +16MB 起。由此**破案第十四轮"低区写不可见"异常**（qCmp/kCmp/pooled 等
+   "低区"扫描全差 16MB 基址，数据一直在 @ws+16MB+off，非写丢失/非硬件异常）。所有历史
+   dump 扫描偏移须 +16MB 修正（blk8 第十三轮部分结论需复核，但有黑盒 PASS 背书）。
+   **正确偏移表（bfvar/basevar，aicNum=20、总 11,834,580B）**：qCmp@+16MB+0、kCmp@+16MB+8192、
+   attnScore@+16MB+16384、softmaxTmp@+16MB+18432、topkWS@+16MB+10504192、
+   partSum@+16MB+10502356+Δ、partMax、pooled 依次（Δ=topk 头部小出入 ≤256B 待 printf 标定）。
+2. **🅱 变长 block_len 池化无辜**：qCmp/kCmp（@+16MB）与 CPU 逐位零偏差（32 block 全对，
+   block_len=17/0/118 极端值全对）——第二轮遗留嫌疑"pool 变长路径值错"排除。
+3. **basevar/basebf16 剩余 = TopK 选择层**（与 bfvar 同层）：mask 错 = 同值 tie 的
+   radix-vs-stable-argsort 差异 + 变长批 sortLen/count 推导——专查 bsa_radix_topk_service.h。
+   （非 post 的 attnScore = 单 2KB 串行槽 per (B,H) 覆写后 TopK 即时消费，dump 只剩末个
+   (B,H)，历史行级诊断须经 mask/pooled 反推。）
 
 ### 终态
 - **套件 29/29 全绿（18 EXACT + 11 BOUNDARY_TOLERANT）——项目首次无 FAIL**；
