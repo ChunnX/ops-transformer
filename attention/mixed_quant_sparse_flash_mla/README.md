@@ -11,6 +11,8 @@
 |<term>Atlas推理系列产品</term>                                 |     ×    |
 |<term>Atlas训练系列产品</term>                                 |     ×    |
 
+> 适用范围：本文原有功能、函数原型、参数表、约束和示例保留 Ascend 950PR&950DT（A5）的量化基线说明，适用于quant_mode=1和quant_mode=2。Atlas A2/A3新增的quant_mode=3请参见“A2/A3 TurboQuant 补充说明”，其中的类型和布局扩展仅适用于quant_mode=3。
+
 ## 功能说明
 
 - 算子功能：
@@ -67,14 +69,14 @@
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
+      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode；quant_mode=3时使用与q相同的数据类型、kv_d=512。</td>
       <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
+      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode；quant_mode=1或quant_mode=2时使用float8_e4m3fn（内部数据类型详见quant_mode）；quant_mode=3时使用uint8 TQ4数据、kv_d=258。</td>
       <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
     </tr>
@@ -283,6 +285,32 @@
     </tr>
   </tbody>
 </table>
+
+## A2/A3 TurboQuant 补充说明
+
+- Atlas A2、Atlas A3 支持 TurboQuant TQ4；A5 仍使用原有quant_mode=1和quant_mode=2。
+- 复用原有接口和量化模式参数，设置quant_mode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quant_mode=3下生效。
+- 主算子只支持 CSA 路径，原始 KV 保持非量化，压缩 KV 使用 TQ4，反量化融合在注意力计算内部。DeepSeek V4 框架当前仅对 C4 压缩 KV 启用此能力。
+- 每个压缩 KV token 的512维数据编码为256字节的4位码本索引，再拼接2字节 FP16 逐 token scale，共258字节。码本与 TurboQuant 量化端约定一致，不新增外部码本或 scale 参数。该格式不是 A5 的 FP8 KV 布局。
+- 相对512维 BF16 的1024字节，单个被量化 token 的有效载荷减少约74.8%（约3.97倍压缩）。整个 KV cache 的收益需另外计入未量化部分、物理页步长和对齐开销，不能直接按此倍率估算。
+
+quant_mode=3的参数约束如下；以下字段均为原有参数，不增加新的位置参数。
+
+| 参数 | A2/A3 quant_mode=3约束 |
+| --- | --- |
+| `quant_mode` | 3 |
+| `q`、`attn_out` | FLOAT16 或 BFLOAT16，类型和 shape 一致；TND 布局，shape `(q_t, q_n, 512)`；`q_n` 为4到128的4的倍数，`q_t` 允许为0 |
+| `ori_kv` | 必传；与 q 类型一致；PA_BBND 布局，shape `(block_num, block_size, 1, 512)` |
+| `cmp_kv` | 必传；UINT8；PA_BBND 布局，shape `(block_num, block_size, 1, 258)`；每行256字节索引及2字节 FP16 scale |
+| `layout_q`、`layout_kv` | 分别为 TND、PA_BBND；两路 KV 的 block_size 均为16到1024的16的倍数，0轴 stride 必须覆盖一个完整物理块 |
+| `cmp_sparse_indices` | 必传 INT32，shape `(q_t, 1, 512)` 或 `(q_t, 1, 1024)`；无效位置填 -1 |
+| `ori_block_table`、`cmp_block_table`、`cu_seqlens_q`、`seqused_ori_kv` | 均必传，沿用原有 INT32 类型和参数含义 |
+| `ori_sparse_indices`、`ori_topk_length`、`cmp_topk_length`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_q`、`seqused_cmp_kv`、`cmp_residual_kv` | 不支持传入，保留原有可选参数位置 |
+| `ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`、`ori_win_right` | 分别为4、3、非负值、0 |
+| `cmp_ratio`、`rope_head_dim`、`topk_value_mode` | 分别支持4或128、64、1；算子的压缩倍率支持范围不代表框架会量化全部压缩 KV |
+| `metadata` | 必传，由前置 Metadata 接口以相同quant_mode=3及相同输入属性生成，INT32、shape `(1024,)` |
+
+Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的布局、dtype 和空查询特例不会放宽 A5 quant_mode=1和quant_mode=2的校验条件。
 
 ## 约束说明
 
