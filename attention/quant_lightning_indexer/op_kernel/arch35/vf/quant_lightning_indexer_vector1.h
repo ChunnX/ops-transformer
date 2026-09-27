@@ -21,7 +21,7 @@
 namespace vector1 {
 using liV2Vector1::BroadcastLane;
 using liV2Vector1::DuplicateZero;
-using liV2Vector1::FloatSortConstCtx; // QLI: KV state.
+using liV2Vector1::FloatSortConstCtx;
 using liV2Vector1::FloatSortTraits;
 using liV2Vector1::FloatToSortableKey;
 using liV2Vector1::FloatX2ToSortableKey;
@@ -287,8 +287,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(qliKeyScaleReg[1], kScale_ + 64);
 
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, qliWeightBroadcast, qliWeightReg, regSum0, regSum1,
-                            qliMaskB32, qk_, qliQkVectorStride,
-                            qliGroupSize); // QLI: quant layout (qliGroupSize).
+                            qliMaskB32, qk_, qliQkVectorStride, qliGroupSize);
 
     ReduceSumFinalize(regSum0, regSum1, qliKeyScaleReg, qliMaskB32, bf16Ctx, qliMaskB16, out_);
 }
@@ -372,8 +371,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     Reg::LoadAlign<float>(qliKeyScaleReg[1], kScale_ + 64);
 
     ReduceSumLoopBody<QK_T>(regQK, regQKHalf, regQKInt32, qliWeightBroadcast, qliWeightReg, regSum0, regSum1,
-                            qliMaskB32, qk_, qliQkVectorStride,
-                            qliGroupSize); // QLI: quant layout (qliGroupSize).
+                            qliMaskB32, qk_, qliQkVectorStride, qliGroupSize);
 
     ReduceSumFinalize(regSum0, regSum1, qliKeyScaleReg, qliMaskB32, bf16Ctx, qliMaskB16, out_);
 }
@@ -450,13 +448,13 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, qliMaskB16);
 
+    // regW[0]与weight1混合使用
     AscendC::Reg::LoadAlign<float>(qliWeightReg[0], weight0_);
     AscendC::Reg::LoadAlign<float>(qliWeightReg[1], weight1_);
     AscendC::Reg::LoadAlign<float>(qliQueryScaleReg[0], qScale0_);
     AscendC::Reg::LoadAlign<float>(qliQueryScaleReg[1], qScale1_);
     AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0], qliMaskB32);
     AscendC::Reg::Mul(qliWeightReg[1], qliWeightReg[1], qliQueryScaleReg[1], qliMaskB32);
-    // qliWeightReg[0]与weight1混合使用
     AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weight1_, qliWeightReg[1], qliMaskB32);
     AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
     DuplicateZero(regSum0, qliMaskB32);
@@ -505,11 +503,11 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::Cast<float, bfloat16_t, castTraitBF16ToFP32>(qliWeightReg[0], regWBF16[0], qliMaskB16);
     AscendC::Reg::Cast<float, bfloat16_t, castTraitBF16ToFP32>(qliWeightReg[1], regWBF16[1], qliMaskB16);
 
+    // regW[0]与weight1混合使用
     AscendC::Reg::LoadAlign<float>(qliQueryScaleReg[0], qScale0_);
     AscendC::Reg::LoadAlign<float>(qliQueryScaleReg[1], qScale1_);
     AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0], qliMaskB32);
     AscendC::Reg::Mul(qliWeightReg[1], qliWeightReg[1], qliQueryScaleReg[1], qliMaskB32);
-    // qliWeightReg[0]与weight1混合使用
     AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weightFloat_, qliWeightReg[1], qliMaskB32);
     AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
     DuplicateZero(regSum0, qliMaskB32);
@@ -535,7 +533,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int qliGroupSize)
 {
-    AscendC::Reg::RegTensor<float> qliWeightBroadcast[2]; // QLI: quant conversion (qliWeightBroadcast).
+    AscendC::Reg::RegTensor<float> qliWeightBroadcast[2];
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
     AscendC::Reg::RegTensor<int32_t> regQK0Int32[2], regQK1Int32[2];
@@ -561,10 +559,9 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(qliQueryScaleReg[0], regQScaleFP16[0], qliMaskB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(qliQueryScaleReg[1], regQScaleFP16[1], qliMaskB16);
 
-    AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0],
-                      qliMaskB32); // QLI: quant layout (qliMaskB16).
+    // regW[0]与weight1混合使用
+    AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0], qliMaskB32);
     AscendC::Reg::Mul(qliWeightReg[1], qliWeightReg[1], qliQueryScaleReg[1], qliMaskB32);
-    // qliWeightReg[0]与weight1混合使用
     AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weightFloat_, qliWeightReg[1], qliMaskB32);
     AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
     DuplicateZero(regSum0, qliMaskB32);
@@ -589,7 +586,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
                                                __ubuf__ half *kScale_, uint32_t kScaleStride, __ubuf__ half *qScale0_,
                                                __ubuf__ half *qScale1_, uint32_t qScaleStride, const int qliGroupSize)
 {
-    AscendC::Reg::RegTensor<float> qliWeightBroadcast[2]; // QLI: quant conversion (qliWeightBroadcast).
+    AscendC::Reg::RegTensor<float> qliWeightBroadcast[2];
     AscendC::Reg::RegTensor<float> regQK0[2], regQK1[2];
     AscendC::Reg::RegTensor<half> regQK0Half[2], regQK1Half[2];
     AscendC::Reg::RegTensor<int32_t> regQK0Int32[2], regQK1Int32[2];
@@ -615,8 +612,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(qliQueryScaleReg[0], regQScaleFP16[0], qliMaskB16);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(qliQueryScaleReg[1], regQScaleFP16[1], qliMaskB16);
 
-    AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0],
-                      qliMaskB32); // QLI: quant layout (qliMaskB16).
+    AscendC::Reg::Mul(qliWeightReg[0], qliWeightReg[0], qliQueryScaleReg[0], qliMaskB32);
     AscendC::Reg::Mul(qliWeightReg[1], qliWeightReg[1], qliQueryScaleReg[1], qliMaskB32);
 
     constexpr static Reg::CastTrait castTraitFP32ToFP16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
@@ -628,7 +624,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     Reg::Cast<float, half, castTraitFP16ToFP32>(qliWeightReg[0], regWFP16Temp[0], qliMaskB16);
     Reg::Cast<float, half, castTraitFP16ToFP32>(qliWeightReg[1], regWFP16Temp[1], qliMaskB16);
 
-    // qliWeightReg[0]与weight1混合使用
+    // regW[0]与weight1混合使用
     AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weightFloat_, qliWeightReg[1], qliMaskB32);
     AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
     DuplicateZero(regSum0, qliMaskB32);

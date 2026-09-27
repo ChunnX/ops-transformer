@@ -45,7 +45,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t QLI_KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QLI_QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // QLI_KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QLI_QUERY_MTE1_MTE2_EVENT = EVENT_ID5;
     static constexpr uint32_t QLI_M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -107,7 +107,7 @@ protected:
     uint64_t keyL1BufIdx_ = 0;
     uint64_t qliQueryMte2BufferIndex = 0;
     uint64_t qliQueryMte1BufferIndex = 0;
-    uint64_t l0BufIdx_ = 0; // QLI: query matmul.
+    uint64_t l0BufIdx_ = 0;
 
     bool isKeyCacheValid_ = false; // L1中是否有可复用的数据
     uint64_t keyGmStart_ = 0;      // L1数据对应的GM S2偏移
@@ -191,7 +191,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &qli
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * qliCubeConstInfo.gSize);
                 if (qliCubeRunInfo.isFirstS2InnerLoop && qliS2GmOffset == 0) {
                     qliQueryMte2BufferIndex++;
-                    qliQueryMte1BufferIndex = qliQueryMte2BufferIndex; // QLI: query sync (qliQueryMte1BufferIndex).
+                    qliQueryMte1BufferIndex = qliQueryMte2BufferIndex;
                     WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + qliQueryMte2BufferIndex % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, qliS1GmOffset, qliCubeRunInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -272,7 +272,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &qli
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * qliCubeConstInfo.gSize);
                 if (qliCubeRunInfo.isFirstS2InnerLoop && qliS2GmOffset == 0) {
                     qliQueryMte2BufferIndex++;
-                    qliQueryMte1BufferIndex = qliQueryMte2BufferIndex; // QLI: query sync (qliQueryMte1BufferIndex).
+                    qliQueryMte1BufferIndex = qliQueryMte2BufferIndex;
                     WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + qliQueryMte2BufferIndex % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, qliS1GmOffset, qliCubeRunInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -498,7 +498,7 @@ __aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(QLI_KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 1); // QLI: pipeline sync (QLI_QUERY_MTE1_MTE2_EVENT).
+    SetFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 1);
 
     SetFlag<HardEvent::M_MTE1>(QLI_M_MTE1_EVENT + 0);
     SetFlag<HardEvent::M_MTE1>(QLI_M_MTE1_EVENT + 1);
@@ -518,7 +518,7 @@ __aicore__ inline void QLIMatmul<QLIT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QLI_QUERY_MTE1_MTE2_EVENT + 1);
 
-    WaitFlag<HardEvent::M_MTE1>(QLI_M_MTE1_EVENT + 0); // QLI: pipeline sync (QLI_M_MTE1_EVENT).
+    WaitFlag<HardEvent::M_MTE1>(QLI_M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(QLI_M_MTE1_EVENT + 1);
 
     WaitFlag<HardEvent::FIX_M>(QLI_FIX_M_EVENT + 0);

@@ -27,7 +27,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
-    {} // QLI: top-k candidates.
+    {}
 };
 template <>
 class LITopk<uint32_t> {
@@ -40,7 +40,7 @@ public:
 
     __aicore__ inline void Init(uint32_t qliTopKCount, uint32_t qliTrunkLength)
     {
-        this->qliTopKCount = qliTopKCount; // QLI: tile candidates.
+        this->qliTopKCount = qliTopKCount;
         this->qliTrunkLength = qliTrunkLength;
     }
 
@@ -98,14 +98,14 @@ public:
     }
 
 private:
-    LocalTensor<uint32_t> hisIndexLocal[2]; // 每qliTrunkLength长度的s2选出的qliTopKCount个索引
+    LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
     LocalTensor<uint32_t> idxLocal0;        // 输入数据第1个8位Buf 256 * 4B
     LocalTensor<uint32_t> idxLocal1;        // 输入数据第2个8位Buf 256 * 4B
     LocalTensor<uint32_t> idxLocal2;        // 输入数据第3个8位Buf 256 * 4B
     LocalTensor<uint32_t> idxLocal3;        // 输入数据第4个8位Buf 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
-    LocalTensor<uint32_t> tmpIndexLocal;    // 每qliTrunkLength + qliTopKCount的临时index
+    LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
     uint32_t qliTopKCount = 512U;
     uint32_t qliTrunkLength = 8192;
 };
@@ -127,8 +127,8 @@ public:
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &qliSharedBuffer, LocalTensor<uint32_t> &qliIndicesOut)
     {
+        // 256: 将 topK 实际分配容量向上取整至 256 的倍数
         LocalTensor<uint32_t> hisIndexLocal1 = qliIndicesOut;
-        // 256: 将 qliTopKCount 实际分配容量向上取整至 256 的倍数
         LocalTensor<uint32_t> hisIndexLocal2 = qliSharedBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
@@ -180,12 +180,12 @@ public:
     }
 
 private:
-    LocalTensor<uint32_t> hisIndexLocal[2]; // 每qliTrunkLength长度的s2选出的qliTopKCount个索引
+    LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
     LocalTensor<uint32_t> idxHighLocal;     // 输入数据高8位Buf 256 * 4B
     LocalTensor<uint32_t> idxLowLocal;      // 输入数据低8位Buf 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
-    LocalTensor<uint16_t> tmpIndexLocal;    // 每qliTrunkLength + qliTopKCount的临时index
+    LocalTensor<uint16_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
     uint32_t qliTopKCount = 512U;
     uint32_t qliTrunkLength = 16384;
 };

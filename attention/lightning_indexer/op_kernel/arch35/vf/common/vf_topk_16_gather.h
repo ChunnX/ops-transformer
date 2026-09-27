@@ -67,7 +67,7 @@ __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg1U32Odd, coutReg1, maskRegB16);
 
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf, coutReg0U32Even, coutReg0U32Odd,
-                                                              maskRegB32); // LI: top-k candidates (maskRegB32).
+                                                              maskRegB32);
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, coutReg1U32Even, coutReg1U32Odd,
                                                               maskRegB32);
 }
@@ -86,7 +86,7 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__
     Reg::RegTensor<uint32_t> btmK;
     Reg::Duplicate(btmK, bottomK);
 
-    Reg::RegTensor<int32_t> idxC; // LI: top-k candidates (idxC).
+    Reg::RegTensor<int32_t> idxC;
     Reg::RegTensor<uint32_t> cout;
     Reg::RegTensor<uint32_t> sqzIdxHigh;
 
@@ -179,7 +179,7 @@ __simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TO_UINT32_ODD>(coutReg1U32Odd, coutReg1, maskRegB16);
 
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf, coutReg0U32Even, coutReg0U32Odd,
-                                                              maskRegB32); // LI: top-k candidates (maskRegB32).
+                                                              maskRegB32);
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, coutReg1U32Even, coutReg1U32Odd,
                                                               maskRegB32);
 }
@@ -199,7 +199,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
     Reg::RegTensor<uint32_t> btmK;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(btmK, kValue);
 
-    Reg::RegTensor<int32_t> idxC; // LI: top-k candidates (idxC).
+    Reg::RegTensor<int32_t> idxC;
     Reg::RegTensor<uint32_t> cout;
     Reg::RegTensor<uint32_t> sqzIdxLow;
 
@@ -217,7 +217,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
-    Reg::RegTensor<uint32_t> idxHigh; // LI: mask candidates.
+    Reg::RegTensor<uint32_t> idxHigh;
     Reg::RegTensor<uint32_t> idxLow;
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(idxHigh, idxHighBuf);
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B16>(idxLow, idxLowBuf);

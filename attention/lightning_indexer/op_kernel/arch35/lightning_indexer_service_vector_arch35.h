@@ -83,7 +83,7 @@ protected:
 
     static constexpr uint32_t TOPK_V_MTE2_EVENT = EVENT_ID4;
     static constexpr uint32_t TOPK_MTE2_V_EVENT = EVENT_ID5;
-    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6; // LI: top-k candidates.
+    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
     static constexpr uint32_t TOPK_MTE3_V_EVENT = EVENT_ID7;
 
     static constexpr uint32_t MTE3_MTE2_EVENT = EVENT_ID0;
