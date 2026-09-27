@@ -23,8 +23,6 @@
 - <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
-> 适用范围：本文原有功能、函数原型、参数表、约束和示例保留 Ascend 950PR&950DT（A5）的量化基线说明，适用于quantMode=1和quantMode=2。Atlas A2/A3新增的quantMode=3请参见“A2/A3 TurboQuant 补充说明”，其中的类型和布局扩展仅适用于该模式。
-
 ## 功能说明
 
 - 算子功能：`aclnnMixedQuantSparseFlashMlaMetadata`是`aclnnMixedQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
