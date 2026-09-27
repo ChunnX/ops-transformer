@@ -26,7 +26,6 @@
 // 走原通路（MIX_AIC_1_2，AIC 计算 + AIV 通信）。任务类型全部由 TPL SEL 按组合声明，
 // 不再使用 KERNEL_TASK_TYPE_DEFAULT（编译单元级机制，无法按组合区分）。
 #include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
-#include "utils/debug/asc_printf.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
@@ -93,13 +92,13 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // MIX 诊断实验：AIV 不参与 apace 路径（通信已改 AIC 核内），直接退出
             return;
         }
-        __asc_aicore::printf("[ApaceDBG] K-enter AIC core=%u\n", AscendC::GetBlockIdx());
+        AscendC::printf("[ApaceDBG] K-enter AIC core=%u\n", AscendC::GetBlockIdx());
         // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
         // （通信成功后该值被 recv 数据覆盖，不影响结果）
         if (AscendC::GetBlockIdx() == 0) {
             *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
         }
-        __asc_aicore::printf("[ApaceDBG] K-post-magic core=%u\n", AscendC::GetBlockIdx());
+        AscendC::printf("[ApaceDBG] K-post-magic core=%u\n", AscendC::GetBlockIdx());
         GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                            gmmArrayAddr_, tilingGM);
         HcommImpl hcommImpl;
@@ -120,9 +119,9 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             SharedGmmExpertOpType shareComputeOp;
             shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-            __asc_aicore::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
+            AscendC::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
             shareComputeOp.Process(0, 1);
-            __asc_aicore::printf("[ApaceDBG] K-post-shared core=%u\n", AscendC::GetBlockIdx());
+            AscendC::printf("[ApaceDBG] K-post-shared core=%u\n", AscendC::GetBlockIdx());
         }
         hcommImpl.End();
 #else

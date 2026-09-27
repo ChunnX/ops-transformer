@@ -31,7 +31,6 @@
 
 #include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 #include "apace/kernel/matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
-#include "utils/debug/asc_printf.h"
 
 namespace Apace {
 
@@ -216,21 +215,21 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
         }
     }
 
-    __asc_aicore::printf("[ApaceDBG] P-enter isLocal=%d core=%u start=%u num=%u\n", isLocal ? 1 : 0,
-                         AscendC::GetBlockIdx(), startExpertIdx, expertNum);
+    AscendC::printf("[ApaceDBG] P-enter isLocal=%d core=%u start=%u num=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx(),
+                    startExpertIdx, expertNum);
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
     UpdateAddr(startExpertIdx, expertNum);
     InitApaceKernel(startExpertIdx, expertNum);
-    __asc_aicore::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
-                         "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
-                         isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
-                         dbgBaseM, dbgBaseN, dbgBaseK, dbgKAL1, dbgKBL1, dbgScaleKAL1, dbgDbL0C, dbgL1Stage,
-                         dbgGroupNum, dbgGroupListType);
+    AscendC::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
+                    "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
+                    isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
+                    dbgBaseM, dbgBaseN, dbgBaseK, dbgKAL1, dbgKBL1, dbgScaleKAL1, dbgDbL0C, dbgL1Stage, dbgGroupNum,
+                    dbgGroupListType);
     mxKernel_.Run();
-    __asc_aicore::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
+    AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     // Run 返回后 L0C→GM 的 fixpipe 为异步收尾，排空本核管线确保 C 落 GM（对齐参考实现）
     AscendC::PipeBarrier<PIPE_ALL>();
-    __asc_aicore::printf("[ApaceDBG] post-Bar isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
+    AscendC::printf("[ApaceDBG] post-Bar isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
