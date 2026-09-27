@@ -182,16 +182,19 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 与noquant regbase完全同款(fia_arch35_noquant.h的
+    // REGBASE_COPY_TILING_DATA): GET_TILING_DATA_WITH_STRUCT值拷贝宏(动=本地结构体/静=栈拷贝),
+    // 取址为普通指针传入kernel直读成员(baseTiling/fiaMetaData)。
+    // 注意不能用PTR_WITH_STRUCT指针形宏: 动态模式产出__gm__限定指针, 无法初始化kernel的
+    // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
+    // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -254,16 +257,19 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 与noquant regbase完全同款(fia_arch35_noquant.h的
+    // REGBASE_COPY_TILING_DATA): GET_TILING_DATA_WITH_STRUCT值拷贝宏(动=本地结构体/静=栈拷贝),
+    // 取址为普通指针传入kernel直读成员(baseTiling/fiaMetaData)。
+    // 注意不能用PTR_WITH_STRUCT指针形宏: 动态模式产出__gm__限定指针, 无法初始化kernel的
+    // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
+    // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
             dequantScaleKey, dequantScaleValue, pScale, queryRope, keyRope, softmaxLse, attentionOut, workspace,
-            fiaMetaData, tilingData, &tPipe);
+            tilingData, &tPipe);
     op.Process();
 }
 
@@ -319,16 +325,19 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
-    __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+    // [SK静态编译修复·regbase读法] 与noquant regbase完全同款(fia_arch35_noquant.h的
+    // REGBASE_COPY_TILING_DATA): GET_TILING_DATA_WITH_STRUCT值拷贝宏(动=本地结构体/静=栈拷贝),
+    // 取址为普通指针传入kernel直读成员(baseTiling/fiaMetaData)。
+    // 注意不能用PTR_WITH_STRUCT指针形宏: 动态模式产出__gm__限定指针, 无法初始化kernel的
+    // 普通指针参数(地址空间不匹配编译错); 也不用__tiling_data_ptr__注解(在线opcompile
+    // codegen挂死)与GlobalTensor+指针算址(静态下栈地址当GM读垃圾, 507011根因)。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    const FusedInferAttentionScoreFullQuantTilingData *__restrict tilingData = &tilingDataIn;
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
-            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, fiaMetaData,
-            tilingData, &tPipe);
+            dequantScaleKey, dequantScaleValue, queryRope, keyRope, softmaxLse, attentionOut, workspace, tilingData,
+            &tPipe);
     op.Process();
 }
 #endif

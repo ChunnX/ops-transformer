@@ -83,17 +83,32 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
                 return ge::GRAPH_FAILED);
 
     if (fiaInfo_->isMaxWorkspace) {
-        // [静态编译拒绝] fullquant kernel 的分核调度完全依赖 tiling 烘焙的 fiaMetaData
-        // (kernel 无运行时自调度), 静态编译只提供 shape 不提供运行时 tensor 数据, 无法产出
-        // 有效分核: 原占位路径返回空 tiling 会使静态编译"成功"并烘焙全零分核 metadata,
-        // kernel 运行时崩溃并污染 stream。主动返回失败, 由 op_compiler 按算子粒度回退
-        // 动态执行; 动态执行带真实数据不经过本分支, 行为不变。若框架以 nullptr 张量
-        // (而非 shape 无数据)调用, 本条件不触发, tiling 走正常路径 nullptr 防护分支,
-        // 不会崩溃。
-        OP_LOGE(fiaInfo_->opName,
-                "FIA fullquant tiling depends on runtime tensor data (actual_seq_lengths) for core split, "
-                "online static compilation is not supported, fallback to dynamic execution.");
-        return ge::GRAPH_FAILED;
+        // [SK静态编译修复] tiling下沉/在线静态编译(无数据)场景不再返回占位空tiling:
+        // 占位路径跳过 FillTiling/SetTilingData 会使静态编译"成功"但烘焙全零分核
+        // metadata, kernel 运行时崩溃并污染 stream(表现为后续无关 aclnn 算子报 561103)。
+        // 改为走完整 tiling 流程: InitImplParam 的 flags=false 分支回退 shape 上界
+        // (s1Size/s2Size)作保守 seqlens(只增不减, 覆盖任意真实数据), SplitPolicy 产出
+        // 数据无关分核, FillTiling 写完整 tilingData。kernel 侧已有运行时 seqlen 边界
+        // (qActSeqLensParser), 烘焙结果对任意真实数据正确(负载按 shape 上界切分, 次优)。
+        // [精度修复] workspace 用 CalcWorkspaceSize(不能用 CalcMaxWorkspaceSize):
+        // 该函数同时把 fiaWorkspaceParams.accumOutSize/logSumExpSize 写入 tilingData
+        // (kernel 的 FD sum/max workspace 偏移依据, mx 长序列 s2 分裂即启用),
+        // CalcMaxWorkspaceSize 只算尺寸不写参数 → 偏移全零 → FD 缓冲区与 accumOut
+        // 区重叠踩踏 → 精度大错。
+        InitImplParam();
+        SplitPolicy();
+        FillTiling();
+        CalcScheduleMode();
+        CalcWorkspaceSize();
+        GenTilingKey();
+
+        if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
+            (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
+            (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+            (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
     }
 
     InitImplParam();
