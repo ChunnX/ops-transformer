@@ -10,30 +10,22 @@
 
 /*!
  * \file quant_grouped_matmul_all_to_all_v_hcomm_impl.h
- * \brief AIC-only HCCL AllToAllV + Blaze MX GroupedMatMul implementation (GMM first, then comm).
+ * \brief AIC-only apace 通路计算/通信算子实现（GMM 先算、后 AllToAllV 发送）。
  *
- * 结构参考镜像算子 allto_allv_quant_grouped_mat_mul apace hcomm 实现（直接复用算子
- * legacy tiling 数据），并按本算子两侧真机证据采用混合 kernel 生命周期：
- *   - 路由专家：持久成员 GmmKernel（ctor 一次预置核内事件、每批仅 re-Init）——
- *     409d5e04a 真机实证形态；BlockMmad ctor/dtor 为 SetFlag/WaitFlag 事件协议，
- *     每批栈上构造会重复 SetFlag（上批排空后事件已 SET），存在事件失步挂死风险
- *   - 共享专家：栈上局部 MmKernel（镜像 RunLocalMatmul 模式）——持久成员形态即
- *     历史挂死形态，栈上构造是镜像对其的解法
+ * 结构参考镜像算子 allto_allv_quant_grouped_mat_mul apace 实现与 legacy
+ * mc2_templates 的算子拆分方式，由三类算子组成（流水编排见
+ * quant_grouped_matmul_all_to_all_v_scheduler.h）：
+ *   - QuantGmmComputeOp：路由专家 GMM（直接复用算子 legacy tiling 数据，
+ *     LENGTH groupList + B/scaleB 显式偏移表全核冗余写、kAL1 置 0 走 baseK
+ *     兜底——409d5e04a 真机验证形态）
+ *   - QuantMmSharedComputeOp：共享专家（单组 OFFSET groupList）
+ *   - QuantA2avCommOp：AIC 核内 Hccl AllToAllV（通信参数与 legacy
+ *     CalcA2avCommAfterParams 同款伸缩和公式）
  *
- * Blaze 入参保持 409d5e04a（路由专家真机验证形态）：LENGTH groupList + B/scaleB
- * 显式偏移表（全核冗余写、每核写读一致，无跨核可见性依赖）、kAL1/kBL1/scaleKAL1
- * 置 0 走 baseK 兜底（单 L0 块 L1 窗口——多 L0 块窗口路径有共享专家挂死真机证据）。
- *
- * 流水参考 gmm_a2av_scheduler.h 的批循环调度：批内 GMM 计算 → 核间同步 → 提交
- * 本批非阻塞 AllToAllV（通信与后续批次计算重叠）；共享专家在批循环后执行（与末批
- * 通信重叠）；尾部统一 Wait 全部 handle → SyncAll → Finalize。
- *
- * workspace 布局（后通信模式，apace 通路，均位于 wsGmmComputeWS 区域内复用）：
- *   [wsGmmOutputSize, +e*R*8)                → groupList（LENGTH 计数，每批覆写）
- *   [+, +e*R*8)                              → C 输出偏移表（rank-major，每批覆写）
- *   [+, +e*R*8)                              → B 权重偏移表（批内 expert 粒度）
- *   [+, +e*R*8)                              → ScaleB 偏移表（批内 expert 粒度）
- *   [+, 8)                                   → 共享专家 mmGroupList（[0] = BS）
+ * Blaze 生命周期纪律（真机实证约束，务必保持）：任意时刻仅一个 Blaze 实例
+ * 存活——kernel 一律在 Process 内栈上 ctor/dtor 成对构造（ctor SetFlag×10
+ * 预置核内事件 → Run → dtor WaitFlag×10 消费）；双实例并存（两个 ctor 连续
+ * 预置、无中间消费）会失步事件协议致 Run 挂死。
  */
 
 #ifndef APACE_QUANT_GROUPED_MATMUL_ALL_TO_ALL_V_HCOMM_IMPL_H__
@@ -59,147 +51,56 @@ constexpr AscendC::HcclDataType GetGmmA2avYHcclDataType()
     }
 }
 
-template <typename TilingDataType, typename AType, typename BType, typename CType, bool TransB, bool TransMmB,
-          AscendC::HcclServerType ServerType>
-class QuantGmmA2avHcommImpl {
-public:
-    explicit __aicore__ inline QuantGmmA2avHcommImpl(const TilingDataType *tilingData)
-        : tilingData_(tilingData)
-    {}
+// Blaze GMMTiling 填充：L1 K 窗口置 0 走 baseK 兜底（单 L0 块窗口——多 L0
+// 块窗口路径有挂死真机证据），其余取自 legacy tiling 的 TCubeTiling
+template <typename GmmTiling, typename GmmTilingData>
+__aicore__ inline void FillGmmA2avTiling(GmmTiling &out, const GmmTilingData &in, uint32_t groupNum, int64_t m,
+                                         int64_t n, int64_t k, uint8_t groupListType)
+{
+    const auto &mmTiling = in.mmTilingData;
+    out.groupNum = groupNum;
+    out.m = m;
+    out.n = n;
+    out.k = k;
+    out.baseM = static_cast<uint32_t>(mmTiling.baseM);
+    out.baseN = static_cast<uint32_t>(mmTiling.baseN);
+    out.baseK = static_cast<uint32_t>(mmTiling.baseK);
+    out.kAL1 = 0U;
+    out.kBL1 = 0U;
+    out.scaleKAL1 = 0U;
+    out.isBias = static_cast<uint8_t>(mmTiling.isBias != 0 ? 1 : 0);
+    out.dbL0C = static_cast<uint8_t>(mmTiling.dbL0C);
+    out.l1BufferStage = Blaze::Gemm::DOUBLE_BUFFER_COUNT;
+    out.groupListType = groupListType;
+}
 
-    __aicore__ inline void Init(GM_ADDR gmmX, GM_ADDR gmmXScale, GM_ADDR gmmWeight, GM_ADDR gmmWeightScale, GM_ADDR mmX,
-                                GM_ADDR mmXScale, GM_ADDR mmWeight, GM_ADDR mmWeightScale, GM_ADDR mmY, GM_ADDR y,
-                                GM_ADDR workspace)
+// ============================================================================
+// 路由专家 GMM 计算算子
+// ============================================================================
+template <typename TilingDataType, typename AType, typename BType, typename CType, bool TransB>
+class QuantGmmComputeOp {
+public:
+    __aicore__ inline QuantGmmComputeOp() {}
+
+    __aicore__ inline void Init(const TilingDataType *tilingData, GM_ADDR xGM, GM_ADDR xScaleGM, GM_ADDR weightGM,
+                                GM_ADDR weightScaleGM, GM_ADDR gmmOutputGM, GM_ADDR tableGM)
     {
-        xGM_ = gmmX;
-        xScaleGM_ = gmmXScale;
-        weightGM_ = gmmWeight;
-        weightScaleGM_ = gmmWeightScale;
-        yGM_ = y;
-        mmXGM_ = mmX;
-        mmXScaleGM_ = mmXScale;
-        mmWeightGM_ = mmWeight;
-        mmWeightScaleGM_ = mmWeightScale;
-        mmYGM_ = mmY;
-        gmmOutputGM_ = workspace;
-        // 表区从 GMM 输出缓冲之后开始（即复用原 gmmComputeWS 区域；全核冗余写，
-        // 每核写读一致，无跨核可见性依赖，无需核间同步）
-        GM_ADDR tableBase = workspace + tilingData_->workspaceInfo.wsGmmOutputSize;
-        groupListGm_ = tableBase;
+        tilingData_ = tilingData;
+        xGM_ = xGM;
+        xScaleGM_ = xScaleGM;
+        weightGM_ = weightGM;
+        weightScaleGM_ = weightScaleGM;
+        gmmOutputGM_ = gmmOutputGM;
+        // 表区布局见 scheduler 头注释；全核冗余写（每核写读一致，无跨核可见性依赖）
+        groupListGm_ = tableGM;
         cGroupOffsetTableGm_ = groupListGm_ + RankSize() * ExpertNum() * sizeof(int64_t);
         bGroupOffsetTableGm_ = cGroupOffsetTableGm_ + RankSize() * ExpertNum() * sizeof(uint64_t);
         scaleBGroupOffsetTableGm_ = bGroupOffsetTableGm_ + RankSize() * ExpertNum() * sizeof(uint64_t);
-        mmGroupListGm_ = scaleBGroupOffsetTableGm_ + RankSize() * ExpertNum() * sizeof(uint64_t);
-
-        // 共享专家单组 OFFSET 格式 groupList：[0] = BS（全核冗余写）
-        *reinterpret_cast<__gm__ int64_t *>(mmGroupListGm_) = static_cast<int64_t>(tilingData_->taskTilingInfo.BS);
-
-        hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->hcclA2avTiling.hcclInitTiling);
-        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingDataType, hcclA2avTiling)) +
-                            static_cast<uint64_t>(offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling)));
-    }
-
-    __aicore__ inline void Run()
-    {
-        uint64_t tokenPrefix = 0;
-        for (uint32_t batch = 0; batch < BatchCount(); ++batch) {
-            const uint64_t batchTokens = GetBatchTokenCount(batch);
-            if (batchTokens != 0) {
-                RunBatchMatmul(batch, tokenPrefix);
-            }
-            // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信；
-            // 空批也照常提交，保证各 rank 集合通信次数对齐
-            AscendC::SyncAll();
-            SubmitBatchComm(batch);
-            // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再复用参数数组
-            AscendC::PipeBarrier<PIPE_ALL>();
-            tokenPrefix += batchTokens;
-        }
-
-        // 共享专家位于批循环后、Wait 之前（镜像 RunLocalMatmul 位置语义：与末批
-        // 在途通信重叠执行；Blaze 于 hccl_.Wait 之后执行为未验证序列，规避）；
-        // Blaze 计算必须位于 Finalize 之前（既有真机结论）
-        if (tilingData_->taskTilingInfo.BS != 0U && tilingData_->taskTilingInfo.H2 != 0U &&
-            tilingData_->taskTilingInfo.N2 != 0U) {
-            RunLocalMatmul();
-        }
-
-        // 尾部统一等待全部批次完成（全核，按提交顺序）；Wait 后排空管线再汇聚、
-        // Finalize（对齐镜像 WaitExpert 的 Wait → PipeBarrier 模式）
-        for (uint32_t i = 0U; i < submitted_; ++i) {
-            hccl_.Wait(a2avHandles_[i]);
-        }
-        AscendC::PipeBarrier<PIPE_ALL>();
-        AscendC::SyncAll();
-        if (submitted_ > 0U) {
-            hccl_.Finalize();
-        }
-    }
-
-private:
-    // rank 维数组容量沿用 legacy MAX_EP_RANK_SIZE(128)：SUPPORT_RANK_SIZE 上限 128，
-    // 且 AIC 栈帧 32KB 受限（HcclMsgExt 注释明示），栈数组不得随意扩容
-    static constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = MC2KernelTemplate::MAX_EP_RANK_SIZE;
-    static constexpr uint32_t GMM_A2AV_MAX_BATCH_NUM = 8U;
-    static constexpr uint32_t MX_BASIC_FACTOR = 64U;
-    static constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
-    static constexpr AscendC::HcclDataType Y_HCCL_DATA_TYPE = GetGmmA2avYHcclDataType<CType>();
-
-    using LayoutA = asc::te::nd_ext_layout_ptn;
-    using LayoutB = AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
-    using LayoutC = asc::te::nd_ext_layout_ptn;
-    using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
-    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
-                                                    float, LayoutBias>;
-    using GmmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
-
-    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
-    using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType, LayoutC,
-                                                      float, LayoutBias>;
-    using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
-
-    __aicore__ inline uint32_t RankSize() const
-    {
-        return static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
-    }
-
-    __aicore__ inline uint32_t ExpertNum() const
-    {
-        return static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
-    }
-
-    __aicore__ inline uint32_t BatchExpertNum() const
-    {
-        return tilingData_->taskTilingInfo.expertNum;
     }
 
     __aicore__ inline uint32_t BatchCount() const
     {
         return tilingData_->taskTilingInfo.totalLoopCount;
-    }
-
-    __aicore__ inline uint32_t GetSendRows(uint32_t expertIdx, uint32_t peer) const
-    {
-        return static_cast<uint32_t>(tilingData_->taskTilingInfo.sendCnt[peer * ExpertNum() + expertIdx]);
-    }
-
-    __aicore__ inline uint32_t GetRecvRows(uint32_t expertIdx, uint32_t peer) const
-    {
-        return static_cast<uint32_t>(tilingData_->taskTilingInfo.recvCnt[peer * ExpertNum() + expertIdx]);
-    }
-
-    __aicore__ inline uint32_t ScaleKLen() const
-    {
-        return static_cast<uint32_t>((tilingData_->taskTilingInfo.H1 + MX_BASIC_FACTOR - 1U) / MX_BASIC_FACTOR * 2U);
-    }
-
-    __aicore__ inline uint32_t GetBatchExpertNum(uint32_t batch) const
-    {
-        const uint32_t start = batch * BatchExpertNum();
-        return (start + BatchExpertNum() > ExpertNum()) ? ExpertNum() - start : BatchExpertNum();
     }
 
     __aicore__ inline uint64_t GetBatchTokenCount(uint32_t batch) const
@@ -215,7 +116,7 @@ private:
         return tokens;
     }
 
-    __aicore__ inline void RunBatchMatmul(uint32_t batch, uint64_t tokenPrefix)
+    __aicore__ inline void Process(uint32_t batch, uint64_t tokenPrefix)
     {
         const uint32_t rankSize = RankSize();
         const uint32_t expertNum = GetBatchExpertNum(batch);
@@ -232,8 +133,8 @@ private:
 
         const int64_t maxM = static_cast<int64_t>(GetMaxExpertTokens());
         typename GmmKernel::GMMTiling gmmTiling{};
-        FillGmmTiling(gmmTiling, tilingData_->gmmBaseTiling, groupNum, maxM, static_cast<int64_t>(n1),
-                      static_cast<int64_t>(h1));
+        FillGmmA2avTiling(gmmTiling, tilingData_->gmmBaseTiling, groupNum, maxM, static_cast<int64_t>(n1),
+                          static_cast<int64_t>(h1), tilingData_->gmmBaseTiling.gmmQuantParams.groupListType);
 
         typename GmmKernel::Params params{};
         params.problemShape = ProblemShape{maxM, static_cast<int64_t>(n1), static_cast<int64_t>(h1), 0};
@@ -253,10 +154,8 @@ private:
         params.groupOffsetTables.scaleBGroupAddrTable =
             reinterpret_cast<const __gm__ uint64_t *>(scaleBGroupOffsetTableGm_);
 
-        // 镜像生命周期纪律：每批栈上 ctor/dtor 成对（ctor SetFlag 预置 → Run →
-        // dtor WaitFlag 消费），任意时刻仅一个 Blaze 实例存活；双实例并存（两个
-        // ctor 连续 SetFlag×10 无消费）会失步核内事件协议致 Run 挂死（真机实证：
-        // mmKernel_ 成员加入后路由批循环 P1 即缺失）
+        // 镜像生命周期纪律：栈上 ctor/dtor 成对（ctor SetFlag 预置 → Run →
+        // dtor WaitFlag 消费），任意时刻仅一个 Blaze 实例存活
         {
             GmmKernel kernel;
             kernel.Init(params);
@@ -265,10 +164,71 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
+private:
+    static constexpr uint32_t MX_BASIC_FACTOR = 64U;
+    // rank 维数组容量沿用 legacy MAX_EP_RANK_SIZE(128)：AIC 栈帧 32KB 受限，
+    // 栈数组不得随意扩容
+    static constexpr uint32_t GMM_A2AV_MAX_RANK_NUM = MC2KernelTemplate::MAX_EP_RANK_SIZE;
+
+    using LayoutA = asc::te::nd_ext_layout_ptn;
+    using LayoutB = AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
+    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
+                                                    float, LayoutBias>;
+    using GmmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
+
+    __aicore__ inline uint32_t RankSize() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
+    }
+
+    __aicore__ inline uint32_t ExpertNum() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+    }
+
+    __aicore__ inline uint32_t BatchExpertNum() const
+    {
+        return tilingData_->taskTilingInfo.expertNum;
+    }
+
+    __aicore__ inline uint32_t GetSendRows(uint32_t expertIdx, uint32_t peer) const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.sendCnt[peer * ExpertNum() + expertIdx]);
+    }
+
+    __aicore__ inline uint32_t ScaleKLen() const
+    {
+        return static_cast<uint32_t>((tilingData_->taskTilingInfo.H1 + MX_BASIC_FACTOR - 1U) / MX_BASIC_FACTOR * 2U);
+    }
+
+    __aicore__ inline uint32_t GetBatchExpertNum(uint32_t batch) const
+    {
+        const uint32_t start = batch * BatchExpertNum();
+        return (start + BatchExpertNum() > ExpertNum()) ? ExpertNum() - start : BatchExpertNum();
+    }
+
+    __aicore__ inline uint64_t GetMaxExpertTokens() const
+    {
+        uint64_t mMax = 0;
+        for (uint32_t expert = 0U; expert < ExpertNum(); ++expert) {
+            uint64_t tokens = 0;
+            for (uint32_t rank = 0U; rank < RankSize(); ++rank) {
+                tokens += GetSendRows(expert, rank);
+            }
+            mMax = tokens > mMax ? tokens : mMax;
+        }
+        return mMax;
+    }
+
     __aicore__ inline void BuildBatchTables(uint32_t start, uint32_t expertNum, uint32_t rankSize, uint64_t n1,
                                             uint64_t scaleK, uint64_t packedShift)
     {
-        // 全核冗余写相同值（每核写读一致，无跨核可见性依赖，与 409d5e04a 形态一致）。
+        // 全核冗余写相同值（每核写读一致，无跨核可见性依赖）。
         // group 序 expert-major：g = jj * rankSize + rank（与 gmmX 行序一致）
         __gm__ int64_t *groupList = reinterpret_cast<__gm__ int64_t *>(groupListGm_);
         __gm__ uint64_t *cGroupOffsetTable = reinterpret_cast<__gm__ uint64_t *>(cGroupOffsetTableGm_);
@@ -283,13 +243,13 @@ private:
         }
 
         // C 偏移表：批内 rank-major 物理布局（元素偏移，相对本批 C 基址）
-        uint64_t rankTotal[A2AV_GMM_MAX_RANK_NUM] = {0};
+        uint64_t rankTotal[GMM_A2AV_MAX_RANK_NUM] = {0};
         for (uint32_t jj = 0U; jj < expertNum; ++jj) {
             for (uint32_t rank = 0U; rank < rankSize; ++rank) {
                 rankTotal[rank] += GetSendRows(start + jj, rank);
             }
         }
-        uint64_t expertRunning[A2AV_GMM_MAX_RANK_NUM] = {0};
+        uint64_t expertRunning[GMM_A2AV_MAX_RANK_NUM] = {0};
         for (uint32_t rank = 1U; rank < rankSize; ++rank) {
             expertRunning[rank] = expertRunning[rank - 1] + rankTotal[rank - 1] * n1;
         }
@@ -312,27 +272,55 @@ private:
         }
     }
 
-    __aicore__ inline uint64_t GetMaxExpertTokens() const
+    const TilingDataType *tilingData_{nullptr};
+    GM_ADDR xGM_{nullptr};
+    GM_ADDR xScaleGM_{nullptr};
+    GM_ADDR weightGM_{nullptr};
+    GM_ADDR weightScaleGM_{nullptr};
+    GM_ADDR gmmOutputGM_{nullptr};
+    GM_ADDR groupListGm_{nullptr};
+    GM_ADDR cGroupOffsetTableGm_{nullptr};
+    GM_ADDR bGroupOffsetTableGm_{nullptr};
+    GM_ADDR scaleBGroupOffsetTableGm_{nullptr};
+};
+
+// ============================================================================
+// 共享专家计算算子（单组，独立输出，不走通信）
+// ============================================================================
+template <typename TilingDataType, typename AType, typename BType, typename CType, bool TransMmB>
+class QuantMmSharedComputeOp {
+public:
+    __aicore__ inline QuantMmSharedComputeOp() {}
+
+    __aicore__ inline void Init(const TilingDataType *tilingData, GM_ADDR mmXGM, GM_ADDR mmXScaleGM, GM_ADDR mmWeightGM,
+                                GM_ADDR mmWeightScaleGM, GM_ADDR mmYGM, GM_ADDR tableGM)
     {
-        uint64_t mMax = 0;
-        for (uint32_t expert = 0U; expert < ExpertNum(); ++expert) {
-            uint64_t tokens = 0;
-            for (uint32_t rank = 0U; rank < RankSize(); ++rank) {
-                tokens += GetSendRows(expert, rank);
-            }
-            mMax = tokens > mMax ? tokens : mMax;
-        }
-        return mMax;
+        tilingData_ = tilingData;
+        mmXGM_ = mmXGM;
+        mmXScaleGM_ = mmXScaleGM;
+        mmWeightGM_ = mmWeightGM;
+        mmWeightScaleGM_ = mmWeightScaleGM;
+        mmYGM_ = mmYGM;
+        // mmGroupList 位于路由表区（groupList + 三张偏移表 = 4*e*R*8）之后，
+        // 布局公式与 QuantGmmComputeOp::Init 保持一致（见 scheduler 头注释）
+        mmGroupListGm_ = tableGM + 4UL * RankSize() * ExpertNum() * sizeof(uint64_t);
+        // 共享专家单组 OFFSET 格式 groupList：[0] = BS（全核冗余写）
+        *reinterpret_cast<__gm__ int64_t *>(mmGroupListGm_) = static_cast<int64_t>(tilingData_->taskTilingInfo.BS);
     }
 
-    __aicore__ inline void RunLocalMatmul()
+    __aicore__ inline void Process()
     {
+        // 无共享专家时 BS/H2/N2 均为 0（tiling 侧未填）
+        if (tilingData_->taskTilingInfo.BS == 0U || tilingData_->taskTilingInfo.H2 == 0U ||
+            tilingData_->taskTilingInfo.N2 == 0U) {
+            return;
+        }
         const uint64_t m = tilingData_->taskTilingInfo.BS;
         const uint64_t n = tilingData_->taskTilingInfo.N2;
         const uint64_t k = tilingData_->taskTilingInfo.H2;
         typename MmKernel::GMMTiling mmTiling{};
-        FillGmmTiling(mmTiling, tilingData_->sharedGmmTiling, 1U, static_cast<int64_t>(m), static_cast<int64_t>(n),
-                      static_cast<int64_t>(k));
+        FillGmmA2avTiling(mmTiling, tilingData_->sharedGmmTiling, 1U, static_cast<int64_t>(m), static_cast<int64_t>(n),
+                          static_cast<int64_t>(k), GROUP_LIST_TYPE_OFFSET);
 
         typename MmKernel::Params params{};
         params.problemShape =
@@ -357,7 +345,59 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    __aicore__ inline void SubmitBatchComm(uint32_t batch)
+private:
+    static constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
+
+    using LayoutA = asc::te::nd_ext_layout_ptn;
+    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
+    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
+    using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType, LayoutC,
+                                                      float, LayoutBias>;
+    using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
+
+    __aicore__ inline uint32_t RankSize() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
+    }
+
+    __aicore__ inline uint32_t ExpertNum() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+    }
+
+    const TilingDataType *tilingData_{nullptr};
+    GM_ADDR mmXGM_{nullptr};
+    GM_ADDR mmXScaleGM_{nullptr};
+    GM_ADDR mmWeightGM_{nullptr};
+    GM_ADDR mmWeightScaleGM_{nullptr};
+    GM_ADDR mmYGM_{nullptr};
+    GM_ADDR mmGroupListGm_{nullptr};
+};
+
+// ============================================================================
+// AIC 核内 AllToAllV 通信算子（非阻塞提交 + 尾部统一等待）
+// ============================================================================
+template <typename TilingDataType, typename CType, AscendC::HcclServerType ServerType>
+class QuantA2avCommOp {
+public:
+    __aicore__ inline QuantA2avCommOp() {}
+
+    __aicore__ inline void Init(const TilingDataType *tilingData, GM_ADDR gmmOutputGM, GM_ADDR yGM)
+    {
+        tilingData_ = tilingData;
+        gmmOutputGM_ = gmmOutputGM;
+        yGM_ = yGM;
+        hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->hcclA2avTiling.hcclInitTiling);
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingDataType, hcclA2avTiling)) +
+                            static_cast<uint64_t>(offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling)));
+    }
+
+    // 提交本批非阻塞 AllToAllV（sendBuf=路由专家 GMM 输出，recvBuf=y）
+    __aicore__ inline void Launch(uint32_t batch)
     {
         // 通信参数逐字节对齐 409d5e04a / 非 apace 通路：legacy A2avCommParams
         // （128 rank 容量、4KB 栈），公式为 CalcA2avCommAfterParams 同款伸缩和形态
@@ -416,52 +456,63 @@ private:
         submitted_++;
     }
 
-    template <typename GmmTiling, typename GmmTilingData>
-    __aicore__ inline void FillGmmTiling(GmmTiling &out, const GmmTilingData &in, uint32_t groupNum, int64_t m,
-                                         int64_t n, int64_t k)
+    __aicore__ inline void WaitAll()
     {
-        const auto &mmTiling = in.mmTilingData;
-        out.groupNum = groupNum;
-        out.m = m;
-        out.n = n;
-        out.k = k;
-        out.baseM = static_cast<uint32_t>(mmTiling.baseM);
-        out.baseN = static_cast<uint32_t>(mmTiling.baseN);
-        out.baseK = static_cast<uint32_t>(mmTiling.baseK);
-        // L1 K 窗口置 0 走 baseK 兜底（单 L0 块窗口）：多 L0 块窗口（stepKa×baseK）
-        // 路径有共享专家 BlockMmad K 循环挂死的真机证据，且 409d5e04a 可跑形态即兜底值
-        out.kAL1 = 0U;
-        out.kBL1 = 0U;
-        out.scaleKAL1 = 0U;
-        out.isBias = static_cast<uint8_t>(mmTiling.isBias != 0 ? 1 : 0);
-        out.dbL0C = static_cast<uint8_t>(mmTiling.dbL0C);
-        out.l1BufferStage = Blaze::Gemm::DOUBLE_BUFFER_COUNT;
-        // 路由专家沿用 tiling 的 LENGTH 格式；共享专家单组用 OFFSET
-        out.groupListType =
-            (&in == &tilingData_->sharedGmmTiling) ? GROUP_LIST_TYPE_OFFSET : in.gmmQuantParams.groupListType;
+        // 全核按提交顺序等待全部批次完成
+        for (uint32_t i = 0U; i < submitted_; ++i) {
+            hccl_.Wait(a2avHandles_[i]);
+        }
+    }
+
+    __aicore__ inline void Finalize()
+    {
+        if (submitted_ > 0U) {
+            hccl_.Finalize();
+        }
+    }
+
+private:
+    // 非阻塞 AllToAllV handle 上限：totalLoopCount <= 4，留余量取 8
+    static constexpr uint32_t GMM_A2AV_MAX_BATCH_NUM = 8U;
+    static constexpr AscendC::HcclDataType Y_HCCL_DATA_TYPE = GetGmmA2avYHcclDataType<CType>();
+
+    __aicore__ inline uint32_t RankSize() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
+    }
+
+    __aicore__ inline uint32_t ExpertNum() const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
+    }
+
+    __aicore__ inline uint32_t BatchExpertNum() const
+    {
+        return tilingData_->taskTilingInfo.expertNum;
+    }
+
+    __aicore__ inline uint32_t GetSendRows(uint32_t expertIdx, uint32_t peer) const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.sendCnt[peer * ExpertNum() + expertIdx]);
+    }
+
+    __aicore__ inline uint32_t GetRecvRows(uint32_t expertIdx, uint32_t peer) const
+    {
+        return static_cast<uint32_t>(tilingData_->taskTilingInfo.recvCnt[peer * ExpertNum() + expertIdx]);
+    }
+
+    __aicore__ inline uint32_t GetBatchExpertNum(uint32_t batch) const
+    {
+        const uint32_t start = batch * BatchExpertNum();
+        return (start + BatchExpertNum() > ExpertNum()) ? ExpertNum() - start : BatchExpertNum();
     }
 
     const TilingDataType *tilingData_{nullptr};
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle a2avHandles_[GMM_A2AV_MAX_BATCH_NUM]{};
     uint32_t submitted_{0};
-
-    GM_ADDR xGM_{nullptr};
-    GM_ADDR xScaleGM_{nullptr};
-    GM_ADDR weightGM_{nullptr};
-    GM_ADDR weightScaleGM_{nullptr};
-    GM_ADDR yGM_{nullptr};
-    GM_ADDR mmXGM_{nullptr};
-    GM_ADDR mmXScaleGM_{nullptr};
-    GM_ADDR mmWeightGM_{nullptr};
-    GM_ADDR mmWeightScaleGM_{nullptr};
-    GM_ADDR mmYGM_{nullptr};
     GM_ADDR gmmOutputGM_{nullptr};
-    GM_ADDR groupListGm_{nullptr};
-    GM_ADDR cGroupOffsetTableGm_{nullptr};
-    GM_ADDR bGroupOffsetTableGm_{nullptr};
-    GM_ADDR scaleBGroupOffsetTableGm_{nullptr};
-    GM_ADDR mmGroupListGm_{nullptr};
+    GM_ADDR yGM_{nullptr};
 };
 
 } // namespace Apace

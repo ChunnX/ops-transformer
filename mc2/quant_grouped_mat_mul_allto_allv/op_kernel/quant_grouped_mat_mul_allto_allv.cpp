@@ -26,6 +26,7 @@
 // 任务参数校验失败）。该组合经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明
 // AIC_ONLY 任务类型；TT 量化实例恒编码 USING=0 走原通路（MIX_AIC_1_2）。
 #include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
+#include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_scheduler.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
@@ -64,14 +65,27 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
         constexpr HcclServerType serverType = TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
-        Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_Y,
-                                     TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS, serverType>
-            op(&tilingData);
-        // apace 通路 userWorkspace 即路由专家 GMM 输出缓冲（sendBuf），groupList 与
-        // 各偏移表全核冗余写于其后的 gmmComputeWS 区域（见 hcomm impl 布局注释）
-        op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM, mmweightOptionalGM,
-                mmWeightScaleGM, mmyOptionalGM, yGM, userWorkspace);
-        op.Run();
+        using ApaceComputeOpType = Apace::QuantGmmComputeOp<QuantGmmA2avTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                                            DTYPE_Y, TILINGKEY_GROUPED_MATMUL_TRANS>;
+        using ApaceSharedOpType = Apace::QuantMmSharedComputeOp<QuantGmmA2avTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                                                                DTYPE_Y, TILINGKEY_MATMUL_TRANS>;
+        using ApaceCommOpType = Apace::QuantA2avCommOp<QuantGmmA2avTilingData, DTYPE_Y, serverType>;
+        using ApaceSchedulerType = Apace::GmmA2avHcommScheduler<ApaceCommOpType, ApaceComputeOpType, ApaceSharedOpType,
+                                                                TILINGKEY_COMPUTE_MATMUL>;
+        // workspace（apace 通路）：[0, wsGmmOutputSize) 路由专家 GMM 输出（sendBuf），
+        // 其后表区复用 gmmComputeWS 区域（groupList + 三张偏移表 + mmGroupList，
+        // 见 scheduler 头布局注释）
+        GM_ADDR gmmOutputGM = userWorkspace;
+        GM_ADDR gmmTableGM = userWorkspace + tilingData.workspaceInfo.wsGmmOutputSize;
+        ApaceComputeOpType computeOp;
+        computeOp.Init(&tilingData, gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, gmmOutputGM, gmmTableGM);
+        ApaceSharedOpType sharedOp;
+        sharedOp.Init(&tilingData, mmxOptionalGM, mmxScaleGM, mmweightOptionalGM, mmWeightScaleGM, mmyOptionalGM,
+                      gmmTableGM);
+        ApaceCommOpType commOp;
+        commOp.Init(&tilingData, gmmOutputGM, yGM);
+        ApaceSchedulerType scheduler(commOp, computeOp, sharedOp);
+        scheduler.Process();
 #endif
         return;
     }
