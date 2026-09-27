@@ -45,7 +45,6 @@ struct EngramCommContext {
     uint64_t commBuffer[MAX_QP_SIZE];
     uint64_t hcommHandle[MAX_QP_SIZE * 2];
     uint32_t channelsPerRank;
-    uint64_t sfAddrList[MAX_QP_SIZE];
 };
 
 } // namespace Mc2Kernel
