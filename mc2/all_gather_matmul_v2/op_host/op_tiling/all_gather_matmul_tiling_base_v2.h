@@ -123,9 +123,9 @@ protected:
     uint64_t tailMValue_{0};
     uint64_t drMValue_{0};
     int64_t rankSize_{0};
-    uint32_t biasLen_{0};
-    uint32_t storageA_{0};
-    uint32_t libApiWorkSpaceSize_{0};
+    uint64_t biasLen_{0};
+    uint64_t storageA_{0};
+    uint64_t libApiWorkSpaceSize_{0};
     bool outputIsFp8_{false};
     bool inputIsBf16Fp16_{false};
     uint8_t commAlgorithm_{0};

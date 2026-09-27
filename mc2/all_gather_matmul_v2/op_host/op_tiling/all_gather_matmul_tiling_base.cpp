@@ -604,8 +604,8 @@ void AllGatherMatmulTilingBase::Reset()
     commAlgorithm_ = 0U;
     enableNd2Nz_ = true;
     castBias_ = false;
-    biasLen_ = 0U;
-    storageA_ = 0U;
+    biasLen_ = 0UL;
+    storageA_ = 0UL;
     gatherIndex_ = 0U;
 }
 
@@ -751,7 +751,7 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_ + biasLen_;
     workspaces[0] = workspaceSize_;
-    OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%d", workspaces[0], biasLen_);
+    OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%lu", workspaces[0], biasLen_);
 
     return ge::GRAPH_SUCCESS;
 }

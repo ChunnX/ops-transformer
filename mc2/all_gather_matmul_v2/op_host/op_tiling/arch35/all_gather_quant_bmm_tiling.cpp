@@ -311,7 +311,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                     .c_str()),
             return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    constexpr uint64_t FP8_E8M0_SIZE = 1;
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * EVEN_ALIGN * FP8_E8M0_SIZE;
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
