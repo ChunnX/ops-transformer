@@ -216,7 +216,7 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
     }
 
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
-    // [临时诊断] tiling 源快照在 InitApaceKernel 之前打印（挂死区间缩小后补齐证据链）
+    UpdateAddr(startExpertIdx, expertNum);
     InitApaceKernel(startExpertIdx, expertNum);
     AscendC::printf("[ApaceDBG] R-pre isLocal=%d\n", isLocal ? 1 : 0);
     mxKernel_.Run();
