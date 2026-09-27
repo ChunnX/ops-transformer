@@ -117,8 +117,14 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                                mmArrayAddr_, tilingGM);
             SharedGmmExpertOpType shareComputeOp;
-            shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                                sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+            // [临时诊断] 对调实验：共享专家改用路由侧 gmm 张量（布局/容量均覆盖共享问题规模：
+            // gmmX[8316,7168]≥mmX[2048,7168]、gmmWeight[e,7168,4096] 单专家切片、C 走 sendBuf）。
+            // 挂点已锁定 BlockMmad K 循环（S-enter 后挂、首块坐标与路由相同、tiling 全同），
+            // 本实验裁决挂死是否由 mm 张量自身（数据/布局/映射）引起：
+            //   可跑 → mm 张量问题（scaleB 物理布局 [div,N,2] vs Blaze ND scale 布局假设等）
+            //   仍挂 → Blaze 内部（与数据无关），上 shadow 头 K 循环逐阶段标记
+            shareComputeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, sharedGmmComputeWSGM,
+                                tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
             AscendC::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
             shareComputeOp.Process(0, 1);
             AscendC::printf("[ApaceDBG] K-post-shared core=%u\n", AscendC::GetBlockIdx());
