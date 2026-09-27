@@ -427,6 +427,21 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
   ①单批次两行手工 case（排除变长批噪声）②改 FixCopyOut 打印 tileBase ③dump 全局搜多行分数
   特征反推 scratch 实布局。
 
+### ⚠️ bfvar dump 分析重大自查修正（同日终）
+- **WORK_SPACE_RESERVE_SIZE = 16MB**（tiling_base_class.h:38）：ws = total + 16MB 预留。bfvar
+  total ≈ 11.83MB（aicNum=20 由 total 反推精确吻合，偏差仅 256B 公式细节），**有效 section 仅
+  [0, 11.83MB)；[11.83MB, 28.6MB) 全是预留区**。
+- **本轮所有 @18-28MB 的扫描（partSum@27.28M/partMax@28.59M/pooled@28.61M、"row31 缺失"、
+  "M 拆分 aic32-35"）全部落在预留区 = 外来/陈旧数据，结论全部作废**。aicNum=20（total 精确
+  反推），aic32-35 不存在，"M 拆分"不成立。
+- **p16var 修复不受影响**（其验证 = 黑盒 EXACT_PASS ×3，非 dump 分析）；blk8 第十三轮的
+  dump 分析偏移需复核但结论有黑盒 PASS 背书。
+- **bfvar 正确偏移**（aicNum=20 链、RADIX=4）：partSum@10,502,356、partMax@11,813,076、
+  pooled@11,833,556 附近（topk 头部公式尚有 ≤256B 出入）——下轮用 **正确偏移重做全部分层
+  比对**，并以 FixCopyOut tileBase printf（假设②）做权威标定后再下结论。
+- **教训入档**：dump 取证前必须先确认 section 偏移链含 reserve；值域"巧合匹配"（×l 精确）
+  不足以定位真身——不同 launch 的相似分布数据会在错误偏移上形成自洽假象。
+
 ### bfvar 假设③结果（同日再续）：M 拆分实锤 + scratch 布局疑云加深
 - 全 32 行特征搜索（6 值严格匹配）：B1H3 行八元组→tile 映射 6/6 一致——**rows[0,8)→tile64、
   [8,16)→tile66、[16,24)→tile68、[24,32)→tile70**，即 **B1H3 chunk 的 M=32 拆 4 份 × 8 行，
