@@ -1,6 +1,7 @@
 # mega_mhc on Ascend 950
 
-950 专用 m-k 基线：N=4、D=2560/5120，FP16/BF16 输入，FP32/HF32 投影。
+950 专用 m-k 基线：N=4、2560≤D≤7168 且 D 为256的倍数，FP16/BF16 输入，FP32/HF32 投影。
+扩展范围目前为实验实现，数值验收例外见[通用 D 分块实验](docs/generic_d_tiling_experiment.md)。
 `gamma_0` 必须非空；gamma_2=None 为四算子，提供 [4D] gamma_2 为五算子。
 保留四个输出及阶段舍入点，无 Sinkhorn、3BF16、bs/nd 调度。
 
@@ -22,15 +23,20 @@ RMS0/RMS1 平方和使用双链累加；Post 内融合的 RMSMid 平方和按 he
 
 ## 当前调度
 
-四算子在 M=3072、D=5120、32 AIC/64 AIV 时采用 M128/K4、L1 K128 的三批投影，
-每批1024行。每个 AIV 每批生成16个完整 Post 行，首批预先生成，后续批次与前一批
+四算子由 Host 按1024元素partial的整除性选择2或4路K分核，Mtile=32*kGrid、L1K上限=512/kGrid。
+仅当完整批、行归属与 UB 容量允许时启用，不匹配特定 D。
+M=3072、32 AIC/64 AIV 时，D2560采用M64/K2/L1K256，其余三个目标D保持M128/K4/L1K128，
+均为每批1024行。每个AIV的projection基本块都是8192元素。
+每个 AIV 每批生成16个完整 Post 行，首批预先生成，后续批次与前一批
 投影穿插执行。Post 原位复用已消费的 residual UB 槽；两份输入缓冲隐藏下一行搬运。
 Post 整行异步写回，在槽复用前等待 MTE3 完成，完成计数按 MTE3 顺序发布。
-每个 M 分组通过完成计数等待全部 Post 行就绪，再读取对应的 x2。峰值 UB 为219.75 KiB。
-该调度仅在上述配置启用；其他配置采用完整 producer、投影、epilogue 的阶段屏障。
+每个 M 分组通过完成计数等待全部 Post 行就绪，再读取对应的 x2。
+Host 按最短 K 分片算每次推进行数和间隔，保证下一批读取前全部行已产生。
+D7168 的 producer+projection 峰值为247.75 KiB；不满足条件时采用阶段屏障。
 
 五算子先按完整行执行 RMS0/Post/Mid，输入双缓冲，Post 与 residual 原位复用，
-Mid 保留阶段舍入，完成后写出 x2。D5120 的 producer UB 为211.25 KiB。
+Mid 保留阶段舍入，完成后写出 x2。gamma2 在容量允许时整行常驻，否则按 Host 规划分块加载；
+平方和仍覆盖完整4D，只计算一次 invRms。D5120 的 producer UB 为211.25 KiB。
 之后按 m-k 投影；目标配置为 M192/K2。四、五算子均在投影完成后统一执行 Pre/RMS1，
 当前默认不启用跨批 epilogue 重叠。
 
@@ -40,8 +46,9 @@ Cube 消费后归还 credit。空行子核参与协议，退出时回收剩余 c
 
 Epilogue 合并 RMS 分片 DMA，与 MM partial 共用完成等待，按 Host 规划的 reduceRows
 处理系数。容量允许时，归并后的 partial UB 复用为第二份 x2 输入，输出也交替计算与写回。
-FP16 的 RMS0 与 Pre 内融合的 RMS1 平方和使用固定的偶/奇两条累加链；
-Mid 保留原累加顺序，BF16 保留补偿累加。所有阶段的输入类型舍入点均保留。
+wave的epilogue按每个AIV的token数和自身UB容量选择批量，不受projection行块大小限制。
+RMS0/RMS1 的双链累加和 Mid 平方和逻辑保持不变，FP16/BF16 共用数学函数。
+所有阶段的输入类型舍入点均保留。
 
 ## 范围与限制
 

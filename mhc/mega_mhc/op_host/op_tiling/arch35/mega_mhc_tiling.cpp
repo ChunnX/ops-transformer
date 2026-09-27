@@ -106,7 +106,7 @@ ge::graphStatus MegaMhcTiling::GetShapeAttrsInfo()
     return ParseInputsAndAttributes();
 }
 
-/** Parse and validate the fixed N=4, D=2560/5120 mega_mhc input contract. */
+/** Parse and validate the N=4, aligned D in [2560,7168] mega_mhc input contract. */
 ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
 {
     constexpr size_t kInputCount = 10;
@@ -129,8 +129,8 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         return ge::GRAPH_FAILED;
     }
     const int64_t d = xShape.GetDim(xShape.GetDimNum() - 1);
-    if (d != 2560 && d != 5120) {
-        OP_LOGE(context_->GetNodeName(), "mega_mhc supports D=2560 or D=5120; got %ld", d);
+    if (d < 2560 || d > 7168 || d % 256 != 0) {
+        OP_LOGE(context_->GetNodeName(), "mega_mhc requires D in [2560,7168], aligned to 256; got %ld", d);
         return ge::GRAPH_FAILED;
     }
     d_ = static_cast<uint32_t>(d);
@@ -311,7 +311,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
 {
     mega_mhc::CubePlanRequest request;
     request.rows = totalRows_;
-    request.wavePipeline = !hasMid_ && totalRows_ == 3072U && d_ == 5120U && aicCount_ == 32U && aivCount_ == 64U;
+    request.wavePipeline = false;
     request.preferWideTile = true; // Both variants project materialized rows; wave tiling overrides this preference.
     request.k = k_;
     request.q = kProjectionQ;
@@ -328,6 +328,22 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
 
+    const uint64_t availableUb = std::min<uint64_t>(ubBytes_, kUbLimitBytes);
+    // Try waves only when every producer owns complete rows and all live buffers fit.
+    if (!hasMid_ && std::min(aicCount_, aivCount_ / 2U) >= 4U) {
+        auto waveRequest = request;
+        waveRequest.wavePipeline = true;
+        mega_mhc::CubePlan wavePlan;
+        if (mega_mhc::BuildCubePlan(waveRequest, wavePlan) && wavePlan.mTile % (2U * wavePlan.kGrid) == 0U &&
+            wavePlan.lastWaveRows == wavePlan.rowsPerWave && wavePlan.mWaveCount > 1U &&
+            wavePlan.lastKCoreL1FullLoops >= 2U &&
+            mega_mhc::ProducerUbBytes(d_, false, true) +
+                    mega_mhc::ProjectionUbBytes(k_, wavePlan.l1K, wavePlan.mTile / 2U) <=
+                availableUb) {
+            request = waveRequest;
+            cubePlan_ = wavePlan;
+        }
+    }
     tilingData_.set_hasMid(hasMid_ ? 1U : 0U);
     tilingData_.set_projectionMode(static_cast<uint32_t>(projectionMode_));
     tilingData_.set_stagingKind(static_cast<uint32_t>(hasMid_ ? AiInfraMegaMhc::kFiveProjectionTransport :
@@ -341,23 +357,39 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_hcEps(hcEps_);
     CopyCubePlanToTilingData();
     const uint32_t waveProducerRows = request.wavePipeline ? cubePlan_.mTile / (cubePlan_.kGrid * 2U) : 0U;
-    const uint32_t waveTileCount = cubePlan_.l1KFullLoops;
+    const uint32_t waveTileCount = cubePlan_.lastKCoreL1FullLoops;
+    const uint32_t rowsPerTick =
+        request.wavePipeline ? static_cast<uint32_t>(CeilDiv(waveProducerRows, waveTileCount - 1U)) : 0U;
+    const uint32_t tickCount =
+        request.wavePipeline ? static_cast<uint32_t>(CeilDiv(waveProducerRows, rowsPerTick)) : 0U;
+    tilingData_.set_waveProducerRowsPerTick(rowsPerTick);
     tilingData_.set_wavePipeline(request.wavePipeline ? 1U : 0U);
     tilingData_.set_waveProducerRows(waveProducerRows);
-    tilingData_.set_waveProducerTileStride(request.wavePipeline ? waveTileCount / waveProducerRows : 0U);
+    tilingData_.set_waveProducerTileStride(request.wavePipeline ? (waveTileCount - 1U) / tickCount : 0U);
     tilingData_.set_waveGroupSize(request.wavePipeline ? cubePlan_.kGrid * 2U : 0U);
 
     // Exact simultaneous allocations, each padded like Kernel::InitUbBuffer.
     // The baseline does not reuse live buffers within a phase. Destroy() separates
     // RMS0, producer/projection and epilogue lifetimes, so their peaks do not add.
-    const uint64_t availableUb = std::min<uint64_t>(ubBytes_, kUbLimitBytes);
     const uint32_t projectionRows = static_cast<uint32_t>(CeilDiv(cubePlan_.mTile, 2));
     // Producer rows are complete tokens; double input slots are always enabled in the scheduler.
-    tilingData_.set_producerPrefetch(0U); // Reserved legacy field; keep the TilingData ABI stable.
+    tilingData_.set_producerPrefetch(0U); // Reserved legacy field.
     tilingData_.set_postRows(1U);
     tilingData_.set_projectionRows(projectionRows);
     // Keep the epilogue's reduction batch explicit, independently of its one-row compute tile.
-    const uint32_t reduceRows = mega_mhc::ReductionRows(projectionRows);
+    const uint32_t gammaTile = hasMid_ ? mega_mhc::MidGammaTile(d_, availableUb) : k_;
+    if (gammaTile == 0U) {
+        return ge::GRAPH_FAILED;
+    }
+    const uint32_t gammaCount = static_cast<uint32_t>(CeilDiv(k_, gammaTile));
+    tilingData_.set_midGammaTile(gammaTile);
+    tilingData_.set_midGammaTileCount(gammaCount);
+    tilingData_.set_midGammaLastTile(k_ - (gammaCount - 1U) * gammaTile);
+    // Wave projection rows do not constrain the independent epilogue lifetime or token ownership.
+    const uint32_t reductionRowLimit =
+        request.wavePipeline ? static_cast<uint32_t>(CeilDiv(totalRows_, cubePlan_.activeAiv)) : projectionRows;
+    const uint32_t reduceRows = mega_mhc::FitReductionRows(reductionRowLimit, d_, cubePlan_.partialGroupCount,
+                                                           cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb);
     if (reduceRows == 0U) {
         return ge::GRAPH_FAILED;
     }
@@ -371,7 +403,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
                                          0U);
     tilingData_.set_slotCount(kSlotCount);
     tilingData_.set_ubReservedBytes(0);
-    const uint64_t producerPeak = mega_mhc::ProducerUbBytes(d_, hasMid_);
+    const uint64_t producerPeak = mega_mhc::ProducerUbBytes(d_, hasMid_, false, gammaTile);
     const uint64_t projectionPeak = mega_mhc::ProjectionUbBytes(k_, cubePlan_.l1K, projectionRows);
     const uint64_t epiloguePeak = mega_mhc::EpilogueUbBytes(d_, cubePlan_.partialGroupCount, cubePlan_.fixpipeRowStride,
                                                             reduceRows, cubePlan_.kGrid);

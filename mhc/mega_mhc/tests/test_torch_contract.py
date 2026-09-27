@@ -92,7 +92,7 @@ class TestTorchContract(unittest.TestCase):
     def test_all_template_families_and_ranks(self):
         """Eight four/five x FP32/HF32 x input-type combinations, both D and ranks."""
         for leading in ((1,), (33,), (2, 17)):
-            for d in (2560, 5120):
+            for d in (2560, 2816, 5120, 6144, 7168):
                 for dtype in ("float16", "bfloat16"):
                     for mid in (False, True):
                         for mode in (0, 1):
@@ -139,6 +139,9 @@ class TestTorchContract(unittest.TestCase):
             ((2**32,), 2560),
             ((65536, 65536), 2560),
             ((1,), 128),
+            ((1,), 7169),
+            ((1,), 7424),
+            ((1,), 2561),
         ]:
             args, kwargs = make_inputs(leading=leading, d=d)
             with self.assertRaises(RuntimeError):

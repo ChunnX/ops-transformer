@@ -48,7 +48,7 @@ bool CheckTensor(const aclTensor *tensor, const char *name, const std::vector<in
     return true;
 }
 
-/** Check N=4, D=2560/5120, optional Mid, and four output contracts; M is the product of leading axes. */
+/** Check N=4, aligned D in [2560,7168], optional Mid and four outputs; M is the product of leading axes. */
 aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double normEps, double hcEps, int64_t mode)
 {
     for (size_t i = 0; i < MID_INDEX; ++i) {
@@ -65,7 +65,7 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double n
     const auto rank = shape.GetDimNum();
     CHECK_RET(rank == 2 || rank == 3, ACLNN_ERR_PARAM_INVALID);
     const int64_t d = shape.GetDim(rank - 1);
-    CHECK_RET(d == 2560 || d == 5120, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(d >= 2560 && d <= 7168 && d % 256 == 0, ACLNN_ERR_PARAM_INVALID);
     const auto dtype = inputs[0]->GetDataType();
     CHECK_RET(dtype == op::DataType::DT_FLOAT16 || dtype == op::DataType::DT_BF16, ACLNN_ERR_PARAM_INVALID);
     std::vector<int64_t> leading;

@@ -201,13 +201,16 @@ public:
         }
     }
 
-    /** Interleave at most one next-wave row after a tile is published to Cube.
+    /** Interleave a host-sized next-wave row batch after a tile is published to Cube.
      * The spacing is host planned; no tiling search or arithmetic VF branching occurs here.
      */
     __aicore__ inline void Tick(uint32_t tile)
     {
         if (tile >= nextTick_ && produced_ < tiling_->waveProducerRows) {
-            ProduceOne();
+            for (uint32_t row = 0U; row < tiling_->waveProducerRowsPerTick && produced_ < tiling_->waveProducerRows;
+                 ++row) {
+                ProduceOne();
+            }
             nextTick_ += tiling_->waveProducerTileStride;
         }
     }
@@ -355,7 +358,7 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
 
         TBuf<TPosition::VECCALC> x2TileBuffer;
         const uint32_t tileElements = tiling.projectionRows * tiling.kL1;
-        Kernel::InitUbBuffer(pipe, x2TileBuffer, (tiling.k > tileElements ? tiling.k : tileElements) * sizeof(T));
+        Kernel::InitUbBuffer(pipe, x2TileBuffer, tileElements * sizeof(T));
         LocalTensor<T> x2Tile = x2TileBuffer.Get<T>();
         WavePostProducer<T> producer;
         if constexpr (WAVE_PRODUCER) {
@@ -516,7 +519,7 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors, co
         Kernel::InitUbBuffer(pipe, inputBuffer, 2U * tiling.d * sizeof(T));
         Kernel::InitUbBuffer(pipe, residualBuffer, 2U * tiling.k * sizeof(T));
         Kernel::InitUbBuffer(pipe, x1Buffer, tiling.d * sizeof(T));
-        Kernel::InitUbBuffer(pipe, gamma2Buffer, tiling.k * sizeof(float));
+        Kernel::InitUbBuffer(pipe, gamma2Buffer, tiling.midGammaTile * sizeof(float));
         Kernel::InitUbBuffer(pipe, gammaBuffer, tiling.d * sizeof(float));
         Kernel::InitUbBuffer(pipe, coefficientBuffer, 256U * sizeof(float));
         Kernel::InitUbBuffer(pipe, statsBuffer, 2U * sizeof(float));
@@ -528,7 +531,9 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors, co
         auto coefficients = coefficientBuffer.Get<float>();
         auto stats = statsBuffer.Get<float>();
         Kernel::CopyGlobalToUb(gamma, tensors.gamma0, 0U, tiling.d);
-        Kernel::CopyGlobalToUb(gamma2, tensors.gamma2, 0U, tiling.k);
+        if (tiling.midGammaTileCount == 1U) {
+            Kernel::CopyGlobalToUb(gamma2, tensors.gamma2, 0U, tiling.k);
+        }
         const uint32_t firstRow = GetBlockIdx();
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID4);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
@@ -558,12 +563,27 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors, co
                 reinterpret_cast<__ubuf__ float *>(coefficients[slot * 128U + 64U].GetPhyAddr()),
                 reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()), 1U, tiling.d, 0U, tiling.d,
                 reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()));
-            Compute::ComputeRmsNormMidFromSquares<T>(reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()),
-                                                     reinterpret_cast<__ubuf__ float *>(gamma2.GetPhyAddr()), tiling.k,
-                                                     tiling.normEps,
-                                                     reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()),
-                                                     reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()) + 1U,
-                                                     reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()));
+            if (tiling.midGammaTileCount == 1U) {
+                Compute::ComputeRmsNormMidFromSquares<T>(reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()),
+                                                         reinterpret_cast<__ubuf__ float *>(gamma2.GetPhyAddr()),
+                                                         tiling.k, tiling.normEps,
+                                                         reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()),
+                                                         reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr()) + 1U,
+                                                         reinterpret_cast<__ubuf__ T *>(post.GetPhyAddr()));
+            } else {
+                // invRms uses all K elements once; gamma chunks preserve the same rounding point.
+                auto sum = reinterpret_cast<__ubuf__ float *>(stats.GetPhyAddr());
+                Compute::FinalizeInverseRms(sum, tiling.k, tiling.normEps, sum + 1U);
+                for (uint32_t chunk = 0U; chunk < tiling.midGammaTileCount; ++chunk) {
+                    const uint32_t offset = chunk * tiling.midGammaTile;
+                    const uint32_t count =
+                        chunk + 1U == tiling.midGammaTileCount ? tiling.midGammaLastTile : tiling.midGammaTile;
+                    Kernel::CopyGlobalToUb(gamma2, tensors.gamma2, offset, count);
+                    auto rowPart = reinterpret_cast<__ubuf__ T *>(post[offset].GetPhyAddr());
+                    Compute::ApplyGammaAndCastRow<T>(rowPart, reinterpret_cast<__ubuf__ float *>(gamma2.GetPhyAddr()),
+                                                     count, sum + 1U, rowPart);
+                }
+            }
             // x2[row,k]=post[k]. Publish slot credit on MTE3; only reuse waits for completion.
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);

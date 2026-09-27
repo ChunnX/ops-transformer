@@ -40,7 +40,10 @@ def _check_inputs(
         lambda: "h_out must have float16 or bfloat16 dtype",
     )
     d = h_out.shape[-1]
-    torch._check((d == 2560) | (d == 5120), lambda: "D must be 2560 or 5120")
+    torch._check(
+        (d >= 2560) & (d <= 7168) & (d % 256 == 0),
+        lambda: "D must be in [2560,7168] and aligned to 256",
+    )
     leading = h_out.shape[:-1]
     rows = 1
     for size in leading:
@@ -220,7 +223,7 @@ def mega_mhc(
     """Compute RMS0 -> Post -> optional RMSMid -> Pre -> RMS1 on Ascend 950.
 
     Args:
-        h_out: FP16/BF16 [T,D] or [B,S,D], D in {2560,5120}.
+        h_out: FP16/BF16 [T,D] or [B,S,D], 2560 <= D <= 7168 and D % 256 == 0.
         residual: Same dtype and leading axes, followed by [4,D].
         h_post: FP32 [...,4], Post weights.
         h_res: FP32 [...,4,4], indexed [source head, output head].

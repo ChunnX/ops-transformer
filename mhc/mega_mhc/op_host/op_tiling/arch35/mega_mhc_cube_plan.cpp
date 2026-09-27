@@ -56,7 +56,9 @@ bool FitsL1(uint64_t m, uint64_t q, uint64_t kL1, const CubePlanRequest &request
 } // namespace
 
 /*
- * Formula/plan: for M>=3072, use M96 (four-op) or M192 (five-op); otherwise M32.
+ * Formula/plan: waves use two K shards when four ordered partial shards would be uneven but two are exact.
+ * The wave tile obeys M=32*kGrid and L1K<=512/kGrid, keeping each AIV transfer at 8192 elements.
+ * Non-wave plans use M96 or M192 for M>=3072, according to preferWideTile; otherwise M32.
  * mGrid=min(activeAic,ceil(M/mTile)), then
  * kGrid=min(floor(activeAic/mGrid),ceil(K/256)); splitK is rounded to 256
  * or to an ordered 1024-element partial group. kL1 is the largest 128-aligned
@@ -73,7 +75,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     }
 
     const uint64_t active = std::min(request.aicCount, request.aivCount / 2);
-    if (active == 0) {
+    if (active == 0 || (request.wavePipeline && active < 4U)) {
         return false;
     }
 
@@ -81,10 +83,14 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
     const uint64_t largeMTile = request.preferWideTile ? kFiveCubeMTile : kLargeCubeMTile;
+    const uint64_t waveKGrid = request.k % (4U * kSequentialPartialK) != 0U &&
+                                       request.k % (2U * kSequentialPartialK) == 0U && active % 2U == 0U ?
+                                   2U :
+                                   4U;
     const uint64_t selectedMTile =
-        request.wavePipeline ? 128U : (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
+        request.wavePipeline ? 32U * waveKGrid : (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
     const uint64_t selectedMGrid =
-        std::min(request.wavePipeline ? active / 4U : active, CeilDiv(request.rows, selectedMTile));
+        std::min(request.wavePipeline ? active / waveKGrid : active, CeilDiv(request.rows, selectedMTile));
     const uint64_t kBlocks = CeilDiv(request.k, kKAlign);
     uint64_t selectedKGrid = std::min(active / selectedMGrid, kBlocks);
     if (selectedKGrid == 0) {
@@ -99,9 +105,9 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t selectedActive = selectedMGrid * selectedKGrid;
     const uint64_t rowsPerWave = selectedMGrid * selectedMTile;
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
-    const uint64_t l1KMax =
-        std::min<uint64_t>({request.wavePipeline ? 128U : 1024U, request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
-                            request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
+    const uint64_t l1KMax = std::min<uint64_t>({request.wavePipeline ? 512U / waveKGrid : 1024U,
+                                                request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
+                                                request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
     // A projection partial must fit wholly inside one L1 transfer. Small K
     // splits can be smaller than the otherwise optimal 1024-element L1 tile.
     uint64_t l1K = AlignDown(std::min(l1KMax, partialGroupK), kL1KAlign);

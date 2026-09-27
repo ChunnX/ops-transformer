@@ -139,7 +139,7 @@ class TestMegaMhcNpu(unittest.TestCase):
         """Cover dtype/mode/stages, short/tail/multiwave M, both ranks, and strided inputs."""
         torch.manual_seed(17)
         for dtype in (torch.float16, torch.bfloat16):
-            for d in (2560, 5120):
+            for d in (2560, 5120, 6144, 7168):
                 for mid in (False, True):
                     for mode in (0, 1):
                         for leading in (
@@ -152,6 +152,7 @@ class TestMegaMhcNpu(unittest.TestCase):
                             (33,),
                             (128,),
                             (1537,),
+                            (3072,),
                             (3073,),
                             (2, 17),
                         ):

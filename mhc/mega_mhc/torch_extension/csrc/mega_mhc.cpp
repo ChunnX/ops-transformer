@@ -27,7 +27,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
     TORCH_CHECK(h_out.scalar_type() == at::kHalf || h_out.scalar_type() == at::kBFloat16,
                 "h_out must have FP16/BF16 dtype");
     const int64_t d = h_out.size(-1);
-    TORCH_CHECK(d == 2560 || d == 5120, "D must be 2560 or 5120; got ", d);
+    TORCH_CHECK(d >= 2560 && d <= 7168 && d % 256 == 0, "D must be in [2560,7168] and aligned to 256; got ", d);
     TORCH_CHECK(compute_mode == 0 || compute_mode == 1, "compute_mode must be FP32(0) or HF32(1)");
     TORCH_CHECK(std::isfinite(static_cast<float>(norm_eps)) && static_cast<float>(norm_eps) > 0,
                 "norm_eps must be positive and finite in FP32");

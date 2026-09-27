@@ -29,7 +29,8 @@ extern "C"
     const bool midModes[] = {false, true};
     const uint64_t rows[] = {1,   2,   15,   16,   17,   31,   32,   33,   63,
                              257, 768, 1537, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};
-    const uint64_t widths[] = {2560, 5120};
+    const uint64_t widths[] = {2560, 2816, 3072, 3328, 3584, 3840, 4096, 4352, 4608, 4864,
+                               5120, 5376, 5632, 5888, 6144, 6400, 6656, 6912, 7168};
     const uint64_t coreCounts[] = {1, 7, 24, 32, 48};
     for (auto m : rows) {
         for (auto d : widths) {
@@ -50,7 +51,7 @@ extern "C"
                     request.l0BBytes = 64 * 1024;
                     request.l0CBytes = 128 * 1024;
                     request.mode = static_cast<ProjectionMode>(mode);
-                    request.wavePipeline = !hasMid && m == 3072 && d == 5120 && cores == 32;
+                    request.wavePipeline = !hasMid && m == 3072 && cores == 32;
                     CubePlan p;
                     REQUIRE(BuildCubePlan(request, p));
                     REQUIRE(p.activeAic <= cores && p.activeAic == p.mGrid * p.kGrid);
@@ -61,9 +62,12 @@ extern "C"
                         const uint32_t producerRows = p.mTile / members;
                         REQUIRE(producerRows > 0 && producerRows * members == p.mTile);
                         REQUIRE(p.lastWaveRows == p.rowsPerWave);
-                        REQUIRE(p.l1KFullLoops >= producerRows);
-                        const uint32_t tickStride = p.l1KFullLoops / producerRows;
-                        REQUIRE(1U + (producerRows - 1U) * tickStride < p.l1KFullLoops);
+                        const uint32_t ticksAvailable = p.lastKCoreL1FullLoops - 1U;
+                        const uint32_t rowsPerTick = (producerRows + ticksAvailable - 1U) / ticksAvailable;
+                        const uint32_t ticks = (producerRows + rowsPerTick - 1U) / rowsPerTick;
+                        const uint32_t tickStride = ticksAvailable / ticks;
+                        REQUIRE(tickStride > 0U);
+                        REQUIRE(1U + (ticks - 1U) * tickStride < p.lastKCoreL1FullLoops);
                         const uint64_t producerUb = UbAllocation(2ULL * d * 2U) + UbAllocation(2ULL * request.k * 2U) +
                                                     UbAllocation(d * 2U) + UbAllocation(d * 4U) +
                                                     UbAllocation(256U * 4U) + UbAllocation(8U) + UbAllocation(32U);
@@ -92,9 +96,15 @@ extern "C"
                     REQUIRE(uint64_t(p.l0CSlotElements) * 4 * 2 <= request.l0CBytes);
                     REQUIRE(p.baseM == p.nzM && p.fixpipeRowStride == p.nzN && p.nzN >= request.q);
                     for (bool mid : midModes) {
-                        REQUIRE(ProducerUbBytes(d, mid) <= 248U * 1024U);
-                        const uint32_t reduceRows = ReductionRows(p.mTile / 2);
-                        REQUIRE(reduceRows > 0 && reduceRows <= p.mTile / 2);
+                        const uint32_t gammaTile = MidGammaTile(d, 248U * 1024U);
+                        REQUIRE(gammaTile > 0U && gammaTile % 64U == 0U);
+                        REQUIRE(ProducerUbBytes(d, mid, false, gammaTile) <= 248U * 1024U);
+                        const uint32_t reductionRowLimit =
+                            request.wavePipeline ? static_cast<uint32_t>((m + p.activeAiv - 1U) / p.activeAiv) :
+                                                   p.mTile / 2U;
+                        const uint32_t reduceRows = FitReductionRows(reductionRowLimit, d, p.partialGroupCount,
+                                                                     p.fixpipeRowStride, p.kGrid, 248U * 1024U);
+                        REQUIRE(reduceRows > 0 && reduceRows <= reductionRowLimit);
                         REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <=
                                 248U * 1024U);
                         REQUIRE(ProjectionUbBytes(4 * d, p.l1K, p.mTile / 2) <= 248U * 1024U);

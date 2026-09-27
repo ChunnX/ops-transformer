@@ -30,7 +30,8 @@ mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
 ## 参数与输出
 
 `...` 表示 `[T]` 或 `[B,S]`；所有输入必须在同一 NPU，支持非连续视图，通过 ACLNN 转连续。
-N 固定为4，D 为2560或5120，前导维度必须为正，乘积不超过 UINT32_MAX。
+N 固定为4，D 在[2560,7168]内且为256的倍数，前导维度必须为正，乘积不超过 UINT32_MAX。
+扩展 D 当前为实验范围，精度验收例外见[实验记录](generic_d_tiling_experiment.md)。
 
 | 参数 | 必选 | shape / dtype / 语义 |
 |---|---|---|

@@ -10,7 +10,7 @@ g++ -std=c++17 -O2 mhc/mega_mhc/tests/host/test_cube_plan.cpp \
 ```
 
 Python 合约测试直接执行生产 validator/Meta 函数的 AST，以 metadata 对象代替 Tensor；
-不代表真实 Torch dispatcher/JIT 验证。Host 测试直接调用生产 BuildCubePlan，覆盖720组
+不代表真实 Torch dispatcher/JIT 验证。Host 测试直接调用生产 BuildCubePlan，覆盖6840组
 M/D/核数/投影模式/四五模板，检查 M/K 覆盖、partial 边界、尾块、L1/L0容量及两种 producer UB。
 
 ## 950 验收
@@ -25,8 +25,8 @@ python -m unittest discover -s mhc/mega_mhc/tests -p test_mega_mhc_npu.py -v
 检查固定配置重复调用逐位一致。没有 CANN/Torch NPU 时测试明确 skip。
 阈值见测试实现；已在 A5-222/CANN-0830、device 6 完成当前默认 GM 路径的数值和确定性验收。
 
-数值矩阵为176组：FP16/BF16 × D2560/5120 × 四/五算子 × FP32/HF32 ×
-M=1/15/16/17/31/32/33/128/1537/3073及[B,S]=[2,17]。M=3073覆盖通用分块的尾块。
+当前数值测试矩阵为384组：FP16/BF16 × D2560/5120/6144/7168 × 四/五算子 × FP32/HF32 ×
+M=1/15/16/17/31/32/33/128/1537/3072/3073及[B,S]=[2,17]。M=3073覆盖通用分块的尾块。
 另有64组零值、小/大幅值与epsilon测试。
 通过 `MEGA_MHC_NPU_DEVICE` 选择设备，默认1；选算子构建为自定义包时，设置
 `MEGA_MHC_TORCH_PACKAGE=cann_ops_transformer_custom`。请从源码 `torch_extension` 目录之外启动，
@@ -48,3 +48,6 @@ MEGA_MHC_NPU_DEVICE=6 python -m unittest discover \
 
 `MEGA_MHC_TEST_AIC_LIMIT` 仅用于测试进程资源配额，不是默认实现的一部分。
 UB→L1 等非默认传输路径需要独立验收，不能从 GM 结果推定。
+
+扩展 D 的本轮精度及性能实测范围见[实验记录](../docs/generic_d_tiling_experiment.md)；
+上述历史验收结果不代表新增矩阵全部通过。
