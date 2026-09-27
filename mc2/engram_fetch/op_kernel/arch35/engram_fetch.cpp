@@ -55,7 +55,7 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
         AscendC::TPipe pipe;
         EngramFetchTrainArch35 op;
         op.Init(commContext, indices, fetched, fetchedSf, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut,
-                numRecvOut, workspaceGM, localStorageAddr, &pipe, &tilingData);
+                numRecvOut, workspaceGM, localStorageAddr, sfTable, &pipe, &tilingData);
         op.Process<EngramHasSf>();
     }
 #endif

@@ -29,6 +29,7 @@ _ENGRAM_DTYPE_TO_INT = {
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
+_ENGRAM_GRAD_DTYPES = (torch.bfloat16, torch.float16, torch.float32)
 _MOE_EP_METADATA_FIELDS = 5
 
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
@@ -1358,7 +1359,11 @@ class ElasticBuffer:
             )
         expected_dtype = self._engram_dtype
         if self._engram_sf is not None:
-            pass
+            # 反向不做量化: 携带 SF 时正向为 fp8, 反向梯度仅支持已有类型 (bf16/fp16/fp32)
+            if grad_fetched.dtype not in _ENGRAM_GRAD_DTYPES:
+                raise RuntimeError(
+                    f"grad_fetched dtype must be one of {_ENGRAM_GRAD_DTYPES}, got {grad_fetched.dtype}"
+                )
         elif grad_fetched.dtype != expected_dtype:
             raise RuntimeError(
                 f"grad_fetched dtype must match storage dtype ({expected_dtype}), got {grad_fetched.dtype}"

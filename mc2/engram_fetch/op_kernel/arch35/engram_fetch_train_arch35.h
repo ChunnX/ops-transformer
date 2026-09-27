@@ -79,7 +79,8 @@ public:
     __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR fetchedSf,
                                 GM_ADDR permOut, GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
                                 GM_ADDR recvLocalEntryOut, GM_ADDR numRecvOut, GM_ADDR workspaceGM,
-                                GM_ADDR localStorageAddr, TPipe *pipe, const EngramFetchTilingData *tilingData);
+                                GM_ADDR localStorageAddr, GM_ADDR sfTableAddr, TPipe *pipe,
+                                const EngramFetchTilingData *tilingData);
 
     template <bool HasSf>
     __aicore__ inline void Process();
@@ -89,7 +90,8 @@ private:
     __aicore__ inline void InitMembers(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR fetchedSf,
                                        GM_ADDR permOut, GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
                                        GM_ADDR recvLocalEntryOut, GM_ADDR numRecvOut, GM_ADDR workspaceGM,
-                                       GM_ADDR localStorageAddr, TPipe *pipe, const EngramFetchTilingData *tilingData);
+                                       GM_ADDR localStorageAddr, GM_ADDR sfTableAddr, TPipe *pipe,
+                                       const EngramFetchTilingData *tilingData);
     __aicore__ inline void InitWinLayout();
     __aicore__ inline void InitCoreRoles();
     __aicore__ inline void InitHcommAndPipe();
@@ -286,10 +288,11 @@ __aicore__ inline void EngramFetchTrainArch35::Init(GM_ADDR commContext, GM_ADDR
                                                     GM_ADDR fetchedSf, GM_ADDR permOut, GM_ADDR sendCountsOut,
                                                     GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
                                                     GM_ADDR numRecvOut, GM_ADDR workspaceGM, GM_ADDR localStorageAddr,
-                                                    TPipe *pipe, const EngramFetchTilingData *tilingData)
+                                                    GM_ADDR sfTableAddr, TPipe *pipe,
+                                                    const EngramFetchTilingData *tilingData)
 {
     InitMembers(commContext, indices, fetched, fetchedSf, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut,
-                numRecvOut, workspaceGM, localStorageAddr, pipe, tilingData);
+                numRecvOut, workspaceGM, localStorageAddr, sfTableAddr, pipe, tilingData);
     InitWinLayout();
     InitCoreRoles();
     InitHcommAndPipe();
@@ -301,7 +304,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
                                                            GM_ADDR fetchedSf, GM_ADDR permOut, GM_ADDR sendCountsOut,
                                                            GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
                                                            GM_ADDR numRecvOut, GM_ADDR workspaceGM,
-                                                           GM_ADDR localStorageAddr, TPipe *pipe,
+                                                           GM_ADDR localStorageAddr, GM_ADDR sfTableAddr, TPipe *pipe,
                                                            const EngramFetchTilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -340,8 +343,10 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
     numSfPacks_ = tilingData->numSfPacks;
     sfElemSize_ = tilingData->sfElemSize;
     sfBytes_ = static_cast<uint64_t>(numSfPacks_) * static_cast<uint64_t>(sfElemSize_);
-    if (ctxPtr_->sfAddrList[rankId_] != 0U) {
-        sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(ctxPtr_->sfAddrList[rankId_]);
+    if (sfTableAddr != nullptr && numSfPacks_ > 0) {
+        AscendC::GlobalTensor<int64_t> sfAddrTensor;
+        sfAddrTensor.SetGlobalBuffer((__gm__ int64_t *)sfTableAddr);
+        sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(static_cast<uint64_t>(sfAddrTensor.GetValue(0)));
     }
     hasSf_ = numSfPacks_ > 0 && sfElemSize_ > 0 && sfTableGM_ != nullptr && fetchedSfGM_ != nullptr;
     rowStride_ = hasSf_ ? (static_cast<uint64_t>(hiddenBytes_) + sfBytes_) : static_cast<uint64_t>(hiddenBytes_);
