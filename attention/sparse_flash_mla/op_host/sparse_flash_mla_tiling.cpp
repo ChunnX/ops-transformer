@@ -2482,9 +2482,9 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     uint32_t isDspark = static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
                                               tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE &&
                                               tilingInfo->hasOriSparseIndices);
-    tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag,
-                                   isDspark);
+    tilingKey =
+        GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
+                           headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, isDspark);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

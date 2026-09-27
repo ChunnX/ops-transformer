@@ -615,8 +615,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
         if constexpr (IS_DSPARK) {
-            vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm,
-                                             oriTopkLengthGm);
+            vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, oriBlockTableGm, oriSparseIndicesGm, oriTopkLengthGm);
         }
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, sinksGm,
                                          softmaxLseGm);

@@ -39,8 +39,7 @@ public:
                                                GlobalTensor<KV_T> cmpKV, GlobalTensor<MM_OUT_T> mm1ResGm);
     __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm,
                                                GlobalTensor<OUT_T> attentionOutGm);
-    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
-                                                 GlobalTensor<int32_t> oriBlockTableGm,
+    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, GlobalTensor<int32_t> oriBlockTableGm,
                                                  GlobalTensor<int32_t> cmpBlockTableGm);
     __aicore__ inline void InitDsparkKvMerge(GlobalTensor<KV_T> kvMergeGm);
     __aicore__ inline void InitBuffers(TPipe *pipe);
