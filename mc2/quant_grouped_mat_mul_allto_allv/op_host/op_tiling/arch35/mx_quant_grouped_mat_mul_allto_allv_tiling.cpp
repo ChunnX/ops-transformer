@@ -679,8 +679,23 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
+// [临时诊断] mm 张量二分掩码：环境变量 MC2_APACE_MM_MASK（0-31），经
+// taskTilingInfo.ubSize 传递（原通路不消费该字段）。bit0=mmX bit1=mmWeight
+// bit2=mmXScale bit3=mmWeightScale bit4=mmY；0=全用 gmm 张量（已验证可跑），
+// 单 bit 测试定位导致 Blaze K 循环挂死的 mm 张量
+static uint64_t GetApaceMmMask()
+{
+    const char *maskEnv = getenv("MC2_APACE_MM_MASK");
+    return (maskEnv != nullptr) ? (static_cast<uint64_t>(atoll(maskEnv)) & 0x1FUL) : 0xFFFFFFFFFUL;
+}
+
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
 {
+    localTilingData_.taskTilingInfo.ubSize = GetApaceMmMask();
+    if (localTilingData_.taskTilingInfo.ubSize != 0xFFFFFFFFUL) {
+        OP_LOGE(opName_, "ApaceMXPath mmMask=%lu (bit0=mmX bit1=mmW bit2=mmXScale bit3=mmWScale bit4=mmY)",
+                localTilingData_.taskTilingInfo.ubSize);
+    }
     constexpr uint64_t alignAddrLen = 512;
     constexpr uint64_t tensorListSize = 512;
     auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);

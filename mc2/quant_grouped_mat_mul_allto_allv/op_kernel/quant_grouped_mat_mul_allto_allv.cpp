@@ -123,8 +123,17 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // 本实验裁决挂死是否由 mm 张量自身（数据/布局/映射）引起：
             //   可跑 → mm 张量问题（scaleB 物理布局 [div,N,2] vs Blaze ND scale 布局假设等）
             //   仍挂 → Blaze 内部（与数据无关），上 shadow 头 K 循环逐阶段标记
-            shareComputeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, sharedGmmComputeWSGM,
-                                tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+            // [临时诊断] mm 张量二分（MC2_APACE_MM_MASK 位掩码，经 ubSize 下传）：
+            // bit0=mmX bit1=mmWeight bit2=mmXScale bit3=mmWeightScale bit4=mmY；
+            // 0=全 gmm（已验证可跑）、0x1F=全 mm（原始行为）。对调实验已锁定 mm 张量为根因
+            const uint64_t mmMask = tilingData_->taskTilingInfo.ubSize;
+            const GM_ADDR shX = (mmMask & 0x1UL) ? mmxOptionalGM : gmmxGM;
+            const GM_ADDR shW = (mmMask & 0x2UL) ? mmweightOptionalGM : gmmweightGM;
+            const GM_ADDR shSA = (mmMask & 0x4UL) ? mmxScaleGM : gmmxScaleGM;
+            const GM_ADDR shSB = (mmMask & 0x8UL) ? mmWeightScaleGM : gmmWeightScaleGM;
+            const GM_ADDR shC = (mmMask & 0x10UL) ? mmyOptionalGM : gmmOutputGM;
+            shareComputeOp.Init(shX, shW, shSA, shSB, shC, sharedGmmComputeWSGM, tilingData_,
+                                &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
             AscendC::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
             shareComputeOp.Process(0, 1);
             AscendC::printf("[ApaceDBG] K-post-shared core=%u\n", AscendC::GetBlockIdx());
