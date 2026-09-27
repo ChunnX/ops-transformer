@@ -49,6 +49,18 @@ size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
     }
     return count;
 }
+constexpr int64_t V3_CEIL_DIV_ADJUSTMENT = 1;
+constexpr int64_t V3_GROUP_LIST_COUNTS = 1;
+constexpr uint64_t CGMCT_MAX_BASE_M = 128;
+constexpr size_t X_K_DIM = 1;
+constexpr size_t OUTPUT_N_DIM = 1;
+constexpr size_t SCALE_K_GROUP_DIM = 1;
+constexpr size_t SCALE_STORAGE_PAIR_DIM = 2;
+constexpr size_t BATCHED_MATRIX_ROW_DIM = 1;
+constexpr size_t BATCHED_MATRIX_COLUMN_DIM = 2;
+constexpr size_t SCALE_PAIR_DIM = 3;
+constexpr size_t NZ_K0_DIM = 3;
+constexpr size_t NZ_C0_DIM = 4;
 constexpr int64_t V3_MX_GROUP_SIZE = 64;
 constexpr int64_t V3_MX_SCALE_PAIR = 2;
 constexpr int64_t V3_MXFP8_N_ALIGN = 64;
@@ -634,23 +646,24 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape
             const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
             OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
                             static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
-                            static_cast<uint64_t>(curWShape.GetDim(1)) != expectedWeightDim1,
+                            static_cast<uint64_t>(curWShape.GetDim(BATCHED_MATRIX_ROW_DIM)) != expectedWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight", ShapeToString(curWShape),
                                                   ShapeDimsToString(expectedWeightDim0, expectedWeightDim1)),
                         return false);
-            OP_CHECK_IF(curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
-                            static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
-                            static_cast<uint64_t>(curScaleShape.GetDim(1)) != expectedScaleDim1 ||
-                            static_cast<uint64_t>(curScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
-                        OP_LOGE_FOR_INVALID_SHAPE(
-                            inputParams_.opType, "weight_scale", ShapeToString(curScaleShape),
-                            ShapeDimsToString(expectedScaleDim0, expectedScaleDim1, MXFP_MULTI_BASE_SIZE)),
-                        return false);
+            OP_CHECK_IF(
+                curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
+                    static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
+                    static_cast<uint64_t>(curScaleShape.GetDim(BATCHED_MATRIX_ROW_DIM)) != expectedScaleDim1 ||
+                    static_cast<uint64_t>(curScaleShape.GetDim(BATCHED_MATRIX_COLUMN_DIM)) != MXFP_MULTI_BASE_SIZE,
+                OP_LOGE_FOR_INVALID_SHAPE(
+                    inputParams_.opType, "weight_scale", ShapeToString(curScaleShape),
+                    ShapeDimsToString(expectedScaleDim0, expectedScaleDim1, MXFP_MULTI_BASE_SIZE)),
+                return false);
         }
         OP_CHECK_IF(
             static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
-                static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
-                static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+                static_cast<uint64_t>(xScaleShape.GetDim(SCALE_K_GROUP_DIM)) != expectedKDimValue ||
+                static_cast<uint64_t>(xScaleShape.GetDim(SCALE_STORAGE_PAIR_DIM)) != MXFP_MULTI_BASE_SIZE,
             OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
                                       ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
             return false);
@@ -784,7 +797,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     if (useTensorApi_) {
         GroupedMatmulSwigluQuantTensorApiTiling::PrepareBasicBlockForL1(basicTiling_);
     } else {
-        auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+        auto baseM_modified = std::min(basicTiling_.baseM, CGMCT_MAX_BASE_M);
         basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
         if (IsSplitSwigluMode()) {
             basicTiling_.baseN =
@@ -1192,7 +1205,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                                                       "weight first dimension must equal groupList length"),
                 return false);
     OP_CHECK_IF(static_cast<uint64_t>(wScaleShape.GetDim(0)) != inputParams_.groupNum ||
-                    static_cast<uint64_t>(wScaleShape.GetDim(1)) != inputParams_.nSize,
+                    static_cast<uint64_t>(wScaleShape.GetDim(BATCHED_MATRIX_ROW_DIM)) != inputParams_.nSize,
                 OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale", ShapeToString(wScaleShape),
                                           ShapeDimsToString(inputParams_.groupNum, inputParams_.nSize)),
                 return false);
@@ -1320,7 +1333,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeV3Attrs()
             !ReadV3Attr(context_, attrs, GroupedMatmulSwigluQuantV2Tiling::ATTR_INDEX_DST_TYPE_MAX, dstTypeMax),
         OP_LOGE(context_->GetNodeName(), "failed to read V3 attributes"), return false);
 
-    OP_CHECK_IF(groupListType != 0 && groupListType != 1,
+    OP_CHECK_IF(groupListType != 0 && groupListType != V3_GROUP_LIST_COUNTS,
                 OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType),
                 return false);
     OP_CHECK_IF(quantDtype != static_cast<int64_t>(inputParams_.outDataDtype),
@@ -1416,11 +1429,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(
                 OP_LOGE(context_->GetNodeName(), "weight view must be a 3D shape"), return false);
 
     const int64_t m = xShape.GetDim(0);
-    const int64_t k = xShape.GetDim(1);
+    const int64_t k = xShape.GetDim(X_K_DIM);
     const int64_t e = groupListShape.GetDim(0);
-    const int64_t n = inputParams_.transB ? weightShape.GetDim(1) : weightShape.GetDim(2);
-    const int64_t weightK = inputParams_.transB ? weightShape.GetDim(2) : weightShape.GetDim(1);
-    const int64_t kScale = (k + V3_MX_GROUP_SIZE - 1) / V3_MX_GROUP_SIZE;
+    const int64_t n = inputParams_.transB ? weightShape.GetDim(BATCHED_MATRIX_ROW_DIM) :
+                                            weightShape.GetDim(BATCHED_MATRIX_COLUMN_DIM);
+    const int64_t weightK = inputParams_.transB ? weightShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) :
+                                                  weightShape.GetDim(BATCHED_MATRIX_ROW_DIM);
+    const int64_t kScale = (k + V3_MX_GROUP_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_MX_GROUP_SIZE;
     OP_CHECK_IF(m <= 0 || k <= 0, OP_LOGE(context_->GetNodeName(), "x must be non-empty"), return false);
     OP_CHECK_IF(e <= 0 || e > V3_MAX_GROUP_NUM,
                 OP_LOGE(context_->GetNodeName(), "group_list length must be in [1, 1024]"), return false);
@@ -1432,26 +1447,33 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3ShapeAndScale(
     // FRACTAL_NZ follows the V2 MXFP8 contract: non-transposed (E, K, N)
     // views use storage (E, ceil(N/32), ceil(K/16), 16, 32), while
     // transposed (E, N, K) views use (E, ceil(K/32), ceil(N/16), 16, 32).
-    const int64_t expectedStorageDim1 =
-        inputParams_.transB ? (k + V3_NZ_C0_SIZE - 1) / V3_NZ_C0_SIZE : (n + V3_NZ_C0_SIZE - 1) / V3_NZ_C0_SIZE;
-    const int64_t expectedStorageDim2 =
-        inputParams_.transB ? (n + V3_NZ_K0_SIZE - 1) / V3_NZ_K0_SIZE : (k + V3_NZ_K0_SIZE - 1) / V3_NZ_K0_SIZE;
+    const int64_t expectedStorageDim1 = inputParams_.transB ?
+                                            (k + V3_NZ_C0_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_NZ_C0_SIZE :
+                                            (n + V3_NZ_C0_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_NZ_C0_SIZE;
+    const int64_t expectedStorageDim2 = inputParams_.transB ?
+                                            (n + V3_NZ_K0_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_NZ_K0_SIZE :
+                                            (k + V3_NZ_K0_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_NZ_K0_SIZE;
     OP_CHECK_IF(weightStorageShape.GetDimNum() != V3_WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
-                    weightStorageShape.GetDim(1) != expectedStorageDim1 ||
-                    weightStorageShape.GetDim(2) != expectedStorageDim2 ||
-                    weightStorageShape.GetDim(3) != V3_NZ_K0_SIZE || weightStorageShape.GetDim(4) != V3_NZ_C0_SIZE,
+                    weightStorageShape.GetDim(BATCHED_MATRIX_ROW_DIM) != expectedStorageDim1 ||
+                    weightStorageShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) != expectedStorageDim2 ||
+                    weightStorageShape.GetDim(NZ_K0_DIM) != V3_NZ_K0_SIZE ||
+                    weightStorageShape.GetDim(NZ_C0_DIM) != V3_NZ_C0_SIZE,
                 OP_LOGE(context_->GetNodeName(),
                         "weight storage shape is not the expected FRACTAL_NZ shape for the transpose setting"),
                 return false);
     OP_CHECK_IF(xScaleShape.GetDimNum() != V3_X_SCALE_DIM_NUM || xScaleShape.GetDim(0) != m ||
-                    xScaleShape.GetDim(1) != kScale || xScaleShape.GetDim(2) != V3_MX_SCALE_PAIR,
+                    xScaleShape.GetDim(BATCHED_MATRIX_ROW_DIM) != kScale ||
+                    xScaleShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) != V3_MX_SCALE_PAIR,
                 OP_LOGE(context_->GetNodeName(), "x_scale must be (M, ceil(K/64), 2)"), return false);
     OP_CHECK_IF(weightScaleShape.GetDimNum() != V3_WEIGHT_SCALE_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "weight_scale must be 4D"), return false);
-    const int64_t weightScaleN = inputParams_.transB ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
-    const int64_t weightScaleK = inputParams_.transB ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
+    const int64_t weightScaleN = inputParams_.transB ? weightScaleShape.GetDim(BATCHED_MATRIX_ROW_DIM) :
+                                                       weightScaleShape.GetDim(BATCHED_MATRIX_COLUMN_DIM);
+    const int64_t weightScaleK = inputParams_.transB ? weightScaleShape.GetDim(BATCHED_MATRIX_COLUMN_DIM) :
+                                                       weightScaleShape.GetDim(BATCHED_MATRIX_ROW_DIM);
     OP_CHECK_IF(weightScaleShape.GetDimNum() != V3_WEIGHT_SCALE_DIM_NUM || weightScaleShape.GetDim(0) != e ||
-                    weightScaleN != n || weightScaleK != kScale || weightScaleShape.GetDim(3) != V3_MX_SCALE_PAIR,
+                    weightScaleN != n || weightScaleK != kScale ||
+                    weightScaleShape.GetDim(SCALE_PAIR_DIM) != V3_MX_SCALE_PAIR,
                 OP_LOGE(context_->GetNodeName(),
                         "weight_scale must be (E, ceil(K/64), N, 2) or transposed (E, N, ceil(K/64), 2)"),
                 return false);
@@ -1475,13 +1497,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckV3OutputShape() const
                     yShape.GetDimNum() != V3_OUTPUT_DIM_NUM || yScaleShape.GetDimNum() != V3_OUTPUT_SCALE_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "output shape rank is invalid"), return false);
     const int64_t m = xShape.GetDim(0);
-    const int64_t n = inputParams_.transB ? weightShape.GetDim(1) : weightShape.GetDim(2);
+    const int64_t n = inputParams_.transB ? weightShape.GetDim(BATCHED_MATRIX_ROW_DIM) :
+                                            weightShape.GetDim(BATCHED_MATRIX_COLUMN_DIM);
     const int64_t outputN = n / V3_SWIGLU_SPLIT;
-    const int64_t outputScaleN = (outputN + V3_MX_GROUP_SIZE - 1) / V3_MX_GROUP_SIZE;
-    OP_CHECK_IF(yShape.GetDimNum() != V3_OUTPUT_DIM_NUM || yShape.GetDim(0) != m || yShape.GetDim(1) != outputN,
-                OP_LOGE(context_->GetNodeName(), "output shape is not (M, N/2)"), return false);
+    const int64_t outputScaleN = (outputN + V3_MX_GROUP_SIZE - V3_CEIL_DIV_ADJUSTMENT) / V3_MX_GROUP_SIZE;
+    OP_CHECK_IF(
+        yShape.GetDimNum() != V3_OUTPUT_DIM_NUM || yShape.GetDim(0) != m || yShape.GetDim(OUTPUT_N_DIM) != outputN,
+        OP_LOGE(context_->GetNodeName(), "output shape is not (M, N/2)"), return false);
     OP_CHECK_IF(yScaleShape.GetDimNum() != V3_OUTPUT_SCALE_DIM_NUM || yScaleShape.GetDim(0) != m ||
-                    yScaleShape.GetDim(1) != outputScaleN || yScaleShape.GetDim(2) != V3_MX_SCALE_PAIR,
+                    yScaleShape.GetDim(SCALE_K_GROUP_DIM) != outputScaleN ||
+                    yScaleShape.GetDim(SCALE_STORAGE_PAIR_DIM) != V3_MX_SCALE_PAIR,
                 OP_LOGE(context_->GetNodeName(), "output_scale shape is not (M, ceil((N/2)/64), 2)"), return false);
     return true;
 }

@@ -36,6 +36,10 @@ using namespace optiling::GroupedMatmulSwigluQuantV2Tiling;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+namespace {
+constexpr size_t WORKSPACE_SLOT_COUNT = 1;
+} // namespace
+
 constexpr int64_t GMMSQ_FUSING_TILING_TEMPLATE = 0;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling,
                              GMMSQ_FUSING_TILING_TEMPLATE);
@@ -121,7 +125,7 @@ static ge::graphStatus CheckRequiredTilingContext(gert::TilingContext *context)
             return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
+    OP_CHECK_IF(context->GetWorkspaceSizes(WORKSPACE_SLOT_COUNT) == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "workspace", "does not support nullptr"),
                 return ge::GRAPH_FAILED);
     auto *rawTilingData = context->GetRawTilingData();

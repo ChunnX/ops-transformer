@@ -53,6 +53,9 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
+constexpr float DEFAULT_CLAMP_LIMIT = 7.0F;
+constexpr float DEFAULT_GLU_ALPHA = 1.702F;
+constexpr float DEFAULT_GLU_BIAS = 1.0F;
 constexpr size_t kInputTensorCount = 8U;
 constexpr size_t kOutputTensorCount = 2U;
 constexpr size_t kTensorFieldCount = 4U;
@@ -131,9 +134,9 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
                 {"swiglu_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                {"clamp_limit", Ops::Transformer::AnyValue::CreateFrom<float>(7.0F)},
-                {"glu_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(1.702F)},
-                {"glu_bias", Ops::Transformer::AnyValue::CreateFrom<float>(1.0F)},
+                {"clamp_limit", Ops::Transformer::AnyValue::CreateFrom<float>(DEFAULT_CLAMP_LIMIT)},
+                {"glu_alpha", Ops::Transformer::AnyValue::CreateFrom<float>(DEFAULT_GLU_ALPHA)},
+                {"glu_bias", Ops::Transformer::AnyValue::CreateFrom<float>(DEFAULT_GLU_BIAS)},
                 {"round_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("rint")},
                 {"scale_alg", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                 {"dst_type_max", Ops::Transformer::AnyValue::CreateFrom<float>(0.0F)},

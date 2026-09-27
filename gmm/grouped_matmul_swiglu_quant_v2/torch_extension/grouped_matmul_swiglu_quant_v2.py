@@ -24,6 +24,12 @@ GE_DTYPE_FLOAT8_E4M3FN = 36
 GE_DTYPE_FLOAT8_E8M0 = 37
 ACL_DTYPE_OFFSET = 256
 MX_GROUP_SIZE = 64
+WEIGHT_SCALE_RANK = 4
+WEIGHT_SCALE_N_AXIS = 2
+SWIGLU_SPLIT_FACTOR = 2
+MX_SCALE_PAIR_SIZE = 2
+CEIL_DIV_ADJUSTMENT = 1
+MX_QUANT_MODE = 2
 
 FLOAT8_E8M0_DTYPE = getattr(
     torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
@@ -88,9 +94,9 @@ def _normalize_v3_quant_dtype(dtype):
 
 
 def _infer_v3_n(weight_scale):
-    if weight_scale.dim() != 4:
+    if weight_scale.dim() != WEIGHT_SCALE_RANK:
         raise ValueError("weight_scale[0] must be 4D in the V3 MXFP8 scenario.")
-    return weight_scale.shape[2]
+    return weight_scale.shape[WEIGHT_SCALE_N_AXIS]
 
 
 class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
@@ -105,7 +111,8 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
             "grouped_matmul_swiglu_quant_v2("
             "Tensor x, Tensor[] weight, Tensor[] weight_scale, Tensor x_scale, Tensor group_list, "
             "*, Tensor? smooth_scale=None, Tensor[]? weight_assist_matrix=None, Tensor[]? bias=None, "
-            "int? dequant_mode=2, int? dequant_dtype=0, int? quant_mode=2, int? quant_dtype=36, "
+            f"int? dequant_mode={MX_QUANT_MODE}, int? dequant_dtype=0, "
+            f"int? quant_mode={MX_QUANT_MODE}, int? quant_dtype={GE_DTYPE_FLOAT8_E4M3FN}, "
             "int? group_list_type=0, int[]? tuning_config=None, int? x_dtype=None, int? weight_dtype=None, "
             "int? weight_scale_dtype=None, int? x_scale_dtype=None, int? swiglu_mode=None, "
             "float? clamp_limit=None, float? glu_alpha=None, float? glu_bias=None, "
@@ -123,10 +130,10 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
             smooth_scale=None,
             weight_assist_matrix=None,
             bias=None,
-            dequant_mode=2,
+            dequant_mode=MX_QUANT_MODE,
             dequant_dtype=0,
-            quant_mode=2,
-            quant_dtype=36,
+            quant_mode=MX_QUANT_MODE,
+            quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
             group_list_type=0,
             tuning_config=None,
             x_dtype=None,
@@ -156,13 +163,26 @@ class GroupedMatmulSwigluQuantV2OpBuilder(OpBuilder):
                 raise ValueError("x must have a dimension for output shape inference.")
             _normalize_v3_quant_dtype(quant_dtype)
             n = _infer_v3_n(weight_scale[0])
-            if n <= 0 or n % 2 != 0:
+            if n <= 0 or n % SWIGLU_SPLIT_FACTOR != 0:
                 raise ValueError("The logical N dimension must be positive and even.")
             m = x.shape[0]
             return (
-                torch.empty((m, n // 2), dtype=torch.float8_e4m3fn, device="meta"),
                 torch.empty(
-                    (m, ((n // 2) + MX_GROUP_SIZE - 1) // MX_GROUP_SIZE, 2),
+                    (m, n // SWIGLU_SPLIT_FACTOR),
+                    dtype=torch.float8_e4m3fn,
+                    device="meta",
+                ),
+                torch.empty(
+                    (
+                        m,
+                        (
+                            (n // SWIGLU_SPLIT_FACTOR)
+                            + MX_GROUP_SIZE
+                            - CEIL_DIV_ADJUSTMENT
+                        )
+                        // MX_GROUP_SIZE,
+                        MX_SCALE_PAIR_SIZE,
+                    ),
                     dtype=getattr(torch, "float8_e8m0fnu", torch.uint8),
                     device="meta",
                 ),
@@ -183,10 +203,10 @@ def _grouped_matmul_swiglu_quant_v2(
     smooth_scale=None,
     weight_assist_matrix=None,
     bias=None,
-    dequant_mode=2,
+    dequant_mode=MX_QUANT_MODE,
     dequant_dtype=0,
-    quant_mode=2,
-    quant_dtype=36,
+    quant_mode=MX_QUANT_MODE,
+    quant_dtype=GE_DTYPE_FLOAT8_E4M3FN,
     group_list_type=0,
     tuning_config=None,
     x_dtype=None,
@@ -241,9 +261,9 @@ def grouped_matmul_swiglu_quant_v2(
     smooth_scale: Optional[torch.Tensor] = None,
     weight_assist_matrix: Optional[List[torch.Tensor]] = None,
     bias: Optional[List[torch.Tensor]] = None,
-    dequant_mode: Optional[int] = 2,
+    dequant_mode: Optional[int] = MX_QUANT_MODE,
     dequant_dtype: Optional[Union[int, torch.dtype]] = torch.float32,
-    quant_mode: Optional[int] = 2,
+    quant_mode: Optional[int] = MX_QUANT_MODE,
     quant_dtype: Optional[Union[int, torch.dtype]] = torch.float8_e4m3fn,
     group_list_type: Optional[int] = 0,
     tuning_config: Optional[List[int]] = None,
