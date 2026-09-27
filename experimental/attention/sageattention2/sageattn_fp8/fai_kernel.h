@@ -37,8 +37,8 @@ using namespace Catlass;
 using namespace tla;
 using namespace AscendC;
 
-template <
-    class BlockMmadQK, class BlockMmadPV, class EpilogueOnlineSoftmax, class EpilogueRescaleO, bool PAGED_CACHE_FLAG>
+template <class BlockMmadQK, class BlockMmadPV, class EpilogueOnlineSoftmax, class EpilogueRescaleO,
+          bool PAGED_CACHE_FLAG>
 class FAInferKernel {
 public:
     using ArchTag = typename BlockMmadQK::ArchTag;
@@ -71,10 +71,9 @@ public:
 
     // Methods
     CATLASS_DEVICE
-    FAInferKernel()
-    {}
+    FAInferKernel() {}
 
-    CATLASS_DEVICE void Init(FAIKernelParams const& params)
+    CATLASS_DEVICE void Init(FAIKernelParams const &params)
     {
         // 获取当前aic idx 和sub blockidx
         if ASCEND_IS_AIC {
@@ -87,8 +86,8 @@ public:
         constInfo.subBlockIdx = this->subBlockIdx;
 
         // 调用Tiling接口
-        auto faTilingStruct = (__gm__ FATilingData*)params.tiling;
-        auto& inputParamsRegbase = faTilingStruct->inputParamsRegbase;
+        auto faTilingStruct = (__gm__ FATilingData *)params.tiling;
+        auto &inputParamsRegbase = faTilingStruct->inputParamsRegbase;
         this->constInfo.scaleValue = static_cast<float>(inputParamsRegbase.scaleValue);
         this->constInfo.batch = inputParamsRegbase.batch;
         this->constInfo.qHeads = inputParamsRegbase.qHeads;
@@ -113,7 +112,7 @@ public:
             this->constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
         }
 
-        auto& multiCoreParamsRegbase = faTilingStruct->multiCoreParamsRegbase;
+        auto &multiCoreParamsRegbase = faTilingStruct->multiCoreParamsRegbase;
         this->constInfo.qSeqlenOuterSize = multiCoreParamsRegbase.qSeqlenOuterSize;
         this->constInfo.coreNum = multiCoreParamsRegbase.coreNum;
         /* 多核切分偏移计算 */
@@ -155,27 +154,31 @@ public:
         l1BufAddrStart += KERNEL_TASK_NUM * MM2_LEFT_SIZE;
     }
 
-    CATLASS_DEVICE void operator()(FAIKernelParams const& params)
+    CATLASS_DEVICE void operator()(FAIKernelParams const &params)
     {
         // [第六十一轮] 官方黄金对照：每核 slot 分布（用独立 diagBuf，不被计算覆盖）
         {
             AscendC::GlobalTensor<int32_t> dg;
-            dg.SetGlobalBuffer((__gm__ int32_t*)params.diagBuf);
+            dg.SetGlobalBuffer((__gm__ int32_t *)params.diagBuf);
             int32_t bidx = AscendC::GetBlockIdx();
             int32_t myType = 0;
-            if ASCEND_IS_AIC { myType = 1; } else { myType = 2; }
-            dg.SetValue(bidx % 64, myType);                       // diagBuf[0..63]=每核类型(1=AIC/2=AIV)
-            dg.SetValue(64 + (bidx % 64), (int32_t)bidx);         // diagBuf[64..127]=每核blockIdx
-            dg.SetValue(128 + (bidx % 64), (int32_t)0x77777777);  // diagBuf[128..191]=到达标记
+            if ASCEND_IS_AIC {
+                myType = 1;
+            } else {
+                myType = 2;
+            }
+            dg.SetValue(bidx % 64, myType);                      // diagBuf[0..63]=每核类型(1=AIC/2=AIV)
+            dg.SetValue(64 + (bidx % 64), (int32_t)bidx);        // diagBuf[64..127]=每核blockIdx
+            dg.SetValue(128 + (bidx % 64), (int32_t)0x77777777); // diagBuf[128..191]=到达标记
         }
         // [第五十六轮] 核类型分布哨兵（改写到 q 只读输入前 256B——O 会覆盖自己，q 不会）
         {
             AscendC::GlobalTensor<int32_t> dg;
-            dg.SetGlobalBuffer((__gm__ int32_t*)params.q);
+            dg.SetGlobalBuffer((__gm__ int32_t *)params.q);
             int32_t bidx = AscendC::GetBlockIdx();
-            dg.SetValue(bidx % 64, (int32_t)g_coreType);       // q[0..63] = 每核类型（1=AIC, 2=AIV）
-            dg.SetValue(64 + (bidx % 64), (int32_t)bidx);               // q[64..127] = 每核 blockIdx
-            dg.SetValue(128 + (bidx % 64), (int32_t)0x55555555);        // q[128..191] = 到达标记
+            dg.SetValue(bidx % 64, (int32_t)g_coreType);         // q[0..63] = 每核类型（1=AIC, 2=AIV）
+            dg.SetValue(64 + (bidx % 64), (int32_t)bidx);        // q[64..127] = 每核 blockIdx
+            dg.SetValue(128 + (bidx % 64), (int32_t)0x55555555); // q[128..191] = 到达标记
         }
         // Init
         Init(params); // 初始化ConstInfo，初始化L1/UB
@@ -205,33 +208,33 @@ public:
         }
         // Init Tensor
         AscendC::GlobalTensor<ElementQ> gmQ;
-        gmQ.SetGlobalBuffer((__gm__ ElementQ*)params.q);
+        gmQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
         // Create TLA layouts for kernel usage
         auto layoutQ = MakeLayout<ElementQ, LayoutTagQ>(batch * qSeqlen, kvHeads * groupSize * embed);
         auto tensorQWithLayout = tla::MakeTensor(gmQ, layoutQ, Arch::PositionGM{});
 
         AscendC::GlobalTensor<ElementK> gmK;
-        gmK.SetGlobalBuffer((__gm__ ElementK*)params.k);
+        gmK.SetGlobalBuffer((__gm__ ElementK *)params.k);
         auto layoutK = MakeLayout<ElementK, LayoutTagK>(kvHeads * embed, batch * kvSeqlen);
         auto tensorKWithLayout = tla::MakeTensor(gmK, layoutK, Arch::PositionGM{});
 
         AscendC::GlobalTensor<ElementV> gmV;
-        gmV.SetGlobalBuffer((__gm__ ElementV*)params.v);
+        gmV.SetGlobalBuffer((__gm__ ElementV *)params.v);
         auto layoutV = MakeLayout<ElementV, LayoutTagV>(batch * kvSeqlen, kvHeads * embed);
         auto tensorVWithLayout = tla::MakeTensor(gmV, layoutV, Arch::PositionGM{});
 
         AscendC::GlobalTensor<ElementMask> gmMask;
-        gmMask.SetGlobalBuffer((__gm__ ElementMask*)params.mask);
+        gmMask.SetGlobalBuffer((__gm__ ElementMask *)params.mask);
         auto layoutMask = MakeLayout<ElementMask, LayoutTagMask>(batch * qSeqlen, kvSeqlenMask);
         auto tensorMaskWithLayout = tla::MakeTensor(gmMask, layoutMask, Arch::PositionGM{});
 
         // BlockTable
         AscendC::GlobalTensor<int32_t> tensorTable;
-        tensorTable.SetGlobalBuffer((__gm__ int32_t*)params.blockTables);
+        tensorTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTables);
 
         AscendC::GlobalTensor<ElementO> attentionOutGm;
         AscendC::GlobalTensor<ElementP> workspaceGm;
-        attentionOutGm.SetGlobalBuffer((__gm__ ElementO*)params.o);
+        attentionOutGm.SetGlobalBuffer((__gm__ ElementO *)params.o);
         auto layoutO = MakeLayout<ElementO, LayoutTagO>(batch * qSeqlen, kvHeads * groupSize * embed);
         auto attentionOutGmWithLayout = tla::MakeTensor(attentionOutGm, layoutO, Arch::PositionGM{});
 
@@ -248,7 +251,7 @@ public:
         // [第五十七轮] 官方黄金对照：主循环入口前 constInfo 关键值写 q[192..203]（避开 R56 的 q[0..191]）
         {
             AscendC::GlobalTensor<int32_t> dg;
-            dg.SetGlobalBuffer((__gm__ int32_t*)params.q);
+            dg.SetGlobalBuffer((__gm__ int32_t *)params.q);
             dg.SetValue(192, (int32_t)this->constInfo.batch);
             dg.SetValue(193, (int32_t)this->constInfo.qHeads);
             dg.SetValue(194, (int32_t)this->constInfo.kvHeads);
@@ -320,7 +323,7 @@ public:
                 for (int64_t kvSeqLoopCount = runParam.kvSeqLoopStartIdx; kvSeqLoopCount <= kvSeqLoopLimit;
                      ++kvSeqLoopCount) {
                     if (notLastThreeLoop) {
-                        RunInfo& runInfo1 = runInfo[taskId & 3];
+                        RunInfo &runInfo1 = runInfo[taskId & 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, kvSeqLoopCount, kvSeqLoopLimit, multiCoreInnerIdx);
                         if ASCEND_IS_AIC {
                             CalcKvSeqCoord(runInfo1, this->constInfo);
@@ -332,12 +335,12 @@ public:
                             auto tensorMM1OWithLayout =
                                 tla::MakeTensor(bmm1TensorList[runInfo1.taskIdMod2], layoutMM1O, Arch::PositionUB{});
 
-                            auto tensorInQ = GetTile(
-                                tensorQWithLayout,
-                                tla::MakeCoord(
-                                    runInfo1.batchOuterIdx * qSeqlen + coordInfo[runInfo1.taskIdMod3].qSeqCoord,
-                                    runInfo1.kvHeadsOuterIdx * groupSize * embed + runInfo1.groupIdx * embed),
-                                tla::MakeShape(runInfo1.qSeqRealSize, this->constInfo.embed));
+                            auto tensorInQ =
+                                GetTile(tensorQWithLayout,
+                                        tla::MakeCoord(
+                                            runInfo1.batchOuterIdx * qSeqlen + coordInfo[runInfo1.taskIdMod3].qSeqCoord,
+                                            runInfo1.kvHeadsOuterIdx * groupSize * embed + runInfo1.groupIdx * embed),
+                                        tla::MakeShape(runInfo1.qSeqRealSize, this->constInfo.embed));
                             auto kCoord = runInfo1.kvHeadsOuterIdx * embed;
                             auto nCoord = 0;
                             auto nShape = runInfo1.kvSeqRealSize;
@@ -354,18 +357,16 @@ public:
                                 nCoord = coordInfo[runInfo1.taskIdMod3].curBIdx * kvSeqlen +
                                          coordInfo[runInfo1.taskIdMod3].kvSeqCoord;
                             }
-                            auto tensorInK = GetTile(
-                                tensorKWithLayout, tla::MakeCoord(kCoord, nCoord),
-                                tla::MakeShape(this->constInfo.embed, nShape));
+                            auto tensorInK = GetTile(tensorKWithLayout, tla::MakeCoord(kCoord, nCoord),
+                                                     tla::MakeShape(this->constInfo.embed, nShape));
 
                             auto tensorInTable = tensorTable[runInfo1.blockTableOffset];
 
                             bool isFirstLoop = (runInfo1.kvSeqLoopCount == runInfo1.kvSeqLoopStartIdx) ? true : false;
                             bool isLastUpdate = (runInfo1.kvSeqLoopCount == runInfo1.kvSeqLoopLimit) ? true : false;
 
-                            blockMmadMmadQK(
-                                tensorInQ, tensorInK, tensorMM1OWithLayout, tensorInTable, actualShape,
-                                runInfo1.taskIdMod2, this->constInfo.blockSize, isFirstLoop, isLastUpdate);
+                            blockMmadMmadQK(tensorInQ, tensorInK, tensorMM1OWithLayout, tensorInTable, actualShape,
+                                            runInfo1.taskIdMod2, this->constInfo.blockSize, isFirstLoop, isLastUpdate);
 
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(
                                 SYNC_C1_V1_FLAG[runInfo1.taskIdMod2]); // fixpip将结果搬运到UB后，设置SYNC_C1_V1_FLAG
@@ -377,15 +378,15 @@ public:
 
                     if (taskId > 0 && notLastTwoLoop) {
                         if ASCEND_IS_AIV {
-                            auto& runInfo3 = runInfo[(taskId + 3) & 3];
-                            auto& taskIdMod2 = runInfo3.taskIdMod2;
-                            auto& taskIdMod3 = runInfo3.taskIdMod3;
-                            auto& multiCoreIdxMod3 = runInfo3.multiCoreIdxMod3;
+                            auto &runInfo3 = runInfo[(taskId + 3) & 3];
+                            auto &taskIdMod2 = runInfo3.taskIdMod2;
+                            auto &taskIdMod3 = runInfo3.taskIdMod3;
+                            auto &multiCoreIdxMod3 = runInfo3.multiCoreIdxMod3;
                             bool isFirstLoop = (runInfo3.kvSeqLoopCount == runInfo3.kvSeqLoopStartIdx) ? true : false;
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(
                                 SYNC_C1_V1_FLAG[taskIdMod2]); // 等待bmm1完成/等待SYNC_C1_V1_FLAG置位
-                            auto bmm1Layout = tla::MakeLayout<ElementS, LayoutTagS>(
-                                runInfo3.halfQSeqRealSize, runInfo3.kvSeqRealSize);
+                            auto bmm1Layout = tla::MakeLayout<ElementS, LayoutTagS>(runInfo3.halfQSeqRealSize,
+                                                                                    runInfo3.kvSeqRealSize);
                             auto bmm1Tensor =
                                 tla::MakeTensor(bmm1TensorList[taskIdMod2], bmm1Layout, Arch::PositionUB{});
                             auto l1Vf1OutLayout =
@@ -393,31 +394,31 @@ public:
                             auto l1Vf1OutTensor =
                                 tla::MakeTensor(mm2AL1TensorList[taskIdMod3], l1Vf1OutLayout, Arch::PositionL1{});
 
-                            auto l1Vf1OutTile = GetTile(
-                                l1Vf1OutTensor,
-                                tla::MakeCoord(constInfo.subBlockIdx * runInfo3.firstHalfQSeqRealSize, 0),
-                                tla::MakeShape(runInfo3.halfQSeqRealSize, kvSeqlenTemplateType));
+                            auto l1Vf1OutTile =
+                                GetTile(l1Vf1OutTensor,
+                                        tla::MakeCoord(constInfo.subBlockIdx * runInfo3.firstHalfQSeqRealSize, 0),
+                                        tla::MakeShape(runInfo3.halfQSeqRealSize, kvSeqlenTemplateType));
 
                             int64_t bOffset = runInfo3.batchOuterIdx * qSeqlen;
                             int64_t qSeqOffset = runInfo3.qSeqOuterAxisIdx * qSeqlenTemplateType +
                                                  runInfo3.firstHalfQSeqRealSize * constInfo.subBlockIdx;
                             int64_t kvSeqOffset = runInfo3.kvSeqLoopCount * kvSeqlenTemplateType;
 
-                            auto gmMaskTile = GetTile(
-                                tensorMaskWithLayout, tla::MakeCoord(bOffset + qSeqOffset, kvSeqOffset),
-                                tla::MakeShape(runInfo3.halfQSeqRealSize, runInfo3.kvSeqRealSize));
+                            auto gmMaskTile =
+                                GetTile(tensorMaskWithLayout, tla::MakeCoord(bOffset + qSeqOffset, kvSeqOffset),
+                                        tla::MakeShape(runInfo3.halfQSeqRealSize, runInfo3.kvSeqRealSize));
 
-                            epilogueOnlineSoftmax(
-                                l1Vf1OutTile, sumUb[multiCoreIdxMod3], maxUb[multiCoreIdxMod3], expUb[taskIdMod3],
-                                bmm1Tensor, gmMaskTile, !isFirstLoop, taskIdMod2, taskIdMod3,
-                                MM1_RES_INTRA_EVENT[taskIdMod2], SYNC_V1_C2_FLAG[taskIdMod3]);
+                            epilogueOnlineSoftmax(l1Vf1OutTile, sumUb[multiCoreIdxMod3], maxUb[multiCoreIdxMod3],
+                                                  expUb[taskIdMod3], bmm1Tensor, gmMaskTile, !isFirstLoop, taskIdMod2,
+                                                  taskIdMod3, MM1_RES_INTRA_EVENT[taskIdMod2],
+                                                  SYNC_V1_C2_FLAG[taskIdMod3]);
                         }
                     }
                     if (taskId > 1 && notLast) {
                         if ASCEND_IS_AIC {
-                            RunInfo& runInfo2 = runInfo[(taskId + 2) & 3];
-                            auto& taskIdMod2 = runInfo2.taskIdMod2;
-                            auto& taskIdMod3 = runInfo2.taskIdMod3;
+                            RunInfo &runInfo2 = runInfo[(taskId + 2) & 3];
+                            auto &taskIdMod2 = runInfo2.taskIdMod2;
+                            auto &taskIdMod3 = runInfo2.taskIdMod3;
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V1_C2_FLAG[taskIdMod3]);
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V1_C2_FLAG[taskIdMod3]);
 
@@ -439,15 +440,13 @@ public:
                                 kCoord = coordInfo[runInfo2.taskIdMod3].curBIdx * kvSeqlen +
                                          coordInfo[runInfo2.taskIdMod3].kvSeqCoord;
                             }
-                            auto tensorInV = GetTile(
-                                tensorVWithLayout, tla::MakeCoord(kCoord, nCoord),
-                                tla::MakeShape(kShape, this->constInfo.embed));
+                            auto tensorInV = GetTile(tensorVWithLayout, tla::MakeCoord(kCoord, nCoord),
+                                                     tla::MakeShape(kShape, this->constInfo.embed));
                             auto actualShape =
                                 tla::MakeShape(runInfo2.qSeqRealSize, embedTemplateType, runInfo2.kvSeqRealSize);
                             auto tensorInTableV = tensorTable[runInfo2.blockTableOffset];
-                            blockMmadMmadPV(
-                                mm2AL1Tensor, tensorInV, mm2OutTensor, tensorInTableV, actualShape, taskIdMod2,
-                                this->constInfo.blockSize);
+                            blockMmadMmadPV(mm2AL1Tensor, tensorInV, mm2OutTensor, tensorInTableV, actualShape,
+                                            taskIdMod2, this->constInfo.blockSize);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(
                                 SYNC_C2_V2_FLAG[runInfo2.taskIdMod2]); // fixpip将结果搬运到UB后，设置SYNC_C2_V2_FLAG
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(
@@ -457,10 +456,10 @@ public:
                     }
                     if (taskId > 2) {
                         if ASCEND_IS_AIV {
-                            RunInfo& runInfo3 = runInfo[(taskId + 1) & 3];
-                            auto& taskIdMod2 = runInfo3.taskIdMod2;
-                            auto& taskIdMod3 = runInfo3.taskIdMod3;
-                            auto& multiCoreIdxMod3 = runInfo3.multiCoreIdxMod3;
+                            RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
+                            auto &taskIdMod2 = runInfo3.taskIdMod2;
+                            auto &taskIdMod3 = runInfo3.taskIdMod3;
+                            auto &multiCoreIdxMod3 = runInfo3.multiCoreIdxMod3;
 
                             bool isFirstLoop = (runInfo3.kvSeqLoopCount == runInfo3.kvSeqLoopStartIdx) ? true : false;
                             bool isLastUpdate = (runInfo3.kvSeqLoopCount == runInfo3.kvSeqLoopLimit) ? true : false;
@@ -476,15 +475,14 @@ public:
                             int64_t kvHeadsOffset = runInfo3.kvHeadsOuterIdx * groupSize * embed;
                             int64_t embedOffset = runInfo3.groupIdx * embed;
 
-                            auto attenOutGmTile = GetTile(
-                                attentionOutGmWithLayout,
-                                tla::MakeCoord(
-                                    bOffset + qSeqOffset,
-                                    kvHeadsOffset + embedOffset), // batch * qSeqlen, kvHeads* groupSize * embed
-                                tla::MakeShape(runInfo3.halfQSeqRealSize, embedTemplateType));
-                            epilogueRescaleO(
-                                attenOutGmTile, expUb[taskIdMod3], sumUb[multiCoreIdxMod3], bmm2Tensor, isFirstLoop,
-                                isLastUpdate, MM2_RES_INTRA_EVENT[taskIdMod2]);
+                            auto attenOutGmTile =
+                                GetTile(attentionOutGmWithLayout,
+                                        tla::MakeCoord(
+                                            bOffset + qSeqOffset,
+                                            kvHeadsOffset + embedOffset), // batch * qSeqlen, kvHeads* groupSize * embed
+                                        tla::MakeShape(runInfo3.halfQSeqRealSize, embedTemplateType));
+                            epilogueRescaleO(attenOutGmTile, expUb[taskIdMod3], sumUb[multiCoreIdxMod3], bmm2Tensor,
+                                             isFirstLoop, isLastUpdate, MM2_RES_INTRA_EVENT[taskIdMod2]);
                         }
                     }
                     ++taskId;
@@ -525,9 +523,8 @@ private:
     CubeCoordInfo coordInfo[3];
 
     // =========================================== private functions ===========================================
-    CATLASS_DEVICE void SetRunInfo(
-        RunInfo& runInfo, RunParamStr& runParam, int64_t taskId, int64_t kvSeqLoopCount, int64_t kvSeqLoopLimit,
-        int64_t multiCoreInnerIdx)
+    CATLASS_DEVICE void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t kvSeqLoopCount,
+                                   int64_t kvSeqLoopLimit, int64_t multiCoreInnerIdx)
     {
         runInfo.kvSeqAxisStartIdx = runParam.kvSeqAxisLineStartIdx;
         runInfo.kvSeqLoopStartIdx = runParam.kvSeqLoopStartIdx;
@@ -554,7 +551,7 @@ private:
         runInfo.batchOuterIdx = runParam.batchOuterIdx;
     }
 
-    CATLASS_DEVICE void ComputeBmm1Tail(RunInfo& runInfo, RunParamStr& runParam)
+    CATLASS_DEVICE void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam)
     {
         // ------------------------qSeq Base Related---------------------------
         runInfo.qSeqRealSize = runParam.qSeqRealSize;
@@ -568,13 +565,13 @@ private:
         }
     }
 
-    CATLASS_DEVICE void CalcQSeqCoord(RunInfo& runInfo, ConstInfo& constInfo)
+    CATLASS_DEVICE void CalcQSeqCoord(RunInfo &runInfo, ConstInfo &constInfo)
     {
         // 计算qSeq方向偏移
         coordInfo[runInfo.taskIdMod3].qSeqCoord = runInfo.qSeqOuterAxisIdx * this->constInfo.qSeqlenBase;
     }
 
-    CATLASS_DEVICE void CalcKvSeqCoord(RunInfo& runInfo, ConstInfo& constInfo)
+    CATLASS_DEVICE void CalcKvSeqCoord(RunInfo &runInfo, ConstInfo &constInfo)
     {
         coordInfo[runInfo.taskIdMod3].kvSeqCoord =
             runInfo.kvSeqAxisStartIdx +
@@ -584,9 +581,8 @@ private:
 };
 
 template <class Dtype, bool enableMaskFlag = false, bool enablePaFlag = false>
-CATLASS_GLOBAL void FAInferTla(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables, GM_ADDR o, GM_ADDR actualQSeqlen,
-    GM_ADDR actualKvSeqlen, GM_ADDR tiling, GM_ADDR diagBuf)
+CATLASS_GLOBAL void FAInferTla(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables, GM_ADDR o,
+                               GM_ADDR actualQSeqlen, GM_ADDR actualKvSeqlen, GM_ADDR tiling, GM_ADDR diagBuf)
 {
     using ArchTag = Arch::Ascend950;
     using ElementQ = Dtype;
@@ -610,12 +606,11 @@ CATLASS_GLOBAL void FAInferTla(
     using L0TileShape = L1TileShape;
     // GEMM Block模块，实现Flash Attention Infer的Q * K^T
     using DispatchPolicyQK = Gemm::MmadFAIQK<ArchTag, enablePaFlag>;
-    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementQ, LayoutTagQ, ElementK, LayoutTagK, ElementS, LayoutTagS, void,
-        Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
+    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutTagQ, ElementK, LayoutTagK, ElementS,
+                                                         LayoutTagS, void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
     using TileMmadQK = Gemm::Tile::TileMmadTla<ArchTag, ElementQ, typename TileCopyQK::LayoutTagL1A>;
-    using BlockMmadQK = Gemm::Block::BlockMmadTla<
-        DispatchPolicyQK, L1TileShape, L0TileShape, ElementQ, ElementK, ElementS, void, TileCopyQK, TileMmadQK>;
+    using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShape, L0TileShape, ElementQ, ElementK,
+                                                  ElementS, void, TileCopyQK, TileMmadQK>;
 
     // Epilogue Block模块，实现Flash Attention Infer中当前S基块的softmax
     using DispatchPolicySoftmax = Epilogue::EpilogueAscend950FASoftmax<enableMaskFlag>;
@@ -627,12 +622,12 @@ CATLASS_GLOBAL void FAInferTla(
 
     // GEMM Block模块，实现Flash Attention Infer的P * V
     using DispatchPolicyPV = Gemm::MmadFAIPV<ArchTag, enablePaFlag>;
-    using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementP, LayoutTagP, ElementV, LayoutTagV, ElementOTmp, LayoutTagV, void,
-        Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
+    using TileCopyPV =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutTagP, ElementV, LayoutTagV, ElementOTmp, LayoutTagV,
+                                          void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
     using TileMmadPV = Gemm::Tile::TileMmadTla<ArchTag, ElementP, typename TileCopyPV::LayoutTagL1A>;
-    using BlockMmadPV = Gemm::Block::BlockMmadTla<
-        DispatchPolicyPV, L1TileShape, L0TileShape, ElementP, ElementV, ElementOTmp, void, TileCopyPV, TileMmadPV>;
+    using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShape, L0TileShape, ElementP, ElementV,
+                                                  ElementOTmp, void, TileCopyPV, TileMmadPV>;
 
     // Epilogue Block模块，实现Flash Attention Infer中当前O基块的更新
     using DispatchPolicyRescaleO = Epilogue::EpilogueAscend950FARescaleO;

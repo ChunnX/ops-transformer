@@ -1,5 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  * SageAttention2 MM1: standalone INT8 QK^T matmul kernel (Ascend950).
  *
  * Based on examples/51_ascend950_quant_matmul_per_group_per_block_tla pattern:
@@ -39,13 +45,13 @@ using namespace tla;
 // CLI options
 // ---------------------------------------------------------------------------
 struct Mm1Options {
-    uint32_t sq{0};      // query seqlen (M)
-    uint32_t sk{0};      // key seqlen (N)
-    uint32_t d{0};       // head dim (K)
+    uint32_t sq{0}; // query seqlen (M)
+    uint32_t sk{0}; // key seqlen (N)
+    uint32_t d{0};  // head dim (K)
     uint32_t deviceId{0};
     std::string dataPath = "../../examples/51_ascend950_quant_matmul_per_group_per_block_tla/data";
 
-    int Parse(int argc, const char** argv)
+    int Parse(int argc, const char **argv)
     {
         if (argc < 4) {
             printf("Usage: %s sq sk d [--device DEVICE_ID] [--datapath PATH]\n", argv[0]);
@@ -56,14 +62,17 @@ struct Mm1Options {
         d = atoi(argv[3]);
         for (int i = 4; i < argc; ++i) {
             std::string flag(argv[i]);
-            if (flag == "--device") { deviceId = atoi(argv[++i]); }
-            else if (flag == "--datapath") { dataPath = std::string(argv[++i]); }
+            if (flag == "--device") {
+                deviceId = atoi(argv[++i]);
+            } else if (flag == "--datapath") {
+                dataPath = std::string(argv[++i]);
+            }
         }
         return 0;
     }
 };
 
-static void Run(const Mm1Options& options)
+static void Run(const Mm1Options &options)
 {
     aclrtStream stream{nullptr};
     ACL_CHECK(aclInit(nullptr));
@@ -121,31 +130,31 @@ static void Run(const Mm1Options& options)
     golden::FillRandomData<float>(hostX1Scale, 0.0, 1.0);
     golden::FillRandomData<float>(hostX2Scale, 0.0, 1.0);
 
-    uint8_t* deviceA{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceA), sizeA, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceA{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceA), sizeA, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceB{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceB), sizeB, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceB{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceB), sizeB, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceX1Scale{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceX1Scale), sizeX1Scale, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceX1Scale{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceX1Scale), sizeX1Scale, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceX1Scale, sizeX1Scale, hostX1Scale.data(), sizeX1Scale, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceX2Scale{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceX2Scale), sizeX2Scale, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceX2Scale{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceX2Scale), sizeX2Scale, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceX2Scale, sizeX2Scale, hostX2Scale.data(), sizeX2Scale, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceC{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceC), sizeC, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceC{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceC), sizeC, ACL_MEM_MALLOC_HUGE_FIRST));
 
-    uint8_t* deviceBias{nullptr};
+    uint8_t *deviceBias{nullptr};
     if constexpr (!std::is_void_v<ElementBias>) {
-        ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceBias), sizeBias, ACL_MEM_MALLOC_HUGE_FIRST));
+        ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceBias), sizeBias, ACL_MEM_MALLOC_HUGE_FIRST));
     }
 
-    uint8_t* deviceWorkspace{nullptr};
+    uint8_t *deviceWorkspace{nullptr};
 
     // Get the number of cube cores of the current hardware
     auto aicCoreNum = platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
@@ -168,18 +177,17 @@ static void Run(const Mm1Options& options)
     auto layoutB = tla::MakeLayout<ElementB, LayoutTagB>(k, n);
     auto layoutC = tla::MakeLayout<ElementC, LayoutTagC>(m, n);
 
-    using TileCopy = Gemm::Tile::PackedTileCopyTlaToUB<
-        ArchTag, ElementA, LayoutTagA, ElementB, LayoutTagB, ElementC, LayoutTagC, ElementBias,
-        Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
-    using BlockMmad = Gemm::Block::BlockMmadTla<
-        DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, ElementBias, TileCopy>;
+    using TileCopy = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementA, LayoutTagA, ElementB, LayoutTagB, ElementC,
+                                                       LayoutTagC, ElementBias, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
+    using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC,
+                                                ElementBias, TileCopy>;
     using EpilogueDispatchPolicy = Epilogue::BlockEpiloguePertile;
-    using BlockEpilogue = Epilogue::Block::BlockEpilogue<
-        EpilogueDispatchPolicy, L0TileShape, ElementY, ElementC, ElementBias, Elementx1scale, Elementx2scale,
-        LayoutTagA, LayoutTagB>;
+    using BlockEpilogue =
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, L0TileShape, ElementY, ElementC, ElementBias,
+                                       Elementx1scale, Elementx2scale, LayoutTagA, LayoutTagB>;
 
-    uint32_t taskNum = CeilDiv(options.sq, tla::get<0>(L1TileShape{})) *
-                       CeilDiv(options.sk, tla::get<1>(L1TileShape{}));
+    uint32_t taskNum =
+        CeilDiv(options.sq, tla::get<0>(L1TileShape{})) * CeilDiv(options.sk, tla::get<1>(L1TileShape{}));
     uint32_t aicCoreUsed = min(aicCoreNum, taskNum);
 
     // Swizzle offset is 3 and direction is 1.
@@ -191,23 +199,22 @@ static void Run(const Mm1Options& options)
 
     using MatmulAdapter = Gemm::Device::DeviceGemm<MatmulKernel>;
 
-    MatmulKernel::Arguments arguments{
-        Catlass::GemmCoord(m, n, k),
-        deviceA,
-        layoutA,
-        deviceB,
-        layoutB,
-        deviceC,
-        layoutC,
-        deviceBias,
-        {deviceC, deviceX2Scale, deviceX1Scale, deviceBias, tla::get<0>(L0TileShape{}), tla::get<1>(L0TileShape{}),
-         tla::get<2>(L0TileShape{})}};
+    MatmulKernel::Arguments arguments{Catlass::GemmCoord(m, n, k),
+                                      deviceA,
+                                      layoutA,
+                                      deviceB,
+                                      layoutB,
+                                      deviceC,
+                                      layoutC,
+                                      deviceBias,
+                                      {deviceC, deviceX2Scale, deviceX1Scale, deviceBias, tla::get<0>(L0TileShape{}),
+                                       tla::get<1>(L0TileShape{}), tla::get<2>(L0TileShape{})}};
 
     MatmulAdapter matmulOp;
     matmulOp.CanImplement(arguments);
     sizeWorkspace = matmulOp.GetWorkspaceSize(arguments);
     if (sizeWorkspace > 0) {
-        ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceWorkspace), sizeWorkspace, ACL_MEM_MALLOC_HUGE_FIRST));
+        ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceWorkspace), sizeWorkspace, ACL_MEM_MALLOC_HUGE_FIRST));
     }
     matmulOp.Initialize(arguments, deviceWorkspace);
     matmulOp(stream, aicCoreUsed);
@@ -218,9 +225,8 @@ static void Run(const Mm1Options& options)
     ACL_CHECK(aclrtMemcpy(hostC.data(), sizeC, deviceC, sizeC, ACL_MEMCPY_DEVICE_TO_HOST));
 
     std::vector<float> hostGolden(lenC);
-    golden::QuantMatmulPergroupPerBlockDequant(
-        Catlass::GemmCoord(m, n, k), hostA, tagA, hostB, tagB, hostX1Scale, tagScalex1, hostX2Scale, tagScalex2,
-        hostGolden, tagC, gs, bs);
+    golden::QuantMatmulPergroupPerBlockDequant(Catlass::GemmCoord(m, n, k), hostA, tagA, hostB, tagB, hostX1Scale,
+                                               tagScalex1, hostX2Scale, tagScalex2, hostGolden, tagC, gs, bs);
 
     std::vector<uint64_t> errorIndices = golden::CompareData(hostC, hostGolden, k);
     if (errorIndices.empty()) {
@@ -246,7 +252,7 @@ static void Run(const Mm1Options& options)
     ACL_CHECK(aclFinalize());
 }
 
-int main(int argc, const char** argv)
+int main(int argc, const char **argv)
 {
     Mm1Options options;
     if (options.Parse(argc, argv) != 0) {

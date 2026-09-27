@@ -34,13 +34,21 @@ _VALID_ACCUMS = ("fp32", "fp32+fp32", "fp32+fp16")
 _LOG2E = 1.44269504
 
 
-def _validate_inputs(q, k, v, tensor_layout, qk_quant_gran, pv_accum_dtype, attn_mask) -> None:
+def _validate_inputs(
+    q, k, v, tensor_layout, qk_quant_gran, pv_accum_dtype, attn_mask
+) -> None:
     if tensor_layout not in _VALID_LAYOUTS:
-        raise ValueError(f"tensor_layout must be one of {_VALID_LAYOUTS}, got {tensor_layout}")
+        raise ValueError(
+            f"tensor_layout must be one of {_VALID_LAYOUTS}, got {tensor_layout}"
+        )
     if qk_quant_gran not in _VALID_GRANS:
-        raise ValueError(f"qk_quant_gran must be one of {_VALID_GRANS}, got {qk_quant_gran}")
+        raise ValueError(
+            f"qk_quant_gran must be one of {_VALID_GRANS}, got {qk_quant_gran}"
+        )
     if pv_accum_dtype not in _VALID_ACCUMS:
-        raise ValueError(f"pv_accum_dtype must be one of {_VALID_ACCUMS}, got {pv_accum_dtype}")
+        raise ValueError(
+            f"pv_accum_dtype must be one of {_VALID_ACCUMS}, got {pv_accum_dtype}"
+        )
     if attn_mask is not None:
         raise ValueError("attn_mask is not supported by sageattn_qk_int8_pv_fp8_asc")
     dtype = q.dtype
@@ -60,7 +68,9 @@ def _validate_inputs(q, k, v, tensor_layout, qk_quant_gran, pv_accum_dtype, attn
         _, sq, hq, d = q.shape
         _, sk, hkv, _ = k.shape
     if hq % hkv != 0:
-        raise ValueError(f"GQA requires num_qo_heads % num_kv_heads == 0, got {hq}/{hkv}")
+        raise ValueError(
+            f"GQA requires num_qo_heads % num_kv_heads == 0, got {hq}/{hkv}"
+        )
     if not (0 < d <= 128):
         raise ValueError(f"Unsupported head_dim: {d}")
 
@@ -95,11 +105,19 @@ def _smooth_k_and_correction(q, k, tensor_layout, return_lse, sm_scale):
     lse_correction = None
     if return_lse:
         if tensor_layout == "NHD":
-            lse_correction = torch.matmul(
-                q.transpose(1, 2), km_broadcast.transpose(1, 2).transpose(2, 3)
-            ).squeeze(-1).to(torch.float32)
+            lse_correction = (
+                torch.matmul(
+                    q.transpose(1, 2), km_broadcast.transpose(1, 2).transpose(2, 3)
+                )
+                .squeeze(-1)
+                .to(torch.float32)
+            )
         else:
-            lse_correction = torch.matmul(q, km_broadcast.transpose(2, 3)).squeeze(-1).to(torch.float32)
+            lse_correction = (
+                torch.matmul(q, km_broadcast.transpose(2, 3))
+                .squeeze(-1)
+                .to(torch.float32)
+            )
     return km, lse_correction
 
 
@@ -124,11 +142,13 @@ def sageattn_qk_int8_pv_fp8_asc(
     head_dim_og = q.size(-1)
     q, k, v, head_dim_og = _pad_head_dim(q, k, v)
     if sm_scale is None:
-        sm_scale = head_dim_og ** -0.5
+        sm_scale = head_dim_og**-0.5
 
     km, lse_correction = (None, None)
     if smooth_k:
-        km, lse_correction = _smooth_k_and_correction(q, k, tensor_layout, return_lse, sm_scale)
+        km, lse_correction = _smooth_k_and_correction(
+            q, k, tensor_layout, return_lse, sm_scale
+        )
 
     # 对齐开源 core.py L797-803：仅 fp32+fp32 / fp32+fp16 忽略 smooth_v；fp32 下 smooth_v 生效
     if pv_accum_dtype in ("fp32+fp32", "fp32+fp16") and smooth_v:
@@ -140,17 +160,28 @@ def sageattn_qk_int8_pv_fp8_asc(
         q, k, km, tensor_layout=tensor_layout, qk_quant_gran=qk_quant_gran
     )
     v_fp8, v_scale, vm = quant_v_fp8(
-        v, tensor_layout=tensor_layout,
+        v,
+        tensor_layout=tensor_layout,
         scale_max=2.25 if pv_accum_dtype == "fp32+fp16" else 448.0,
         smooth_v=smooth_v,
     )
 
     o = torch.empty(q.size(), dtype=q.dtype, device=q.device)
     lse = backend.run_attn(
-        q_int8, k_int8, v_fp8, o, q_scale, k_scale, v_scale, vm,
-        tensor_layout=tensor_layout, is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran, sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype, return_lse=return_lse,
+        q_int8,
+        k_int8,
+        v_fp8,
+        o,
+        q_scale,
+        k_scale,
+        v_scale,
+        vm,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        qk_quant_gran=qk_quant_gran,
+        sm_scale=sm_scale,
+        pv_accum_dtype=pv_accum_dtype,
+        return_lse=return_lse,
         head_dim_og=head_dim_og,
     )
 
@@ -179,7 +210,9 @@ def sageattn(
     smooth_k = kwargs.pop("smooth_k", True)
     smooth_v = kwargs.pop("smooth_v", False)
     return sageattn_qk_int8_pv_fp8_asc(
-        q, k, v,
+        q,
+        k,
+        v,
         tensor_layout=tensor_layout,
         is_causal=is_causal,
         qk_quant_gran=qk_quant_gran,

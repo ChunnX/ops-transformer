@@ -49,7 +49,7 @@ struct Options {
     Options() = default;
 
     // Define function to parse the command-line arguments.
-    int Parse(int argc, const char** argv)
+    int Parse(int argc, const char **argv)
     {
         // The number of arguments must >= 7.
         if (argc < MIN_ARGS) {
@@ -85,13 +85,13 @@ struct Options {
     }
 };
 
-void AllocMem(uint8_t** host, uint8_t** device, size_t size)
+void AllocMem(uint8_t **host, uint8_t **device, size_t size)
 {
-    ACL_CHECK(aclrtMallocHost(reinterpret_cast<void**>(host), size));
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(device), size, ACL_MEM_MALLOC_HUGE_FIRST));
+    ACL_CHECK(aclrtMallocHost(reinterpret_cast<void **>(host), size));
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(device), size, ACL_MEM_MALLOC_HUGE_FIRST));
 }
 
-void FreeMem(uint8_t* host, uint8_t* device)
+void FreeMem(uint8_t *host, uint8_t *device)
 {
     ACL_CHECK(aclrtFreeHost(host));
     ACL_CHECK(aclrtFree(device));
@@ -99,7 +99,7 @@ void FreeMem(uint8_t* host, uint8_t* device)
 
 // Allocate several matrices in NPU device memory and call a
 // CATLASS FAI kernel.
-void Run(const Options& options)
+void Run(const Options &options)
 {
     aclrtStream stream{nullptr};
     ACL_CHECK(aclInit(nullptr));
@@ -141,21 +141,21 @@ void Run(const Options& options)
         return;
     }
 
-    void* qNtokens = nullptr;
-    uint8_t* qSeqHost{nullptr};
-    uint8_t* qSeqDevice{nullptr};
-    uint8_t* kvSeqHost{nullptr};
-    uint8_t* kvSeqDevice{nullptr};
-    uint8_t* qHost{nullptr};
-    uint8_t* qDevice{nullptr};
-    uint8_t* kHost{nullptr};
-    uint8_t* kDevice{nullptr};
-    uint8_t* vHost{nullptr};
-    uint8_t* vDevice{nullptr};
-    uint8_t* maskHost{nullptr};
-    uint8_t* maskDevice{nullptr};
-    uint8_t* blockTableHost{nullptr};
-    uint8_t* blockTableDevice{nullptr};
+    void *qNtokens = nullptr;
+    uint8_t *qSeqHost{nullptr};
+    uint8_t *qSeqDevice{nullptr};
+    uint8_t *kvSeqHost{nullptr};
+    uint8_t *kvSeqDevice{nullptr};
+    uint8_t *qHost{nullptr};
+    uint8_t *qDevice{nullptr};
+    uint8_t *kHost{nullptr};
+    uint8_t *kDevice{nullptr};
+    uint8_t *vHost{nullptr};
+    uint8_t *vDevice{nullptr};
+    uint8_t *maskHost{nullptr};
+    uint8_t *maskDevice{nullptr};
+    uint8_t *blockTableHost{nullptr};
+    uint8_t *blockTableDevice{nullptr};
 
     const auto cleanupAndFinalize = [&]() {
         if (qNtokens)
@@ -186,7 +186,7 @@ void Run(const Options& options)
         cleanupAndFinalize();
         return;
     }
-    int32_t numTokens = static_cast<int32_t*>(qNtokens)[0];
+    int32_t numTokens = static_cast<int32_t *>(qNtokens)[0];
 
     uint64_t seqArraySize = batch * sizeof(int64_t);
     uint64_t qoSize = (uint64_t)numTokens * (uint64_t)numHeads * (uint64_t)embeddingSize * sizeof(fp16_t);
@@ -257,19 +257,19 @@ void Run(const Options& options)
 
     // Allocate matrices in device memory for workspace.
     // One base workspace block contains 65536 elements.
-    uint8_t* oDevice{nullptr};
-    ACL_CHECK(aclrtMalloc((void**)(&oDevice), qoSize * 2, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *oDevice{nullptr};
+    ACL_CHECK(aclrtMalloc((void **)(&oDevice), qoSize * 2, ACL_MEM_MALLOC_HUGE_FIRST));
 
-    uint8_t* tilingDevice;
-    ACL_CHECK(aclrtMalloc((void**)(&tilingDevice), tilingSize, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *tilingDevice;
+    ACL_CHECK(aclrtMalloc((void **)(&tilingDevice), tilingSize, ACL_MEM_MALLOC_HUGE_FIRST));
 
     // [第六十一轮] 分配独立诊断 buffer（diagBuf，不被计算覆盖）
-    uint8_t* diagDevice{nullptr};
-    ACL_CHECK(aclrtMalloc((void**)&diagDevice, 4096, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *diagDevice{nullptr};
+    ACL_CHECK(aclrtMalloc((void **)&diagDevice, 4096, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemset(diagDevice, 4096, 0x7f, 4096));
 
     // get tiling
-    void* tilingHost = nullptr;
+    void *tilingHost = nullptr;
     ACL_CHECK(aclrtMallocHost(&tilingHost, tilingSize));
     uint32_t blockDim = aicCoreNum;
 
@@ -286,87 +286,103 @@ void Run(const Options& options)
 
     FATilingData faTilingData;
     FAInferTiling::GetFATilingParam(faInfo, blockDim, faTilingData);
-    tilingHost = reinterpret_cast<void*>(&faTilingData);
+    tilingHost = reinterpret_cast<void *>(&faTilingData);
 
     ACL_CHECK(aclrtMemcpy(tilingDevice, tilingSize, tilingHost, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE));
     for (int i = 0; i < 1; i++) {
         if (dataType == "half") {
             if (maskType > 0 && cacheMode == 0) {
-                FAInferTla<half, true, false><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<half, true, false><<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice,
+                                                                             blockTableDevice, oDevice, qSeqDevice,
+                                                                             kvSeqDevice, tilingDevice, diagDevice);
             } else if (maskType == 0 && cacheMode > 0) {
-                FAInferTla<half, false, true><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<half, false, true><<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice,
+                                                                             blockTableDevice, oDevice, qSeqDevice,
+                                                                             kvSeqDevice, tilingDevice, diagDevice);
             } else if (maskType > 0 && cacheMode > 0) {
-                FAInferTla<half, true, true><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<half, true, true><<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice,
+                                                                            blockTableDevice, oDevice, qSeqDevice,
+                                                                            kvSeqDevice, tilingDevice, diagDevice);
             } else {
-                FAInferTla<half, false, false><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<half, false, false><<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice,
+                                                                              blockTableDevice, oDevice, qSeqDevice,
+                                                                              kvSeqDevice, tilingDevice, diagDevice);
             }
         } else {
             if (maskType > 0 && cacheMode == 0) {
-                FAInferTla<bfloat16_t, true, false><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<bfloat16_t, true, false>
+                    <<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice,
+                                                    qSeqDevice, kvSeqDevice, tilingDevice, diagDevice);
             } else if (maskType == 0 && cacheMode > 0) {
-                FAInferTla<bfloat16_t, false, true><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<bfloat16_t, false, true>
+                    <<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice,
+                                                    qSeqDevice, kvSeqDevice, tilingDevice, diagDevice);
             } else if (maskType > 0 && cacheMode > 0) {
-                FAInferTla<bfloat16_t, true, true><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<bfloat16_t, true, true>
+                    <<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice,
+                                                    qSeqDevice, kvSeqDevice, tilingDevice, diagDevice);
             } else {
-                FAInferTla<bfloat16_t, false, false><<<blockDim, nullptr, stream>>>(
-                    qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice, qSeqDevice, kvSeqDevice,
-                    tilingDevice, diagDevice);
+                FAInferTla<bfloat16_t, false, false>
+                    <<<blockDim, nullptr, stream>>>(qDevice, kDevice, vDevice, maskDevice, blockTableDevice, oDevice,
+                                                    qSeqDevice, kvSeqDevice, tilingDevice, diagDevice);
             }
         }
         ACL_CHECK(aclrtSynchronizeStream(stream));
-    
-    // [第五十六轮] 核类型分布哨兵回读（q[0..191]——q 是只读输入，不会被 O 输出覆盖）
-    // q[0..63]=每核 g_coreType（1=AIC, 2=AIV）、q[64..127]=每核 blockIdx、q[128..191]=到达标记
-    {
-        int32_t diag[192];
-        ACL_CHECK(aclrtMemcpy(diag, 768, qDevice, 768, ACL_MEMCPY_DEVICE_TO_HOST));
-        std::cout << "[R56] coreType分布(q[0..63])=";
-        for (int i = 0; i < 64; ++i) { if (i % 16 == 0) std::cout << std::endl << "  "; std::cout << diag[i] << ","; }
-        std::cout << std::endl;
-        std::cout << "[R56] blockIdx分布(q[64..127])=";
-        for (int i = 64; i < 128; ++i) { if ((i - 64) % 16 == 0) std::cout << std::endl << "  "; std::cout << diag[i] << ","; }
-        std::cout << std::endl;
-        int arrive = 0;
-        for (int i = 128; i < 192; ++i) if (diag[i] == 0x55555555) arrive++;
-        std::cout << "[R56] 到达标记数(q[128..191])=" << arrive << "/64" << std::endl;
-    }
-    // [第五十七轮] 官方黄金对照回读：constInfo 关键值（q[192..203]）
-    {
-        int32_t ci[8];
-        ACL_CHECK(aclrtMemcpy(ci, 32, qDevice + 768, 32, ACL_MEMCPY_DEVICE_TO_HOST));  // q[192..203] offset=768
-        std::cout << "[R57-官方] batch=" << ci[0] << " qHeads=" << ci[1] << " kvHeads=" << ci[2]
-                  << " coreNum=" << ci[3] << " bnAxisStartIdx=" << ci[4]
-                  << " bnAxisEndIdx=" << ci[5] << " mcInnerLimit=" << ci[6]
-                  << " blockIdx=" << ci[7] << std::endl;
-    }
-    // [第五十九轮] 官方每核 slot 分布回读（o 前 768 字节：o[0..63]=类型 / o[64..127]=blockIdx / o[128..191]=到达标记）
-    {
-        int32_t d[192];
-        ACL_CHECK(aclrtMemcpy(d, 768, diagDevice, 768, ACL_MEMCPY_DEVICE_TO_HOST));
-        int aicCount = 0, aivCount = 0, arrivedCount = 0;
-        std::cout << "[R59-官方] 核调度分布（slot=GetBlockIdx()%64）:" << std::endl;
-        for (int i = 0; i < 64; ++i) {
-            if (d[i] == 1) { aicCount++; std::cout << "  slot" << i << ": AIC(type=1) blockIdx=" << d[64 + i] << std::endl; }
-            else if (d[i] == 2) { aivCount++; std::cout << "  slot" << i << ": AIV(type=2) blockIdx=" << d[64 + i] << std::endl; }
-            if (d[128 + i] == (int32_t)0x77777777) arrivedCount++;
+
+        // [第五十六轮] 核类型分布哨兵回读（q[0..191]——q 是只读输入，不会被 O 输出覆盖）
+        // q[0..63]=每核 g_coreType（1=AIC, 2=AIV）、q[64..127]=每核 blockIdx、q[128..191]=到达标记
+        {
+            int32_t diag[192];
+            ACL_CHECK(aclrtMemcpy(diag, 768, qDevice, 768, ACL_MEMCPY_DEVICE_TO_HOST));
+            std::cout << "[R56] coreType分布(q[0..63])=";
+            for (int i = 0; i < 64; ++i) {
+                if (i % 16 == 0)
+                    std::cout << std::endl << "  ";
+                std::cout << diag[i] << ",";
+            }
+            std::cout << std::endl;
+            std::cout << "[R56] blockIdx分布(q[64..127])=";
+            for (int i = 64; i < 128; ++i) {
+                if ((i - 64) % 16 == 0)
+                    std::cout << std::endl << "  ";
+                std::cout << diag[i] << ",";
+            }
+            std::cout << std::endl;
+            int arrive = 0;
+            for (int i = 128; i < 192; ++i)
+                if (diag[i] == 0x55555555)
+                    arrive++;
+            std::cout << "[R56] 到达标记数(q[128..191])=" << arrive << "/64" << std::endl;
         }
-        std::cout << "[R59-官方] 汇总: AIC核=" << aicCount << " AIV核=" << aivCount
-                  << " 到达operator()=" << arrivedCount << std::endl;
-    }
+        // [第五十七轮] 官方黄金对照回读：constInfo 关键值（q[192..203]）
+        {
+            int32_t ci[8];
+            ACL_CHECK(aclrtMemcpy(ci, 32, qDevice + 768, 32, ACL_MEMCPY_DEVICE_TO_HOST)); // q[192..203] offset=768
+            std::cout << "[R57-官方] batch=" << ci[0] << " qHeads=" << ci[1] << " kvHeads=" << ci[2]
+                      << " coreNum=" << ci[3] << " bnAxisStartIdx=" << ci[4] << " bnAxisEndIdx=" << ci[5]
+                      << " mcInnerLimit=" << ci[6] << " blockIdx=" << ci[7] << std::endl;
+        }
+        // [第五十九轮] 官方每核 slot 分布回读（o 前 768 字节：o[0..63]=类型 / o[64..127]=blockIdx /
+        // o[128..191]=到达标记）
+        {
+            int32_t d[192];
+            ACL_CHECK(aclrtMemcpy(d, 768, diagDevice, 768, ACL_MEMCPY_DEVICE_TO_HOST));
+            int aicCount = 0, aivCount = 0, arrivedCount = 0;
+            std::cout << "[R59-官方] 核调度分布（slot=GetBlockIdx()%64）:" << std::endl;
+            for (int i = 0; i < 64; ++i) {
+                if (d[i] == 1) {
+                    aicCount++;
+                    std::cout << "  slot" << i << ": AIC(type=1) blockIdx=" << d[64 + i] << std::endl;
+                } else if (d[i] == 2) {
+                    aivCount++;
+                    std::cout << "  slot" << i << ": AIV(type=2) blockIdx=" << d[64 + i] << std::endl;
+                }
+                if (d[128 + i] == (int32_t)0x77777777)
+                    arrivedCount++;
+            }
+            std::cout << "[R59-官方] 汇总: AIC核=" << aicCount << " AIV核=" << aivCount
+                      << " 到达operator()=" << arrivedCount << std::endl;
+        }
         // Copy the result from device to host
         vector<fp16_t> oHostHalf(qoSize / sizeof(fp16_t));
         vector<op::bfloat16> oHostBf16(qoSize / sizeof(op::bfloat16));
@@ -417,7 +433,7 @@ void Run(const Options& options)
 
 /// Entry point to mla example.
 
-int main(int argc, const char** argv)
+int main(int argc, const char **argv)
 {
     Options options;
     if (options.Parse(argc, argv) != 0) {

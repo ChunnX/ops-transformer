@@ -27,16 +27,16 @@ public:
     uint8_t attenMaskCompressMode; // SPARSE_MODE_NO_MASK: 0, SPARSE_MODE_LEFT_UP: 1, SPARSE_MODE_RIGHT_DOWN : 2
 
     // ---- SageAttention2 量化参数（INT8 QK + FP8 PV）----
-    uint8_t qkQuantGran;    // 0=per_warp, 1=per_thread（AscendC 无同名内置，自研分块映射）
-    uint8_t pvAccumDtype;   // 0=fp32, 1=fp32+fp32, 2=fp32+fp16（默认）
-    uint8_t smoothKFlag;    // 1 表示对 K 减均值（outlier smoothing）
-    uint8_t smoothVFlag;    // 1 表示对 V 减均值（fp32+fp32/fp32+fp16 下被忽略）
-    uint8_t returnLseFlag;  // 1 表示输出 softmax LSE [B, Hq, Sq]
-    uint16_t headDimOg;     // 输出裁回 pad 前 head_dim
-    uint32_t qScaleGroups;  // Q scale 组数（per_thread: ceil(Sq/32)*8；per_warp: ceil(Sq/32)）
-    uint32_t kScaleGroups;  // K scale 组数（per_thread: ceil(Sk/64)*4；per_warp: ceil(Sk/64)）
-    float vScaleMax;        // fp32+fp16=2.25，其余=448.0
-    float quantEps;         // 1e-7（scale = max|x|/127 + eps）
+    uint8_t qkQuantGran;   // 0=per_warp, 1=per_thread（AscendC 无同名内置，自研分块映射）
+    uint8_t pvAccumDtype;  // 0=fp32, 1=fp32+fp32, 2=fp32+fp16（默认）
+    uint8_t smoothKFlag;   // 1 表示对 K 减均值（outlier smoothing）
+    uint8_t smoothVFlag;   // 1 表示对 V 减均值（fp32+fp32/fp32+fp16 下被忽略）
+    uint8_t returnLseFlag; // 1 表示输出 softmax LSE [B, Hq, Sq]
+    uint16_t headDimOg;    // 输出裁回 pad 前 head_dim
+    uint32_t qScaleGroups; // Q scale 组数（per_thread: ceil(Sq/32)*8；per_warp: ceil(Sq/32)）
+    uint32_t kScaleGroups; // K scale 组数（per_thread: ceil(Sk/64)*4；per_warp: ceil(Sk/64)）
+    float vScaleMax;       // fp32+fp16=2.25，其余=448.0
+    float quantEps;        // 1e-7（scale = max|x|/127 + eps）
 
     // PFA
     uint8_t isActualSeqLengthsNull;

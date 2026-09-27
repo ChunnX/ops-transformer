@@ -27,7 +27,9 @@ _INT8_MAX = 127.0
 _EPS = 1e-7
 
 
-def _group_scale_1d(src: torch.Tensor, groups: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def _group_scale_1d(
+    src: torch.Tensor, groups: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """src: [B, H, S, D]；groups: [S]（每行所属 scale 组）→ scale [B, H, G] = max|abs|/127+eps。"""
     b, h, s, d = src.shape
     g = int(groups.max().item()) + 1
@@ -44,7 +46,9 @@ def _group_scale_1d(src: torch.Tensor, groups: torch.Tensor) -> Tuple[torch.Tens
     for gi in range(g):
         mask = groups == gi
         sel = src[:, :, mask, :].float() / scale[:, :, gi, None, None]
-        x_int8[:, :, mask, :] = torch.where(sel >= 0, torch.floor(sel + 0.5), torch.ceil(sel - 0.5)).to(torch.int8)
+        x_int8[:, :, mask, :] = torch.where(
+            sel >= 0, torch.floor(sel + 0.5), torch.ceil(sel - 0.5)
+        ).to(torch.int8)
     return x_int8, scale
 
 
@@ -163,7 +167,9 @@ def quant_v_fp8(
     else:
         src = v_t.float()
 
-    v_scale = src.abs().amax(dim=reduce_dim, keepdim=True).clamp_min(_EPS) / scale_max  # [B,Hk,D,1]
+    v_scale = (
+        src.abs().amax(dim=reduce_dim, keepdim=True).clamp_min(_EPS) / scale_max
+    )  # [B,Hk,D,1]
     v_scale = v_scale + 1e-30  # avoid 0 later
     v_fp8 = (src / v_scale).clamp(-scale_max, scale_max).to(torch.float8_e4m3fn)
     v_scale = v_scale.squeeze(reduce_dim).contiguous()  # [B, Hk, D]

@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # ============================================================
 # perf_aclnn_path.py — aclnn 路径性能测试（最小可跑 / 方案 B）
 #
@@ -27,12 +34,12 @@ import sys
 
 # P-01~P-07 shape 定义 (B, H, S, D) —— 与 perf_benchmark.py 对齐
 SHAPES = [
-    ("P-01", 1, 32, 4096,  128, False, torch.float16),
-    ("P-02", 1, 32, 8192,  128, False, torch.float16),
-    ("P-03", 1, 32, 8192,  128, True,  torch.float16),
-    ("P-04", 2, 32, 8192,  128, False, torch.float16),
-    ("P-05", 1, 32, 4096,  128, False, torch.float16),  # GQA Hq=32/Hk=8
-    ("P-06", 1, 32, 4096,  128, False, torch.bfloat16),
+    ("P-01", 1, 32, 4096, 128, False, torch.float16),
+    ("P-02", 1, 32, 8192, 128, False, torch.float16),
+    ("P-03", 1, 32, 8192, 128, True, torch.float16),
+    ("P-04", 2, 32, 8192, 128, False, torch.float16),
+    ("P-05", 1, 32, 4096, 128, False, torch.float16),  # GQA Hq=32/Hk=8
+    ("P-06", 1, 32, 4096, 128, False, torch.bfloat16),
     ("P-07", 1, 32, 16384, 128, False, torch.float16),
 ]
 
@@ -61,8 +68,10 @@ def aclnn_sageattn_pv_py(q, k, v, is_causal=False):
     # MM1: INT8 QK^T (fp32 matmul 近似)
     s_mat = torch.matmul(q_f, k_f.transpose(-2, -1))
     if is_causal:
-        mask = torch.triu(torch.ones(s, s, device=q.device, dtype=torch.bool), diagonal=1)
-        s_mat = s_mat.masked_fill(mask, float('-inf'))
+        mask = torch.triu(
+            torch.ones(s, s, device=q.device, dtype=torch.bool), diagonal=1
+        )
+        s_mat = s_mat.masked_fill(mask, float("-inf"))
     # softmax
     p = torch.softmax(s_mat, dim=-1)
     # MM2: FP8 PV (fp32 matmul 近似)
@@ -74,11 +83,13 @@ def _resolve_v5():
     """探测 torch_npu 是否直接暴露 aclnnFusedInferAttentionScoreV5。"""
     try:
         from torch_npu import aclnnFusedInferAttentionScoreV5  # noqa
+
         return ("aclnnFusedInferAttentionScoreV5_top", aclnnFusedInferAttentionScoreV5)
     except Exception:
         pass
     try:
         from torch_npu._npu import aclnnFusedInferAttentionScoreV5  # noqa
+
         return ("aclnnFusedInferAttentionScoreV5_npu", aclnnFusedInferAttentionScoreV5)
     except Exception:
         pass
@@ -122,7 +133,11 @@ def bench_v5_fia(b, h, s, d, causal, dtype, is_gqa=False):
         torch.npu.synchronize()
         t1 = time.perf_counter()
         times.append((t1 - t0) * 1000)
-    return min(times), sum(times) / len(times), "npu_fused_infer_attention_score(fallback)"
+    return (
+        min(times),
+        sum(times) / len(times),
+        "npu_fused_infer_attention_score(fallback)",
+    )
 
 
 def bench_aclnn_sage(b, h, s, d, causal, dtype, is_gqa=False):
@@ -156,14 +171,16 @@ def main():
     print("=" * 80)
 
     v5_name, _ = _resolve_v5()
-    print(f"[probe] V5 direct import: {v5_name or 'FAIL -> fallback npu_fused_infer_attention_score'}")
+    print(
+        f"[probe] V5 direct import: {v5_name or 'FAIL -> fallback npu_fused_infer_attention_score'}"
+    )
 
     results = []
     all_pass = True
 
     for item in SHAPES:
         name, b, h, s, d, causal, dtype = item
-        is_gqa = (name == "P-05")
+        is_gqa = name == "P-05"
         dt_name = "BF16" if dtype == torch.bfloat16 else "FP16"
         cfg = f"B={b} H={h} S={s} D={d} {'causal' if causal else ''} {dt_name}{' GQA' if is_gqa else ''}"
         print(f"\n--- {name}: {cfg} ---")
@@ -179,7 +196,9 @@ def main():
 
         try:
             sage_min, sage_avg = bench_aclnn_sage(b, h, s, d, causal, dtype, is_gqa)
-            print(f"  ACLNN:min={sage_min:.2f}ms avg={sage_avg:.2f}ms [aclnn_sageattn_pv_py]")
+            print(
+                f"  ACLNN:min={sage_min:.2f}ms avg={sage_avg:.2f}ms [aclnn_sageattn_pv_py]"
+            )
         except Exception as e:
             print(f"  ACLNN:FAIL ({e})")
             results.append((name, cfg, v5_avg, None, None, False, str(e)))
@@ -198,20 +217,30 @@ def main():
     print("\n" + "=" * 80)
     print("汇总")
     print("=" * 80)
-    print(f"{'编号':<6} {'配置':<45} {'V5(ms)':<10} {'ACLNN(ms)':<10} {'Speedup':<10} {'判定':<6}")
+    print(
+        f"{'编号':<6} {'配置':<45} {'V5(ms)':<10} {'ACLNN(ms)':<10} {'Speedup':<10} {'判定':<6}"
+    )
     print("-" * 80)
     for name, cfg, v5, sage, sp, ok, err in results:
         if v5 is not None and sage is not None:
-            print(f"{name:<6} {cfg:<45} {v5:<10.2f} {sage:<10.2f} {sp:<10.2f} {'OK' if ok else 'X':<6}")
+            print(
+                f"{name:<6} {cfg:<45} {v5:<10.2f} {sage:<10.2f} {sp:<10.2f} {'OK' if ok else 'X':<6}"
+            )
         else:
-            print(f"{name:<6} {cfg:<45} {'ERR':<10} {'ERR':<10} {'N/A':<10} {'X':<6} {err[:20]}")
+            print(
+                f"{name:<6} {cfg:<45} {'ERR':<10} {'ERR':<10} {'N/A':<10} {'X':<6} {err[:20]}"
+            )
 
     passed_count = sum(1 for r in results if r[5])
     print(f"\n通过: {passed_count}/7")
     print(f"总体: {'ALL PASS' if all_pass else 'NOT ALL PASS'}")
     print("\n注意:")
-    print("  - V5 基线: 优先 aclnnFusedInferAttentionScoreV5; 不可用回退 npu_fused_infer_attention_score")
-    print("  - aclnn 路径: aclnn_sageattn_pv_py 为 Python 兜底入口 (C++ aclnn kernel 未接真 kernel)")
+    print(
+        "  - V5 基线: 优先 aclnnFusedInferAttentionScoreV5; 不可用回退 npu_fused_infer_attention_score"
+    )
+    print(
+        "  - aclnn 路径: aclnn_sageattn_pv_py 为 Python 兜底入口 (C++ aclnn kernel 未接真 kernel)"
+    )
     print("    数字等同 PyTorch 路径 (Plan B host 链), 诚实标注为兜底")
 
 

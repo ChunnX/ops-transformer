@@ -46,8 +46,8 @@ struct FAInfo {
 
     uint32_t maskType = SPARSE_MODE_NO_MASK;
     float scaleValue = 1.0;
-    int64_t* actualSeqLengths{nullptr};
-    int64_t* actualSeqLengthsKV{nullptr};
+    int64_t *actualSeqLengths{nullptr};
+    int64_t *actualSeqLengthsKV{nullptr};
 };
 
 template <typename T>
@@ -69,11 +69,10 @@ auto CalcTailSize(T num1, T num2) -> T
     return mod != 0 ? mod : num2;
 }
 
-inline void GetPreNextTokensLeftUp(
-    FATilingData& tilingData, int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp,
-    int64_t& nextTokensLeftUp)
+inline void GetPreNextTokensLeftUp(FATilingData &tilingData, int64_t actualSeqLength, int64_t actualSeqLengthKV,
+                                   int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
-    auto& baseParams = tilingData.inputParamsRegbase;
+    auto &baseParams = tilingData.inputParamsRegbase;
     int64_t preTokens = SPARSE_MODE_INT_MAX;
     int64_t nextTokens = SPARSE_MODE_INT_MAX;
     if (baseParams.attenMaskCompressMode == SPARSE_MODE_LEFT_UP) {
@@ -90,8 +89,8 @@ inline void GetPreNextTokensLeftUp(
 }
 
 // 函数内部不处理prefix逻辑，prefix场景下入参需自行传入actualSeqLengthKV + prefix
-inline void FixParamWithRowInvalid(
-    int64_t& actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp, int64_t& nextTokensLeftUp)
+inline void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
+                                   int64_t &nextTokensLeftUp)
 {
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
@@ -108,8 +107,8 @@ inline void FixParamWithRowInvalid(
     actualSeqLength -= preTokensError;
 }
 
-inline int64_t GetCutBlockNums(
-    int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token)
+inline int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter,
+                               int64_t token)
 {
     if (sInner == 0 || sOuter == 0) {
         return 0;
@@ -148,9 +147,9 @@ inline int64_t GetCutBlockNums(
     return blockNums;
 }
 
-inline int64_t GetCalcBlockNumsOneHead(
-    int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t sOuterSize, int64_t sInnerSize, int64_t preTokensLeftUp,
-    int64_t nextTokensLeftUp, bool isAttenMaskUsed)
+inline int64_t GetCalcBlockNumsOneHead(int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t sOuterSize,
+                                       int64_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp,
+                                       bool isAttenMaskUsed)
 {
     if (!isAttenMaskUsed) {
         int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
@@ -166,12 +165,11 @@ inline int64_t GetCalcBlockNumsOneHead(
         int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterSize);
         int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
         // Must meet this condition : pretoken + nexttoken > 0
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize), static_cast<int64_t>(sOuterSize),
-            nextTokensLeftUp);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize), static_cast<int64_t>(sOuterSize),
-            blockSeqLengthKV - blockSeqLength + preTokensLeftUp);
+        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
+                                           static_cast<int64_t>(sOuterSize), nextTokensLeftUp);
+        toCalcBlockNums -=
+            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
+                            static_cast<int64_t>(sOuterSize), blockSeqLengthKV - blockSeqLength + preTokensLeftUp);
         return toCalcBlockNums;
     }
 }
@@ -193,12 +191,11 @@ inline int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexE
 }
 
 // 对Batch/headNum/qSeqLen三根轴切多核策略,采用贪心切分,使得每个AI Core上的计算量尽可能均衡.
-inline void ComputeSplitNBSeq(
-    FATilingData& tilingData, uint32_t batchSize, const size_t tilingElementArrayLen,
-    std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV, int64_t sOuterSize,
-    int64_t sInnerSize, double coreWightTarget, uint32_t& curCore)
+inline void ComputeSplitNBSeq(FATilingData &tilingData, uint32_t batchSize, const size_t tilingElementArrayLen,
+                              std::vector<int64_t> &actualSeqLengths, std::vector<int64_t> &actualSeqLengthsKV,
+                              int64_t sOuterSize, int64_t sInnerSize, double coreWightTarget, uint32_t &curCore)
 {
-    auto& baseParams = tilingData.inputParamsRegbase;
+    auto &baseParams = tilingData.inputParamsRegbase;
     std::vector<uint32_t> bnAxisStartIdx(tilingElementArrayLen, 0U);
     std::vector<int64_t> qSeqAxisStartIdx(tilingElementArrayLen, 0L);
     int64_t curWeight = 0;
@@ -210,20 +207,18 @@ inline void ComputeSplitNBSeq(
             // 针对行无效情况修正actualseqlen
             int64_t preTokensLeftUp = 0;
             int64_t nextTokensLeftUp = 0;
-            GetPreNextTokensLeftUp(
-                tilingData, actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx], preTokensLeftUp,
-                nextTokensLeftUp);
+            GetPreNextTokensLeftUp(tilingData, actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx],
+                                   preTokensLeftUp, nextTokensLeftUp);
 
-            FixParamWithRowInvalid(
-                actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx], preTokensLeftUp, nextTokensLeftUp);
+            FixParamWithRowInvalid(actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx], preTokensLeftUp,
+                                   nextTokensLeftUp);
 
             int64_t outerBlockNums = (actualSeqLengths[batchIdx] + sOuterSize - 1) / sOuterSize;
             int64_t innerBlockNums = (actualSeqLengthsKV[batchIdx] + sInnerSize - 1) / sInnerSize;
             for (uint32_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
                 int64_t diff = static_cast<int64_t>(coreWightTarget * double(curCore + 1)) - curWeight;
-                int64_t sInnerIndexStart =
-                    -(preTokensLeftUp > 0 ? (preTokensLeftUp + sInnerSize - 1) / sInnerSize :
-                                            preTokensLeftUp / sInnerSize);
+                int64_t sInnerIndexStart = -(preTokensLeftUp > 0 ? (preTokensLeftUp + sInnerSize - 1) / sInnerSize :
+                                                                   preTokensLeftUp / sInnerSize);
                 int64_t sInnerIndexEnd = nextTokensLeftUp > 0 ? (nextTokensLeftUp + sInnerSize - 1) / sInnerSize :
                                                                 nextTokensLeftUp / sInnerSize;
 
@@ -249,17 +244,15 @@ inline void ComputeSplitNBSeq(
     bnAxisStartIdx[curCore + 1] = batchSize * baseParams.qHeads;
     qSeqAxisStartIdx[curCore + 1] = static_cast<int64_t>(lastQSeqOuterIdx);
 
-    std::copy(
-        std::begin(bnAxisStartIdx), std::end(bnAxisStartIdx),
-        std::begin(tilingData.multiCoreParamsRegbase.bnAxisStartIdx));
-    std::copy(
-        std::begin(qSeqAxisStartIdx), std::end(qSeqAxisStartIdx),
-        std::begin(tilingData.multiCoreParamsRegbase.sparseStartIdx));
+    std::copy(std::begin(bnAxisStartIdx), std::end(bnAxisStartIdx),
+              std::begin(tilingData.multiCoreParamsRegbase.bnAxisStartIdx));
+    std::copy(std::begin(qSeqAxisStartIdx), std::end(qSeqAxisStartIdx),
+              std::begin(tilingData.multiCoreParamsRegbase.sparseStartIdx));
 }
 
-inline void FillInputParams(const FAInfo& faInfo, FATilingData& tilingData)
+inline void FillInputParams(const FAInfo &faInfo, FATilingData &tilingData)
 {
-    auto& inputParams = tilingData.inputParamsRegbase;
+    auto &inputParams = tilingData.inputParamsRegbase;
     inputParams.batch = faInfo.batchSize;
     inputParams.qHeads = faInfo.numOfHeads;
     inputParams.kvHeads = faInfo.numOfKVHeads;
@@ -278,11 +271,10 @@ inline void FillInputParams(const FAInfo& faInfo, FATilingData& tilingData)
     inputParams.attenMaskKvSeqlen = static_cast<uint32_t>(faInfo.seqInnerSize);
 }
 
-inline void FillActualSeqLengths(
-    const FAInfo& faInfo, FATilingData& tilingData, std::vector<int64_t>& actualSeqLengths,
-    std::vector<int64_t>& actualSeqLengthsKV)
+inline void FillActualSeqLengths(const FAInfo &faInfo, FATilingData &tilingData, std::vector<int64_t> &actualSeqLengths,
+                                 std::vector<int64_t> &actualSeqLengthsKV)
 {
-    auto& inputParams = tilingData.inputParamsRegbase;
+    auto &inputParams = tilingData.inputParamsRegbase;
     int64_t batchSize = inputParams.batch;
     bool isActualSeqLengthsNull = (faInfo.actualSeqLengths == nullptr) ? true : false;
     bool isActualSeqLengthsKVNull = (faInfo.actualSeqLengthsKV == nullptr) ? true : false;
@@ -306,12 +298,12 @@ inline void FillActualSeqLengths(
     }
 }
 
-inline int32_t GetFATilingParam(const FAInfo& faInfo, uint32_t blockDim, FATilingData& faTilingData)
+inline int32_t GetFATilingParam(const FAInfo &faInfo, uint32_t blockDim, FATilingData &faTilingData)
 {
     // InputParamsRegbase处理
     FillInputParams(faInfo, faTilingData);
 
-    auto& inputParams = faTilingData.inputParamsRegbase;
+    auto &inputParams = faTilingData.inputParamsRegbase;
 
     int64_t batchSize = inputParams.batch;
     std::vector<int64_t> actualSeqLengths(batchSize);
@@ -330,14 +322,14 @@ inline int32_t GetFATilingParam(const FAInfo& faInfo, uint32_t blockDim, FATilin
         int64_t actualSeqLengthsTmp = actualSeqLengths[batchIdx];
         int64_t preTokensLeftUp = 0;
         int64_t nextTokensLeftUp = 0;
-        GetPreNextTokensLeftUp(
-            faTilingData, actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx], preTokensLeftUp, nextTokensLeftUp);
+        GetPreNextTokensLeftUp(faTilingData, actualSeqLengths[batchIdx], actualSeqLengthsKV[batchIdx], preTokensLeftUp,
+                               nextTokensLeftUp);
 
         FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV[batchIdx], preTokensLeftUp, nextTokensLeftUp);
 
-        totalBlockNumsOneHead += GetCalcBlockNumsOneHead(
-            actualSeqLengthsTmp, actualSeqLengthsKV[batchIdx], sOuterSize, sInnerSize, preTokensLeftUp,
-            nextTokensLeftUp, isAttenMaskUsed);
+        totalBlockNumsOneHead +=
+            GetCalcBlockNumsOneHead(actualSeqLengthsTmp, actualSeqLengthsKV[batchIdx], sOuterSize, sInnerSize,
+                                    preTokensLeftUp, nextTokensLeftUp, isAttenMaskUsed);
     }
 
     double coreWeightTarget = (double(totalBlockNumsOneHead * inputParams.qHeads) / double(blockDim));
@@ -345,9 +337,8 @@ inline int32_t GetFATilingParam(const FAInfo& faInfo, uint32_t blockDim, FATilin
 
     const size_t tilingElementArrayLen = MAX_CORE_NUM;
     uint32_t curIndx = 0;
-    ComputeSplitNBSeq(
-        faTilingData, batchSize, tilingElementArrayLen, actualSeqLengths, actualSeqLengthsKV, sOuterSize, sInnerSize,
-        coreWeightTarget, curIndx);
+    ComputeSplitNBSeq(faTilingData, batchSize, tilingElementArrayLen, actualSeqLengths, actualSeqLengthsKV, sOuterSize,
+                      sInnerSize, coreWeightTarget, curIndx);
 
     int64_t sInnerBlockNum = (inputParams.kvSeqlen + sInnerSize - 1) / sInnerSize;
     int64_t totalSize = (totalBlockNumsOneHead / sInnerBlockNum) * inputParams.qHeads;
@@ -370,8 +361,7 @@ inline int32_t GetFATilingParam(const FAInfo& faInfo, uint32_t blockDim, FATilin
     }
     int64_t totalBnAxis = batchSize * inputParams.qHeads;
     for (int32_t i = 0; i <= forcedCoreNum; i++) {
-        faTilingData.multiCoreParamsRegbase.bnAxisStartIdx[i] =
-            static_cast<uint32_t>(totalBnAxis * i / forcedCoreNum);
+        faTilingData.multiCoreParamsRegbase.bnAxisStartIdx[i] = static_cast<uint32_t>(totalBnAxis * i / forcedCoreNum);
         faTilingData.multiCoreParamsRegbase.sparseStartIdx[i] = 0;
     }
     faTilingData.multiCoreParamsRegbase.coreNum = forcedCoreNum;

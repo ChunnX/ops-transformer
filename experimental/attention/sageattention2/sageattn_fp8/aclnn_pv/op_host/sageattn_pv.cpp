@@ -1,8 +1,14 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  * aclnn 骨架：统一 FP8 PV 入口（与 PyTorch sageattn_qk_int8_pv_fp8_asc 语义对齐）
- * 参数映射：q/k/v, tensor_layout, is_causal, sm_scale, return_lse, qk_quant_gran, pv_accum_dtype, smooth_k, smooth_v, scale
- * 当前为骨架：host 校验 + tiling 结构 + kernel 调用占位（kernel 用 sageattn_fp8 产物，待 P1 修通后接）
+ * 参数映射：q/k/v, tensor_layout, is_causal, sm_scale, return_lse, qk_quant_gran, pv_accum_dtype, smooth_k, smooth_v,
+ * scale 当前为骨架：host 校验 + tiling 结构 + kernel 调用占位（kernel 用 sageattn_fp8 产物，待 P1 修通后接）
  */
 
 #include <cstring>
@@ -12,22 +18,22 @@
 
 // 参数结构体（与 PyTorch sageattn_qk_int8_pv_fp8_asc 对齐）
 struct SageAttnPvParams {
-    void* q;             // int8, [B,Hq,Sq,D]
-    void* k;             // int8, [B,Hk,Sk,D]
-    void* v;             // fp8 e4m3, [B,Hk,Sk,D]
-    void* qScale;        // float, [B,Hq,Sq,Ceil(D/128)]
-    void* kScale;        // float, [B,Hk,1,Ceil(D/128),Ceil(Sk,128)]
-    void* vScale;        // fp8 e8m0, [B,1,1,Sk/32,D]
-    void* o;             // half/bf16, [B,Hq,Sq,D] 输出
-    void* lse;           // float, [B,Hq,Sq] 可选输出
+    void *q;      // int8, [B,Hq,Sq,D]
+    void *k;      // int8, [B,Hk,Sk,D]
+    void *v;      // fp8 e4m3, [B,Hk,Sk,D]
+    void *qScale; // float, [B,Hq,Sq,Ceil(D/128)]
+    void *kScale; // float, [B,Hk,1,Ceil(D/128),Ceil(Sk,128)]
+    void *vScale; // fp8 e8m0, [B,1,1,Sk/32,D]
+    void *o;      // half/bf16, [B,Hq,Sq,D] 输出
+    void *lse;    // float, [B,Hq,Sq] 可选输出
     int32_t batch;
     int32_t qSeqlen;
     int32_t kvSeqlen;
-    int32_t numHeads;    // Hq
-    int32_t kvHeads;     // Hk
-    int32_t headSize;    // D
-    const char* tensorLayout;  // "BNSD" or "BSND"
-    const char* pvAccumDtype;  // "fp32+fp16" or "fp32+fp32"
+    int32_t numHeads;         // Hq
+    int32_t kvHeads;          // Hk
+    int32_t headSize;         // D
+    const char *tensorLayout; // "BNSD" or "BSND"
+    const char *pvAccumDtype; // "fp32+fp16" or "fp32+fp32"
     float smScale;
     bool returnLse;
 };
@@ -35,11 +41,10 @@ struct SageAttnPvParams {
 // 参数校验
 // 评审意见修复：q/k/v/o 指针仅在调用方真实传入张量时校验；
 // host 侧骨架/离线 tiling 调试模式下指针为占位 nullptr，不应因此判失败。
-static int ValidateParams(const SageAttnPvParams& params) {
-    const bool hasTensor = (params.q != nullptr || params.k != nullptr ||
-                            params.v != nullptr || params.o != nullptr);
-    if (hasTensor && (params.q == nullptr || params.k == nullptr ||
-                      params.v == nullptr || params.o == nullptr)) {
+static int ValidateParams(const SageAttnPvParams &params)
+{
+    const bool hasTensor = (params.q != nullptr || params.k != nullptr || params.v != nullptr || params.o != nullptr);
+    if (hasTensor && (params.q == nullptr || params.k == nullptr || params.v == nullptr || params.o == nullptr)) {
         std::cerr << "[ERROR] q/k/v/o must all be provided together" << std::endl;
         return -1;
     }
@@ -74,10 +79,11 @@ struct PvTilingData {
     float scaleValue;
     int32_t blockSize;
     int32_t maxBlockNumPerBatch;
-    float vScaleMax;  // fp32+fp16=2.25, 其余=448.0
+    float vScaleMax; // fp32+fp16=2.25, 其余=448.0
 };
 
-static int SetupTiling(const SageAttnPvParams& params, PvTilingData& tiling) {
+static int SetupTiling(const SageAttnPvParams &params, PvTilingData &tiling)
+{
     tiling.batch = params.batch;
     tiling.qSeqlen = params.qSeqlen;
     tiling.kvSeqlen = params.kvSeqlen;
@@ -101,25 +107,24 @@ static int SetupTiling(const SageAttnPvParams& params, PvTilingData& tiling) {
 //   mm1_qk_int8: QuantMatmulPerGroupPerBlockTla, 输入 q/k(int8) + qScale/kScale(float)
 //   mm2_pv_fp8:  MxMatmulTla, 输入 P(FP8) + V(FP8) + mxScaleP/mxScaleV(e8m0)
 //   组合: mm1 输出 S(fp16) → host/device softmax → P(FP8) → mm2 输出 O(fp16)
-static int InvokeKernel(const SageAttnPvParams& params, const PvTilingData& tiling) {
+static int InvokeKernel(const SageAttnPvParams &params, const PvTilingData &tiling)
+{
     // 量化 scale 完整性校验（INT8 QK + FP8 PV 必须带 scale）
     if (params.qScale == nullptr || params.kScale == nullptr || params.vScale == nullptr) {
-        std::cerr << "[ERROR] qScale/kScale/vScale must not be null (INT8 QK + FP8 PV 量化必需)"
-                  << std::endl;
+        std::cerr << "[ERROR] qScale/kScale/vScale must not be null (INT8 QK + FP8 PV 量化必需)" << std::endl;
         return -1;
     }
 
     // 打印完整 tiling（供 host 侧链路调试）
-    std::cout << "[aclnn] tiling: batch=" << tiling.batch << " sq=" << tiling.qSeqlen
-              << " sk=" << tiling.kvSeqlen << " Hq=" << tiling.numHeads
-              << " Hk=" << tiling.kvHeads << " D=" << tiling.headSize
+    std::cout << "[aclnn] tiling: batch=" << tiling.batch << " sq=" << tiling.qSeqlen << " sk=" << tiling.kvSeqlen
+              << " Hq=" << tiling.numHeads << " Hk=" << tiling.kvHeads << " D=" << tiling.headSize
               << " scale=" << tiling.scaleValue << " blockSize=" << tiling.blockSize
-              << " maxBlockPerBatch=" << tiling.maxBlockNumPerBatch
-              << " vScaleMax=" << tiling.vScaleMax << std::endl;
+              << " maxBlockPerBatch=" << tiling.maxBlockNumPerBatch << " vScaleMax=" << tiling.vScaleMax << std::endl;
     return 0;
 }
 
-int main(int argc, const char** argv) {
+int main(int argc, const char **argv)
+{
     if (argc < 6) {
         std::cout << "Usage: aclnn_sageattn_pv batch qSeqlen kvSeqlen numHeads kvHeads headSize" << std::endl;
         return -1;
@@ -155,11 +160,9 @@ int main(int argc, const char** argv) {
         return -1;
     }
 
-    std::cout << "[aclnn] SageAttn PV skeleton: batch=" << params.batch
-              << " sq=" << params.qSeqlen << " sk=" << params.kvSeqlen
-              << " Hq=" << params.numHeads << " Hk=" << params.kvHeads
-              << " D=" << params.headSize << " vScaleMax=" << tiling.vScaleMax
-              << " (kernel placeholder)" << std::endl;
+    std::cout << "[aclnn] SageAttn PV skeleton: batch=" << params.batch << " sq=" << params.qSeqlen
+              << " sk=" << params.kvSeqlen << " Hq=" << params.numHeads << " Hk=" << params.kvHeads
+              << " D=" << params.headSize << " vScaleMax=" << tiling.vScaleMax << " (kernel placeholder)" << std::endl;
 
     // kernel 调用占位
     int ret = InvokeKernel(params, tiling);

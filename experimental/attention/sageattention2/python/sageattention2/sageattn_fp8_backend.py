@@ -85,7 +85,11 @@ def _quantized_attention(
         v = v_fp8.repeat_interleave(reps, dim=1) if v_fp8.dim() >= 4 else v_fp8
         vs = v_scale.repeat_interleave(reps, dim=1) if v_scale.dim() >= 3 else v_scale
         # vm（smooth_v 均值）与 v_scale 走相同的 GQA 广播，保持 Hk -> Hq 维对齐
-        vm = vm.repeat_interleave(reps, dim=1) if vm is not None and vm.dim() >= 3 else vm
+        vm = (
+            vm.repeat_interleave(reps, dim=1)
+            if vm is not None and vm.dim() >= 3
+            else vm
+        )
     else:
         v = v_fp8
         vs = v_scale
@@ -110,7 +114,7 @@ def _quantized_attention(
 
     # ---- Causal mask ----
     if is_causal:
-        mask = torch.triu(torch.full_like(scores, float('-inf')), diagonal=1)
+        mask = torch.triu(torch.full_like(scores, float("-inf")), diagonal=1)
         scores = scores + mask
 
     # ---- Online softmax ----
@@ -172,8 +176,18 @@ def npu_attn(
 ) -> Optional[torch.Tensor]:
     """NPU kernel 执行入口 — 量化注意力计算（INT8 MM1 + FP8 MM2）。"""
     o_ref, lse = _quantized_attention(
-        q_int8, k_int8, v_fp8, q_scale, k_scale, v_scale, vm,
-        tensor_layout, is_causal, qk_quant_gran, sm_scale, return_lse,
+        q_int8,
+        k_int8,
+        v_fp8,
+        q_scale,
+        k_scale,
+        v_scale,
+        vm,
+        tensor_layout,
+        is_causal,
+        qk_quant_gran,
+        sm_scale,
+        return_lse,
         out_dtype=o.dtype,
     )
 

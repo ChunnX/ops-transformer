@@ -1,5 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  * SageAttention2 MM2: standalone FP8 PV matmul kernel (Ascend950).
  *
  * Based on examples/53_ascend950_fp8_mx_matmul pattern:
@@ -43,13 +49,13 @@ static const std::string kDataRoot = "../../sageattn_fp8/data/data";
 // CLI options
 // ---------------------------------------------------------------------------
 struct Mm2Options {
-    uint32_t sq{0};      // M: query seqlen
-    uint32_t d{0};       // N: head dim
-    uint32_t sk{0};      // K: key seqlen
+    uint32_t sq{0}; // M: query seqlen
+    uint32_t d{0};  // N: head dim
+    uint32_t sk{0}; // K: key seqlen
     uint32_t deviceId{0};
     std::string dataPath = kDataRoot;
 
-    int Parse(int argc, const char** argv)
+    int Parse(int argc, const char **argv)
     {
         if (argc < 4) {
             printf("Usage: %s sq d sk [--device DEVICE_ID] [--datapath PATH]\n", argv[0]);
@@ -60,16 +66,22 @@ struct Mm2Options {
         sk = atoi(argv[3]);
         for (int i = 4; i < argc; ++i) {
             std::string flag(argv[i]);
-            if (flag == "--device") { deviceId = atoi(argv[++i]); }
-            else if (flag == "--datapath") { dataPath = std::string(argv[++i]); }
+            if (flag == "--device") {
+                deviceId = atoi(argv[++i]);
+            } else if (flag == "--datapath") {
+                dataPath = std::string(argv[++i]);
+            }
         }
         return 0;
     }
 
-    Catlass::GemmCoord ProblemShape() const { return Catlass::GemmCoord(sq, d, sk); }
+    Catlass::GemmCoord ProblemShape() const
+    {
+        return Catlass::GemmCoord(sq, d, sk);
+    }
 };
 
-static void Run(const Mm2Options& options)
+static void Run(const Mm2Options &options)
 {
     aclrtStream stream{nullptr};
 
@@ -143,31 +155,31 @@ static void Run(const Mm2Options& options)
         return;
     }
 
-    uint8_t* deviceA{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceA), sizeA, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceA{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceA), sizeA, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceB{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceB), sizeB, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceB{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceB), sizeB, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceMxScaleA{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceMxScaleA), sizeMxScaleA, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceMxScaleA{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceMxScaleA), sizeMxScaleA, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceMxScaleA, sizeMxScaleA, hostMxScaleA.data(), sizeMxScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceMxScaleB{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceMxScaleB), sizeMxScaleB, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceMxScaleB{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceMxScaleB), sizeMxScaleB, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(deviceMxScaleB, sizeMxScaleB, hostMxScaleB.data(), sizeMxScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    uint8_t* deviceC{nullptr};
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceC), sizeC, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t *deviceC{nullptr};
+    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceC), sizeC, ACL_MEM_MALLOC_HUGE_FIRST));
 
-    uint8_t* deviceBias{nullptr};
+    uint8_t *deviceBias{nullptr};
     if constexpr (!std::is_void_v<ElementBias>) {
-        ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceBias), sizeBias, ACL_MEM_MALLOC_HUGE_FIRST));
+        ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceBias), sizeBias, ACL_MEM_MALLOC_HUGE_FIRST));
     }
 
-    uint8_t* deviceWorkspace{nullptr};
+    uint8_t *deviceWorkspace{nullptr};
 
     // Get the number of cube cores of the current hardware
     auto aicCoreNum = platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
@@ -184,15 +196,14 @@ static void Run(const Mm2Options& options)
     auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScale, LayoutTagB, true>(mxScaleK, n);
     auto layoutC = tla::MakeLayout<ElementC, LayoutTagC>(m, n);
 
-    using TileCopy = Gemm::Tile::PackedMxTileCopyTla<
-        ArchTag, ElementA, LayoutTagA, ElementB, LayoutTagB, ElementMxScale, decltype(layoutMxScaleA), ElementMxScale,
-        decltype(layoutMxScaleB), ElementC, LayoutTagC, ElementBias>;
-    using BlockMmad = Gemm::Block::BlockMmadTla<
-        DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, ElementBias, TileCopy>;
+    using TileCopy = Gemm::Tile::PackedMxTileCopyTla<ArchTag, ElementA, LayoutTagA, ElementB, LayoutTagB,
+                                                     ElementMxScale, decltype(layoutMxScaleA), ElementMxScale,
+                                                     decltype(layoutMxScaleB), ElementC, LayoutTagC, ElementBias>;
+    using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC,
+                                                ElementBias, TileCopy>;
     using BlockEpilogue = void;
 
-    uint32_t taskNum = CeilDiv(options.sq, tla::get<0>(L1TileShape{})) *
-                       CeilDiv(options.d, tla::get<1>(L1TileShape{}));
+    uint32_t taskNum = CeilDiv(options.sq, tla::get<0>(L1TileShape{})) * CeilDiv(options.d, tla::get<1>(L1TileShape{}));
     uint32_t aicCoreUsed = min(aicCoreNum, taskNum);
 
     // Swizzle offset is 3 and direction is 0.
@@ -211,7 +222,7 @@ static void Run(const Mm2Options& options)
     matmulOp.CanImplement(arguments);
     sizeWorkspace = matmulOp.GetWorkspaceSize(arguments);
     if (sizeWorkspace > 0) {
-        ACL_CHECK(aclrtMalloc(reinterpret_cast<void**>(&deviceWorkspace), sizeWorkspace, ACL_MEM_MALLOC_HUGE_FIRST));
+        ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&deviceWorkspace), sizeWorkspace, ACL_MEM_MALLOC_HUGE_FIRST));
     }
     matmulOp.Initialize(arguments, deviceWorkspace);
     matmulOp(stream, aicCoreUsed);
@@ -269,8 +280,8 @@ static void Run(const Mm2Options& options)
         }
         meanAbsErr /= static_cast<double>(hostC.size());
         double rmse = std::sqrt(sumSqErr / static_cast<double>(hostC.size()));
-        std::cout << "[loose] FP8 PV absErr: max=" << maxAbsErr << " mean=" << meanAbsErr
-                  << " rmse=" << rmse << " err>" << kAbsTol << "=" << looseErr << "/" << hostC.size()
+        std::cout << "[loose] FP8 PV absErr: max=" << maxAbsErr << " mean=" << meanAbsErr << " rmse=" << rmse << " err>"
+                  << kAbsTol << "=" << looseErr << "/" << hostC.size()
                   << (looseErr == 0 ? " -> PASS (kernel correct)" : " -> FAIL") << std::endl;
     }
 
@@ -291,7 +302,7 @@ static void Run(const Mm2Options& options)
     ACL_CHECK(aclFinalize());
 }
 
-int main(int argc, const char** argv)
+int main(int argc, const char **argv)
 {
     Mm2Options options;
     if (options.Parse(argc, argv) != 0) {

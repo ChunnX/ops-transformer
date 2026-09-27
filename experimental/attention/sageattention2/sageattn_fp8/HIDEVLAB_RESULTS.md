@@ -2483,7 +2483,7 @@ for (bnIdx = bnAxisStartIdx; bnIdx < bnAxisEndIdx; ++bnIdx)          // L314
 
 ### Step 1：官方样例真正运行（验证宏配置可行）
 - `python gen_data.py 1 128 128 1 1 64 0 0 0 half` 生成数据
-- 运行官方样例 `49_ascend950_flash_attention_infer 1 128 128 1 1 64 0 0 0 --dtype half` 
+- 运行官方样例 `49_ascend950_flash_attention_infer 1 128 128 1 1 64 0 0 0 --dtype half`
 - **结果：`Compare success.`（精度比对成功，exit=0）** ✅
 - **证明：宏互斥配置本身可行，官方样例能用 `if ASCEND_IS_AIC/AIV` 正常跑通**
 

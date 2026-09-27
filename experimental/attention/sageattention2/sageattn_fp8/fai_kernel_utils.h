@@ -41,15 +41,13 @@ struct FAIKernelParams {
     GM_ADDR actualKvSeqlen;
     GM_ADDR o;
     GM_ADDR tiling;
-    GM_ADDR diagBuf;  // [第六十一轮] 独立诊断 buffer（不被计算覆盖）
+    GM_ADDR diagBuf; // [第六十一轮] 独立诊断 buffer（不被计算覆盖）
     // Methods
     CATLASS_DEVICE
-    FAIKernelParams()
-    {}
+    FAIKernelParams() {}
     CATLASS_DEVICE
-    FAIKernelParams(
-        GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_, GM_ADDR actualQSeqlen_,
-        GM_ADDR actualKvSeqlen_, GM_ADDR o_, GM_ADDR tiling_, GM_ADDR diagBuf_)
+    FAIKernelParams(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_, GM_ADDR actualQSeqlen_,
+                    GM_ADDR actualKvSeqlen_, GM_ADDR o_, GM_ADDR tiling_, GM_ADDR diagBuf_)
         : q(q_),
           k(k_),
           v(v_),
@@ -181,8 +179,8 @@ CATLASS_DEVICE constexpr uint16_t Align(uint16_t data, uint16_t baseSize)
     return (data - 1) / baseSize * baseSize + baseSize;
 }
 
-CATLASS_DEVICE void ComputeParamBatch(
-    RunParamStr& runParam, const ConstInfo& constInfo, const AttenMaskInfo& attenMaskInfo)
+CATLASS_DEVICE void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
+                                      const AttenMaskInfo &attenMaskInfo)
 {
     runParam.actualQSeqSize = constInfo.qSeqlen;
     ;
@@ -191,8 +189,8 @@ CATLASS_DEVICE void ComputeParamBatch(
 }
 
 template <uint32_t qSeqlenTemplateType>
-CATLASS_DEVICE void ComputeQseqLoopInfo(
-    RunParamStr& runParam, const ConstInfo& constInfo, bool lastBN, int64_t nextQSeqAxisIdx)
+CATLASS_DEVICE void ComputeQseqLoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN,
+                                        int64_t nextQSeqAxisIdx)
 {
     constexpr int32_t qSeqlenBase = static_cast<int32_t>(qSeqlenTemplateType);
     int32_t qSeqLoopTimes = CeilDiv(runParam.actualQSeqSize, qSeqlenBase);
@@ -205,7 +203,7 @@ CATLASS_DEVICE void ComputeQseqLoopInfo(
 }
 
 template <uint32_t qSeqlenTemplateType>
-CATLASS_DEVICE void ComputeParamQSeq(RunParamStr& runParam, const ConstInfo& constInfo, uint32_t sOuterLoopIdx)
+CATLASS_DEVICE void ComputeParamQSeq(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx)
 {
     int64_t cubeSOuterOffset = sOuterLoopIdx * (uint32_t)qSeqlenTemplateType;
     if (runParam.actualQSeqSize == 0) {
@@ -223,7 +221,7 @@ CATLASS_DEVICE void ComputeParamQSeq(RunParamStr& runParam, const ConstInfo& con
 }
 
 template <uint32_t kvSeqlenTemplateType>
-CATLASS_DEVICE void ComputeKvSeqLoopInfo(RunParamStr& runParam, const ConstInfo& constInfo)
+CATLASS_DEVICE void ComputeKvSeqLoopInfo(RunParamStr &runParam, const ConstInfo &constInfo)
 {
     constexpr int32_t kvSeqlenBase = static_cast<int32_t>(kvSeqlenTemplateType);
     runParam.kvSeqAxisLineStartIdx = 0;
