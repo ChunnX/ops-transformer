@@ -233,13 +233,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitTilingData()
     kvSfaKernelConstInfo.combineHeadDim =
         (kvSfaKernelConstInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ? headDim + headDimRope : headDim;
 
+    // constInfo.syncC2V1 = SYNC_C2_V1_FLAG;
     kvSfaKernelConstInfo.preLoadNum = PRELOAD_NUM;
     kvSfaKernelConstInfo.nBufferMBaseSize = N_BUFFER_M_BASIC_SIZE;
     kvSfaKernelConstInfo.syncV0C1 = SYNC_V0_C1_FLAG;
     kvSfaKernelConstInfo.syncC1V1 = SYNC_C1_V1_FLAG;
     kvSfaKernelConstInfo.syncV1C2 = SYNC_V1_C2_FLAG;
     kvSfaKernelConstInfo.syncC2V2 = SYNC_C2_V2_FLAG;
-    // kvSfaKernelConstInfo.syncC2V1 = SYNC_C2_V1_FLAG;
     kvSfaKernelConstInfo.syncV1NupdateC2 = SYNC_V1_NUPDATE_C2_FLAG;
 }
 
@@ -842,6 +842,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ComputeMm2(const R
     uint32_t nBufferTail =
         kvSfaKernelRunInfo.actMBaseSize - (nBufferLoopTimes - 1) * kvSfaKernelConstInfo.nBufferMBaseSize;
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
+        // CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
         MSplitInfo kvSfaKernelSplitInfo;
         kvSfaKernelSplitInfo.nBufferStartM = i * kvSfaKernelConstInfo.nBufferMBaseSize;
         kvSfaKernelSplitInfo.nBufferDealM =
@@ -849,7 +850,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ComputeMm2(const R
         CrossCoreWaitFlag(kvSfaKernelConstInfo.syncV1C2);
         matmulService.ComputeMm2(kvSfaKernelRunInfo, kvSfaKernelSplitInfo);
         CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(kvSfaKernelConstInfo.syncC2V2);
-        // CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(kvSfaKernelConstInfo.syncC2V1);
     }
 }
 
@@ -889,7 +889,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::ProcessBalance()
     int gS1LoopEnd;
     bool globalLoopStart = true;
     if ASCEND_IS_AIC {
-        // CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(kvSfaKernelConstInfo.syncC2V1);
+        // CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
         if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
             CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE2>(3);
             CrossCoreSetFlag<ConstInfo::QSFA_SYNC_MODE2, PIPE_MTE2>(3);

@@ -630,7 +630,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
                                   16 :
                                   (BASE_BLOCK_MAX_ELEMENT_NUM / kvVecInfo.actualSingleProcessSInnerSizeAlign);
     // 1. 向下8对齐是因为UB操作至少32B
-    // 2. kvVecInfo.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
+    // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
     qsfaMSplitSize = qsfaMSplitSize >> 3U << 3U;
 
     if (qsfaMSplitSize > kvVecSplitInfo.vecDealM) {
@@ -1495,8 +1495,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowDivs(LocalTensor<float> dstU
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
-    // src0Ub:[kvDealRows, kvColumns], src1Ub:[kvDealRows, FP32_BLOCK_ELEMENT_NUM] dstUb:[kvDealRows,
-    // kvColumns]
+    // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
+    // columnCount]
     uint32_t qsfaDtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t qsfaDLoop = kvActualColumns / qsfaDtypeMask;
     uint32_t qsfaDRemain = kvActualColumns % qsfaDtypeMask;
@@ -1543,9 +1543,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, L
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
-    // src0Ub:[kvDealRows, kvColumns] src1Ub:[kvDealRows, FP32_BLOCK_ELEMENT_NUM] dstUb:[kvDealRows,
-    // kvColumns]
-    // kvDealRows is repeat times, must be less 256
+    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
+    // columnCount]
+    // dealRowCount is repeat times, must be less 256
     uint32_t qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM;
 
@@ -1590,7 +1590,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, L
             }
         }
 
-        // 最后一次完成[kvDealRows, dRemain] * [kvDealRows, blockElementNum] 只计算有效部分
+        // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
         if (qsfaDRemain > 0) {
             Mul(dstUb[qsfaDLoop * qsfaRepeatElementNum], src0Ub[qsfaDLoop * qsfaRepeatElementNum], src1Ub, qsfaDRemain,
                 kvDealRows, qsfaRepeatParams);

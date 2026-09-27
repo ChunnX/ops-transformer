@@ -73,7 +73,7 @@ __aicore__ inline T QSFAAlign(T num, T rnd)
 template <typename T>
 __aicore__ inline size_t BlockAlign(size_t s)
 {
-    if constexpr (IsSameType<T, int4b_t>::value) { // KV-SFA: tile params.
+    if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;
     }
     size_t n = (32 / sizeof(T));
@@ -113,7 +113,7 @@ struct RunInfo {
     uint32_t s2Size;
     uint32_t mSize;
     uint32_t mSizeV;
-    uint32_t mSizeVStart; // KV-SFA: output matmul.
+    uint32_t mSizeVStart;
     uint32_t tndIsS2SplitCore;
     uint32_t tndCoreStartKVSplitPos;
     bool isBmm2Output;

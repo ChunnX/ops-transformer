@@ -89,10 +89,9 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo 
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
-TEMPLATE_INTF // KV-SFA: sequence bounds (constInfo).
-    __aicore__ inline void
-    ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN, int64_t nextGs1Idx,
-                      int64_t gS1StartIdx)
+TEMPLATE_INTF
+__aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, bool lastBN,
+                                         int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
     runParam.gs1LoopStartIdx = gS1StartIdx;
     runParam.qSNumInOneBlock = 1; // qsfa 不切G轴, 计算每个基本块可以拷贝多少行s
@@ -208,7 +207,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
     }
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
-    return false; // KV-SFA: sequence bounds (ComputeParamS1).
+    return false;
 }
 
 TEMPLATE_INTF
@@ -245,7 +244,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.s2LineStartIdx = 0;
         runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount);
-    } else if (constInfo.sparseMode == sparseModeThree) { // KV-SFA: tile matmul.
+    } else if (constInfo.sparseMode == sparseModeThree) {
         runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2Size);
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(

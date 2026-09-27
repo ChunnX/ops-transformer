@@ -174,7 +174,6 @@ static std::string SFAToStringRaw(const gert::Shape &shape)
     return sfaShapeStream.str();
 }
 
-// 校验日志统一输出方括号形式的 shape。
 template <typename T>
 static std::string SFAGetShapeStr(const T &shape)
 {
