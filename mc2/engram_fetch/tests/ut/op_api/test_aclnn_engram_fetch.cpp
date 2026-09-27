@@ -173,8 +173,6 @@ TEST_F(AclnnEngramFetchTest, dav3510_nullptr_fetched)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    // WithNNopbaseInner 直连 inner: fetched 为空时可能死于 wrapper 参数检查 (161001/161002)、
-    // inner 运行时错误 (361001) 或内部错误 (561000), 均为拒绝, 皆可接受
     EXPECT_THAT(aclRet, testing::AnyOf(testing::Eq(ACLNN_ERR_PARAM_NULLPTR), testing::Eq(ACLNN_ERR_PARAM_INVALID),
                                        testing::Eq(ACLNN_ERR_RUNTIME_ERROR), testing::Eq(ACLNN_ERR_INNER)));
 }
