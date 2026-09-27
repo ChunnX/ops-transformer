@@ -4,181 +4,336 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
  * \file quant_grouped_matmul_all_to_all_v_hcomm_impl.h
- * \brief apace 库：QuantGroupedMatMulAlltoAllv MX(FP4/FP8) 路径 AIC 核内通信+计算融合实现。
+ * \brief AIC-only HCCL AllToAllV + Blaze MX GroupedMatMul implementation (GMM first, then comm).
  *
- * kernel 以 AIC_ONLY 任务类型部署（经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明，
- * 无 AIV 参与）：GMM 计算（复用 QuantGroupedMatmulMx / Blaze GroupedMatmulMxKernel）与
- * AllToAllV 通信均在 AIC 核执行——Blaze（cube 模板）与 AIV 侧 KFC 通信引擎在同一
- * kernel 实例中共存时，AIV 通信任务参数校验会失败，故通信改由 AIC 核内 Hccl 提交。
+ * 结构对齐镜像算子 allto_allv_quant_grouped_mat_mul 的 apace hcomm 实现（PR 11573）：
+ *   - 紧凑 tiling 数据（hcommGmmA2avTilingData）由 host 侧 PostTiling 直接覆写 tiling
+ *     buffer，kernel 经 GET_TILING_DATA_WITH_STRUCT 解析；
+ *   - 每批 Blaze GroupedMatmulMxKernel 以栈上局部对象构造（Init + Run 后即析构，
+ *     核内事件与 L1 状态随批干净重建）；
+ *   - SPARSE groupList 携带 expertId，B/scaleB 走 kernel 默认公式（weightIdx 索引专家维）。
  *
- * 工作流（后通信：GMM 计算 → AlltoAllV 发送）：
- *   1. AIC 核：hccl_.InitV2(GetHcclContext<0>(), &hcclInitTiling) + SetCcTilingV2(a2avCcTiling)
- *   2. AIC 核：GMM 计算（QuantGroupedMatmulMx）写出 gmmOutputGM（批内 rank-major 布局）
- *   3. AIC 核：核间同步后，核 0 下发 AlltoAllV（sendBuf=gmmOutputGM, recvBuf=yGM），
- *      核 0 Wait(handle)，其余核经 SyncAll 跟随
- *   4. End：核间同步后 hccl_.Finalize()
+ * 流水参考 gmm_a2av_scheduler.h 的批循环调度：批内 GMM 计算 → 核间同步 → 提交本批
+ * 非阻塞 AllToAllV（通信由引擎异步执行，与后续批次计算重叠）；共享专家在批循环后
+ * 执行（与末批通信重叠）；尾部统一 Wait 全部 handle → SyncAll → Finalize。
  */
 
 #ifndef APACE_QUANT_GROUPED_MATMUL_ALL_TO_ALL_V_HCOMM_IMPL_H__
 #define APACE_QUANT_GROUPED_MATMUL_ALL_TO_ALL_V_HCOMM_IMPL_H__
 
-#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
-#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/a2av_gmm_utils.h"
-#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/communication/a2av_comm_params.h"
-#include "quant_grouped_matmul_all_to_all_v_impl.h"
+#include "lib/hccl/hccl.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
+#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
+#include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
+#include "apace/kernel/matmul/grouped_matmul/grouped_matmul_mx_kernel.h"
+#include "quant_grouped_matmul_all_to_all_v_tiling_data.h"
 
 namespace Apace {
 
-using namespace AscendC;
-using namespace MC2KernelTemplate;
+template <typename T>
+constexpr AscendC::HcclDataType GetGmmA2avYHcclDataType()
+{
+    if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
+        return AscendC::HCCL_DATA_TYPE_BFP16;
+    } else {
+        return AscendC::HCCL_DATA_TYPE_FP16;
+    }
+}
 
-template <int commMode>
-struct HcclServerTypeSelector {
-    using type = AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>;
-};
-
-template <>
-struct HcclServerTypeSelector<1> {
-    using type = AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU>;
-};
-
-template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
-          CubeFormat wFormat, bool aTrans, bool bTrans, bool isLocal, int CommMode>
+template <typename AType, typename BType, typename CType, bool TransB, bool TransMmB,
+          AscendC::HcclServerType ServerType>
 class QuantGmmA2avHcommImpl {
 public:
-    using HcclType = typename HcclServerTypeSelector<CommMode>::type;
-    using ComputeOp = QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType, wFormat,
-                                           aTrans, bTrans, isLocal, false>;
+    explicit __aicore__ inline QuantGmmA2avHcommImpl(hcommGmmA2avTilingData *tilingData)
+        : tilingData_(tilingData)
+    {}
 
-    __aicore__ inline QuantGmmA2avHcommImpl() {}
-
-    __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM,
-                                GM_ADDR gmmOutputGM, GM_ADDR yGM, GM_ADDR workspaceGM, const TilingDataType *tilingData,
-                                const GmmTilingDataType *gmmTilingData, MC2_TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe)
+    __aicore__ inline void Init(GM_ADDR gmmX, GM_ADDR gmmXScale, GM_ADDR gmmWeight, GM_ADDR gmmWeightScale, GM_ADDR mmX,
+                                GM_ADDR mmXScale, GM_ADDR mmWeight, GM_ADDR mmWeightScale, GM_ADDR mmY, GM_ADDR y,
+                                GM_ADDR workspace, GM_ADDR tilingGM)
     {
-        gmmOutputGM_ = gmmOutputGM;
-        yGM_ = yGM;
-        tilingData_ = tilingData;
-        hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->hcclA2avTiling.hcclInitTiling));
-        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingDataType, hcclA2avTiling)) +
-                            static_cast<uint64_t>(offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling)));
-        computeOp_.Init(xGM, weightGM, xScaleGM, weightScaleGM, gmmOutputGM, workspaceGM, tilingData, gmmTilingData,
-                        gmmArrayAddrIn, tPipe);
+        xGM_ = gmmX;
+        xScaleGM_ = gmmXScale;
+        weightGM_ = gmmWeight;
+        weightScaleGM_ = gmmWeightScale;
+        yGM_ = y;
+        mmXGM_ = mmX;
+        mmXScaleGM_ = mmXScale;
+        mmWeightGM_ = mmWeight;
+        mmWeightScaleGM_ = mmWeightScale;
+        mmYGM_ = mmY;
+        // apace 通路 userWorkspace 仅承载 GMM 输出缓冲（sendBuf），C 偏移表紧随其后
+        gmmOutputGM_ = workspace;
+        cGroupOffsetTableGM_ = workspace + tilingData_->cTableOffset;
+        sparseGroupListGM_ = tilingGM + offsetof(hcommGmmA2avTilingData, sparseGroupList);
+        mmGroupListGM_ = tilingGM + offsetof(hcommGmmA2avTilingData, mmGroupList);
+
+        hccl_.InitV2(AscendC::GetHcclContext<0>(), &tilingData_->mc2InitTiling);
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommGmmA2avTilingData, mc2CcTiling)));
     }
 
-    __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void Run()
     {
-        computeOp_.Process(startExpertIdx, expertNum);
-        // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信
-        AscendC::SyncAll();
-        // 全核直接提交（非阻塞，无需等待上一批）：通信由 AICPU/CCU 引擎异步执行，
-        // 不占用 AIC 核，各批通信在引擎侧排队执行，与本核后续批次的 GMM 重叠推进；
-        // Hccl 内部 workingFlag_ 门控：仅 block0 写参数/敲 doorbell，各核获得一致 handle
-        a2avHandles_[submitted_] = CommitAlltoAllV(startExpertIdx, expertNum);
-        submitted_++;
-        // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再进入下一批，
-        // 保证 commParams_ 参数数组被下一批复用时的写入有序
-        AscendC::PipeBarrier<PIPE_ALL>();
-    }
+        uint64_t tokenPrefix = 0;
+        for (uint32_t batch = 0; batch < tilingData_->batchCount; ++batch) {
+            const uint64_t batchTokens = GetBatchTokenCount(batch);
+            if (batchTokens != 0) {
+                RunBatchMatmul(batch, tokenPrefix);
+            }
+            // AIC 核间同步：本批 sendBuf 多核写全部落 GM 后才可提交通信；
+            // 空批也照常提交，保证各 rank 集合通信次数对齐
+            AscendC::SyncAll();
+            SubmitBatchComm(batch, tokenPrefix);
+            // 排空本核数据搬移管线（含 block0 侧参数区拷贝）后再复用参数数组
+            AscendC::PipeBarrier<PIPE_ALL>();
+            tokenPrefix += batchTokens;
+        }
 
-    __aicore__ inline void End()
-    {
-        // 尾部统一等待全部批次完成（全核，按提交顺序）→ 核间汇聚 → Finalize
-        // （须有提交才可调用，零提交时 Finalize 内部 handleId=-1 越界死循环）
+        if (tilingData_->localMatmul != 0U) {
+            RunLocalMatmul();
+        }
+
         for (uint32_t i = 0U; i < submitted_; ++i) {
             hccl_.Wait(a2avHandles_[i]);
         }
         AscendC::SyncAll();
-        if (submitted_ > 0U) {
-            hccl_.Finalize();
-        }
+        hccl_.Finalize();
     }
 
 private:
-    __aicore__ inline AscendC::HcclDataType GetHcclDataType()
+    static constexpr uint64_t GROUP_LIST_TYPE_OFFSET = 0U;
+    static constexpr uint64_t GROUP_LIST_TYPE_SPARSE = 2U;
+    static constexpr AscendC::HcclDataType Y_HCCL_DATA_TYPE = GetGmmA2avYHcclDataType<CType>();
+
+    using LayoutA = asc::te::nd_ext_layout_ptn;
+    using LayoutB = AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
+    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
+                                                    float, LayoutBias>;
+    using GmmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
+
+    using MmLayoutB = AscendC::Std::conditional_t<TransMmB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
+    using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType, LayoutC,
+                                                      float, LayoutBias>;
+    using MmKernel = Blaze::Gemm::Kernel::GroupedMatmulMxKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
+
+    __aicore__ inline uint32_t GetBatchExpertNum(uint32_t batch) const
     {
-        if constexpr (AscendC::IsSameType<yType, bfloat16_t>::value) {
-            return AscendC::HCCL_DATA_TYPE_BFP16;
-        } else {
-            return AscendC::HCCL_DATA_TYPE_FP16;
+        const uint32_t start = batch * tilingData_->batchExpertNum;
+        return (start + tilingData_->batchExpertNum > tilingData_->expertNum) ? tilingData_->expertNum - start :
+                                                                                tilingData_->batchExpertNum;
+    }
+
+    __aicore__ inline uint64_t GetBatchTokenCount(uint32_t batch) const
+    {
+        uint64_t tokens = 0;
+        const uint32_t groupNum = GetBatchExpertNum(batch) * tilingData_->rankSize;
+        const uint32_t firstGroup = batch * tilingData_->batchExpertNum * tilingData_->rankSize;
+        for (uint32_t g = 0; g < groupNum; ++g) {
+            tokens += static_cast<uint64_t>(tilingData_->sparseGroupList[(firstGroup + g) * 2U + 1U]);
+        }
+        return tokens;
+    }
+
+    __aicore__ inline void BuildCGroupOffsetTable(uint32_t batch, uint32_t expertNum)
+    {
+        // C 批内 rank-major 物理布局（元素偏移，相对本批 C 基址）：
+        //   group(jj, r) 偏移 = rankBase[r] + Σ_{jj'<jj} cnt(jj', r) * n
+        // 全核冗余写相同值（与原路由专家实现一致），无需核间同步
+        const uint32_t rankSize = tilingData_->rankSize;
+        const uint32_t n = tilingData_->n;
+        const uint32_t firstGroup = batch * tilingData_->batchExpertNum * rankSize;
+        __gm__ uint64_t *cTable = reinterpret_cast<__gm__ uint64_t *>(cGroupOffsetTableGM_);
+
+        uint64_t rankTotal[GMM_A2AV_MAX_RANK_NUM] = {0};
+        for (uint32_t jj = 0; jj < expertNum; ++jj) {
+            for (uint32_t r = 0; r < rankSize; ++r) {
+                rankTotal[r] +=
+                    static_cast<uint64_t>(tilingData_->sparseGroupList[(firstGroup + jj * rankSize + r) * 2U + 1U]);
+            }
+        }
+        uint64_t expertRunning[GMM_A2AV_MAX_RANK_NUM] = {0};
+        for (uint32_t r = 1; r < rankSize; ++r) {
+            expertRunning[r] = expertRunning[r - 1] + rankTotal[r - 1] * n;
+        }
+        for (uint32_t jj = 0; jj < expertNum; ++jj) {
+            for (uint32_t r = 0; r < rankSize; ++r) {
+                const uint32_t groupIdx = jj * rankSize + r;
+                cTable[groupIdx] = expertRunning[r];
+                expertRunning[r] +=
+                    static_cast<uint64_t>(tilingData_->sparseGroupList[(firstGroup + groupIdx) * 2U + 1U]) * n;
+            }
         }
     }
 
-    __aicore__ inline AscendC::HcclHandle CommitAlltoAllV(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void RunBatchMatmul(uint32_t batch, uint64_t tokenPrefix)
     {
-        // 通信参数组为提交期临时数据，用局部变量而非成员（4KB），降低共享专家
-        // GMM 执行期的栈峰值（成员会在整个 kernel 生命周期占用）
-        A2avCommParams commParams;
-        const uint32_t e = static_cast<uint32_t>(tilingData_->taskTilingInfo.e);
-        const uint32_t rankDim = static_cast<uint32_t>(tilingData_->taskTilingInfo.epWorldSize);
-        const uint64_t n1 = tilingData_->taskTilingInfo.N1;
-        const int32_t *sendCounts = tilingData_->taskTilingInfo.sendCnt;
-        const int32_t *recvCounts = tilingData_->taskTilingInfo.recvCnt;
+        const uint32_t expertNum = GetBatchExpertNum(batch);
+        const uint32_t rankSize = tilingData_->rankSize;
+        const uint32_t groupNum = expertNum * rankSize;
+        const uint64_t k = tilingData_->k;
+        // FP4 (fp4x2) 1 字节装 2 个元素：A 行字节数 = (k+1)/2；scaleK = CeilDiv(k,32)*2（e8m0 1B）
+        const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ? (k + 1U) / 2U : k;
+        const uint64_t scaleKLen = ((k + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1) >> Blaze::Gemm::MXFP_DIVISOR_SHIFT)
+                                   << Blaze::Gemm::MXFP_MULTI_BASE_SHIFT;
 
-        // 本批 send/recv 计数（元素单位，axis=N1）
-        for (uint32_t i = 0U; i < rankDim; i++) {
-            commParams.sendCnt[i] = 0UL;
-            commParams.recvCnt[i] = 0UL;
-            for (uint32_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-                commParams.sendCnt[i] += static_cast<uint64_t>(sendCounts[expertIdx + i * e]) * n1;
-                commParams.recvCnt[i] += static_cast<uint64_t>(recvCounts[expertIdx + i * e]) * n1;
-            }
-        }
+        BuildCGroupOffsetTable(batch, expertNum);
 
-        // send 偏移：GMM 输出为批间串接、批内 rank-major 布局
-        // （本批起点 = 批前全部 token 累计；批内 rank 段首 = 本批起点 + 前 rank 段累计）
-        uint64_t batchStartOffset = 0UL;
-        for (uint32_t i = 0U; i < startExpertIdx; i++) {
-            for (uint32_t j = 0U; j < rankDim; j++) {
-                batchStartOffset += static_cast<uint64_t>(sendCounts[i + j * e]);
-            }
-        }
-        batchStartOffset *= n1;
-        commParams.sendOffset[0] = batchStartOffset;
-        uint64_t rankRunningOffset = 0UL;
-        for (uint32_t i = 1U; i < rankDim; i++) {
-            for (uint32_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-                rankRunningOffset += static_cast<uint64_t>(sendCounts[expertIdx + (i - 1) * e]) * n1;
-            }
-            commParams.sendOffset[i] = batchStartOffset + rankRunningOffset;
-        }
+        typename GmmKernel::GMMTiling gmmTiling{};
+        FillGmmTiling(gmmTiling, tilingData_->gmmTiling, groupNum, tilingData_->mMax, tilingData_->n, tilingData_->k,
+                      GROUP_LIST_TYPE_SPARSE);
 
-        // recv 偏移：y 按 recvCounts 源 rank 聚合顺序（rank-major）。
-        // 索引 startExpertIdx + (i-1)*e + j 跨过 rank i-1 的本批后段专家与 rank i 的批前专家，
-        // 累加后恰好折叠为 rank 段基 + 批前前缀（伸缩和恒等式）
-        commParams.recvOffset[0] = 0UL;
-        for (uint32_t i = 0U; i < startExpertIdx; i++) {
-            commParams.recvOffset[0] += static_cast<uint64_t>(recvCounts[i]) * n1;
-        }
-        for (uint32_t i = 1U; i < rankDim; i++) {
-            commParams.recvOffset[i] = commParams.recvOffset[i - 1];
-            for (uint32_t j = 0U; j < e; j++) {
-                commParams.recvOffset[i] += static_cast<uint64_t>(recvCounts[startExpertIdx + (i - 1) * e + j]) * n1;
-            }
-        }
+        typename GmmKernel::Params params{};
+        params.problemShape =
+            ProblemShape{static_cast<int64_t>(tilingData_->mMax), static_cast<int64_t>(tilingData_->n),
+                         static_cast<int64_t>(tilingData_->k), 0};
+        params.mmadParams.aGmAddr = xGM_ + tokenPrefix * dataAxis;
+        params.mmadParams.scaleAGmAddr = xScaleGM_ + tokenPrefix * scaleKLen;
+        params.mmadParams.bGmAddr = weightGM_;
+        params.mmadParams.scaleBGmAddr = weightScaleGM_;
+        params.mmadParams.cGmAddr = gmmOutputGM_ + tokenPrefix * tilingData_->n * sizeof(CType);
+        params.mmadParams.biasGmAddr = nullptr;
+        params.groupListGmAddr = sparseGroupListGM_ + static_cast<uint64_t>(batch) * tilingData_->batchExpertNum *
+                                                          rankSize * 2U * sizeof(int64_t);
+        params.gmmParams = gmmTiling;
+        params.groupOffsetTables = {};
+        params.groupOffsetTables.cGroupAddrTable = reinterpret_cast<const __gm__ uint64_t *>(cGroupOffsetTableGM_);
 
-        return hccl_.template AlltoAllV<true>(gmmOutputGM_, commParams.sendCnt, commParams.sendOffset,
-                                              GetHcclDataType(), yGM_, commParams.recvCnt, commParams.recvOffset,
-                                              GetHcclDataType(), static_cast<uint8_t>(1));
+        {
+            GmmKernel kernel;
+            kernel.Init(params);
+            kernel.Run();
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    // 分批上限：expertNum=CeilDiv(e,4) 口径下总批数 ≤ 4（e ≤ 32），留余量取 8
-    static constexpr uint32_t MAX_COMM_LOOP = 8U;
+    __aicore__ inline void RunLocalMatmul()
+    {
+        typename MmKernel::GMMTiling mmTiling{};
+        FillGmmTiling(mmTiling, tilingData_->mmTiling, 1U, tilingData_->mmM, tilingData_->mmN, tilingData_->mmK,
+                      GROUP_LIST_TYPE_OFFSET);
 
-    HcclType hccl_;
-    ComputeOp computeOp_;
-    AscendC::HcclHandle a2avHandles_[MAX_COMM_LOOP]{};
+        typename MmKernel::Params params{};
+        params.problemShape =
+            ProblemShape{static_cast<int64_t>(tilingData_->mmM), static_cast<int64_t>(tilingData_->mmN),
+                         static_cast<int64_t>(tilingData_->mmK), 0};
+        params.mmadParams.aGmAddr = mmXGM_;
+        params.mmadParams.scaleAGmAddr = mmXScaleGM_;
+        params.mmadParams.bGmAddr = mmWeightGM_;
+        params.mmadParams.scaleBGmAddr = mmWeightScaleGM_;
+        params.mmadParams.cGmAddr = mmYGM_;
+        params.mmadParams.biasGmAddr = nullptr;
+        params.groupListGmAddr = mmGroupListGM_;
+        params.gmmParams = mmTiling;
+        params.groupOffsetTables = {};
+
+        {
+            MmKernel kernel;
+            kernel.Init(params);
+            kernel.Run();
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
+
+    __aicore__ inline void SubmitBatchComm(uint32_t batch, uint64_t tokenPrefix)
+    {
+        // 通信参数为提交期临时数据（局部变量，避免成员占用 kernel 全生命周期栈空间）
+        uint64_t sendCnt[GMM_A2AV_MAX_RANK_NUM] = {0};
+        uint64_t sendOffset[GMM_A2AV_MAX_RANK_NUM] = {0};
+        uint64_t recvCnt[GMM_A2AV_MAX_RANK_NUM] = {0};
+        uint64_t recvOffset[GMM_A2AV_MAX_RANK_NUM] = {0};
+        const uint32_t rankSize = tilingData_->rankSize;
+        const uint32_t expertNum = tilingData_->expertNum;
+        const uint32_t n = tilingData_->n;
+        const uint32_t batchExpertNum = GetBatchExpertNum(batch);
+        const uint32_t start = batch * tilingData_->batchExpertNum;
+
+        // send：gmmOutput 批间串接、批内 rank-major（sendOffset[0] = 批前缀，批内 peer 段前缀累加）
+        // recv：y 全局 [peer][expert] rank-major（peer 段基 + peer 段内本批专家前缀）
+        uint64_t sendRunning = tokenPrefix * n;
+        uint64_t peerBase = 0;
+        for (uint32_t r = 0; r < rankSize; ++r) {
+            uint64_t sendBatchRows = 0;
+            uint64_t recvBatchRows = 0;
+            for (uint32_t jj = 0; jj < batchExpertNum; ++jj) {
+                sendBatchRows +=
+                    static_cast<uint64_t>(tilingData_->sparseGroupList[((start + jj) * rankSize + r) * 2U + 1U]);
+                recvBatchRows += static_cast<uint64_t>(tilingData_->recvCount[r * expertNum + start + jj]);
+            }
+            uint64_t expertPrefix = 0;
+            for (uint32_t j = 0; j < start; ++j) {
+                expertPrefix += static_cast<uint64_t>(tilingData_->recvCount[r * expertNum + j]);
+            }
+            sendCnt[r] = sendBatchRows * n;
+            sendOffset[r] = sendRunning;
+            sendRunning += sendBatchRows * n;
+            recvCnt[r] = recvBatchRows * n;
+            recvOffset[r] = (peerBase + expertPrefix) * n;
+
+            uint64_t peerRows = 0;
+            for (uint32_t j = 0; j < expertNum; ++j) {
+                peerRows += static_cast<uint64_t>(tilingData_->recvCount[r * expertNum + j]);
+            }
+            peerBase += peerRows * n;
+        }
+
+        a2avHandles_[submitted_] =
+            hccl_.template AlltoAllV<true>(gmmOutputGM_, sendCnt, sendOffset, Y_HCCL_DATA_TYPE, yGM_, recvCnt,
+                                           recvOffset, Y_HCCL_DATA_TYPE, static_cast<uint8_t>(1));
+        submitted_++;
+    }
+
+    template <typename GmmTiling>
+    __aicore__ inline void FillGmmTiling(GmmTiling &out, const GmmA2avMxTiling &in, uint32_t groupNum, int64_t m,
+                                         int64_t n, int64_t k, uint8_t groupListType)
+    {
+        out.groupNum = groupNum;
+        out.m = m;
+        out.n = n;
+        out.k = k;
+        out.baseM = in.baseM;
+        out.baseN = in.baseN;
+        out.baseK = in.baseK;
+        out.kAL1 = in.kAL1;
+        out.kBL1 = in.kBL1;
+        out.scaleKAL1 = in.scaleKAL1;
+        out.isBias = 0U;
+        out.dbL0C = in.dbL0C;
+        out.l1BufferStage = in.l1BufferStage;
+        out.groupListType = groupListType;
+    }
+
+    hcommGmmA2avTilingData *tilingData_{nullptr};
+    AscendC::Hccl<ServerType> hccl_;
+    AscendC::HcclHandle a2avHandles_[GMM_A2AV_MAX_BATCH_NUM]{};
     uint32_t submitted_{0};
+
+    GM_ADDR xGM_{nullptr};
+    GM_ADDR xScaleGM_{nullptr};
+    GM_ADDR weightGM_{nullptr};
+    GM_ADDR weightScaleGM_{nullptr};
     GM_ADDR yGM_{nullptr};
+    GM_ADDR mmXGM_{nullptr};
+    GM_ADDR mmXScaleGM_{nullptr};
+    GM_ADDR mmWeightGM_{nullptr};
+    GM_ADDR mmWeightScaleGM_{nullptr};
+    GM_ADDR mmYGM_{nullptr};
     GM_ADDR gmmOutputGM_{nullptr};
-    const TilingDataType *tilingData_{nullptr};
+    GM_ADDR cGroupOffsetTableGM_{nullptr};
+    GM_ADDR sparseGroupListGM_{nullptr};
+    GM_ADDR mmGroupListGM_{nullptr};
 };
 
 } // namespace Apace
+
 #endif // APACE_QUANT_GROUPED_MATMUL_ALL_TO_ALL_V_HCOMM_IMPL_H__
