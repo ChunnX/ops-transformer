@@ -242,7 +242,7 @@ public:
                         last_seq_total_len * q_head_num_ * BLOCK_FP32 + n1_idx * current_q_seqlen * BLOCK_FP32;
                 }
                 TEventID event_id = sftg_ping_pong_idx ? event_ping_ : event_pong_;
-                ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
+                ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size, false);
 
                 WAIT_FLAG(MTE3, MTE2, event_id);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
@@ -856,9 +856,12 @@ private:
     }
 
     __aicore__ inline void ComputeEvenCoreInfo(EvenCoreInfo &info, const uint32_t data_size,
-                                               const uint32_t max_process_size)
+                                               const uint32_t max_process_size, const bool align_start = true)
     {
         uint32_t per_core_size = CeilDiv<uint32_t>(data_size, v_core_num_);
+        if (align_start) {
+            per_core_size = RoundUp<uint32_t>(per_core_size, C0_SIZE);
+        }
         info.start_idx = v_core_idx_ * per_core_size;
         info.max_process_size = max_process_size;
         info.data_size = data_size;
