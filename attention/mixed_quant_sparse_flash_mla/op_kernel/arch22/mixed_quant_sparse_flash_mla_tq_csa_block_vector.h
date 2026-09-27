@@ -499,7 +499,9 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute
                             static_cast<int64_t>(columnCount) - 1);
             }
         }
-    } else if (constInfo.sparseBlockCount > 0 && info.cmpS2IdLimit > 0) {
+    } else if (constInfo.kvQuantMode == 3 &&
+               constInfo.sparseBlockCount > 0 &&
+               info.cmpS2IdLimit > 0) {
         // TurboQuant tiles one query's gSize heads together, so every row in this block shares one top-k row.
         uint64_t topkRow = info.topKBaseOffset;
         int32_t probeCount = static_cast<int32_t>(constInfo.sparseBlockCount);
