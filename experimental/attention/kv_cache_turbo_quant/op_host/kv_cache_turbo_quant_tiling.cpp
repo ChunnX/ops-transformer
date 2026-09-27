@@ -52,6 +52,10 @@ constexpr int64_t MIN_KV_HEADS = 4;
 constexpr int64_t MAX_KV_HEADS = 32;
 constexpr int64_t QJL_DIM_ALIGN = 8;
 constexpr int64_t CUBE_MIN_VEC = 1024;
+// mix kernel limits: 128-row chunks, round-robin over 24 groups, 22 chunks per
+// group max (flag-cell capacity) -> totalVec <= 67584
+constexpr int64_t CUBE_CHUNK_ROWS = 128;
+constexpr int64_t CUBE_MAX_VEC = 24 * 22 * CUBE_CHUNK_ROWS;
 
 
 
@@ -100,7 +104,7 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    const bool useCube = (totalVec >= CUBE_MIN_VEC) && (qjlDim == HEAD_DIM);
+    const bool useCube = (totalVec >= CUBE_MIN_VEC) && (totalVec <= CUBE_MAX_VEC) && (qjlDim == HEAD_DIM);
 
     KvCacheTurboQuantTilingData tiling;
     tiling.set_totalVec(totalVec);
@@ -142,11 +146,11 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     // user code runs (bisected 2026-09-24).
     size_t wsBytes = 32 * 1024;
     if (useCube) {
-        // flags 16KB + splits 128KB + per-vector: z 512B (1 L0C-accumulated fp32
-        // plane) + r_hat 512B (rh|rl fp16) + p1 512B (fp32) + p2/p3 2x256B (fp16
-        // correction planes) + xh 256B
-        wsBytes = static_cast<size_t>(144 * 1024) +
-                  static_cast<size_t>(totalVec) * (512 + 512 + 512 + 256 + 256 + 256);
+        // flags 264KB + fp16 splits 128KB + per-padded-vector: z 512B (fp32,
+        // L0C-accumulated single plane) + r_hat 512B (rh|rl fp16) + p13 512B
+        // (fp32) + p2 256B (fp16) + xh 256B (fp16) = 2048B
+        const int64_t wsVec = (totalVec + CUBE_CHUNK_ROWS - 1) / CUBE_CHUNK_ROWS * CUBE_CHUNK_ROWS;
+        wsBytes = static_cast<size_t>(392 * 1024) + static_cast<size_t>(wsVec) * 2048;
     }
     workspaces[0] = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize()) + wsBytes;
 

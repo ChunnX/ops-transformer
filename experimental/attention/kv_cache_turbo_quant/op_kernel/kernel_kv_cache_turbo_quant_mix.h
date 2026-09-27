@@ -13,20 +13,27 @@
  * TurboQuant encode kernel for the prefill path (large vector counts,
  * qjl_dim == head_dim), launched with KERNEL_TYPE_MIX_AIC_1_2.
  *
- * AIC/AIV role division (Wy/QSFA-style):
- *  - AIC blocks run only cube matmul: z = (Hh+Hl) @ x and p = (Sh+Sl) @ (rh+rl),
- *    with fp16 hi/lo splits of H and S (combined split error ~2^-22, fp32-grade).
- *  - AIV blocks run everything else (norms, MSE quantize, residual norms, sign,
- *    bit packing, output flush). Each logical tri-core group c handles one
- *    vector range R_c; AIC c processes all of R_c, its two partner AIVs each
- *    process half of R_c's vector work.
- *  - GM spin-flag handshakes (x ready, z ready, r_hat ready, p ready)
- *    synchronize the phases (the FFTS CrossCore channel never delivers tokens
- *    in this stack; the flags use volatile GM stores + dcci/dc_preload polls).
- *
- * The two fp32-precision matrix-vector products that bound the pure-vector
- * kernel (WholeReduceSum row reductions) are thus computed entirely on the
- * cube units at fp16 speed with fp32-grade precision.
+ * v6 streaming pipeline (2026-09-27):
+ *  - Work is split into 128-row chunks assigned to tri-core groups round-robin
+ *    (chunk c -> group c % 24), so every group streams fat contiguous bursts
+ *    and all 24 AIC + 48 AIV stay concurrently active (the old whole-range
+ *    phase barriers idled half the grid and throttled DMA to ~180GB/s).
+ *  - AIC runs only cube matmul: z = (Hh+Hl) @ xh (L0C-accumulated, one fp32
+ *    plane) and p1 = rh@Sh^T / p3 = rh@Sl^T / p2 = rl@Sh^T (three separate
+ *    fp16 planes; L0C accumulation is NOT used for p - it loses the correction
+ *    terms and flips QJL signs wholesale). H/S are fp16 hi/lo splits
+ *    (combined split error ~2^-22, fp32-grade).
+ *  - AIV runs everything else: norms + xh upload (fused pre-pass, x is read
+ *    once), MSE quantize, residual norms, r_hat split upload, idx bit-pack via
+ *    vcgadd block-reduce (replaces the 128-rep WholeReduceSum pack, ~5x less
+ *    vector time), QJL sign, output flush.
+ *  - GM spin-flag handshakes (XH/Z/R/P per chunk per group) synchronize the
+ *    pipeline; waiters reset their cell after consuming so the next launch of
+ *    a reused workspace starts clean.
+ *  - No per-line dcci flushes: on this stack the fixpipe ATOMIC-domain writes
+ *    are visible to partner AIV DataCopy (MTE2 snoop) after SyncPipe<FIX_S> +
+ *    the flag store/load ordering (bisected 2026-09-27: byte-identical
+ *    accuracy with and without the 16K-line flush loops, -35us).
  *
  * IMPORTANT: bare cube work in a MIX launch cannot repeat in this stack
  * (every 2nd launch of the same executor dies with 507015) - this kernel is
@@ -43,9 +50,6 @@ using namespace AscendC;
 class KernelKvCacheTurboQuantMix {
 public:
     __aicore__ inline KernelKvCacheTurboQuantMix() {}
-
-
-
 
     __aicore__ inline void Init(GM_ADDR kvVectors, GM_ADDR rotationMatrix, GM_ADDR qjlMatrix, GM_ADDR quantIdx,
                                 GM_ADDR quantQjl, GM_ADDR quantNorm, GM_ADDR quantGamma, GM_ADDR workspace,
@@ -64,10 +68,6 @@ public:
         flagU64_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(workspace), FLAG_ELEMS / 8);
         isAic_ = false;
         int64_t logicalIdx = 0;
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-            }
-        }
         if ASCEND_IS_AIC {
             isAic_ = true;
             logicalIdx = GetBlockIdx();
@@ -75,44 +75,13 @@ public:
             logicalIdx = GetBlockIdx() / 2;   // two AIVs share one logical group
         }
         logicalIdx_ = logicalIdx;
+        aivSubIdx_ = isAic_ ? 0 : (GetBlockIdx() % 2);
 
-        // logical range assignment in chunks of CHUNK_VEC vectors (32B-aligned outputs)
-        const int64_t chunkNum = (totalVec_ + CHUNK_VEC - 1) / CHUNK_VEC;
-        const int64_t base = chunkNum / static_cast<int64_t>(coreNum_);
-        const int64_t rem = chunkNum % static_cast<int64_t>(coreNum_);
-        int64_t myChunks = 0;
-        int64_t chunkBegin = 0;
-        if (logicalIdx < rem) {
-            myChunks = base + 1;
-            chunkBegin = logicalIdx * (base + 1);
-        } else {
-            myChunks = base;
-            chunkBegin = rem * (base + 1) + (logicalIdx - rem) * base;
-        }
-        rangeBegin_ = chunkBegin * CHUNK_VEC;
-        int64_t rangeEnd = (chunkBegin + myChunks) * CHUNK_VEC;
-        if (rangeEnd > totalVec_) {
-            rangeEnd = totalVec_;
-        }
-        rangeLen_ = (myChunks > 0) ? (rangeEnd - rangeBegin_) : 0;
-
-        // AIV sub-role within the group: even AIV takes the first half of the
-        // vector work, odd AIV the second half. TILE-aligned split so every
-        // 16-vec tile belongs to exactly one sub (per-chunk X/R flags).
-        if (!isAic_) {
-            const int64_t subIdx = GetBlockIdx() % 2;
-            const int64_t halfTiles = (rangeLen_ / 2 + TILE_VEC - 1) / TILE_VEC;
-            int64_t halfLen = halfTiles * TILE_VEC;
-            if (halfLen > rangeLen_ || (rangeLen_ > 0 && halfTiles == 0)) {
-                halfLen = rangeLen_;
-            }
-            vecBegin_ = rangeBegin_ + subIdx * halfLen;
-            vecNum_ = rangeLen_ - subIdx * halfLen;
-            if (vecNum_ > halfLen) {
-                vecNum_ = halfLen;
-            }
-            aivSubIdx_ = subIdx;
-        }
+        // round-robin chunk assignment: group g owns chunks {g, g+coreNum, ...}
+        chunkNum_ = (totalVec_ + CHUNK_ROWS - 1) / CHUNK_ROWS;
+        myChunks_ = (logicalIdx < chunkNum_)
+                        ? ((chunkNum_ - 1 - logicalIdx) / static_cast<int64_t>(coreNum_) + 1)
+                        : 0;
 
         kvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(kvVectors), totalVec_ * HEAD_DIM);
         rotGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(rotationMatrix), HEAD_DIM * HEAD_DIM);
@@ -122,50 +91,31 @@ public:
         normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm), totalVec_);
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma), totalVec_);
 
-        // workspace layout (bytes):
-        //   0..16K      cross-core GM spin flags (64B-strided int32 slots)
-        //   16K..144K   Hh/Hl/Sh/Sl fp16 splits (4 x 32KB)
-        //   144K        z1/z2 fp32 areas (2 x totalVec x 512B)
-        //   then        rh/rl fp16 areas (2 x totalVec x 256B)
-        //   then        p1..p4 fp32 areas (4 x totalVec x 512B)
-        flagRaw_ = reinterpret_cast<__gm__ int32_t *>(workspace);
-        dbgMark_ = flagRaw_ + 3584;   // marker block: cells 3584..3770 (real flags end at 3071; ws probes at 3776..3807)
-        flagGm_.SetGlobalBuffer(flagRaw_, FLAG_ELEMS);
-        flagU64_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(workspace), FLAG_ELEMS / 8);
+        // workspace layout (bytes), wsVec = totalVec padded up to one chunk:
+        //   0..264K     cross-core GM spin flags (64B-strided int32 cells)
+        //   264K..392K  Hh/Hl/Sh/Sl fp16 splits (4 x 32KB)
+        //   392K        z fp32            wsVec x 512B   (cube plane)
+        //   then        r_hat [rh|rl]     wsVec x 512B   (fp16, interleaved/tile)
+        //   then        p1/p2/p3 fp16 x3  wsVec x 256B   (cube planes)
+        //   then        xh fp16           wsVec x 256B   (AIV upload)
+        wsVec_ = chunkNum_ * CHUNK_ROWS;
         __gm__ half *wsH = reinterpret_cast<__gm__ half *>(workspace + WS_SPLIT_OFF);
         wsHhGm_.SetGlobalBuffer(wsH + 0 * SPLIT_ELEMS, SPLIT_ELEMS);
         wsHlGm_.SetGlobalBuffer(wsH + 1 * SPLIT_ELEMS, SPLIT_ELEMS);
         wsShGm_.SetGlobalBuffer(wsH + 2 * SPLIT_ELEMS, SPLIT_ELEMS);
         wsSlGm_.SetGlobalBuffer(wsH + 3 * SPLIT_ELEMS, SPLIT_ELEMS);
-        __gm__ float *wsF = reinterpret_cast<__gm__ float *>(workspace);
-        // z: ONE L0C-accumulated fp32 plane (was z1+z2)
-        wsZGm_.SetGlobalBuffer(wsF + WS_Z_OFF / 4, totalVec_ * HEAD_DIM);
-        // r_hat: [vec][rh|rl] interleaved fp16, right after z
-        __gm__ half *wsR = reinterpret_cast<__gm__ half *>(workspace + WS_Z_OFF + totalVec_ * HEAD_DIM * 4);
-        wsRhat2Gm_.SetGlobalBuffer(wsR, 2 * totalVec_ * HEAD_DIM);
-        // p13 (accumulated Sh@rh+Sl@rh) + p2 (Sh@rl): two fp32 planes after r_hat
-        __gm__ float *wsP = reinterpret_cast<__gm__ float *>(workspace + WS_Z_OFF + totalVec_ * HEAD_DIM * 4 +
-                                                              totalVec_ * HEAD_DIM * 2 * 2);
-        // p1 fp32 (dominant Sh@rh, needs full precision for the QJL sign);
-        // p2/p3 fp16 correction planes (~5e-4 each, fp16 error ~2.5e-7 -> ~0
-        // extra sign flips). Cuts the p GM round-trip from 48MB to 32MB.
-        wsP1Gm_.SetGlobalBuffer(wsP + 0 * totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        __gm__ half *wsP2 = reinterpret_cast<__gm__ half *>(reinterpret_cast<__gm__ uint8_t *>(wsP) +
-                                                            totalVec_ * HEAD_DIM * 4);
-        wsP2Gm_.SetGlobalBuffer(wsP2, totalVec_ * HEAD_DIM);
-        wsP3Gm_.SetGlobalBuffer(wsP2 + totalVec_ * HEAD_DIM, totalVec_ * HEAD_DIM);
-        // xh: fp16, after p1(512B/vec) + p2(256B/vec) + p3(256B/vec)
-        wsXhGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(reinterpret_cast<__gm__ uint8_t *>(wsP) +
-                                                                totalVec_ * HEAD_DIM * 4 + totalVec_ * HEAD_DIM * 4),
-                                totalVec_ * HEAD_DIM);
-        if (!isAic_ && GetBlockIdx() == 0) {
-            // dump the kernel's view of the output tensor addresses
-            const uint64_t na = reinterpret_cast<uint64_t>(normGm_.GetPhyAddr());
-            const uint64_t ga = reinterpret_cast<uint64_t>(gammaGm_.GetPhyAddr());
-            const uint64_t ia = reinterpret_cast<uint64_t>(idxGm_.GetPhyAddr());
-            const uint64_t qa = reinterpret_cast<uint64_t>(qjlOutGm_.GetPhyAddr());
-        }
-
+        __gm__ uint8_t *wsB = workspace + WS_Z_OFF;
+        wsZGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(wsB), wsVec_ * HEAD_DIM);
+        wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 4;
+        wsRhat2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), 2 * wsVec_ * HEAD_DIM);
+        wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2 * 2;
+        wsP1Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2;
+        wsP2Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2;
+        wsP3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
+        wsB += static_cast<int64_t>(wsVec_) * HEAD_DIM * 2;
+        wsXhGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wsB), wsVec_ * HEAD_DIM);
 
         if (isAic_) {
             pipe_.InitBuffer(l1ABuf_, L1_A_BYTES);
@@ -183,9 +133,8 @@ public:
             eventMMte1B_ = 5;
             eventMte1Mte2_ = 4;
             eventFixS_ = 4;
-            eventFixM_ = 4;
             eventMFix_ = 4;
-
+            eventFixM_ = 4;
         } else {
             eventVS_ = 4;
             eventSV_ = 4;
@@ -223,8 +172,10 @@ public:
             pipe_.InitBuffer(xUpHBuf_, TILE_VEC * HEAD_DIM * sizeof(half));
             pipe_.InitBuffer(redTmpBuf_, RED_TMP_ELEMS * sizeof(float));
             pipe_.InitBuffer(splitBuf_, SPLIT_STAGE_BYTES);
-            if (GetBlockIdx() == 0) {
-            }
+            // per-row norm / reciprocal persistence across the pipeline phases
+            // (aliases the split staging area, dead after phase 0)
+            invAll_ = splitBuf_.Get<float>()[0];
+            normAll_ = splitBuf_.Get<float>()[MAX_ROWS_PER_AIV];
         }
 
         if (!isAic_) {
@@ -234,59 +185,55 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (totalVec_ <= 0 || rangeLen_ <= 0) {
+        if (totalVec_ <= 0 || myChunks_ <= 0) {
             return;
         }
         if (isAic_) {
-            const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
-            // ---- phase 1 (AIC): z1 = Hh @ x, z2 = Hl @ x for the whole range
-            GmFlagWait(slotBase + 0 * SLOT_STRIDE, MAGIC_X_LO);
-            GmFlagWait(slotBase + 1 * SLOT_STRIDE, MAGIC_X_HI);
+            const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * GROUP_FLAG_CELLS * SLOT_STRIDE;
+            // ---- phase Z (AIC): z = (Hh+Hl) @ xh per chunk, pipelined against
+            // the AIV pre-pass (XH) and quant pass (consumes Z)
+            WaitXh(slotBase, 0);   // first XH implies this group's H/S splits done
             LoadSplitToL1(wsHhGm_, wsHlGm_);
-            for (int64_t t0 = 0; t0 < rangeLen_; t0 += TILE_VEC) {
-                const int64_t g = rangeBegin_ + t0;
-                MmTile(wsXhGm_[g * HEAD_DIM], wsZGm_[g * HEAD_DIM], t0);
-            }
-            SyncPipe<HardEvent::FIX_S>();   // z tiles in L2 before the flag store
-            // per-line flush of the z range through the ATOMIC cache domain
-            // (the cube DMA write path) so the partner AIVs observe it
-            {
-                __gm__ float *zBase = const_cast<__gm__ float *>(wsZGm_.GetPhyAddr()) +
-                                      rangeBegin_ * HEAD_DIM;
-                const int64_t lines = (rangeLen_ * HEAD_DIM * sizeof(float) + 63) / 64;
-                GlobalTensor<int64_t> zLine;
-                zLine.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(zBase), lines * 8);
-                for (int64_t li = 0; li < lines; ++li) {
-                    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_ATOMIC>(
-                        zLine[li * 8]);
+            for (int64_t l = 0; l < myChunks_; ++l) {
+                if (l > 0) {
+                    WaitXh(slotBase, l);
                 }
+                const int64_t c = ChunkId(l);
+                const int64_t rows = ChunkRows(c);
+                const int64_t tiles = (rows + TILE_VEC - 1) / TILE_VEC;
+                for (int64_t t = 0; t < tiles; ++t) {
+                    const int64_t g = c * CHUNK_ROWS + t * TILE_VEC;
+                    const int32_t nv = static_cast<int32_t>((rows - t * TILE_VEC) < TILE_VEC ? (rows - t * TILE_VEC)
+                                                                                              : TILE_VEC);
+                    MmTile(wsXhGm_[g * HEAD_DIM], wsZGm_[g * HEAD_DIM], nv);
+                }
+                SyncPipe<HardEvent::FIX_S>();   // z chunk drained before the flag store
+                GmFlagSet(FlagCell(slotBase, l, SLOT_Z_LO), MAGIC_Z);
+                GmFlagSet(FlagCell(slotBase, l, SLOT_Z_HI), MAGIC_Z);
             }
-            GmFlagSet(slotBase + 2 * SLOT_STRIDE, MAGIC_Z);   // Z_LO
-            GmFlagSet(slotBase + 6 * SLOT_STRIDE, MAGIC_Z);   // Z_HI
-            // ---- phase 3 (AIC): waits r_hat splits, then p = (Sh+Sl) @ (rh+rl)
-            GmFlagWait(slotBase + 3 * SLOT_STRIDE, MAGIC_R_LO);
-            GmFlagWait(slotBase + 4 * SLOT_STRIDE, MAGIC_R_HI);
+            // ---- phase P (AIC): p1 = rh@Sh, p3 = rh@Sl, p2 = rl@Sh - three
+            // SEPARATE fp16 planes (no L0C accumulation for p - it loses the
+            // correction-term precision and the QJL signs flip wholesale,
+            // confirmed 2026-09-27 build244: 93% qjl wrong with accumulated p13)
             LoadSplitToL1(wsShGm_, wsSlGm_);
-            for (int64_t t0 = 0; t0 < rangeLen_; t0 += TILE_VEC) {
-                const int64_t g = rangeBegin_ + t0;
-                // [rh|rl] plane-major per tile: rl follows the tile's rh block
-                MmTile2(wsRhat2Gm_[g * 2 * HEAD_DIM], wsRhat2Gm_[g * 2 * HEAD_DIM + TILE_VEC * HEAD_DIM],
-                        wsP1Gm_[g * HEAD_DIM], wsP2Gm_[g * HEAD_DIM], wsP3Gm_[g * HEAD_DIM], t0);
-            }
-            SyncPipe<HardEvent::FIX_S>();
-            {
-                __gm__ float *pBase = const_cast<__gm__ float *>(wsP1Gm_.GetPhyAddr()) +
-                                      rangeBegin_ * HEAD_DIM;
-                const int64_t lines = (rangeLen_ * HEAD_DIM * (4 + 2 + 2) + 63) / 64;
-                GlobalTensor<int64_t> pLine;
-                pLine.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(pBase), lines * 8);
-                for (int64_t li = 0; li < lines; ++li) {
-                    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_ATOMIC>(
-                        pLine[li * 8]);
+            for (int64_t l = 0; l < myChunks_; ++l) {
+                GmFlagWait(FlagCell(slotBase, l, SLOT_R_LO), MAGIC_R);
+                GmFlagWait(FlagCell(slotBase, l, SLOT_R_HI), MAGIC_R);
+                const int64_t c = ChunkId(l);
+                const int64_t rows = ChunkRows(c);
+                const int64_t tiles = (rows + TILE_VEC - 1) / TILE_VEC;
+                for (int64_t t = 0; t < tiles; ++t) {
+                    const int64_t g = c * CHUNK_ROWS + t * TILE_VEC;
+                    const int32_t nv = static_cast<int32_t>((rows - t * TILE_VEC) < TILE_VEC ? (rows - t * TILE_VEC)
+                                                                                              : TILE_VEC);
+                    // [rh|rl] plane-major per tile: rl follows the tile's rh block
+                    MmTileP(wsRhat2Gm_[g * 2 * HEAD_DIM], wsRhat2Gm_[g * 2 * HEAD_DIM + TILE_VEC * HEAD_DIM],
+                            wsP1Gm_[g * HEAD_DIM], wsP2Gm_[g * HEAD_DIM], wsP3Gm_[g * HEAD_DIM], nv);
                 }
+                SyncPipe<HardEvent::FIX_S>();
+                GmFlagSet(FlagCell(slotBase, l, SLOT_P_LO), MAGIC_P);
+                GmFlagSet(FlagCell(slotBase, l, SLOT_P_HI), MAGIC_P);
             }
-            GmFlagSet(slotBase + 5 * SLOT_STRIDE, MAGIC_P);   // P_LO
-            GmFlagSet(slotBase + 7 * SLOT_STRIDE, MAGIC_P);   // P_HI
             // ---- AIC cube epilogue: drain every cube pipe and reset the
             // load/atomic state so the NEXT launch's MIX runtime init sees a
             // clean AIC. Without this the cube state persists across launches
@@ -314,38 +261,59 @@ public:
 private:
     static constexpr int32_t HEAD_DIM = 128;
     static constexpr int32_t TILE_VEC = 16;
-    static constexpr int32_t CHUNK_VEC = 16;
     static constexpr int32_t BATCH_VEC = 16;
     static constexpr int32_t WORDS_PER_VEC = 16;
     static constexpr int32_t MAX_IDX_BYTES = 64;
-    static constexpr int32_t RED_TMP_ELEMS = 1024;
+    static constexpr int32_t RED_TMP_ELEMS = 2048;   // sg scratch spans a full 16x128 batch
     static constexpr int32_t SPLIT_ELEMS = HEAD_DIM * HEAD_DIM;
     static constexpr int32_t SPLIT_STAGE_BYTES = 56 * 1024;
+    static constexpr int32_t CHUNK_TILES = 8;                       // pipeline chunk = 8 tiles
+    static constexpr int32_t CHUNK_ROWS = CHUNK_TILES * TILE_VEC;   // 128 vectors
+    static constexpr int32_t HALF_CHUNK_ROWS = CHUNK_ROWS / 2;      // per partner AIV
+    static constexpr int32_t MAX_LOCAL_CHUNKS = 22;                 // covers totalVec <= 67584
+    static constexpr int32_t MAX_ROWS_PER_AIV = MAX_LOCAL_CHUNKS * HALF_CHUNK_ROWS;   // 1408
     static constexpr int32_t L1_A_BYTES = 4 * 2 * TILE_VEC * HEAD_DIM * sizeof(half);   // up to 4 x 8K
     static constexpr int32_t L1_B_BYTES = 2 * HEAD_DIM * HEAD_DIM * sizeof(half);   // 64K: hi+lo splits
     static constexpr int32_t L0_A_BYTES = 4 * 2 * TILE_VEC * HEAD_DIM * sizeof(half);   // up to 4 x 8K
     static constexpr int32_t L0_B_BYTES = 2 * HEAD_DIM * HEAD_DIM * sizeof(half);   // 64K: hi+lo splits
     static constexpr int32_t L0_C_BYTES = TILE_VEC * HEAD_DIM * sizeof(float);      // 8K
-    static constexpr int32_t WS_SPLIT_OFF = 16 * 1024;
-    static constexpr int32_t WS_Z_OFF = 144 * 1024;
-    static constexpr int32_t FLAG_ELEMS = 4096;
+    // flag cells: 24 groups x 22 chunks x 8 slots x 16-elem stride
+    static constexpr int32_t SLOTS_PER_CHUNK = 8;
+    static constexpr int32_t SLOT_XH_LO = 0;
+    static constexpr int32_t SLOT_XH_HI = 1;
+    static constexpr int32_t SLOT_Z_LO = 2;
+    static constexpr int32_t SLOT_Z_HI = 3;
+    static constexpr int32_t SLOT_R_LO = 4;
+    static constexpr int32_t SLOT_R_HI = 5;
+    static constexpr int32_t SLOT_P_LO = 6;
+    static constexpr int32_t SLOT_P_HI = 7;
+    static constexpr int32_t GROUP_FLAG_CELLS = MAX_LOCAL_CHUNKS * SLOTS_PER_CHUNK;   // 176
+    static constexpr int32_t SLOT_STRIDE = 16;   // int32 elems per 64B slot
+    static constexpr int32_t FLAG_ELEMS = 24 * GROUP_FLAG_CELLS * SLOT_STRIDE;        // 67584 (264KB)
+    static constexpr int32_t WS_SPLIT_OFF = 264 * 1024;
+    static constexpr int32_t WS_Z_OFF = (264 + 128) * 1024;
     static constexpr float MIN_DENOM = 1e-30f;
     static constexpr float IND_SCALE = 1.2676506002282294e30f;
-    // GM spin-flag protocol (the FFTS CrossCore channel never delivers tokens
-    // in this stack; volatile GM stores + dcci + dc_preload polls are proven).
-    // Slots are 64B-strided int32 cells; group g owns slots [g*8, g*8+8):
-    // 0=X_LO 1=X_HI 2=Z_LO 3=R_LO 4=R_HI 5=P_LO 6=Z_HI 7=P_HI.
-    // Waiters reset their slot to 0 after consuming (stream-serialized
-    // launches of this kernel start clean - verified via host peek).
-    static constexpr int32_t CHUNK_TILES = 4;             // pipeline chunk = 4 tiles (64 vecs)
-    static constexpr int32_t GROUP_FLAG_CELLS = 64;       // per-group flag block
-    static constexpr int32_t MAGIC_X_LO = 0x5A5A0001;
-    static constexpr int32_t MAGIC_X_HI = 0x5A5A0002;
+    static constexpr int32_t MAGIC_XH = 0x5A5A0001;
     static constexpr int32_t MAGIC_Z = 0x5A5A0003;
-    static constexpr int32_t MAGIC_R_LO = 0x5A5A0004;
-    static constexpr int32_t MAGIC_R_HI = 0x5A5A0005;
+    static constexpr int32_t MAGIC_R = 0x5A5A0004;
     static constexpr int32_t MAGIC_P = 0x5A5A0006;
-    static constexpr int32_t SLOT_STRIDE = 16;   // int32 elems per 64B slot
+
+    __aicore__ inline int64_t ChunkId(int64_t l) const
+    {
+        return logicalIdx_ + l * static_cast<int64_t>(coreNum_);
+    }
+
+    __aicore__ inline int64_t ChunkRows(int64_t c) const
+    {
+        const int64_t rem = totalVec_ - c * CHUNK_ROWS;
+        return rem < CHUNK_ROWS ? rem : CHUNK_ROWS;
+    }
+
+    static __aicore__ inline int32_t FlagCell(int32_t slotBase, int64_t l, int32_t slot)
+    {
+        return slotBase + static_cast<int32_t>(l * SLOTS_PER_CHUNK + slot) * SLOT_STRIDE;
+    }
 
     template <HardEvent evt>
     __aicore__ inline void SyncPipe()
@@ -358,9 +326,6 @@ private:
     // ---- GM spin-flag primitives (KFC-comm proven recipe: raw GM store/load
     // + asc_dcci_single + asc_datacache_preload; the preload after the
     // invalidate is what makes the poller observe remote stores) ----
-    // GM spin-flag primitives (KFC-comm proven recipe: volatile GM store/load
-    // + asm fences + DataCacheCleanAndInvalid + DataCachePreload; the preload
-    // after the invalidate is what makes a poller observe remote stores).
     __aicore__ inline void GmFlagSet(int32_t slotElem, int32_t magic)
     {
         if (isAic_) {
@@ -372,7 +337,7 @@ private:
             __asm__ __volatile__("" ::: "memory");
         } else {
             // AIV: dcci on dav_m200 poisons the core's later GM writes (the
-            // write-poison ghost - bisected 2026-09-26 PM: in-loop dcci'd flag
+            // write-poison ghost - bisected 2026-09-26: in-loop dcci'd flag
             // sets killed the x-upload's MTE3 landing). Ship the flag via a
             // DMA line update instead (MTE2-in / modify / MTE3-out).
             LocalTensor<int32_t> probe = flagProbeBuf_.Get<int32_t>();
@@ -409,7 +374,7 @@ private:
             }
         } else {
             // dcci on dav_m200 poisons later GM writes (the ghost, confirmed
-            // 2026-09-26 PM) - poll the flag line via an MTE2 DMA read instead:
+            // 2026-09-26) - poll the flag line via an MTE2 DMA read instead:
             // the copy snoops L2 and leaves this core's write path intact
             LocalTensor<int32_t> probe = flagProbeBuf_.Get<int32_t>();
             while (true) {
@@ -444,6 +409,12 @@ private:
             DataCopy(flagGm_[slotElem & ~15], probe, 16);
             SyncPipe<HardEvent::MTE3_V>();
         }
+    }
+
+    __aicore__ inline void WaitXh(int32_t slotBase, int64_t l)
+    {
+        GmFlagWait(FlagCell(slotBase, l, SLOT_XH_LO), MAGIC_XH);
+        GmFlagWait(FlagCell(slotBase, l, SLOT_XH_HI), MAGIC_XH);
     }
 
     template <HardEvent evt>
@@ -497,14 +468,11 @@ private:
             wtL.SetValue(d, lo);
             wtH.SetValue(d, hi);
         }
-        if (GetBlockIdx() == 0) {
-        }
         SyncPipe<HardEvent::S_V>();
-        if (GetBlockIdx() == 0) {
-        }
     }
 
-    // fp32 H/S -> fp16 hi/lo splits to GM (AIV block 0 only)
+    // fp32 H/S -> fp16 hi/lo splits to GM (every AIV writes identical content;
+    // a core's own writes guarantee the content its partner AIC reads is valid)
     __aicore__ inline void SplitMatrices()
     {
         LocalTensor<float> chunk = splitBuf_.Get<float>();                    // 16KB fp32
@@ -538,113 +506,127 @@ private:
         SyncPipe<HardEvent::MTE3_V>();
     }
 
-    // AIV-side full flow: norms, quantize, idx pack, r_hat split upload, sign, flush
-    __aicore__ inline void ProcessAiv()
+    // ---- phase 1 (AIV): fused pre-pass per chunk: row norms of x (persisted
+    // for the quant phase), norm output, and the fp16 xh upload for the cube
+    __aicore__ inline void PrePassChunk(int64_t l)
     {
+        const int64_t c = ChunkId(l);
+        const int64_t rows = ChunkRows(c);
+        // this AIV's half of the chunk
+        const int64_t halfBegin = c * CHUNK_ROWS + aivSubIdx_ * HALF_CHUNK_ROWS;
+        int64_t myRows = rows - aivSubIdx_ * HALF_CHUNK_ROWS;
+        if (myRows > HALF_CHUNK_ROWS) {
+            myRows = HALF_CHUNK_ROWS;
+        }
+        if (myRows <= 0) {
+            GmFlagSet(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_XH_LO : SLOT_XH_HI), MAGIC_XH);
+            return;
+        }
         LocalTensor<bfloat16_t> xTile = xTileBuf_.Get<bfloat16_t>();
-        LocalTensor<uint16_t> xTileU16 = xTileBuf_.Get<uint16_t>();  // bit view: bisheng forbids bf16 scalar casts
+        LocalTensor<float> xf32 = xUpF32Buf_.Get<float>();
+        LocalTensor<half> xh = xUpHBuf_.Get<half>();
+        LocalTensor<float> normVec = normVecBuf_.Get<float>();
+        LocalTensor<bfloat16_t> normBF = normBFBuf_.Get<bfloat16_t>();
+        LocalTensor<float> sqTmp = yhatBuf_.Get<float>();
+        for (int64_t t = 0; t < myRows; t += TILE_VEC) {
+            const int32_t nv = static_cast<int32_t>((myRows - t) < TILE_VEC ? (myRows - t) : TILE_VEC);
+            const int64_t g = halfBegin + t;
+            SyncPipe<HardEvent::V_MTE2>();
+            DataCopy(xTile, kvGm_[g * HEAD_DIM], nv * HEAD_DIM);
+            SyncPipe<HardEvent::MTE2_V>();
+            SyncPipe<HardEvent::MTE3_V>();   // xh free: previous tile's upload drained
+            Cast(xf32, xTile, RoundMode::CAST_NONE, nv * HEAD_DIM);
+            PipeBarrier<PIPE_V>();
+            // norms: squared magnitude, two 64-wide WRS halves per row
+            Mul(sqTmp, xf32, xf32, nv * HEAD_DIM);
+            PipeBarrier<PIPE_V>();
+            WholeReduceSum(normVec, sqTmp, 64, nv, 1, 1, 16);
+            PipeBarrier<PIPE_V>();
+            WholeReduceSum(xBuf2(), sqTmp[64], 64, nv, 1, 1, 16);
+            PipeBarrier<PIPE_V>();
+            Add(normVec, normVec, xBuf2(), nv);
+            PipeBarrier<PIPE_V>();
+            Sqrt(normVec, normVec, nv);
+            PipeBarrier<PIPE_V>();
+            // persist norm/inv for the quant phase; write the norm output now
+            SyncPipe<HardEvent::V_S>();
+            const int64_t rowBase = l * HALF_CHUNK_ROWS + t;
+            for (int32_t v = 0; v < nv; ++v) {
+                const float norm = normVec.GetValue(v);
+                normAll_.SetValue(rowBase + v, norm);
+                invAll_.SetValue(rowBase + v, (norm > 0.0f) ? 1.0f / ((norm < MIN_DENOM) ? MIN_DENOM : norm) : 0.0f);
+            }
+            SyncPipe<HardEvent::S_V>();
+            Cast(normBF, normVec, RoundMode::CAST_RINT, nv);
+            PipeBarrier<PIPE_V>();
+            // fp16 upload for the cube A feed
+            Cast(xh, xf32, RoundMode::CAST_RINT, nv * HEAD_DIM);
+            PipeBarrier<PIPE_V>();
+            SyncPipe<HardEvent::V_MTE3>();
+            DataCopy(wsXhGm_[g * HEAD_DIM], xh, nv * HEAD_DIM);
+            if (nv == TILE_VEC) {
+                DataCopy(normGm_[g], normBF, nv);
+            } else {
+                SyncPipe<HardEvent::MTE3_V>();
+                SyncPipe<HardEvent::V_S>();
+                for (int32_t v = 0; v < nv; ++v) {
+                    normGm_.SetValue(g + v, normBF.GetValue(v));
+                }
+                SyncPipe<HardEvent::S_V>();
+                FlushOutLines(normGm_, g, nv * 2);
+            }
+        }
+        SyncPipe<HardEvent::MTE3_S>();   // xh/norm in L2 before the flag store
+        GmFlagSet(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_XH_LO : SLOT_XH_HI), MAGIC_XH);
+    }
+
+    // ---- phase 2 (AIV): y = z * inv, MSE quantize, residual norms, r_hat
+    // split upload, idx pack, gamma output - per chunk as Z arrives
+    __aicore__ inline void QuantChunk(int64_t l)
+    {
+        const int64_t c = ChunkId(l);
+        const int64_t rows = ChunkRows(c);
+        const int64_t halfBegin = c * CHUNK_ROWS + aivSubIdx_ * HALF_CHUNK_ROWS;
+        int64_t myRows = rows - aivSubIdx_ * HALF_CHUNK_ROWS;
+        if (myRows > HALF_CHUNK_ROWS) {
+            myRows = HALF_CHUNK_ROWS;
+        }
+        if (myRows <= 0) {
+            GmFlagSet(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_R_LO : SLOT_R_HI), MAGIC_R);
+            return;
+        }
         LocalTensor<float> zTile = zTileBuf_.Get<float>();
         LocalTensor<float> normVec = normVecBuf_.Get<float>();
         LocalTensor<float> rnVec = rnVecBuf_.Get<float>();
         LocalTensor<float> gammaVec = gammaVecBuf_.Get<float>();
-        LocalTensor<bfloat16_t> normBF = normBFBuf_.Get<bfloat16_t>();
         LocalTensor<bfloat16_t> gammaBF = gammaBFBuf_.Get<bfloat16_t>();
         LocalTensor<uint8_t> idxStage = idxStageBuf_.Get<uint8_t>();
         LocalTensor<uint8_t> qjlStage = qjlStageBuf_.Get<uint8_t>();
 
+        for (int64_t t = 0; t < myRows; t += TILE_VEC) {
+            const int32_t nv = static_cast<int32_t>((myRows - t) < TILE_VEC ? (myRows - t) : TILE_VEC);
+            const int64_t g0 = halfBegin + t;
+            const int64_t rowBase = l * HALF_CHUNK_ROWS + t;
 
-        // ---- phase 0 (even AIV of each group): fp16 hi/lo splits of H and S.
-        // All groups write identical content to the shared splits area (benign
-        // identical write-write race); the group's X_LO flag then implies the
-        // splits are complete for this group's AIC.
-        // every AIV computes the (identical) splits into the shared area; a
-        // core's own writes guarantee the content its AIC reads is valid
-        SplitMatrices();
-
-        // ---- phase 0.5 (AIV): x bf16 -> fp16 tiles to GM for the cube A feed,
-        // with a per-chunk X flag so the AIC starts z after the first chunk
-        for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
-            const int32_t nvx = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart)
-                                                                                       : TILE_VEC);
-            const int64_t gx = vecBegin_ + tileStart;
-            SyncPipe<HardEvent::V_MTE2>();
-            DataCopy(xTileBuf_.Get<bfloat16_t>(), kvGm_[gx * HEAD_DIM], nvx * HEAD_DIM);
-            SyncPipe<HardEvent::MTE2_V>();
-            SyncPipe<HardEvent::MTE3_V>();   // xh free: previous tile's upload drained
-            // dedicated full-tile buffers (the 1KB scratch buffers here sprayed
-            // x-data over the idx pack weights every tile - same bug class as
-            // the UploadRhat overflow bisected earlier today)
-            LocalTensor<float> xf32 = xUpF32Buf_.Get<float>();
-            LocalTensor<half> xh = xUpHBuf_.Get<half>();
-            Cast(xf32, xTileBuf_.Get<bfloat16_t>(), RoundMode::CAST_NONE, nvx * HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-            Cast(xh, xf32, RoundMode::CAST_RINT, nvx * HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-            SyncPipe<HardEvent::V_MTE3>();
-            DataCopy(wsXhGm_[gx * HEAD_DIM], xh, nvx * HEAD_DIM);
-        }
-        SyncPipe<HardEvent::MTE3_S>();   // x tiles in L2 before the flag store
-        const int32_t slotBase = static_cast<int32_t>(logicalIdx_) * 8 * SLOT_STRIDE;
-        GmFlagSet(slotBase + aivSubIdx_ * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_X_LO : MAGIC_X_HI);
-        GmFlagWait(slotBase + (2 + 4 * aivSubIdx_) * SLOT_STRIDE, MAGIC_Z);
-        if (GetBlockIdx() < 4) {
-            // per-AIV V_S-covered x/z dumps at cells 140+blk*4
-            volatile __gm__ int32_t *pv = flagRaw_ + 3968 + 140 + GetBlockIdx() * 4;
-            *pv = static_cast<int32_t>(GetBlockIdx()) * 1000;
-        }
-
-        for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
-            const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
-            const int64_t g0 = vecBegin_ + tileStart;
-            if (GetBlockIdx() == 0) {
-            }
-
-            // z = z1 + z2 (fp32 tiles from the cube)
-            SyncPipe<HardEvent::V_MTE2>();
-            DataCopy(xTile, kvGm_[g0 * HEAD_DIM], nv * HEAD_DIM);
-            SyncPipe<HardEvent::MTE2_V>();
             SyncPipe<HardEvent::V_MTE2>();
             DataCopy(zTile, wsZGm_[g0 * HEAD_DIM], nv * HEAD_DIM);
             SyncPipe<HardEvent::MTE2_V>();
 
-            // ---- squared norms from x: full-tile ops + two 64-wide WRS halves
-            LocalTensor<float> sqG = yBuf_.Get<float>();
-            LocalTensor<float> sqTmp = yhatBuf_.Get<float>();
-            Cast(sqG, xTile, RoundMode::CAST_NONE, nv * HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-            Mul(sqG, sqG, sqG, nv * HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-            // lo/hi 64-wide halves: each WRS repeat sums one vec's half-row
-            WholeReduceSum(normVec, sqG, 64, nv, 1, 1, 16);
-            PipeBarrier<PIPE_V>();
-            WholeReduceSum(sqTmp, sqG[64], 64, nv, 1, 1, 16);
-            PipeBarrier<PIPE_V>();
-            Add(normVec, normVec, sqTmp, nv);
-            PipeBarrier<PIPE_V>();
-            Sqrt(normVec, normVec, nv);
-            PipeBarrier<PIPE_V>();
-
+            // y = z * inv (per-row scalar, from the persisted pre-pass values)
             SyncPipe<HardEvent::V_S>();
             for (int32_t v = 0; v < nv; ++v) {
-                const float norm = normVec.GetValue(v);
-                inv_[v] = (norm > 0.0f) ? 1.0f / ((norm < MIN_DENOM) ? MIN_DENOM : norm) : 0.0f;
+                inv_[v] = invAll_.GetValue(rowBase + v);
+                normVec.SetValue(v, normAll_.GetValue(rowBase + v));
             }
             SyncPipe<HardEvent::S_V>();
-
-            // ---- y = z * inv, batched MSE quantize (words into this tile's set)
-            for (int32_t vb = 0; vb < nv; vb += BATCH_VEC) {
-                const int32_t b = (nv - vb) < BATCH_VEC ? (nv - vb) : BATCH_VEC;
-                for (int32_t i = 0; i < b; ++i) {
-                    Muls(yBuf_.Get<float>()[i * HEAD_DIM], zTile[(vb + i) * HEAD_DIM], inv_[vb + i], HEAD_DIM);
-                }
-                PipeBarrier<PIPE_V>();
-                QuantizeBatch(vb, b, zTile, rnVec);
+            for (int32_t i = 0; i < nv; ++i) {
+                Muls(yBuf_.Get<float>()[i * HEAD_DIM], zTile[i * HEAD_DIM], inv_[i], HEAD_DIM);
             }
+            PipeBarrier<PIPE_V>();
+            QuantizeBatch(0, nv, zTile, rnVec);
             Sqrt(rnVec, rnVec, nv);
             PipeBarrier<PIPE_V>();
             Mul(gammaVec, normVec, rnVec, nv);
-            PipeBarrier<PIPE_V>();
-            Cast(normBF, normVec, RoundMode::CAST_RINT, nv);
             PipeBarrier<PIPE_V>();
             Cast(gammaBF, gammaVec, RoundMode::CAST_RINT, nv);
             PipeBarrier<PIPE_V>();
@@ -654,7 +636,7 @@ private:
                 const float rn = rnVec.GetValue(v);
                 invR_[v] = (rn > 0.0f) ? 1.0f / ((rn < MIN_DENOM) ? MIN_DENOM : rn) : 0.0f;
             }
-            UnpackIdxAll(nv);
+            PackIdxTile(nv);
             SyncPipe<HardEvent::S_V>();
 
             // ---- r_hat (in place) and its fp16 hi/lo splits uploaded to GM
@@ -665,50 +647,52 @@ private:
             UploadRhat(g0, nv, zTile);
 
             SyncPipe<HardEvent::V_MTE3>();
-            // bulk MTE3 flush for full tiles (retest after the staging-overflow
-            // era's "bulk never lands" verdict was traced to clobbered UB, not
-            // the copy); scalar path only for the tail
-            const int32_t nvBulk = nv & ~(CHUNK_VEC - 1);
-            if (nvBulk > 0) {
-                DataCopy(normGm_[g0], normBF, nvBulk);
-                DataCopy(gammaGm_[g0], gammaBF, nvBulk);
-                DataCopy(idxGm_[g0 * idxBytesPerVec_], idxStage, nvBulk * idxBytesPerVec_);
-            }
-            if (nvBulk < nv) {
-                FlushScalar(g0 + nvBulk, nvBulk, nv - nvBulk, normBF, gammaBF, idxStage, qjlStage, true, false);
-                FlushOutLines(normGm_, g0 + nvBulk, (nv - nvBulk) * 2);
-                FlushOutLines(gammaGm_, g0 + nvBulk, (nv - nvBulk) * 2);
-                FlushOutLines(idxGm_, (g0 + nvBulk) * idxBytesPerVec_, (nv - nvBulk) * idxBytesPerVec_);
+            if (nv == TILE_VEC) {
+                DataCopy(gammaGm_[g0], gammaBF, nv);
+                DataCopy(idxGm_[g0 * idxBytesPerVec_], idxStage, nv * idxBytesPerVec_);
+            } else {
+                FlushScalar(g0, 0, nv, normBFBuf_.Get<bfloat16_t>(), gammaBF, idxStage, qjlStage, true, false);
+                FlushOutLines(gammaGm_, g0, nv * 2);
+                FlushOutLines(idxGm_, g0 * idxBytesPerVec_, nv * idxBytesPerVec_);
             }
             SyncPipe<HardEvent::MTE3_V>();
-
-        }
-
-        // signal r_hat ready (r splits already drained to L2 by the loop-end sync)
-        if (GetBlockIdx() < 2) {
         }
         SyncPipe<HardEvent::MTE3_S>();
-        if (GetBlockIdx() < 2) {
+        GmFlagSet(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_R_LO : SLOT_R_HI), MAGIC_R);
+    }
+
+    // ---- phase 3 (AIV): p1+p2+p3 (fp32 sum) -> sign -> qjl pack, per chunk
+    __aicore__ inline void SignChunk(int64_t l)
+    {
+        const int64_t c = ChunkId(l);
+        const int64_t rows = ChunkRows(c);
+        const int64_t halfBegin = c * CHUNK_ROWS + aivSubIdx_ * HALF_CHUNK_ROWS;
+        int64_t myRows = rows - aivSubIdx_ * HALF_CHUNK_ROWS;
+        if (myRows > HALF_CHUNK_ROWS) {
+            myRows = HALF_CHUNK_ROWS;
         }
-        GmFlagSet(slotBase + (3 + aivSubIdx_) * SLOT_STRIDE, aivSubIdx_ == 0 ? MAGIC_R_LO : MAGIC_R_HI);
+        if (myRows <= 0) {
+            return;
+        }
+        LocalTensor<float> pAll = zTileBuf_.Get<float>();
+        LocalTensor<half> pHalf = bvBuf_.Get<half>();
+        LocalTensor<float> pCorr = pTileBuf_.Get<float>();
+        LocalTensor<float> bv = bvBuf_.Get<float>();
+        LocalTensor<uint8_t> qjlStage = qjlStageBuf_.Get<uint8_t>();
+        LocalTensor<bfloat16_t> normBF = normBFBuf_.Get<bfloat16_t>();
+        LocalTensor<bfloat16_t> gammaBF = gammaBFBuf_.Get<bfloat16_t>();
+        LocalTensor<uint8_t> idxStage = idxStageBuf_.Get<uint8_t>();
 
-        // early norm/gamma visibility sweep: a handful of tiles lost their
-        // phase-1 scalar stores to later cache activity before the final
-        // sweep ran (bisected 2026-09-26: ~10 tiles of 0xEEEE poison survived)
-        FlushOutLines(normGm_, vecBegin_, vecNum_ * 2);
-        FlushOutLines(gammaGm_, vecBegin_, vecNum_ * 2);
-
-        // ---- wait p, sign, qjl flush
-        GmFlagWait(slotBase + (5 + 2 * aivSubIdx_) * SLOT_STRIDE, MAGIC_P);
-        for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
-            const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
-            const int64_t g0 = vecBegin_ + tileStart;
-            // p = p1(fp32) + cast(p2 fp16) + cast(p3 fp16)
-            LocalTensor<float> pAll = zTileBuf_.Get<float>();
-            LocalTensor<half> pHalf = bvBuf_.Get<half>();
-            LocalTensor<float> pCorr = pTileBuf_.Get<float>();
+        for (int64_t t = 0; t < myRows; t += TILE_VEC) {
+            const int32_t nv = static_cast<int32_t>((myRows - t) < TILE_VEC ? (myRows - t) : TILE_VEC);
+            const int64_t g0 = halfBegin + t;
+            // p = cast(p1 fp16) + cast(p2 fp16) + cast(p3 fp16), summed in fp32
             SyncPipe<HardEvent::V_MTE2>();
-            DataCopy(pAll, wsP1Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
+            DataCopy(pHalf, wsP1Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
+            SyncPipe<HardEvent::MTE2_V>();
+            Cast(pAll, pHalf, RoundMode::CAST_NONE, nv * HEAD_DIM);
+            PipeBarrier<PIPE_V>();
+            SyncPipe<HardEvent::V_MTE2>();
             DataCopy(pHalf, wsP2Gm_[g0 * HEAD_DIM], nv * HEAD_DIM);
             SyncPipe<HardEvent::MTE2_V>();
             Cast(pCorr, pHalf, RoundMode::CAST_NONE, nv * HEAD_DIM);
@@ -723,39 +707,58 @@ private:
             Add(pAll, pAll, pCorr, nv * HEAD_DIM);
             PipeBarrier<PIPE_V>();
 
-            LocalTensor<float> bv = bvBuf_.Get<float>();
-            Duplicate(bv, 0.0f, BATCH_VEC * HEAD_DIM);
+            Duplicate(bv, 0.0f, nv * HEAD_DIM);
             PipeBarrier<PIPE_V>();
-            for (int32_t vb = 0; vb < nv; vb += BATCH_VEC) {
-                const int32_t b = (nv - vb) < BATCH_VEC ? (nv - vb) : BATCH_VEC;
-                Compare(qjlStageBuf_.Get<uint8_t>()[(vb / BATCH_VEC) * BATCH_VEC * qjlBytesPerVec_],
-                        pAll[vb * HEAD_DIM], bv, CMPMODE::GE, b * HEAD_DIM);
-                PipeBarrier<PIPE_V>();
-            }
+            Compare(qjlStage, pAll, bv, CMPMODE::GE, nv * HEAD_DIM);
+            PipeBarrier<PIPE_V>();
 
             SyncPipe<HardEvent::V_MTE3>();
-            // CRITICAL: FlushScalar's SCALAR reads of the Compare (V-pipe)
-            // bitmask need V_S - without it the stage reads one tile stale for
-            // the first vecs of every tile (bisected 2026-09-26: qjl bad for
-            // exactly the first BATCH_VEC vecs of each tile)
+            // CRITICAL: scalar reads of the Compare (V-pipe) bitmask need V_S
             SyncPipe<HardEvent::V_S>();
-            const int32_t nvBulk = nv & ~(CHUNK_VEC - 1);
-            if (nvBulk > 0) {
-                DataCopy(qjlOutGm_[g0 * qjlBytesPerVec_], qjlStageBuf_.Get<uint8_t>(), nvBulk * qjlBytesPerVec_);
-            }
-            if (nvBulk < nv) {
-                FlushScalar(g0 + nvBulk, nvBulk, nv - nvBulk, normBF, gammaBF, idxStage,
-                            qjlStageBuf_.Get<uint8_t>(), false, true);
-                FlushOutLines(qjlOutGm_, (g0 + nvBulk) * qjlBytesPerVec_, (nv - nvBulk) * qjlBytesPerVec_);
+            if (nv == TILE_VEC) {
+                DataCopy(qjlOutGm_[g0 * qjlBytesPerVec_], qjlStage, nv * qjlBytesPerVec_);
+            } else {
+                FlushScalar(g0, 0, nv, normBF, gammaBF, idxStage, qjlStage, false, true);
+                FlushOutLines(qjlOutGm_, g0 * qjlBytesPerVec_, nv * qjlBytesPerVec_);
             }
             SyncPipe<HardEvent::MTE3_V>();
             SyncPipe<HardEvent::S_V>();
         }
+    }
 
+    // AIV-side full flow: splits -> per-chunk [pre | quant | sign]
+    __aicore__ inline void ProcessAiv()
+    {
+        SplitMatrices();
+
+        for (int64_t l = 0; l < myChunks_; ++l) {
+            PrePassChunk(l);
+        }
+        for (int64_t l = 0; l < myChunks_; ++l) {
+            GmFlagWait(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_Z_LO : SLOT_Z_HI), MAGIC_Z);
+            QuantChunk(l);
+        }
+        for (int64_t l = 0; l < myChunks_; ++l) {
+            GmFlagWait(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_P_LO : SLOT_P_HI), MAGIC_P);
+            SignChunk(l);
+        }
+    }
+
+    __aicore__ inline int32_t SlotBase() const
+    {
+        return static_cast<int32_t>(logicalIdx_) * GROUP_FLAG_CELLS * SLOT_STRIDE;
+    }
+
+    // scratch fp32 row buffer for the second WRS half (aliases redTmp)
+    __aicore__ inline LocalTensor<float> xBuf2()
+    {
+        return redTmpBuf_.Get<float>();
     }
 
     // ---- low-level fp16 matmul service (AIC only): z = A @ B^T per 16x128 tile ----
-    // ND (row-major) GM tile -> NZ L1
+    // ND (row-major) GM tile -> NZ L1; rowAct bounds the GM read so tail tiles
+    // never touch input rows past totalVec (pad rows compute garbage in L0,
+    // which the AIV never consumes)
     template <typename T>
     __aicore__ inline void CopyGmNDToL1(const LocalTensor<T> &l1Tensor, const GlobalTensor<T> &gmTensor,
                                         uint32_t rowAct, uint32_t colStride)
@@ -765,14 +768,14 @@ private:
         nd2nzPara.nValue = rowAct;
         nd2nzPara.srcDValue = colStride;
         nd2nzPara.dValue = HEAD_DIM;
-        nd2nzPara.dstNzC0Stride = rowAct;
+        nd2nzPara.dstNzC0Stride = (rowAct + 15) / 16 * 16;
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.dstNzMatrixStride = 0;
         nd2nzPara.srcNdMatrixStride = 0;
         DataCopy(l1Tensor, gmTensor, nd2nzPara);
     }
 
-    // load one split matrix [128,128] into L1 B (B^T math needs straight fractals)
+    // load one split matrix pair [128,128] x 2 into L1 B and L0 B (resident)
     __aicore__ inline void LoadSplitToL1(const GlobalTensor<half> &ws0, const GlobalTensor<half> &ws1)
     {
         CopyGmNDToL1(l1BBuf_.Get<half>(), ws0, HEAD_DIM, HEAD_DIM);
@@ -793,79 +796,20 @@ private:
         WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
     }
 
-    // one A tile through ONE split only (the p4 = rl@Sl term is negligible and skipped)
-    __aicore__ inline void MmTile1(const GlobalTensor<half> &aGm, int32_t splitIdx, const GlobalTensor<half> &zGm,
-                                   uint32_t aStride = HEAD_DIM)
-    {
-        const int32_t bufSel = mmCtr_ & 3;
-        ++mmCtr_;
-        LocalTensor<half> l1A = l1ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
-        LocalTensor<half> l0A = l0ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
-        CopyGmNDToL1(l1A, aGm, TILE_VEC, aStride);
-        SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
-        WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
-        LoadData3DParamsV2<half> pa;
-        pa.l1H = TILE_VEC / 16;
-        pa.l1W = 16;
-        pa.padList[0] = 0;
-        pa.padList[1] = 0;
-        pa.padList[2] = 0;
-        pa.padList[3] = 255;
-        pa.mExtension = TILE_VEC;
-        pa.kExtension = HEAD_DIM;
-        pa.mStartPt = 0;
-        pa.kStartPt = 0;
-        pa.strideH = 1;
-        pa.strideW = 1;
-        pa.filterW = 1;
-        pa.filterSizeW = (1 >> 8) & 255;
-        pa.filterH = 1;
-        pa.filterSizeH = (1 >> 8) & 255;
-        pa.dilationFilterH = 1;
-        pa.dilationFilterW = 1;
-        pa.fMatrixCtrl = 0;
-        pa.channelSize = HEAD_DIM;
-        pa.enTranspose = 0;
-        LoadData<half>(l0A, l1A, pa);
-        SetFlag<HardEvent::MTE1_M>(eventMte1M_);
-        WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
-        MmadParams mp;
-        mp.m = TILE_VEC;
-        mp.n = HEAD_DIM;
-        mp.k = HEAD_DIM;
-        mp.cmatrixSource = false;
-        mp.cmatrixInitVal = true;
-        mp.unitFlag = 0b11;
-        LocalTensor<float> cL0 = l0CBuf_.Get<float>();
-        Mmad(cL0, l0A, l0BBuf_.Get<half>()[splitIdx * SPLIT_ELEMS], mp);
-        SetFlag<HardEvent::M_MTE1>(eventMMte1_);
-        WaitFlag<HardEvent::M_MTE1>(eventMMte1_);
-        SetFlag<HardEvent::M_FIX>(eventMFix_);
-        WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOutF16(zGm, cL0);
-        SetFlag<HardEvent::FIX_M>(eventFixM_);
-        WaitFlag<HardEvent::FIX_M>(eventFixM_);
-        if ((mmCtr_ & 3) == 0) {
-            PipeBarrier<PIPE_M>();
-        }
-    }
-
     // one A tile through both B-splits, L0C-ACCUMULATED into a single plane:
     //   out = A @ (B0+B1)^T = A@B0^T + A@B1^T  (fp32-grade from fp16 splits,
     //   one fixpipe + one GM plane instead of two - halves the z/p DMA)
-    __aicore__ inline void MmTile(const GlobalTensor<half> &aGm, const GlobalTensor<float> &outGm,
-                                  int64_t dbgT0 = -1, uint32_t aStride = HEAD_DIM)
+    __aicore__ inline void MmTile(const GlobalTensor<half> &aGm, const GlobalTensor<float> &outGm, int32_t rowAct)
     {
         // 4-deep A rotation driven by a monotonic MmTile counter: the loop-t0
-        // parity collided for consecutive MmTiles within one MmTile2 (rl(t0)
-        // and rh(t0+16) shared a slot -> p2 held Sh@rh of the next tile,
-        // bisected 2026-09-26). A strict +1 counter guarantees distinct slots.
+        // parity collided for consecutive MmTiles (bisected 2026-09-26). A
+        // strict +1 counter guarantees distinct slots.
         const int32_t bufSel = mmCtr_ & 3;
         ++mmCtr_;
         const TEventID evAB = eventMMte1_;
         LocalTensor<half> l1A = l1ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
         LocalTensor<half> l0A = l0ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
-        CopyGmNDToL1(l1A, aGm, TILE_VEC, HEAD_DIM);
+        CopyGmNDToL1(l1A, aGm, rowAct, HEAD_DIM);
         SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
         WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
 
@@ -928,68 +872,114 @@ private:
         }
     }
 
-    // ISOLATION TEST: two-output non-accumulating variant (p1 = A@B0^T, p3 = A@B1^T)
-    __aicore__ inline void MmTileSplit(const GlobalTensor<half> &aGm, const GlobalTensor<float> &o1Gm,
-                                       const GlobalTensor<half> &o2Gm, int64_t dbgT0 = -1)
+    // r_hat tile through the p matmul, in the proven v5 cadence: rh is loaded
+    // ONCE per tile and drives BOTH rh Mmads (p1 = rh@Sh, p3 = rh@Sl), then rl
+    // is loaded once for p2 = rl@Sh (2 A-loads per tile; the 3-load variant
+    // densified the load stream past what the 4-deep rotation absorbs and
+    // middle tiles came back scrambled). All three planes are fp16 fixpipe
+    // out: relative out-rounding (~2^-12|p|) never flips a sign.
+    __aicore__ inline void MmTileP(const GlobalTensor<half> &rhGm, const GlobalTensor<half> &rlGm,
+                                   const GlobalTensor<half> &p1Gm, const GlobalTensor<half> &p2Gm,
+                                   const GlobalTensor<half> &p3Gm, int32_t rowAct)
     {
         const int32_t bufSel = mmCtr_ & 3;
         ++mmCtr_;
         const TEventID evAB = eventMMte1_;
         LocalTensor<half> l1A = l1ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
         LocalTensor<half> l0A = l0ABuf_.Get<half>()[bufSel * TILE_VEC * HEAD_DIM];
-        CopyGmNDToL1(l1A, aGm, TILE_VEC, HEAD_DIM);
+        CopyGmNDToL1(l1A, rhGm, rowAct, HEAD_DIM);   // rh rows contiguous in the tile block
         SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
         WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
         LoadData3DParamsV2<half> pa;
-        pa.l1H = TILE_VEC / 16; pa.l1W = 16;
-        pa.padList[0] = 0; pa.padList[1] = 0; pa.padList[2] = 0; pa.padList[3] = 255;
-        pa.mExtension = TILE_VEC; pa.kExtension = HEAD_DIM; pa.mStartPt = 0; pa.kStartPt = 0;
-        pa.strideH = 1; pa.strideW = 1; pa.filterW = 1; pa.filterSizeW = (1 >> 8) & 255;
-        pa.filterH = 1; pa.filterSizeH = (1 >> 8) & 255; pa.dilationFilterH = 1; pa.dilationFilterW = 1;
-        pa.fMatrixCtrl = 0; pa.channelSize = HEAD_DIM; pa.enTranspose = 0;
+        pa.l1H = TILE_VEC / 16;
+        pa.l1W = 16;
+        pa.padList[0] = 0;
+        pa.padList[1] = 0;
+        pa.padList[2] = 0;
+        pa.padList[3] = 255;
+        pa.mExtension = TILE_VEC;
+        pa.kExtension = HEAD_DIM;
+        pa.mStartPt = 0;
+        pa.kStartPt = 0;
+        pa.strideH = 1;
+        pa.strideW = 1;
+        pa.filterW = 1;
+        pa.filterSizeW = (1 >> 8) & 255;
+        pa.filterH = 1;
+        pa.filterSizeH = (1 >> 8) & 255;
+        pa.dilationFilterH = 1;
+        pa.dilationFilterW = 1;
+        pa.fMatrixCtrl = 0;
+        pa.channelSize = HEAD_DIM;
+        pa.enTranspose = 0;
         LoadData<half>(l0A, l1A, pa);
         SetFlag<HardEvent::MTE1_M>(eventMte1M_);
         WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
         MmadParams mp;
-        mp.m = TILE_VEC; mp.n = HEAD_DIM; mp.k = HEAD_DIM;
-        mp.cmatrixSource = false; mp.cmatrixInitVal = true; mp.unitFlag = 0b11;
+        mp.m = TILE_VEC;
+        mp.n = HEAD_DIM;
+        mp.k = HEAD_DIM;
+        mp.cmatrixSource = false;
+        mp.cmatrixInitVal = true;
+        mp.unitFlag = 0b11;
         LocalTensor<float> cL0 = l0CBuf_.Get<float>();
-        LocalTensor<half> aL0 = l0A;
-        Mmad(cL0, aL0, l0BBuf_.Get<half>(), mp);
-        SetFlag<HardEvent::M_MTE1>(evAB); WaitFlag<HardEvent::M_MTE1>(evAB);
-        SetFlag<HardEvent::M_FIX>(eventMFix_); WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOut(o1Gm, cL0);
-        SetFlag<HardEvent::FIX_M>(eventFixM_); WaitFlag<HardEvent::FIX_M>(eventFixM_);
-        Mmad(cL0, aL0, l0BBuf_.Get<half>()[SPLIT_ELEMS], mp);
-        SetFlag<HardEvent::M_MTE1>(evAB); WaitFlag<HardEvent::M_MTE1>(evAB);
-        SetFlag<HardEvent::M_FIX>(eventMFix_); WaitFlag<HardEvent::M_FIX>(eventMFix_);
-        FixpipeOutF16(o2Gm, cL0);
-        SetFlag<HardEvent::FIX_M>(eventFixM_); WaitFlag<HardEvent::FIX_M>(eventFixM_);
-        if ((mmCtr_ & 3) == 0) { PipeBarrier<PIPE_M>(); }
-    }
+        Mmad(cL0, l0A, l0BBuf_.Get<half>(), mp);   // p1 = rh @ Sh^T
+        SetFlag<HardEvent::M_MTE1>(evAB);
+        WaitFlag<HardEvent::M_MTE1>(evAB);
+        SetFlag<HardEvent::M_FIX>(eventMFix_);
+        WaitFlag<HardEvent::M_FIX>(eventMFix_);
+        FixpipeOutF16(p1Gm, cL0);
+        SetFlag<HardEvent::FIX_M>(eventFixM_);
+        WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        Mmad(cL0, l0A, l0BBuf_.Get<half>()[SPLIT_ELEMS], mp);   // p3 = rh @ Sl^T (same L0A)
+        SetFlag<HardEvent::M_MTE1>(evAB);
+        WaitFlag<HardEvent::M_MTE1>(evAB);
+        SetFlag<HardEvent::M_FIX>(eventMFix_);
+        WaitFlag<HardEvent::M_FIX>(eventMFix_);
+        FixpipeOutF16(p3Gm, cL0);
+        SetFlag<HardEvent::FIX_M>(eventFixM_);
+        WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        if ((mmCtr_ & 3) == 0) {
+            PipeBarrier<PIPE_M>();
+        }
 
-    // r_hat tiles: p13 = (Sh+Sl) @ rh (L0C-accumulated, one plane) and
-    // p2 = Sh @ rl (one plane). p = p13 + p2 = (Sh+Sl)@(rh+rl) - Sl@rl (~1e-9)
-    // is dropped. Two GM planes instead of three/four.
-    __aicore__ inline void MmTile2(const GlobalTensor<half> &rhGm, const GlobalTensor<half> &rlGm,
-                                   const GlobalTensor<float> &p1Gm, const GlobalTensor<half> &p2Gm,
-                                   const GlobalTensor<half> &p3Gm, int64_t dbgT0 = -1)
-    {
-        const int64_t t0 = (dbgT0 < 0) ? 0 : dbgT0;
-        // separate planes (NOT L0C-accumulated): the accumulate's correction
-        // term loses precision, which idx tolerates (z, coarse) but the QJL
-        // SIGN does not (p, needs ~1e-7). p1=Sh@rh, p3=Sl@rh, p2=Sh@rl.
-        MmTileSplit(rhGm, p1Gm, p3Gm, t0);
-        MmTile1(rlGm, 0, p2Gm);
+        // p2 = rl @ Sh^T (separate A load, same cadence as the proven v5 MmTile1)
+        const int32_t bufSel2 = mmCtr_ & 3;
+        ++mmCtr_;
+        LocalTensor<half> l1A2 = l1ABuf_.Get<half>()[bufSel2 * TILE_VEC * HEAD_DIM];
+        LocalTensor<half> l0A2 = l0ABuf_.Get<half>()[bufSel2 * TILE_VEC * HEAD_DIM];
+        CopyGmNDToL1(l1A2, rlGm, rowAct, HEAD_DIM);
+        SetFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
+        WaitFlag<HardEvent::MTE2_MTE1>(eventMte2Mte1_);
+        LoadData<half>(l0A2, l1A2, pa);
+        SetFlag<HardEvent::MTE1_M>(eventMte1M_);
+        WaitFlag<HardEvent::MTE1_M>(eventMte1M_);
+        MmadParams mp2;
+        mp2.m = TILE_VEC;
+        mp2.n = HEAD_DIM;
+        mp2.k = HEAD_DIM;
+        mp2.cmatrixSource = false;
+        mp2.cmatrixInitVal = true;
+        mp2.unitFlag = 0b11;
+        Mmad(cL0, l0A2, l0BBuf_.Get<half>(), mp2);
+        SetFlag<HardEvent::M_MTE1>(evAB);
+        WaitFlag<HardEvent::M_MTE1>(evAB);
+        SetFlag<HardEvent::M_FIX>(eventMFix_);
+        WaitFlag<HardEvent::M_FIX>(eventMFix_);
+        FixpipeOutF16(p2Gm, cL0);
+        SetFlag<HardEvent::FIX_M>(eventFixM_);
+        WaitFlag<HardEvent::FIX_M>(eventFixM_);
+        if ((mmCtr_ & 3) == 0) {
+            PipeBarrier<PIPE_M>();
+        }
     }
 
     __aicore__ inline void FixpipeOut(const GlobalTensor<float> &gmOut, const LocalTensor<float> &cL0)
     {
-        // Fixpipe-API L0C -> GM (the 2026-09-24 grid-completing form; the
-        // DataCopyCO12DstParams replacement wedged the M pipe at tile ~4/5).
-        // Its writes sit in the cube DMA (ATOMIC) coherency domain, so the
-        // partner AIVs only observe them after the per-line CACHELINE_ATOMIC
-        // flush loop that follows each phase's tile loop.
+        // Fixpipe-API L0C -> GM. Its writes sit in the cube DMA (ATOMIC)
+        // coherency domain; on this stack partner AIVs observe them after
+        // SyncPipe<FIX_S> + the flag store ordering (no per-line dcci needed -
+        // bisected 2026-09-27, byte-identical accuracy with/without).
         FixpipeParamsV220 fp;
         fp.nSize = HEAD_DIM;
         fp.mSize = TILE_VEC;
@@ -1000,7 +990,7 @@ private:
         Fixpipe(gmOut, cL0, fp);
     }
 
-    // fp32 L0C -> fp16 GM (F322F16, no scale): for the p2/p3 correction planes
+    // fp32 L0C -> fp16 GM (F322F16, no scale): for the p2 correction plane
     __aicore__ inline void FixpipeOutF16(const GlobalTensor<half> &gmOut, const LocalTensor<float> &cL0)
     {
         FixpipeParamsV220 fp;
@@ -1015,9 +1005,10 @@ private:
     }
 
     // batched MSE quantization of b vectors starting at vb: y = z*inv already in
-    // yBuf slots; writes residual into zTile, rnVec, and idx pack words
+    // yBuf slots; writes residual into zTile and rnVec (idx stays in idxFBuf
+    // for PackIdxTile)
     __aicore__ inline void QuantizeBatch(int32_t vb, int32_t b, const LocalTensor<float> &zTile,
-                                         const LocalTensor<float> &rnVec, int32_t wordSet = 0)
+                                         const LocalTensor<float> &rnVec)
     {
         LocalTensor<float> y = yBuf_.Get<float>();
         LocalTensor<float> yhat = yhatBuf_.Get<float>();
@@ -1083,29 +1074,70 @@ private:
         PipeBarrier<PIPE_V>();
         Add(rnVec[vb], rnVec[vb], rnTmp, b);
         PipeBarrier<PIPE_V>();
-        // idx bit-pack: lo/hi half-words so every group word is an exact fp32 integer
+    }
+
+    // idx bit-pack via vcgadd block-reduce: idx * 2^(bits*lane) sums 8 lanes
+    // into one exact fp32 integer group word (replaces the 128-rep
+    // WholeReduceSum pack - ~5x less vector time). Raw __ubuf__ pointer walk
+    // for the byte split: GetValue/SetValue drain the scalar pipe per element.
+    __aicore__ inline void PackIdxTile(int32_t nv)
+    {
+        LocalTensor<float> idxF = idxFBuf_.Get<float>();
         LocalTensor<float> wtL = wtLBuf_.Get<float>();
         LocalTensor<float> wtH = wtHBuf_.Get<float>();
-        LocalTensor<float> wordLo = wordIdxLoBuf_.Get<float>()[wordSet * TILE_VEC * WORDS_PER_VEC];
-        LocalTensor<float> wordHi = wordIdxHiBuf_.Get<float>()[wordSet * TILE_VEC * WORDS_PER_VEC];
+        LocalTensor<float> y = yBuf_.Get<float>();
+        LocalTensor<float> wordLo = wordIdxLoBuf_.Get<float>();
+        LocalTensor<float> wordHi = wordIdxHiBuf_.Get<float>();
+        const int32_t w = nv * HEAD_DIM;
+
         Mul(y, idxF, wtL, w);
         PipeBarrier<PIPE_V>();
-        // WRS repeat count caps at 255: with b=16 (256 group-words) split into
-        // two 128-rep calls (bisected 2026-09-26: idx garbage at BATCH_VEC=16)
-        WholeReduceSum(wordLo[vb * WORDS_PER_VEC], y, 8, 128, 1, 1, 1);
+        BlockReduceSum(wordLo, y, nv * 2, 64, 1, 1, 8);
         PipeBarrier<PIPE_V>();
-        if (b * WORDS_PER_VEC > 128) {
-            WholeReduceSum(wordLo[vb * WORDS_PER_VEC + 128], y[128 * 8], 8, b * WORDS_PER_VEC - 128, 1, 1, 1);
-            PipeBarrier<PIPE_V>();
-        }
+        // lo = lanes 0-3, hi = lanes 4-7 for EVERY bit width (the pack emits
+        // word = lo + hi<<4*bits) - hi is not optional for bits < 4
         Mul(y, idxF, wtH, w);
         PipeBarrier<PIPE_V>();
-        WholeReduceSum(wordHi[vb * WORDS_PER_VEC], y, 8, 128, 1, 1, 1);
+        BlockReduceSum(wordHi, y, nv * 2, 64, 1, 1, 8);
         PipeBarrier<PIPE_V>();
-        if (b * WORDS_PER_VEC > 128) {
-            WholeReduceSum(wordHi[vb * WORDS_PER_VEC + 128], y[128 * 8], 8, b * WORDS_PER_VEC - 128, 1, 1, 1);
-            PipeBarrier<PIPE_V>();
+        // int32 casts into the (dead-after-quantize) indicator scratch: in-place
+        // fp32->int32 Cast on the same UB lines is not safe to assume
+        LocalTensor<int32_t> wordsILo = pBuf_.Get<int32_t>();
+        LocalTensor<int32_t> wordsIHi = pBuf_.Get<int32_t>()[TILE_VEC * WORDS_PER_VEC];
+        Cast(wordsILo, wordLo, RoundMode::CAST_RINT, ((nv * WORDS_PER_VEC) + 7) & ~7);
+        PipeBarrier<PIPE_V>();
+        Cast(wordsIHi, wordHi, RoundMode::CAST_RINT, ((nv * WORDS_PER_VEC) + 7) & ~7);
+        PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_ALL>();
+        __ubuf__ int32_t *lo = reinterpret_cast<__ubuf__ int32_t *>(wordsILo.GetPhyAddr());
+        __ubuf__ int32_t *hi = reinterpret_cast<__ubuf__ int32_t *>(wordsIHi.GetPhyAddr());
+        __ubuf__ uint8_t *out = reinterpret_cast<__ubuf__ uint8_t *>(idxStageBuf_.Get<uint8_t>().GetPhyAddr());
+        const int32_t hiShift = 4 * mseBits_;
+        const int32_t nWords = nv * WORDS_PER_VEC;
+        const int32_t bits = mseBits_;
+        if (bits == 4) {
+            for (int32_t i = 0; i < nWords; ++i) {
+                const uint32_t word = static_cast<uint32_t>(lo[i]) + (static_cast<uint32_t>(hi[i]) << hiShift);
+                out[i * 4] = static_cast<uint8_t>(word);
+                out[i * 4 + 1] = static_cast<uint8_t>(word >> 8);
+                out[i * 4 + 2] = static_cast<uint8_t>(word >> 16);
+                out[i * 4 + 3] = static_cast<uint8_t>(word >> 24);
+            }
+        } else if (bits == 3) {
+            for (int32_t i = 0; i < nWords; ++i) {
+                const uint32_t word = static_cast<uint32_t>(lo[i]) + (static_cast<uint32_t>(hi[i]) << hiShift);
+                out[i * 3] = static_cast<uint8_t>(word);
+                out[i * 3 + 1] = static_cast<uint8_t>(word >> 8);
+                out[i * 3 + 2] = static_cast<uint8_t>(word >> 16);
+            }
+        } else {
+            for (int32_t i = 0; i < nWords; ++i) {
+                const uint32_t word = static_cast<uint32_t>(lo[i]) + (static_cast<uint32_t>(hi[i]) << hiShift);
+                out[i * 2] = static_cast<uint8_t>(word);
+                out[i * 2 + 1] = static_cast<uint8_t>(word >> 8);
+            }
         }
+        PipeBarrier<PIPE_ALL>();
     }
 
     // r_hat zTile tile -> rh/rl fp16 tiles into GM (A feed of the QJL matmul)
@@ -1113,9 +1145,8 @@ private:
     {
         // dedicated full-tile buffers: the 1KB BATCH_VEC scratch buffers here
         // overflowed by 4-8KB per tile and steamrolled normBF/gammaBF staging
-        // (bisected 2026-09-26: fp32 residual bytes in the bf16 output slots)
-        // rh|rl interleaved per-vec in ONE plane: a single 8KB upload copy and,
-        // downstream, ONE 32-row A tile for the p matmul (halves the p pass)
+        // (bisected 2026-09-26). rh|rl interleaved per-vec in ONE plane: a
+        // single upload copy and one 32-row A tile fetch pattern downstream.
         LocalTensor<half> rh = rhatRhBuf_.Get<half>();
         LocalTensor<half> rl = rhatRhBuf_.Get<half>()[TILE_VEC * HEAD_DIM];
         LocalTensor<float> back = rhatBackBuf_.Get<float>();
@@ -1131,44 +1162,16 @@ private:
         Cast(rl, sub, RoundMode::CAST_RINT, w);
         PipeBarrier<PIPE_V>();
         SyncPipe<HardEvent::V_MTE3>();
-        DataCopy(wsRhat2Gm_[g0 * 2 * HEAD_DIM], rh, 2 * w);
-    }
-
-    __aicore__ inline void UnpackIdxAll(int32_t nv, int32_t wordSet = 0, int32_t stageSet = 0)
-    {
-        LocalTensor<float> wordLo = wordIdxLoBuf_.Get<float>()[wordSet * TILE_VEC * WORDS_PER_VEC];
-        LocalTensor<float> wordHi = wordIdxHiBuf_.Get<float>()[wordSet * TILE_VEC * WORDS_PER_VEC];
-        LocalTensor<uint8_t> idxStage = idxStageBuf_.Get<uint8_t>()[stageSet * TILE_VEC * MAX_IDX_BYTES];
-        const int32_t hiShift = 4 * mseBits_;
-        for (int32_t v = 0; v < nv; ++v) {
-            const int32_t outBase = v * idxBytesPerVec_;
-            for (int32_t g = 0; g < WORDS_PER_VEC; ++g) {
-                const int32_t lo = static_cast<int32_t>(wordLo.GetValue(v * WORDS_PER_VEC + g));
-                const int32_t hi = static_cast<int32_t>(wordHi.GetValue(v * WORDS_PER_VEC + g));
-                const int32_t word = lo + (hi << hiShift);
-                for (int32_t by = 0; by < mseBits_; ++by) {
-                    idxStage.SetValue(outBase + g * mseBits_ + by, static_cast<uint8_t>(word >> (8 * by)));
-                }
-            }
-        }
-    }
-
-    // per-line ATOMIC-domain flush for cube-DMA-written areas (z/p): the AIVs
-    // only observe the fixpipe output after this
-    __aicore__ inline void FlushCubeLines(const GlobalTensor<float> &gm, int64_t firstVec, int64_t bytes)
-    {
-        __gm__ float *base = const_cast<__gm__ float *>(gm.GetPhyAddr()) + firstVec * HEAD_DIM;
-        const int64_t lines = (bytes + 63) / 64;
-        GlobalTensor<int64_t> lineT;
-        for (int64_t li = 0; li < lines; ++li) {
-            lineT.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(base) + li * 8, 8);
-            DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_ATOMIC>(lineT[0]);
-        }
+        // two fixed-offset copies: the AIC reads rl at tile_base + 16*128 even
+        // for partial tiles, so rl must NOT be packed compactly after rh
+        DataCopy(wsRhat2Gm_[g0 * 2 * HEAD_DIM], rh, w);
+        DataCopy(wsRhat2Gm_[g0 * 2 * HEAD_DIM + TILE_VEC * HEAD_DIM], rl, w);
     }
 
     // dcci-flush a GM byte range: scalar stores (and MIX-mode DMA) sit in the
     // core-local cache and never become host-visible on this stack unless an
     // explicit clean+invalidate covers their lines (bisected 2026-09-26).
+    // Used only for the scalar-written partial-tile tails.
     template <typename T>
     __aicore__ inline void FlushOutLines(const GlobalTensor<T> &gm, int64_t elemOff, int64_t bytes)
     {
@@ -1193,7 +1196,7 @@ private:
             const int64_t g = g0 + v;
             const int32_t s = stageOff + v;
             if (phase1) {
-                normGm_.SetValue(g, normBF.GetValue(s));
+                // norm was already written by the pre-pass; only gamma + idx here
                 gammaGm_.SetValue(g, gammaBF.GetValue(s));
                 for (int32_t b = 0; b < idxBytesPerVec_; ++b) {
                     idxGm_.SetValue(g * idxBytesPerVec_ + b, idxStage.GetValue(s * idxBytesPerVec_ + b));
@@ -1251,12 +1254,11 @@ private:
     GlobalTensor<half> wsSlGm_;
     GlobalTensor<float> wsZGm_;
     GlobalTensor<half> wsRhat2Gm_;
-    GlobalTensor<float> wsP1Gm_;
+    GlobalTensor<half> wsP1Gm_;
     GlobalTensor<half> wsP2Gm_;
     GlobalTensor<half> wsP3Gm_;
     GlobalTensor<half> wsXhGm_;
     __gm__ int32_t *flagRaw_ = nullptr;
-    volatile __gm__ int32_t *dbgMark_ = nullptr;
     GlobalTensor<int32_t> flagGm_;
     GlobalTensor<uint64_t> flagU64_;
     TBuf<TPosition::A1> l1ABuf_;
@@ -1264,22 +1266,22 @@ private:
     TBuf<TPosition::A2> l0ABuf_;
     TBuf<TPosition::B2> l0BBuf_;
     TBuf<TPosition::CO1> l0CBuf_;
-
+    LocalTensor<float> invAll_;
+    LocalTensor<float> normAll_;
 
     bool isAic_ = false;
     int64_t aivSubIdx_ = 0;
     int64_t logicalIdx_ = 0;
     int64_t totalVec_ = 0;
+    int64_t wsVec_ = 0;
     int64_t qjlDim_ = 0;
     int32_t mseBits_ = 3;
     int32_t nCent_ = 8;
     int32_t idxBytesPerVec_ = 48;
     int32_t qjlBytesPerVec_ = 16;
     uint32_t coreNum_ = 1;
-    int64_t rangeBegin_ = 0;
-    int64_t rangeLen_ = 0;
-    int64_t vecBegin_ = 0;
-    int64_t vecNum_ = 0;
+    int64_t chunkNum_ = 0;
+    int64_t myChunks_ = 0;
 
     TEventID eventVS_ = 0;
     TEventID eventSV_ = 0;
@@ -1298,8 +1300,6 @@ private:
     TEventID eventMFix_ = 0;
     TEventID eventMMte1B_ = 0;
     int32_t mmCtr_ = 0;
-    int64_t prevG0_ = 0;
-    int32_t prevNv_ = 0;
 
     float cent_[16] = {0.0f};
     float bound_[15] = {0.0f};
@@ -1308,4 +1308,4 @@ private:
     float invR_[TILE_VEC] = {0.0f};
 };
 
-#endif // KV_CACHE_TURBO_QUANT_KERNEL_MIX_H_
+#endif

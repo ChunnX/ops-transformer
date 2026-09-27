@@ -442,6 +442,18 @@ bool RunCase(const std::string &dataDir, const CaseInfo &ci, int perfIters, aclr
                *reinterpret_cast<const float *>(&d[160]), *reinterpret_cast<const float *>(&d[161]),
                *reinterpret_cast<const float *>(&d[164]), *reinterpret_cast<const float *>(&d[165]));
     }
+    // ---- KVTQ_DUMPWS: dump the user workspace after the accuracy run ----
+    if (getenv("KVTQ_DUMPWS") != nullptr && workspace != nullptr && totalVec >= 1024) {
+        std::vector<uint8_t> wsHost(workspaceSize);
+        if (aclrtMemcpy(wsHost.data(), workspaceSize, workspace, workspaceSize, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS) {
+            const std::string dd = dataDir + "/" + ci.name + "/ws.bin";
+            std::ofstream ofs(dd, std::ios::binary);
+            ofs.write(reinterpret_cast<const char *>(wsHost.data() + 16UL * 1024 * 1024),
+                      static_cast<std::streamsize>(workspaceSize - 16UL * 1024 * 1024));
+            ofs.close();
+            printf("[DUMPWS] %s wrote %zu bytes\n", dd.c_str(), workspaceSize - 16UL * 1024 * 1024);
+        }
+    }
     // ---- optional dump of outputs for offline comparison ----
     if (getenv("KVTQ_DUMP") != nullptr) {
         auto dumpU8 = [&](const char *path, const std::vector<uint8_t> &buf) {

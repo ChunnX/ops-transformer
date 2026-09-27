@@ -60,3 +60,15 @@
 **终态数据（per-call executor暖态）**：decode b1 26.5x / b64 18.5x；prefill t2048 437us=8.81x、mse2 411us=8.77x、mse4 487us=10.86x（3/5达10x）；精度5/5功能性达标（自测byte阈值1e-3区分噪声vs真bug）。
 
 **未达10x的2 case剩余路径**：p1必须fp32不能再降；唯一大杠杆=降DMA字节或提带宽利用——per-chunk流水收益有限(DMA空闲gap仅~10us vs 380us传输)；真正可行=释放UB(splitBuf 56KB仅phase0用)后增大DMA块(更大连续transfer提带宽效率)，或让AIC直读bf16 x省xh往返(8MB,~11%)。均为较大重构，本轮未做。
+
+## 【A2 @ 2026-09-27 v6】流水化重构：prefill 437→224-260us（16-20x），全部超 10x
+
+竞对 PR 12860 在 910B4 上用 11 次 host 串行 launch（其注册 aclnn 核是空桩，计时路径不走 aclnn）；在 910B1 本机实测其 decode 190us 过不了 10x 上限、prefill ~191us。A2 侧 v6 重构（单次 MIX launch 内流水）实测 t2048 234us/mse2 224us/mse4 260us，暖态循环稳定（per-call executor 不变）。
+
+**v6 配方（相对 645781df 的改动）**：
+1. **128 行 chunk 流水**：chunk c → 组 c%24 轮询分配；XH/Z/R/P 旗标按 chunk 粒度（每组 22 chunk × 8 cell），AIC z/p 两阶段与 AIV pre/quant/sign 三阶段全部按 chunk 重叠；等效带宽 182→310GB/s。
+2. **逐行 dcci 冲刷是多余的**：fixpipe(ATOMIC 域)写在 `SyncPipe<FIX_S>`+旗标序后对 AIV MTE2 读天然可见（消融实测精度逐字节不变，-35us）。AIC 侧 16K 次单行 dcci 全删。
+3. **L0C 累加对 p 再次确认致死**（build244：qjl 93% 错），z 累加正常。**p 用三个独立 fp16 平面**（p1=rh@Sh/p3=rh@Sl/p2=rl@Sh，AIV fp32 求和）：fp16 出是相对舍入（~2^-12|p| 永不翻符号），翻转本底与 fp32 p1 相同（修正平面噪声 ~1e-7σ）。p 往返 16B→12B。
+4. **打包用 vcgadd**（`BlockReduceSum(words, idx*wLo, nv*2, 64, 1, 1, 8)` 每 repeat 64 元素出 8 个 8-lane 组和）替代 128-rep WRS（AIV 打包时间 ~4x 省）；字节拆分用 `__ubuf__` 裸指针走（避开 GetValue/SetValue 标量管道）。
+5. **x 只读一次**：pre-pass 融合 norms+xh 上传（原 quant 阶段不再读 x）。
+6. 尾块安全：Nd2Nz `nValue=有效行`（dstNzC0Stride 按 16 对齐上取整），不再越界读输入；pad 行进 L0C 出垃圾但 AIV 不消费；ws 按 chunk 上取整多分配 128 行。
