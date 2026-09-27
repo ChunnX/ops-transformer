@@ -227,12 +227,16 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
                     isLocal ? 1 : 0, AscendC::GetBlockIdx(), (unsigned long long)(uintptr_t)xGM_,
                     (unsigned long long)(uintptr_t)wGM_, (unsigned long long)(uintptr_t)yGM_,
                     (unsigned long long)(uintptr_t)xScaleGM_, (unsigned long long)(uintptr_t)weightScaleGM_);
+    // [临时诊断] tiling 源快照在 InitApaceKernel 之前打印（挂死区间缩小后补齐证据链）
+    AscendC::printf("[ApaceDBG] P2b-tiling isLocal=%d sM=%d sN=%d sKa=%d sKb=%d dbL=%d depthA=%d depthB=%d "
+                    "usedCore=%d glT=%u core=%u\n",
+                    isLocal ? 1 : 0, gmmTilingData_->mmTilingData.baseM, gmmTilingData_->mmTilingData.baseN,
+                    gmmTilingData_->mmTilingData.stepKa, gmmTilingData_->mmTilingData.stepKb,
+                    gmmTilingData_->mmTilingData.dbL0C, gmmTilingData_->mmTilingData.depthA1,
+                    gmmTilingData_->mmTilingData.depthB1, gmmTilingData_->mmTilingData.usedCoreNum,
+                    gmmTilingData_->gmmQuantParams.groupListType, AscendC::GetBlockIdx());
     InitApaceKernel(startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
-                    "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
-                    isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
-                    dbgBaseM, dbgBaseN, dbgBaseK, dbgKAL1, dbgKBL1, dbgScaleKAL1, dbgDbL0C, dbgL1Stage, dbgGroupNum,
-                    dbgGroupListType);
+    AscendC::printf("[ApaceDBG] P3-post-init isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     mxKernel_.Run();
     AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
