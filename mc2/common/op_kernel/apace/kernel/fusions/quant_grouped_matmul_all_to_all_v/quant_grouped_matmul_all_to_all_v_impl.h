@@ -217,9 +217,18 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
 
     AscendC::printf("[ApaceDBG] P-enter isLocal=%d core=%u start=%u num=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx(),
                     startExpertIdx, expertNum);
+    AscendC::printf("[ApaceDBG] P0-pre-build isLocal=%d glGm=%llu ws=%llu bs=%llu\n", isLocal ? 1 : 0,
+                    (unsigned long long)(uintptr_t)groupListGm_, (unsigned long long)(uintptr_t)workspaceGM_,
+                    (unsigned long long)bs_);
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
+    AscendC::printf("[ApaceDBG] P1-post-build isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     UpdateAddr(startExpertIdx, expertNum);
+    AscendC::printf("[ApaceDBG] P2-post-addr isLocal=%d core=%u x=%llu w=%llu y=%llu sA=%llu sB=%llu\n",
+                    isLocal ? 1 : 0, AscendC::GetBlockIdx(), (unsigned long long)(uintptr_t)xGM_,
+                    (unsigned long long)(uintptr_t)wGM_, (unsigned long long)(uintptr_t)yGM_,
+                    (unsigned long long)(uintptr_t)xScaleGM_, (unsigned long long)(uintptr_t)weightScaleGM_);
     InitApaceKernel(startExpertIdx, expertNum);
+    AscendC::printf("[ApaceDBG] P3-post-init isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     AscendC::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
                     "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
                     isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
