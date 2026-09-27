@@ -21,7 +21,6 @@
 #include <tiling/tiling_api.h>
 #include "mc2_comm_utils.h"
 #include <numeric>
-#include <securec.h>
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -746,8 +745,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::DoOpTiling()
 
 bool MxQuantGroupedMatmulAllToAllvTiling::CheckApaceImplCapable() const
 {
-    if (localParams_.epWorldSize == 0U || localParams_.epWorldSize > Apace::GMM_A2AV_MAX_RANK_NUM ||
-        localParams_.ep == 0U || localParams_.ep * localParams_.epWorldSize > Apace::GMM_A2AV_MAX_SEG_NUM) {
+    if (localParams_.epWorldSize == 0U || localParams_.epWorldSize > MAX_EXPERT_NUM || localParams_.ep == 0U ||
+        localParams_.ep * localParams_.epWorldSize > MAX_EXPERT_NUM) {
         return false;
     }
     // Blaze GroupedMatmulMxKernel 仅支持同位宽 MXFP4/MXFP8 组合
@@ -762,99 +761,14 @@ bool MxQuantGroupedMatmulAllToAllvTiling::CheckApaceImplCapable() const
     return xSupported && weightSupported && xIsFp4 == weightIsFp4;
 }
 
-void MxQuantGroupedMatmulAllToAllvTiling::SetApaceMatmulTiling(const AscendC::tiling::TCubeTiling &src,
-                                                               Apace::GmmA2avMxTiling &dst)
-{
-    dst.baseM = static_cast<uint32_t>(src.baseM);
-    dst.baseN = static_cast<uint32_t>(src.baseN);
-    dst.baseK = static_cast<uint32_t>(src.baseK);
-    dst.kAL1 = static_cast<uint32_t>(src.stepKa * src.baseK);
-    dst.kBL1 = static_cast<uint32_t>(src.stepKb * src.baseK);
-    dst.scaleKAL1 = dst.kAL1;
-    dst.dbL0C = static_cast<uint8_t>(src.dbL0C);
-    dst.l1BufferStage = 2U;
-}
-
-ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::BuildApaceTiling()
-{
-    apaceTilingData_ = {};
-    apaceTilingData_.mc2InitTiling = localTilingData_.hcclA2avTiling.hcclInitTiling;
-    apaceTilingData_.mc2CcTiling = localTilingData_.hcclA2avTiling.a2avCcTiling;
-    apaceTilingData_.rankSize = static_cast<uint32_t>(localParams_.epWorldSize);
-    apaceTilingData_.expertNum = static_cast<uint32_t>(localParams_.ep);
-    apaceTilingData_.batchExpertNum = localTilingData_.taskTilingInfo.expertNum;
-    apaceTilingData_.batchCount = localTilingData_.taskTilingInfo.totalLoopCount;
-    apaceTilingData_.n = static_cast<uint32_t>(localParams_.N1);
-    apaceTilingData_.k = static_cast<uint32_t>(localParams_.H1);
-    apaceTilingData_.isMxFp4 = localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1 ? 1U : 0U;
-    apaceTilingData_.localMatmul = localParams_.hasSharedMm ? 1U : 0U;
-    // apace 通路 userWorkspace 布局：[0, gmmResultLen) GMM 输出（sendBuf），
-    // [gmmResultLen, +) C 偏移表（复用原 gmmComputeWS 空间，gmmResultLen 已 512 对齐）
-    apaceTilingData_.cTableOffset = inferredInfo_.gmmResultLen;
-
-    const uint32_t rankSize = apaceTilingData_.rankSize;
-    const uint32_t expertNum = apaceTilingData_.expertNum;
-    const int32_t *sendCnt = localTilingData_.taskTilingInfo.sendCnt;
-    const int32_t *recvCnt = localTilingData_.taskTilingInfo.recvCnt;
-    uint32_t mMax = 0;
-    for (uint32_t expert = 0U; expert < expertNum; ++expert) {
-        // SPARSE groupList，组序 expert-major：g = expert * rankSize + rank
-        //   [g*2] = expert（Blaze weightIdx，索引 gmmWeight/gmmWeightScale 专家维）
-        //   [g*2+1] = sendCnt[rank * e + expert]（gmmX 同序行数）
-        uint32_t expertTokens = 0;
-        for (uint32_t rank = 0U; rank < rankSize; ++rank) {
-            apaceTilingData_.sparseGroupList[(expert * rankSize + rank) * 2U] = static_cast<int64_t>(expert);
-            apaceTilingData_.sparseGroupList[(expert * rankSize + rank) * 2U + 1U] =
-                static_cast<int64_t>(sendCnt[rank * expertNum + expert]);
-            expertTokens += static_cast<uint32_t>(sendCnt[rank * expertNum + expert]);
-        }
-        mMax = expertTokens > mMax ? expertTokens : mMax;
-    }
-    apaceTilingData_.mMax = mMax;
-    for (uint32_t i = 0U; i < expertNum * rankSize; ++i) {
-        apaceTilingData_.recvCount[i] = recvCnt[i];
-    }
-
-    SetApaceMatmulTiling(localTilingData_.gmmBaseTiling.mmTilingData, apaceTilingData_.gmmTiling);
-
-    if (localParams_.hasSharedMm) {
-        apaceTilingData_.mmM = static_cast<uint32_t>(localParams_.Bs);
-        apaceTilingData_.mmK = static_cast<uint32_t>(localParams_.H2);
-        apaceTilingData_.mmN = static_cast<uint32_t>(localParams_.N2);
-        apaceTilingData_.mmGroupList[0] = static_cast<int64_t>(localParams_.Bs);
-        SetApaceMatmulTiling(localTilingData_.sharedGmmTiling.mmTilingData, apaceTilingData_.mmTiling);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::PostTiling()
 {
     MC2_CHECK_LOG_RET(opName_, QuantGroupedMatmulAllToAllvTilingCommon::PostTiling());
     if (!usingApaceImpl_) {
         return ge::GRAPH_SUCCESS;
     }
-
-    MC2_CHECK_LOG_RET(opName_, BuildApaceTiling());
-    auto *rawTiling = context_->GetRawTilingData();
-    OP_TILING_CHECK(rawTiling == nullptr, OP_LOGE(opName_, "raw tiling data is null."), return ge::GRAPH_FAILED);
-    const size_t capacity = rawTiling->GetCapacity();
-    OP_TILING_CHECK(
-        capacity < sizeof(apaceTilingData_),
-        OP_LOGE(opName_, "tiling capacity %zu is less than APACE tiling size %zu.", capacity, sizeof(apaceTilingData_)),
-        return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(rawTiling->GetData(), capacity, &apaceTilingData_, sizeof(apaceTilingData_));
-    OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "copy APACE tiling failed, ret=%d.", ret), return ge::GRAPH_FAILED);
-
-    const size_t registeredSize = sizeof(QuantGmmA2avTilingData);
-    if (capacity >= registeredSize && registeredSize > sizeof(apaceTilingData_)) {
-        ret = memset_s(reinterpret_cast<uint8_t *>(rawTiling->GetData()) + sizeof(apaceTilingData_),
-                       capacity - sizeof(apaceTilingData_), 0, registeredSize - sizeof(apaceTilingData_));
-        OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "clear APACE tiling padding failed, ret=%d.", ret),
-                        return ge::GRAPH_FAILED);
-        rawTiling->SetDataSize(registeredSize);
-    } else {
-        rawTiling->SetDataSize(sizeof(apaceTilingData_));
-    }
+    // apace 通路直接消费 legacy tiling 数据（无独立紧凑结构、不覆写 tiling buffer），
+    // 仅切换调度模式并收敛 blockDim 至 AIC 核数
     context_->SetScheduleMode(1);
     context_->SetBlockDim(localParams_.aicCoreNum);
     return ge::GRAPH_SUCCESS;

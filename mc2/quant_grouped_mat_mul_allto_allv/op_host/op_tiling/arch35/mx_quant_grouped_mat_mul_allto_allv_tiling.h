@@ -18,7 +18,6 @@
 
 #pragma once
 #include "../quant_grouped_mat_mul_allto_allv_tiling_common.h"
-#include "apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_tiling_data.h"
 
 namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
@@ -66,11 +65,8 @@ private:
 
     ge::graphStatus CheckMxfp4SpecificConstraints(); // MXFP4 约束校验
     bool CheckApaceImplCapable() const;
-    ge::graphStatus BuildApaceTiling();
-    static void SetApaceMatmulTiling(const AscendC::tiling::TCubeTiling &src, Apace::GmmA2avMxTiling &dst);
 
     bool usingApaceImpl_{false};
-    Apace::hcommGmmA2avTilingData apaceTilingData_{};
 };
 
 } // namespace Mc2GroupedMatmul

@@ -18,23 +18,18 @@
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
-// apace hcomm 融合通路（结构对齐镜像算子 PR 11573）：
-// MX tiling 类按 CheckApaceImplCapable 动态编码 TILINGKEY_USING_APACE_IMPL，
-// host 侧 PostTiling 将紧凑 hcommGmmA2avTilingData 直接覆写 tiling buffer；
-// kernel 经 GET_TILING_DATA_WITH_STRUCT 解析，GMM 计算复用 apace
-// GroupedMatmulMxKernel（每批栈上局部构造），AllToAllV 通信在 AIC 核内经 Hccl
-// 提交（Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致 AIV 通信任务参数校验失败）。
-// 该组合经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明 AIC_ONLY 任务类型；
-// TT 量化实例恒编码 USING=0 走原通路（MIX_AIC_1_2，AIC 计算 + AIV 通信）。
+// apace hcomm 融合通路（结构对齐镜像算子 a2avgmm apace 实现的最新代码）：
+// MX tiling 类按 CheckApaceImplCapable 动态编码 TILINGKEY_USING_APACE_IMPL，kernel
+// 经 GET_TILING_DATA_WITH_STRUCT 直接解析算子 legacy tiling 数据（无独立紧凑结构），
+// GMM 计算复用 apace GroupedMatmulMxKernel（每批栈上局部构造），AllToAllV 通信在
+// AIC 核内经 Hccl 提交（Blaze 与 AIV 侧 KFC 通信引擎同 kernel 共存会致 AIV 通信
+// 任务参数校验失败）。该组合经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明
+// AIC_ONLY 任务类型；TT 量化实例恒编码 USING=0 走原通路（MIX_AIC_1_2）。
 #include "../../common/op_kernel/apace/kernel/fusions/quant_grouped_matmul_all_to_all_v/quant_grouped_matmul_all_to_all_v_hcomm_impl.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
-
-// APACE tiling 必须可容纳于已注册的 tiling buffer（容量按 QuantGmmA2avTilingData 分配）
-static_assert(sizeof(QuantGmmA2avTilingData) >= sizeof(Apace::hcommGmmA2avTilingData),
-              "APACE tiling must fit in the registered tiling buffer");
 
 #if (((ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2))) || \
@@ -65,17 +60,17 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     if constexpr (TILINGKEY_USING_APACE_IMPL) {
 #if MX_QUANT_MODE && GMM_A2AV_APACE_DTYPE_SUPPORTED
-        GET_TILING_DATA_WITH_STRUCT(Apace::hcommGmmA2avTilingData, tilingData, tilingGM);
+        GET_TILING_DATA_WITH_STRUCT(QuantGmmA2avTilingData, tilingData, tilingGM);
         constexpr HcclServerType serverType = TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
-        Apace::QuantGmmA2avHcommImpl<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_Y, TILINGKEY_GROUPED_MATMUL_TRANS,
-                                     TILINGKEY_MATMUL_TRANS, serverType>
+        Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_Y,
+                                     TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS, serverType>
             op(&tilingData);
-        // apace 通路 userWorkspace 即路由专家 GMM 输出缓冲（sendBuf），C 偏移表由
-        // tiling 的 cTableOffset 指向其后区域（复用原 gmmComputeWS 空间）
+        // apace 通路 userWorkspace 即路由专家 GMM 输出缓冲（sendBuf），groupList 与
+        // C 偏移表由 block0 在其后的 gmmComputeWS 区域构建（见 hcomm impl 布局注释）
         op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM, mmweightOptionalGM,
-                mmWeightScaleGM, mmyOptionalGM, yGM, userWorkspace, tilingGM);
+                mmWeightScaleGM, mmyOptionalGM, yGM, userWorkspace);
         op.Run();
 #endif
         return;
