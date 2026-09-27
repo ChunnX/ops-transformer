@@ -371,6 +371,35 @@ qCmp+kCmp=16KB，pooledScore 紧随其后…16,384 也在"低区"却可见！→
 3. 兜底工程方案：把 pooledScore/qCmp/kCmp 全部挪到 workspace 高区（>16MB）——
    若高区写全部持久，一次布局重排绕过硬件异常
 
+## 第十五轮（2026-09-27，**p16var 根因双杀**：w16 尾折叠链节距错位 + finalize 批内几何）
+
+### 根因 1：w16 尾 tile 折叠路径节距错位（结构性，对所有 foldCols<512 生效）
+旧「DataCopy 32列整形 + 块配对 Add + BRS」链（numpy 精确仿真 + ws dump 对角线 31=32−1 重复实证）：
+- DataCopy blockLen 单位 = 32B 块（`burstLen = blockLen * ONE_BLK_SIZE`）——每行只拷 32 float；
+- Add/BRS 步进解码后输出为 **[2r+g] 紧凑节距**，消费端（band-end GM 写 + finalize）按
+  **[r*32+g]** 读——仅 row0 落对，rows 1-15 的 partSum 槽 = 陈旧 UB 内容。
+重写（bsa_vec_sm_service.h 尾 tile else 分支）：tile 8-float 块直接配对 Add（相邻块相加 =
+16 列组部分和）→ BRS 块和成标量紧排 [rc][g16] → **即时 GM 写**（槽行宽 32 组、dstStride 补齐，
+w8 同款模式）；band-end 共享写对尾 tile 跳过。foldCols 统一对齐倍数：w8=64、w16=128
+（g16=8 的倍数 → 全部步进整数块免掩码；kcs≥385 升格 512 自动走级联快路径）。
+
+### 根因 2：SoftmaxFinalize 批内几何用总量/最大批值
+lastFull/groupsValid 按 constInfo.yBlocks（总量/最大批值）——多批变长（TND/seqlen）下批间有效
+列数不同：B0（validY=21）写宽度按总量算出 5 列，跨 head 蔽写 B0H1。改为批内 lastFull/
+ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_COLS 内部分列漏写——顺带
+修复客户 case 尾列 388 少写一列的既有缺陷）。
+
+### 验证
+- p16var **3/3 EXACT_PASS**（原 16/32 mask 确定性错）
+- 套件 **18 EXACT + 9 TOL + 2 FAIL**（原 11+9+8）：治愈 p16var；blk8 FAIL=竞态偶发（独立复跑
+  基线 2 tolerated + 偶发 bursts）；tndtail/tndvar/bigsq/blklen 等全过
+- 客户 3/3 PASS（尾列修正后无回归）
+
+### 剩余
+- **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——与 p16var 不同源，
+  下轮专查（疑 actual_block_len 变长池化 kCmp 值，qCmp/kCmp 低区 dump 不可见须经 score 间接验证）
+- blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
+
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
 
 ### GeneralFinalize 行均值修复（366b5c986，本地待推送）
@@ -551,14 +580,14 @@ gen_golden_cpu.py 语义：q_pooled=pool_blocks(Q,8token均值) → score=q_pool
 inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上述链 → 与 dump 比值。
 
 ### 下轮任务（按序）
-1. ~~blk8 级联修复~~（第十三轮已完成：根因=AR ReduceSum isReuseSource=true，见第十三轮章节；
-   1/2/3 项已闭环——提交 9238a7b19）
-2. ~~GeneralFinalize 行均值~~（第十四轮完成，366b5c986）
-3. **MTE3 写丢弃竞态**：bit 级定性完成（第十四轮：fp32 域 partSum 组列散点丢失+首触假说）——
-   下一步按 ① memset/首触预热实验 ② 冗余双写 ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 会
-   扰动时序（复现消失≠修复教训）
-4. **bfvar/p16var**（现仅剩这两个确定性 FAIL，tndtail/tndvar 已被 AR 修复治愈）——先按 tiling
-   section sizes 标定 pooled/postStaging 偏移，分层定位 kCmp 变长尾块值 vs fold vs TopK
+1. ~~blk8 级联修复~~（第十三轮，9238a7b19）
+2. ~~GeneralFinalize 行均值~~（第十四轮，366b5c986）
+3. ~~p16var 双根因~~（第十五轮，6ff511963：w16 尾折叠链重写 + finalize 批内几何）
+4. **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——按 p16var 同款
+   方法论（ws dump 定位 partSum/partMax 槽偏移 → 逐层对 CPU 比对），注意 bf16 的 golden
+   语义（att fp16→bf16）与 qCmp/kCmp 低区 dump 不可见约束
+5. **MTE3 写丢弃竞态**：bit 级定性完成（第十四轮）——① memset/首触预热实验 ② 冗余双写
+   ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 扰动时序（复现消失≠修复教训）
 
 ## 09-08~09-23 性能优化链存档摘要（本 session 摘要抢救，防丢失）
 
