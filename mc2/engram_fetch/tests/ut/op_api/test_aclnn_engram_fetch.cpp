@@ -34,12 +34,12 @@
 
 extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             const aclTensor *localStorageAddr, const aclTensor *sfTable,
-                                             int32_t hiddenSize, int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
-                                             int64_t commBufferSize, int64_t withGrad, aclTensor *fetched,
-                                             aclTensor *permOut, aclTensor *sendCountsOut, aclTensor *recvCountsOut,
-                                             aclTensor *recvLocalEntryOut, aclTensor *numRecvOut, aclTensor *fetchedSf,
-                                             uint64_t *workspaceSize, aclOpExecutor **executor);
+                                             const aclTensor *localStorageAddr, aclTensor *fetched, aclTensor *permOut,
+                                             aclTensor *sendCountsOut, aclTensor *recvCountsOut,
+                                             aclTensor *recvLocalEntryOut, aclTensor *numRecvOut, int32_t hiddenSize,
+                                             int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
+                                             int64_t commBufferSize, int64_t withGrad, uint64_t *workspaceSize,
+                                             aclOpExecutor **executor);
 
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
@@ -73,8 +73,8 @@ TEST_F(AclnnEngramFetchTest, dav3510_inference_success)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero,
-                              zero, zero, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+                        INPUT(commContext_desc, indices_desc, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr,
+                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -102,12 +102,11 @@ TEST_F(AclnnEngramFetchTest, dav3510_training_success)
     int64_t commBufferSize = 4194304;
     int64_t withGrad = 1;
 
-    auto ut =
-        OP_API_UT(aclnnEngramFetch,
-                  INPUT(commContext_desc, indices_desc, localStorageAddr_desc, nullptr, hiddenSize, numEntriesPerRank,
-                        numMaxTokensPerRank, commBufferSize, withGrad, fetched_desc, permOut_desc, sendCountsOut_desc,
-                        recvCountsOut_desc, recvLocalEntryOut_desc, numRecvOut_desc, nullptr),
-                  OUTPUT());
+    auto ut = OP_API_UT(aclnnEngramFetch,
+                        INPUT(commContext_desc, indices_desc, localStorageAddr_desc, fetched_desc, permOut_desc,
+                              sendCountsOut_desc, recvCountsOut_desc, recvLocalEntryOut_desc, numRecvOut_desc,
+                              hiddenSize, numEntriesPerRank, numMaxTokensPerRank, commBufferSize, withGrad),
+                        OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
@@ -126,8 +125,8 @@ TEST_F(AclnnEngramFetchTest, dav3510_nullptr_commContext)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(nullptr, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero,
-                              fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+                        INPUT(nullptr, indices_desc, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr,
+                              hiddenSize, numEntriesPerRank, zero, zero, zero),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -146,8 +145,8 @@ TEST_F(AclnnEngramFetchTest, dav3510_nullptr_indices)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, nullptr, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero, zero,
-                              zero, fetched_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+                        INPUT(commContext_desc, nullptr, nullptr, fetched_desc, nullptr, nullptr, nullptr, nullptr,
+                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -166,17 +165,14 @@ TEST_F(AclnnEngramFetchTest, dav3510_nullptr_fetched)
     int64_t zero = 0;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, hiddenSize, numEntriesPerRank, zero,
-                              zero, zero, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+                        INPUT(commContext_desc, indices_desc, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                              nullptr, hiddenSize, numEntriesPerRank, zero, zero, zero),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    // WithNNopbaseInner 直连 inner: fetched 为空时可能死于 wrapper 参数检查 (161001/161002)、
-    // inner 运行时错误 (361001) 或内部错误 (561000), 均为拒绝, 皆可接受
-    EXPECT_THAT(aclRet, testing::AnyOf(testing::Eq(ACLNN_ERR_PARAM_NULLPTR), testing::Eq(ACLNN_ERR_PARAM_INVALID),
-                                       testing::Eq(ACLNN_ERR_RUNTIME_ERROR), testing::Eq(ACLNN_ERR_INNER)));
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 TEST_F(AclnnEngramFetchTest, dav3510_execute_entry)
