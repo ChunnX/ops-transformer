@@ -20,6 +20,13 @@ import quant_flash_attn_paramset_debug as paramset
 CASES = paramset.CASES
 CASE_IDS = [case["name"] for case in CASES]
 
+# 空集守卫：调试用例集为空（历史 FAIL 用例已修复并迁至 func_rdv）时整模块跳过，
+# 避免 pytest 空参数化产生 [NOTSET] 占位用例
+if not CASES:
+    pytest.skip(
+        "调试用例集当前为空（历史用例已修复并迁至 func_rdv）", allow_module_level=True
+    )
+
 
 @pytest.mark.debug
 @pytest.mark.parametrize("params", CASES, ids=CASE_IDS)

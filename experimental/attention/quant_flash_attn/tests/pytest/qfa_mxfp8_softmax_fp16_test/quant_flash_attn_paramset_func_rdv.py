@@ -12,10 +12,11 @@
 
 from quant_flash_attn_paramset_common import expand_paramset_to_cases
 
-# 功能正确性 RDV 用例（2026-09-23 泛化验证通过：全部 100.0000% PctRlt）
+# 功能正确性 RDV 用例（2026-09-27 全量上板验证通过：37 用例全部 100.0000% PctRlt）
 # 维度矩阵：
 #   S2（KV 轴）：256 对齐（整块）/ 128 对齐（单 subLoop 尾块）/ 64 粒度尾 subLoop /
-#               任意值（2026-09-24 泛化：1/65/100/129/257/388/556/832）
+#               任意值（2026-09-24 泛化：1/65/100/129/257/388/556/832；
+#               2026-09-27 S2=1 边界系列：GQA/MHA/多批/满核 × 单 key 组合）
 #   S1（Q 轴）：256 对齐（整行）/ 128 对齐（V1 空列）/ 非对齐部分列（V1=64/60、V0=64）/ 极小（1）
 #   per-batch seqused：每批独立 S1/S2（≤ 满 shape；2026-09-24：golden 逐 batch 循环 +
 #               对比无效行掩码，kernel 零修改）
@@ -402,6 +403,117 @@ TEST_PARAMS = {
         "cu_seqlens_kv": [None],
         "seqused_q": [[1]],
         "seqused_kv": [[832]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # ===== S2=1 边界系列（S1=256 固定，单 key × 各维度组合；2026-09-27 上板 6/6 全过自 debug 迁入）=====
+    # S2=1 特征：actSingleLoopS2Size=1 → 单 subK k=align64(1)=64（P 行 1..127 零填充）、
+    # validRows=1（softmax 尾行单行链）、V-scale 尾组 1 行、K/K-scale 各拷 1 行
+    # GQA G=4 × 单 key：KV 组内共享，折叠头 realN2=4 下每头的唯一 key 路径
+    "BNSD_B1_QS256_KVS1_Nq4_Nkv1_D128_qm3": {
+        "B": [1],
+        "N_q": [4],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[1]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # GQA G=16 × 单 key：最大折叠头数 + 单 key（realN2=16 行全走同一 1-key KV）
+    "BNSD_B1_QS256_KVS1_Nq16_Nkv1_D128_qm3": {
+        "B": [1],
+        "N_q": [16],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[1]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # MHA Nq2=Nkv2 × 单 key：多 KV 头各持 1 key（区别于 GQA 共享）
+    "BNSD_B1_QS256_KVS1_Nq2_Nkv2_D128_qm3": {
+        "B": [1],
+        "N_q": [2],
+        "N_kv": [2],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[1]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # B2 双批均单 key：2 行 × 各 1 key（核间行分布 + 最小任务）
+    "BNSD_B2_QS256_KVS1x1_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 256]],
+        "seqused_kv": [[1, 1]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # per-batch 混合 [1, 256, 1]：单 key 批夹全宽批——微小任务与全量任务在同核流水交替
+    "BNSD_B3_QS256_KVS1x256x1_Nq1_Nkv1_D128_qm3": {
+        "B": [3],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 256, 256]],
+        "seqused_kv": [[1, 256, 1]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # B32 × 单 key：32 行满核分布，每行 1-key 最小任务（调度器 + 跨核流水压力）
+    "BNSD_B32_QS256_KVS1_Nq1_Nkv1_D128_qm3": {
+        "B": [32],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256] * 32],
+        "seqused_kv": [[1] * 32],
         "enable_pa": [False],
         "kv_cache_layout": [None],
         "block_size": [None],
