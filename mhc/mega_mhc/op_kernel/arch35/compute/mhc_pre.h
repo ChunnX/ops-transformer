@@ -264,11 +264,9 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
             {
                 const uint32_t tileOffset = (repeat * 2U + 0U) * kRegCastVectorLanes;
                 Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                Reg::Duplicate(sum, 0.0f, mask);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
-                Reg::Mul(product, value, weight0, mask);
-                Reg::Add(sum, sum, product, mask);
+                Reg::Mul(sum, value, weight0, mask);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight1, mask);
@@ -290,11 +288,9 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
             {
                 const uint32_t tileOffset = (repeat * 2U + 1U) * kRegCastVectorLanes;
                 Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                Reg::Duplicate(sum, 0.0f, mask);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
-                Reg::Mul(product, value, weight0, mask);
-                Reg::Add(sum, sum, product, mask);
+                Reg::Mul(sum, value, weight0, mask);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight1, mask);
@@ -317,11 +313,9 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
         for (uint16_t repeat = tailStart; repeat < repeatTimes; ++repeat) {
             const uint32_t tileOffset = repeat * kRegCastVectorLanes;
             Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-            Reg::Duplicate(sum, 0.0f, mask);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
-            Reg::Mul(product, value, weight0, mask);
-            Reg::Add(sum, sum, product, mask);
+            Reg::Mul(sum, value, weight0, mask);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::Mul(product, value, weight1, mask);
