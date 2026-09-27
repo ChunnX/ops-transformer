@@ -12,6 +12,7 @@
  * \file quant_grouped_mat_mul_allto_allv.cpp
  * \brief
  */
+// mc2 operator kernel entry
 #include "basic_api/kernel_basic_intf.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_key.h"
@@ -51,8 +52,8 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     TPipe pipe;
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
-    const QuantGmmA2avTilingData *tilingData_ = &tilingData;
-    const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
+    const QuantGmmA2avTilingData* tilingData_ = &tilingData;
+    const void* hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
     uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
                                   offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;

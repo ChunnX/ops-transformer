@@ -12,6 +12,7 @@
  * \file all_gather_matmul.cpp
  * \brief
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -52,9 +53,9 @@ __global__ __aicore__ void all_gather_matmul(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
     REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingData);
 // allgathermatmul算子kernel侧代码不支持A5
 #if __CCE_AICORE__ != 310
-    auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingData *)tilingGM;
-    __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));
-    __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));
+    auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingData*)tilingGM;
+    __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));
+    __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));
     GET_TILING_DATA(tilingData, tilingGM);
 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
