@@ -182,11 +182,19 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
+    // [SK禁用开关] 用值拷贝宏(WITH_STRUCT)取整结构体并做一次自赋值写:
+    // - 动态模式(包构建/GE图编译/动态执行): 宏产出非const局部mocker拷贝 → 写编译通过
+    //   (自赋值零语义影响); baseTiling取址与上游MEMBER宏的mocker局部取址等价,
+    //   metadata从原始tiling GM参数推导, 与上游PTR_WITH_STRUCT动态展开(__gm__强转)等价。
+    // - 静态模式(在线opcompile): 宏产出const烘焙常量对象 → 对const写 → 编译报错 →
+    //   op_compiler失败被框架容忍(torchair static_kernel仅告警回退) → FIA fullquant
+    //   强制动态执行 — 其分核调度(FiaMetaData)烘焙于tiling, 静态产物实证崩溃
+    //   (507011/精度大错); tiling层拒绝会在GE图编译阶段致命, 故必须在kernel编译层失败。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
     __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+        (__gm__ uint8_t *)tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
@@ -254,11 +262,19 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
+    // [SK禁用开关] 用值拷贝宏(WITH_STRUCT)取整结构体并做一次自赋值写:
+    // - 动态模式(包构建/GE图编译/动态执行): 宏产出非const局部mocker拷贝 → 写编译通过
+    //   (自赋值零语义影响); baseTiling取址与上游MEMBER宏的mocker局部取址等价,
+    //   metadata从原始tiling GM参数推导, 与上游PTR_WITH_STRUCT动态展开(__gm__强转)等价。
+    // - 静态模式(在线opcompile): 宏产出const烘焙常量对象 → 对const写 → 编译报错 →
+    //   op_compiler失败被框架容忍(torchair static_kernel仅告警回退) → FIA fullquant
+    //   强制动态执行 — 其分核调度(FiaMetaData)烘焙于tiling, 静态产物实证崩溃
+    //   (507011/精度大错); tiling层拒绝会在GE图编译阶段致命, 故必须在kernel编译层失败。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
     __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+        (__gm__ uint8_t *)tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, pseShift, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
@@ -319,11 +335,19 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
-    const FullQuantTiling *__restrict tilingData = &baseTilingIn;
-    GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
+    // [SK禁用开关] 用值拷贝宏(WITH_STRUCT)取整结构体并做一次自赋值写:
+    // - 动态模式(包构建/GE图编译/动态执行): 宏产出非const局部mocker拷贝 → 写编译通过
+    //   (自赋值零语义影响); baseTiling取址与上游MEMBER宏的mocker局部取址等价,
+    //   metadata从原始tiling GM参数推导, 与上游PTR_WITH_STRUCT动态展开(__gm__强转)等价。
+    // - 静态模式(在线opcompile): 宏产出const烘焙常量对象 → 对const写 → 编译报错 →
+    //   op_compiler失败被框架容忍(torchair static_kernel仅告警回退) → FIA fullquant
+    //   强制动态执行 — 其分核调度(FiaMetaData)烘焙于tiling, 静态产物实证崩溃
+    //   (507011/精度大错); tiling层拒绝会在GE图编译阶段致命, 故必须在kernel编译层失败。
+    GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataIn, tiling);
+    tilingDataIn.baseTiling.fiaBaseParams.bSize = tilingDataIn.baseTiling.fiaBaseParams.bSize;
+    const FullQuantTiling *__restrict tilingData = &tilingDataIn.baseTiling;
     __gm__ uint8_t *fiaMetaData =
-        (__gm__ uint8_t *)tilingDataPtr + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
+        (__gm__ uint8_t *)tiling + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV, blockTable, dequantScaleQuery,
