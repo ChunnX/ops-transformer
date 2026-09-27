@@ -46,7 +46,7 @@ enum class VselrIndexEnum {
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     uint32_t mRealSize; \
-    uint32_t halfMRealSize; /* MQSMLA: sequence bounds. */ \
+    uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \
     int32_t actualS1Size;       /* Q的actualSeqLength */ \

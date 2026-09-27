@@ -54,8 +54,7 @@ namespace BaseApi {
 // 统一窗口公式
 struct Mq35PhyAddrValidInfo {
     static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
-    int64_t oriLeftBias = BIAS_UNBOUND;                 // MQSMLA: top-k addresses (oriLeftBias).
-    // 原始 KV 与压缩 KV 分别计算有效窗口。
+    int64_t oriLeftBias = BIAS_UNBOUND;
     int64_t oriRightBias = BIAS_UNBOUND;
     int32_t oriS2Act = 0;
     bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
@@ -65,8 +64,7 @@ struct Mq35PhyAddrValidInfo {
 
 TEMPLATES_DEF
 class MqsmlaCsaBlockVector {
-    // 混合量化 vector block 同时处理原始 KV 和压缩 KV。
-public: // MQSMLA: top-k addresses.
+public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
@@ -146,9 +144,8 @@ public: // MQSMLA: top-k addresses.
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &mqsmlaIntraCoreBuffer,
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &mqsmlaCrossCoreBuffer)
     {
-        // Bind the intra-core and cross-core reduction buffers used by vector staging.
         intraCoreCombineBase = mqsmlaIntraCoreBuffer.template GetTensor<uint8_t>().GetPhyAddr(0);
-        intraCoreCombineGm = mqsmlaIntraCoreBuffer.template GetTensor<float>(); // MQSMLA: paged-KV addresses.
+        intraCoreCombineGm = mqsmlaIntraCoreBuffer.template GetTensor<float>();
         crossCoreCombineBase = mqsmlaCrossCoreBuffer.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = mqsmlaCrossCoreBuffer.template GetTensor<float>();
         fdStagingBase = crossCoreCombineBase;
@@ -323,7 +320,6 @@ private:
     GlobalTensor<T> mqsmlaSinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> cuSeqlensKvGm;
-    // Q、原始 KV、压缩 KV 分别维护 CU 序列。
     GlobalTensor<int32_t> cuSeqlensOriKvGm;
     GlobalTensor<int32_t> cuSeqlensCmpKvGm;
     GlobalTensor<int32_t> actualSeqOriKvGm;
@@ -554,8 +550,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::CopyInSingleKv(Local
         DataCopyPadExtParams<KV_T> mqsmlaScalePadParams;
         mqsmlaScaleCopyParams.blockCount = 1;
         mqsmlaScaleCopyParams.blockLen = scaleBytes;
-        mqsmlaScaleCopyParams.srcStride = 0; // MQSMLA: quant layout (srcStride).
-        // 原始 KV 使用对应的反量化 scale。
+        mqsmlaScaleCopyParams.srcStride = 0;
         mqsmlaScaleCopyParams.dstStride = 0;
         mqsmlaScalePadParams.isPad = false;
         mqsmlaScalePadParams.leftPadding = 0;
@@ -662,8 +657,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::CopyInKvSparse(Local
                 DataCopyPadExtParams<KV_T> mqsmlaScalePadParams;
                 mqsmlaScaleCopyParams.blockCount = 1;
                 mqsmlaScaleCopyParams.blockLen = scaleBytes;
-                mqsmlaScaleCopyParams.srcStride = 0; // MQSMLA: quant layout (srcStride).
-                // 压缩 KV 使用对应的反量化 scale。
+                mqsmlaScaleCopyParams.srcStride = 0;
                 mqsmlaScaleCopyParams.dstStride = 0;
                 mqsmlaScalePadParams.isPad = false;
                 mqsmlaScalePadParams.leftPadding = 0;
@@ -693,12 +687,14 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::CopyInKvSparse(Local
     }
 }
 
-// FP8 lanes are widened independently before scaling.
+// fp8->fp32
+// fp8->fp32
+// fp32->fp16
+// fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8EvenToFp32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 static constexpr Reg::CastTrait castTraitFp8OddToFp32 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                          Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-// RINT conversion preserves the even/odd FP16 lane layout.
 static constexpr Reg::CastTrait castTraitFp32ToFp16Even = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 static constexpr Reg::CastTrait castTraitFp32ToFp16Odd = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
@@ -972,8 +968,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     uint64_t blockElementNum = 16;
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = (mq35VecConstInfo.dSizeNope + mq35VecConstInfo.dSizeRope) / blockElementNum;
-    dataCopyParams.blockLen = dealRow; // MQSMLA: query layout.
-    // 每处理一组行后推进下一次搬运窗口。
+    dataCopyParams.blockLen = dealRow;
     dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
     dataCopyParams.dstGap = Align16Func(mq35VecRunInfo.s2RealSize) - dealRow;
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
@@ -1187,7 +1182,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::ProcessVec0(
     } else {
         mqActiveKvGm = oriKVGm;
         if constexpr (isPa) {
-            // PA 场景选择原始 KV 的页表和物理地址表。
             mqActiveBlockTableGm = mqsmlaOriBlockTableGm;
             mqActiveBlockSize = mq35VecConstInfo.oriBlockSize;
             mqActiveMaxBlocksPerBatch = mq35VecConstInfo.oriMaxBlockNumPerBatch;
@@ -1344,7 +1338,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::ProcessVec1(StaticBu
         if (isFirstSoftmaxBase && mqsmlaHasSinks) {
             bool includeSink = (!mq35VecRunInfo.isCrossCoreSplit) || mq35VecRunInfo.isFirstS2SplitCore;
             if constexpr (IS_BATCH_CONSISTENCY) {
-                includeSink = includeSink && mq35VecRunInfo.reduceBlockId == 0; // MQSMLA: softmax state.
+                includeSink = includeSink && mq35VecRunInfo.reduceBlockId == 0;
             }
             if (includeSink) {
                 // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
@@ -1507,10 +1501,8 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::ReduceIntraBlockAndS
     uint32_t intraWorkspaceIdx = GetIntraCoreWorkspaceIdx(mq35VecRunInfo, mq35VecConstInfo);
     // s2SplitIdx advances across all reduce blocks handled by this core. Move back
     // to the first slot of the current intra-core reduce group before staging it.
-    // The first FD workspace and split offset select the cross-core reduction slot.
-    uint32_t crossWorkspaceIdx = // MQSMLA: LSE workspace.
-        static_cast<uint32_t>(mq35VecRunInfo.firstFdDataWorkspaceIdx + mq35VecRunInfo.s2SplitIdx -
-                              mq35VecRunInfo.reduceBlockId);
+    uint32_t crossWorkspaceIdx = static_cast<uint32_t>(mq35VecRunInfo.firstFdDataWorkspaceIdx +
+                                                       mq35VecRunInfo.s2SplitIdx - mq35VecRunInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(mq35VecRunInfo, mq35VecConstInfo);
     LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
     LocalTensor<float> blockMaxUb = tmpUb;
@@ -1557,11 +1549,10 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::ReduceIntraBlockAndS
         if constexpr (!HIGH_PERF) {
             if (copyOutMergedLse) {
                 DataCopyExtParams lseParams;
-                // 归约完成后拷出合并后的 LSE。
                 lseParams.blockCount = static_cast<uint16_t>(mq35DealRows);
                 lseParams.blockLen = sizeof(float);
                 lseParams.srcStride = 0;
-                lseParams.dstStride = 0; // MQSMLA: LSE state.
+                lseParams.dstStride = 0;
                 SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
                 WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
                 DataCopyPad(this->softmaxLseGm[mq35VecRunInfo.softmaxLseOffset + startRow], lseBroadcastUb, lseParams);
@@ -1924,14 +1915,13 @@ __aicore__ inline Mq35PhyAddrValidInfo MqsmlaCsaBlockVector<TEMPLATE_ARGS>::Calc
         } else {
             if (isOriKv) {
                 if (mq35VecConstInfo.oriMaskMode == 0U) {
-                    // 原始 KV 独立选择 top-k 窗口语义。
                     mq35ValidWindow.oriTopkMode = true;
                 } else if (mq35VecConstInfo.oriMaskMode == 3U) {
                     mq35ValidWindow.oriRightBias = 0;
                 } else {
-                    mq35ValidWindow.oriLeftBias = // MQSMLA: original-KV addresses.
-                        (mq35VecConstInfo.oriWinLeft == -1) ? Mq35PhyAddrValidInfo::BIAS_UNBOUND :
-                                                              mq35VecConstInfo.oriWinLeft + 1;
+                    mq35ValidWindow.oriLeftBias = (mq35VecConstInfo.oriWinLeft == -1) ?
+                                                      Mq35PhyAddrValidInfo::BIAS_UNBOUND :
+                                                      mq35VecConstInfo.oriWinLeft + 1;
                     mq35ValidWindow.oriRightBias = (mq35VecConstInfo.oriWinRight == -1) ?
                                                        Mq35PhyAddrValidInfo::BIAS_UNBOUND :
                                                        mq35VecConstInfo.oriWinRight;
@@ -2035,7 +2025,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvTyp
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && mq35VecConstInfo.cmpMaskMode != 0) {
-                // Restore the compressed-KV length before counting valid rows.
                 int32_t actualKvSize = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                            cuSeqlensKvGm, mq35VecConstInfo.cmpS2Size);
                 int64_t residual = (mq35VecConstInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
@@ -2047,7 +2036,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvTyp
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (isOriKv && mq35VecConstInfo.oriMaskMode != 0) {
-                // Read the original-KV length used by the sparse mask.
                 actualOriS2Size = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                       cuSeqlensKvGm, mq35VecConstInfo.s2Size);
             }
@@ -2089,7 +2077,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvTyp
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (!isOriKv && mq35VecConstInfo.cmpMaskMode != 0) {
-                // Recompute the restored length while emitting physical addresses.
                 int32_t actualKvSize = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                            cuSeqlensKvGm, mq35VecConstInfo.cmpS2Size);
                 int64_t residual = (mq35VecConstInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
@@ -2101,7 +2088,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvTyp
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             if (isOriKv && mq35VecConstInfo.oriMaskMode != 0) {
-                // Recompute the original-KV limit for address emission.
                 actualOriS2Size = GetSeqLenForPhyAddr(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                       cuSeqlensKvGm, mq35VecConstInfo.s2Size);
             }
@@ -2217,7 +2203,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::InitGlobalBuffer(
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                  // 原始 KV 与压缩 KV 分别绑定稀疏索引。
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         mqsmlaOriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
     }
@@ -2228,7 +2213,6 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::InitGlobalBuffer(
     }
 
     if (sinks != nullptr) {
-        // sinks 仅在输入有效时绑定。
         mqsmlaSinksGm.SetGlobalBuffer((__gm__ T *)sinks);
         this->mqsmlaHasSinks = true;
     }
@@ -2344,7 +2328,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::InitLocalBuffer(Cons
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) { // MQSMLA: pipeline sync (IS_BATCH_CONSISTENCY).
+    if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }
@@ -2378,11 +2362,10 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::FreeEvent(ConstInfo<
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(0));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(1));
-    // 退出前回收 FD 流水占用的事件。
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) { // MQSMLA: pipeline sync (IS_BATCH_CONSISTENCY).
+    if constexpr (IS_BATCH_CONSISTENCY) {
         WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }

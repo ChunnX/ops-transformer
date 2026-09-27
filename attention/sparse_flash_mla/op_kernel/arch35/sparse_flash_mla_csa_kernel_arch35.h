@@ -34,9 +34,8 @@ using matmul::MatmulType;
 using namespace AscendC;
 using namespace optiling;
 using namespace optiling::detail;
-using namespace AscendC::Impl::Detail; // SMLA: tiling helpers.
+using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
-// SMLA shares FD run state between the original and compressed KV reductions.
 using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
@@ -55,7 +54,6 @@ public:
                                 __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *workspace, const SparseFlashMlaTilingData *__restrict tiling);
-    // metadata 决定每个 AIC 的 BN2、S1 工作范围。
     __aicore__ inline void Process();
 
 private:
@@ -106,8 +104,7 @@ private:
     bool hasCuSeqlensCmpKv = false;
     bool hasActualSeqQlen = false;
     bool hasActualSeqOriKvlen = false;
-    bool hasActualSeqCmpKvlen = false; // SMLA: compressed-KV workspace.
-    // 初始化阶段缓存可选变长输入的存在状态。
+    bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
     BuffersPolicy3buffSFA<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     BufferManager<BufferType::GM> fdStagingBufferManager;
@@ -260,7 +257,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
         hasCuSeqlensQ = true;
     }
-    // TND derives the actual original-KV length from adjacent CU offsets.
     if (cuSeqlensOriKv != nullptr) {
         cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
         hasCuSeqlensOriKv = true;
@@ -599,7 +595,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                                                            1LL;
                     int64_t smla35ReductionLoop = s2LoopCount;
                     if (s2LoopCount >= smla35RunParam.oriKvLoopEndIdx) {
-                        // CMP 循环补齐规约块索引，不增加实际计算。
                         smla35ReductionLoop +=
                             (smla35ReductionBlockSize - smla35RunParam.oriKvLoopEndIdx % smla35ReductionBlockSize) %
                             smla35ReductionBlockSize;

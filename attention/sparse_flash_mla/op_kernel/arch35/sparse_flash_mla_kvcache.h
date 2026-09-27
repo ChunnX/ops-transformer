@@ -211,7 +211,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &smlaCacheRunParam, const 
         smlaCacheRunParam.halfMRealSize = smlaCacheRunParam.mRealSize - smlaCacheRunParam.halfMRealSize;
         smlaCacheRunParam.mOuterOffset = smlaCacheRunParam.cubeMOuterOffset + smlaCacheRunParam.firstHalfMRealSize;
     } else {
-        smlaCacheRunParam.mOuterOffset = smlaCacheRunParam.cubeMOuterOffset; // SMLA: tile offsets.
+        smlaCacheRunParam.mOuterOffset = smlaCacheRunParam.cubeMOuterOffset;
     }
 
     smlaCacheRunParam.halfS1RealSize = (smlaCacheRunParam.s1RealSize + 1) >> 1;
@@ -270,10 +270,9 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &smlaCacheRunParam, cons
     }
 }
 
-TEMPLATE_INTF // SMLA: LSE bounds.
-    __aicore__ inline bool
-    ComputeParamS1(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo, uint32_t sOuterLoopIdx,
-                   GlobalTensor<int32_t> &cuSeqlensQGm)
+TEMPLATE_INTF
+__aicore__ inline bool ComputeParamS1(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
+                                      uint32_t sOuterLoopIdx, GlobalTensor<int32_t> &cuSeqlensQGm)
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -305,7 +304,7 @@ TEMPLATE_INTF // SMLA: LSE bounds.
 
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(smlaCacheRunParam, smlaCacheConstInfo, smlaCacheRunParam.boIdx,
                                              cuSeqlensQGm);
-    return false; // SMLA: sequence bounds (ComputeParamS1).
+    return false;
 }
 
 TEMPLATE_INTF
@@ -329,11 +328,10 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
     return sInnerToken;
 }
 
-TEMPLATE_INTF // SMLA: sequence bounds (TEMPLATE_INTF).
-    __aicore__ inline bool
-    ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
-                      GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
-                      RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo)
+TEMPLATE_INTF
+__aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
+                                         GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
+                                         RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo)
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {

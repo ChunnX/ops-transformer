@@ -329,7 +329,7 @@ __aicore__ inline void QsmlaCsaBlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     // 将matmul结果从L0C搬运到UB
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
-    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);   // QSMLA: output matmul (l0CBufId).
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
     outputBuf.SetCrossCore();
 }
@@ -376,7 +376,7 @@ __aicore__ inline void QsmlaCsaBlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     qsmlaFixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
                                         qsmlaFixpipeParams); // 将matmul结果从L0C搬运到UB
-    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);   // QSMLA: output matmul (l0CBufId).
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
 
     outputBuf.SetCrossCore();
@@ -394,16 +394,16 @@ public:
     {}
 };
 
-template <typename T>        // QSMLA: tile matmul.
+template <typename T>
 struct QsmlaCubeBlockTraits; // 声明
 
-/* 生成QsmlaCubeBlockTraits */
+/* 生成CubeBlockTraits */
 #define GEN_QSMLA_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_QSMLA_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_QSMLA_CUBE_BLOCK_TRAITS(QSMLA_CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT /* QSMLA: tile matmul (TEMPLATES_DEF_NO_DEFAULT). */ \
-        struct QsmlaCubeBlockTraits<QSMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct QsmlaCubeBlockTraits<QSMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         QSMLA_CUBE_TRAIT_TYPES(GEN_QSMLA_TRAIT_TYPE) \
         QSMLA_CUBE_TRAIT_CONSTANTS(GEN_QSMLA_TRAIT_CONST) \
     }
@@ -411,7 +411,7 @@ struct QsmlaCubeBlockTraits; // 声明
 DEFINE_QSMLA_CUBE_BLOCK_TRAITS(QsmlaCsaBlockCube);
 DEFINE_QSMLA_CUBE_BLOCK_TRAITS(QsmlaCsaBlockCubeDummy);
 
-// /* 生成Arg Traits, kernel中只需要调用QSMLA_ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
+// /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_QSMLA_ARGS_TYPE(name, ...) using name = typename QsmlaCubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_QSMLA_ARGS_CONST(name, type, ...) \
     static constexpr type name = QsmlaCubeBlockTraits<CubeBlockType>::name##Traits;

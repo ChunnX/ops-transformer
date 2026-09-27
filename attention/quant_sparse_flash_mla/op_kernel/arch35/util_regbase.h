@@ -26,11 +26,11 @@ namespace regbaseutil {
 constexpr int64_t QSMLA_MAX_WINDOW_TOKENS = 0x7FFFFFFF;
 enum class VselrIndexEnum {
     GT_64_AND_LTE_128_INDEX = 0,
-    GT_0_AND_LTE_64_INDEX = 1 // QSMLA: run-param layout (GT_0_AND_LTE_64_INDEX).
+    GT_0_AND_LTE_64_INDEX = 1
 };
 #define QSMLA_RUN_PARAM_FIELDS \
     int64_t boIdx; \
-    int64_t s1oIdx; /* QSMLA: run-param layout (s1oIdx). */ \
+    int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
     int64_t gSplitSize;         /* split-G模式下当前AIC处理的G轴行数 */ \
@@ -45,7 +45,7 @@ enum class VselrIndexEnum {
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     uint32_t mRealSize; \
-    uint32_t halfMRealSize; /* QSMLA: sequence bounds. */ \
+    uint32_t halfMRealSize; \
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */ \
     int32_t actualS1Size;       /* Q的actualSeqLength */ \
@@ -53,8 +53,8 @@ enum class VselrIndexEnum {
     int32_t actualS2CmpSize;    /* cmp_kv的真实使用长度 */ \
     int32_t cmpResidual         /* cmp的余数，用于mask计算 */
 
-struct RunParamStr {        // 分核与切块需要使用到参数
-    QSMLA_RUN_PARAM_FIELDS; // QSMLA: residual-KV bounds.
+struct RunParamStr { // 分核与切块需要使用到参数
+    QSMLA_RUN_PARAM_FIELDS;
     /* 推理新增 */
     int64_t gs1LoopStartIdx;
     int64_t gs1LoopEndIdx;

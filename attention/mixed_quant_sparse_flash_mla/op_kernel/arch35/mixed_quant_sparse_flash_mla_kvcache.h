@@ -118,8 +118,7 @@ __aicore__ inline void ComputeParamBatch(
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(mqCacheRunParam, mqCacheConstInfo, cuSeqlensQGm, cuSeqlensOriKvGm,
                                            cuSeqlensCmpKvGm, actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm,
                                            cmpResidualKvGm, hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen,
-                                           hasActualSeqOriKvlen,
-                                           hasActualSeqCmpKvlen); // MQSMLA: compressed-KV bounds.
+                                           hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
 }
 
 TEMPLATE_INTF
@@ -204,7 +203,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<HIGH_PERF> &mqCacheRunPara
         mqCacheRunParam.halfMRealSize = mqCacheRunParam.mRealSize - mqCacheRunParam.halfMRealSize;
         mqCacheRunParam.mOuterOffset = mqCacheRunParam.cubeMOuterOffset + mqCacheRunParam.firstHalfMRealSize;
     } else {
-        mqCacheRunParam.mOuterOffset = mqCacheRunParam.cubeMOuterOffset; // MQSMLA: tile offsets.
+        mqCacheRunParam.mOuterOffset = mqCacheRunParam.cubeMOuterOffset;
     }
 
     mqCacheRunParam.halfS1RealSize = (mqCacheRunParam.s1RealSize + 1) >> 1;
@@ -313,7 +312,7 @@ __aicore__ inline bool ComputeLastBN(RunParamStr<HIGH_PERF> &mqCacheRunParam, Gl
             return true;
         }
     }
-    return false; // MQSMLA: sequence bounds.
+    return false;
 }
 
 TEMPLATE_INTF
@@ -334,7 +333,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (mqCacheRunParam.actualS2OriSize == 0) {
             mqCacheRunParam.oriKvLoopEndIdx = 0;
-            mqCacheRunParam.cmpKvLoopEndIdx = 0; // MQSMLA: compressed-KV params (cmpKvLoopEndIdx).
+            mqCacheRunParam.cmpKvLoopEndIdx = 0;
             mqCacheRunParam.s2LoopEndIdx = 0;
             mqCacheRunParam.s2CmpLineStartIdx = 0;
             return true;
@@ -388,7 +387,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         mqCacheRunParam.s2CmpLineStartIdx = 0;
         mqCacheRunParam.s2CmpLineEndIdx = 0;
         mqCacheRunParam.cmpKvLoopEndIdx = 0;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) { // MQSMLA: compressed-KV matmul.
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         mqCacheRunParam.s2CmpLineStartIdx = 0;
         mqCacheRunParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             (mqCacheRunParam.cubeSOuterOffset + mqCacheRunParam.s1RealSize + mqCacheRunParam.nextTokensPerBatchCmp) /
@@ -419,7 +418,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr<HIGH_PERF> &mqCacheR
     mqCacheRunInfo.boIdx = mqCacheRunParam.boIdx;
     mqCacheRunInfo.preTokensPerBatch = mqCacheRunParam.preTokensPerBatch;
     mqCacheRunInfo.nextTokensPerBatchOri = mqCacheRunParam.nextTokensPerBatchOri;
-    mqCacheRunInfo.actualS1Size = mqCacheRunParam.actualS1Size; // MQSMLA: compressed-KV params (TEMPLATE_MODE).
+    mqCacheRunInfo.actualS1Size = mqCacheRunParam.actualS1Size;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         mqCacheRunInfo.actualS2CmpSize = mqCacheRunParam.actualS2CmpSize;

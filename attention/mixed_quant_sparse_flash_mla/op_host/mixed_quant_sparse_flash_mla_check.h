@@ -50,7 +50,6 @@ constexpr uint32_t MQ_ORI_BLOCK_TABLE_INDEX = 5;
 constexpr uint32_t MQ_CMP_BLOCK_TABLE_INDEX = 6;
 constexpr uint32_t MQ_CU_SEQLENS_Q_INDEX = 7;
 constexpr uint32_t MQ_CU_SEQLENS_ORI_KV_INDEX = 8;
-// CU 序列输入按 Q、原始 KV、压缩 KV 排列。
 constexpr uint32_t MQ_CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t MQ_SEQUSED_Q_INDEX = 10;
 constexpr uint32_t MQ_SEQUSED_ORI_KV_INDEX = 11;
@@ -122,8 +121,7 @@ struct MQSMLAParaInfo {
     const int64_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    // 原始 KV 滑窗使用独立的左右边界。
-    const int64_t *oriWinLeft = nullptr; // MQSMLA: compressed-KV candidates.
+    const int64_t *oriWinLeft = nullptr;
     const int64_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
@@ -146,8 +144,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    int64_t cmpS2Size = 0; // MQSMLA: KV descriptors.
-    // 分组头数由 Q、KV 头数关系确定。
+    int64_t cmpS2Size = 0;
     uint32_t gSize = 0;
     uint32_t qkHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND时生效
@@ -165,14 +162,12 @@ public:
     uint32_t dSizeV = 0;
     uint32_t dSizeVInput = 0;
     float softmaxScale = 0;
-    // Original and compressed KV retain independent physical strides.
     int64_t oriKvStride = 0;
     int64_t cmpKvStride = 0;
     std::vector<int64_t> oriKvStrides;
     std::vector<int64_t> cmpKvStrides;
     gert::Shape oriKvStorageShape;
     gert::Shape cmpKvStorageShape;
-    // cmpRatio maps compressed-KV positions back to original-KV coordinates.
     int64_t cmpRatio = 0;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
@@ -180,7 +175,6 @@ public:
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
-    // 稀疏块数量按原始 KV 和压缩 KV 独立记录。
     int64_t oriSparseBlockCount = 0;
     int64_t cmpSparseBlockCount = 0;
     // Mask
@@ -194,7 +188,6 @@ public:
     uint32_t oriMaxBlockNumPerBatch = 0;
     int32_t oriBlockSize = 0;
     int32_t cmpBlockSize = 0;
-    // 两套页表分别记录每个 batch 的最大块数。
     uint32_t cmpMaxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
 
@@ -229,9 +222,8 @@ public:
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
-    // Parse required and optional MQSMLA inputs through the same entry point.
     void GetInputParaInfo();
-    void GetOutputParaInfo(); // MQSMLA: sequence bounds.
+    void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
 
     ge::graphStatus GetOpParaInfo();
@@ -275,7 +267,6 @@ public:
     int64_t mqsmlaQueryHeads_ = 0;
     int64_t mqsmlaKvHeads_ = 0;
     int64_t mqsmlaGroupSize_ = 0;
-    // 记录分组头数以及 Q、KV 序列长度。
     int64_t mqsmlaQuerySeqSize_ = 0;
     int64_t mqsmlaKvSeqSize_ = 0;
     int64_t mqsmlaCmpKvSeqSize_ = 0;
@@ -304,27 +295,24 @@ public:
     uint32_t mqsmlaOriMaxBlocksPerBatch_ = 0;
     uint32_t mqsmlaCmpMaxBlocksPerBatch_ = 0;
     int64_t mqsmlaOriBlockSize_ = 0;
-    // 原始 KV 与压缩 KV 的 page block 大小相互独立。
     int64_t mqsmlaCmpBlockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType mqsmlaQType_ = ge::DT_FLOAT16;
-    ge::DataType mqsmlaOriKvType_ = ge::DT_FLOAT16; // MQSMLA: compressed-KV bounds.
+    ge::DataType mqsmlaOriKvType_ = ge::DT_FLOAT16;
     ge::DataType mqsmlaCmpKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpSparseIndicesType_ = ge::DT_INT32;
     ge::DataType oriBlockTableType_ = ge::DT_INT32;
     ge::DataType cmpBlockTableType_ = ge::DT_INT32;
-    // 可选输入的 dtype 用于逐项一致性校验。
     ge::DataType cuSeqLensQType_ = ge::DT_INT32;
     ge::DataType seqsedKvType_ = ge::DT_INT32;
     ge::DataType sinksType_ = ge::DT_INT32;
     ge::DataType metadataType_ = ge::DT_INT32;
-    // The output dtype is tracked separately for query-output compatibility checks.
     ge::DataType mqsmlaOutputType_ = ge::DT_FLOAT16;
 
     gert::Shape mqsmlaQShape_{};
     gert::Shape mqsmlaOriKvShape_{};
-    gert::Shape mqsmlaCmpKvShape_{}; // MQSMLA: compressed-KV descriptors.
+    gert::Shape mqsmlaCmpKvShape_{};
     gert::Shape mqsmlaOriSparseIndicesShape_{};
     gert::Shape mqsmlaCmpSparseIndicesShape_{};
 };

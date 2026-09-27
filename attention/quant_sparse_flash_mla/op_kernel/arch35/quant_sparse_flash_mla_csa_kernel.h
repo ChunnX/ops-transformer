@@ -35,7 +35,7 @@
 
 using matmul::MatmulType;
 using namespace AscendC;
-using namespace optiling; // QSMLA: tiling helpers.
+using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -177,7 +177,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         this->tilingData = tiling;
     } else {
         constInfo.aivIdx = GetBlockIdx();
-        this->aicIdx = constInfo.aivIdx >> 1; // QSMLA: metadata setup.
+        this->aicIdx = constInfo.aivIdx >> 1;
         this->tilingData = tiling;
     }
 
@@ -463,7 +463,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
             FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
-        uint32_t crossCoreCombineSize = // QSMLA: tile state (intraCoreCombineSize).
+        uint32_t crossCoreCombineSize =
             GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
@@ -647,7 +647,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (IS_BATCH_CONSISTENCY) { // QSMLA: original-KV state (s2LoopCount).
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t qs35ReductionBlockSize = qs35RunParam.baseBlockNumPerReductionBlock > 0 ?
                                                          qs35RunParam.baseBlockNumPerReductionBlock :
                                                          1LL;
@@ -736,7 +736,7 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::C
     int64_t cmpLen = qs35RunParam.s2CmpLineEndIdx - qs35RunParam.s2CmpLineStartIdx;
     int64_t qs35ReductionBlockSize =
         qs35RunParam.baseBlockNumPerReductionBlock > 0 ? qs35RunParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t reductionBlockSize = qs35ReductionBlockSize * s2BaseSize; // QSMLA: tile state (oriReductionBlockNum).
+    int64_t reductionBlockSize = qs35ReductionBlockSize * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
         int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
@@ -809,7 +809,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
         return;
     }
     fdRunInfo.bn2Idx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_BN2_IDX_INDEX, true));
-    fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true)); // QSMLA: workspace slots.
+    fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true));
     fdRunInfo.workspaceIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_IDX_INDEX, true));
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
@@ -842,11 +842,11 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
         qs35RunInfo.s2EndIdx = qs35RunParam.s2LineOriEndIdx;
     } else {
         qs35RunInfo.s2StartIdx = qs35RunParam.s2CmpLineStartIdx;
-        qs35RunInfo.s2EndIdx = qs35RunParam.s2CmpLineEndIdx; // QSMLA: original-KV state (s2EndIdx).
+        qs35RunInfo.s2EndIdx = qs35RunParam.s2CmpLineEndIdx;
     }
     qs35RunInfo.s2LoopCount = s2LoopCount;
     if (qs35RunInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
-        qs35RunInfo.s1oIdx = qs35RunParam.s1oIdx; // QSMLA: tile state (s1oIdx).
+        qs35RunInfo.s1oIdx = qs35RunParam.s1oIdx;
         qs35RunInfo.boIdx = qs35RunParam.boIdx;
         qs35RunInfo.n2oIdx = qs35RunParam.n2oIdx;
         qs35RunInfo.goIdx = qs35RunParam.goIdx;
@@ -858,7 +858,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     qs35RunInfo.taskId = taskId;
     qs35RunInfo.taskIdMod2 = taskId & 1;
     qs35RunInfo.taskIdMod3 = taskId % 3;
-    qs35RunInfo.s2LoopLimit = s2LoopLimit; // QSMLA: output sync.
+    qs35RunInfo.s2LoopLimit = s2LoopLimit;
 
     qs35RunInfo.actualS1Size = qs35RunParam.actualS1Size;
     qs35RunInfo.attentionOutOffset = qs35RunParam.attentionOutOffset;
@@ -922,7 +922,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Comp
     qs35RunInfo.firstHalfS1RealSize = qs35RunParam.firstHalfS1RealSize;
     qs35RunInfo.mRealSize = qs35RunParam.mRealSize;
     qs35RunInfo.halfMRealSize = qs35RunParam.halfMRealSize;
-    qs35RunInfo.firstHalfMRealSize = qs35RunParam.firstHalfMRealSize; // QSMLA: tile state (firstHalfMRealSize).
+    qs35RunInfo.firstHalfMRealSize = qs35RunParam.firstHalfMRealSize;
 
     qs35RunInfo.vec2S1BaseSize = qs35RunInfo.halfS1RealSize; // D>128 这里需要适配
     qs35RunInfo.vec2MBaseSize = qs35RunInfo.halfMRealSize;

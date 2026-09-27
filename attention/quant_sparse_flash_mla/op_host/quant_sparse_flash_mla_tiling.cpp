@@ -180,7 +180,7 @@ ge::graphStatus QSMLAInfoParser::GetInOutDataType()
     qsmlaQType_ = qsmlaParams_.q.desc->GetDataType();
     qsmlaOutputType_ = qsmlaParams_.attnOut.desc->GetDataType();
     if (qsmlaParams_.oriKv.desc != nullptr) {
-        qsmlaOriKvType_ = qsmlaParams_.oriKv.desc->GetDataType(); // QSMLA: compressed-KV descriptors (qsmlaOriKvType_).
+        qsmlaOriKvType_ = qsmlaParams_.oriKv.desc->GetDataType();
     }
     if (qsmlaParams_.cmpKv.desc != nullptr) {
         qsmlaCmpKvType_ = qsmlaParams_.cmpKv.desc->GetDataType();
@@ -268,8 +268,7 @@ void QSMLAInfoParser::SetQSMLAShape()
         qsmlaOriKvShape_ = qsmlaParams_.oriKv.tensor->GetStorageShape();
     }
     if (qsmlaParams_.cmpKv.tensor != nullptr) {
-        qsmlaCmpKvShape_ =
-            qsmlaParams_.cmpKv.tensor->GetStorageShape(); // QSMLA: compressed-KV descriptors (qsmlaCmpKvShape_).
+        qsmlaCmpKvShape_ = qsmlaParams_.cmpKv.tensor->GetStorageShape();
     }
     if (qsmlaParams_.oriSparseIndices.tensor != nullptr) {
         qsmlaOriSparseIndicesShape_ = qsmlaParams_.oriSparseIndices.tensor->GetStorageShape();
@@ -394,7 +393,7 @@ ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     qsmlaOriMaxBlocksPerBatch_ = qsmlaParams_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
-    if (qsmlaParams_.cmpBlockTable.tensor != nullptr) { // QSMLA: compressed-KV descriptors (tensor).
+    if (qsmlaParams_.cmpBlockTable.tensor != nullptr) {
         uint32_t cmpDimNum = qsmlaParams_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(qsmlaOpName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),
@@ -585,7 +584,7 @@ ge::graphStatus QSMLAInfoParser::Parse(QSMLATilingInfo &qsmlaInfo)
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
-        return ge::GRAPH_FAILED; // QSMLA: query descriptors.
+        return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetInOutDataType() || ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||
@@ -723,7 +722,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
     tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
-    tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount); // QSMLA: compressed-KV workspace.
+    tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
     tilingData_.baseParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
     tilingData_.baseParams.set_paOriBlockSize(tilingInfo->oriBlockSize);

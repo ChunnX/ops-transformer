@@ -208,13 +208,10 @@ ge::graphStatus MQSMLAInfoParser::GetOpParaInfo()
 
 ge::graphStatus MQSMLAInfoParser::GetInOutDataType()
 {
-    // Parse the query, dual-KV, and output data types used by MQSMLA checks.
     mqsmlaQType_ = mqsmlaParams_.q.desc->GetDataType();
     mqsmlaOutputType_ = mqsmlaParams_.attnOut.desc->GetDataType();
-    // Each optional KV path contributes its dtype only when that path is present.
     if (mqsmlaParams_.oriKv.desc != nullptr) {
-        mqsmlaOriKvType_ =
-            mqsmlaParams_.oriKv.desc->GetDataType(); // MQSMLA: compressed-KV descriptors (mqsmlaOriKvType_).
+        mqsmlaOriKvType_ = mqsmlaParams_.oriKv.desc->GetDataType();
     }
     if (mqsmlaParams_.cmpKv.desc != nullptr) {
         mqsmlaCmpKvType_ = mqsmlaParams_.cmpKv.desc->GetDataType();
@@ -304,8 +301,7 @@ void MQSMLAInfoParser::SetQSMLAShape()
     if (mqsmlaParams_.cmpKv.tensor != nullptr) {
         mqsmlaCmpKvShape_ = mqsmlaParams_.cmpKv.tensor->GetStorageShape();
     }
-    // Cache the storage shapes of the original and compressed sparse indices.
-    if (mqsmlaParams_.oriSparseIndices.tensor != nullptr) { // MQSMLA: compressed-KV descriptors (tensor).
+    if (mqsmlaParams_.oriSparseIndices.tensor != nullptr) {
         mqsmlaOriSparseIndicesShape_ = mqsmlaParams_.oriSparseIndices.tensor->GetStorageShape();
     }
     if (mqsmlaParams_.cmpSparseIndices.tensor != nullptr) {
@@ -649,7 +645,7 @@ ge::graphStatus MQSMLAInfoParser::Parse(MQSMLATilingInfo &mqsmlaInfo)
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
-        return ge::GRAPH_FAILED; // MQSMLA: query descriptors.
+        return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetInOutDataType() || ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||

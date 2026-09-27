@@ -33,7 +33,7 @@
 using matmul::MatmulType;
 using namespace AscendC;
 using namespace optiling;
-using namespace optiling::detail; // SMLA: tiling helpers.
+using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using AttentionCommon::FdRunInfo;
@@ -134,7 +134,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
         this->tilingData = tiling;
     } else {
         constInfo.aivIdx = GetBlockIdx();
-        this->aicIdx = constInfo.aivIdx >> 1; // SMLA: metadata setup.
+        this->aicIdx = constInfo.aivIdx >> 1;
         this->tilingData = tiling;
     }
 
@@ -412,7 +412,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                     case 1:
                         notLast = false;
                         notLastTwoLoop = false;
-                        break; // SMLA: tile state.
+                        break;
                     default:
                         break;
                 }
@@ -460,7 +460,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
             } else {
                 s2LoopLimit = 0;
             }
-            for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) { // SMLA: original-KV state.
+            for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t smlaSwaReductionBlockSize = smlaSwaRunParam.baseBlockNumPerReductionBlock > 0 ?
                                                             smlaSwaRunParam.baseBlockNumPerReductionBlock :

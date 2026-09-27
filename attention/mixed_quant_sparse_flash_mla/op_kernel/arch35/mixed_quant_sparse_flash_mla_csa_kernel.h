@@ -31,8 +31,7 @@
 
 using matmul::MatmulType;
 using namespace AscendC;
-using namespace optiling; // MQSMLA: tiling helpers.
-// MQSMLA uses detail-layer tiling helpers for its original and compressed KV paths.
+using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -126,8 +125,7 @@ private:
     bool hasCuSeqlensCmpKv = false;
     bool hasActualSeqQlen = false;
     bool hasActualSeqOriKvlen = false;
-    bool hasActualSeqCmpKvlen = false; // MQSMLA: compressed-KV workspace.
-    // 初始化阶段缓存可选变长输入的存在状态。
+    bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
     BuffersPolicy3buffSFA<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     BufferManager<BufferType::GM> fdStagingBufferManager;
@@ -447,7 +445,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, Mqsml
             FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
-        uint32_t crossCoreCombineSize = // MQSMLA: tile state (intraCoreCombineSize).
+        uint32_t crossCoreCombineSize =
             GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
@@ -651,7 +649,7 @@ MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, MqsmlaCsaVecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (IS_BATCH_CONSISTENCY) { // MQSMLA: original-KV state (s2LoopCount).
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t mq35ReductionBlockSize = mq35RunParam.baseBlockNumPerReductionBlock > 0 ?
                                                          mq35RunParam.baseBlockNumPerReductionBlock :
                                                          1LL;
@@ -750,7 +748,7 @@ MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, MqsmlaCsaVecBlockType>::Conv
     int64_t cmpLen = mq35RunParam.s2CmpLineEndIdx - mq35RunParam.s2CmpLineStartIdx;
     int64_t mq35ReductionBlockSize =
         mq35RunParam.baseBlockNumPerReductionBlock > 0 ? mq35RunParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t reductionBlockSize = mq35ReductionBlockSize * s2BaseSize; // MQSMLA: tile state (oriReductionBlockNum).
+    int64_t reductionBlockSize = mq35ReductionBlockSize * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
         int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
@@ -774,9 +772,8 @@ MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, MqsmlaCsaVecBlockType>::Appl
     int64_t cmpLen = cmpEnd - cmpStart;
     int64_t totalLen = oriLen + cmpLen;
 
-    // 首尾任务应用 metadata 边界，中间任务覆盖完整范围。
     int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
-    int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0; // MQSMLA: compressed-KV state.
+    int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
     rangeStart = rangeStart < 0 ? 0 : rangeStart;
     rangeStart = rangeStart < totalLen ? rangeStart : totalLen;
     int64_t rangeEnd = isLastS2RangeTask ? effectiveS2EndPoint : totalLen;
@@ -860,13 +857,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, Mqsml
         mq35RunInfo.s2StartIdx = mq35RunParam.s2LineStartIdx;
         mq35RunInfo.s2EndIdx = mq35RunParam.s2LineOriEndIdx;
     } else {
-        // Compressed-KV loops use their own valid S2 interval.
         mq35RunInfo.s2StartIdx = mq35RunParam.s2CmpLineStartIdx;
-        mq35RunInfo.s2EndIdx = mq35RunParam.s2CmpLineEndIdx; // MQSMLA: original-KV state (s2EndIdx).
+        mq35RunInfo.s2EndIdx = mq35RunParam.s2CmpLineEndIdx;
     }
     mq35RunInfo.s2LoopCount = s2LoopCount;
-    if (mq35RunInfo.multiCoreInnerIdx != multiCoreInnerIdx) { // MQSMLA: KV state.
-        // Cache both modulo values used to select pipeline slots.
+    if (mq35RunInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
         mq35RunInfo.s1oIdx = mq35RunParam.s1oIdx;
         mq35RunInfo.boIdx = mq35RunParam.boIdx;
         mq35RunInfo.n2oIdx = mq35RunParam.n2oIdx;
@@ -879,7 +874,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<MqsmlaCsaCubeBlockType, Mqsml
     mq35RunInfo.taskId = taskId;
     mq35RunInfo.taskIdMod2 = taskId & 1;
     mq35RunInfo.taskIdMod3 = taskId % 3;
-    mq35RunInfo.s2LoopLimit = s2LoopLimit; // MQSMLA: output sync.
+    mq35RunInfo.s2LoopLimit = s2LoopLimit;
 
     mq35RunInfo.actualS1Size = mq35RunParam.actualS1Size;
     mq35RunInfo.attentionOutOffset = mq35RunParam.attentionOutOffset;

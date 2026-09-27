@@ -62,7 +62,7 @@ TEMPLATES_DEF
 class SmlaCsaBlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64; // SMLA: tile matmul (s1BaseSize).
+    static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
@@ -520,16 +520,16 @@ public:
     __aicore__ inline void FreeEvent() {}
 };
 
-template <typename T>       // SMLA: tile matmul.
+template <typename T>
 struct SmlaCubeBlockTraits; // 声明
 
-/* 生成SmlaCubeBlockTraits */
+/* 生成CubeBlockTraits */
 #define GEN_SMLA_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_SMLA_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_SMLA_CUBE_BLOCK_TRAITS(SMLA_CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT /* SMLA: tile matmul (TEMPLATES_DEF_NO_DEFAULT). */ \
-        struct SmlaCubeBlockTraits<SMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct SmlaCubeBlockTraits<SMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         SMLA_CUBE_TRAIT_TYPES(GEN_SMLA_TRAIT_TYPE) \
         SMLA_CUBE_TRAIT_CONSTANTS(GEN_SMLA_TRAIT_CONST) \
     }
@@ -537,7 +537,7 @@ struct SmlaCubeBlockTraits; // 声明
 DEFINE_SMLA_CUBE_BLOCK_TRAITS(SmlaCsaBlockCube);
 DEFINE_SMLA_CUBE_BLOCK_TRAITS(SmlaCsaBlockCubeDummy);
 
-// /* 生成Arg Traits, kernel中只需要调用SMLA_ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
+// /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_SMLA_ARGS_TYPE(name, ...) using name = typename SmlaCubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_SMLA_ARGS_CONST(name, type, ...) \
     static constexpr type name = SmlaCubeBlockTraits<CubeBlockType>::name##Traits;

@@ -20,9 +20,9 @@
 
 #define QSMLA_LAYOUT_BSND 0
 #define QSMLA_LAYOUT_TND 1
-#define QSMLA_LAYOUT_PA_BBND 2 // MQSMLA: tiling params.
+#define QSMLA_LAYOUT_PA_BBND 2
 
-#define ASCENDC_TPL_4_BW 4 // MQSMLA: tile params.
+#define ASCENDC_TPL_4_BW 4
 
 #define SWA_TEMPLATE 0
 #define HCA_TEMPLATE 1
