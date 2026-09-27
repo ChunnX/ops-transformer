@@ -1022,8 +1022,8 @@ __simd_vf__ inline void TransposeImplVF(__ubuf__ T *dst_ub, __ubuf__ T *src_ub, 
         AscendC::Reg::Gather(dataReg, src_ub, idxReg, mask);
 
         // StoreAlign: 写回目标矩阵行 j，使用 m_pad 掩码确保整行（含 padding）都被写入
-        AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(dst_ub + static_cast<uint32_t>(j) * m_pad,
-                                                                         dataReg, maskStore);
+        AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(dst_ub + static_cast<uint32_t>(j) * m_pad, dataReg,
+                                                               maskStore);
     }
 }
 
