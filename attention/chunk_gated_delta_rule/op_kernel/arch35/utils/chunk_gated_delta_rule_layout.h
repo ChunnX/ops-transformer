@@ -182,7 +182,7 @@ struct FusedLayout {
     {
         // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
         return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
-               (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * MmAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
+               (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
     }
 };
 

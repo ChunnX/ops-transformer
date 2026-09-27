@@ -11,8 +11,8 @@
 #ifndef CHUNK_GATED_DELTA_RULE_VECTOR_STREAM_COMPUTE_H
 #define CHUNK_GATED_DELTA_RULE_VECTOR_STREAM_COMPUTE_H
 
-#include "chunk_gated_delta_rule_context.h"
-#include "chunk_gated_delta_rule_vector_copy.h"
+#include "utils/chunk_gated_delta_rule_context.h"
+#include "utils/chunk_gated_delta_rule_vector_copy.h"
 #include "vf/chunk_gated_delta_rule_stage2_vf.h"
 
 namespace ChunkGatedDeltaRule {
@@ -168,7 +168,7 @@ private:
     {
         // UB rows have HALF_DIM elements; GM rows have nv * dv elements.
         DataCopyExtParams params{static_cast<uint16_t>(rows), static_cast<uint32_t>(count * sizeof(bfloat16_t)),
-                                 (HALF_DIM - MmAlign(count, MM_NZ_FRACTAL)) / MM_NZ_FRACTAL,
+                                 (HALF_DIM - CeilAlign(count, MM_NZ_FRACTAL)) / MM_NZ_FRACTAL,
                                  static_cast<int64_t>((context_.params.nv * context_.params.dv - count) * sizeof(bfloat16_t)), 0};
         DataCopyPad(dst, src, params);
     }

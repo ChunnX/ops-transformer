@@ -55,12 +55,12 @@ public:
 private:
     __aicore__ inline bool UseStreamingExact() const
     {
-        // AIC/AIV 使用相同元数据选择路径；空序列只复制状态，不进入 chunk 握手。
+        // AIC/AIV 使用相同元数据选择路径；空序列只复制state。
         if (context_.task.seqLength == 0) {
             return true;
         }
-        // Dk=Dv=128 的专用 chunk VF 已融合四个变换。实测除单 token 接近持平外，
-        // chunk 明显更快；保留这条常见网络路径，避免用通用维度的拟合外推。
+        // Dk=Dv=128 的专用 chunk VF 已融合四个变换。
+        // 实测除单 token 接近持平外，chunk 明显更快
         if (context_.params.dk == DIM && context_.params.dv == DIM) {
             return false;
         }

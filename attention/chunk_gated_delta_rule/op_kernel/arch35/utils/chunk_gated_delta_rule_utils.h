@@ -27,7 +27,7 @@ constexpr uint32_t MM_BLOCK_CUBE = 16;
 constexpr uint32_t MM_NZ_FRACTAL = 16;
 
 // 向上对齐：ceil(value / align) * align，align > 0；参数使用相同单位（元素或字节）。
-__aicore__ inline uint32_t MmAlign(uint32_t value, uint32_t align)
+__aicore__ inline uint32_t CeilAlign(uint32_t value, uint32_t align)
 {
     return (value + align - 1) / align * align;
 }

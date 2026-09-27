@@ -24,7 +24,7 @@ __aicore__ inline void CopyRowsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, u
                                     uint32_t cols, uint32_t srcRowStride)
 {
     constexpr uint32_t elementsPerBlock = BLOCK_SIZE / sizeof(T);
-    const uint32_t alignedCols = MmAlign(cols, elementsPerBlock);
+    const uint32_t alignedCols = CeilAlign(cols, elementsPerBlock);
     DataCopyExtParams copy{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(T)),
                            static_cast<uint32_t>((srcRowStride - cols) * sizeof(T)),
                            static_cast<int64_t>((FusedLayout::DIM - alignedCols) / elementsPerBlock), 0};
@@ -41,7 +41,7 @@ __aicore__ inline void CopyStateRowsUbToGm(GlobalTensor<T> dst, LocalTensor<T> s
         return;
     }
     constexpr uint32_t elementsPerBlock = BLOCK_SIZE / sizeof(T);
-    const uint32_t alignedCols = MmAlign(validCols, elementsPerBlock);
+    const uint32_t alignedCols = CeilAlign(validCols, elementsPerBlock);
     DataCopyExtParams params{static_cast<uint16_t>(validRows), static_cast<uint32_t>(validCols * sizeof(T)),
                              static_cast<uint32_t>((FusedLayout::DIM - alignedCols) / elementsPerBlock), 0, 0};
     DataCopyPad(dst, src, params);

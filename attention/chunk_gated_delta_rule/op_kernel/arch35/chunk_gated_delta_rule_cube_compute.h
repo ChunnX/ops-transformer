@@ -11,9 +11,9 @@
 #ifndef CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H
 #define CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H
 
-#include "chunk_gated_delta_rule_context.h"
+#include "utils/chunk_gated_delta_rule_context.h"
 #include "catlass/gemm/tile/ascend950/copy_l0c_to_ub.hpp"
-#include "chunk_gated_delta_rule_sync.h"
+#include "utils/chunk_gated_delta_rule_sync.h"
 
 namespace ChunkGatedDeltaRule {
 
@@ -188,7 +188,7 @@ private:
         params.nValue = rows;
         params.dValue = cols;
         params.srcDValue = srcRowStride;
-        params.dstNzC0Stride = MmAlign(dstRows, MM_BLOCK_CUBE);
+        params.dstNzC0Stride = CeilAlign(dstRows, MM_BLOCK_CUBE);
         params.dstNzNStride = 1;
         params.srcNdMatrixStride = 0;
         params.dstNzMatrixStride = 0;
@@ -203,9 +203,9 @@ private:
         LoadData2DParamsV2 params;
         params.mStartPosition = rowStart / MM_BLOCK_CUBE;
         params.kStartPosition = colStart / MM_NZ_FRACTAL;
-        params.mStep = MmAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.kStep = MmAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
-        params.srcStride = MmAlign(fullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
+        params.mStep = CeilAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
+        params.kStep = CeilAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
+        params.srcStride = CeilAlign(fullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
         params.dstStride = ifTranspose ? params.kStep : params.mStep;
         params.ifTranspose = ifTranspose;
         LoadData(l0, l1, params);
@@ -219,10 +219,10 @@ private:
         LoadData2DParamsV2 params;
         params.mStartPosition = srcRowStart / MM_BLOCK_CUBE;
         params.kStartPosition = 0;
-        params.mStep = MmAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.kStep = MmAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
-        params.srcStride = MmAlign(srcFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.dstStride = MmAlign(dstFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
+        params.mStep = CeilAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
+        params.kStep = CeilAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
+        params.srcStride = CeilAlign(srcFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
+        params.dstStride = CeilAlign(dstFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
         params.ifTranspose = false;
         LoadData(l0a[dstRowStart * MM_NZ_FRACTAL], l1, params);
     }
@@ -248,7 +248,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> copy;
         copy.nSize = cols;
         copy.mSize = rows / 2;
-        copy.srcStride = MmAlign(rows, MM_BLOCK_CUBE);
+        copy.srcStride = CeilAlign(rows, MM_BLOCK_CUBE);
         copy.dstStride = cols;
         copy.quantPre = std::is_same_v<outputType, float> ? QuantMode_t::NoQuant : QuantMode_t::F322BF16;
         copy.dualDstCtl = 0;
@@ -299,8 +299,8 @@ private:
         FixpipeParamsC310<CO2Layout::NZ> params;
         params.nSize = n;
         params.mSize = m;
-        params.srcStride = MmAlign(m, MM_BLOCK_CUBE);
-        params.dstStride = MmAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
+        params.srcStride = CeilAlign(m, MM_BLOCK_CUBE);
+        params.dstStride = CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
         params.quantPre = QuantMode_t::F322BF16;
 
         // 顺序不可交换：先占用 L1 目标，再结束 MMAD，最后允许 FIX 读取 L0C。
@@ -317,7 +317,7 @@ private:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> params;
         params.nSize = context_.params.dv;
         params.mSize = validRows;
-        params.srcStride = MmAlign(CHUNK, MM_BLOCK_CUBE);
+        params.srcStride = CeilAlign(CHUNK, MM_BLOCK_CUBE);
         params.dstStride = context_.params.nv * context_.params.dv;
         params.quantPre = QuantMode_t::F322BF16;
         params.dualDstCtl = 0;

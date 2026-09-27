@@ -11,9 +11,9 @@
 #ifndef CHUNK_GATED_DELTA_RULE_VECTOR_COMPUTE_H
 #define CHUNK_GATED_DELTA_RULE_VECTOR_COMPUTE_H
 
-#include "chunk_gated_delta_rule_context.h"
-#include "chunk_gated_delta_rule_sync.h"
-#include "chunk_gated_delta_rule_vector_copy.h"
+#include "utils/chunk_gated_delta_rule_context.h"
+#include "utils/chunk_gated_delta_rule_sync.h"
+#include "utils/chunk_gated_delta_rule_vector_copy.h"
 #include "vf/chunk_gated_delta_rule_stage1_vf.h"
 #include "vf/chunk_gated_delta_rule_stage2_vf.h"
 
