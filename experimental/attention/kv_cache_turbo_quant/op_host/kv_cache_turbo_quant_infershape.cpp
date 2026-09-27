@@ -51,26 +51,22 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     const int64_t numTokens = kvShape->GetDim(0);
     const int64_t numKvHeads = kvShape->GetDim(1);
     const int64_t headDim = kvShape->GetDim(2);
-    OP_CHECK_IF(headDim != HEAD_DIM,
-                OP_LOGE("KvCacheTurboQuant", "head_dim must be 128, got %ld.", headDim),
+    OP_CHECK_IF(headDim != HEAD_DIM, OP_LOGE("KvCacheTurboQuant", "head_dim must be 128, got %ld.", headDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(numKvHeads < MIN_KV_HEADS || numKvHeads > MAX_KV_HEADS,
                 OP_LOGE("KvCacheTurboQuant", "num_kv_heads must be in [4, 32], got %ld.", numKvHeads),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numTokens <= 0,
-                OP_LOGE("KvCacheTurboQuant", "num_tokens must be positive, got %ld.", numTokens),
+    OP_CHECK_IF(numTokens <= 0, OP_LOGE("KvCacheTurboQuant", "num_tokens must be positive, got %ld.", numTokens),
                 return ge::GRAPH_FAILED);
 
     // rotation_matrix: [head_dim, head_dim]
-    OP_CHECK_IF(rotShape->GetDimNum() != MATRIX_DIMS || rotShape->GetDim(0) != HEAD_DIM ||
-                rotShape->GetDim(1) != HEAD_DIM,
-                OP_LOGE("KvCacheTurboQuant", "rotation_matrix must be [128, 128]."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        rotShape->GetDimNum() != MATRIX_DIMS || rotShape->GetDim(0) != HEAD_DIM || rotShape->GetDim(1) != HEAD_DIM,
+        OP_LOGE("KvCacheTurboQuant", "rotation_matrix must be [128, 128]."), return ge::GRAPH_FAILED);
 
     // qjl_matrix: [qjl_dim, head_dim]
     OP_CHECK_IF(qjlShape->GetDimNum() != MATRIX_DIMS || qjlShape->GetDim(1) != HEAD_DIM,
-                OP_LOGE("KvCacheTurboQuant", "qjl_matrix must be [qjl_dim, 128]."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE("KvCacheTurboQuant", "qjl_matrix must be [qjl_dim, 128]."), return ge::GRAPH_FAILED);
     const int64_t qjlDim = qjlShape->GetDim(0);
     OP_CHECK_IF(qjlDim <= 0 || qjlDim > HEAD_DIM || (qjlDim % QJL_DIM_ALIGN) != 0,
                 OP_LOGE("KvCacheTurboQuant", "qjl_dim must be in (0, 128] and multiple of 8, got %ld.", qjlDim),
@@ -87,8 +83,7 @@ ge::graphStatus InferShapeKvCacheTurboQuant(gert::InferShapeContext *context)
     // 8/9 are accepted as internal probe paths (not real bit widths); their
     // output shapes follow the 3-bit layout so probe tensors match
     OP_CHECK_IF(mseBits != 2 && mseBits != 3 && mseBits != 4 && mseBits != 8 && mseBits != 9,
-                OP_LOGE("KvCacheTurboQuant", "mse_bits must be 2, 3 or 4, got %ld.", mseBits),
-                return ge::GRAPH_FAILED);
+                OP_LOGE("KvCacheTurboQuant", "mse_bits must be 2, 3 or 4, got %ld.", mseBits), return ge::GRAPH_FAILED);
     if (mseBits >= 8) {
         mseBits = 3;
     }
@@ -134,7 +129,5 @@ ge::graphStatus InferDataTypeKvCacheTurboQuant(gert::InferDataTypeContext *conte
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP(KvCacheTurboQuant)
-    .InferShape(InferShapeKvCacheTurboQuant)
-    .InferDataType(InferDataTypeKvCacheTurboQuant);
+IMPL_OP(KvCacheTurboQuant).InferShape(InferShapeKvCacheTurboQuant).InferDataType(InferDataTypeKvCacheTurboQuant);
 } // namespace ops

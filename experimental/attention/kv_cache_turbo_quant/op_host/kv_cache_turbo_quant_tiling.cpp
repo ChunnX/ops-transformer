@@ -29,8 +29,7 @@ static ge::graphStatus FillCubeTiling(gert::TilingContext *context, TCubeTiling 
     matmul_tiling::MatmulApiTiling mm(ascendcPlatform);
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16,
                 false);
-    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16,
-                true);
+    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16, true);
     mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm.SetBias(false);
     mm.SetOrgShape(64, 128, 128);
@@ -56,8 +55,6 @@ constexpr int64_t CUBE_MIN_VEC = 1024;
 // group max (flag-cell capacity) -> totalVec <= 67584
 constexpr int64_t CUBE_CHUNK_ROWS = 128;
 constexpr int64_t CUBE_MAX_VEC = 24 * 22 * CUBE_CHUNK_ROWS;
-
-
 
 static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
 {

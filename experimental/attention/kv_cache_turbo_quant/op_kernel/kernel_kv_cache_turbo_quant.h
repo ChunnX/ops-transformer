@@ -105,11 +105,11 @@ public:
         normGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantNorm), totalVec_);
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(quantGamma), totalVec_);
 
-        pipe_.InitBuffer(matHBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));      // 64K rotation H
-        pipe_.InitBuffer(matSBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));      // 64K projection S
-        pipe_.InitBuffer(mhBuf_, HEAD_DIM * HALF_DIM * sizeof(float));        // 32K half-width products
-        pipe_.InitBuffer(zTileBuf_, TILE_VEC * HEAD_DIM * sizeof(float));     // 8K z / r / r_hat
-        pipe_.InitBuffer(b16Buf_, B16_COPIES * HALF_DIM * sizeof(float));     // 4K replicated half vector
+        pipe_.InitBuffer(matHBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));  // 64K rotation H
+        pipe_.InitBuffer(matSBuf_, HEAD_DIM * HEAD_DIM * sizeof(float));  // 64K projection S
+        pipe_.InitBuffer(mhBuf_, HEAD_DIM * HALF_DIM * sizeof(float));    // 32K half-width products
+        pipe_.InitBuffer(zTileBuf_, TILE_VEC * HEAD_DIM * sizeof(float)); // 8K z / r / r_hat
+        pipe_.InitBuffer(b16Buf_, B16_COPIES * HALF_DIM * sizeof(float)); // 4K replicated half vector
         pipe_.InitBuffer(xTileBuf_, TILE_VEC * HEAD_DIM * sizeof(bfloat16_t));
         pipe_.InitBuffer(xfBuf_, HEAD_DIM * sizeof(float));
         pipe_.InitBuffer(yBuf_, BATCH_VEC * HEAD_DIM * sizeof(float));
@@ -166,7 +166,8 @@ public:
         LocalTensor<float> matS = matSBuf_.Get<float>();
 
         for (int64_t tileStart = 0; tileStart < vecNum_; tileStart += TILE_VEC) {
-            const int32_t nv = static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
+            const int32_t nv =
+                static_cast<int32_t>((vecNum_ - tileStart) < TILE_VEC ? (vecNum_ - tileStart) : TILE_VEC);
             const int64_t g0 = vecBegin_ + tileStart;
 
             SyncPipe<HardEvent::V_MTE2>();
@@ -174,7 +175,7 @@ public:
             SyncPipe<HardEvent::MTE2_V>();
 
             // ---- pass A: squared norms (grouped) and unnormalized rotation z = H x ----
-            LocalTensor<float> sqG = yBuf_.Get<float>();         // reuse: grouped squares
+            LocalTensor<float> sqG = yBuf_.Get<float>(); // reuse: grouped squares
             for (int32_t v = 0; v < nv; ++v) {
                 Cast(xf, xTile[v * HEAD_DIM], RoundMode::CAST_NONE, HEAD_DIM);
                 PipeBarrier<PIPE_V>();
@@ -255,12 +256,12 @@ private:
     static constexpr int32_t CHUNK_VEC = 16;
     static constexpr int32_t BATCH_VEC = 2;
     static constexpr int32_t B16_COPIES = 16;
-    static constexpr int32_t WORDS_PER_VEC = 16;   // max packed words per vector (128 lanes / 8)
-    static constexpr int32_t MAX_IDX_BYTES = 64;   // 4-bit: 16 groups * 4 bytes
+    static constexpr int32_t WORDS_PER_VEC = 16; // max packed words per vector (128 lanes / 8)
+    static constexpr int32_t MAX_IDX_BYTES = 64; // 4-bit: 16 groups * 4 bytes
     static constexpr int32_t RED_TMP_ELEMS = 256;
     static constexpr int32_t HALF_DIM = HEAD_DIM / 2;
     static constexpr float MIN_DENOM = 1e-30f;
-    static constexpr float IND_SCALE = 1.2676506002282294e30f;     // 2^100, overflow-to-inf indicator scale
+    static constexpr float IND_SCALE = 1.2676506002282294e30f; // 2^100, overflow-to-inf indicator scale
 
     template <HardEvent evt>
     __aicore__ inline void SyncPipe()
@@ -295,10 +296,10 @@ private:
         static constexpr float CENT4[4] = {-0.13350332f, -0.04002048f, 0.04002048f, 0.13350332f};
         static constexpr float CENT8[8] = {-0.19020693f, -0.11878592f, -0.06682206f, -0.02166347f,
                                            0.02166347f,  0.06682206f,  0.11878592f,  0.19020693f};
-        static constexpr float CENT16[16] = {
-            -0.24148904f, -0.18283178f, -0.1429703f,  -0.11099271f, -0.083254285f, -0.058020826f,
-            -0.03428064f, -0.01134237f, 0.01134237f,  0.03428064f,  0.058020826f, 0.083254285f,
-            0.11099271f,  0.1429703f,   0.18283178f,  0.24148904f};
+        static constexpr float CENT16[16] = {-0.24148904f,  -0.18283178f,  -0.1429703f,  -0.11099271f,
+                                             -0.083254285f, -0.058020826f, -0.03428064f, -0.01134237f,
+                                             0.01134237f,   0.03428064f,   0.058020826f, 0.083254285f,
+                                             0.11099271f,   0.1429703f,    0.18283178f,  0.24148904f};
         const float *cent = (mseBits_ == 2) ? CENT4 : (mseBits_ == 3 ? CENT8 : CENT16);
         for (int32_t i = 0; i < nCent_; ++i) {
             cent_[i] = cent[i];
@@ -316,8 +317,8 @@ private:
         for (int32_t d = 0; d < BATCH_VEC * HEAD_DIM; ++d) {
             const int32_t lane = d & 7;
             const float lo = (lane < 4) ? static_cast<float>(static_cast<int32_t>(1) << (mseBits_ * lane)) : 0.0f;
-            const float hi = (lane >= 4) ? static_cast<float>(static_cast<int32_t>(1) << (mseBits_ * (lane - 4)))
-                                         : 0.0f;
+            const float hi =
+                (lane >= 4) ? static_cast<float>(static_cast<int32_t>(1) << (mseBits_ * (lane - 4))) : 0.0f;
             wtL.SetValue(d, lo);
             wtH.SetValue(d, hi);
         }
@@ -340,15 +341,15 @@ private:
         const int32_t calls = (rows + B16_COPIES - 1) / B16_COPIES;
         for (int32_t h = 0; h < 2; ++h) {
             LocalTensor<float> t = (h == 0) ? t0 : t1;
-            PipeBarrier<PIPE_V>();   // b16/mh reuse across halves
+            PipeBarrier<PIPE_V>(); // b16/mh reuse across halves
             for (int32_t i = 0; i < B16_COPIES; ++i) {
                 Adds(b16[i * HALF_DIM], src[h * HALF_DIM], 0.0f, HALF_DIM);
             }
             PipeBarrier<PIPE_V>();
             for (int32_t c = 0; c < calls; ++c) {
                 const int32_t reps = (rows - c * B16_COPIES) < B16_COPIES ? (rows - c * B16_COPIES) : B16_COPIES;
-                Mul(mh[c * B16_COPIES * HALF_DIM], mat[(c * B16_COPIES) * HEAD_DIM + h * HALF_DIM], b16, HALF_DIM,
-                    reps, BinaryRepeatParams(1, 1, 1, HALF_DIM / 8, HEAD_DIM / 8, HALF_DIM / 8));
+                Mul(mh[c * B16_COPIES * HALF_DIM], mat[(c * B16_COPIES) * HEAD_DIM + h * HALF_DIM], b16, HALF_DIM, reps,
+                    BinaryRepeatParams(1, 1, 1, HALF_DIM / 8, HEAD_DIM / 8, HALF_DIM / 8));
             }
             PipeBarrier<PIPE_V>();
             WholeReduceSum(t, mh, HALF_DIM, rows, 1, 1, HALF_DIM / 8);
@@ -366,7 +367,7 @@ private:
         LocalTensor<float> y = yBuf_.Get<float>();
         LocalTensor<float> yhat = yhatBuf_.Get<float>();
         LocalTensor<float> idxF = idxFBuf_.Get<float>();
-        LocalTensor<float> indF = pBuf_.Get<float>();          // reuse as fp32 indicator
+        LocalTensor<float> indF = pBuf_.Get<float>(); // reuse as fp32 indicator
         const int32_t w = b * HEAD_DIM;
 
         for (int32_t i = 0; i < b; ++i) {
@@ -472,9 +473,9 @@ private:
     }
 
     // scalar tail flush (< CHUNK_VEC vectors, only at the global end)
-    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv,
-                                       const LocalTensor<bfloat16_t> &normBF, const LocalTensor<bfloat16_t> &gammaBF,
-                                       const LocalTensor<uint8_t> &idxStage, const LocalTensor<uint8_t> &qjlStage)
+    __aicore__ inline void FlushScalar(int64_t g0, int32_t stageOff, int32_t nv, const LocalTensor<bfloat16_t> &normBF,
+                                       const LocalTensor<bfloat16_t> &gammaBF, const LocalTensor<uint8_t> &idxStage,
+                                       const LocalTensor<uint8_t> &qjlStage)
     {
         for (int32_t v = 0; v < nv; ++v) {
             const int64_t g = g0 + v;

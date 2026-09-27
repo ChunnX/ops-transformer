@@ -31,7 +31,6 @@ __aicore__ inline void clearWorkspace(__gm__ uint8_t *workspace)
 }
 } // namespace matmul
 
-
 extern "C" __global__ __aicore__ void kv_cache_turbo_quant(GM_ADDR kv_vectors, GM_ADDR rotation_matrix,
                                                            GM_ADDR qjl_matrix, GM_ADDR quant_idx, GM_ADDR quant_qjl,
                                                            GM_ADDR quant_norm, GM_ADDR quant_gamma, GM_ADDR workspace,
