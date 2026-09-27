@@ -426,6 +426,19 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
   为前次 run 残留巧合，或 (c) mSize 对齐的 fixpipe 在某条件下覆盖/丢行——三者待实验区分：
   ①单批次两行手工 case（排除变长批噪声）②改 FixCopyOut 打印 tileBase ③dump 全局搜多行分数
   特征反推 scratch 实布局。
+
+### bfvar 假设③结果（同日再续）：M 拆分实锤 + scratch 布局疑云加深
+- 全 32 行特征搜索（6 值严格匹配）：B1H3 行八元组→tile 映射 6/6 一致——**rows[0,8)→tile64、
+  [8,16)→tile66、[16,24)→tile68、[24,32)→tile70**，即 **B1H3 chunk 的 M=32 拆 4 份 × 8 行，
+  由 aic32-35 分片处理**（BSAScratchTileOffset 的 aic×2+ring 公式下 aic=32/33/34/35）。
+- **但该拆分与 CalcMultiCoreOffsetValid 分区公式矛盾**（aic32 startRow=256 ≥ validX 应 idle，
+  aic32-35 不应持有任何 chunk）——且 aic32-35 对应 AIV 64-71 超出 aivNum=40。
+- row31 = aic35 子块的尾行，**缺失**；row25/30（同子块）存在。B0 各行未命中（其 scratch 已被
+  B1 复用覆盖，ring 翻转所致，合理）。
+- **下轮**：① host tiling 的 AIC 分区/multiCoreParams 审计（aic32-35 怎么拿到 chunk、
+  activeCoreNum 到底多少——52 硬件核 vs 分配公式的出入）②AIC 子块 [8 行] 的 fixpipe mSize
+  对齐交互（mSize=8→16 写 rows[0,16)，为何 row31 仍丢——除非子块 m=8 时 L0C 尾 fractal 行
+  映射有异）③必要时 AIC 侧 dump/printf 直取证 tileBase。
 - blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
 
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
