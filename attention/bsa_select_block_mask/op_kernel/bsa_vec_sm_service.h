@@ -153,6 +153,9 @@ public:
     PostRowSlice cachedSlices[BSA_SM_SLICES_MAX];
     uint32_t cachedSliceNum = 0;
     uint32_t cachedChunkKey = 0xFFFFFFFF;      // 无效哨兵（合法 qChunkStart 从 0 起）
+    uint32_t cachedValidXBlocks = 0xFFFFFFFF;  // 缓存键第二维：批间 validXBlocks 不同（TND/seqlen
+                                               // 变长）时 qChunkStart 相同也必须重填，否则复用上一
+                                               // 批的 slice 几何（尾 unit 行数差 → 尾行丢失）
     Pass1Band ctxBands[BSA_SM_SLICES_MAX];
     uint32_t ctxBandNum = 0;
     uint64_t ctxChunkGlobalTile = 0;           // (qChunkStart/Q_CHUNK_SIZE)*KTILES（chunk 不变量）
@@ -414,6 +417,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::FillPass1Ctx(uint32_t qChunkStart,
         i = j;
     }
     cachedChunkKey = qChunkStart;
+    cachedValidXBlocks = validXBlocks;
     const uint32_t ktiles = (constInfo.yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     ctxChunkGlobalTile = (static_cast<uint64_t>(qChunkStart) / Q_CHUNK_SIZE) * ktiles;
     ctxTileElems = static_cast<uint64_t>(Q_CHUNK_SIZE) * K_TILE_COLS;
@@ -443,7 +447,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                                                                           uint32_t validXBlocks, uint32_t validYBlocks)
 {
     // chunk 上下文：首 tile 填充（slices 解析 + band 预演 + 寻址基址），其余 194 tile 直接消费
-    if (cachedChunkKey != qChunkStart) {
+    if (cachedChunkKey != qChunkStart || cachedValidXBlocks != validXBlocks) {
         FillPass1Ctx(qChunkStart, qChunkSize, validXBlocks);
     }
     const PostRowSlice *slices = cachedSlices;
@@ -945,7 +949,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxFinalize(uint32_t qChunkSta
     GlobalTensor<OUT_T> pooledScoreGmTensor = postPoolOP.GetPooledScoreGm();
     const uint32_t validPostYCur = (validYBlocks + constInfo.postBlockShapeY - 1) / constInfo.postBlockShapeY;
     // chunk 上下文：与 pass1 共用（finalize(c) 在重排后先于 pass1(c) 执行，此处多为 miss 填充一次）
-    if (cachedChunkKey != qChunkStart) {
+    if (cachedChunkKey != qChunkStart || cachedValidXBlocks != validXBlocks) {
         FillPass1Ctx(qChunkStart, qChunkSize, validXBlocks);
     }
     const PostRowSlice *slices = cachedSlices;
