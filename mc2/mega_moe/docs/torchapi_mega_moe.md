@@ -624,7 +624,7 @@
 先调用get_symm_buffer_for_mega_moe接口封装输入参数并创建SymmBuffer结构体，再调用mega_moe接口进行计算。
 
 ```python
-get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="", topk_weights_type=0) -> SymmBuffer
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="", combine_comm_mode=0, topk_weights_type=0) -> SymmBuffer
 ```
 
 ```python
@@ -740,7 +740,13 @@ sym_buffer.update_group(group) -> None
         <td>comm_alg</td>
         <td>str</td>
         <td>可选</td>
-        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
+        <td>预留参数，保持默认值即可。默认值为""。<term>Ascend 950PR/Ascend 950DT</term>的通信去重不通过该参数控制，请使用combine_comm_mode。</td>
+    </tr>
+    <tr>
+        <td>combine_comm_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>combine阶段通信去重开关，仅<term>Ascend 950PR/Ascend 950DT</term>的MTE拓扑支持。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方决定，算子内部不做收益裁决。开启会改变通信缓冲区布局，必须在创建sym_buffer时指定，且同一通信域内所有Rank取值一致。默认值为0。</td>
     </tr>
     <tr>
         <td>topk_weights_type</td>
@@ -1284,7 +1290,7 @@ sym_buffer.update_group(group) -> None
 
 - **参数一致性约束**：
   - mega_moe接口的所有输入参数及其对应的张量维度，必须与get_symm_buffer_for_mega_moe的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
-  - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`、`topk_weights_type`、`combine_comm_mode`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。其中`topk_weights_type`与`combine_comm_mode`决定通信记录的布局，跨卡取值不一致会导致读写错位。
 
 - **通信域约束**：
     - 所有卡的`ep_world_size`参数取值需保持一致。
@@ -1459,8 +1465,15 @@ sym_buffer.update_group(group) -> None
     - x_active_mask当前版本必须传入None，不支持非空输入。
     - scales仅在预量化直通（dispatch_quant_mode = 0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）场景为必选，数据类型为FLOAT8_E8M0，shape为(num_tokens, CeilDiv(hidden, 32))；其余场景必须传入None。两者不匹配时算子在tiling阶段直接报错。
     - combine_quant_mode当前支持0（非量化），3（MX模式float8_e5m2类型），4（MX模式float8_e4m3类型）。
-    - comm_alg预留参数，必须为空字符串""。
-    - y的数据类型与x相同。
+    - comm_alg为预留参数，保持默认空字符串""即可；通信去重不通过该参数开启，请使用combine_comm_mode。
+    - y的数据类型：x为bfloat16时与x相同；x为预量化的float8/float4输入时y固定为bfloat16。
+    - **通信去重约束**：
+        - dispatch阶段的通信去重由算子按形状自动判断是否启用，对外无开关；启用与否不改变计算结果，只影响性能。
+        - combine_comm_mode取值为0或1，0表示关闭combine阶段通信去重，1表示开启。是否开启完全由调用方决定，算子内部不做收益裁决。
+        - combine_comm_mode在`get_symm_buffer_for_mega_moe`处设置，`mega_moe`调用时从`sym_buffer`继承，无需重复传入；同一通信域内所有Rank必须配置相同取值，否则跨卡的通信记录布局不一致会导致读写错位。
+        - combine_comm_mode = 1时的能力约束（不满足时算子在tiling阶段直接报错并提示改回0，不做静默回退）：仅支持topo_type = 0（MTE拓扑）；combine_quant_mode必须为0（combine不量化）；topk_weights_type = 0时不支持预量化x；num_max_tokens_per_rank需满足 num_max_tokens_per_rank ≤ 128 × min(512, ⌊4608 / num_topk⌋)（例如num_topk = 32时上限为18432，num_topk ≤ 9时上限为65536）。
+        - combine_comm_mode = 1时，同一token在同一张卡上的多个专家输出改为在该卡按float32累加后一次转bfloat16发送，累加顺序与中间取整次数与关闭态不同，因此y与combine_comm_mode = 0的结果不逐位相同。偏差来源是bfloat16累加顺序与中间取整次数的差异，在存在数值抵消的元素上相对偏差可能明显放大；需要与关闭态逐位一致时请使用combine_comm_mode = 0，切换该开关后请按目标形状重新做精度验证。
+        - 适用场景：num_topk较大、同一token命中同卡多个专家的比例较高、性能瓶颈在通信的形状，开启combine_comm_mode收益明显；专家数多且瓶颈在计算的形状可能没有收益甚至变慢，建议按实际形状实测后再决定。
     - l1_weights的Linear1输出维必须等于2 × intermediate_hidden，l2_weights的输入维必须等于intermediate_hidden。
     - l1_weights_sf和l2_weights_sf不可为空指针。
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
@@ -1697,7 +1710,10 @@ sym_buffer.update_group(group) -> None
             dispatch_quant_out_dtype=(
                 torch_npu.float4_e2m1fn_x2 if scene == "A4W4" else
                 torch.float8_e4m3fn if scene == "A8W4" else torch.float8_e5m2
-            )
+            ),
+            # combine通信去重开关：0关闭，1开启。开启要求combine_quant_mode=0、MTE拓扑，
+            # 且所有Rank取值一致；是否开启按实际形状决定，约束见约束说明。
+            combine_comm_mode=0,
         )
         # 步骤2：运行mega_moe，传入上一步构造的sym_buffer
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
