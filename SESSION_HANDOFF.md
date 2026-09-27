@@ -410,6 +410,17 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
   - **剩余错位 = TopK 选择层**：B1 出现值相同 tie 的选择差异（如 (0,2)/(3,2) 同为 0.0315，golden
     stable-argsort 选前者、NPU radix 选后者）+ 疑 TopK 线性读与 2D 语义在变长批下的 count/域
     差异——下轮专查 bsa_radix_topk_service.h 的 tie-break 与 sortLen/count 推导。
+
+### bfvar 第十六轮前哨（同日续）：根因再前移一层——AIC 丢最后一行
+- B1H0 pooled row3 = 精确 **×7/8**（8 行 unit 仅 7 行有贡献）→ AIV6（B1 unit3，rows[24,32)）的
+  **partSum/partMax row7（batch row31，最后一个 q block）= 0**；其余 7 行全对。
+- scratch 取证：B1H3 row30 原始分数 @18,366,848（tile70）**存在**；**row31 原始分数全域无命中**
+  → **AIC matmul/fixpipe 对变长批最后 chunk 的最后一行丢写**（curQChunkSize=8 小 m chunk 的
+  m 尾行）。B0（chunkRows=7 尾单元）最后行正常——7 行 chunk 好、8 行 chunk 丢尾行，疑 m 尾
+  处理与 fixpipe mSize 对齐交互。
+- 下轮首查：ComputeMatmulChunk 的 m 维尾部（curQChunkSize=8）+ scratch tile 布局标定
+  （tile70=_HW 52 AIC 中哪个、ring/偏移公式实证——本轮 BSAScratchTileOffset 假设偏移未命中，
+  row30 值域搜索已定位真实落点）。
 - blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
 
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
