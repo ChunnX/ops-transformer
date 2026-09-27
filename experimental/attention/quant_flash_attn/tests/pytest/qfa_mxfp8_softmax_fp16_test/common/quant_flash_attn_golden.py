@@ -351,7 +351,13 @@ def cpu_mxfp8_golden(
             # l ≤ 0 的退化行（全零 P）除以 1，避免 0/0 与 inf 污染
             s_safe = torch.where(s_acc > 0, s_acc, torch.ones_like(s_acc))
             out[b : b + 1, :, q0:q1, :] = o_acc / s_safe
-            lse[b : b + 1, :, q0:q1] = (m_acc.float() * LN2 + torch.log(s_safe)).squeeze(-1)
+            # 空批保护（2026-09-27 seq_used=0 泛化）：seqused_kv[b]=0 时 KV 循环不执行、
+            # m_acc 恒 None——softmax 空集：输出已由分母保护置 0，lse = log(0) = -inf
+            # （原实现 None.float() 直接 AttributeError，B/C 组 kv=0 用例全崩于此）
+            if m_acc is None:
+                lse[b : b + 1, :, q0:q1] = float("-inf")
+            else:
+                lse[b : b + 1, :, q0:q1] = (m_acc.float() * LN2 + torch.log(s_safe)).squeeze(-1)
 
     out = out.to(torch.bfloat16)
     logger.info("[CPU] out=%s", tuple(out.shape))

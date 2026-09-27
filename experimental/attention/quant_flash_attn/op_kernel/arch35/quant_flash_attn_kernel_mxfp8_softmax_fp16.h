@@ -240,7 +240,15 @@ public:
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    // TODO(阶段二): AIV 清零输出
+                    // 2026-09-27 seq_used=0 泛化：DEAL_ZERO TODO 落地——消费 metadata
+                    // needInitOutput 语义，AIV 整行清零该 bN2 行输出（kv=0 批 q 有效行
+                    // 须为 0，q=0 批整行同清）；行寻址与 CalcParams 同源（bN2Cur 折展）
+                    if ASCEND_IS_AIV {
+                        if (constInfo_.needInitOutput) {
+                            vectorBlock_.ZeroOutputRows(bN2Cur / constInfo_.realN2Size,
+                                                        bN2Cur % constInfo_.realN2Size);
+                        }
+                    }
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
                 } else {
