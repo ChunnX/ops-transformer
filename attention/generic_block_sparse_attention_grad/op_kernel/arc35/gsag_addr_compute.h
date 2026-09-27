@@ -165,7 +165,6 @@ private:
     {
         const int32_t n1Cur = curN2_ * constInfo_.group_size + curG_;
         const int32_t tileS2Start = curBlockS2Start_ + s2Offset_;
-        // Physical KV tile (b,n2,j,s2): flip+copy only when it changes. GQA g-loop reuses L1.
         const bool sameKvTile = (curB_ == lastB_ && curN2_ == lastN2_ && curJ_ == lastJ_ && s2Offset_ == lastS2Offset_);
         if (!sameKvTile) {
             kvPingPong_ = 1 - kvPingPong_;
@@ -194,7 +193,6 @@ private:
         info.sparseIdxOffset = curIdxBase_ + s1Offset_;
         info.sparseCount = m;
         info.need_copy_kv = sameKvTile ? 0 : 1;
-        // Each S1 restart (incl. new g) inits L0C; Fixpipe AtomicAdd merges g contributions.
         info.need_init_l0c = (s1Offset_ == 0) ? 1 : 0;
         info.kv_ping_pong_idx = kvPingPong_;
         info.mask_type = static_cast<int32_t>(tilingData_->maskType);
