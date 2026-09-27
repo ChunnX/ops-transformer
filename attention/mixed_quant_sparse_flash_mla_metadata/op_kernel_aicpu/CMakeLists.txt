@@ -16,15 +16,19 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
 
   # aicpu json
   file(GLOB_RECURSE JSON_FILE ${CMAKE_CURRENT_SOURCE_DIR}/*.json)
-  set_property(GLOBAL APPEND PROPERTY AICPU_JSON_FILES ${JSON_FILE})
 
   # aicpu cust kernel
   file(GLOB AICPU_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
-  message(STATUS "[mixed_quant_sparse_flash_mla_metadata] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophsot name: ${OPHOST_NAME}")
+  message(STATUS "[mixed_quant_sparse_flash_mla_metadata] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophost name: ${OPHOST_NAME}")
 
-  set(OBJ_NAME mixed_quant_sparse_flash_mla_metadata_cust_obj)
-  add_aicpu_cust_kernel_modules(${OBJ_NAME})
-  target_sources(${OBJ_NAME} PRIVATE ${AICPU_SRC})
+  # vLLM-Ascend takes (op_name, sources, jsons) and creates <op_name>_obj.
+  # ops-transformer takes only a target name; extra arguments are ignored.
+  set(AICPU_OP_NAME mixed_quant_sparse_flash_mla_metadata)
+  add_aicpu_cust_kernel_modules(${AICPU_OP_NAME} "${AICPU_SRC}" "${JSON_FILE}")
+  if(NOT TARGET ${AICPU_OP_NAME}_obj)
+    target_sources(${AICPU_OP_NAME} PRIVATE ${AICPU_SRC})
+    set_property(GLOBAL APPEND PROPERTY AICPU_JSON_FILES ${JSON_FILE})
+  endif()
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
