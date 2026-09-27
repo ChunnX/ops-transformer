@@ -385,6 +385,7 @@ function help_info() {
     echo "    --opgraph_test build and run opgraph unit tests"
     echo "    --opkernel_test build and run opkernel unit tests"
     echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
+    echo "    --PR_COMPILE Build custom package for changed operators with kernel bin"
     echo "    --simulator    Enable simulator mode for run_example (requires --soc parameter)"
     echo "    --genop Create the initial directory for op"
     echo "    --genop_aicpu Create the initial directory for AI CPU op"
@@ -1342,7 +1343,7 @@ SUPPORTED_LONG_OPTS=(
   "rule_launch=" "simulator=" "example_name=" "tiling_key=" "tiling-key="
   "kernel_template_input=" "vendor_name=" "genop=" "genop_aicpu="
   "cann_3rd_lib_path=" "op_build_tool" "ascend_cmake_dir"
-  "ccache" "PR_UT" "PR_PKG" "op_debug_config" "ops-compile-options"
+  "ccache" "PR_UT" "PR_PKG" "PR_COMPILE" "op_debug_config" "ops-compile-options"
   "op-name" "compute-unit" "package-path" "build" "changed_list"
   "test" "example" "verbose" "incremental"
 )
@@ -1454,7 +1455,14 @@ assemble_cmake_args() {
       ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
     fi
     if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
-      ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+        ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+    fi
+    if [[ "${ascend_op_name}" == *"fused_infer_attention_score"* || "${ascend_op_name}" == *"incre_flash_attention"* || "${ascend_op_name}" == *"prompt_flash_attention"* ]]; then
+        for attention_linked_op in fused_infer_attention_score incre_flash_attention prompt_flash_attention; do
+            if [[ "${ascend_op_name}" != *"${attention_linked_op}"* ]]; then
+                ascend_op_name="${ascend_op_name};${attention_linked_op}"
+            fi
+        done
     fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
@@ -1515,7 +1523,7 @@ assemble_cmake_args() {
 
   if [ -n "${TEST}" ];then
     if [ -n "${PR_CHANGED_FILES}" ];then
-      TEST=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut)
+      TEST=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode ut_all)
       echo "Operators that need to run UT: $TEST"
       if [ -z "${TEST}" ];then
         log "Info: This PR didn't trigger any UTest."
@@ -1851,9 +1859,26 @@ while [[ $# -gt 0 ]]; do
         PR_CHANGED_FILES="$2"
         ENABLE_TEST=TRUE
         PR_UT_FLAG=TRUE
-        TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_mc2)
-        TEST_EXCLUDE_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_exclude_mc2)
+        TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode ut_mc2)
+        TEST_EXCLUDE_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode ut_exclude_mc2)
 
+        CI_MODE=TRUE
+        shift 2
+        ;;
+    --PR_COMPILE)
+        PR_CHANGED_FILES="$2"
+        ops_names=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode kernel)
+        echo "Operators that need kernel package compilation:$ops_names"
+        if [ -z "${ops_names}" ]; then
+            log "Info: No kernel packages to build for this PR."
+            exit 200
+        fi
+        ops_names="${ops_names%;}"
+        ops_names="${ops_names//;/,}"
+        ascend_op_name="$ops_names"
+        ENABLE_BUILD_PKG=TRUE
+        ENABLE_BUILT_CUSTOM=TRUE
+        ENABLE_BUILT_IN=FALSE
         CI_MODE=TRUE
         shift 2
         ;;
@@ -1862,7 +1887,7 @@ while [[ $# -gt 0 ]]; do
         if [[ "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
             parse_changed_files
         else
-            ops_names=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_examples)
+            ops_names=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode examples)
         fi
         echo "Operators that need custom package compilation:$ops_names"
         if [ -z "${ops_names}" ]; then
@@ -2255,7 +2280,13 @@ build_ut() {
             -f="/tmp/*" \
             -f="/usr/include/*" \
             -f="$(realpath $ASCEND_HOME_PATH/../)/*" \
-            -y=${BASE_PATH}/tests/test_config.yaml
+            -f="${BASE_PATH}/build" \
+            -f="${BASE_PATH}/common" \
+            -f="${BASE_PATH}/mc2/common" \
+            -f="${BASE_PATH}/mc2/3rd" \
+            -f="${BASE_PATH}/attention/common/op_kernel" \
+            -f="${BASE_PATH}/third_party" \
+            -f="${BASE_PATH}/tests"
         local gen_coverage_result=$?
         if [ $gen_coverage_result -ne 0 ]; then
             echo "Error: Gen coverage failed with exit code: $gen_coverage_result"
@@ -2312,7 +2343,7 @@ function build_example_for_ci()
 # 冒烟任务只跑examples
 function process_ci_smoke_with_changed_list()
 {
-    TEST=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_examples)
+    TEST=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_ops_by_tree.py -f "$PR_CHANGED_FILES" --mode examples)
     echo "Operators that need to run examples: $TEST"
     if [[ -z "$TEST" ]];then
         echo "No related unit tests found. Skipping CI test execution."

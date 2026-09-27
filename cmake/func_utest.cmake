@@ -1018,7 +1018,13 @@ function(OpsTest_GenerateCoverage)
                         "-f=/tmp/*"
                         "-f=/usr/include/*"
                         "-f=${ASCEND_CANN_PACKAGE_PATH_PARENT}/*"
-                        "-y=${OPS_ADV_DIR}/tests/test_config.yaml"
+                        "-f=${OPS_ADV_DIR}/build"
+                        "-f=${OPS_ADV_DIR}/common"
+                        "-f=${OPS_ADV_DIR}/mc2/common"
+                        "-f=${OPS_ADV_DIR}/mc2/3rd"
+                        "-f=${OPS_ADV_DIR}/attention/common/op_kernel"
+                        "-f=${OPS_ADV_DIR}/third_party"
+                        "-f=${OPS_ADV_DIR}/tests"
                     COMMENT "Generate coverage for ${TMP_TARGET}"
             )
         endif ()

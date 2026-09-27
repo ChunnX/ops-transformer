@@ -49,36 +49,9 @@ SOC_LIST+="ascend910_93 "
 SOC_LIST+="ascend950 "
 
 # 读取算子option配置 ################################################################################################
-op_config_yaml="$CODE_PATH/tests/test_config.yaml"
-op_temp_dir="$CODE_PATH/log_ut/op_content/"
 function get_op_option()
 {
-    op_name=$1
-    op_content_file=$op_temp_dir$op_name".txt"
-    sed -n "/^  $op_name:/,/^$/p" $op_config_yaml > $op_content_file
-
-    #cat $op_name.txt #打印算子配置内容
-    op_option="option"
-    option_list=`sed -n "/$op_option/,/^$/p" $op_content_file | grep -v '#' | grep ' - ' | awk -F'-' '{print $2}'`
-    op_option_content=""
-    for op in ${option_list[@]};
-    do
-        if [ -z "$op_option_content" ]
-        then
-            op_option_content+=$op
-        else
-            op_option_content+=","
-            op_option_content+=$op
-        fi
-        #echo $op #打印option配置内容
-    done
-
-    if [ -z "$op_option_content" ]
-    then
-        echo $op_name
-    else
-        echo $op_option_content
-    fi
+    echo $1
 }
 
 # 批跑测试 #############################################################################################################
