@@ -51,6 +51,9 @@ Mid 保留阶段舍入，完成后写出 x2。gamma2 在容量允许时整行常
 GM staging 提交写回后，延迟到复用 UB 前等待完成；READY 在 MTE3 写回后发布，
 Cube 消费后归还 credit。空行子核参与协议，退出时回收剩余 credit 与写回事件。
 
+Wave epilogue 批大小先按 UB 容量求上限 F，再将每核目标行数 R 均分到 `ceil(R/F)` 批，
+每批按8行向上对齐且不超过F。该规则不判断具体 T/D，避免固定批大小造成核间负载不均。
+
 Epilogue 合并 RMS 分片 DMA，与 MM partial 共用完成等待，按 Host 规划的 reduceRows
 处理系数。容量允许时，归并后的 partial UB 复用为第二份 x2 输入，输出也交替计算与写回。
 wave的epilogue按每个AIV的token数和自身UB容量选择批量，不受projection行块大小限制。

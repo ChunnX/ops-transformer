@@ -78,5 +78,18 @@ inline uint32_t FitReductionRows(uint32_t rowLimit, uint32_t d, uint32_t groups,
     return rows;
 }
 
+/** Balance R per-core rows over B=ceil(R/capacity) batches without increasing the capacity bound.
+ * Batch rows=min(capacity,align8(ceil(R/B))); a zero capacity or workload has no valid batch.
+ */
+inline uint32_t BalanceReductionRows(uint32_t rowsPerCore, uint32_t capacityRows)
+{
+    if (capacityRows == 0U || rowsPerCore == 0U) {
+        return 0U;
+    }
+    const uint64_t batches = (static_cast<uint64_t>(rowsPerCore) + capacityRows - 1U) / capacityRows;
+    const uint32_t balancedRows = static_cast<uint32_t>(((rowsPerCore + batches - 1U) / batches + 7U) / 8U * 8U);
+    return balancedRows < capacityRows ? balancedRows : capacityRows;
+}
+
 } // namespace optiling::mega_mhc
 #endif

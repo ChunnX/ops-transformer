@@ -388,8 +388,10 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     // Wave projection rows do not constrain the independent epilogue lifetime or token ownership.
     const uint32_t reductionRowLimit =
         request.wavePipeline ? static_cast<uint32_t>(CeilDiv(totalRows_, cubePlan_.activeAiv)) : projectionRows;
-    const uint32_t reduceRows = mega_mhc::FitReductionRows(reductionRowLimit, d_, cubePlan_.partialGroupCount,
-                                                           cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb);
+    const uint32_t capacityRows = mega_mhc::FitReductionRows(reductionRowLimit, d_, cubePlan_.partialGroupCount,
+                                                             cubePlan_.fixpipeRowStride, cubePlan_.kGrid, availableUb);
+    const uint32_t reduceRows =
+        request.wavePipeline ? mega_mhc::BalanceReductionRows(reductionRowLimit, capacityRows) : capacityRows;
     if (reduceRows == 0U) {
         return ge::GRAPH_FAILED;
     }

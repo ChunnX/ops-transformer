@@ -116,8 +116,10 @@ extern "C"
                         const uint32_t reductionRowLimit =
                             request.wavePipeline ? static_cast<uint32_t>((m + p.activeAiv - 1U) / p.activeAiv) :
                                                    p.mTile / 2U;
-                        const uint32_t reduceRows = FitReductionRows(reductionRowLimit, d, p.partialGroupCount,
-                                                                     p.fixpipeRowStride, p.kGrid, 248U * 1024U);
+                        const uint32_t capacityRows = FitReductionRows(reductionRowLimit, d, p.partialGroupCount,
+                                                                       p.fixpipeRowStride, p.kGrid, 248U * 1024U);
+                        const uint32_t reduceRows =
+                            request.wavePipeline ? BalanceReductionRows(reductionRowLimit, capacityRows) : capacityRows;
                         REQUIRE(reduceRows > 0 && reduceRows <= reductionRowLimit);
                         REQUIRE(EpilogueUbBytes(d, p.partialGroupCount, p.fixpipeRowStride, reduceRows, p.kGrid) <=
                                 248U * 1024U);
@@ -127,6 +129,11 @@ extern "C"
             }
         }
     }
+    // Equal 64-row ownership must use two 32-row batches instead of stranding cores with 96 versus 48 rows.
+    REQUIRE(BalanceReductionRows(64, FitReductionRows(64, 2560, 10, 32, 2, 248U * 1024U)) == 32U);
+    REQUIRE(BalanceReductionRows(48, 48) == 48U);
+    REQUIRE(BalanceReductionRows(0, 48) == 0U);
+    REQUIRE(BalanceReductionRows(64, 0) == 0U);
     CubePlanRequest invalid;
     CubePlan unused;
     REQUIRE(!BuildCubePlan(invalid, unused));
