@@ -267,11 +267,15 @@ void ApplyTileSplit(CutResult &cutRes, uint64_t mValue, uint64_t tileM, const Co
  *   - 大数据量：扩展到最多HCCL_MAX_TOTAL_TILES次通信，仍优先使用优选候选值
  *   - 超大数据量：报错，无法同时满足256MB单次限制和HCCL_MAX_TOTAL_TILES次总限制
  */
-void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInfo &commSize, const std::string &opName)
+ge::graphStatus AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInfo &commSize,
+                                      const std::string &opName)
 {
     uint64_t maxTileM = CalcMaxTileMFromHcclLimit(cutRes, commSize, opName);
-    if (maxTileM == HCCL_NO_ADJUSTMENT || maxTileM == HCCL_UNSUPPORTED) {
-        return;
+    if (maxTileM == HCCL_UNSUPPORTED) {
+        return ge::GRAPH_FAILED;
+    }
+    if (maxTileM == HCCL_NO_ADJUSTMENT) {
+        return ge::GRAPH_SUCCESS;
     }
 
     uint64_t candidateTileM = SelectOptimalCandidateTileM(maxTileM);
@@ -279,10 +283,11 @@ void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInf
 
     uint64_t tileM = DetermineFinalTileMWithLimit(mValue, candidateTileM, maxTileM, opName);
     if (tileM == HCCL_UNSUPPORTED) {
-        return;
+        return ge::GRAPH_FAILED;
     }
 
     ApplyTileSplit(cutRes, mValue, tileM, commSize, opName);
+    return ge::GRAPH_SUCCESS;
 }
 
 /*!

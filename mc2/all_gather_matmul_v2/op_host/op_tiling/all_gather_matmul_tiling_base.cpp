@@ -524,15 +524,16 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs &args,
     return args.mValue;
 }
 
-CutResult AllGatherMatmulTilingBase::GetTilingResult()
+ge::graphStatus AllGatherMatmulTilingBase::GetTilingResult(CutResult &cutRes)
 {
     OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
     AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, npuArch_);
     tileFormulate.GetTiling();
-    return tileFormulate.tilingM_.cutRes;
+    cutRes = tileFormulate.tilingM_.cutRes;
+    return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg)
+ge::graphStatus AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg)
 {
     if (args_.commAlg == mc2tiling::COMM_ALG_DOUBLE_RING) {
         args_.mValue /= DOUBLE_RING_FACTOR;
@@ -561,7 +562,9 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg)
             tailMValue_ = tileTail;
         }
     } else {
-        CutResult mCutAllgather = GetTilingResult();
+        CutResult mCutAllgather;
+        OP_TILING_CHECK(GetTilingResult(mCutAllgather) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(opName_, "Fail to get formulaic tiling result."), return ge::GRAPH_FAILED);
         rcfCfg.tileCnt = mCutAllgather.numLongTile;
         tileMValue_ = mCutAllgather.longTileLen;
         rcfCfg.tailCnt = 0;
@@ -572,6 +575,7 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg)
             rcfCfg.tailCnt = mCutAllgather.numShortTile;
         }
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void AllGatherMatmulTilingBase::PostDoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
@@ -602,8 +606,8 @@ void AllGatherMatmulTilingBase::Reset()
     commAlgorithm_ = 0U;
     enableNd2Nz_ = true;
     castBias_ = false;
-    biasLen_ = 0U;
-    storageA_ = 0U;
+    biasLen_ = 0UL;
+    storageA_ = 0UL;
     gatherIndex_ = 0U;
 }
 
@@ -748,7 +752,7 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_ + biasLen_;
     workspaces[0] = workspaceSize_;
-    OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%d", workspaces[0], biasLen_);
+    OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%lu", workspaces[0], biasLen_);
 
     return ge::GRAPH_SUCCESS;
 }

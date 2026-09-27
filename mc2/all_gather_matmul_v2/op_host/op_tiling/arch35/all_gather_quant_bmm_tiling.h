@@ -42,7 +42,7 @@ protected:
 #endif
     ge::graphStatus PostTiling() override;
     uint64_t GetTilingKey() const override;
-    CutResult GetTilingResult() override;
+    ge::graphStatus GetTilingResult(CutResult &result) override;
 
     ::TCubeTiling &MutableTCubeLocalTilingData();
     DequantBmm::Mc2QuantBatchMatmulV3DataParams &MutableTCubeLocalTilingParams();

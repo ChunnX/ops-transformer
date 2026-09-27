@@ -70,7 +70,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
     SetRcsTilingData(MutableRCSTilingData());
-    DoSplitMTiling(MutableRCSTilingData());
+    MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingData()));
     // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
     OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
                     return ge::GRAPH_FAILED);
@@ -129,20 +129,21 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-CutResult AllGatherMatmulTilingV2::GetTilingResult()
+ge::graphStatus AllGatherMatmulTilingV2::GetTilingResult(CutResult &result)
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTiling();
+    result = tileFormulate.GetTiling();
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     if (isCcuMode) {
         CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+        OP_TILING_CHECK(AdjustCutResultForCCU(result, args_.mValue, commSize, opName_) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(opName_, "Fail to adjust cut result for CCU HCCL limit."), return ge::GRAPH_FAILED);
     } else {
         AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
     }
 
-    return result;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
