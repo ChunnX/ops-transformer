@@ -199,11 +199,11 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        auto fiaBaseParams = this->tilingData->fiaBaseParams;
-        auto fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
-        auto fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
-        auto fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
-        auto fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
+        const auto &fiaBaseParams = this->tilingData->fiaBaseParams;
+        const auto &fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
+        const auto &fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
+        const auto &fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
+        const auto &fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
 
         constInfo.bSize = fiaBaseParams.bSize;
         constInfo.t1Size = fiaBaseParams.t1Size;
