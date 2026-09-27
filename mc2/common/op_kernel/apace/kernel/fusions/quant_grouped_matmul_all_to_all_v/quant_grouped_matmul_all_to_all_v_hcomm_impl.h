@@ -101,11 +101,6 @@ public:
 
     __aicore__ inline void Run()
     {
-        // [临时诊断] P0=kernel 入口存活+printf 通道正常；P1=路由批循环完成
-        // （ced9f7a9d 版 S-A/S-B 双缺失，无法区分"共享 Init 挂"与"路由循环回归挂"）
-        if (AscendC::GetBlockIdx() == 0U) {
-            AscendC::printf("[P0] run-enter\n");
-        }
         uint64_t tokenPrefix = 0;
         for (uint32_t batch = 0; batch < BatchCount(); ++batch) {
             const uint64_t batchTokens = GetBatchTokenCount(batch);
@@ -121,9 +116,6 @@ public:
             tokenPrefix += batchTokens;
         }
 
-        if (AscendC::GetBlockIdx() == 0U) {
-            AscendC::printf("[P1] batches-done\n");
-        }
         // 共享专家位于批循环后、Wait 之前（镜像 RunLocalMatmul 位置语义：与末批
         // 在途通信重叠执行；Blaze 于 hccl_.Wait 之后执行为未验证序列，规避）；
         // Blaze 计算必须位于 Finalize 之前（既有真机结论）
@@ -357,17 +349,10 @@ private:
 
         // 镜像生命周期纪律：栈上 ctor/dtor 成对（此时路由侧最后一批的 dtor 已
         // 消费事件，本 ctor 为全新预置，无双实例并存）
-        // [临时诊断] 卡点二分（block0 门控 2 条）：S-A=Init 后，S-B=Run 后
         {
             MmKernel kernel;
             kernel.Init(params);
-            if (AscendC::GetBlockIdx() == 0U) {
-                AscendC::printf("[S-A] init-done\n");
-            }
             kernel.Run();
-            if (AscendC::GetBlockIdx() == 0U) {
-                AscendC::printf("[S-B] run-done\n");
-            }
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
