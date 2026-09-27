@@ -123,7 +123,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。quant_mode=1表示BF16 scale量化布局；quant_mode=2表示FLOAT8_E8M0 scale量化布局；quant_mode=3表示TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</td>
+      <td>表示量化模式，quant_mode=1表示K、V nope为per-token-group量化，scale类型为bfloat16，quant_mode=2表示K、V nope为per-token-group量化，scale类型为float8_e8m0。在Atlas A2/A3平台新增quant_mode=3表示TurboQuant TQ4配套metadata。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>

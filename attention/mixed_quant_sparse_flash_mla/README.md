@@ -5,11 +5,11 @@
 | 产品                                                         |  是否支持 |
 | :----------------------------------------------------------  | :------: |
 |<term>Ascend 950PR&950DT系列产品</term>                        |     √    |
-|<term>Atlas A3系列产品</term>                                  |     √    |
-|<term>Atlas A2系列产品</term>                                  |     √    |
-|<term>Atlas 200I/500 A2推理产品</term>                          |     ×    |
-|<term>Atlas推理系列产品</term>                                 |     ×    |
-|<term>Atlas训练系列产品</term>                                 |     ×    |
+|<term>Atlas A3系列产品</term>        |     √    |
+|<term>Atlas A2系列产品</term>        |     √    |
+|<term>Atlas 200I/500 A2推理产品</term>                        |     ×    |
+|<term>Atlas推理系列产品</term>                                |     ×    |
+|<term>Atlas训练系列产品</term>                                |     ×    |
 
 > 适用范围：本文原有功能、函数原型、参数表、约束和示例保留 Ascend 950PR&950DT（A5）的量化基线说明，适用于quant_mode=1和quant_mode=2。Atlas A2/A3新增的quant_mode=3请参见“A2/A3 TurboQuant 补充说明”，其中的类型和布局扩展仅适用于quant_mode=3。
 
@@ -63,21 +63,21 @@
       <td>q</td>
       <td>输入</td>
       <td>表示对应公式中的Q。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
       <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode；quant_mode=3时使用与q相同的数据类型、kv_d=512。</td>
-      <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
+      <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
       <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode；quant_mode=1或quant_mode=2时使用float8_e4m3fn（内部数据类型详见quant_mode）；quant_mode=3时使用uint8 TQ4数据、kv_d=258。</td>
-      <td>FLOAT8_E4M3FN、UINT8</td>
+      <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -188,7 +188,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式。quant_mode=1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前支持1、2和3，quant_mode=2仅支持layout_kv为PA_BBND。quant_mode=1和quant_mode=2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。quant_mode=3表示融合TQ4反量化的TurboQuant模式。具体产品支持的量化模式见约束说明。</td>
+      <td>表示量化模式。quant_mode=1表示K、V nope为per-token-group量化，K、V依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2表示K、V nope为per-token-group量化，K、V依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，quant_mode=2仅支持layout_kv为PA_BBND。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。Atlas A2/A3平台新增quant_mode=3表示融合TQ4反量化的TurboQuant路径。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -273,7 +273,7 @@
       <td>attn_out</td>
       <td>输出</td>
       <td>表示对应公式中的输出O。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>

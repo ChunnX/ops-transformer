@@ -156,7 +156,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | num_heads_q | int | 必选 | 表示q头数 | int32 | - | -
 | num_heads_kv | int | 必选 | 表示ori_kv/cmp_kv头数 | int32 | - | -
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
-| quant_mode | int | 必选 | 表示量化模式。当前支持1、2和3。quant_mode=1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。quant_mode=3表示为融合TQ4反量化的TurboQuant路径生成配套metadata。具体产品支持的量化模式见约束说明。 | int32 | - | -
+| quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode=1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。在Atlas A2/A3平台新增quant_mode=3，表示融合TQ4反量化的TurboQuant路径。 | int32 | - | -
 | cu_seqlens_q | tensor | 可选 | 表示输入q处理的变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_cmp_kv | tensor | 可选 | 表示输入cmp_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
@@ -187,12 +187,12 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| q | tensor | 必选 | 表示公式中的q | float16、bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
-| quant_mode | int | 必选 | 表示量化模式。当前支持1、2和3。quant_mode=1时，量化KV依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，量化KV依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。quant_mode=1和quant_mode=2均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。quant_mode=3表示融合TQ4反量化的TurboQuant路径。具体产品支持的量化模式见约束说明。 | int32 | - | -
-| ori_kv | tensor | 可选 | 原始KV。quant_mode=1或quant_mode=2时使用fp8_e4m3；quant_mode=3时必须传入且dtype与q一致、kv_d=512。 | fp8_e4m3、float16、bfloat16 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
-| cmp_kv | tensor | 可选 | 压缩KV。quant_mode=1或quant_mode=2时使用fp8_e4m3（内部数据类型详见quant_mode）；quant_mode=3时必须传入uint8 TQ4数据、kv_d=258。 | fp8_e4m3、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
+| q | tensor | 必选 | 表示公式中的q | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
+| quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode=1时，量化KV依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode=2时，量化KV依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。在Atlas A2/A3平台新增quant_mode=3，表示融合TQ4反量化的TurboQuant路径。 | int32 | - | -
+| ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据；quant_mode=3时使用与q相同的数据类型、kv_d=512。 | fp8_e4m3 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
+| cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据；quant_mode=1或quant_mode=2时使用fp8_e4m3（内部数据类型详见quant_mode）；quant_mode=3时使用uint8 TQ4数据、kv_d=258。 | fp8_e4m3 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
-| cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1；quant_mode=3时必须传入且cmp_kv_k仅支持512或1024。 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
+| cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
 | ori_block_table | tensor | 可选 | 表示PageAttention场景下ori_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(ori_kv_s_max/ori_kv_block_size))</li></ul>
 | cmp_block_table | tensor | 可选 | 表示PageAttention场景下cmp_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(cmp_kv_s_max/cmp_kv_block_size))</li></ul>
 | cu_seqlens_q | tensor | 可选 | 表示处理输入q变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
@@ -201,7 +201,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | seqused_q | tensor | 可选 | 表示输入q每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_ori_kv | tensor | 可选 | 表示输入ori_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_cmp_kv | tensor | 可选 | 表示输入cmp_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
-| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。quant_mode=1或quant_mode=2时，当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。quant_mode=3时不支持传入。 | int32 | ND | <ul><li>(b,)</li></ul>
+| cmp_residual_kv | tensor | 可选 | 表示每batch中cmp_kv压缩后序列长度的余数。当cmp_mask_mode=3且cmp_ratio!=1时必传；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。 | int32 | ND | <ul><li>(b,)</li></ul>
 | ori_topk_length | tensor | 可选 | 表示ori_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | cmp_topk_length | tensor | 可选 | 表示cmp_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(b, q_s, kv_n)</li><li>(q_t, kv_n)</li></ul>
 | sinks | tensor | 可选 | 表示各注意力头设置独立可学习虚拟偏移项，用于维持长文本推理时的稳定性 | float32 | ND | <ul><li>(q_n,)</li></ul>
@@ -230,7 +230,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attention_out | tensor | 必选 | mixed_quant_sparse_flash_mla的计算输出，dtype与q一致 | float16、bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
+| attention_out | tensor | 必选 | mixed_quant_sparse_flash_mla的计算输出 | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | softmax_lse | tensor | 可选 | 对query乘key的结果先取max得到softmax_max，query乘key的结果减去softmax_max后取exp再取sum得到softmax_sum，最后对softmax_sum取log再加上softmax_max得到的结果。 | float32 | ND | <ul><li>(b, kv_n, q_s, q_n/kv_n)</li><li>(kv_n, q_t, q_n/kv_n)</li></ul>
 
 ## A2/A3 TurboQuant 补充说明
@@ -266,10 +266,10 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
 - 声明
   - 参数cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_ori_kv、seqused_cmp_kv、cmp_residual_kv、ori_block_table、cmp_block_table等输入属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-  - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
+  - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。当其值大于sparse_indices的最后一维大小时，超出部分按该大小截断；且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。调用mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla时，对应sparse_indices的最后一维大小需要保持一致。
   - 当ori_mask_mode/cmp_mask_mode为0时，ori_kv_k/cmp_kv_k需要大于等于ori_topk_length/cmp_topk_length的最大值。
-  - quant_mode=1或quant_mode=2时，cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
-  - attention_out：tensor类型，公式中的输出。数据类型支持float16、bfloat16，数据格式支持ND，shape和dtype与q一致。
+  - cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。仅当cmp_mask_mode=3且cmp_ratio!=1时允许传入；当cmp_mask_mode=0或cmp_ratio=1时不允许传入。
+  - attention_out：tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
   - return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layout_kv为PA_BBND时，ori_kv和cmp_kv支持0轴非连续。
@@ -356,7 +356,7 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
         <td>q</td>
         <td>
             <ul>
-                <li>dtype支持float16、bfloat16，其中quant_mode=1或quant_mode=2仅支持bfloat16</li>
+                <li>dtype支持bfloat16</li>
                 <li>layout_q为BSND时，q的shape为(b, q_s, q_n, q_d)</li>
                 <li>layout_q为TND时，q的shape为(q_t, q_n, q_d)</li>
             </ul>
@@ -367,7 +367,7 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
         <td rowspan="4">
             <ul>
                 <li>q、attention_out的dtype、shape需相同</li>
-                <li>quant_mode=1或quant_mode=2时，若cmp_kv传入，ori_kv与cmp_kv的dtype需一致；quant_mode=3时，q、ori_kv、attention_out的dtype需一致，cmp_kv为uint8</li>
+                <li>若cmp_kv传入，ori_kv与cmp_kv的dtype需一致</li>
                 <li>layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致</li>
                 <li>layout_kv为PA_BBND时，layout_q可为BSND或TND</li>
             </ul>
@@ -379,16 +379,17 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
                 <li>q_s > 0</li>
                 <li>0 < q_n <= 128</li>
                 <li>q_d = 512</li>
-                <li>quant_mode=1或quant_mode=2时q_t > 0，quant_mode=3时q_t >= 0</li>
+                <li>q_t > 0</li>
                 <li>ori_kv_s > 0</li>
                 <li>cmp_kv_s > 0</li>
                 <li>kv_n = 1</li>
-                <li>quant_mode=1时kv_d=608，quant_mode=2时kv_d=584；quant_mode=3时ori_kv的kv_d=512、cmp_kv的kv_d=258</li>
+                <li>quant_mode=1时kv_d=608，quant_mode=2时kv_d=584</li>
                 <li>ori_kv_t > 0</li>
                 <li>cmp_kv_t > 0</li>
                 <li>ori_kv_block_nums > 0</li>
                 <li>cmp_kv_block_nums > 0</li>
-                <li>1 <= ori_kv_block_size、cmp_kv_block_size <= 1024；quant_mode=3时还要求block_size为16的倍数</li>
+                <li>1 <= ori_kv_block_size <= 1024</li>
+                <li>1 <= cmp_kv_block_size <= 1024</li>
             </ul>
         </td>
     </tr>
@@ -396,7 +397,7 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
         <td>ori_kv</td>
         <td>
             <ul>
-                <li>dtype支持fp8_e4m3、float16、bfloat16；quant_mode=3时支持float16、bfloat16且与q一致</li>
+                <li>dtype支持fp8_e4m3</li>
                 <li>layout_kv为BSND时，ori_kv的shape为(b, ori_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，ori_kv的shape为(ori_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，ori_kv的shape为(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li>
@@ -410,7 +411,7 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
         <td>attention_out</td>
         <td>
             <ul>
-                <li>dtype支持float16、bfloat16；quant_mode=3时需与q一致</li>
+                <li>dtype支持bfloat16</li>
                 <li>layout_q为BSND时，attention_out的shape为(b, q_s, q_n, q_d)</li>
                 <li>layout_q为TND时，attention_out的shape为(q_t, q_n, q_d)</li>
             </ul>
@@ -423,7 +424,7 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
         <td>cmp_kv</td>
         <td>
             <ul>
-                <li>dtype支持fp8_e4m3、uint8；quant_mode=3时固定为uint8</li>
+                <li>dtype支持fp8_e4m3</li>
                 <li>layout_kv为BSND时，cmp_kv的shape为(b, cmp_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，cmp_kv的shape为(cmp_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，cmp_kv的shape为(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li>
@@ -800,7 +801,6 @@ metadata校验
                     <li>dtype支持int32</li>
                     <li>shape为(q_t, kv_n, ori_kv_k)或(b, q_s, kv_n, ori_kv_k)</li>
                     <li>无效位置填-1，其余为非负整数</li>
-                    <li>quant_mode=3时仅支持(q_t, 1, 512)或(q_t, 1, 1024)</li>
                 </ul>
             </td>
             <td>

@@ -1,6 +1,6 @@
 # aclnnMixedQuantSparseFlashMlaMetadata
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/mixed_quant_sparse_flash_mla_metadata)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/9.2.0/attention/mixed_quant_sparse_flash_mla_metadata)
 
 ## 产品支持情况
 
@@ -232,7 +232,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>本文的quantMode对应ACLNN接口参数quantMode。<ul><li>quantMode=1: BF16 scale量化布局。</li><li>quantMode=2: FLOAT8_E8M0 scale量化布局。</li><li>quantMode=3: TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</li></ul></td>
+      <td><ul><li>quantMode=1：Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。groupSize=64; rope: non-quantized and consistent with q; scale: bf16; kvCacheLayout: blockSize*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])</li><li>quantMode=2：Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。groupSize=64; rope: non-quantized and consistent with q; scale: e8m0; kvCacheLayout: blockSize*(nope+rope)+blockSize*(scale+pad[1])</li><li>Atlas A2/A3平台新增quantMode=3：TurboQuant TQ4配套metadata。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

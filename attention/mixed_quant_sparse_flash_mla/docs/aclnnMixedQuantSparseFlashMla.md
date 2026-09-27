@@ -178,8 +178,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>qN支持1-128；D仅支持512。具体产品约束见约束说明。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>不支持空Tensor。qN支持1-128；D仅支持512。</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
       <td>
         <ul>
@@ -193,8 +193,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>必须传入。quantMode=1或quantMode=2保持原量化KV布局：quantMode=1时依次拼接rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）；quantMode=2时依次拼接nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）。quantMode=3使用与q相同的FLOAT16或BFLOAT16原始KV，kvD=512。</td>
-      <td>FLOAT8_E4M3FN、FLOAT16、BFLOAT16</td>
+      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quantMode=1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quantMode=2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，quantMode=2仅支持layoutKvOptional为PA_BBND。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。Atlas A2/A3平台新增quantMode=3时使用与q相同的数据类型、kvD=512。</td>
+      <td>详见quantMode</td>
       <td>ND</td>
       <td>
         <ul>
@@ -210,8 +210,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>CSA/HCA场景必须传入，SWA场景不传入。quantMode=1或quantMode=2时使用FLOAT8_E4M3FN（内部数据类型详见quantMode），布局同oriKvOptional；quantMode=3使用UINT8 TQ4压缩KV，kvD=258。</td>
-      <td>FLOAT8_E4M3FN、UINT8</td>
+      <td>CSA/HCA场景必须传入，SWA场景不传入。量化KV布局由quantMode决定，同oriKvOptional；quantMode=1或quantMode=2时使用FLOAT8_E4M3FN（内部数据类型详见quantMode）；quantMode=3时使用UINT8 TQ4数据、kvD=258。</td>
+      <td>详见quantMode</td>
       <td>ND</td>
       <td>
         <ul>
@@ -243,7 +243,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
       <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>cmpKv稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数；quantMode=3时固定为TND三维输入，cmpKvK仅支持512或1024。</td>
+      <td>cmpKvOptional稀疏场景必须传入，其他不传入。无效位置填-1，其余为非负整数。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
           <li>layoutQOptional为BSND时：(b, qS, kvN, cmpKvK)</li>
           <li>layoutQOptional为TND时：(qT, kvN, cmpKvK)</li>
         </ul>
-        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数，范围支持大于0；quantMode=3时仅支持512或1024。
+        其中cmpKvK为对cmpKvOptional的TopK稀疏选择数，范围支持大于0。
       </td>
       <td>√</td>
     </tr>
@@ -339,7 +339,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>quantMode=1或quantMode=2时可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。quantMode=3时不支持传入。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmpLen * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpMaskMode为3且cmpRatio不等于1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
@@ -399,7 +399,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td>表示量化模式。quantMode=1表示K、V nope为per-token-group量化，scale类型为bfloat16，quantMode=2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前支持1、2和3，quantMode=2仅支持layoutKvOptional为PA_BBND。quantMode=3表示融合TQ4反量化的TurboQuant路径。具体产品支持的量化模式见约束说明。</td>
+      <td>表示量化模式。quantMode=1表示K、V nope为per-token-group量化，scale类型为bfloat16，quantMode=2表示K、V nope为per-token-group量化，scale类型为FLOAT8_E8M0。当前仅支持1和2，quantMode=2仅支持layoutKvOptional为PA_BBND。Atlas A2/A3平台新增quantMode=3表示融合TQ4反量化的TurboQuant路径。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -520,7 +520,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>输出</td>
       <td>注意力计算输出。</td>
       <td>-</td>
-      <td>与q的数据类型一致</td>
+      <td>BFLOAT16</td>
       <td>ND</td>
       <td>与q的shape一致</td>
       <td>×</td>
@@ -699,10 +699,10 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
 
   - 参数cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、cmpResidualKvOptional、oriBlockTableOptional、cmpBlockTableOptional等输入属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - aclnnMixedQuantSparseFlashMlaMetadata和aclnnMixedQuantSparseFlashMla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-  - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
+  - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。当其值大于sparseIndicesOptional的最后一维大小时，超出部分按该大小截断；且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。调用aclnnMixedQuantSparseFlashMlaMetadata和aclnnMixedQuantSparseFlashMla时，对应sparseIndicesOptional的最后一维大小需要保持一致。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
-  - quantMode=1或quantMode=2时，cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
-  - attnOut：tensor类型，公式中的输出。数据类型支持FLOAT16、BFLOAT16，数据格式支持ND，shape和dtype与q一致。
+  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio不等于1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
+  - attnOut：tensor类型，公式中的输出，数据类型支持BFLOAT16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKvOptional为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
@@ -787,9 +787,9 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
         <td>q</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT16、BFLOAT16，其中quantMode=1或quantMode=2仅支持BFLOAT16</li>
-                <li>layoutQ为BSND时，q的shape为(b, qS, qN, qD)</li>
-                <li>layoutQ为TND时，q的shape为(qT, qN, qD)</li>
+                <li>dtype支持BFLOAT16</li>
+                <li>layoutQOptional为BSND时，q的shape为(b, qS, qN, qD)</li>
+                <li>layoutQOptional为TND时，q的shape为(qT, qN, qD)</li>
             </ul>
         </td>
         <td>
@@ -798,9 +798,9 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
         <td rowspan="4">
             <ul>
                 <li>q、attnOut的dtype、shape需相同</li>
-                <li>quantMode=1或quantMode=2时，若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致；quantMode=3时，q、oriKvOptional、attnOut的dtype需一致，cmpKvOptional为UINT8</li>
-                <li>layoutKv不为PA_BBND时，layoutQ和layoutKv需保持一致</li>
-                <li>layoutKv为PA_BBND时，layoutQ可为BSND或TND</li>
+                <li>若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致</li>
+                <li>layoutKvOptional不为PA_BBND时，layoutQOptional和layoutKvOptional需保持一致</li>
+                <li>layoutKvOptional为PA_BBND时，layoutQOptional可为BSND或TND</li>
             </ul>
         </td>
         <td rowspan="4">
@@ -810,16 +810,17 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
                 <li>qS > 0</li>
                 <li>0 < qN <= 128</li>
                 <li>qD = 512</li>
-                <li>quantMode=1或quantMode=2时qT > 0，quantMode=3时qT >= 0</li>
+                <li>qT > 0</li>
                 <li>oriKvS > 0</li>
                 <li>cmpKvS > 0</li>
                 <li>kvN = 1</li>
-                <li>quantMode=1时kvD=608，quantMode=2时kvD=584；quantMode=3时oriKvOptional的kvD=512、cmpKvOptional的kvD=258</li>
+                <li>quantMode=1时kvD=608，quantMode=2时kvD=584</li>
                 <li>oriKvT > 0</li>
                 <li>cmpKvT > 0</li>
                 <li>oriKvBlockNums > 0</li>
                 <li>cmpKvBlockNums > 0</li>
-                <li>1 <= oriKvBlockSize、cmpKvBlockSize <= 1024；quantMode=3时还要求blockSize为16的倍数</li>
+                <li>1 <= oriKvBlockSize <= 1024</li>
+                <li>1 <= cmpKvBlockSize <= 1024</li>
             </ul>
         </td>
     </tr>
@@ -827,10 +828,10 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
         <td>oriKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN、FLOAT16、BFLOAT16；quantMode=3时支持FLOAT16、BFLOAT16且与q一致</li>
-                <li>layoutKv为BSND时，oriKvOptional的shape为(b, oriKvS, kvN, kvD)</li>
-                <li>layoutKv为TND时，oriKvOptional的shape为(oriKvT, kvN, kvD)</li>
-                <li>layoutKv为PA_BBND时，oriKvOptional的shape为(oriKvBlockNums, oriKvBlockSize, kvN, kvD)</li>
+                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>layoutKvOptional为BSND时，oriKvOptional的shape为(b, oriKvS, kvN, kvD)</li>
+                <li>layoutKvOptional为TND时，oriKvOptional的shape为(oriKvT, kvN, kvD)</li>
+                <li>layoutKvOptional为PA_BBND时，oriKvOptional的shape为(oriKvBlockNums, oriKvBlockSize, kvN, kvD)</li>
             </ul>
         </td>
         <td>
@@ -841,9 +842,9 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
         <td>attnOut</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT16、BFLOAT16；quantMode=3时需与q一致</li>
-                <li>layoutQ为BSND时，attnOut的shape为(b, qS, qN, qD)</li>
-                <li>layoutQ为TND时，attnOut的shape为(qT, qN, qD)</li>
+                <li>dtype支持BFLOAT16</li>
+                <li>layoutQOptional为BSND时，attnOut的shape为(b, qS, qN, qD)</li>
+                <li>layoutQOptional为TND时，attnOut的shape为(qT, qN, qD)</li>
             </ul>
         </td>
         <td>
@@ -854,10 +855,10 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quantMode=3的�
         <td>cmpKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN、UINT8；quantMode=3时固定为UINT8</li>
-                <li>layoutKv为BSND时，cmpKvOptional的shape为(b, cmpKvS, kvN, kvD)</li>
-                <li>layoutKv为TND时，cmpKvOptional的shape为(cmpKvT, kvN, kvD)</li>
-                <li>layoutKv为PA_BBND时，cmpKvOptional的shape为(cmpKvBlockNums, cmpKvBlockSize, kvN, kvD)</li>
+                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>layoutKvOptional为BSND时，cmpKvOptional的shape为(b, cmpKvS, kvN, kvD)</li>
+                <li>layoutKvOptional为TND时，cmpKvOptional的shape为(cmpKvT, kvN, kvD)</li>
+                <li>layoutKvOptional为PA_BBND时，cmpKvOptional的shape为(cmpKvBlockNums, cmpKvBlockSize, kvN, kvD)</li>
             </ul>
         </td>
         <td>
@@ -1247,7 +1248,6 @@ metadataOptional校验
                     <li>dtype支持INT32</li>
                     <li>shape为(qT, kvN, cmpKvK)或(b, qS, kvN, cmpKvK)</li>
                     <li>无效位置填-1，其余为非负整数</li>
-                    <li>quantMode=3时仅支持(qT, 1, 512)或(qT, 1, 1024)</li>
                 </ul>
             </td>
             <td>
