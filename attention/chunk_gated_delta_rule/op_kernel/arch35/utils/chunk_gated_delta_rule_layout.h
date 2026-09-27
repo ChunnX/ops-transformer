@@ -178,12 +178,6 @@ struct FusedLayout {
         return slot == 0 ? UB_STAGE1_PUB0_OFFSET : UB_STAGE1_PUB1_OFFSET;
     }
 
-    __aicore__ static inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
-    {
-        // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
-        return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
-               (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
-    }
 };
 
 } // namespace ChunkGatedDeltaRule

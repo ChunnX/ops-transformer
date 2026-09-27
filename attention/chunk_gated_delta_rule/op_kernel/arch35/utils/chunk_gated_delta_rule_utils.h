@@ -32,6 +32,13 @@ __aicore__ inline uint32_t CeilAlign(uint32_t value, uint32_t align)
     return (value + align - 1) / align * align;
 }
 
+__aicore__ inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
+{
+    // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
+    return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
+           (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
+}
+
 // 同步信号
 constexpr uint64_t V_MTE3_EVENT = 0;
 constexpr uint64_t V_S_EVENT = 1;

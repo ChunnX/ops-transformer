@@ -12,7 +12,7 @@
 #define CHUNK_GATED_DELTA_RULE_CUBE_COMPUTE_H
 
 #include "utils/chunk_gated_delta_rule_context.h"
-#include "catlass/gemm/tile/ascend950/copy_l0c_to_ub.hpp"
+#include "utils/chunk_gated_delta_rule_cube_utils.h"
 #include "utils/chunk_gated_delta_rule_sync.h"
 
 namespace ChunkGatedDeltaRule {
@@ -81,8 +81,6 @@ private:
     static constexpr uint32_t AIC_L0C_OUTPUT_MUTEX = 4;
     static constexpr uint32_t AIC_L1_QK_MUTEX_BASE = 5;
     static constexpr uint32_t AIC_L1_FIX_MUTEX = 7;
-    // Fixpipe 以 const 引用接收模板配置，配置对象必须有静态存储期。
-    static constexpr FixpipeConfig CGDR_CFG_NZ_UB = {CO2Layout::NZ, true};
 
     static_assert(L1_Q_OFFSET + CHUNK * DIM * sizeof(bfloat16_t) <= L1_K_OFFSET,
                   "AIC Q scratch overlaps K scratch");
@@ -179,88 +177,6 @@ private:
         return stage;
     }
 
-    // MTE2：GM 行主序 [rows,cols] -> L1 NZ；两个行跨度以元素/逻辑行数传入。
-    __aicore__ inline void CopyGmToL1(GlobalTensor<bfloat16_t> gm, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                      uint32_t cols, uint32_t srcRowStride, uint32_t dstRows)
-    {
-        Nd2NzParams params;
-        params.ndNum = 1;
-        params.nValue = rows;
-        params.dValue = cols;
-        params.srcDValue = srcRowStride;
-        params.dstNzC0Stride = CeilAlign(dstRows, MM_BLOCK_CUBE);
-        params.dstNzNStride = 1;
-        params.srcNdMatrixStride = 0;
-        params.dstNzMatrixStride = 0;
-        DataCopy(l1, gm, params);
-    }
-
-    // MTE1：从 L1 NZ 的 (rowStart,colStart) 装入 [rows,cols]，按模板选择 L0 装载转置。
-    template <bool ifTranspose>
-    __aicore__ inline void CopyL1ToL0(LocalTensor<bfloat16_t> l0, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                      uint32_t cols, uint32_t fullRows, uint32_t rowStart = 0, uint32_t colStart = 0)
-    {
-        LoadData2DParamsV2 params;
-        params.mStartPosition = rowStart / MM_BLOCK_CUBE;
-        params.kStartPosition = colStart / MM_NZ_FRACTAL;
-        params.mStep = CeilAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.kStep = CeilAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
-        params.srcStride = CeilAlign(fullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.dstStride = ifTranspose ? params.kStep : params.mStep;
-        params.ifTranspose = ifTranspose;
-        LoadData(l0, l1, params);
-    }
-
-    // MTE1：L1 的指定行片 -> L0A 指定行片，用于拼接 [K前半,Q前半,K后半,Q后半]。
-    __aicore__ inline void CopyRowsL1ToL0A(LocalTensor<bfloat16_t> l0a, LocalTensor<bfloat16_t> l1, uint32_t rows,
-                                           uint32_t cols, uint32_t srcFullRows, uint32_t srcRowStart,
-                                           uint32_t dstFullRows, uint32_t dstRowStart)
-    {
-        LoadData2DParamsV2 params;
-        params.mStartPosition = srcRowStart / MM_BLOCK_CUBE;
-        params.kStartPosition = 0;
-        params.mStep = CeilAlign(rows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.kStep = CeilAlign(cols, MM_NZ_FRACTAL) / MM_NZ_FRACTAL;
-        params.srcStride = CeilAlign(srcFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.dstStride = CeilAlign(dstFullRows, MM_BLOCK_CUBE) / MM_BLOCK_CUBE;
-        params.ifTranspose = false;
-        LoadData(l0a[dstRowStart * MM_NZ_FRACTAL], l1, params);
-    }
-
-    // M：C[m,n] = A[m,k] @ B[k,n]；init=false 时加到已有 FP32 C，不插入量化。
-    __aicore__ inline void Mmad(LocalTensor<float> l0c, LocalTensor<bfloat16_t> l0a, LocalTensor<bfloat16_t> l0b,
-                                uint32_t m, uint32_t n, uint32_t k, bool init = true)
-    {
-        MmadParams params;
-        params.m = m < MM_BLOCK_CUBE ? MM_BLOCK_CUBE : m;
-        params.n = n;
-        params.k = k;
-        params.cmatrixInitVal = init;
-        params.cmatrixSource = false;
-        AscendC::Mmad(l0c, l0a, l0b, params);
-    }
-
-    template <typename outputType>
-    __aicore__ inline void CopyResultRowsL0CToUb(LocalTensor<outputType> dst, LocalTensor<float> src,
-                                               uint32_t rows, uint32_t cols)
-    {
-        // [rows,cols] -> 两个 AIV 的 [rows/2,cols] row-major UB；保持两条 FIX 的先后顺序。
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> copy;
-        copy.nSize = cols;
-        copy.mSize = rows / 2;
-        copy.srcStride = CeilAlign(rows, MM_BLOCK_CUBE);
-        copy.dstStride = cols;
-        copy.quantPre = std::is_same_v<outputType, float> ? QuantMode_t::NoQuant : QuantMode_t::F322BF16;
-        copy.dualDstCtl = 0;
-        copy.params.ndNum = 1;
-        copy.params.srcNdStride = 0;
-        copy.params.dstNdStride = 0;
-        copy.subBlockId = 0;
-        Fixpipe<outputType, float, CFG_ROW_MAJOR_UB>(dst, src, copy);
-        copy.subBlockId = 1;
-        Fixpipe<outputType, float, CFG_ROW_MAJOR_UB>(dst, src[rows / 2 * MM_NZ_FRACTAL], copy);
-    }
-
     __aicore__ inline void CopyStateDeltaL0CToUb(LocalTensor<float> result, uint32_t chunk)
     {
         const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
@@ -296,42 +212,25 @@ private:
     __aicore__ inline void CopyResultL0CToL1(LocalTensor<bfloat16_t> dst, LocalTensor<float> l0c, uint32_t m, uint32_t n,
                                      uint32_t fullRows, MutexID l0cMutex, uint32_t rowStart = 0, uint32_t colStart = 0)
     {
-        FixpipeParamsC310<CO2Layout::NZ> params;
-        params.nSize = n;
-        params.mSize = m;
-        params.srcStride = CeilAlign(m, MM_BLOCK_CUBE);
-        params.dstStride = CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
-        params.quantPre = QuantMode_t::F322BF16;
-
         // 顺序不可交换：先占用 L1 目标，再结束 MMAD，最后允许 FIX 读取 L0C。
         Mutex::Lock<PIPE_FIX>(MutexId(AIC_L1_FIX_MUTEX));
         Mutex::Unlock<PIPE_M>(l0cMutex);
         Mutex::Lock<PIPE_FIX>(l0cMutex);
-        Fixpipe<bfloat16_t, float, CFG_NZ>(dst[GetZnOffset(rowStart, colStart, fullRows)], l0c, params);
+        CopyTileL0CToL1(dst[GetZnOffset(rowStart, colStart, fullRows)], l0c, m, n, fullRows);
         Mutex::Unlock<PIPE_FIX>(l0cMutex);
         Mutex::Unlock<PIPE_FIX>(MutexId(AIC_L1_FIX_MUTEX));
     }
 
     __aicore__ inline void CopyOutputL0CToGm(uint32_t nvId, uint32_t chunk, uint32_t validRows, LocalTensor<float> l0c)
     {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> params;
-        params.nSize = context_.params.dv;
-        params.mSize = validRows;
-        params.srcStride = CeilAlign(CHUNK, MM_BLOCK_CUBE);
-        params.dstStride = context_.params.nv * context_.params.dv;
-        params.quantPre = QuantMode_t::F322BF16;
-        params.dualDstCtl = 0;
-        params.params.ndNum = 1;
-        params.params.srcNdStride = 0;
-        params.params.dstNdStride = 0;
-
         const MutexID outputMutex = MutexId(AIC_L0C_OUTPUT_MUTEX);
         Mutex::Unlock<PIPE_M>(outputMutex);
         Mutex::Lock<PIPE_FIX>(outputMutex);
         const uint64_t outputOffset =
             (context_.task.tokenStart + static_cast<uint64_t>(chunk) * CHUNK) * context_.params.nv * context_.params.dv +
             static_cast<uint64_t>(nvId) * context_.params.dv;
-        Fixpipe<bfloat16_t, float, CFG_ROW_MAJOR>(context_.params.out[outputOffset], l0c, params);
+        CopyRowsL0CToGm(context_.params.out[outputOffset], l0c, validRows, context_.params.dv,
+                        CHUNK, context_.params.nv * context_.params.dv);
         Mutex::Unlock<PIPE_FIX>(outputMutex);
     }
 
@@ -436,15 +335,7 @@ private:
         Mutex::Lock<PIPE_FIX>(residualMutex);
         // R32 保留 16 列分块布局，一条 FIX 按 M 平分给两个 AIV。
         // 每个 AIV 收到 [DIM/16, HALF_CHUNK, 16]，随后仅转一个 BF16 副本送回 L1。
-        FixpipeParamsC310<CO2Layout::NZ> fix;
-        fix.nSize = DIM;
-        fix.mSize = CHUNK;
-        fix.srcStride = CHUNK;
-        fix.dstStride = HALF_CHUNK * MM_NZ_FRACTAL;
-        fix.quantPre = QuantMode_t::NoQuant;
-        fix.dualDstCtl = 1;
-        fix.subBlockId = 0;
-        Fixpipe<float, float, CGDR_CFG_NZ_UB>(residual, l0cResidual, fix);
+        CopyResultNzL0CToUb(residual, l0cResidual, CHUNK, DIM);
         NotifyVector<PIPE_FIX, CubeToVectorEvent::ResidualReady>();
         Mutex::Unlock<PIPE_FIX>(residualMutex);
     }

@@ -384,30 +384,6 @@ __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr,
     }
 }
 
-// FP32 行主序矩阵在寄存器内转 BF16，Pack 后按 16 元素块跨步写出 compact zN，供 UB->L1 直接搬运。
-__simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
-                                                  uint16_t rowCount, uint16_t colCount)
-{
-    static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
-                                                 RoundMode::CAST_RINT};
-    RegTensor<float> srcReg;
-    RegTensor<bfloat16_t> bf16Reg;
-    RegTensor<uint16_t> packedBf16Reg;
-    uint32_t validCount = colCount;
-    uint32_t packedCount = colCount;
-    MaskReg validMask = UpdateMask<float>(validCount);
-    MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
-
-    for (uint16_t row = 0; row < rowCount; ++row) {
-        LoadAlign(srcReg, srcAddr + static_cast<uint32_t>(row) * colCount);
-        Cast<bfloat16_t, float, castFp32ToBf16>(bf16Reg, srcReg, validMask);
-        Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg, reinterpret_cast<RegTensor<uint32_t> &>(bf16Reg));
-        StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-            reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + static_cast<uint32_t>(row) * 16, packedBf16Reg, rowCount,
-            packedMask);
-    }
-}
-
 /*!
  * InverseAIVVF: forward-substitution inverse of the N x N lower-triangular (unit-diagonal) attn block.
  *   inv[0] = e_0; for i=1..N-1: inv[i] = e_i - sum_{j<i} attn[i,j] * inv[j]

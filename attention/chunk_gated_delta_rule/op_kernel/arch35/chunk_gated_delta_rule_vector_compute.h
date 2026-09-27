@@ -13,7 +13,7 @@
 
 #include "utils/chunk_gated_delta_rule_context.h"
 #include "utils/chunk_gated_delta_rule_sync.h"
-#include "utils/chunk_gated_delta_rule_vector_copy.h"
+#include "utils/chunk_gated_delta_rule_vector_utils.h"
 #include "vf/chunk_gated_delta_rule_stage1_vf.h"
 #include "vf/chunk_gated_delta_rule_stage2_vf.h"
 
@@ -228,22 +228,6 @@ private:
         UpdateStateFromResidualKeyProduct(head, chunk, buffers); // [9a/b] S_next=exp(G_last)*S+delta，按需复制到 L1。
     }
 
-    template <uint32_t rows, uint32_t cols, uint32_t fullRows, uint32_t matrixCount = 1>
-    __aicore__ inline void CopyCompactNzUbToL1(LocalTensor<bfloat16_t> src, LocalTensor<bfloat16_t> dst,
-                                             uint32_t rowBegin)
-    {
-        // MTE3：UB [matrixCount,rows,cols] -> L1[:,rowBegin:rowBegin+rows,:]。
-        // NZ 布局为 [matrixCount,cols/16,rows,16]，每行恰好一个 32B 块；L1 行跨度为 fullRows。
-        // 优化方案：相邻矩阵合并为一次 DMA；静态模板参数集中推导块数/长度/间隔。
-        static_assert(rows % MM_BLOCK_CUBE == 0 && fullRows % MM_BLOCK_CUBE == 0,
-                      "NZ rows must be fractal aligned");
-        static_assert(cols % MM_NZ_FRACTAL == 0 && rows <= fullRows,
-                      "the aligned UB tile must fit into the L1 matrix");
-        DataCopyParams params{static_cast<uint16_t>(matrixCount * cols / MM_NZ_FRACTAL),
-                              static_cast<uint16_t>(rows), 0, static_cast<uint16_t>(fullRows - rows)};
-        DataCopy(dst[GetZnOffset(rowBegin, 0, fullRows)], src, params);
-    }
-
     // Q/K:[T,Nk,Dk]、V:[T,Nv,Dv] -> 当前 AIV 的 [HALF_CHUNK,DIM] UB。
     // localRow 指明前/后 16 行；调用方持有对应输入 Mutex，搬运后由消费者处理无效尾部。
     __aicore__ inline void CopyQkvRowsGmToUb(const VectorHead &head, uint32_t chunk, const VectorBuffers &buffers,
@@ -254,11 +238,11 @@ private:
         const uint64_t qkOffset = token * context_.params.nk * context_.params.dk + head.queryKeyHead * context_.params.dk;
         const uint64_t valueOffset = token * context_.params.nv * context_.params.dv +
                                      static_cast<uint64_t>(head.valueHead) * context_.params.dv;
-        CopyRowsGmToUb(buffers.query[localRow * DIM], context_.params.query[qkOffset], validRows,
+        CopyRowsGmToUb<DIM>(buffers.query[localRow * DIM], context_.params.query[qkOffset], validRows,
                         context_.params.dk, context_.params.nk * context_.params.dk);
-        CopyRowsGmToUb(buffers.key[localRow * DIM], context_.params.key[qkOffset], validRows,
+        CopyRowsGmToUb<DIM>(buffers.key[localRow * DIM], context_.params.key[qkOffset], validRows,
                         context_.params.dk, context_.params.nk * context_.params.dk);
-        CopyRowsGmToUb(buffers.value[localRow * DIM], context_.params.value[valueOffset], validRows,
+        CopyRowsGmToUb<DIM>(buffers.value[localRow * DIM], context_.params.value[valueOffset], validRows,
                         context_.params.dv, context_.params.nv * context_.params.dv);
     }
 
@@ -278,17 +262,13 @@ private:
         }
 
         if constexpr (hasGamma) {
-            DataCopyExtParams gParams{static_cast<uint16_t>(validRows), static_cast<uint32_t>(sizeof(float)),
-                                      static_cast<uint32_t>((context_.params.nv - 1) * sizeof(float)), 0, 0};
-            DataCopyPadExtParams<float> gPad{true, 0, 7, 0.0f};
-            DataCopyPad(rawG, context_.params.g[tokenStart * context_.params.nv + head.valueHead], gParams, gPad);
+            CopyScalarsGmToUb(rawG, context_.params.g[tokenStart * context_.params.nv + head.valueHead],
+                              validRows, context_.params.nv);
         }
         if (localValidRows > 0) {
-            DataCopyExtParams betaParams{static_cast<uint16_t>(localValidRows),
-                                         static_cast<uint32_t>(sizeof(bfloat16_t)),
-                                         static_cast<uint32_t>((context_.params.nv - 1) * sizeof(bfloat16_t)), 0, 0};
-            DataCopyPadExtParams<bfloat16_t> betaPad{true, 0, 15, static_cast<bfloat16_t>(0)};
-            DataCopyPad(rawBeta, context_.params.beta[(tokenStart + tokenBegin) * context_.params.nv + head.valueHead], betaParams, betaPad);
+            CopyScalarsGmToUb(rawBeta,
+                              context_.params.beta[(tokenStart + tokenBegin) * context_.params.nv + head.valueHead],
+                              localValidRows, context_.params.nv);
         }
         Mutex::Unlock<PIPE_MTE2>(inputHeadMutex);
     }
@@ -620,10 +600,10 @@ private:
         Mutex::Lock<PIPE_MTE2>(stateMutex);
         if (stateValidRows > 0) {
             if constexpr (STATE_FP32) {
-                CopyRowsGmToUb(state, context_.params.initialState[initialStateOffset], stateValidRows,
+                CopyRowsGmToUb<DIM>(state, context_.params.initialState[initialStateOffset], stateValidRows,
                               context_.params.dk, context_.params.dk);
             } else {
-                CopyRowsGmToUb(stateStaging, context_.params.initialState[initialStateOffset], stateValidRows,
+                CopyRowsGmToUb<DIM>(stateStaging, context_.params.initialState[initialStateOffset], stateValidRows,
                               context_.params.dk, context_.params.dk);
             }
         }
@@ -658,9 +638,11 @@ private:
         if (stateValidRows > 0) {
             const uint64_t finalStateOffset = context_.FinalStateOffset(head.valueHead, stateRowBegin);
             if constexpr (STATE_FP32) {
-                CopyStateRowsUbToGm(context_.params.finalState[finalStateOffset], state, stateValidRows, context_.params.dk);
+                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], state,
+                    stateValidRows, context_.params.dk, context_.params.dk);
             } else {
-                CopyStateRowsUbToGm(context_.params.finalState[finalStateOffset], stateStaging, stateValidRows, context_.params.dk);
+                CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], stateStaging,
+                    stateValidRows, context_.params.dk, context_.params.dk);
             }
         }
         Mutex::Unlock<PIPE_MTE3>(stateMutex);
