@@ -54,7 +54,7 @@ constexpr int64_t CUBE_MIN_VEC = 1024;
 // mix kernel limits: 128-row chunks, round-robin over 24 groups, 22 chunks per
 // group max (flag-cell capacity) -> totalVec <= 67584
 constexpr int64_t CUBE_CHUNK_ROWS = 128;
-constexpr int64_t CUBE_MAX_VEC = 24 * 22 * CUBE_CHUNK_ROWS;
+constexpr int64_t CUBE_MAX_LOCAL_CHUNKS = 22;   // per-group flag-cell capacity in the kernel
 
 static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
 {
@@ -101,7 +101,14 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    const bool useCube = (totalVec >= CUBE_MIN_VEC) && (totalVec <= CUBE_MAX_VEC) && (qjlDim == HEAD_DIM);
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    if (aicNum == 0) {
+        aicNum = 1;
+    }
+    // per-chip cap: chunkNum must fit (aicNum groups x 22 chunk slots); on a
+    // 20-AIC part (910B4) 24x22x128 would overflow the kernel's flag cells
+    const int64_t cubeMaxVec = static_cast<int64_t>(aicNum) * CUBE_MAX_LOCAL_CHUNKS * CUBE_CHUNK_ROWS;
+    const bool useCube = (totalVec >= CUBE_MIN_VEC) && (totalVec <= cubeMaxVec) && (qjlDim == HEAD_DIM);
 
     KvCacheTurboQuantTilingData tiling;
     tiling.set_totalVec(totalVec);
@@ -112,10 +119,6 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
 
     uint32_t usedCoreNum = 1;
-    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    if (aicNum == 0) {
-        aicNum = 1;
-    }
     // single tiling key 0 with runtime dispatch; always launch the full tri-core
     // grid (out-of-range groups idle out in-kernel). usedCoreNum for key-0 vector
     // path = AIV count (2*aicNum), for the mix path = logical tri-core groups.
