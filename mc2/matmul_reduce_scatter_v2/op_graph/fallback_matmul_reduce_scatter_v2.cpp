@@ -39,7 +39,7 @@ static ge::graphStatus MatmulReduceScatterV2ExecuteFunc(gert::OpExecuteContext *
 
     const auto x2Scale = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2V2InputIdx::K_X2SCALE));
 
-    const auto quantScale = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2V2InputIdx::K_QUNATSCALE));
+    const auto quantScale = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2V2InputIdx::K_QUANTSCALE));
 
     const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(ops::MC2ReduceScatterV2OutputIdx::K_Y));
     OPS_CHECK(y == nullptr, OPS_LOG_E(reduceScatterV2Info, "y is null"), return ge::GRAPH_FAILED);
