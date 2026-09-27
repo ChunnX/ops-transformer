@@ -398,14 +398,18 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
 ### 剩余 + bfvar 第十五轮深挖
 - **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——与本轮 p16var 不同源。
   本轮 ws 取证（偏移链精确闭环：aicNum=52 硬件核；qCmp@0/kCmp@8192/softmaxTmp@16384 共
-  27.26MB/topkWS@27277936/partSum@27279572/partMax@28590292/pooled@28611540；对 bf16 输入
-  golden 用 fp16 池化语义已验证 0 偏差）：失败仅 B1（seqlen_kv=3772 变长批）py=2 集中；
-  B0 pooled 逐位正确、B1 pooled 错；B1H3 partMax rows[0,8) 逐位正确（pass1 max 无辜）；
-  B1H3 partSum 值正确（=exp 和，×l=23.53 精确）但 **行范围 +3 移位**（数据落 rows[3,11) 而
-  非 [0,8)，4 个 owner AIV 一致；aiv0 另有 straggler (1,43),(2,19),(2,59-62)）→ 指向 slice 的
-  chunkRowStart=3，即 **变长 block_len 下 post 单元解析（bsa_vec_post_pool_service.h
-  ComputeChunkUnits/ComputeMineFlags）行号错位**。下轮首查该单元解析对 seqlen/block_len 的
-  行号推导；qCmp/kCmp 低区 dump 不可见，须经 partMax/partSum 间接验证（比对脚本已建立）。
+  27.26MB/topkWS@27277936/partSum@27280340/partMax@28591060/pooled@28611540；对 bf16 输入
+  golden 用 fp16 池化语义已验证 0 偏差）：
+  - **B1H3 partMax rows[0,8) 逐位正确**（pass1 max 无辜）；**B1H3 partSum 值正确**（=exp 和，
+    ×l=23.53 精确）——pass1 折叠无辜；
+  - **B0 pooled 逐位正确、B1 pooled 值正确**（BH4-7 全过 2% 容差）；
+  - **教训：早前 "+3 行移位" 是我方扫描偏移错误**（partSum 真基址比初算多 768B=恰 3 行），
+    内核布局无辜；
+  - pooled 布局 = 紧排 [px][validPostY]（写 stride=validPostYCur、TopK 线性 sortLen 读——两者
+    自洽；曾试改写 stride=postYBlocks 对齐 TopK 网格，反而破坏线性读自洽致 B0 新增错，已回退）；
+  - **剩余错位 = TopK 选择层**：B1 出现值相同 tie 的选择差异（如 (0,2)/(3,2) 同为 0.0315，golden
+    stable-argsort 选前者、NPU radix 选后者）+ 疑 TopK 线性读与 2D 语义在变长批下的 count/域
+    差异——下轮专查 bsa_radix_topk_service.h 的 tie-break 与 sortLen/count 推导。
 - blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
 
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
@@ -591,9 +595,10 @@ inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上�
 1. ~~blk8 级联修复~~（第十三轮，9238a7b19）
 2. ~~GeneralFinalize 行均值~~（第十四轮，366b5c986）
 3. ~~p16var 双根因~~（第十五轮，6ff511963：w16 尾折叠链重写 + finalize 批内几何）
-4. **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——按 p16var 同款
-   方法论（ws dump 定位 partSum/partMax 槽偏移 → 逐层对 CPU 比对），注意 bf16 的 golden
-   语义（att fp16→bf16）与 qCmp/kCmp 低区 dump 不可见约束
+4. **bfvar**（唯一确定性 FAIL）：第十五轮已排除 pass1/partSum/partMax/pooled 值层（全部对 CPU
+   逐位/容差吻合，"+3 行移位" 系扫描偏移误判已澄清）——**剩余 = TopK 选择层**：同值 tie 的
+   选择差异（golden stable-argsort vs NPU radix）+ 疑变长批下 TopK 线性 sortLen 读/count 推导，
+   专查 bsa_radix_topk_service.h；pooled 布局=紧排 validPostY 节距（写读自洽，勿改 stride 对齐）
 5. **MTE3 写丢弃竞态**：bit 级定性完成（第十四轮）——① memset/首触预热实验 ② 冗余双写
    ③ aic-metrics 长跑 ④ 硬件升级，注意 memset 扰动时序（复现消失≠修复教训）
 
