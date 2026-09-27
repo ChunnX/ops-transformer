@@ -125,15 +125,7 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
     op.Process();
 }
 
-// [SK-FALLBACK] run_fia_fullquant_mx/gqa/mla_kernel 的 tiling 形参刻意声明为 __tiling_data_ptr__，
-// 与调用侧(fia_arch35_fullquant.h 入口的 __gm__ uint8_t *tiling 裸传)形成地址空间不一致：
-//   - 动态编译(正常打包/eager/aclgraph): __tiling_data_ptr__ 展开为 __gm__ const，
-//     __gm__ -> __gm__ const 合法隐式转换，函数体首行 const_cast 还原，行为与基线完全一致；
-//   - 静态编译(opc --op_mode=static, npugraph_ex SK): __tiling_data_ptr__ 展开为裸 const，
-//     与 __gm__ 入口传参地址空间冲突 -> ccec 编译报错 -> op_compiler 失败 -> SK 静默回退普通 aclgraph。
-// 仅 fullquant 路径生效，noquant/antiquant 不受影响。后续若要真正支持 SK，参照
-// flash_attn(59ca7e526)/flashdecode QFA 的 GET_TILING_DATA_PTR_WITH_STRUCT 宏桥接写法
-// 恢复两侧一致后删除本改动。
+// [SK-FALLBACK] tiling 形参与入口 __gm__ 裸传不一致: SK 静态编译地址空间冲突失败, 静默回退 aclgraph; 动态编译不受影响
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
           uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
           bool enableKVPrefix, bool enableS1OutSplit>
@@ -196,7 +188,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling); // [SK-FALLBACK] 动态编译还原非 const
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     __gm__ uint8_t *fiaMetaData = tilingGm + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
@@ -271,7 +263,7 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling); // [SK-FALLBACK] 动态编译还原非 const
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     __gm__ uint8_t *fiaMetaData = tilingGm + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
@@ -340,7 +332,7 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling); // [SK-FALLBACK] 动态编译还原非 const
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     __gm__ uint8_t *fiaMetaData = tilingGm + offsetof(FusedInferAttentionScoreFullQuantTilingData, fiaMetaData);
