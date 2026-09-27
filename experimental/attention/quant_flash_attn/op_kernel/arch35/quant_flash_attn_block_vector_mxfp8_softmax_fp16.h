@@ -23,6 +23,7 @@
 #include "vf/vf_flashupdate_acc.h"
 #include "vf/vf_div_cast_bf16.h"
 #include "vf/vf_softmax_fp16_to_fp8.h"
+#include "vf/vf_calc_lse.h"
 // ===== GM 输出公共助手（镜像 cube 侧引用方式；copy_ub_to_gm.h 传递引入 fa_ub_tensor/gm_coord 等）=====
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
@@ -70,8 +71,14 @@ private:
     // [64 行 × dVBaseSize 列] OUT_T 零源，AIV 分片整张量分块 memset GM（16KB/块）
     static constexpr uint32_t UB_ZERO_OUT_SIZE = 64 * dVBaseSize;   // OUT_T 元素
     static constexpr uint32_t UB_ZERO_OUT_BASE = UB_NZIDX_BASE + 256;
+    // LSE 暂存槽（2026-09-27 softmaxLse 规格落地）：[128] fp32，VfCalcLse 输出 → GM
+    static constexpr uint32_t UB_LSE_SIZE = dVBaseSize;                        // fp32 元素
+    static constexpr uint32_t UB_LSE_BASE = UB_ZERO_OUT_BASE + UB_ZERO_OUT_SIZE * sizeof(OUT_T);
+    // LSE -inf 源槽（空批语义 2026-09-27 裁决）：[128] fp32，DEAL_ZERO 行 kv=0 批专用
+    //（独立于 lseUb_——调度循环与 V2 流水的 lseUb_ 使用交错，共享会被覆写竞态）
+    static constexpr uint32_t UB_LSE_INF_BASE = UB_LSE_BASE + UB_LSE_SIZE * sizeof(float);
     // pNzIdxUB 索引表 256B 计入总量（原实现漏计）
-    static constexpr uint32_t UB_TOTAL = UB_ZERO_OUT_BASE + UB_ZERO_OUT_SIZE * sizeof(OUT_T);
+    static constexpr uint32_t UB_TOTAL = UB_LSE_INF_BASE + UB_LSE_SIZE * sizeof(float);
     static_assert(UB_TOTAL <= 256 * 1024, "V-core UB budget (256KB) exceeded");
 
     // ===== UB Tensor 成员（对齐设计 §4 表）=====
@@ -87,6 +94,8 @@ private:
     LocalTensor<SCALE_T> pscaleGridUB_;  // [6][768B] pscale L1 网格影像（[ring]，VF 散布 + 连续整槽发 L1）
     LocalTensor<uint8_t> pNzIdxUB_;      // P NZ 打包 Gather 索引表（pscale 改字节对后唯一消费者是 P 存储）
     LocalTensor<OUT_T> zeroOutUB_;       // 全量预清零零源 [64,128]（ClearOutput 分片 memset GM）
+    LocalTensor<float> lseUb_;           // softmaxLse 暂存 [128] fp32（VfCalcLse → GM）
+    LocalTensor<float> lseInfUb_;        // LSE -inf 源 [128] fp32（DEAL_ZERO kv=0 批行）
 
     // ===== L1 共享区视图成员（AIC L1，V1 经 MTE3 写入 P/pscale 的目标地址）=====
     // P 槽核间交错布局（common_def L1_PSLOT 宏）下双核槽不连续——统一走宽视图 + 计算基址
@@ -99,6 +108,7 @@ private:
 
     // ===== GM 输出（设计 §6.2；BNSD 布局 + S1_ONLY 行拷贝——realGSize=1 语义下 GS1 退化为 S1）=====
     GlobalTensor<OUT_T> attentionOutGm_;                                            // GM 输出 tensor
+    GlobalTensor<float> softmaxLseGm_;                                              // softmaxLse GM 输出（[B,N,S1] fp32）
     FaGmTensor<OUT_T, GmFormat::BNGSD, int32_t> outGmTensor_;                       // + 偏移计算器
     CopyAttenOutUbToGm<OUT_T, GmFormat::BNGSD, UbFormat::S1_ONLY> attenOutUbToGm_;  // UB→GM 拷贝仿函数
 
@@ -109,6 +119,7 @@ private:
     static constexpr uint32_t EVT_P_COPY = 0;   // V↔MTE3：P/pscale MTE3 前后 + 顶部等待
     static constexpr uint32_t EVT_GM_OUT = 1;   // V→MTE3：GM 输出前
     static constexpr uint32_t EVT_ZERO_OUT = 2; // V↔MTE3：ClearOutput 零源就绪 + 清零排空
+    static constexpr uint32_t EVT_LSE_OUT = 3;  // V→MTE3：LSE 计算就绪后放行 GM 拷贝
 
 public:
     __aicore__ inline explicit QuantFlashAttnBlockVectorMxfp8SoftmaxFp16(ConstInfo &constInfo)
@@ -119,10 +130,13 @@ public:
      * 注意：parser 必须已 Init 完成后再调用（OffsetCalculator 内部为拷贝语义，早调会拷到空 parser）
      */
     __aicore__ inline void
-    InitInput(__gm__ uint8_t *attentionOut,
+    InitInput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
               const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> &parser)
     {
         attentionOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ OUT_T *>(attentionOut));
+        if (constInfo_.isSoftmaxLseEnable) {
+            softmaxLseGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(softmaxLse));
+        }
         outGmTensor_.gmTensor = attentionOutGm_;
         outGmTensor_.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
                                            constInfo_.s1Size, constInfo_.dSizeV, parser);
@@ -151,6 +165,8 @@ public:
         pNzIdxUB_ = LocalTensor<uint8_t>(TPosition::VECCALC, UB_NZIDX_BASE,
                                           256);  // 索引表 256B（实现期可调）
         zeroOutUB_ = LocalTensor<OUT_T>(TPosition::VECCALC, UB_ZERO_OUT_BASE, UB_ZERO_OUT_SIZE);
+        lseUb_ = LocalTensor<float>(TPosition::VECCALC, UB_LSE_BASE, UB_LSE_SIZE);
+        lseInfUb_ = LocalTensor<float>(TPosition::VECCALC, UB_LSE_INF_BASE, UB_LSE_SIZE);
 
         // ② L1 共享区视图（按 common_def 常量构造，不分配、不初始化）。
         //    P 槽核间交错布局下双核槽不连续——整域宽视图 + L1_PSLOT(core, ring) 计算基址
@@ -310,6 +326,22 @@ public:
                                   runInfo.gS1Idx + runInfo.vecS1BaseIdx, 0U,
                                   runInfo.actVecS1Size, constInfo_.dSizeV};
             attenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
+
+            // ===== LSE 输出（2026-09-27 softmaxLse 规格落地）=====
+            // lse[i] = k_final·ln2 + ln(rowsum)（golden 同式，P 已按 2^(k_i-k_final)
+            // 网格缩放故由 k 域重建）；GM 布局 [B, realN2, S1] fp32 行连续。
+            // V 管道计算（k_final=softmaxMaxUB[stateSlot]、rowsum=accRowsumUB 终值）
+            // → V→MTE3 事件 → DataCopyPad（s1Size 任意值时偏移/长度不保证 32B 对齐）
+            if (constInfo_.isSoftmaxLseEnable) {
+                QfaVectorApi::VfCalcLse(lseUb_, softmaxMaxUB_, accRowsumUB_, runInfo.softmaxStateSlot);
+                SetFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);
+                WaitFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);
+                uint64_t lseOffset = (static_cast<uint64_t>(runInfo.bIdx) * constInfo_.realN2Size +
+                                      runInfo.realN2Idx) * constInfo_.s1Size +
+                                     runInfo.gS1Idx + runInfo.vecS1BaseIdx;
+                SafeStrideCopy<float>(softmaxLseGm_[lseOffset], lseUb_, 1U,
+                                      runInfo.actVecS1Size * sizeof(float), 0U, 0U);
+            }
         }
     }
 
@@ -336,17 +368,15 @@ public:
         // 切片界 32B 对齐（D=128 ⇒ totalSize 恒 16 倍数，尾块天然对齐，块界 8192 亦 16 倍数）
         sliceSize = (sliceSize + 15) / 16 * 16;
         int64_t offset = static_cast<int64_t>(constInfo_.aivIdx) * sliceSize;
+        // 零源整备（V 管道，无条件——LSE 切片可独立于 attention 切片非空）
+        Duplicate(zeroOutUB_, static_cast<OUT_T>(0.0f), UB_ZERO_OUT_SIZE);
+        SetFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
+        WaitFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
         if (offset < totalSize) {
             int64_t count = totalSize - offset;
             if (count > sliceSize) {
                 count = sliceSize;
             }
-
-            // 零源整备（V 管道）→ V→MTE3 事件放行（EVT_ZERO_OUT 惯用法）
-            Duplicate(zeroOutUB_, static_cast<OUT_T>(0.0f), UB_ZERO_OUT_SIZE);
-            SetFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
-            WaitFlag<HardEvent::V_MTE3>(EVT_ZERO_OUT);
-
             // 分块清零（16KB/块）
             while (count > 0) {
                 uint32_t chunk = static_cast<uint32_t>(
@@ -355,11 +385,58 @@ public:
                 offset += chunk;
                 count -= chunk;
             }
-            // 本核清零 MTE3 排空后才过 SyncAll（主线末对 Set/Wait<MTE3_V> 同款）
-            SetFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
-            WaitFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
         }
+        // LSE 张量同清（isSoftmaxLseEnable 时；[B, realN2, S1] fp32——golden padding 行为 0）。
+        // total 可为奇数（s1Size 任意）→ 块长不保证 32B 对齐，走 DataCopyPad 路径
+        if (constInfo_.isSoftmaxLseEnable) {
+            int64_t totalLse = static_cast<int64_t>(constInfo_.bSize) * constInfo_.realN2Size *
+                               constInfo_.s1Size;
+            int64_t lseSlice = (totalLse + aivNum - 1) / aivNum;
+            int64_t lseOffset = static_cast<int64_t>(constInfo_.aivIdx) * lseSlice;
+            LocalTensor<float> zeroF32 = zeroOutUB_.template ReinterpretCast<float>();
+            while (lseOffset < totalLse) {
+                int64_t cnt = totalLse - lseOffset;
+                if (cnt > lseSlice) {
+                    cnt = lseSlice;
+                }
+                uint32_t bytes = static_cast<uint32_t>(
+                    AttentionCommon::Min(cnt * static_cast<int64_t>(sizeof(float)),
+                                         static_cast<int64_t>(UB_ZERO_OUT_SIZE * sizeof(OUT_T))));
+                SafeStrideCopy<float>(softmaxLseGm_[lseOffset], zeroF32, 1U, bytes, 0U, 0U);
+                lseOffset += bytes / sizeof(float);
+            }
+        }
+        // 本核全部清零 MTE3 排空后才过 SyncAll（主线末对 Set/Wait<MTE3_V> 同款；
+        // 无拷贝的核 Set 立即触发，Wait 无碍——每核 Set/Wait 恒配平）
+        SetFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
+        WaitFlag<HardEvent::MTE3_V>(EVT_ZERO_OUT);
         SyncAll();  // 切片为空的 AIV 也须到屏障（全 AIV 参与配平）
+    }
+
+    /*
+     * 空批 LSE 写 -inf（2026-09-27 裁决：kv=0 批 softmax 空集 → lse = -inf，golden 同值，
+     * check_result isclose 判等）。DEAL_ZERO 调度点调用：覆盖该 bN2 行有效行
+     * [0, rowCount)，padding 行 [rowCount, s1Size) 保持 ClearOutput 的 0（golden 亦 0）。
+     * rowCount > 128 时 128 行/块循环；-inf 位构造不依赖 <limits>/builtin（FixpipeMm1
+     * reinterpret 惯用法）；专用 -inf 源槽独立于 V2 流水的 lseUb_（调度/执行交错无竞态）
+     */
+    __aicore__ inline void WriteLseNegInf(uint32_t bIdx, uint32_t realN2Idx, uint32_t rowCount)
+    {
+        static constexpr int32_t NEG_INF_BITS = static_cast<int32_t>(0xFF800000U);  // fp32 -inf 位模式
+        const float negInfValue = *reinterpret_cast<const float *>(&NEG_INF_BITS);
+        Duplicate(lseInfUb_, negInfValue, UB_LSE_SIZE);
+        SetFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);
+        WaitFlag<HardEvent::V_MTE3>(EVT_LSE_OUT);
+
+        uint64_t base = (static_cast<uint64_t>(bIdx) * constInfo_.realN2Size + realN2Idx) *
+                        constInfo_.s1Size;
+        uint32_t offset = 0U;
+        while (offset < rowCount) {
+            uint32_t chunk = AttentionCommon::Min(rowCount - offset, UB_LSE_SIZE);
+            SafeStrideCopy<float>(softmaxLseGm_[base + offset], lseInfUb_, 1U,
+                                  chunk * sizeof(float), 0U, 0U);
+            offset += chunk;
+        }
     }
 
     __aicore__ inline void ReleaseTensorsVec()

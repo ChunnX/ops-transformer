@@ -136,7 +136,7 @@ public:
         // seqlen 解析（BNSD：seqUsed 按 batch 索引，未传入时回退 shape）
         qSeqUsedParser_.Init(sequsedQ, static_cast<uint32_t>(constInfo_.seqUsedQSize), constInfo_.s1Size);
         // 向量块 GM 输出初始化（必须在 parser Init 之后：OffsetCalculator 内部为拷贝语义）
-        vectorBlock_.InitInput(attnOut, qSeqUsedParser_);
+        vectorBlock_.InitInput(attnOut, softmaxLse, qSeqUsedParser_);
         kvSeqUsedParser_.Init(sequsedKv, static_cast<uint32_t>(constInfo_.seqUsedKvSize), constInfo_.s2Size);
 
 #if QFA_SF16_DEBUG_PRINTF
@@ -240,8 +240,17 @@ public:
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    // 零批行已由 ClearOutput 全量预清零覆盖（2026-09-27 对齐主线，
-                    // needInitOutput 门控）——DEAL_ZERO 无需处理，主线同款 no-op
+                    // 零批行 attention 输出已由 ClearOutput 全量预清零覆盖（对齐主线）。
+                    // LSE 空批语义（2026-09-27 裁决）：kv=0 批（DEAL_ZERO 且 q>0 → 必
+                    // kv=0）有效行 lse = -inf（softmax 空集，golden 同值）；q=0 批全行
+                    // 保持 0——一次覆盖整行 [0, actSeqLensQ_)，padding 行仍为 ClearOutput 的 0
+                    if ASCEND_IS_AIV {
+                        if (constInfo_.isSoftmaxLseEnable && actSeqLensQ_ > 0) {
+                            vectorBlock_.WriteLseNegInf(bN2Cur / constInfo_.realN2Size,
+                                                        bN2Cur % constInfo_.realN2Size,
+                                                        static_cast<uint32_t>(actSeqLensQ_));
+                        }
+                    }
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
                 } else {
