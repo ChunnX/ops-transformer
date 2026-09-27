@@ -342,10 +342,37 @@ private:
         params.gmmParams = mmTiling;
         params.groupOffsetTables = {};
 
-        {
-            MmKernel kernel;
-            kernel.Init(params);
-            kernel.Run();
+        // [临时诊断] 共享专家挂死定位（block0 门控共 5 条，ringbuffer 安全）：
+        // S-param: 维度/tiling 全量；S-addr: 张量地址与 64B 对齐（gmm-swap 实验表明
+        // gmm 地址可完成、mm 地址挂死，布局格式相同——首要嫌疑为地址对齐/越界）；
+        // S-stage: ctor→Init→Run 三阶段卡点
+        if (AscendC::GetBlockIdx() == 0U) {
+            AscendC::printf("[S-param] m=%llu n=%llu k=%llu bM=%u bN=%u bK=%u kAL1=%u kBL1=%u sKAL1=%u dbL=%u l1S=%u "
+                            "glT=%u bNum=%u\n",
+                            m, n, k, mmTiling.baseM, mmTiling.baseN, mmTiling.baseK, mmTiling.kAL1, mmTiling.kBL1,
+                            mmTiling.scaleKAL1, mmTiling.dbL0C, mmTiling.l1BufferStage, mmTiling.groupListType,
+                            AscendC::GetBlockNum());
+            AscendC::printf(
+                "[S-addr] x=%llu%%%llu w=%llu%%%llu sA=%llu%%%llu sB=%llu%%%llu y=%llu%%%llu "
+                "gl=%llu%%%llu\n",
+                (unsigned long long)(uintptr_t)mmXGM_, (unsigned long long)(uintptr_t)mmXGM_ % 64UL,
+                (unsigned long long)(uintptr_t)mmWeightGM_, (unsigned long long)(uintptr_t)mmWeightGM_ % 64UL,
+                (unsigned long long)(uintptr_t)mmXScaleGM_, (unsigned long long)(uintptr_t)mmXScaleGM_ % 64UL,
+                (unsigned long long)(uintptr_t)mmWeightScaleGM_, (unsigned long long)(uintptr_t)mmWeightScaleGM_ % 64UL,
+                (unsigned long long)(uintptr_t)mmYGM_, (unsigned long long)(uintptr_t)mmYGM_ % 64UL,
+                (unsigned long long)(uintptr_t)mmGroupListGm_, (unsigned long long)(uintptr_t)mmGroupListGm_ % 64UL);
+        }
+        MmKernel kernel;
+        if (AscendC::GetBlockIdx() == 0U) {
+            AscendC::printf("[S-stage] pre-init\n");
+        }
+        kernel.Init(params);
+        if (AscendC::GetBlockIdx() == 0U) {
+            AscendC::printf("[S-stage] post-init\n");
+        }
+        kernel.Run();
+        if (AscendC::GetBlockIdx() == 0U) {
+            AscendC::printf("[S-stage] post-run\n");
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
