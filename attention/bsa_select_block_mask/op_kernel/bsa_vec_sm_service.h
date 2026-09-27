@@ -459,9 +459,12 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     // （BLOCK_SHAPE_ALIGN=8 保证 postBlockShapeY 为 8 的倍数；与 tiling partSumSize 同公式）
     const uint32_t foldW = (constInfo.usePostBlockShape && constInfo.postBlockShapeY % 16 != 0) ? 8u : 16u;
     const uint32_t foldG = K_TILE_COLS / foldW;
-    // foldW==8 时折叠 BRS 以 64 元素块消费，列宽须为 64 倍数（块与行对齐，否则组跨行错位）；
-    // padding 列 exp 后为 0，多对齐的列对折叠无贡献
-    const uint32_t foldCols = (foldW == 8 && !fullTile) ? (kChunkSize + 63) / 64 * 64 : kChunkSizeAlign;
+    // 折叠列宽取对齐倍数（BRS 以连续 64 float 步进消费，行距非倍数会跨行错位；pad 列由尾块
+    // 掩码覆 NEG_INF，exp 后为 0，对 max/sum/折叠均无贡献）：w8 取 64 倍数（8 列组不跨行）；
+    // w16 取 128 倍数（16 列组数 g16 为 8 倍数 → 配对 Add/ GM 写步进均为整数块，免掩码）；
+    // kcs≥385 时 w16 升格 512=K_TILE_COLS 自动走级联快路径
+    const uint32_t foldAlign = (foldW == 8) ? 64u : 128u;
+    const uint32_t foldCols = (kChunkSize + foldAlign - 1) / foldAlign * foldAlign;
 
     // 入口 MTE3_MTE2 排空：band 末已 Wait MTE3_V（M3 排空才返回），此处排空对恢复以保护
     // band 末 M3 写出与本 tile M2 读的时序（bisect 定论：延迟消费架构 50% 挂死不可用）
@@ -644,30 +647,43 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                         static_cast<int32_t>(sl.rowCount), 1, 1, 8);
                     AscendC::PipeBarrier<PIPE_V>();
                 } else {
-                    // 尾 tile（AR 行归约路径无 L1 输出）：整形 64 列虚宽行布局 + 块配对 Add + BRS 原路径
-                    // （行宽 < 128 时虚宽假设跨行错位；整形区 32-63 列残留只流入无效组，无消费方）
-                    LocalTensor<T> reshapeDst = groupTmp[0];  // [rows][64]
-                    // 偏移须避开 reshapeDst [rows][64]（rows=32 时占 [0,2048)）
-                    LocalTensor<T> foldMid = groupTmp[2048];  // [16 行][4 组][8 lane] = 512 float
-                    AscendC::DataCopy(reshapeDst, tile, {static_cast<uint16_t>(sl.rowCount), 4, 0, 4});
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    const uint32_t groupsVirtual = 4; // 64 列虚宽 / 16
-                    AscendC::BinaryRepeatParams bp;
-                    bp.dstBlkStride = 1;
-                    bp.src0BlkStride = 2;
-                    bp.src1BlkStride = 2;
-                    bp.dstRepStride = 8;
-                    bp.src0RepStride = 16;
-                    bp.src1RepStride = 16;
+                    // 尾 tile（AR 行归约路径无 L1 输出）：tile 的 8-float 块直接配对 Add（相邻块
+                    // 相加 = 16 列组部分和）→ BRS 块和成标量紧排 [rc][g16] → 即时 GM 写
+                    //（槽行宽 32 组，dstStride 补齐；w8 路径同款模式）。
+                    // 旧实现（DataCopy 32 列整形 + Add/BRS）输出 [2r+g] 紧凑节距与消费端
+                    // [r*32+g] 错位，仅 row0 落对、其余行 partSum 槽为陈旧内容（p16var 根因）。
+                    // foldCols=128 倍数 → g16 为 8 倍数：Add 全 8 块免掩码、GM dstStride 整数块。
+                    const uint32_t g16 = foldCols / 16; // 16 列组数（8 的倍数）
+                    const uint32_t quadCalls = g16 / 8;
+                    LocalTensor<T> chunks = groupTmp[0]; // [rc][F/2] ≤ 16×192 = 3072 float
+                    LocalTensor<T> compact = reduceSharedTemp.ReinterpretCast<T>()[4096]; // [rc][g16] ≤ 512
+                    AscendC::BinaryRepeatParams bpPair;
+                    bpPair.dstBlkStride = 1;          // 组内 8 float 连续
+                    bpPair.src0BlkStride = 2;         // 相邻 8-float 块间隔 16 float（16 列组）
+                    bpPair.src1BlkStride = 2;
+                    bpPair.dstRepStride = foldCols / 16; // chunks 行距 F/2 float
+                    bpPair.src0RepStride = foldCols / 8; // tile 行距
+                    bpPair.src1RepStride = foldCols / 8;
                     for (uint32_t rb = 0; rb < sl.rowCount; rb += 16) {
                         const uint32_t rc = BSAMin(uint32_t(16), sl.rowCount - rb);
-                        const uint32_t repA = rc * groupsVirtual / 8; // 需 rc 为偶数（本 case 恒 16）
-                        AscendC::Add<T, false>(foldMid, reshapeDst[rb * 64], reshapeDst[rb * 64 + 8],
-                                               static_cast<uint64_t>(0), static_cast<uint8_t>(repA), bp);
+                        for (uint32_t qb = 0; qb < quadCalls; qb++) {
+                            // dst[r*F/2 + qb*64 + j*8..+8] = tile[r*F + 128qb + 16j..+8] + tile[...+8..+16]
+                            AscendC::Add<T, false>(chunks[qb * 64], tile[rb * foldCols + qb * 128],
+                                                   tile[rb * foldCols + qb * 128 + 8],
+                                                   static_cast<uint64_t>(0), static_cast<uint8_t>(rc), bpPair);
+                            AscendC::PipeBarrier<PIPE_V>();
+                        }
+                        // BRS：每 repeat 消费 8 个相邻 8-float 块（一行的 8 个 16 列组）→ 8 标量
+                        AscendC::BlockReduceSum<float, false>(compact[0], chunks[0], rc * g16 / 8,
+                                                              0, 1, 1, 8);
                         AscendC::PipeBarrier<PIPE_V>();
-                        AscendC::BlockReduceSum<float, false>(foldOut[(sl.localRowStart + rb) * 32], foldMid,
-                                                               groupsVirtual * rc / 8, 0, 1, 1, 8);
-                        AscendC::PipeBarrier<PIPE_V>();
+                        SetFlag<HardEvent::V_MTE3>(eventSft);
+                        WaitFlag<HardEvent::V_MTE3>(eventSft);
+                        DataCopyPad(partSumGmTensor[psSlotBase + (sl.chunkRowStart + rb) * 32], compact[0],
+                                    {static_cast<uint16_t>(rc), static_cast<uint32_t>(g16 * sizeof(float)), 0,
+                                     static_cast<uint32_t>((32 - g16) * sizeof(float)), 0});
+                        SetFlag<HardEvent::MTE3_V>(eventSft);
+                        WaitFlag<HardEvent::MTE3_V>(eventSft);
                     }
                 }
             } else {
@@ -731,8 +747,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
             nextHeadPrefetched = true;
         }
         {
-            if (foldW == 16) {
-                // band 末批量写出 partSum（w16 路径；w8 已在 slice 内按 32 行块即时写出）
+            if (foldW == 16 && foldCols == K_TILE_COLS) {
+                // band 末批量写出 partSum（仅全宽 tile；尾 tile 已在 slice 内按即时 GM 写出——
+                // 尾路径不写 foldOut，此处若照搬会把 foldOut 陈旧内容灌进槽）
                 const uint32_t bandElems = bd.rows * 32;
                 for (uint32_t off = 0; off < bandElems; off += 1024) {
                     const uint32_t n = BSAMin(uint32_t(1024), bandElems - off);
@@ -936,7 +953,6 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxFinalize(uint32_t qChunkSta
     if (sliceNum == 0) {
         return;
     }
-    const uint32_t KTILES = (constInfo.yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     const uint32_t unitRows = constInfo.postBlockShapeX; // 16
     // pooled 头基址（[B, N, postX, postY] 展开）
     const uint64_t pooledHeadOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) *
@@ -948,22 +964,25 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxFinalize(uint32_t qChunkSta
     AscendC::Duplicate(invCols, float(1.0f / 16.0f), 32);
     AscendC::PipeBarrier<PIPE_V>();
 
-    const uint32_t lastFull = constInfo.yBlocks / K_TILE_COLS; // full tile 数（余数为尾 tile）
+    // full/尾 tile 数按【本批 validYBlocks】取（原 constInfo.yBlocks 为总量/最大批值，多批
+    // 变长（TND/seqlen）下批间有效列数不同——按总量算写宽度会跨 head 蔽写/漏写）
+    const uint32_t lastFull = validYBlocks / K_TILE_COLS;    // 批内 full tile 数
+    const uint32_t ktilesBatch = (validYBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     // postBlockShapeY != 16 走通用收尾（列宽=实际参数，支持跨 tile 列与尾列；慢路径）
     if (constInfo.usePostBlockShape && constInfo.postBlockShapeY != 16) {
         GeneralFinalize(slices, sliceNum, qChunkStart, batchIdx, headIdx, validXBlocks, validYBlocks);
         return;
     }
     constexpr uint32_t BATCH = 8;                              // 每 batch 处理的 tile 数
-    // full tile 按 BATCH=4 批处理
+    // full tile 按 BATCH=8 批处理
     for (uint32_t t0 = 0; t0 < lastFull; t0 += BATCH) {
         const uint32_t k = BSAMin(BATCH, lastFull - t0);
         SoftmaxFinalizeBatch(slices, sliceNum, qChunkStart, batchIdx, headIdx, validXBlocks, validYBlocks, t0, k,
                              K_TILE_COLS / 16, false);
     }
-    // 尾 tile（yBlocks % K_TILE_COLS ≠ 0 时）单批收尾
-    if (lastFull < KTILES) {
-        const uint32_t groupsValid = (constInfo.yBlocks - lastFull * K_TILE_COLS) / 16;
+    // 尾 tile（批内 validYBlocks % K_TILE_COLS ≠ 0 时）单批收尾；写宽度 = 余数列组的上取整
+    if (lastFull < ktilesBatch) {
+        const uint32_t groupsValid = (validYBlocks - lastFull * K_TILE_COLS + 15) / 16;
         SoftmaxFinalizeBatch(slices, sliceNum, qChunkStart, batchIdx, headIdx, validXBlocks, validYBlocks, lastFull, 1,
                              groupsValid, true);
     }
