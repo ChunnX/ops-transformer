@@ -117,16 +117,18 @@ void QuantFlashAttnTilingImpl::InitImplParam()
         const gert::Tensor *seqUsedKvT = qfaInfo_->opParamInfo.sequsedKv.tensor;
         seqUsedKvFlag_ = (seqUsedKvT != nullptr) && (seqUsedKvT->GetShapeSize() > 0);
     } else {
-            cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-            cuSeqLenKVFlag_ =
-                !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
-        
-            const gert::Tensor *seqUsedQ = qfaInfo_->opParamInfo.sequsedQ.tensor;
-            const gert::Tensor *seqUsedKv = qfaInfo_->opParamInfo.sequsedKv.tensor;
-            uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
-            uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
-            seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
-            seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
+        cuSeqLenQFlag_ =
+            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
+        cuSeqLenKVFlag_ =
+            !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+
+        const gert::Tensor *seqUsedQ = qfaInfo_->opParamInfo.sequsedQ.tensor;
+        const gert::Tensor *seqUsedKv = qfaInfo_->opParamInfo.sequsedKv.tensor;
+        uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
+        uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
+        seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
+        seqUsedKvFlag_ =
+            !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
     }
 
     decodeS1GMerge_ = (qfaInfo_->layoutQDescale == QfaLayout::N2TGD);
