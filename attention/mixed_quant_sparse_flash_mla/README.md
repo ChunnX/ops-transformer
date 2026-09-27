@@ -11,8 +11,6 @@
 |<term>Atlas推理系列产品</term>                                |     ×    |
 |<term>Atlas训练系列产品</term>                                |     ×    |
 
-> 适用范围：本文原有功能、函数原型、参数表、约束和示例保留 Ascend 950PR&950DT（A5）的量化基线说明，适用于quant_mode=1和quant_mode=2。Atlas A2/A3新增的quant_mode=3请参见“A2/A3 TurboQuant 补充说明”，其中的类型和布局扩展仅适用于quant_mode=3。
-
 ## 功能说明
 
 - 算子功能：
