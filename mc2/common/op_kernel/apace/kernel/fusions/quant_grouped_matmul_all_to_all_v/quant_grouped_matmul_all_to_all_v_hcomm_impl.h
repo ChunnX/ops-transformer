@@ -261,10 +261,15 @@ private:
         params.groupOffsetTables.scaleBGroupAddrTable =
             reinterpret_cast<const __gm__ uint64_t *>(scaleBGroupOffsetTableGm_);
 
-        // 持久成员每批 re-Init（409d5e04a 实证形态：ctor 一次预置核内事件，避免逐批
-        // SetFlag/WaitFlag 事件协议失步）
-        gmmKernel_.Init(params);
-        gmmKernel_.Run();
+        // 镜像生命周期纪律：每批栈上 ctor/dtor 成对（ctor SetFlag 预置 → Run →
+        // dtor WaitFlag 消费），任意时刻仅一个 Blaze 实例存活；双实例并存（两个
+        // ctor 连续 SetFlag×10 无消费）会失步核内事件协议致 Run 挂死（真机实证：
+        // mmKernel_ 成员加入后路由批循环 P1 即缺失）
+        {
+            GmmKernel kernel;
+            kernel.Init(params);
+            kernel.Run();
+        }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
@@ -350,17 +355,19 @@ private:
         params.gmmParams = mmTiling;
         params.groupOffsetTables = {};
 
-        // 共享专家持久成员（ctor 于 op 构造期干净状态执行，与路由 gmmKernel_ 及
-        // 409d5e04a 时代一致——该形态下历史结论为 ctor+Init 正常、挂点在 Run 内；
-        // 提交通信后栈上构造为本侧未验证模式，消除该变量）
+        // 镜像生命周期纪律：栈上 ctor/dtor 成对（此时路由侧最后一批的 dtor 已
+        // 消费事件，本 ctor 为全新预置，无双实例并存）
         // [临时诊断] 卡点二分（block0 门控 2 条）：S-A=Init 后，S-B=Run 后
-        mmKernel_.Init(params);
-        if (AscendC::GetBlockIdx() == 0U) {
-            AscendC::printf("[S-A] init-done\n");
-        }
-        mmKernel_.Run();
-        if (AscendC::GetBlockIdx() == 0U) {
-            AscendC::printf("[S-B] run-done\n");
+        {
+            MmKernel kernel;
+            kernel.Init(params);
+            if (AscendC::GetBlockIdx() == 0U) {
+                AscendC::printf("[S-A] init-done\n");
+            }
+            kernel.Run();
+            if (AscendC::GetBlockIdx() == 0U) {
+                AscendC::printf("[S-B] run-done\n");
+            }
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -450,8 +457,6 @@ private:
     }
 
     const TilingDataType *tilingData_{nullptr};
-    GmmKernel gmmKernel_;
-    MmKernel mmKernel_;
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle a2avHandles_[GMM_A2AV_MAX_BATCH_NUM]{};
     uint32_t submitted_{0};
