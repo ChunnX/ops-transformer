@@ -118,8 +118,7 @@ protected:
     uint64_t outputIdxCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
-    bool hasCuSeqlensQ = false; // QLI V2: residual-KV offsets.
-    // Q、K 分别记录 CU 序列是否有效。
+    bool hasCuSeqlensQ = false;
     bool hasCuSeqlensK = false;
     bool hasSequsedQ = false;
     bool hasSequsedK = false;
@@ -142,8 +141,7 @@ protected:
     GlobalTensor<uint32_t> cuSeqlensKGm;
     GlobalTensor<uint32_t> sequsedQGm;
     GlobalTensor<uint32_t> sequsedKGm;
-    // 压缩残差与序列输入一并缓存。
-    GlobalTensor<uint32_t> cmpResidualKGm; // QLI V2: residual-KV bounds (cmpResidualKGm).
+    GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -241,7 +239,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
                                                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *qliV2SequsedK,
                                                               __gm__ uint8_t *qliV2CmpResidualK)
 {
-    // Bind the four variable-length inputs and residual K when provided.
     if (cuSeqlensQ != nullptr) {
         cuSeqlensQGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ);
         hasCuSeqlensQ = true;
@@ -258,8 +255,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
         sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)qliV2SequsedK);
         hasSequsedK = true;
     }
-    // Residual K belongs to the compressed path and is optional independently.
-    if (qliV2CmpResidualK != nullptr) { // QLI V2: compressed-KV state.
+    if (qliV2CmpResidualK != nullptr) {
         cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)qliV2CmpResidualK);
         hasCmpResidualK = true;
     }
@@ -348,8 +344,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         // 此时只需要s2End往前退一格，bN2End和gS1End都不变
         qliV2SplitInfo.s2End = qliV2SplitInfo.s2End - 1;
     } else {
+        // splitCoreInfo.gS1End != 0 splitCoreInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
         if (qliV2SplitInfo.gS1End != 0) {
-            // qliV2SplitInfo.gS1End != 0 qliV2SplitInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
             // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             qliV2SplitInfo.gS1End = qliV2SplitInfo.gS1End - 1;
             // 需要获取当前的Actaul S2
@@ -365,7 +361,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
             }
             qliV2SplitInfo.s2End = qliV2S2BaseNum - 1;
         } else {
-            // qliV2SplitInfo.gS1End == 0 qliV2SplitInfo.s2End == 0 时，bN2End需要往前退一格
+            // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             qliV2SplitInfo.bN2End = qliV2SplitInfo.bN2End - 1;
 
@@ -458,8 +454,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
         qliV2AiCoreIndex = qliV2BlockIndex / 2;
     } else {
         qliV2BlockIndex = GetBlockIdx(); // cube:0-23
-        // cube block 直接映射为 AIC 索引。
-        qliV2AiCoreIndex = qliV2BlockIndex; // QLI V2: residual-KV bounds (qliV2AiCoreIndex).
+        qliV2AiCoreIndex = qliV2BlockIndex;
     }
 
     InitTilingData(tiling);
@@ -485,8 +480,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
     // vec 存储需要LD的s1对应的s2的score与index，
     // 大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
     GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
-    // LD score 紧随主 score workspace 分配。
-    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset)); // QLI V2: top-k candidates.
+    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
     offset += static_cast<uint64_t>(GetBlockNum()) * qliV2KernelConstInfo.s1BaseSize * topkCountAlign16_ * 2 *
               sizeof(SCORE_T);
     GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
@@ -569,7 +563,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     qliV2KernelRunInfo.kScaleLoop = kScaleLoop;
     if (!LIV2Common::InitRunInfo(loop, s2LoopIdx, qliV2KernelRunInfo, qliV2LoopInfo, qliV2KernelConstInfo,
                                  qliV2SplitInfo, qliV2LoadInfo, isOutputIdxOffsetValid)) {
-        return; // 需要验证， v1 时候需要qliV2KernelRunInfo
+        return; // 需要验证， v1 时候需要runInfo
     }
     uint64_t qkHeadDim = qliV2KernelConstInfo.headDim;
     if constexpr (QLIV2T::isMxFp4) {
@@ -734,8 +728,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessMain()
         if (qliV2LoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(qliV2LoopInfo.bIdx, qliV2LoopInfo.n2Idx, qliV2LoopInfo.actS1Size);
         }
-        // 当前 batch 完成后复位 S1 循环起点。
-        qliV2SplitInfo.gS1Start = 0; // QLI V2: sequence bounds.
+        qliV2SplitInfo.gS1Start = 0;
     }
 
     if ASCEND_IS_AIV {
@@ -780,8 +773,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessDecode()
         ICachePreLoad(LD_PREFETCH_LEN);
         SyncAll();
         if (qliV2LoadInfo.isLdCoreEnable) {
-            // 各核 score 就绪后执行 LD 归并。
-            qliV2VectorService.ProcessLD(); // QLI V2: tile state.
+            qliV2VectorService.ProcessLD();
         }
     }
 }

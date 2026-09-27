@@ -622,13 +622,13 @@ __simd_vf__ void MulWeightAndReduceSum2F32VF(__ubuf__ uint16_t *qliTwoF32Out0, _
     constexpr static Reg::CastTrait qliTwoF32CastTraitF32ToF16_ODD = {
         Reg::RegLayout::ONE, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
+    // regW[0]与weight1混合使用
     Reg::LoadAlign<float>(qliTwoF32RegW[0], qliTwoF32Weight0);
     Reg::LoadAlign<float>(qliTwoF32RegW[1], qliTwoF32Weight1);
     Reg::LoadAlign<float>(qliTwoF32RegQScale[0], qliTwoF32QScale0);
     Reg::LoadAlign<float>(qliTwoF32RegQScale[1], qliTwoF32QScale1);
     Reg::Mul(qliTwoF32RegW[0], qliTwoF32RegW[0], qliTwoF32RegQScale[0], qliTwoF32MaskAllB32);
     Reg::Mul(qliTwoF32RegW[1], qliTwoF32RegW[1], qliTwoF32RegQScale[1], qliTwoF32MaskAllB32);
-    // Spill the second scaled weight while the first register remains active.
     Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(weightTemp, qliTwoF32RegW[1], qliTwoF32MaskAllB32);
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     liV2Vector1::DuplicateZero(qliTwoF32RegSum0, qliTwoF32MaskAllB32);
@@ -738,11 +738,11 @@ __simd_vf__ void MulWeightAndReduceSum2Int32VF(__ubuf__ uint16_t *qliTwoI32Out0,
     Reg::Mul(qliTwoI32RegW[0], qliTwoI32RegW[0], qliTwoI32RegQScale[0], qliTwoI32MaskAllB32);
     Reg::Mul(qliTwoI32RegW[1], qliTwoI32RegW[1], qliTwoI32RegQScale[1], qliTwoI32MaskAllB32);
 
+    // regW[0]与weight1混合使用
     Reg::Cast<half, float, qliTwoI32CastTraitF32ToF16>(qliTwoI32RegWFP16Temp[0], qliTwoI32RegW[0], qliTwoI32MaskAllB32);
     Reg::Cast<float, half, qliTwoI32CastTraitF16ToF32>(qliTwoI32RegW[0], qliTwoI32RegWFP16Temp[0], qliTwoI32MaskAllB16);
     Reg::Cast<half, float, qliTwoI32CastTraitF32ToF16>(qliTwoI32RegWFP16Temp[1], qliTwoI32RegW[1], qliTwoI32MaskAllB32);
     Reg::Cast<float, half, qliTwoI32CastTraitF16ToF32>(qliTwoI32RegW[1], qliTwoI32RegWFP16Temp[1], qliTwoI32MaskAllB16);
-    // Spill the second rounded weight before the QK accumulation loop.
     Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(weightTemp, qliTwoI32RegW[1], qliTwoI32MaskAllB32);
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     liV2Vector1::DuplicateZero(qliTwoI32RegSum0, qliTwoI32MaskAllB32);
@@ -1260,7 +1260,7 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScale2VF(__ubuf__ uint16_t *qliOpt
         Reg::Muls(qliOptTwoRegW[0], qliOptTwoRegW[0], qliOptTwoQScaleValue, qliOptTwoMaskAllB32);
         Reg::Muls(qliOptTwoRegW[1], qliOptTwoRegW[1], qliOptTwoQScaleValue, qliOptTwoMaskAllB32);
     }
-    // Keep the second batch weight in local memory during accumulation.
+    // regW[0]与weight1混合使用
     Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(qliOptTwoWeightTemp, qliOptTwoRegW[1], qliOptTwoMaskAllB32);
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     liV2Vector1::DuplicateZero(qliOptTwoRegSum0, qliOptTwoMaskAllB32);

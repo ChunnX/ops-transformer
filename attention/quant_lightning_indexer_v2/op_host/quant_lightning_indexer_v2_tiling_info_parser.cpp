@@ -79,7 +79,7 @@ void PopulateCheckerTensors(const gert::TilingContext *context,
 ge::graphStatus ParseCheckerAttrs(const gert::TilingContext *context,
                                   lightning_indexer_v2_checker::LightningIndexerV2CheckerInfo &info)
 {
-    const auto *attrs = context->GetAttrs(); // QLI V2: top-k candidates.
+    const auto *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "attrs", "Operator attributes must be provided");
         return ge::GRAPH_FAILED;
@@ -149,7 +149,7 @@ void PopulateTilingInfo(const lightning_indexer_v2_checker::LightningIndexerV2Ch
     tilingInfo.bSize = static_cast<uint32_t>(info.batch);
     tilingInfo.n1Size = static_cast<uint32_t>(info.qHeads);
     tilingInfo.n2Size = static_cast<uint32_t>(info.kHeads);
-    tilingInfo.s1Size = // QLI V2: paged-KV addresses.
+    tilingInfo.s1Size =
         info.layoutQ == lightning_indexer_v2_checker::CheckerLayout::BSND ? static_cast<uint32_t>(info.qSeq) : 0U;
     tilingInfo.s2Size = info.kSeq;
     tilingInfo.qkHeadDim = static_cast<uint32_t>(info.headDim);

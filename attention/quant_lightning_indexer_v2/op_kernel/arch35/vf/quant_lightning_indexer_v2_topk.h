@@ -27,7 +27,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
-    {} // QLI V2: top-k candidates.
+    {}
 };
 
 template <>
@@ -109,7 +109,7 @@ public:
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal; // QLI V2: tile candidates.
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;

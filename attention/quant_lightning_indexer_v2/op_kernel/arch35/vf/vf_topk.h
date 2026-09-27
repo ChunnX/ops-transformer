@@ -44,7 +44,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, 
     Reg::RegTensor<uint32_t> qliV2PackedReg0;
     // 32bit 低16bit
     Reg::RegTensor<uint32_t> qliV2PackedReg1;
-    Reg::RegTensor<uint32_t> qliV2PackedReg2; // QLI V2: tile candidates (qliV2PackedReg2).
+    Reg::RegTensor<uint32_t> qliV2PackedReg2;
     Reg::RegTensor<uint32_t> qliV2PackedReg3;
 
     for (uint16_t qliV2LoopIndex = 0; qliV2LoopIndex < qliV2LoopCount; ++qliV2LoopIndex) {
@@ -54,7 +54,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, 
                                                                  qliV2HistogramInput + (qliV2LoopIndex * 256) + 128);
 
         Reg::DeInterleave(qliV2ByteReg1, qliV2ByteReg0, (Reg::RegTensor<uint8_t> &)qliV2PackedReg0,
-                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2); // QLI V2: tile candidates (qliV2PackedReg2).
+                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2);
 
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
             qliV2Histogram0, qliV2ByteReg0, qliV2MaskB8);
@@ -104,7 +104,7 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput,
     Reg::RegTensor<uint8_t> qliV2ByteReg0;
     Reg::RegTensor<uint8_t> qliV2ByteReg1;
     Reg::RegTensor<uint8_t> qliV2ByteReg2;
-    Reg::RegTensor<uint8_t> qliV2ByteReg3; // QLI V2: tile candidates (qliV2ByteReg3).
+    Reg::RegTensor<uint8_t> qliV2ByteReg3;
 
     for (uint16_t qliV2LoopIndex = 0; qliV2LoopIndex < qliV2LoopCount; ++qliV2LoopIndex) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2PackedReg1, qliV2PackedReg0,
@@ -170,7 +170,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, 
     Reg::RegTensor<uint32_t> qliV2PackedReg0;
     Reg::RegTensor<uint32_t> qliV2PackedReg1;
     Reg::RegTensor<uint32_t> qliV2PackedReg2;
-    Reg::RegTensor<uint32_t> qliV2PackedReg3; // QLI V2: tile candidates (qliV2PackedReg3).
+    Reg::RegTensor<uint32_t> qliV2PackedReg3;
 
     for (uint16_t qliV2LoopIndex = 0; qliV2LoopIndex < qliV2LoopCount; ++qliV2LoopIndex) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2PackedReg1, qliV2PackedReg0,
@@ -179,7 +179,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, 
                                                                  qliV2HistogramInput + (qliV2LoopIndex * 256) + 128);
 
         Reg::DeInterleave(qliV2ByteReg1, qliV2ByteReg0, (Reg::RegTensor<uint8_t> &)qliV2PackedReg0,
-                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2); // QLI V2: mask candidates (qliV2PackedReg0).
+                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2);
         Reg::DeInterleave(qliV2ByteReg3, qliV2ByteReg2, (Reg::RegTensor<uint8_t> &)qliV2PackedReg1,
                           (Reg::RegTensor<uint8_t> &)qliV2PackedReg3);
 
@@ -244,7 +244,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, _
     Reg::RegTensor<uint8_t> qliV2ByteReg0;
     Reg::RegTensor<uint8_t> qliV2ByteReg1;
     Reg::RegTensor<uint8_t> qliV2ByteReg2;
-    Reg::RegTensor<uint8_t> qliV2ByteReg3; // QLI V2: tile candidates (qliV2ByteReg3).
+    Reg::RegTensor<uint8_t> qliV2ByteReg3;
 
     for (uint16_t qliV2LoopIndex = 0; qliV2LoopIndex < qliV2LoopCount; ++qliV2LoopIndex) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(qliV2PackedReg1, qliV2PackedReg0,
@@ -253,7 +253,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *qliV2HistogramOutput, _
                                                                  qliV2HistogramInput + (qliV2LoopIndex * 256) + 128);
 
         Reg::DeInterleave(qliV2ByteReg1, qliV2ByteReg0, (Reg::RegTensor<uint8_t> &)qliV2PackedReg0,
-                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2); // QLI V2: mask candidates (qliV2PackedReg0).
+                          (Reg::RegTensor<uint8_t> &)qliV2PackedReg2);
         Reg::DeInterleave(qliV2ByteReg3, qliV2ByteReg2, (Reg::RegTensor<uint8_t> &)qliV2PackedReg1,
                           (Reg::RegTensor<uint8_t> &)qliV2PackedReg3);
 

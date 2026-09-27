@@ -32,7 +32,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo { // LI V2: tiling params.
+struct TilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
@@ -151,7 +151,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0; // LI V2: paged-KV addresses.
+    uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // PageAttention
     bool pageAttentionFlag = false;

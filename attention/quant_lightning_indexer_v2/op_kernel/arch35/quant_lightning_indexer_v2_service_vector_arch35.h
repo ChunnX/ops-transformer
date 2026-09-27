@@ -97,7 +97,7 @@ protected:
     static constexpr uint32_t VEC1_MTE2_V_EVENT_QSCALE = EVENT_ID3;
     static constexpr uint32_t TOPK_V_MTE2_EVENT = EVENT_ID4;
     static constexpr uint32_t TOPK_MTE2_V_EVENT = EVENT_ID5;
-    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6; // QLI V2: top-k candidates.
+    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
     static constexpr uint32_t TOPK_MTE3_V_EVENT = EVENT_ID7;
 
     static constexpr uint32_t KSCALE_S_MTE2_EVENT = EVENT_ID7;
