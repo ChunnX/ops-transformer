@@ -215,34 +215,14 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
         }
     }
 
-    AscendC::printf("[ApaceDBG] P-enter isLocal=%d core=%u start=%u num=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx(),
-                    startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] P0-pre-build isLocal=%d glGm=%llu ws=%llu bs=%llu\n", isLocal ? 1 : 0,
-                    (unsigned long long)(uintptr_t)groupListGm_, (unsigned long long)(uintptr_t)workspaceGM_,
-                    (unsigned long long)bs_);
     BuildGroupListAndOffsetTables(startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] P1-post-build isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
-    UpdateAddr(startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] P2-post-addr isLocal=%d core=%u x=%llu w=%llu y=%llu sA=%llu sB=%llu\n",
-                    isLocal ? 1 : 0, AscendC::GetBlockIdx(), (unsigned long long)(uintptr_t)xGM_,
-                    (unsigned long long)(uintptr_t)wGM_, (unsigned long long)(uintptr_t)yGM_,
-                    (unsigned long long)(uintptr_t)xScaleGM_, (unsigned long long)(uintptr_t)weightScaleGM_);
     // [临时诊断] tiling 源快照在 InitApaceKernel 之前打印（挂死区间缩小后补齐证据链）
-    AscendC::printf("[ApaceDBG] P2b-tiling isLocal=%d sM=%d sN=%d sKa=%d sKb=%d dbL=%d depthA=%d depthB=%d "
-                    "usedCore=%d glT=%u core=%u\n",
-                    isLocal ? 1 : 0, gmmTilingData_->mmTilingData.baseM, gmmTilingData_->mmTilingData.baseN,
-                    gmmTilingData_->mmTilingData.stepKa, gmmTilingData_->mmTilingData.stepKb,
-                    gmmTilingData_->mmTilingData.dbL0C, gmmTilingData_->mmTilingData.depthA1,
-                    gmmTilingData_->mmTilingData.depthB1, gmmTilingData_->mmTilingData.usedCoreNum,
-                    gmmTilingData_->gmmQuantParams.groupListType, AscendC::GetBlockIdx());
     InitApaceKernel(startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] P3-post-init isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
+    AscendC::printf("[ApaceDBG] R-pre isLocal=%d\n", isLocal ? 1 : 0);
     mxKernel_.Run();
-    AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
-    AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
+    AscendC::printf("[ApaceDBG] R-post isLocal=%d\n", isLocal ? 1 : 0);
     // Run 返回后 L0C→GM 的 fixpipe 为异步收尾，排空本核管线确保 C 落 GM（对齐参考实现）
     AscendC::PipeBarrier<PIPE_ALL>();
-    AscendC::printf("[ApaceDBG] post-Bar isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
 }
 
 template <typename TilingDataType, typename GmmTilingDataType, class xType, class wType, class scaleType, class yType,
