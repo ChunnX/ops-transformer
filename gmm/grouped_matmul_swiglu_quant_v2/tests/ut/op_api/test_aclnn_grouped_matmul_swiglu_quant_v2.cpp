@@ -50,6 +50,27 @@ using ops::ut::Trim;
 using ops::ut::BuildAclTensorListDesc;
 using ops::ut::MakeAclTensorDesc;
 
+constexpr int64_t MX_QUANT_MODE = 2;
+constexpr int64_t SPLIT_SWIGLU_MODE = 2;
+constexpr int64_t GROUP_PAIR_STRIDE = 2;
+constexpr int64_t GROUP_UNIT_STRIDE = 1;
+constexpr int64_t PREFIX_STORAGE_OFFSET = 1;
+constexpr int64_t GROUP_LIST_COUNTS = 1;
+constexpr int64_t GROUP_HALF_M = 16;
+constexpr int64_t GROUP_TOTAL_M = 32;
+constexpr int64_t GROUP_PADDING_SENTINEL = 99;
+constexpr int64_t NEGATIVE_GROUP_VALUE = -1;
+constexpr int64_t DECREASING_GROUP_OFFSET = 8;
+constexpr int64_t FIRST_GROUP_LENGTH = 12;
+constexpr int64_t SECOND_GROUP_LENGTH = 20;
+constexpr int64_t EXCESS_GROUP_LENGTH = 1;
+constexpr int64_t TWO_GROUP_COUNT = 2;
+constexpr size_t SINGLE_TENSOR_COUNT = 1;
+constexpr int64_t OPTIONAL_TENSOR_ELEMENTS = 1;
+constexpr uint64_t NONEMPTY_WORKSPACE_BYTES = 1;
+constexpr double DEFAULT_CLAMP_LIMIT = 7.0;
+constexpr double DEFAULT_GLU_ALPHA = 1.702;
+constexpr double DEFAULT_GLU_BIAS = 1.0;
 constexpr size_t kSwigluCsvColumnCount = 45;
 constexpr size_t kSwigluV3CsvColumnCount = 31;
 
@@ -935,8 +956,9 @@ aclnnStatus RunPhase1NullPointerCase(Phase1NullPointerTarget target)
     uint64_t *workspaceSizeArg = target == Phase1NullPointerTarget::kWorkspaceSize ? nullptr : &workspaceSize;
     aclOpExecutor **executorArg = target == Phase1NullPointerTarget::kExecutor ? nullptr : &executor;
     const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList.get(), 2, 0, 2, 0,
-        nullptr, 2, 7.0, 1.702, 1.0, "rint", 0, 0.0, output.get(), outputScale.get(), workspaceSizeArg, executorArg);
+        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList.get(),
+        MX_QUANT_MODE, 0, MX_QUANT_MODE, 0, nullptr, SPLIT_SWIGLU_MODE, DEFAULT_CLAMP_LIMIT, DEFAULT_GLU_ALPHA,
+        DEFAULT_GLU_BIAS, "rint", 0, 0.0, output.get(), outputScale.get(), workspaceSizeArg, executorArg);
     if (executor != nullptr) {
         (void)aclDestroyAclOpExecutor(executor);
     }
@@ -957,7 +979,7 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     if (groupList == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    groupList->SetViewShape(op::Shape({2}));
+    groupList->SetViewShape(op::Shape({TWO_GROUP_COUNT}));
     groupList->SetViewStrides(op::Strides({stride}));
     groupList->SetViewOffset(offset);
 
@@ -970,15 +992,15 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     auto outputScale = BuildAclTensorDescFromSpec("32:1:2", "FLOAT8_E8M0", "ND").ToAclType();
 
     const aclTensor *weightElements[] = {weightTensor.get()};
-    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(aclCreateTensorList(weightElements, 1),
-                                                                      aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
+        aclCreateTensorList(weightElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
     if (weight == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
     (void)weightTensor.release();
     const aclTensor *weightScaleElements[] = {weightScaleTensor.get()};
-    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(aclCreateTensorList(weightScaleElements, 1),
-                                                                           aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
+        aclCreateTensorList(weightScaleElements, SINGLE_TENSOR_COUNT), aclDestroyTensorList);
     if (weightScale == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
@@ -987,9 +1009,9 @@ aclnnStatus RunHostGroupListCase(const vector<int64_t> &storageValues, int64_t s
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     const aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList, 2, 0, 2,
-        groupListType, nullptr, 2, 7.0, 1.702, 1.0, "rint", 0, 0.0, output.get(), outputScale.get(), &workspaceSize,
-        &executor);
+        x.get(), weight.get(), weightScale.get(), nullptr, nullptr, xScale.get(), nullptr, groupList, MX_QUANT_MODE, 0,
+        MX_QUANT_MODE, groupListType, nullptr, SPLIT_SWIGLU_MODE, DEFAULT_CLAMP_LIMIT, DEFAULT_GLU_ALPHA,
+        DEFAULT_GLU_BIAS, "rint", 0, 0.0, output.get(), outputScale.get(), &workspaceSize, &executor);
     if (executor != nullptr) {
         (void)aclDestroyAclOpExecutor(executor);
     }
@@ -1068,12 +1090,14 @@ struct V3Case : CsvExpectation {
         if (tensors.x && tensors.weight && tensors.weightScale && tensors.xScale && tensors.groupList &&
             tensors.output && tensors.outputScale) {
             if (optionalInput == "assist") {
-                tensors.weightAssist =
-                    TensorListDesc(vector<TensorDesc>{MakeAclTensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND)}).ToAclType();
+                tensors.weightAssist = TensorListDesc(vector<TensorDesc>{MakeAclTensorDesc({OPTIONAL_TENSOR_ELEMENTS},
+                                                                                           ACL_FLOAT, ACL_FORMAT_ND)})
+                                           .ToAclType();
             } else if (optionalInput == "bias") {
-                tensors.bias = MakeAclTensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+                tensors.bias = MakeAclTensorDesc({OPTIONAL_TENSOR_ELEMENTS}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
             } else if (optionalInput == "smooth") {
-                tensors.smoothScale = MakeAclTensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+                tensors.smoothScale =
+                    MakeAclTensorDesc({OPTIONAL_TENSOR_ELEMENTS}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
             }
         }
         tensors.SetTuningConfig(tuningConfig);
@@ -1141,27 +1165,39 @@ TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase1_output_pointers_retu
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_ignore_padding)
 {
-    EXPECT_EQ(RunHostGroupListCase({16, 99, 32}, 2, 0, 0), ACLNN_SUCCESS);
-    EXPECT_EQ(RunHostGroupListCase({99, 16, 99, 32}, 2, 1, 0), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_HALF_M, GROUP_PADDING_SENTINEL, GROUP_TOTAL_M}, GROUP_PAIR_STRIDE, 0, 0),
+              ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_PADDING_SENTINEL, GROUP_HALF_M, GROUP_PADDING_SENTINEL, GROUP_TOTAL_M},
+                                   GROUP_PAIR_STRIDE, PREFIX_STORAGE_OFFSET, 0),
+              ACLNN_SUCCESS);
 }
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_check_logical_values)
 {
-    EXPECT_EQ(RunHostGroupListCase({16, 20, -1}, 2, 0, 0), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunHostGroupListCase({16, 20, 8}, 2, 0, 0), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_HALF_M, SECOND_GROUP_LENGTH, NEGATIVE_GROUP_VALUE}, GROUP_PAIR_STRIDE, 0, 0),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(
+        RunHostGroupListCase({GROUP_HALF_M, SECOND_GROUP_LENGTH, DECREASING_GROUP_OFFSET}, GROUP_PAIR_STRIDE, 0, 0),
+        ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_strided_views_check_logical_sum)
 {
-    EXPECT_EQ(RunHostGroupListCase({12, 99, 20}, 2, 0, 1), ACLNN_SUCCESS);
-    EXPECT_EQ(RunHostGroupListCase({16, 1, 20}, 2, 0, 1), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunHostGroupListCase({FIRST_GROUP_LENGTH, GROUP_PADDING_SENTINEL, SECOND_GROUP_LENGTH}, GROUP_PAIR_STRIDE,
+                                   0, GROUP_LIST_COUNTS),
+              ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_HALF_M, EXCESS_GROUP_LENGTH, SECOND_GROUP_LENGTH}, GROUP_PAIR_STRIDE, 0,
+                                   GROUP_LIST_COUNTS),
+              ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, host_group_list_contiguous_values_are_unchanged)
 {
-    EXPECT_EQ(RunHostGroupListCase({16, 32}, 1, 0, 0), ACLNN_SUCCESS);
-    EXPECT_EQ(RunHostGroupListCase({12, 20}, 1, 0, 1), ACLNN_SUCCESS);
-    EXPECT_EQ(RunHostGroupListCase({16, -1}, 1, 0, 0), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_HALF_M, GROUP_TOTAL_M}, GROUP_UNIT_STRIDE, 0, 0), ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({FIRST_GROUP_LENGTH, SECOND_GROUP_LENGTH}, GROUP_UNIT_STRIDE, 0, GROUP_LIST_COUNTS),
+              ACLNN_SUCCESS);
+    EXPECT_EQ(RunHostGroupListCase({GROUP_HALF_M, NEGATIVE_GROUP_VALUE}, GROUP_UNIT_STRIDE, 0, 0),
+              ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, tensor_list_elements_return_param_nullptr)
@@ -1182,7 +1218,8 @@ TEST(grouped_matmul_swiglu_quant_weight_nz_v3_opapi, phase2_required_workspace_r
     unique_ptr<aclOpExecutor, decltype(&aclDestroyAclOpExecutor)> executor(CreateTestExecutor(),
                                                                            aclDestroyAclOpExecutor);
     ASSERT_NE(executor.get(), nullptr);
-    EXPECT_EQ(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, 1, executor.get(), nullptr), ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, NONEMPTY_WORKSPACE_BYTES, executor.get(), nullptr),
+              ACLNN_ERR_PARAM_NULLPTR);
 }
 
 INSTANTIATE_TEST_SUITE_P(grouped_matmul_swiglu_quant_weight_nz_v3_opapi_csv,

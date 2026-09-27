@@ -20,6 +20,7 @@
 namespace optiling {
 namespace GroupedMatmulSwigluQuantTensorApiTiling {
 
+constexpr uint64_t K_LOWER_LIMIT = 64U;
 constexpr uint64_t FP8_N_ALIGN = 128U;
 constexpr uint64_t K_ALIGN = 128U;
 constexpr uint64_t TRANS_B_M_PER_GROUP_LOWER_LIMIT = 128U;
@@ -51,7 +52,7 @@ inline bool IsShapeAndPlatformCapable(const CapabilityParams &params)
     const uint64_t mPerGroupLimit =
         params.transB ? TRANS_B_M_PER_GROUP_LOWER_LIMIT : NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT;
     return averageM > mPerGroupLimit && (params.transB || params.m > NOT_TRANS_B_M_LOWER_LIMIT) &&
-           params.n % FP8_N_ALIGN == 0U && params.k > 64U && params.k % K_ALIGN == 0U;
+           params.n % FP8_N_ALIGN == 0U && params.k > K_LOWER_LIMIT && params.k % K_ALIGN == 0U;
 }
 
 inline void PrepareBasicBlockForL1(GQmmBasicTiling &tiling)

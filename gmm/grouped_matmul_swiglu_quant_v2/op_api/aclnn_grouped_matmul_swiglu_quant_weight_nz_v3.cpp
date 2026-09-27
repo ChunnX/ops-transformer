@@ -36,6 +36,18 @@
 using namespace op;
 
 namespace {
+constexpr int64_t DIMENSION_STEP = 1;
+constexpr int64_t CONTIGUOUS_ELEMENT_STRIDE = 1;
+constexpr size_t X_K_DIM = 1;
+constexpr size_t BATCHED_MATRIX_ROW_DIM = 1;
+constexpr size_t BATCHED_MATRIX_COLUMN_DIM = 2;
+constexpr size_t SCALE_PAIR_DIM = 3;
+constexpr size_t EMPTY_TENSOR_RANK = 1;
+constexpr int64_t MIN_GROUP_NUM = 1;
+constexpr int64_t SPLIT_SWIGLU_MODE = 2;
+constexpr int64_t GROUP_LIST_COUNTS = 1;
+constexpr size_t OUTPUT_SCALE_RESULT_INDEX = 1;
+
 constexpr char API_NAME[] = "aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize";
 constexpr char EXECUTE_API_NAME[] = "aclnnGroupedMatmulSwigluQuantWeightNzV3";
 
@@ -65,17 +77,17 @@ bool IsTransposedWeight(const aclTensor *tensor)
     }
     const auto &viewShape = tensor->GetViewShape();
     const auto strides = tensor->GetViewStrides();
-    const int64_t lastDim = static_cast<int64_t>(viewShape.GetDimNum()) - 1;
-    const int64_t penultimateDim = lastDim - 1;
+    const int64_t lastDim = static_cast<int64_t>(viewShape.GetDimNum()) - DIMENSION_STEP;
+    const int64_t penultimateDim = lastDim - DIMENSION_STEP;
 
     // Match GMMAQ and GMM WeightNZ: the transposed view is identified by
     // stride (K * N, 1, K), rather than by dimensions whose values can be
     // equal or whose order is normalized by the Torch/NPU descriptor.
-    if (strides[penultimateDim] != 1 || strides[lastDim] != viewShape.GetDim(penultimateDim)) {
+    if (strides[penultimateDim] != CONTIGUOUS_ELEMENT_STRIDE || strides[lastDim] != viewShape.GetDim(penultimateDim)) {
         return false;
     }
     int64_t expectedStride = viewShape.GetDim(lastDim) * viewShape.GetDim(penultimateDim);
-    for (int64_t batchDim = penultimateDim - 1; batchDim >= 0; --batchDim) {
+    for (int64_t batchDim = penultimateDim - DIMENSION_STEP; batchDim >= 0; --batchDim) {
         if (strides[batchDim] != expectedStride) {
             return false;
         }
@@ -91,8 +103,10 @@ bool IsTransposedWeightScale(const aclTensor *tensor)
     }
     const auto &shape = tensor->GetViewShape();
     const auto strides = tensor->GetViewStrides();
-    return strides[3] == 1 && strides[1] == gmm_swiglu_quant_v3::MX_SCALE_PAIR &&
-           strides[2] == shape.GetDim(1) * gmm_swiglu_quant_v3::MX_SCALE_PAIR;
+    return strides[SCALE_PAIR_DIM] == CONTIGUOUS_ELEMENT_STRIDE &&
+           strides[BATCHED_MATRIX_ROW_DIM] == gmm_swiglu_quant_v3::MX_SCALE_PAIR &&
+           strides[BATCHED_MATRIX_COLUMN_DIM] ==
+               shape.GetDim(BATCHED_MATRIX_ROW_DIM) * gmm_swiglu_quant_v3::MX_SCALE_PAIR;
 }
 
 aclnnStatus CheckTransposeConsistency(const aclTensorList *weight, const aclTensorList *weightScale,
@@ -119,12 +133,12 @@ aclnnStatus NormalizeTransposedTensorList(const aclTensorList *input, const aclT
         normalizedShape.SetScalar();
         normalizedShape.AppendDim(viewShape.GetDim(0));
         if (isWeightScale) {
-            normalizedShape.AppendDim(viewShape.GetDim(2));
-            normalizedShape.AppendDim(viewShape.GetDim(1));
-            normalizedShape.AppendDim(viewShape.GetDim(3));
+            normalizedShape.AppendDim(viewShape.GetDim(BATCHED_MATRIX_COLUMN_DIM));
+            normalizedShape.AppendDim(viewShape.GetDim(BATCHED_MATRIX_ROW_DIM));
+            normalizedShape.AppendDim(viewShape.GetDim(SCALE_PAIR_DIM));
         } else {
-            normalizedShape.AppendDim(viewShape.GetDim(2));
-            normalizedShape.AppendDim(viewShape.GetDim(1));
+            normalizedShape.AppendDim(viewShape.GetDim(BATCHED_MATRIX_COLUMN_DIM));
+            normalizedShape.AppendDim(viewShape.GetDim(BATCHED_MATRIX_ROW_DIM));
         }
         aclTensor *normalized = executor->CreateView(tensor, normalizedShape, tensor->GetViewOffset());
         CHECK_RET(normalized != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -168,7 +182,7 @@ bool IsEmptyTensorList(const aclTensorList *tensorList)
         return true;
     }
     const auto &shape = tensor->GetViewShape();
-    return shape.GetDimNum() == 1 && shape.GetDim(0) == 0;
+    return shape.GetDimNum() == EMPTY_TENSOR_RANK && shape.GetDim(0) == 0;
 }
 
 aclnnStatus CheckRequiredPointer(const void *pointer, const char *parameterName)
@@ -253,7 +267,7 @@ aclnnStatus CheckSwigluAttrs(int64_t swigluMode, double clampLimit, double gluAl
                              const char *roundMode, int64_t scaleAlg, double dstTypeMax)
 {
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        swigluMode == 2, ACLNN_ERR_PARAM_INVALID,
+        swigluMode == SPLIT_SWIGLU_MODE, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "swigluMode", std::to_string(swigluMode),
                                               "currently only 2 is supported"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
@@ -299,7 +313,7 @@ aclnnStatus CheckGmmAttrs(int64_t dequantMode, int64_t dequantDtype, int64_t qua
                                                ("{" + std::to_string(dequantMode) + ", " +
                                                 std::to_string(dequantDtype) + ", " + std::to_string(quantMode) + "}"),
                                                "MXFP8 requires dequantMode=2, dequantDtype=DT_FLOAT and quantMode=2"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(groupListType == 0 || groupListType == GROUP_LIST_COUNTS, ACLNN_ERR_PARAM_INVALID,
                                  OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                                      API_NAME, "groupListType", std::to_string(groupListType), "must be 0 or 1"));
     return ACLNN_SUCCESS;
@@ -421,14 +435,15 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
     const aclTensor *weightTensor = (*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     const aclTensor *weightScaleTensor = (*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     const int64_t m = x->GetViewShape().GetDim(0);
-    const int64_t k = x->GetViewShape().GetDim(1);
+    const int64_t k = x->GetViewShape().GetDim(X_K_DIM);
     const int64_t e = groupList->GetViewShape().GetDim(0);
     const int64_t weightE = weightTensor->GetViewShape().GetDim(0);
-    const int64_t n = transposeWeight ? weightTensor->GetViewShape().GetDim(1) : weightTensor->GetViewShape().GetDim(2);
-    const int64_t weightK =
-        transposeWeight ? weightTensor->GetViewShape().GetDim(2) : weightTensor->GetViewShape().GetDim(1);
+    const int64_t n = transposeWeight ? weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_ROW_DIM) :
+                                        weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_COLUMN_DIM);
+    const int64_t weightK = transposeWeight ? weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_COLUMN_DIM) :
+                                              weightTensor->GetViewShape().GetDim(BATCHED_MATRIX_ROW_DIM);
 
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(e >= 1 && e <= gmm_swiglu_quant_v3::MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(e >= MIN_GROUP_NUM && e <= gmm_swiglu_quant_v3::MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
                                  OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "groupList dim 0", std::to_string(e),
                                                                        "must be in range [1, 1024]"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(m > 0 && k > 0, ACLNN_ERR_PARAM_INVALID,
@@ -709,7 +724,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *outputResult = l0op::ViewCopy(std::get<0>(result), output, uniqueExecutor.get());
-    const aclTensor *outputScaleResult = l0op::ViewCopy(std::get<1>(result), outputScale, uniqueExecutor.get());
+    const aclTensor *outputScaleResult =
+        l0op::ViewCopy(std::get<OUTPUT_SCALE_RESULT_INDEX>(result), outputScale, uniqueExecutor.get());
     CHECK_RET(outputResult != nullptr && outputScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
