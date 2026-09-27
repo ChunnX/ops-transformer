@@ -432,6 +432,9 @@ ge::graphStatus MegaMhcTiling::BuildWorkspacePlan()
     }
     if (hasMid_) {
         invRms0Bytes = 0; // RMS0 stays local to the five-op producer.
+    } else if (tilingData_.get_wavePipeline() != 0U) {
+        // Wave epochs reuse RMS0 storage: every AIV writes one 128-byte slot, even for small T.
+        invRms0Bytes = std::max<uint64_t>(invRms0Bytes, static_cast<uint64_t>(cubePlan_.activeAiv) * 128U);
     }
     uint64_t partialMmBytes = 0;
     uint64_t partialRmsBytes = 0;

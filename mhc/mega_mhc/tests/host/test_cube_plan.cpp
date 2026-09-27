@@ -27,8 +27,8 @@ extern "C"
     run_plan_tests()
 {
     const bool midModes[] = {false, true};
-    const uint64_t rows[] = {1,   2,   15,   16,   17,   31,   32,   33,   63,
-                             257, 768, 1537, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};
+    const uint64_t rows[] = {1,   2,   15,   16,   17,   31,   32,   33,   63,   64,   160,  192,          257,
+                             512, 768, 1024, 1536, 1537, 2048, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};
     const uint64_t widths[] = {2560, 2816, 3072, 3328, 3584, 3840, 4096, 4352, 4608, 4864,
                                5120, 5376, 5632, 5888, 6144, 6400, 6656, 6912, 7168};
     const uint64_t coreCounts[] = {1, 7, 24, 32, 48};
@@ -51,9 +51,18 @@ extern "C"
                     request.l0BBytes = 64 * 1024;
                     request.l0CBytes = 128 * 1024;
                     request.mode = static_cast<ProjectionMode>(mode);
-                    request.wavePipeline = !hasMid && m == 3072 && cores == 32;
+                    request.wavePipeline =
+                        !hasMid &&
+                        ((m == 3072 && cores >= 4 && cores % 2 == 0) ||
+                         (cores == 32 && (m == 512 || m == 768 || m == 1024 || m == 1536 || m == 2048 || m == 4096)));
                     CubePlan p;
                     REQUIRE(BuildCubePlan(request, p));
+                    // K-tail compaction can invalidate complete-row ownership; the host then uses its non-wave plan.
+                    if (request.wavePipeline && (p.mTile % (2U * p.kGrid) != 0U || p.lastWaveRows != p.rowsPerWave ||
+                                                 p.mWaveCount <= 1U || p.lastKCoreL1FullLoops < 2U)) {
+                        request.wavePipeline = false;
+                        REQUIRE(BuildCubePlan(request, p));
+                    }
                     REQUIRE(p.activeAic <= cores && p.activeAic == p.mGrid * p.kGrid);
                     REQUIRE(p.activeAiv == 2 * p.activeAic);
                     if (request.wavePipeline) {
@@ -79,8 +88,13 @@ extern "C"
                     REQUIRE(uint64_t(p.kGrid - 1) * p.splitK + p.lastKCoreElements == request.k);
                     REQUIRE(p.lastKCoreElements > 0 && p.lastKCoreElements <= p.splitK);
                     REQUIRE(p.splitK % p.partialGroupK == 0);
-                    REQUIRE(p.partialGroupK <= 1024);
-                    REQUIRE(p.partialGroupK % p.l1K == 0);
+                    if (p.splitK >= 2048) {
+                        REQUIRE(p.partialGroupK == 1024);
+                        REQUIRE(p.partialGroupK % p.l1K == 0);
+                    } else {
+                        REQUIRE(p.partialGroupK == p.splitK);
+                        REQUIRE(p.partialGroupCount == p.kGrid);
+                    }
                     REQUIRE(uint64_t(p.partialGroupCount) * p.partialGroupK >= request.k);
                     REQUIRE(uint64_t(p.partialGroupCount - 1) * p.partialGroupK < request.k);
                     REQUIRE(p.l1KFullLoops * p.l1K + p.l1KTail == p.splitK);

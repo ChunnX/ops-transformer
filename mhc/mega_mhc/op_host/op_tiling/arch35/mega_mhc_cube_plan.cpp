@@ -10,6 +10,7 @@
 #include "mega_mhc_cube_plan.h"
 
 #include <algorithm>
+#include <numeric>
 
 namespace optiling::mega_mhc {
 namespace {
@@ -25,6 +26,9 @@ constexpr uint64_t kL0KAlign = 32;
 constexpr uint64_t kNzNAlign = 16;
 constexpr uint64_t kFp32Bytes = sizeof(float);
 constexpr uint64_t kSequentialPartialK = 1024;
+constexpr uint64_t kSequentialPartialThreshold = 2048;
+constexpr uint64_t kMaxWaveRowsPerAiv = 16;
+constexpr uint64_t kWaveProjectionElements = 8192;
 
 /** Return ceil(value/divisor), with zero for an invalid divisor. */
 uint64_t CeilDiv(uint64_t value, uint64_t divisor)
@@ -56,13 +60,13 @@ bool FitsL1(uint64_t m, uint64_t q, uint64_t kL1, const CubePlanRequest &request
 } // namespace
 
 /*
- * Formula/plan: waves use two K shards when four ordered partial shards would be uneven but two are exact.
- * The wave tile obeys M=32*kGrid and L1K<=512/kGrid, keeping each AIV transfer at 8192 elements.
+ * Formula/plan: waves minimize busiest-core M*K work over two transfer-budget choices, preferring larger M on ties.
+ * Wave R adapts to T for at least two batches: M=2*R*kGrid and L1K<=8192/(R*kGrid).
  * Non-wave plans use M96 or M192 for M>=3072, according to preferWideTile; otherwise M32.
  * mGrid=min(activeAic,ceil(M/mTile)), then
  * kGrid=min(floor(activeAic/mGrid),ceil(K/256)); splitK is rounded to 256
  * or to an ordered 1024-element partial group. kL1 is the largest 128-aligned
- * divisor of the partial group, up to 1024, that fits both double-buffered L1
+ * block (a divisor of 1024 for sequential partials), up to 1024, that fits both double-buffered L1
  * operands. baseK is the minimum L0A/L0B/L1 capacity rounded down to 32. All loop counts and tails
  * are returned for the kernel; no device-side tile search is needed.
  */
@@ -83,12 +87,27 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
     const uint64_t largeMTile = request.preferWideTile ? kFiveCubeMTile : kLargeCubeMTile;
-    const uint64_t waveKGrid = request.k % (4U * kSequentialPartialK) != 0U &&
-                                       request.k % (2U * kSequentialPartialK) == 0U && active % 2U == 0U ?
-                                   2U :
-                                   4U;
-    const uint64_t selectedMTile =
-        request.wavePipeline ? 32U * waveKGrid : (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
+    // Target at least two waves: 2*C*R rows per wave, R<=16 and a power of two.
+    // Increase K parallelism as R shrinks so the Cube M tile remains 64 or 128 rows.
+    const uint64_t rowBudget = std::min(kMaxWaveRowsPerAiv, std::max<uint64_t>(1U, request.rows / (4U * active)));
+    uint64_t waveRowsPerAiv = 1U;
+    while (waveRowsPerAiv * 2U <= rowBudget) {
+        waveRowsPerAiv *= 2U;
+    }
+    const uint64_t waveKProduct = kWaveProjectionElements / waveRowsPerAiv;
+    // Since M=2*R*g, busiest-core M*K work is proportional to g*ceil(partials/g).
+    // Ties retain the larger M tile; the two candidates follow the same transfer budget.
+    const uint64_t maxWaveKGrid = waveKProduct / kL1KAlign;
+    const uint64_t minWaveKGrid = maxWaveKGrid / 2U;
+    const uint64_t partialCount = CeilDiv(request.k, kSequentialPartialK);
+    const uint64_t preferredWaveKGrid =
+        AlignUp(partialCount, minWaveKGrid) < AlignUp(partialCount, maxWaveKGrid) ? minWaveKGrid : maxWaveKGrid;
+    const uint64_t waveKGrid = std::gcd(preferredWaveKGrid, active);
+    if (request.wavePipeline && waveKGrid < minWaveKGrid) {
+        return false;
+    }
+    const uint64_t selectedMTile = request.wavePipeline ? 2U * waveRowsPerAiv * waveKGrid :
+                                                          (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
     const uint64_t selectedMGrid =
         std::min(request.wavePipeline ? active / waveKGrid : active, CeilDiv(request.rows, selectedMTile));
     const uint64_t kBlocks = CeilDiv(request.k, kKAlign);
@@ -98,35 +117,27 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     }
 
     const uint64_t rawSplitK = AlignUp(CeilDiv(request.k, selectedKGrid), kKAlign);
-    // Bound FP32 Cube accumulation length even when a small-M K shard is 1280/1536/1792 elements.
-    const uint64_t partialGroupK = std::min(rawSplitK, kSequentialPartialK);
-    const uint64_t splitK = AlignUp(CeilDiv(request.k, selectedKGrid), partialGroupK);
+    // Match mhc_pre: decide from the initial 256-aligned singleCoreK, before adjusting K ownership.
+    // Small shards accumulate once per core; large shards publish ordered 1024-element partials.
+    const bool useSequentialPartials = rawSplitK >= kSequentialPartialThreshold;
+    const uint64_t partialGroupK = useSequentialPartials ? kSequentialPartialK : rawSplitK;
+    const uint64_t splitK = useSequentialPartials ?
+                                CeilDiv(CeilDiv(request.k, kSequentialPartialK), selectedKGrid) * kSequentialPartialK :
+                                rawSplitK;
     selectedKGrid = CeilDiv(request.k, splitK);
     const uint64_t selectedActive = selectedMGrid * selectedKGrid;
     const uint64_t rowsPerWave = selectedMGrid * selectedMTile;
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
-    const uint64_t l1KMax = std::min<uint64_t>({request.wavePipeline ? 512U / waveKGrid : 1024U,
+    const uint64_t l1KMax = std::min<uint64_t>({request.wavePipeline ? waveKProduct / waveKGrid : 1024U,
                                                 request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
                                                 request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
-    // A projection partial must fit wholly inside one L1 transfer. Small K
-    // splits can be smaller than the otherwise optimal 1024-element L1 tile.
+    // L1 transfers must not cross an ordered partial boundary. A small unsplit shard may end with an L1 tail.
     uint64_t l1K = AlignDown(std::min(l1KMax, partialGroupK), kL1KAlign);
-    while (l1K != 0 && partialGroupK % l1K != 0) {
+    while (useSequentialPartials && l1K != 0 && partialGroupK % l1K != 0) {
         l1K -= kL1KAlign;
     }
     if (l1K == 0 || !FitsL1(selectedMTile, request.q, l1K, request)) {
         return false;
-    }
-
-    // Keep L1 iterations inside the ordered 1024-element partial groups.
-    // Smaller splitK values have one partial per K core and need no extra rule.
-    if (splitK >= 2048) {
-        while (l1K > kL1KAlign && kSequentialPartialK % l1K != 0) {
-            l1K -= kL1KAlign;
-        }
-        if (l1K == 0 || !FitsL1(selectedMTile, request.q, l1K, request)) {
-            return false;
-        }
     }
 
     const uint64_t baseM =
