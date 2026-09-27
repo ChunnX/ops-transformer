@@ -285,7 +285,7 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
             const uint32_t mRows = GetWaveRows(tiling, mIndex, wave);
             const uint64_t mStart =
                 static_cast<uint64_t>(wave) * tiling.rowsPerWave + static_cast<uint64_t>(mIndex) * tiling.mTile;
-            const uint64_t kStart = static_cast<uint64_t>(kIndex) * tiling.splitK;
+            const uint64_t kStart = Kernel::PlannedKStart(tiling, kIndex);
             for (uint32_t tile = 0; tile < l1TileCount; ++tile) {
                 uint32_t kCount = 0;
                 uint32_t l0FullLoops = 0;
@@ -354,7 +354,7 @@ __aicore__ inline void RunProjectionSchedule(Kernel::Tensors<T> &tensors, const 
         const uint32_t kIndex = aicIndex % tiling.kGrid;
         const uint32_t firstRows = tiling.projectionRows;
         const uint32_t l1TileCount = Kernel::PlannedL1TileCount(tiling, kIndex);
-        const uint64_t kStart = static_cast<uint64_t>(kIndex) * tiling.splitK;
+        const uint64_t kStart = Kernel::PlannedKStart(tiling, kIndex);
 
         TBuf<TPosition::VECCALC> x2TileBuffer;
         const uint32_t tileElements = tiling.projectionRows * tiling.kL1;

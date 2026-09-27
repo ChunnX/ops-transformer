@@ -256,6 +256,9 @@ void MegaMhcTiling::CopyCubePlanToTilingData()
     tilingData_.set_lastWaveRows(cubePlan_.lastWaveRows);
     tilingData_.set_mTile(cubePlan_.mTile);
     tilingData_.set_splitK(cubePlan_.splitK);
+    tilingData_.set_largeKCoreCount(cubePlan_.largeKCoreCount);
+    tilingData_.set_shortSplitK(cubePlan_.shortSplitK);
+    tilingData_.set_shortKCoreL1FullLoops(cubePlan_.shortKCoreL1FullLoops);
     tilingData_.set_kL1(cubePlan_.l1K);
     tilingData_.set_l1KFullLoops(cubePlan_.l1KFullLoops);
     tilingData_.set_l1KTail(cubePlan_.l1KTail);

@@ -46,6 +46,9 @@ struct CubePlan {
     uint32_t lastWaveRows = 0;
     uint32_t mTile = 0;
     uint32_t splitK = 0;
+    uint32_t largeKCoreCount = 0;
+    uint32_t shortSplitK = 0;
+    uint32_t shortKCoreL1FullLoops = 0;
     uint32_t l1K = 0;
     uint32_t l1KFullLoops = 0;
     uint32_t l1KTail = 0;

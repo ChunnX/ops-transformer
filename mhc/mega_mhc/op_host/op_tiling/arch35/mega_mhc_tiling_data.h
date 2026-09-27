@@ -36,6 +36,9 @@ TILING_DATA_FIELD_DEF(uint32_t, lastWaveMGrid);
 TILING_DATA_FIELD_DEF(uint32_t, lastWaveRows);
 TILING_DATA_FIELD_DEF(uint32_t, mTile);
 TILING_DATA_FIELD_DEF(uint32_t, splitK);
+TILING_DATA_FIELD_DEF(uint32_t, largeKCoreCount);
+TILING_DATA_FIELD_DEF(uint32_t, shortSplitK);
+TILING_DATA_FIELD_DEF(uint32_t, shortKCoreL1FullLoops);
 
 TILING_DATA_FIELD_DEF(uint32_t, kL1);
 TILING_DATA_FIELD_DEF(uint32_t, l1KFullLoops);

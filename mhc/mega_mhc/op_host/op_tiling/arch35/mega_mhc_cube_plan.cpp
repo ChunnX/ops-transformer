@@ -125,6 +125,10 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
                                 CeilDiv(CeilDiv(request.k, kSequentialPartialK), selectedKGrid) * kSequentialPartialK :
                                 rawSplitK;
     selectedKGrid = CeilDiv(request.k, splitK);
+    // Distribute ordered partials by quotient/remainder; keep the launch grid and partial size unchanged.
+    const uint64_t remainder = useSequentialPartials ? partialCount % selectedKGrid : 0U;
+    const uint64_t largeKCoreCount = remainder == 0U ? selectedKGrid : remainder;
+    const uint64_t shortSplitK = useSequentialPartials ? partialCount / selectedKGrid * partialGroupK : splitK;
     const uint64_t selectedActive = selectedMGrid * selectedKGrid;
     const uint64_t rowsPerWave = selectedMGrid * selectedMTile;
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
@@ -166,7 +170,9 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t lastWaveRows = request.rows - (mWaveCount - 1) * rowsPerWave;
     const uint64_t lastWaveMGrid = CeilDiv(lastWaveRows, selectedMTile);
     const uint64_t lastMRows = lastWaveRows - (lastWaveMGrid - 1) * selectedMTile;
-    const uint64_t lastKElements = request.k - (selectedKGrid - 1) * splitK;
+    const uint64_t largeBeforeLast = std::min(selectedKGrid - 1U, largeKCoreCount);
+    const uint64_t lastKElements =
+        request.k - largeBeforeLast * splitK - (selectedKGrid - 1U - largeBeforeLast) * shortSplitK;
     const uint64_t l1FullLoops = splitK / l1K;
     const uint64_t l1Tail = splitK % l1K;
     const uint64_t lastCoreL1FullLoops = lastKElements / l1K;
@@ -207,6 +213,9 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     plan.lastWaveRows = static_cast<uint32_t>(lastWaveRows);
     plan.mTile = static_cast<uint32_t>(selectedMTile);
     plan.splitK = static_cast<uint32_t>(splitK);
+    plan.largeKCoreCount = static_cast<uint32_t>(largeKCoreCount);
+    plan.shortSplitK = static_cast<uint32_t>(shortSplitK);
+    plan.shortKCoreL1FullLoops = static_cast<uint32_t>(shortSplitK / l1K);
     plan.l1K = static_cast<uint32_t>(l1K);
     plan.l1KFullLoops = static_cast<uint32_t>(l1FullLoops);
     plan.l1KTail = static_cast<uint32_t>(l1Tail);

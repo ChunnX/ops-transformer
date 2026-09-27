@@ -85,7 +85,18 @@ extern "C"
                     REQUIRE((uint64_t(p.mWaveCount) - 1) * p.rowsPerWave + p.lastWaveRows == m);
                     REQUIRE((p.lastWaveMGrid - 1) * p.mTile + p.lastMCoreRows == p.lastWaveRows);
                     REQUIRE(p.lastMCoreRows > 0 && p.lastMCoreRows <= p.mTile);
-                    REQUIRE(uint64_t(p.kGrid - 1) * p.splitK + p.lastKCoreElements == request.k);
+                    uint64_t coveredK = 0;
+                    for (uint32_t shard = 0; shard < p.kGrid; ++shard) {
+                        const uint32_t count = shard + 1U == p.kGrid ?
+                                                   p.lastKCoreElements :
+                                                   (shard < p.largeKCoreCount ? p.splitK : p.shortSplitK);
+                        REQUIRE(coveredK % p.partialGroupK == 0U);
+                        REQUIRE(count > 0U);
+                        REQUIRE(p.splitK - count < p.partialGroupK * 2U);
+                        coveredK += count;
+                    }
+                    REQUIRE(coveredK == request.k);
+                    REQUIRE(p.shortKCoreL1FullLoops * p.l1K == p.shortSplitK || p.largeKCoreCount == p.kGrid);
                     REQUIRE(p.lastKCoreElements > 0 && p.lastKCoreElements <= p.splitK);
                     REQUIRE(p.splitK % p.partialGroupK == 0);
                     if (p.splitK >= 2048) {

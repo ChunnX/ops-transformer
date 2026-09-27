@@ -117,11 +117,22 @@ __aicore__ inline void PackSmallFp32(__ubuf__ float *source, __ubuf__ float *scr
     }
 }
 
+/** Locate a shard from host-planned long/short lengths: offset=min(i,L)*long+max(i-L,0)*short. */
+__aicore__ inline uint64_t PlannedKStart(const MegaMhcTilingData &tiling, uint32_t kIndex)
+{
+    return kIndex < tiling.largeKCoreCount ?
+               static_cast<uint64_t>(kIndex) * tiling.splitK :
+               static_cast<uint64_t>(tiling.largeKCoreCount) * tiling.splitK +
+                   static_cast<uint64_t>(kIndex - tiling.largeKCoreCount) * tiling.shortSplitK;
+}
+
 /** Return the host-planned number of K tiles for this K shard without choosing new tile sizes. */
 __aicore__ inline uint32_t PlannedL1TileCount(const MegaMhcTilingData &tiling, uint32_t kIndex)
 {
     const bool lastKCore = kIndex + 1U == tiling.kGrid;
-    const uint32_t fullLoops = lastKCore ? tiling.lastKCoreL1FullLoops : tiling.l1KFullLoops;
+    const uint32_t fullLoops =
+        lastKCore ? tiling.lastKCoreL1FullLoops :
+                    (kIndex < tiling.largeKCoreCount ? tiling.l1KFullLoops : tiling.shortKCoreL1FullLoops);
     const uint32_t tail = lastKCore ? tiling.lastKCoreL1Tail : tiling.l1KTail;
     return fullLoops + static_cast<uint32_t>(tail != 0U);
 }
@@ -130,7 +141,9 @@ __aicore__ inline uint32_t PlannedL1TileCount(const MegaMhcTilingData &tiling, u
 __aicore__ inline uint32_t PlannedL1TileKCount(const MegaMhcTilingData &tiling, uint32_t kIndex, uint32_t tileIndex)
 {
     const bool lastKCore = kIndex + 1U == tiling.kGrid;
-    const uint32_t fullLoops = lastKCore ? tiling.lastKCoreL1FullLoops : tiling.l1KFullLoops;
+    const uint32_t fullLoops =
+        lastKCore ? tiling.lastKCoreL1FullLoops :
+                    (kIndex < tiling.largeKCoreCount ? tiling.l1KFullLoops : tiling.shortKCoreL1FullLoops);
     const uint32_t tail = lastKCore ? tiling.lastKCoreL1Tail : tiling.l1KTail;
     return tileIndex < fullLoops ? tiling.kL1 : tail;
 }
@@ -142,7 +155,9 @@ __aicore__ inline void GetPlannedL1Tile(const MegaMhcTilingData &tiling, uint32_
                                         uint32_t &tailMmadKStep, uint32_t &tailMmadFinalKStep)
 {
     const bool lastKCore = kIndex + 1U == tiling.kGrid;
-    const uint32_t fullLoops = lastKCore ? tiling.lastKCoreL1FullLoops : tiling.l1KFullLoops;
+    const uint32_t fullLoops =
+        lastKCore ? tiling.lastKCoreL1FullLoops :
+                    (kIndex < tiling.largeKCoreCount ? tiling.l1KFullLoops : tiling.shortKCoreL1FullLoops);
     const uint32_t tail = lastKCore ? tiling.lastKCoreL1Tail : tiling.l1KTail;
     if (tileIndex < fullLoops) {
         kCount = tiling.kL1;
