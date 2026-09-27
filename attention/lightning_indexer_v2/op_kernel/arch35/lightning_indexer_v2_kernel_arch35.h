@@ -89,7 +89,7 @@ public:
     static constexpr uint32_t M_BASE_SIZE = 256;
     static constexpr uint32_t S1_BASE_SIZE = 4;
     static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
-    static constexpr uint32_t S2_BASE_SIZE = 128; // LI V2: tile state (S2_BASE_SIZE).
+    static constexpr uint32_t S2_BASE_SIZE = 128;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
@@ -111,7 +111,7 @@ protected:
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
     bool hasCuSeqlensQ = false;
-    bool hasCuSeqlensK = false; // LI V2: residual-KV offsets.
+    bool hasCuSeqlensK = false;
     bool hasSequsedQ = false;
     bool hasSequsedK = false;
     bool hasCmpResidualK = false;
@@ -130,7 +130,7 @@ protected:
     GlobalTensor<uint32_t> cuSeqlensKGm;
     GlobalTensor<uint32_t> sequsedQGm;
     GlobalTensor<uint32_t> sequsedKGm;
-    GlobalTensor<uint32_t> cmpResidualKGm; // LI V2: residual-KV bounds (cmpResidualKGm).
+    GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -241,7 +241,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ ui
     }
     if (liV2SequsedK != nullptr) {
         sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)liV2SequsedK);
-        hasSequsedK = true; // LI V2: residual-KV state.
+        hasSequsedK = true;
     }
     if (liV2CmpResidualK != nullptr) {
         cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)liV2CmpResidualK);
@@ -325,8 +325,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::SplitCoreByAICPU(uint32_t 
         // 此时只需要s2End往前退一格，bN2End和gS1End都不变
         liV2SplitInfo.s2End = liV2SplitInfo.s2End - 1;
     } else {
+        // splitCoreInfo.gS1End != 0 splitCoreInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
         if (liV2SplitInfo.gS1End != 0) {
-            // liV2SplitInfo.gS1End != 0 liV2SplitInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
             // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             liV2SplitInfo.gS1End = liV2SplitInfo.gS1End - 1;
             // 需要获取当前的Actaul S2
@@ -342,7 +342,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::SplitCoreByAICPU(uint32_t 
             }
             liV2SplitInfo.s2End = liV2S2BaseNum - 1;
         } else {
-            // liV2SplitInfo.gS1End == 0 liV2SplitInfo.s2End == 0 时，bN2End需要往前退一格
+            // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             liV2SplitInfo.bN2End = liV2SplitInfo.bN2End - 1;
 
@@ -556,8 +556,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(
         liV2BlockIndex = GetBlockIdx(); // vec:0-47
         liV2AiCoreIndex = liV2BlockIndex / 2;
     } else {
-        liV2BlockIndex = GetBlockIdx();   // cube:0-23
-        liV2AiCoreIndex = liV2BlockIndex; // LI V2: residual-KV bounds (liV2AiCoreIndex).
+        liV2BlockIndex = GetBlockIdx(); // cube:0-23
+        liV2AiCoreIndex = liV2BlockIndex;
     }
 
     InitTilingData(tiling);
@@ -585,8 +585,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(
     offset += GetBlockNum() * singleCoreScoreSize;
     // vec 存储需要LD的s1对应的s2的score与index，
     // 大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
-    GlobalTensor<SCORE_T> ldScoreGm;                                   // 存放进行LD的s2 score
-    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset)); // LI V2: top-k candidates.
+    GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
+    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
     offset +=
         static_cast<uint64_t>(GetBlockNum()) * liV2KernelConstInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
     GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
@@ -825,7 +825,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessDecode()
         ICachePreLoad(LD_PREFETCH_LEN);
         SyncAll();
         if (liV2LoadInfo.isLdCoreEnable) {
-            liV2VectorService.ProcessLD(); // LI V2: tile state (ProcessLD).
+            liV2VectorService.ProcessLD();
         }
     }
 }

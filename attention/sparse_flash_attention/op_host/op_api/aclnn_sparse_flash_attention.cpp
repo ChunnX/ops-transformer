@@ -19,19 +19,19 @@
 #include "opdev/op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
-#include "opdev/op_log.h" // SFA: ACLNN dependencies.
+#include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
 
-using namespace op; // SFA: tile args.
+using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-namespace { // SFA: inner executor.
+namespace {
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparse_indices,
@@ -43,7 +43,7 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  const aclrtStream stream); // SFA: LSE args.
+                                                  const aclrtStream stream);
 
 class SparseFlashAttentionOutputHolder {
 public:
@@ -80,7 +80,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     const aclTensor *valueTensor = (value == nullptr) ? key : value;
-    // Hold placeholders until the inner workspace-size query has consumed them.
+    // TensorHolder 声明于 if/else 外层作用域，确保生命周期覆盖下方 inner GetWorkspaceSize 调用
     std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxMaxHolder;
     std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxSumHolder;
     if (returnSoftmaxLse) {
@@ -99,7 +99,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
             }
             if (softmaxSum == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxSum!");
-                return ge::GRAPH_FAILED; // SFA: softmax holders.
+                return ge::GRAPH_FAILED;
             }
         }
     }

@@ -44,7 +44,7 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
     X(Q_T) \
     X(KV_T) \
     X(T) \
-    X(OUTPUT_T) /* QSMLA: query params. */
+    X(OUTPUT_T)
 
 #define QSMLA_CUBE_TRAIT_CONSTANTS(X) \
     X(isFd, bool, false) \

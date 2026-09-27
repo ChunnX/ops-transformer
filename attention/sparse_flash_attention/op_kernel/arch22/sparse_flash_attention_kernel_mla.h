@@ -32,8 +32,7 @@ using AscendC::CrossCoreWaitFlag;
 
 // 由于S2循环前，RunInfo还没有赋值，使用Bngs1Param临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
-    // 每个核独立维护 BN2 与 GS1 游标。
-    uint32_t bn2IdxInCurCore = 0; // SFA: sequence bounds (bn2IdxInCurCore).
+    uint32_t bn2IdxInCurCore = 0;
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t s2LoopTimes = 0U; // S2方向循环的总次数，无论TND还是BXXD都是等于实际次数，不用减1
@@ -340,10 +339,9 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetSparseActualSeqLen(uint32_t bIdx, uint32_t s1Idx,
                                                                             uint32_t n2Idx)
 {
-    // Query rows excluded by the window do not enter the MLA loop.
     if (sfaKernelLoopInfo.nextTokensPerBatch < 0 && s1Idx < (-sfaKernelLoopInfo.nextTokensPerBatch)) { // 存在行无效
         sfaKernelLoopInfo.curActualSeqLen = 0;
-        return; // SFA: sequence bounds (GetSparseActualSeqLen).
+        return;
     }
     int64_t threshold = sfaKernelLoopInfo.curActualSeqLenOri;
     if (sfaKernelConstInfo.sparseMode == 3) {
@@ -368,8 +366,7 @@ __aicore__ inline uint32_t SparseFlashAttentionMla<SFAT>::GetActualSeqLenKV(uint
         }
     } else {
         if (sfaKernelConstInfo.actualLenDimsKV == 0) {
-            // 未提供实际长度时使用 tiling 中的 KV 长度。
-            return sfaKernelConstInfo.kvSeqSize; // SFA: sequence bounds (kvSeqSize).
+            return sfaKernelConstInfo.kvSeqSize;
         } else if (sfaKernelConstInfo.actualLenDimsKV == 1) {
             return actualSeqLengthsKVGm.GetValue(0);
         } else {
@@ -436,7 +433,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;     // SFA: tiling params.
+        aiCoreIdx = tmpBlockIdx;
     }
 
     // init tiling data
@@ -526,9 +523,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
         matmulService.InitParams(sfaKernelConstInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
         matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
-        // Page-attention addressing is configured after all backing tensors are bound.
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, sfaKernelConstInfo.kvCacheBlockSize,
-                                            sfaKernelConstInfo.maxBlockNumPerBatch); // SFA: paged-KV addresses.
+                                            sfaKernelConstInfo.maxBlockNumPerBatch);
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
@@ -908,8 +904,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(sfaKernelConstInfo.syncV0C1);
             }
-            // 先执行当前槽的 MM1，再推进 vector 流水。
-            ComputeMm1(extraInfo0); // SFA: pipeline sync.
+            ComputeMm1(extraInfo0);
         } else {
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 CrossCoreWaitFlag(3);
@@ -919,8 +914,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
         }
     }
     if (extraInfo2.isValid) {
-        if ASCEND_IS_AIV { // SFA: tile params.
-            // Vec1 使用延迟两拍的运行参数。
+        if ASCEND_IS_AIV {
             sfaKernelVectorService.ProcessVec1L(extraInfo2);
         }
         if ASCEND_IS_AIC {
@@ -931,8 +925,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
         }
     }
     if (extraInfo1.isValid) {
-        if ASCEND_IS_AIV { // SFA: tile state (ASCEND_IS_AIV).
-            // Vec2 完成输出后才能复用流水槽。
+        if ASCEND_IS_AIV {
             sfaKernelVectorService.ProcessVec2L(extraInfo1);
         }
         extraInfo1.isValid = false;
@@ -975,8 +968,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetAxisStartIdx(uint32_t b
 
     sfaKernelConstInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
-        // 前一核完成 GS1 后从零开始当前核区间。
-        sfaKernelConstInfo.gS1Start = 0; // SFA: tile state (gS1Start).
+        sfaKernelConstInfo.gS1Start = 0;
         sfaKernelConstInfo.bN2Start++;
     } else {
         sfaKernelConstInfo.gS1Start++;

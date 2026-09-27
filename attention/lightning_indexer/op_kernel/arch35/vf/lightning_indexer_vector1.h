@@ -21,7 +21,7 @@
 namespace vector1 {
 using liV2Vector1::BroadcastLane;
 using liV2Vector1::DuplicateZero;
-using liV2Vector1::FloatSortConstCtx; // LI: KV state.
+using liV2Vector1::FloatSortConstCtx;
 using liV2Vector1::FloatSortTraits;
 using liV2Vector1::FloatToSortableKey;
 using liV2Vector1::FloatX2ToSortableKey;

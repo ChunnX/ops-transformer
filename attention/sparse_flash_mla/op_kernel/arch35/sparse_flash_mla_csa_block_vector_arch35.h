@@ -56,8 +56,8 @@ struct PhyAddrValidInfo {
     int64_t cmpBase = 0;      // restoredSize - actualS1Size + 1
 };
 
-TEMPLATES_DEF // SMLA: compressed-window map.
-    class SmlaCsaBlockVector {
+TEMPLATES_DEF
+class SmlaCsaBlockVector {
 public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
@@ -133,7 +133,7 @@ public:
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
     {
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
-        intraCoreCombineGm = intraCoreCombine.template GetTensor<float>(); // SMLA: paged-KV addresses.
+        intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = crossCoreCombine.template GetTensor<float>();
         fdStagingBase = crossCoreCombineBase;
@@ -143,15 +143,17 @@ public:
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &smla35VecConstInfo);
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &smla35VecRunInfo,
                                        ConstInfo &smla35VecConstInfo);
-    __aicore__ inline void GetKVPhyAddr(
-        uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
-        bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
-        GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
-        GlobalTensor<int32_t> oriTopkLengthGm, // SMLA: compressed-KV bounds (oriTopkLengthGm).
-        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv, GlobalTensor<int32_t> actualSeqCmpKvlenGm,
-        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
-        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
-        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &smla35VecConstInfo);
+    __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
+                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
+                                        bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
+                                        GlobalTensor<int32_t> actualSeqOriKvlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensOriKvGm, GlobalTensor<int32_t> oriTopkLengthGm,
+                                        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
+                                        GlobalTensor<int32_t> actualSeqCmpKvlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
+                                        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
+                                        ConstInfo &smla35VecConstInfo);
     __aicore__ inline void FreeEvent(ConstInfo &smla35VecConstInfo);
 
 private:
@@ -199,7 +201,7 @@ private:
     {
         uint32_t coreIdx;
         if constexpr (IS_SPLIT_G) {
-            coreIdx = static_cast<uint32_t>(smla35VecConstInfo.aivIdx >> 2U); // SMLA: workspace slots.
+            coreIdx = static_cast<uint32_t>(smla35VecConstInfo.aivIdx >> 2U);
         } else {
             coreIdx = static_cast<uint32_t>(smla35VecConstInfo.aivIdx >> 1U);
         }
@@ -888,6 +890,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::CopyOutVec1Lse(LocalTe
                                                                          RunInfo &smla35VecRunInfo,
                                                                          ConstInfo &smla35VecConstInfo)
 {
+    // 零行 AIV 的 Vec2 会提前返回，不会等待此事件，因此不发送信号。
     bool copyOutLse = smla35VecConstInfo.isSoftmaxLseEnable && smla35VecRunInfo.halfMRealSize > 0 &&
                       smla35VecRunInfo.s2LoopCount == smla35VecRunInfo.s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
@@ -975,7 +978,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::ReduceIntraBlockAndSta
     uint32_t crossWorkspaceIdx = static_cast<uint32_t>(smla35VecRunInfo.firstFdDataWorkspaceIdx +
                                                        smla35VecRunInfo.s2SplitIdx - smla35VecRunInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(smla35VecRunInfo, smla35VecConstInfo);
-    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor; // SMLA: LSE workspace.
+    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
     LocalTensor<float> blockMaxUb = tmpUb;
     LocalTensor<float> blockSumUb = tmpUb[256];
     LocalTensor<float> lseBroadcastUb = tmpUb[512];
@@ -992,7 +995,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::ReduceIntraBlockAndSta
     while (startRow < smla35VecRunInfo.vec2MRealSize) {
         int64_t smla35DealRows = intraLayout.chunkRows;
         if (startRow + smla35DealRows > smla35VecRunInfo.vec2MRealSize) {
-            smla35DealRows = smla35VecRunInfo.vec2MRealSize - startRow; // SMLA: tile state.
+            smla35DealRows = smla35VecRunInfo.vec2MRealSize - startRow;
         }
         LocalTensor<T> chunkCurrent = smla35Vec2ResultUb[startRow * dTemplateAlign64];
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
@@ -1014,7 +1017,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::ReduceIntraBlockAndSta
             lseParams.blockCount = static_cast<uint16_t>(smla35DealRows);
             lseParams.blockLen = sizeof(float);
             lseParams.srcStride = 0;
-            lseParams.dstStride = 0; // SMLA: LSE state.
+            lseParams.dstStride = 0;
             SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
             WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
             DataCopyPad(this->softmaxLseGm[smla35VecRunInfo.softmaxLseOffset + startRow], lseBroadcastUb, lseParams);
@@ -1084,7 +1087,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::ProcessVec2(StaticBuff
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
-                if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: softmax state (IS_BATCH_CONSISTENCY).
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     smlaSumUb = this->softmaxFinalSumBufs[smla35VecRunInfo.taskIdMod2].tensor;
                 } else {
                     smlaSumUb = this->softmaxSumBufs[smla35VecRunInfo.multiCoreIdxMod2].tensor;
@@ -1104,7 +1107,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::ProcessVec2(StaticBuff
             }
             if (isLastVec2Base) {
                 LocalTensor<float> smlaSumUb;
-                if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: softmax state (IS_BATCH_CONSISTENCY).
+                if constexpr (IS_BATCH_CONSISTENCY) {
                     smlaSumUb = this->softmaxFinalSumBufs[smla35VecRunInfo.taskIdMod2].tensor;
                 } else {
                     smlaSumUb = this->softmaxSumBufs[smla35VecRunInfo.multiCoreIdxMod2].tensor;
@@ -1296,8 +1299,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::CopyOutAttentionOut(
     RunInfo &smla35VecRunInfo, ConstInfo &smla35VecConstInfo, LocalTensor<VEC2_RES_T> &smla35Vec2ResultUb,
     int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
-    this->Bmm2DataCopyOut(smla35VecRunInfo, smla35VecConstInfo, smla35Vec2ResultUb, vec2S1Idx,
-                          vec2CalcSize); // SMLA: output matmul.
+    this->Bmm2DataCopyOut(smla35VecRunInfo, smla35VecConstInfo, smla35Vec2ResultUb, vec2S1Idx, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1494,7 +1496,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::InitLocalBuffer(ConstI
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: pipeline sync (IS_BATCH_CONSISTENCY).
+    if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }
@@ -1517,7 +1519,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::FreeEvent(ConstInfo &s
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
-    if constexpr (IS_BATCH_CONSISTENCY) { // SMLA: pipeline sync (IS_BATCH_CONSISTENCY).
+    if constexpr (IS_BATCH_CONSISTENCY) {
         WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
 }
@@ -1544,10 +1546,9 @@ __aicore__ inline int32_t SmlaCsaBlockVector<TEMPLATE_ARGS>::GetSmlaSeqLen(int32
         return fallbackLength;
     }
 }
-TEMPLATES_DEF_NO_DEFAULT // SMLA: sparse-window bounds.
-    __aicore__ inline PhyAddrValidInfo
-    SmlaCsaBlockVector<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
-                                                            int64_t restoredSize, ConstInfo &smla35VecConstInfo)
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline PhyAddrValidInfo SmlaCsaBlockVector<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(
+    bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size, int64_t restoredSize, ConstInfo &smla35VecConstInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
     PhyAddrValidInfo smla35ValidWindow;
@@ -1560,9 +1561,9 @@ TEMPLATES_DEF_NO_DEFAULT // SMLA: sparse-window bounds.
             } else if (smla35VecConstInfo.oriMaskMode == 3U) {
                 smla35ValidWindow.oriRightBias = 0;
             } else {
-                smla35ValidWindow.oriLeftBias = // SMLA: original-KV addresses.
-                    (smla35VecConstInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND :
-                                                            smla35VecConstInfo.oriWinLeft + 1;
+                smla35ValidWindow.oriLeftBias = (smla35VecConstInfo.oriWinLeft == -1) ?
+                                                    PhyAddrValidInfo::BIAS_UNBOUND :
+                                                    smla35VecConstInfo.oriWinLeft + 1;
                 smla35ValidWindow.oriRightBias = (smla35VecConstInfo.oriWinRight == -1) ?
                                                      PhyAddrValidInfo::BIAS_UNBOUND :
                                                      smla35VecConstInfo.oriWinRight;
@@ -1628,7 +1629,7 @@ __aicore__ inline int32_t SmlaCsaBlockVector<TEMPLATE_ARGS>::CalcCurValidS2(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvType( // SMLA: original-KV bounds.
+__aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
     bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
     GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
@@ -1850,8 +1851,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddr( // SMLA: compressed-KV bounds (cuSeqlensOriKvGm).
+__aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddr(
     uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
     bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
     GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,

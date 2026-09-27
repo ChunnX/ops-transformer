@@ -406,7 +406,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaTqCsaKernel<SAST>::Init(
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;     // MQSMLA: tiling params.
+        aiCoreIdx = tmpBlockIdx;
     }
 
     // init tiling data

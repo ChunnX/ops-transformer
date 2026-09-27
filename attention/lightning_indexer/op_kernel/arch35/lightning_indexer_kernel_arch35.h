@@ -83,7 +83,7 @@ public:
     static constexpr uint32_t M_BASE_SIZE = 256;
     static constexpr uint32_t S1_BASE_SIZE = 4;
     static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
-    static constexpr uint32_t S2_BASE_SIZE = 128; // LI: tile state.
+    static constexpr uint32_t S2_BASE_SIZE = 128;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
@@ -365,7 +365,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Init(__gm__ uint8_t *query, 
         aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
-        aiCoreIdx = tmpBlockIdx;     // LI: sequence bounds (aiCoreIdx).
+        aiCoreIdx = tmpBlockIdx;
     }
 
     InitTilingData(tiling);
@@ -538,7 +538,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessMain()
         if (tempLoopInfo.needDealActS1LessThanS1) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
-        splitCoreInfo.gS1Start = 0; // LI: sequence bounds (gS1Start).
+        splitCoreInfo.gS1Start = 0;
     }
 
     if ASCEND_IS_AIV {

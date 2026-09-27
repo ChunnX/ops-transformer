@@ -50,8 +50,7 @@ namespace BaseApi {
 // 统一窗口公式
 struct Qs35PhyAddrValidInfo {
     static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
-    // 原始 KV 与压缩 KV 分别计算有效窗口。
-    int64_t oriLeftBias = BIAS_UNBOUND; // QSMLA: softmax addresses (oriLeftBias).
+    int64_t oriLeftBias = BIAS_UNBOUND;
     int64_t oriRightBias = BIAS_UNBOUND;
     int32_t oriS2Act = 0;
     bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
@@ -60,9 +59,8 @@ struct Qs35PhyAddrValidInfo {
 };
 
 TEMPLATES_DEF
-// 量化 CSA vector block 负责稀疏 KV 搬运与 softmax。
 class CSABlockVec {
-public: // QSMLA: softmax addresses.
+public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
@@ -126,7 +124,6 @@ public: // QSMLA: softmax addresses.
     __aicore__ inline void InitOutputSingleCore(ConstInfo &qs35VecConstInfo);
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging)
     {
-        // FD staging stores intermediate results from the quantized reduction.
         fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
@@ -137,7 +134,6 @@ public: // QSMLA: softmax addresses.
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
         crossCoreCombineBase = crossCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         crossCoreCombineGm = crossCoreCombine.template GetTensor<float>();
-        // 核间合并区同时作为 FD staging 使用。
         fdStagingBase = crossCoreCombineBase;
         stagingOutGm = crossCoreCombineGm;
     }
@@ -150,15 +146,17 @@ public: // QSMLA: softmax addresses.
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &qs35VecConstInfo);
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
-    __aicore__ inline void GetKVPhyAddr(
-        uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
-        bool hasActualSeqQlen, bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
-        GlobalTensor<int32_t> actualSeqOriKvlenGm, GlobalTensor<int32_t> cuSeqlensOriKvGm,
-        GlobalTensor<int32_t> oriTopkLengthGm, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
-        GlobalTensor<int32_t> actualSeqCmpKvlenGm, GlobalTensor<int32_t> cuSeqlensCmpKvGm,
-        GlobalTensor<int32_t> cmpTopkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm,
-        GlobalTensor<int32_t> actualSeqQlenGm, GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
-        ConstInfo &qs35VecConstInfo); // QSMLA: compressed-KV bounds (actualSeqCmpKvlenGm).
+    __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
+                                        uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
+                                        bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
+                                        GlobalTensor<int32_t> actualSeqOriKvlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensOriKvGm, GlobalTensor<int32_t> oriTopkLengthGm,
+                                        bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
+                                        GlobalTensor<int32_t> actualSeqCmpKvlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensCmpKvGm, GlobalTensor<int32_t> cmpTopkLengthGm,
+                                        GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
+                                        GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
+                                        ConstInfo &qs35VecConstInfo);
     __aicore__ inline void FreeEvent(ConstInfo &qs35VecConstInfo);
 
 private:
@@ -192,12 +190,11 @@ private:
         return workspaceIdx;
     }
 
-    // 核内 workspace 根据 G 切分方式选择 AIV 索引。
     __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(const RunInfo &qs35VecRunInfo,
                                                         const ConstInfo &qs35VecConstInfo) const
     {
         uint32_t coreIdx;
-        if constexpr (IS_SPLIT_G) { // QSMLA: workspace slots.
+        if constexpr (IS_SPLIT_G) {
             coreIdx = static_cast<uint32_t>(qs35VecConstInfo.aivIdx >> 2U);
         } else {
             coreIdx = static_cast<uint32_t>(qs35VecConstInfo.aivIdx >> 1U);
@@ -224,7 +221,6 @@ private:
                                               const RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
     __aicore__ inline void CalProcessSize(const RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
     __aicore__ inline int64_t GetKeyOffset(int64_t s2Idx, const RunInfo &qs35VecRunInfo, ConstInfo &qs35VecConstInfo);
-    // 稀疏 KV 地址由逻辑 S2 映射为实际存储地址。
     __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &qs35VecRunInfo,
                                            ConstInfo &qs35VecConstInfo);
     __aicore__ inline void GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &qs35VecRunInfo,
@@ -339,7 +335,6 @@ private:
     TBuf<> outLseBuf[2];
     TBuf<> vselrIndexesBuf[2];
     AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
-    // vector 搬运使用独立的 ping-pong 槽。
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -704,7 +699,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
         int64_t qsmlaPaBlockStride = qs35VecRunInfo.isCmp ? qs35VecConstInfo.cmpKvStride : qs35VecConstInfo.oriKvStride;
         while (qsmlaCopyFinishElmenCnt < v0ProcessSize) {
             uint64_t blockIdOffset = qsmlaCurSequence / qsActiveBlockSize;
-            // 单次搬运不得跨越 PA block 边界。
             uint64_t remainElmenCnt = qsmlaCurSequence % qsActiveBlockSize;
             uint64_t idInBlockTable = qsActiveBlockTableGm.GetValue(qsmlaBlockTableBaseOffset + blockIdOffset);
             uint32_t copyElmenCnt = qsActiveBlockSize - remainElmenCnt;
@@ -935,7 +929,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         if (isFirstSoftmaxBase && isSinks) {
             bool includeSink = (!qs35VecRunInfo.isCrossCoreSplit) || qs35VecRunInfo.isFirstS2SplitCore;
             if constexpr (IS_BATCH_CONSISTENCY) {
-                includeSink = includeSink && qs35VecRunInfo.reduceBlockId == 0; // QSMLA: softmax state (includeSink).
+                includeSink = includeSink && qs35VecRunInfo.reduceBlockId == 0;
             }
             if (includeSink) {
                 int64_t sinksOffset = 0;
@@ -988,7 +982,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     outputBuf.SetCrossCore();
     // ======================================================
     if (!isFirstSoftmaxBase || isSinks) {
-        // Merge the current base into the running softmax state.
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, qs35VecRunInfo.halfMRealSize);
     }
 
@@ -1061,7 +1054,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         copyOutLse = copyOutLse && !qs35VecRunInfo.isCrossCoreSplit && !qs35VecRunInfo.needReduce;
     }
     if (copyOutLse) {
-        // Emit LSE only after the final local softmax state is complete.
         LocalTensor<float> outLse = this->outLseBuf[qs35VecRunInfo.multiCoreIdxMod2].template Get<float>();
         DataCopyExtParams lseParams;
         lseParams.blockCount = 1;
@@ -1083,7 +1075,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
                                                                             LocalTensor<T> &qs35Vec2ResultUb,
                                                                             LocalTensor<T> &partialTmpUb)
 {
-    // Intra-core reduction merges LSE before staging partial output.
     AttentionCommon::S2SplitFdStagingLayout intraLayout = {
         qs35VecConstInfo.gSize, dTemplateAlign64, GetQs35StagingSlotNum(true),
         AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1116,7 +1107,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     while (startRow < qs35VecRunInfo.vec2MRealSize) {
         int64_t qs35DealRows = intraLayout.chunkRows;
         if (startRow + qs35DealRows > qs35VecRunInfo.vec2MRealSize) {
-            qs35DealRows = qs35VecRunInfo.vec2MRealSize - startRow; // QSMLA: tile state.
+            qs35DealRows = qs35VecRunInfo.vec2MRealSize - startRow;
         }
         LocalTensor<T> chunkCurrent = qs35Vec2ResultUb[startRow * dTemplateAlign64];
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
@@ -1169,7 +1160,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &qs35VecRunInfo,
     ConstInfo &qs35VecConstInfo)
 {
-    // Vec2 applies the dequantization scale selected for the current KV path.
     bmm2ResBuf.WaitCrossCore();
     if (unlikely(qs35VecRunInfo.vec2MBaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
@@ -1202,15 +1192,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     if (unlikely(isFirstVec2Base)) {
         DataCopy(qs35Vec2ResultUb, mmRes, vec2CalcSize);
     } else {
-        // Subsequent bases rescale the accumulated output before adding MM2 results.
         LocalTensor<T> expUb = softmaxExpBuf[qs35VecRunInfo.taskIdMod2].template Get<T>();
         if constexpr (IS_BATCH_CONSISTENCY) {
             if (!qs35VecRunInfo.isLastBase) {
                 if (unlikely(qs35VecRunInfo.isFirstReduce)) {
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, qs35VecRunInfo.vec2MRealSize,
-                        dTemplateAlign64, vDescale,
-                        vDescalePre); // QSMLA: softmax state (vDescalePre).
+                        dTemplateAlign64, vDescale, vDescalePre);
                 } else {
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, qs35VecRunInfo.vec2MRealSize,
@@ -1221,9 +1209,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 if (unlikely(qs35VecRunInfo.isFirstReduce)) {
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, sumUb, qs35VecRunInfo.vec2MRealSize,
-                        dTemplateAlign64, vDescale, vDescalePre); // QSMLA: softmax state (vDescalePre).
+                        dTemplateAlign64, vDescale, vDescalePre);
                 } else {
-                    // The last base finishes accumulation and normalization together.
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, sumUb, qs35VecRunInfo.vec2MRealSize,
                         dTemplateAlign64, vDescale, 1.0);
@@ -1234,10 +1221,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 if (unlikely(qs35VecRunInfo.isFirstReduce)) {
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, qs35VecRunInfo.vec2MRealSize,
-                        dTemplateAlign64, vDescale,
-                        vDescalePre); // QSMLA: softmax state (vDescalePre).
+                        dTemplateAlign64, vDescale, vDescalePre);
                 } else {
-                    // 非末个 base 仅累积当前输出。
                     FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, qs35VecRunInfo.vec2MRealSize,
                         dTemplateAlign64, vDescale, 1.0);
@@ -1247,7 +1232,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 if (unlikely(qs35VecRunInfo.isFirstReduce)) {
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, sumUb, qs35VecRunInfo.vec2MRealSize,
-                        dTemplateAlign64, vDescale, vDescalePre); // QSMLA: softmax state (vDescalePre).
+                        dTemplateAlign64, vDescale, vDescalePre);
                 } else {
                     FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         qs35Vec2ResultUb, mmRes, qs35Vec2ResultUb, expUb, expUb, sumUb, qs35VecRunInfo.vec2MRealSize,
@@ -1289,7 +1274,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     (!qs35VecRunInfo.isFirstS2SplitCore ||
                      (qs35VecRunInfo.isFirstS2SplitCore && qs35VecRunInfo.reduceBlockId == 0 &&
                       qs35VecRunInfo.s2LoopCount == qs35VecRunInfo.s2LoopLimit))) {
-                    // Cross-core S2 splits stage partial output for the final reduction.
                     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
                         qs35VecConstInfo.gSize, dTemplateAlign64, GetQs35StagingSlotNum(false),
                         AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1365,7 +1349,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
         WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
         if constexpr (IS_BATCH_CONSISTENCY) {
             WaitFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
-            // Consistency mode reduces paired FD partitions in a fixed order.
             AttentionCommon::ReducePairwiseWithLse<T, dTemplateAlign64>(
                 stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
                 static_cast<int64_t>(fdRunInfo.mStartIdx) + startRow, qs35DealRows,
@@ -1429,8 +1412,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &
                                                                        LocalTensor<VEC2_RES_T> &qs35Vec2ResultUb,
                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
-    this->Bmm2DataCopyOut(qs35VecRunInfo, qs35VecConstInfo, qs35Vec2ResultUb, vec2S1Idx,
-                          vec2CalcSize); // QSMLA: output matmul.
+    this->Bmm2DataCopyOut(qs35VecRunInfo, qs35VecConstInfo, qs35Vec2ResultUb, vec2S1Idx, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1459,7 +1441,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         }
     }
     if (qs35VecConstInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid) {
-        // LSE follows the logical output layout rather than the packed KV layout.
         uint64_t totalLseSize = 0;
         if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
             totalLseSize =
@@ -1471,7 +1452,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
             uint64_t singleCoreLse = (totalLseSize + (CV_RATIO * qsmlaCoreNum) - 1) / (CV_RATIO * qsmlaCoreNum);
             uint64_t tailLse = totalLseSize - qs35VecConstInfo.aivIdx * singleCoreLse;
             uint64_t singleInitLse = tailLse < singleCoreLse ? tailLse : singleCoreLse;
-            // 各 AIV 只初始化负责的 LSE 区间。
             if (qs35VecConstInfo.aivIdx * singleCoreLse < totalLseSize && singleInitLse > 0) {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 matmul::InitOutput<float>(this->softmaxLseGm[qs35VecConstInfo.aivIdx * singleCoreLse], singleInitLse,
@@ -1483,7 +1463,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
     SyncAll();
 }
 
-// Bind output storage before initializing attention and optional LSE.
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                                                ConstInfo &qs35VecConstInfo)
@@ -1517,10 +1496,9 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetQsmlaSeqLen(int32_t bat
         return defaultLength;
     }
 }
-TEMPLATES_DEF_NO_DEFAULT // QSMLA: sparse-window bounds.
-    __aicore__ inline Qs35PhyAddrValidInfo
-    CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
-                                                     int64_t restoredSize, ConstInfo &qs35VecConstInfo)
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline Qs35PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(
+    bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size, int64_t restoredSize, ConstInfo &qs35VecConstInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
     Qs35PhyAddrValidInfo qsmlaValidInfo;
@@ -1600,7 +1578,7 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bI
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType( // QSMLA: original-KV bounds.
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
     bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
     GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
@@ -1622,7 +1600,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType( // QSM
 
     TBuf<> blkTableBuf;
     TBuf<> sparseIdxBuf;
-    // 物理地址计算使用独立的页表和索引临时区。
     TBuf<> kvPhyAddrBuf;
     tPipe->InitBuffer(blkTableBuf, qsActiveMaxBlocksPerBatch * sizeof(int32_t));
     tPipe->InitBuffer(sparseIdxBuf, alignedSparseBlockCount * sizeof(int32_t));
@@ -1803,7 +1780,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     GlobalTensor<int32_t> cmpTopkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
     GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &qs35VecConstInfo)
 {
-    if (hasLoad == 0) { // QSMLA: compressed-KV bounds (cuSeqlensCmpKvGm).
+    if (hasLoad == 0) {
         SyncAll();
         tPipe->Reset();
         return;

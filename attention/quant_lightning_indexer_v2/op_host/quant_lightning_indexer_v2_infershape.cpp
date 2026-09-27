@@ -42,7 +42,7 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
     gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseValuesShape = context->GetOutputShape(1); // QLI V2: query descriptors.
+    gert::Shape *sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
 
     auto attrs = context->GetAttrs();

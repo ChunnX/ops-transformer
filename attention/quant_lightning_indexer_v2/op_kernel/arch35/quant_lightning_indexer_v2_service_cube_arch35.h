@@ -56,7 +56,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t QLIV2_KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QLIV2_QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // key event + key buffer count
+    static constexpr uint32_t QLIV2_QUERY_MTE1_MTE2_EVENT = EVENT_ID5;
     static constexpr uint32_t QLIV2_M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -138,7 +138,7 @@ protected:
     uint64_t keyL1BufIdx_ = 0;
     uint64_t qliV2QueryMte2BufferIndex = 0;
     uint64_t qliV2QueryMte1BufferIndex = 0;
-    uint64_t l0BufIdx_ = 0; // QLI V2: query matmul.
+    uint64_t l0BufIdx_ = 0;
 
     bool isKeyCacheValid_ = false; // L1中是否有可复用的数据
     uint64_t keyGmStart_ = 0;      // L1数据对应的GM S2偏移
@@ -703,9 +703,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t qliV2S1GmOffset, uint6
             fixpipeParams.params.dstNdStride =
                 qliV2CubeConstInfo.s2BaseSize * qliV2CubeConstInfo.mBaseSizeMax / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
+        // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
         Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(
             mm1ResUB_[(qliV2CubeRunInfo.loop % 2) * qliV2CubeConstInfo.s2BaseSize / 2],
-            // 未考虑qliV2S1GmOffset和qliV2S2GmOffset，将matmul结果从L0C搬运到UB
             cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
     } else {
         uint32_t nSize = CeilAlign(s2L0RealSize, static_cast<uint64_t>(UB_BLOCK / sizeof(QK_T)));
@@ -746,8 +746,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(QLIV2_KEY_MTE1_MTE2_EVENT + 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(QLIV2_QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QLIV2_QUERY_MTE1_MTE2_EVENT +
-                                  1); // QLI V2: pipeline sync (QLIV2_QUERY_MTE1_MTE2_EVENT).
+    SetFlag<HardEvent::MTE1_MTE2>(QLIV2_QUERY_MTE1_MTE2_EVENT + 1);
 
     SetFlag<HardEvent::M_MTE1>(QLIV2_M_MTE1_EVENT + 0);
     SetFlag<HardEvent::M_MTE1>(QLIV2_M_MTE1_EVENT + 1);
@@ -767,7 +766,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(QLIV2_QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QLIV2_QUERY_MTE1_MTE2_EVENT + 1);
 
-    WaitFlag<HardEvent::M_MTE1>(QLIV2_M_MTE1_EVENT + 0); // QLI V2: pipeline sync (QLIV2_M_MTE1_EVENT).
+    WaitFlag<HardEvent::M_MTE1>(QLIV2_M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(QLIV2_M_MTE1_EVENT + 1);
 
     WaitFlag<HardEvent::FIX_M>(QLIV2_FIX_M_EVENT + 0);

@@ -34,7 +34,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     static const uint16_t paElemsPerReg = 64;
     static const uint16_t paAddrPerLoop = 256;
     static const uint16_t paAddrPerReg = 128;
-    static const uint32_t paInvalidAddr = 0xFFFFFFFF; // PA invalid address marker.
+    static const uint32_t paInvalidAddr = 0xFFFFFFFF;
     Reg::MaskReg paAllMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg paLowCarry0;
     Reg::MaskReg paHighCarry0;
@@ -52,7 +52,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     Reg::RegTensor<uint32_t> paBlockIndex1;
     Reg::RegTensor<uint32_t> paBlockOffset0;
     Reg::RegTensor<uint32_t> paBlockOffset1;
-    Reg::RegTensor<uint32_t> paTileOffset0; // PA tile offsets.
+    Reg::RegTensor<uint32_t> paTileOffset0;
     Reg::RegTensor<uint32_t> paTileOffset1;
     Reg::RegTensor<uint32_t> paPhysicalOffset0;
     Reg::RegTensor<uint32_t> paPhysicalOffset1;
@@ -92,13 +92,13 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
             Reg::ShiftRights(paBlockIndex1, paSparseIndex1, shiftRightNum, paAllMask);
 
             Reg::Muls(paBlockOffset0, paBlockIndex0, blockSize, paAllMask);
-            Reg::Muls(paBlockOffset1, paBlockIndex1, blockSize, paAllMask); // PA KV layout.
+            Reg::Muls(paBlockOffset1, paBlockIndex1, blockSize, paAllMask);
             // offset
             Reg::Sub(paTileOffset0, paSparseIndex0, paBlockOffset0, paAllMask);
             Reg::Sub(paTileOffset1, paSparseIndex1, paBlockOffset1, paAllMask);
             // 物理页内offset
             Reg::Muls(paPhysicalOffset0, paTileOffset0, kvDim, paAllMask);
-            Reg::Muls(paPhysicalOffset1, paTileOffset1, kvDim, paAllMask); // PA KV layout.
+            Reg::Muls(paPhysicalOffset1, paTileOffset1, kvDim, paAllMask);
 
             // int32 paBlockId -> 物理id
             DataCopyGather(paPhysicalBlock0, blkTableUb, paBlockIndex0, paAllMask);
@@ -122,7 +122,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
             Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + paAddrPerReg + i * paAddrPerLoop,
                                                                       paAddressLow1, paAddressHigh1, paAllMask);
         }
-        break; // SMLA: paged-KV addresses (break).
+        break;
     }
 
     for (uint16_t i = s2Loop - 1; i < s2Loop; i++) {
@@ -144,13 +144,13 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
         Reg::ShiftRights(paBlockIndex1, paSparseIndex1, shiftRightNum, paTailMask1);
 
         Reg::Muls(paBlockOffset0, paBlockIndex0, blockSize, paTailMask0);
-        Reg::Muls(paBlockOffset1, paBlockIndex1, blockSize, paTailMask1); // PA KV layout.
+        Reg::Muls(paBlockOffset1, paBlockIndex1, blockSize, paTailMask1);
         // offset
         Reg::Sub(paTileOffset0, paSparseIndex0, paBlockOffset0, paTailMask0);
         Reg::Sub(paTileOffset1, paSparseIndex1, paBlockOffset1, paTailMask1);
         // 物理页内offset
         Reg::Muls(paPhysicalOffset0, paTileOffset0, kvDim, paTailMask0);
-        Reg::Muls(paPhysicalOffset1, paTileOffset1, kvDim, paTailMask1); // PA KV layout.
+        Reg::Muls(paPhysicalOffset1, paTileOffset1, kvDim, paTailMask1);
 
         // int32 paBlockId -> 物理id
         DataCopyGather(paPhysicalBlock0, blkTableUb, paBlockIndex0, paTailMask0);
@@ -166,7 +166,7 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
         Reg::Add(paLowCarry1, paAddressLow1, paBlockStrideLow1, paPhysicalOffset1, paTailMask1);
 
         Reg::AddC(paHighCarry0, paAddressHigh0, paMultiplyCarry0, paZero, paLowCarry0, paTailMask0);
-        Reg::AddC(paHighCarry1, paAddressHigh1, paMultiplyCarry1, paZero, paLowCarry1, paTailMask1); // PA mask layout.
+        Reg::AddC(paHighCarry1, paAddressHigh1, paMultiplyCarry1, paZero, paLowCarry1, paTailMask1);
 
         // 无效值填充-1(0xFFFFFFFF)
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(paAddressLow0, paInvalidAddr, paInvalidMask0);
@@ -224,16 +224,16 @@ __simd_vf__ void GetKVPhyAddrVFTndImpl(__ubuf__ uint32_t *tndAddrUb, __ubuf__ in
     Reg::Duplicate(tndPrefixReg, tndKvPrefix);
     Reg::Duplicate(tndDimReg, tndKvDim);
 
+    // * sparseBlockSize
+    // (kvPrefix + sparseIdx) * kvDim -> int64 物理地址
     for (; tndLoopCount > 1;) {
         for (uint16_t i = 0; i < tndLoopCount - 1; i++) {
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)tndSparseIndex0,
                                                               tndSparseUb + i * tndElemsPerLoop);
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)tndSparseIndex1,
                                                               tndSparseUb + tndElemsPerReg + i * tndElemsPerLoop);
-            // * tndSparseBlockSize
             Reg::Muls(tndSparseIndex0, tndSparseIndex0, tndSparseBlockSize, tndAllMask);
             Reg::Muls(tndSparseIndex1, tndSparseIndex1, tndSparseBlockSize, tndAllMask);
-            // (tndKvPrefix + sparseIdx) * tndKvDim -> int64 物理地址
             Reg::Add(tndTokenOffset0, tndSparseIndex0, tndPrefixReg, tndAllMask);
             Reg::Add(tndTokenOffset1, tndSparseIndex1, tndPrefixReg, tndAllMask);
             // 带进位乘法
@@ -254,14 +254,14 @@ __simd_vf__ void GetKVPhyAddrVFTndImpl(__ubuf__ uint32_t *tndAddrUb, __ubuf__ in
         Reg::Not(tndInvalidMask0, tndTailMask0, tndAllMask);
         Reg::Not(tndInvalidMask1, tndTailMask1, tndAllMask);
 
+        // * sparseBlockSize
+        // (kvPrefix + sparseIdx) * kvDim -> int64 物理地址
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)tndSparseIndex0,
                                                           tndSparseUb + i * tndElemsPerLoop);
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)tndSparseIndex1,
                                                           tndSparseUb + tndElemsPerReg + i * tndElemsPerLoop);
-        // * tndSparseBlockSize
         Reg::Muls(tndSparseIndex0, tndSparseIndex0, tndSparseBlockSize, tndTailMask0);
         Reg::Muls(tndSparseIndex1, tndSparseIndex1, tndSparseBlockSize, tndTailMask1);
-        // (tndKvPrefix + sparseIdx) * tndKvDim -> int64 物理地址
         Reg::Add(tndTokenOffset0, tndSparseIndex0, tndPrefixReg, tndTailMask0);
         Reg::Add(tndTokenOffset1, tndSparseIndex1, tndPrefixReg, tndTailMask1);
         // 带进位乘法
@@ -299,7 +299,7 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *bsndAddrUb, __ubuf__ 
     static const uint16_t bsndElemsPerReg = 64;
     static const uint16_t bsndOutPerLoop = 256;
     static const uint16_t bsndOutPerReg = 128;
-    static const uint32_t bsndInvalidAddr = 0xFFFFFFFF; // SMLA: mask offsets (bsndAllMask).
+    static const uint32_t bsndInvalidAddr = 0xFFFFFFFF;
     Reg::MaskReg bsndAllMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg bsndLowCarry0;
     Reg::MaskReg bsndHighCarry0;
@@ -328,16 +328,16 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *bsndAddrUb, __ubuf__ 
     Reg::Duplicate(bsndBaseLowReg, bsndBaseLow);
     Reg::Duplicate(bsndBaseHighReg, bsndBaseHigh);
 
+    // * sparseBlockSize
+    // sparseIdx * kvDim (带进位乘法)
     for (; bsndLoopCount > 1;) {
         for (uint16_t i = 0; i < bsndLoopCount - 1; i++) {
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)bsndSparseIndex0,
                                                               bsndSparseUb + i * bsndElemsPerLoop);
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)bsndSparseIndex1,
                                                               bsndSparseUb + bsndElemsPerReg + i * bsndElemsPerLoop);
-            // * bsndSparseBlockSize
             Reg::Muls(bsndSparseIndex0, bsndSparseIndex0, bsndSparseBlockSize, bsndAllMask);
             Reg::Muls(bsndSparseIndex1, bsndSparseIndex1, bsndSparseBlockSize, bsndAllMask);
-            // sparseIdx * bsndKvDim (带进位乘法)
             Reg::Mull(bsndOffsetLow0, bsndOffsetHigh0, bsndSparseIndex0, bsndDimReg, bsndAllMask);
             Reg::Mull(bsndOffsetLow1, bsndOffsetHigh1, bsndSparseIndex1, bsndDimReg, bsndAllMask);
             // s2_offset + bS2Base (int64 + int64)
@@ -351,7 +351,7 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *bsndAddrUb, __ubuf__ 
             Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(bsndAddrUb + bsndOutPerReg + i * bsndOutPerLoop,
                                                                       bsndAddrLow1, bsndAddrHigh1, bsndAllMask);
         }
-        break; // SMLA: paged-KV addresses (break).
+        break;
     }
 
     for (uint16_t i = bsndLoopCount - 1; i < bsndLoopCount; i++) {
@@ -360,14 +360,14 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *bsndAddrUb, __ubuf__ 
         Reg::Not(bsndInvalidMask0, bsndTailMask0, bsndAllMask);
         Reg::Not(bsndInvalidMask1, bsndTailMask1, bsndAllMask);
 
+        // * sparseBlockSize
+        // sparseIdx * kvDim (带进位乘法)
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)bsndSparseIndex0,
                                                           bsndSparseUb + i * bsndElemsPerLoop);
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)bsndSparseIndex1,
                                                           bsndSparseUb + bsndElemsPerReg + i * bsndElemsPerLoop);
-        // * bsndSparseBlockSize
         Reg::Muls(bsndSparseIndex0, bsndSparseIndex0, bsndSparseBlockSize, bsndTailMask0);
         Reg::Muls(bsndSparseIndex1, bsndSparseIndex1, bsndSparseBlockSize, bsndTailMask1);
-        // sparseIdx * bsndKvDim (带进位乘法)
         Reg::Mull(bsndOffsetLow0, bsndOffsetHigh0, bsndSparseIndex0, bsndDimReg, bsndTailMask0);
         Reg::Mull(bsndOffsetLow1, bsndOffsetHigh1, bsndSparseIndex1, bsndDimReg, bsndTailMask1);
         // s2_offset + bS2Base (int64 + int64)
@@ -380,8 +380,8 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *bsndAddrUb, __ubuf__ 
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(bsndAddrHigh0, bsndInvalidAddr, bsndInvalidMask0);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(bsndAddrLow1, bsndInvalidAddr, bsndInvalidMask1);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(bsndAddrHigh1, bsndInvalidAddr, bsndInvalidMask1);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>( // SMLA: mask layout (bsndInvalidMask1).
-            bsndAddrUb + i * bsndOutPerLoop, bsndAddrLow0, bsndAddrHigh0, bsndAllMask);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(bsndAddrUb + i * bsndOutPerLoop, bsndAddrLow0,
+                                                                  bsndAddrHigh0, bsndAllMask);
         Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(bsndAddrUb + bsndOutPerReg + i * bsndOutPerLoop,
                                                                   bsndAddrLow1, bsndAddrHigh1, bsndAllMask);
     }

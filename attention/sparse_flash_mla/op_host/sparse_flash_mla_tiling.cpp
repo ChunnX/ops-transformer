@@ -502,7 +502,7 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
     qType_ = opParamInfo_.q.desc->GetDataType();
     outputType_ = opParamInfo_.attnOut.desc->GetDataType();
     if (opParamInfo_.oriKv.desc != nullptr) {
-        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType(); // SMLA: compressed-KV descriptors (oriKvType_).
+        oriKvType_ = opParamInfo_.oriKv.desc->GetDataType();
     }
     if (opParamInfo_.cmpKv.desc != nullptr) {
         cmpKvType_ = opParamInfo_.cmpKv.desc->GetDataType();
@@ -861,7 +861,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
 
-    if (opParamInfo_.cmpBlockTable.tensor != nullptr) { // SMLA: compressed-KV descriptors (tensor).
+    if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table", std::to_string(cmpDimNum).c_str(),

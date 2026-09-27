@@ -675,7 +675,7 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
     if (!keyStridesVec_.empty() && liV2Params_.key.shape != nullptr) {
         auto &shape = liV2Params_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
-        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) { // LI V2: KV descriptors.
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(3), 1};
         } else if (kLayout_ == DataLayout::TND) {
@@ -747,7 +747,7 @@ ge::graphStatus LIV2InfoParser::GetGSize()
                                                "The head num of q must be a multiple of the head num of k");
     }
     gSize_ = n1Size_ / n2Size_;
-    if (npuArch_ == NpuArch::DAV_3510) { // LI V2: query descriptors (npuArch_).
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q and k",
@@ -926,7 +926,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
         if (liV2Params_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF((liV2Params_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            opName_, "q and output_idx_offset", // LI V2: query descriptors (output_idx_offset).
+                            opName_, "q and output_idx_offset",
                             Ops::Base::ToString(liV2Params_.query.shape->GetStorageShape()) + " and " +
                                 Ops::Base::ToString(liV2Params_.outputIdxOffset.tensor->GetStorageShape()),
                             "TND case q and output_idx_offset dim 0 are " + std::to_string(qTsize) + " and " +
@@ -982,7 +982,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
     OP_CHECK_IF((liV2Params_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
                     (liV2Params_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "q, w and sparse_indices", // LI V2: query descriptors (GetStorageShape).
+                    opName_, "q, w and sparse_indices",
                     Ops::Base::ToString(liV2Params_.query.shape->GetStorageShape()) + ", " +
                         Ops::Base::ToString(liV2Params_.weights.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(liV2Params_.attenOut.shape->GetStorageShape()),

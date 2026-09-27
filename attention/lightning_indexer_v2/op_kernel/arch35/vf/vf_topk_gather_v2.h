@@ -44,7 +44,7 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
 
     Reg::RegTensor<uint8_t> vreg0;
     Reg::RegTensor<uint8_t> vreg1;
-    Reg::RegTensor<uint8_t> vreg2; // LI V2: tile candidates (vreg2).
+    Reg::RegTensor<uint8_t> vreg2;
     Reg::RegTensor<uint8_t> vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
@@ -100,7 +100,7 @@ __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf
     Reg::RegTensor<uint8_t> liV2Vreg0;
     Reg::RegTensor<uint8_t> liV2Vreg1;
     Reg::RegTensor<uint8_t> liV2Vreg2;
-    Reg::RegTensor<uint8_t> liV2Vreg3; // LI V2: tile candidates (liV2Vreg3).
+    Reg::RegTensor<uint8_t> liV2Vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(liV2Vreg1U16, liV2Vreg0U16, inputBuf + i * 256);
@@ -164,7 +164,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
 
     Reg::RegTensor<uint8_t> vreg0;
     Reg::RegTensor<uint8_t> vreg1;
-    Reg::RegTensor<uint8_t> vreg2; // LI V2: tile candidates (vreg2).
+    Reg::RegTensor<uint8_t> vreg2;
     Reg::RegTensor<uint8_t> vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
@@ -235,7 +235,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     Reg::RegTensor<uint8_t> liV2Vreg0;
     Reg::RegTensor<uint8_t> liV2Vreg1;
     Reg::RegTensor<uint8_t> liV2Vreg2;
-    Reg::RegTensor<uint8_t> liV2Vreg3; // LI V2: tile candidates (liV2Vreg3).
+    Reg::RegTensor<uint8_t> liV2Vreg3;
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B16>(liV2Vreg1U16, liV2Vreg0U16, inputBuf + i * 256);

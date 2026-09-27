@@ -14,7 +14,7 @@
 namespace optiling {
 namespace sparse_mla_checker {
 constexpr int64_t TURBO_QUANT_MODE = 3;
-namespace { // SMLA: tiling descriptors.
+namespace {
 const char *Op(const CheckContext &context)
 {
     return context.opName == nullptr ? "SparseMla" : context.opName;

@@ -43,7 +43,7 @@ struct Position {
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
-template <typename T> // SFA: query layout.
+template <typename T>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,       // D
@@ -168,7 +168,7 @@ private:
     static constexpr uint32_t L1_EVENT0 = EVENT_ID2;
     static constexpr uint32_t L1_EVENT1 = EVENT_ID3;
     static constexpr uint32_t L1_EVENT2 = EVENT_ID4;
-    static constexpr uint32_t L1_EVENT3 = EVENT_ID5; // SFA: pipeline sync (L1_EVENT3).
+    static constexpr uint32_t L1_EVENT3 = EVENT_ID5;
     static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
     static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
     static constexpr uint32_t L1_EVENT6 = EVENT_ID1;
@@ -179,8 +179,7 @@ private:
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
-    static constexpr uint32_t sfaMte21KvEvents[3] = {L1_EVENT4, L1_EVENT5,
-                                                     L1_EVENT6}; // SFA: pipeline sync (sfaMte21KvEvents).
+    static constexpr uint32_t sfaMte21KvEvents[3] = {L1_EVENT4, L1_EVENT5, L1_EVENT6};
 
     uint32_t kvCacheBlockSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
@@ -297,7 +296,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::InitPageAttentionInfo(const Globa
                                                                      uint32_t maxBlockNumPerBatch)
 {
     this->blockTableGm = blockTableGm;
-    this->topKGm = topKGm; // SFA: paged-KV addresses.
+    this->topKGm = topKGm;
     this->kvCacheBlockSize = blockSize;
     this->maxBlockNumPerBatch = maxBlockNumPerBatch;
     this->kvMergeGm_ = kvMergeGm;
@@ -313,7 +312,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::InitBuffers(TPipe *pipe)
 
     // L0A
     pipe->InitBuffer(tmpBufL0A, L0A_PP_SIZE * 2); // 64K
-    aL0TensorPingPong = tmpBufL0A.Get<KV_T>();    // SFA: query workspace.
+    aL0TensorPingPong = tmpBufL0A.Get<KV_T>();
     // L0B
     pipe->InitBuffer(tmpBufL0B, L0B_PP_SIZE * 2); // 64K
     bL0TensorPingPong = tmpBufL0B.Get<KV_T>();
@@ -341,7 +340,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
-    SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4); // SFA: pipeline sync (L1_EVENT4).
+    SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -355,7 +354,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
-    WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4); // SFA: pipeline sync (L1_EVENT4).
+    WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -370,7 +369,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::CopyGmToL1(LocalTensor<KV_T> &l1T
     sfaCubeCopyParams.ndNum = 1;
     sfaCubeCopyParams.nValue = srcN; // 行数
     sfaCubeCopyParams.dValue = srcD;
-    sfaCubeCopyParams.srcDValue = srcDstride;                // SFA: tile layout (srcDValue).
+    sfaCubeCopyParams.srcDValue = srcDstride;
     sfaCubeCopyParams.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
     sfaCubeCopyParams.dstNzNStride = 1;
     sfaCubeCopyParams.srcNdMatrixStride = 0;
@@ -490,7 +489,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::LoadDataMm1B(LocalTensor<KV_T> &l
     LocalTensor<KV_T> srcTensor = l1Tensor[nSize * kSplitSize * idx];
 
     LoadData2DParams sfaMm1LoadBParams;
-    sfaMm1LoadBParams.startIndex = 0; // SFA: KV layout (startIndex).
+    sfaMm1LoadBParams.startIndex = 0;
     sfaMm1LoadBParams.repeatTimes = (nSize + 15) / 16 * kSize / (32 / sizeof(KV_T));
     sfaMm1LoadBParams.srcStride = 1;
     sfaMm1LoadBParams.dstGap = 0;
@@ -838,9 +837,9 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &sfaCube
                 if (kL1 == 0) {
                     Nd2NzParams sfaCubeCopyParams;
                     sfaCubeCopyParams.ndNum = 1;
-                    sfaCubeCopyParams.nValue = nL1Size;                       // 行数
-                    sfaCubeCopyParams.dValue = sfaCubeConstInfo.headDim >> 1; // sfaCubeConstInfo.headDim;
-                    sfaCubeCopyParams.srcDValue = sfaCubeConstInfo.headDim;   // SFA: tile offsets.
+                    sfaCubeCopyParams.nValue = nL1Size; // 行数
+                    sfaCubeCopyParams.dValue = sfaCubeConstInfo.headDim >> 1;
+                    sfaCubeCopyParams.srcDValue = sfaCubeConstInfo.headDim;
                     sfaCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                     sfaCubeCopyParams.dstNzNStride = 1;
                     sfaCubeCopyParams.srcNdMatrixStride = 0;
@@ -860,8 +859,8 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &sfaCube
                     LocalTensor<Q_T> kTmpTensor = bL1Tensor[(sfaCubeConstInfo.headDimRope >> 1) * nL1SizeAlign];
                     Nd2NzParams sfaCubeCopyParams;
                     sfaCubeCopyParams.ndNum = 1;
-                    sfaCubeCopyParams.nValue = nL1Size;                       // 行数
-                    sfaCubeCopyParams.dValue = sfaCubeConstInfo.headDim >> 1; // sfaCubeConstInfo.headDim;
+                    sfaCubeCopyParams.nValue = nL1Size; // 行数
+                    sfaCubeCopyParams.dValue = sfaCubeConstInfo.headDim >> 1;
                     sfaCubeCopyParams.srcDValue = sfaCubeConstInfo.headDim;
                     sfaCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                     sfaCubeCopyParams.dstNzNStride = 1;
@@ -1026,7 +1025,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &sfaCube
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
-                    abL0BufIter++; // SFA: tile matmul.
+                    abL0BufIter++;
                 }
 
                 if (nL1 == (nL1Loops - 1)) {
@@ -1044,13 +1043,13 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &sfaCube
                     fixParams.unitFlag = 0b11;
                     fixParams.ndNum = 1; // 输出ND
 
-                    // 输出偏移sfaCubeRunInfo.loop % (sfaCubeConstInfo.preLoadNum)) * mmResUbSize是否在matmul里计算
+                    // 输出偏移info.loop % (constInfo.preLoadNum)) * mmResUbSize是否在matmul里计算
                     Fixpipe(
                         mm1ResGm[(sfaCubeRunInfo.loop % (sfaCubeConstInfo.preLoadNum)) * sfaCubeConstInfo.mmResUbSize +
                                  nL1 * N_SPLIT_SIZE +
                                  (sfaCubeSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE) *
                                      sfaCubeRunInfo.actualSingleProcessSInnerSizeAlign],
-                        cL0Tensor, fixParams); // SFA: MM1 writeback.
+                        cL0Tensor, fixParams);
                 }
                 if (sfaML1LoopCount == 2) {
                     sfaL0CBufferIndex++;
@@ -1058,7 +1057,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &sfaCube
             }
             SetFlag<HardEvent::MTE1_MTE2>(sfaMte21KvEvents[sfaKvBufferIndex]); // 反向同步, 表示L1已经被mte1消费完
         }
-        if (sfaML1LoopCount == 1) { // SFA: pipeline sync (sfaML1LoopCount).
+        if (sfaML1LoopCount == 1) {
             sfaL0CBufferIndex++;
         }
     }
@@ -1075,7 +1074,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
     uint32_t mL1SizeAlign = M_SPLIT_SIZE; // 16对齐
     uint32_t mL1Size = M_SPLIT_SIZE;      // m的实际大小
 
-    uint32_t nSize = BlockAlign<KV_T>(sfaCubeConstInfo.headDim); // SFA: KV state.
+    uint32_t nSize = BlockAlign<KV_T>(sfaCubeConstInfo.headDim);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
     uint32_t nL1SizeAlign = N_SPLIT_SIZE; // 16对齐
     uint32_t nL1Size = N_SPLIT_SIZE;      // n的实际大小
@@ -1091,7 +1090,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
     LocalTensor<KV_T> subvTensor;
 
     // ka表示左矩阵4buf选择哪一块buf, kb表示右矩阵3buf选择哪一块buf
-    uint32_t sfaQueryBufferIndex = 0, sfaKvBufferIndex = 0; // SFA: KV workspace.
+    uint32_t sfaQueryBufferIndex = 0, sfaKvBufferIndex = 0;
     uint32_t mBaseIdx = qpL1BufIter;
     for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) { // n切L1
         if (nL1 == (nL1Loops - 1)) {
@@ -1120,7 +1119,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
             WaitFlag<HardEvent::MTE1_MTE2>(sfaMte21KvEvents[sfaKvBufferIndex]);
             bL1Tensor = l1KVTensor[sfaKvBufferIndex * L1_BLOCK_OFFSET];
             uint32_t kOffset = k1 * kL0Loops;
-            kL0Size = 128; // SFA: KV sync.
+            kL0Size = 128;
             // 此处必须先初始化kL0Size, 再求kL0Loops, 否则由于循环会改变kL0Size大小, 导致kL0Loops错误
             kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
             kL0SizeAlign = kL0Size;
@@ -1136,10 +1135,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
                 if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                     Nd2NzParams sfaCubeCopyParams;
                     sfaCubeCopyParams.ndNum = 1;
-                    sfaCubeCopyParams.nValue = kL0Size;      // 行数
-                    sfaCubeCopyParams.dValue = N_SPLIT_SIZE; // sfaCubeConstInfo.headDim;
+                    sfaCubeCopyParams.nValue = kL0Size; // 行数
+                    sfaCubeCopyParams.dValue = N_SPLIT_SIZE;
                     sfaCubeCopyParams.srcDValue = sfaCubeConstInfo.headDim;
-                    sfaCubeCopyParams.dstNzC0Stride = kL0SizeAlign; // SFA: tile layout (dstNzC0Stride).
+                    sfaCubeCopyParams.dstNzC0Stride = kL0SizeAlign;
                     sfaCubeCopyParams.dstNzNStride = 1;
                     sfaCubeCopyParams.srcNdMatrixStride = 0;
                     sfaCubeCopyParams.dstNzMatrixStride = 0;
@@ -1232,7 +1231,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
                     LoadData3DParamsV2<KV_T> sfaMm2LoadBParams;
                     sfaMm2LoadBParams.l1H = kL0SizeAlign / 16; // 源操作数height
                     sfaMm2LoadBParams.l1W = 16;                // 源操作数weight=16，目的height=l1H*L1W
-                    sfaMm2LoadBParams.padList[0] = 0;          // SFA: KV layout (padList).
+                    sfaMm2LoadBParams.padList[0] = 0;
                     sfaMm2LoadBParams.padList[1] = 0;
                     sfaMm2LoadBParams.padList[2] = 0;
                     sfaMm2LoadBParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
@@ -1287,7 +1286,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
                     MmadParams sfaMmadParams;
-                    sfaMmadParams.m = mL1SizeAlign; // SFA: KV matmul.
+                    sfaMmadParams.m = mL1SizeAlign;
                     sfaMmadParams.n = nL1SizeAlign;
                     sfaMmadParams.k = kL0Size;
                     sfaMmadParams.cmatrixInitVal = (kL0 == 0 && k1 == 0);
@@ -1332,7 +1331,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &sfaCube
                 }
 
                 if (sfaML1LoopCount == 2) {
-                    sfaL0CBufferIndex++; // SFA: KV tile release.
+                    sfaL0CBufferIndex++;
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(sfaMte21KvEvents[sfaKvBufferIndex]); // 反向同步, 表示L1已经被mte1消费完

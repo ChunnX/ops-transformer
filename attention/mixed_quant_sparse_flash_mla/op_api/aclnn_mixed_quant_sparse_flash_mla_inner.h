@@ -24,7 +24,7 @@ extern aclnnStatus aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional, const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensOriKvOptional, const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
-    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional, // MQSMLA: compressed-KV args.
+    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
     const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
     int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
     int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,

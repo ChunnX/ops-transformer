@@ -31,7 +31,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QsmlaCsaBlockCube<__VA_ARGS__>, \
                                       BaseApi::QsmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = /* QSMLA: tiling dispatch. */ \
+        using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockVecDummy<__VA_ARGS__>, \
                                       BaseApi::CSABlockVec<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \

@@ -86,13 +86,11 @@ protected:
     static constexpr uint32_t LIV2_VEC1_V_MTE3_EVENT = EVENT_ID2;
     static constexpr uint32_t LIV2_VEC1_MTE3_V_EVENT = EVENT_ID3;
 
-    // Vec1 and TopK use separate data-movement events.
     static constexpr uint32_t TOPK_V_MTE2_EVENT = EVENT_ID4;
     static constexpr uint32_t TOPK_MTE2_V_EVENT = EVENT_ID5;
-    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6; // LI V2: top-k candidates.
+    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
     static constexpr uint32_t TOPK_MTE3_V_EVENT = EVENT_ID7;
 
-    // The remaining IDs are reused only after the Vec1 and TopK barriers complete.
     static constexpr uint32_t MTE3_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t V_MTE2_EVENT = EVENT_ID7;
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
@@ -166,8 +164,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::InitB
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(liv2OutBuf_, 2 * CeilDiv(liv2S1BaseSize_, 2) * liv2S2BaseSize_ * sizeof(SCORE_T));
     // out
+    // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     liv2Vec1OutUb_ = liv2OutBuf_.Get<SCORE_T>();
-    // 大小：(liv2TopkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     pipe->InitBuffer(liv2MrgValueBuf_, (liv2TopkCountAlign256_ + liv2TrunkLen_) * sizeof(SCORE_T));
     liv2MrgValueLocal_ = liv2MrgValueBuf_.Get<SCORE_T>();
     // returnvalue
@@ -179,10 +177,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::InitB
         liv2ValueOutLocal_ = liv2MrgValueBuf_.Get<float>();
     }
     // Topk
-    // 大小：(liv2TopkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    // 大小：topkCountAlign256_ * sizeof(SCORE_T)
     pipe->InitBuffer(liv2IndicesOutBuf_, (liv2TopkCountAlign256_ + 64) * sizeof(uint32_t));
     liv2IndicesOutLocal_ = liv2IndicesOutBuf_.Get<uint32_t>();
-    // 大小：liv2TopkCountAlign256_ * sizeof(SCORE_T)
     pipe->InitBuffer(liv2ScoreOutBuf_, (liv2TopkCountAlign256_ + 64) * sizeof(SCORE_T));
     liv2ScoreOutLocal_ = liv2ScoreOutBuf_.Get<SCORE_T>();
 
@@ -251,13 +249,11 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::InitV
 template <typename Liv2ServiceTraits>
 __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::AllocEventID()
 {
-    // Prime the events required by the Vec1 and TopK pipelines.
     SetFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + 0);
     SetFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + 1);
     SetFlag<HardEvent::MTE3_V>(LIV2_VEC1_MTE3_V_EVENT + 0);
     SetFlag<HardEvent::MTE3_V>(LIV2_VEC1_MTE3_V_EVENT + 1);
 
-    // TopK has one producer-consumer pair for each data-movement direction.
     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
@@ -266,13 +262,11 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Alloc
 template <typename Liv2ServiceTraits>
 __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::FreeEventID()
 {
-    // Drain the pipeline events before releasing their resources.
     WaitFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + 0);
     WaitFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + 1);
     WaitFlag<HardEvent::MTE3_V>(LIV2_VEC1_MTE3_V_EVENT + 0);
     WaitFlag<HardEvent::MTE3_V>(LIV2_VEC1_MTE3_V_EVENT + 1);
 
-    // Drain the TopK pair after both Vec1 ping-pong slots are idle.
     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
@@ -334,8 +328,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Proce
                                                                        pingpong);
         return;
     }
+    // weightsGm --> weightUB_
     WaitFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + pingpong);
-    // Stage the current query-row weights in UB before vector reduction.
     int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * liv2KHeadNum_ * liv2GSize_;
     DataCopyPadExtParams<W_T> padWeightsParams{true, 0, 0, 0};
     DataCopyExtParams qwDataCopyExtParams;
@@ -357,10 +351,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Proce
                                             (uint32_t)(liv2GSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)), weightBase,
                                             UB_BANK_DEPTH_STRIDE / sizeof(W_T), liv2GSize_, curAivS1ProcNum);
 
+    // outUB_ --->  scoreGm
     SetFlag<HardEvent::V_MTE2>(LIV2_VEC1_V_MTE2_EVENT + pingpong);
     SetFlag<HardEvent::V_MTE3>(LIV2_VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(LIV2_VEC1_V_MTE3_EVENT + pingpong);
-    // Write the reduced scores to the AIV-specific GM region.
     int64_t vec1OutGmOffset = liv2BlockId_ % 2 == 0 ?
                                   curS2Idx :
                                   CeilDiv(liv2S1BaseSize_, 2) * LIV2Common::Align((uint64_t)liv2ConstInfo_.kSeqSize,
@@ -865,7 +859,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Proce
                                   maskIndices, 1, 1, 0);
                     }
                     if (liv2TopkCount_ / 64 * 64 + 64 < liv2TopkCountAlign256_) {
-                        PipeBarrier<PIPE_V>(); // LI V2: mask sync (liv2TopkCountAlign256_).
+                        PipeBarrier<PIPE_V>();
                         Duplicate(liv2ScoreOutLocal_[liv2TopkCount_ / 64 * 64 + 64], liV2Zero,
                                   liv2TopkCountAlign256_ - (liv2TopkCount_ / 64 * 64 + 64));
                         PipeBarrier<PIPE_V>();
@@ -975,7 +969,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Proce
                 Duplicate(liv2IndicesOutLocal_.ReinterpretCast<int32_t>()[liv2TopkCount_ / 64 * 64], liV2Neg,
                           maskIndices, 1, 1, 0);
             }
-            if (liv2TopkCount_ / 64 * 64 + 64 < liv2TopkCountAlign256_) { // LI V2: mask sync (liv2TopkCountAlign256_).
+            if (liv2TopkCount_ / 64 * 64 + 64 < liv2TopkCountAlign256_) {
                 PipeBarrier<PIPE_V>();
                 Duplicate(liv2ScoreOutLocal_[liv2TopkCount_ / 64 * 64 + 64], liV2Zero,
                           liv2TopkCountAlign256_ - (liv2TopkCount_ / 64 * 64 + 64));
@@ -985,7 +979,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<Liv2ServiceTraits>::Proce
             }
 
             PipeBarrier<PIPE_V>();
-            uint32_t copyLen = liv2TopkCountAlign256_; // 32B对齐 liv2TopkCountAlign256_
+            uint32_t copyLen = liv2TopkCountAlign256_;
             AscendC::DataCopy(liv2LdIndexLocal_, liv2IndicesOutLocal_, copyLen);
             AscendC::DataCopy(liv2MrgValueLocal_, liv2ScoreOutLocal_, copyLen);
         }

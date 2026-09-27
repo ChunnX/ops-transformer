@@ -16,7 +16,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
-#include "opdev/tensor_view_utils.h" // LI: ACLNN dependencies.
+#include "opdev/tensor_view_utils.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
@@ -24,7 +24,7 @@
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
 
-using namespace op; // LI: ACLNN tensor args.
+using namespace op;
 
 #ifdef __cplusplus
 extern "C" {

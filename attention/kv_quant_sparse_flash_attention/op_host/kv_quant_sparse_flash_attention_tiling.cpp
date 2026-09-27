@@ -1621,7 +1621,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
         return status;
     }
 
-    status = CheckTensorDescriptions(); // KV-SFA: tile descriptors.
+    status = CheckTensorDescriptions();
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }

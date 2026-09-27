@@ -118,8 +118,7 @@ __aicore__ inline void ComputeParamBatch(
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(qsCacheRunParam, qsCacheConstInfo, cuSeqlensQGm, cuSeqlensOriKvGm,
                                            cuSeqlensCmpKvGm, actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm,
                                            cmpResidualKvGm, hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen,
-                                           hasActualSeqOriKvlen,
-                                           hasActualSeqCmpKvlen); // QSMLA: compressed-KV bounds.
+                                           hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
 }
 
 TEMPLATE_INTF
@@ -202,7 +201,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &qsCacheRunParam, const Co
         qsCacheRunParam.halfMRealSize = qsCacheRunParam.mRealSize - qsCacheRunParam.halfMRealSize;
         qsCacheRunParam.mOuterOffset = qsCacheRunParam.cubeMOuterOffset + qsCacheRunParam.firstHalfMRealSize;
     } else {
-        qsCacheRunParam.mOuterOffset = qsCacheRunParam.cubeMOuterOffset; // QSMLA: tile offsets.
+        qsCacheRunParam.mOuterOffset = qsCacheRunParam.cubeMOuterOffset;
     }
 
     qsCacheRunParam.halfS1RealSize = (qsCacheRunParam.s1RealSize + 1) >> 1;
@@ -264,10 +263,9 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &qsCacheRunParam, const 
     }
 }
 
-TEMPLATE_INTF // QSMLA: LSE bounds.
-    __aicore__ inline bool
-    ComputeParamS1(RunParamStr &qsCacheRunParam, const ConstInfo &qsCacheConstInfo, uint32_t sOuterLoopIdx,
-                   GlobalTensor<int32_t> &cuSeqlensQGm)
+TEMPLATE_INTF
+__aicore__ inline bool ComputeParamS1(RunParamStr &qsCacheRunParam, const ConstInfo &qsCacheConstInfo,
+                                      uint32_t sOuterLoopIdx, GlobalTensor<int32_t> &cuSeqlensQGm)
 {
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -297,7 +295,7 @@ TEMPLATE_INTF // QSMLA: LSE bounds.
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(qsCacheRunParam, qsCacheConstInfo, sOuterLoopIdx);
 
     LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(qsCacheRunParam, qsCacheConstInfo, qsCacheRunParam.boIdx, cuSeqlensQGm);
-    return false; // QSMLA: sequence bounds (ComputeParamS1).
+    return false;
 }
 
 TEMPLATE_INTF
@@ -309,7 +307,7 @@ __aicore__ inline bool ComputeLastBN(RunParamStr &qsCacheRunParam, GlobalTensor<
             return true;
         }
     }
-    return false; // QSMLA: sequence bounds (ComputeLastBN).
+    return false;
 }
 
 TEMPLATE_INTF
@@ -320,17 +318,16 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
     return sInnerToken;
 }
 
-TEMPLATE_INTF // QSMLA: sequence bounds (TEMPLATE_INTF).
-    __aicore__ inline bool
-    ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
-                      GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
-                      RunParamStr &qsCacheRunParam, const ConstInfo &qsCacheConstInfo)
+TEMPLATE_INTF
+__aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
+                                         GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
+                                         RunParamStr &qsCacheRunParam, const ConstInfo &qsCacheConstInfo)
 {
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (qsCacheRunParam.actualS2OriSize == 0) {
             qsCacheRunParam.oriKvLoopEndIdx = 0;
-            qsCacheRunParam.cmpKvLoopEndIdx = 0; // QSMLA: compressed-KV params (cmpKvLoopEndIdx).
+            qsCacheRunParam.cmpKvLoopEndIdx = 0;
             qsCacheRunParam.s2LoopEndIdx = 0;
             qsCacheRunParam.s2CmpLineStartIdx = 0;
             return true;
@@ -382,7 +379,7 @@ TEMPLATE_INTF // QSMLA: sequence bounds (TEMPLATE_INTF).
         qsCacheRunParam.s2CmpLineStartIdx = 0;
         qsCacheRunParam.s2CmpLineEndIdx = 0;
         qsCacheRunParam.cmpKvLoopEndIdx = 0;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) { // QSMLA: compressed-KV matmul.
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE) {
         qsCacheRunParam.s2CmpLineStartIdx = 0;
         qsCacheRunParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             (qsCacheRunParam.cubeSOuterOffset + qsCacheRunParam.s1RealSize + qsCacheRunParam.nextTokensPerBatchCmp) /
@@ -412,7 +409,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr &qsCacheRunParam, Ru
     qsCacheRunInfo.boIdx = qsCacheRunParam.boIdx;
     qsCacheRunInfo.preTokensPerBatch = qsCacheRunParam.preTokensPerBatch;
     qsCacheRunInfo.nextTokensPerBatchOri = qsCacheRunParam.nextTokensPerBatchOri;
-    qsCacheRunInfo.actualS1Size = qsCacheRunParam.actualS1Size; // QSMLA: compressed-KV params (TEMPLATE_MODE).
+    qsCacheRunInfo.actualS1Size = qsCacheRunParam.actualS1Size;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         qsCacheRunInfo.actualS2CmpSize = qsCacheRunParam.actualS2CmpSize;

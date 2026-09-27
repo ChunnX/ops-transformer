@@ -44,7 +44,7 @@ TEMPLATES_DEF
 class MqsmlaCsaBlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64; // MQSMLA: tile matmul (s1BaseSize).
+    static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
@@ -336,16 +336,16 @@ public:
     __aicore__ inline void ReleaseMqsmlaCubeEvents() {}
 };
 
-template <typename T>         // MQSMLA: tile matmul.
+template <typename T>
 struct MqsmlaCubeBlockTraits; // 声明
 
-/* 生成MqsmlaCubeBlockTraits */
+/* 生成CubeBlockTraits */
 #define GEN_MQSMLA_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_MQSMLA_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
 #define DEFINE_MQSMLA_CUBE_BLOCK_TRAITS(MQSMLA_CUBE_BLOCK_CLASS) \
-    TEMPLATES_DEF_NO_DEFAULT /* MQSMLA: compressed-KV matmul. */ \
-        struct MqsmlaCubeBlockTraits<MQSMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct MqsmlaCubeBlockTraits<MQSMLA_CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         MQSMLA_CUBE_TRAIT_TYPES(GEN_MQSMLA_TRAIT_TYPE) \
         MQSMLA_CUBE_TRAIT_CONSTANTS(GEN_MQSMLA_TRAIT_CONST) \
     }
@@ -353,7 +353,7 @@ struct MqsmlaCubeBlockTraits; // 声明
 DEFINE_MQSMLA_CUBE_BLOCK_TRAITS(MqsmlaCsaBlockCube);
 DEFINE_MQSMLA_CUBE_BLOCK_TRAITS(MqsmlaCsaBlockCubeDummy);
 
-// /* 生成Arg Traits, kernel中只需要调用MQSMLA_ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
+// /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_MQSMLA_ARGS_TYPE(name, ...) using name = typename MqsmlaCubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_MQSMLA_ARGS_CONST(name, type, ...) \
     static constexpr type name = MqsmlaCubeBlockTraits<CubeBlockType>::name##Traits;

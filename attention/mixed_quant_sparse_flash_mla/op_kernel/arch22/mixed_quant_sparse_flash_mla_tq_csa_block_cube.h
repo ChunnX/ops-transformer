@@ -75,7 +75,7 @@ private:
     static constexpr uint32_t L1_EVENT0 = EVENT_ID2;
     static constexpr uint32_t L1_EVENT1 = EVENT_ID3;
     static constexpr uint32_t L1_EVENT2 = EVENT_ID4;
-    static constexpr uint32_t L1_EVENT3 = EVENT_ID5; // MQSMLA: pipeline sync (L1_EVENT3).
+    static constexpr uint32_t L1_EVENT3 = EVENT_ID5;
     static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
     static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
     static constexpr uint32_t L1_EVENT6 = EVENT_ID1;
@@ -86,8 +86,7 @@ private:
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};                    // isSetFMatrix isSetPadding
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
-    static constexpr uint32_t mqsMte21KvEvents[3] = {L1_EVENT4, L1_EVENT5,
-                                                     L1_EVENT6}; // MQSMLA: pipeline sync (mqsMte21KvEvents).
+    static constexpr uint32_t mqsMte21KvEvents[3] = {L1_EVENT4, L1_EVENT5, L1_EVENT6};
 
     ConstInfo mqCubeConstInfo{};
 
@@ -203,7 +202,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::InitBuffers(TPip
 
     // L0A
     pipe->InitBuffer(tmpBufL0A, L0A_PP_SIZE * 2); // 64K
-    aL0TensorPingPong = tmpBufL0A.Get<KV_T>();    // MQSMLA: query workspace.
+    aL0TensorPingPong = tmpBufL0A.Get<KV_T>();
     // L0B
     pipe->InitBuffer(tmpBufL0B, L0B_PP_SIZE * 2); // 64K
     bL0TensorPingPong = tmpBufL0B.Get<KV_T>();
@@ -219,7 +218,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::AllocEventID()
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
-    SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4); // MQSMLA: pipeline sync (L1_EVENT4).
+    SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -233,7 +232,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT3);
-    WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4); // MQSMLA: pipeline sync (L1_EVENT4).
+    WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
@@ -250,7 +249,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::CopyGmToL1(Local
     mqCubeCopyParams.ndNum = 1;
     mqCubeCopyParams.nValue = srcN; // 行数
     mqCubeCopyParams.dValue = srcD;
-    mqCubeCopyParams.srcDValue = srcDstride;                // MQSMLA: tile layout (srcDValue).
+    mqCubeCopyParams.srcDValue = srcDstride;
     mqCubeCopyParams.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
     mqCubeCopyParams.dstNzNStride = 1;
     mqCubeCopyParams.srcNdMatrixStride = 0;
@@ -281,7 +280,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::LoadDataMm1A(Loc
     mqMm1LoadParams.l1W = 16;         // Win=M0
     mqMm1LoadParams.padList[0] = 0;
     mqMm1LoadParams.padList[1] = 0;
-    mqMm1LoadParams.padList[2] = 0;   // MQSMLA: tile state (padList).
+    mqMm1LoadParams.padList[2] = 0;
     mqMm1LoadParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
     // SetLoadToA0Params
@@ -313,7 +312,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::LoadDataMm1B(Loc
     LocalTensor<KV_T> srcTensor = l1Tensor[nSize * kSplitSize * idx];
 
     LoadData2DParams mqMm1LoadBParams;
-    mqMm1LoadBParams.startIndex = 0; // MQSMLA: KV layout (startIndex).
+    mqMm1LoadBParams.startIndex = 0;
     mqMm1LoadBParams.repeatTimes = (nSize + 15) / 16 * kSize / (32 / sizeof(KV_T));
     mqMm1LoadBParams.srcStride = 1;
     mqMm1LoadBParams.dstGap = 0;
@@ -434,7 +433,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         mqCubeCopyParams.ndNum = 1;
                         mqCubeCopyParams.nValue = nL1Size;
                         mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1;
-                        mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim; // MQSMLA: original-KV layout (srcDValue).
+                        mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
                         mqCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                         mqCubeCopyParams.dstNzNStride = 1;
                         mqCubeCopyParams.srcNdMatrixStride = 0;
@@ -447,7 +446,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         Nd2NzParams mqCubeCopyParams;
                         mqCubeCopyParams.ndNum = 1;
                         mqCubeCopyParams.nValue = nL1Size;
-                        mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1; // MQSMLA: original-KV layout (dValue).
+                        mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1;
                         mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
                         mqCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                         mqCubeCopyParams.dstNzNStride = 1;
@@ -465,7 +464,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                     mqCubeCopyParams.ndNum = 1;
                     mqCubeCopyParams.nValue = nL1Size;
                     mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1;
-                    mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim; // MQSMLA: KV layout (srcDValue).
+                    mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
                     mqCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                     mqCubeCopyParams.dstNzNStride = 1;
                     mqCubeCopyParams.srcNdMatrixStride = 0;
@@ -478,7 +477,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                     Nd2NzParams mqCubeCopyParams;
                     mqCubeCopyParams.ndNum = 1;
                     mqCubeCopyParams.nValue = nL1Size;
-                    mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1; // MQSMLA: KV layout (dValue).
+                    mqCubeCopyParams.dValue = mqCubeConstInfo.headDim >> 1;
                     mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
                     mqCubeCopyParams.dstNzC0Stride = nL1SizeAlign;
                     mqCubeCopyParams.dstNzNStride = 1;
@@ -545,7 +544,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
-                    abL0BufIter++; // MQSMLA: tile matmul (abL0BufIter).
+                    abL0BufIter++;
                 }
 
                 if (nL1 == (nL1Loops - 1)) {
@@ -569,14 +568,14 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
                                          mqCubeRunInfo.actualSingleProcessSInnerSizeAlign],
                             cL0Tensor, fixParams);
                 }
-                if (mqsML1LoopCount == 2) { // MQSMLA: tile matmul (mqsML1LoopCount).
+                if (mqsML1LoopCount == 2) {
                     mqsL0CBufferIndex++;
                 }
             }
 
             SetFlag<HardEvent::MTE1_MTE2>(mqsMte21KvEvents[mqsKvBufferIndex]); // 反向同步, 表示L1已经被mte1消费完
         }
-        if (mqsML1LoopCount == 1) { // MQSMLA: pipeline sync (mqsML1LoopCount).
+        if (mqsML1LoopCount == 1) {
             mqsL0CBufferIndex++;
         }
     }
@@ -593,7 +592,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
     uint32_t mL1SizeAlign = M_SPLIT_SIZE; // 16对齐
     uint32_t mL1Size = M_SPLIT_SIZE;      // m的实际大小
 
-    uint32_t nSize = BlockAlign<KV_T>(mqCubeConstInfo.headDim); // MQSMLA: KV state.
+    uint32_t nSize = BlockAlign<KV_T>(mqCubeConstInfo.headDim);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
     uint32_t nL1SizeAlign = N_SPLIT_SIZE; // 16对齐
     uint32_t nL1Size = N_SPLIT_SIZE;      // n的实际大小
@@ -609,7 +608,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
     LocalTensor<KV_T> subvTensor;
 
     // ka表示左矩阵4buf选择哪一块buf, kb表示右矩阵3buf选择哪一块buf
-    uint32_t mqsQueryBufferIndex = 0, mqsKvBufferIndex = 0; // MQSMLA: KV workspace.
+    uint32_t mqsQueryBufferIndex = 0, mqsKvBufferIndex = 0;
     uint32_t mBaseIdx = qpL1BufIter;
     for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) { // n切L1 -> D
         if (nL1 == (nL1Loops - 1)) {
@@ -633,7 +632,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
             WaitFlag<HardEvent::MTE1_MTE2>(mqsMte21KvEvents[mqsKvBufferIndex]);
             bL1Tensor = l1KVTensor[mqsKvBufferIndex * L1_BLOCK_OFFSET];
             uint32_t kOffset = k1 * kL0Loops;
-            kL0Size = 128; // MQSMLA: KV sync.
+            kL0Size = 128;
             // 此处必须先初始化kL0Size, 再求kL0Loops, 否则由于循环会改变kL0Size大小, 导致kL0Loops错误
             kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
             kL0SizeAlign = kL0Size;
@@ -681,8 +680,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::BSND) {
                         Nd2NzParams mqCubeCopyParams;
                         mqCubeCopyParams.ndNum = 1;
-                        mqCubeCopyParams.nValue = kL0Size;      // 行数
-                        mqCubeCopyParams.dValue = N_SPLIT_SIZE; // mqCubeConstInfo.headDim;
+                        mqCubeCopyParams.nValue = kL0Size; // 行数
+                        mqCubeCopyParams.dValue = N_SPLIT_SIZE;
                         mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
                         mqCubeCopyParams.dstNzC0Stride = kL0SizeAlign;
                         mqCubeCopyParams.dstNzNStride = 1;
@@ -703,10 +702,10 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                             mqCubeRunInfo.s2Idx * mqCubeConstInfo.s2BaseSize + mqCubeRunInfo.s2StartPoint;
                         Nd2NzParams mqCubeCopyParams;
                         mqCubeCopyParams.ndNum = 1;
-                        mqCubeCopyParams.nValue = kL0Size;      // 行数
-                        mqCubeCopyParams.dValue = N_SPLIT_SIZE; // mqCubeConstInfo.headDim;
+                        mqCubeCopyParams.nValue = kL0Size; // 行数
+                        mqCubeCopyParams.dValue = N_SPLIT_SIZE;
                         mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
-                        mqCubeCopyParams.dstNzC0Stride = kL0SizeAlign; // MQSMLA: tile layout (dstNzC0Stride).
+                        mqCubeCopyParams.dstNzC0Stride = kL0SizeAlign;
                         mqCubeCopyParams.dstNzNStride = 1;
                         mqCubeCopyParams.srcNdMatrixStride = 0;
                         mqCubeCopyParams.dstNzMatrixStride = 0;
@@ -718,10 +717,10 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                 } else {
                     Nd2NzParams mqCubeCopyParams;
                     mqCubeCopyParams.ndNum = 1;
-                    mqCubeCopyParams.nValue = kL0Size;      // 行数
-                    mqCubeCopyParams.dValue = N_SPLIT_SIZE; // mqCubeConstInfo.headDim;
+                    mqCubeCopyParams.nValue = kL0Size; // 行数
+                    mqCubeCopyParams.dValue = N_SPLIT_SIZE;
                     mqCubeCopyParams.srcDValue = mqCubeConstInfo.headDim;
-                    mqCubeCopyParams.dstNzC0Stride = kL0SizeAlign; // MQSMLA: tile layout (dstNzC0Stride).
+                    mqCubeCopyParams.dstNzC0Stride = kL0SizeAlign;
                     mqCubeCopyParams.dstNzNStride = 1;
                     mqCubeCopyParams.srcNdMatrixStride = 0;
                     mqCubeCopyParams.dstNzMatrixStride = 0;
@@ -770,9 +769,9 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     LoadData3DParamsV2<KV_T> mqMm2LoadBParams;
                     mqMm2LoadBParams.l1H = kL0SizeAlign / 16; // 源操作数height
                     mqMm2LoadBParams.l1W = 16;                // 源操作数weight=16，目的height=l1H*L1W
-                    mqMm2LoadBParams.padList[0] = 0;          // MQSMLA: KV layout (padList).
+                    mqMm2LoadBParams.padList[0] = 0;
                     mqMm2LoadBParams.padList[1] = 0;
-                    mqMm2LoadBParams.padList[2] = 0;   // MQSMLA: tile state (padList).
+                    mqMm2LoadBParams.padList[2] = 0;
                     mqMm2LoadBParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
 
                     mqMm2LoadBParams.mExtension = kL0SizeAlign; // 在目的操作数height维度的传输长度
@@ -824,7 +823,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
                     MmadParams mqMmadParams;
-                    mqMmadParams.m = mL1SizeAlign; // MQSMLA: KV matmul.
+                    mqMmadParams.m = mL1SizeAlign;
                     mqMmadParams.n = nL1SizeAlign;
                     mqMmadParams.k = kL0Size;
                     mqMmadParams.cmatrixInitVal = (kL0 == 0 && k1 == 0);
@@ -836,7 +835,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
-                    abL0BufIter++; // MQSMLA: tile matmul (abL0BufIter).
+                    abL0BufIter++;
                 }
 
                 if (nL1 == (nL1Loops - 1)) { // nL1最后一轮, 需要将B驻留在L1中, 用于下一轮的计算？
@@ -863,7 +862,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                 }
 
                 if (mqsML1LoopCount == 2) {
-                    mqsL0CBufferIndex++; // MQSMLA: pipeline sync (mqsL0CBufferIndex).
+                    mqsL0CBufferIndex++;
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(mqsMte21KvEvents[mqsKvBufferIndex]); // 反向同步, 表示L1已经被mte1消费完

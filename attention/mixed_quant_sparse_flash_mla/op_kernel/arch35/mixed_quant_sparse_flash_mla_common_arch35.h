@@ -80,7 +80,7 @@ using AttentionCommon::Align64Func;
     X(Q_T) \
     X(KV_T) \
     X(T) \
-    X(OUTPUT_T) /* MQSMLA: query params. */
+    X(OUTPUT_T)
 
 #define MQSMLA_CUBE_TRAIT_CONSTANTS(X) \
     X(isFd, bool, false) \

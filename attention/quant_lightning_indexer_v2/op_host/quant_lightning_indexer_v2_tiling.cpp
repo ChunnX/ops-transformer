@@ -280,7 +280,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     if (qliV2Params_.layOutQuery != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", qliV2Params_.layOutQuery);
     }
-    if (qliV2Params_.layOutKey != nullptr) { // QLI V2: query descriptors (layOutKey).
+    if (qliV2Params_.layOutKey != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_key is:%s", qliV2Params_.layOutKey);
     }
     if (qliV2Params_.sparseCount != nullptr) {
@@ -405,7 +405,7 @@ ge::graphStatus QLIV2InfoParser::GetOpParaInfo()
     GetInputParaInfo();
     GetOutputParaInfo();
     if (ge::GRAPH_SUCCESS != GetAttrParaInfo()) {
-        return ge::GRAPH_FAILED; // QLI V2: output descriptors.
+        return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckAttrParaInfo()) {
         return ge::GRAPH_FAILED;
@@ -837,7 +837,7 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     }
     gSize_ = n1Size_ / n2Size_;
 
-    if (npuArch_ == NpuArch::DAV_3510) { // QLI V2: query descriptors (npuArch_).
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q and k",
@@ -1070,7 +1070,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             if (qliV2Params_.outputIdxOffset.tensor != nullptr) {
                 OP_CHECK_IF((qliV2Params_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                                opName_, "q and output_idx_offset", // QLI V2: query descriptors (output_idx_offset).
+                                opName_, "q and output_idx_offset",
                                 Ops::Base::ToString(qliV2Params_.query.shape->GetStorageShape()) + " and " +
                                     Ops::Base::ToString(qliV2Params_.outputIdxOffset.tensor->GetStorageShape()),
                                 "TND case q and output_idx_offset dim 0 are " + std::to_string(qTsize) + " and " +
@@ -1133,7 +1133,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
         OP_CHECK_IF((qliV2Params_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
                         (qliV2Params_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                        opName_, "q, w and sparse_indices", // QLI V2: query descriptors (sparse_indices).
+                        opName_, "q, w and sparse_indices",
                         Ops::Base::ToString(qliV2Params_.query.shape->GetStorageShape()) + ", " +
                             Ops::Base::ToString(qliV2Params_.weights.shape->GetStorageShape()) + " and " +
                             Ops::Base::ToString(qliV2Params_.attenOut.shape->GetStorageShape()),
@@ -1379,7 +1379,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
     if (!keyStridesVec_.empty() && qliV2Params_.key.shape != nullptr) {
         auto &shape = qliV2Params_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
-        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) { // QLI V2: KV descriptors.
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
                                shape.GetDim(3), 1};
         } else if (kLayout_ == DataLayout::TND) {

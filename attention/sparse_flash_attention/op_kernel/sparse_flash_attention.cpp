@@ -34,7 +34,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::SFAMatmulServiceDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = /* SFA: tiling dispatch (VecBlockType). */ \
+        using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::SFAVectorService<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
@@ -49,7 +49,7 @@ using namespace AscendC;
         using CubeBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAMatmulService<__VA_ARGS__>, \
                                       BaseApi::SFAMatmulServiceDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = /* SFA: tiling dispatch (VecBlockType). */ \
+        using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::SFAVectorServiceDummy<__VA_ARGS__>, \
                                       BaseApi::SFAVectorService<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \

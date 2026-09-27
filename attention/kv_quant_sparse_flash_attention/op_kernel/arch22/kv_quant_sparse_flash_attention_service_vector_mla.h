@@ -189,7 +189,7 @@ private:
     TBuf<> softmaxSumDefaultBuff; // 1K
 
     LocalTensor<T> softmaxMaxDefaultUb;
-    LocalTensor<T> softmaxSumDefaultUb; // KV-SFA: softmax state.
+    LocalTensor<T> softmaxSumDefaultUb;
 
     LocalTensor<T> softmaxMaxUb;
     LocalTensor<T> softmaxSumUb;
@@ -533,7 +533,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
                                   16 :
                                   (BASE_BLOCK_MAX_ELEMENT_NUM / kvVecInfo.actualSingleProcessSInnerSizeAlign);
     // 1. 向下8对齐是因为UB操作至少32B
-    // 2. kvVecInfo.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
+    // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
     qsfaMSplitSize = qsfaMSplitSize >> 3U << 3U;
 
     if (qsfaMSplitSize > kvVecSplitInfo.vecDealM) {
@@ -1075,7 +1075,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &kvV
         kvVecSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             kvVecSplitInfo.vecStartM = kvVecSplitInfo.vecDealM;
-            kvVecSplitInfo.vecDealM = kvVecSplitInfo.nBufferDealM - kvVecSplitInfo.vecDealM; // KV-SFA: pipeline sync.
+            kvVecSplitInfo.vecDealM = kvVecSplitInfo.nBufferDealM - kvVecSplitInfo.vecDealM;
         }
         CrossCoreWaitFlag(kvVecConstInfo.syncC2V2);
         ProcessVec2SingleBuf(kvVecInfo, kvVecSplitInfo);
@@ -1134,7 +1134,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
-    DataCopy(tmp, kvBmm2ResultUb, kvColumns * kvDealRows); // KV-SFA: output matmul.
+    DataCopy(tmp, kvBmm2ResultUb, kvColumns * kvDealRows);
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t kvAccumOutputCount = CalcAccumOffset(kvVecInfo.bIdx, kvVecInfo.gS1Idx);
@@ -1165,7 +1165,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunI
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = kvDealRows;
-    dataCopyParams.blockLen = kvActualColumns * sizeof(OUT_T); // KV-SFA: output layout.
+    dataCopyParams.blockLen = kvActualColumns * sizeof(OUT_T);
     dataCopyParams.srcStride = (kvColumns - kvActualColumns) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[kvVecInfo.attenOutOffset + kvWorkspaceRow * kvActualColumns], attenOutUb,
@@ -1217,8 +1217,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowDivs(LocalTensor<float> dstU
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
-    // src0Ub:[kvDealRows, kvColumns], src1Ub:[kvDealRows, FP32_BLOCK_ELEMENT_NUM] dstUb:[kvDealRows,
-    // kvColumns]
+    // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
+    // columnCount]
     uint32_t qsfaDtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t qsfaDLoop = kvActualColumns / qsfaDtypeMask;
     uint32_t qsfaDRemain = kvActualColumns % qsfaDtypeMask;
@@ -1265,9 +1265,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, L
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
-    // src0Ub:[kvDealRows, kvColumns] src1Ub:[kvDealRows, FP32_BLOCK_ELEMENT_NUM] dstUb:[kvDealRows,
-    // kvColumns]
-    // kvDealRows is repeat times, must be less 256
+    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
+    // columnCount]
+    // dealRowCount is repeat times, must be less 256
     uint32_t qsfaRepeatElementNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t qsfaBlockElementNum = FP32_BLOCK_ELEMENT_NUM;
 
@@ -1312,7 +1312,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, L
             }
         }
 
-        // 最后一次完成[kvDealRows, dRemain] * [kvDealRows, blockElementNum] 只计算有效部分
+        // 最后一次完成[dealRowCount, dRemain] * [dealRowCount, blockElementNum] 只计算有效部分
         if (qsfaDRemain > 0) {
             Mul(dstUb[qsfaDLoop * qsfaRepeatElementNum], src0Ub[qsfaDLoop * qsfaRepeatElementNum], src1Ub, qsfaDRemain,
                 kvDealRows, qsfaRepeatParams);
@@ -1325,7 +1325,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, L
         qsfaRepeatParams.src1BlkStride = 0;
         qsfaRepeatParams.dstRepStride = 8;
         qsfaRepeatParams.dstBlkStride = 1;
-        // 每次计算一行，共计算kvDealRows行
+        // 每次计算一行，共计算dealRowCount行
         for (uint32_t qsfaI = 0; qsfaI < kvDealRows; qsfaI++) {
             // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
             Mul(dstUb[qsfaI * kvColumns], src0Ub[qsfaI * kvColumns], src1Ub[qsfaI * qsfaBlockElementNum],

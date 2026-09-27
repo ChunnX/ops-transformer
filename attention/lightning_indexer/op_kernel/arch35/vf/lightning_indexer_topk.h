@@ -25,7 +25,7 @@ class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
-    {} // LI: top-k candidates.
+    {}
 };
 template <>
 class LITopk<uint32_t> {
@@ -38,13 +38,13 @@ public:
 
     __aicore__ inline void Init(uint32_t liTopK, uint32_t liTrunkLength)
     {
-        this->liTopK = liTopK; // LI: tile candidates (liTopK).
+        this->liTopK = liTopK;
         this->liTrunkLength = liTrunkLength;
     }
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &liSharedBuffer, LocalTensor<uint32_t> &liIndicesOut)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = liIndicesOut; // LI: tile candidates (hisIndexLocal1).
+        LocalTensor<uint32_t> hisIndexLocal1 = liIndicesOut;
         LocalTensor<uint32_t> hisIndexLocal2 = liSharedBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
@@ -102,15 +102,15 @@ public:
     }
 
 private:
-    LocalTensor<uint32_t> hisIndexLocal[2]; // 每liTrunkLength长度的s2选出的liTopK个索引
+    LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
     LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
     LocalTensor<uint32_t> idx0Local;        // 输入数据第1个8位Buf 256 * 4B
     LocalTensor<uint32_t> idx1Local;        // 输入数据第2个8位Buf 256 * 4B
     LocalTensor<uint32_t> idx2Local;        // 输入数据第3个8位Buf 256 * 4B
     LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
-    LocalTensor<uint32_t> tmpIndexLocal;    // 每liTrunkLength + liTopK的临时index
-    uint32_t liTopK = 512;                  // LI: top-k candidates (liTopK).
+    LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
+    uint32_t liTopK = 512;
     uint32_t liTrunkLength = 8192;
 };
 } // namespace topk

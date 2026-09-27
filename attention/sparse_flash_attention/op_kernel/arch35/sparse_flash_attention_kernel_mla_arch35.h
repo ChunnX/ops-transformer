@@ -310,7 +310,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 
     sfaConstInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
-        sfaConstInfo.gS1Start = 0;          // SFA: tile advance.
+        sfaConstInfo.gS1Start = 0;
         sfaConstInfo.bN2Start++;
     } else {
         sfaConstInfo.gS1Start++;
@@ -351,7 +351,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++; // SFA: query matmul.
+    crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
@@ -508,11 +508,11 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t bIdx = sfaConstInfo.bN2End / sfaConstInfo.n2Size;
     uint32_t sfaActS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
     uint32_t sfaGS1max = sfaActS1Size;
+    /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
     if (sfaConstInfo.gS1End + 1 < sfaGS1max) {
-        /* sfaConstInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         sfaConstInfo.gS1End = sfaConstInfo.gS1End + 1;
     } else {
-        /* sfaConstInfo.gS1End == gS1max，bN2End需要往后加一格，bN2End变为0，以代表末尾 */
+        /* constInfo.gS1End == gS1max，bN2End需要往后加一格，bN2End变为0，以代表末尾 */
         sfaConstInfo.bN2End = sfaConstInfo.bN2End + 1;
         sfaConstInfo.gS1End = 0;
     }
@@ -556,7 +556,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                     case 1:
                         sfaHasPendingPipelineTask = false;
                         sfaHasTwoPipelineStages = false;
-                        break; // SFA: tile state (break).
+                        break;
                     default:
                         break;
                 }
@@ -618,7 +618,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx; // SFA: multi-core tile advance.
+            ++multiCoreInnerIdx;
         }
         sfaGS1StartIdx = 0;
     }
@@ -699,7 +699,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     sfaRunInfo.firstHalfS1RealSize = sfaRunParam.firstHalfS1RealSize;
     sfaRunInfo.mRealSize = sfaRunParam.mRealSize;
     sfaRunInfo.halfMRealSize = sfaRunParam.halfMRealSize;
-    sfaRunInfo.firstHalfMRealSize = sfaRunParam.firstHalfMRealSize; // SFA: tile state (firstHalfMRealSize).
+    sfaRunInfo.firstHalfMRealSize = sfaRunParam.firstHalfMRealSize;
 
     sfaRunInfo.vec2S1BaseSize = sfaRunInfo.halfS1RealSize;
     sfaRunInfo.vec2MBaseSize = sfaRunInfo.halfMRealSize;
