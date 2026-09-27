@@ -20,6 +20,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/common_types.h"
+#include <acl/acl.h>
 
 using namespace op;
 
@@ -30,8 +31,19 @@ extern "C" {
 namespace {
 
 static constexpr int64_t GSAG_MAX_HEAD_NUM = 128;
+static constexpr int64_t GSAG_HEAD_DIM = 128;
 static constexpr int64_t GSAG_SUPPORTED_MASK_TYPE = 1;
 static constexpr int64_t GSAG_SUPPORTED_SOFTMAX_PRECISION = 0;
+static constexpr size_t GSAG_SPARSE_IDX_RANK = 4;
+static constexpr size_t GSAG_SPARSE_CNT_RANK = 3;
+static constexpr int64_t GSAG_METADATA_HEADER_SIZE = 80;
+
+struct LayoutDims {
+    int64_t batch;
+    int64_t seq;
+    int64_t head;
+    int64_t headDim;
+};
 
 aclnnStatus CheckRequiredTensor(const aclTensor *t, const char *name)
 {
@@ -76,34 +88,27 @@ aclnnStatus CheckLayoutTensorRank(const aclTensor *t, const char *name, const ch
     return ACLNN_SUCCESS;
 }
 
-int64_t GetHeadNumFromQuery(const aclTensor *query, const char *layout)
+bool IsTndLayout(const char *layout)
 {
-    const auto &shape = query->GetViewShape();
-    if (strcmp(layout, "TND") == 0) {
-        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
-    }
-    if (strcmp(layout, "BNSD") == 0) {
-        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
-    }
-    if (strcmp(layout, "BSND") == 0) {
-        return shape.GetDimNum() >= 3 ? shape.GetDim(2) : -1;
-    }
-    return -1;
+    return strcmp(layout, "TND") == 0;
 }
 
-int64_t GetHeadNumFromKey(const aclTensor *key, const char *layout)
+LayoutDims GetLayoutDims(const char *layout)
 {
-    const auto &shape = key->GetViewShape();
-    if (strcmp(layout, "TND") == 0) {
-        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+    if (IsTndLayout(layout)) {
+        return {-1, 0, 1, 2}; // [T, N, D]
     }
     if (strcmp(layout, "BNSD") == 0) {
-        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+        return {0, 2, 1, 3};
     }
-    if (strcmp(layout, "BSND") == 0) {
-        return shape.GetDimNum() >= 3 ? shape.GetDim(2) : -1;
-    }
-    return -1;
+    return {0, 1, 2, 3}; // BSND
+}
+
+int64_t GetHeadNum(const aclTensor *t, const char *layout)
+{
+    const auto &shape = t->GetViewShape();
+    const LayoutDims dims = GetLayoutDims(layout);
+    return shape.GetDimNum() > static_cast<size_t>(dims.head) ? shape.GetDim(dims.head) : -1;
 }
 
 bool IsSupportedLayout(const char *layout)
@@ -145,10 +150,140 @@ aclnnStatus CheckQkvShapesByLayout(const aclTensor *query, const aclTensor *key,
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus CheckShapeEqual(const aclTensor *lhs, const aclTensor *rhs, const char *lhsName, const char *rhsName)
+{
+    const auto &lhsShape = lhs->GetViewShape();
+    const auto &rhsShape = rhs->GetViewShape();
+    bool same = lhsShape.GetDimNum() == rhsShape.GetDimNum();
+    for (size_t i = 0; same && i < lhsShape.GetDimNum(); ++i) {
+        same = lhsShape.GetDim(static_cast<int64_t>(i)) == rhsShape.GetDim(static_cast<int64_t>(i));
+    }
+    if (!same) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad: %s shape[%s] must equal %s shape[%s].",
+                lhsName, op::ToString(lhsShape).GetString(), rhsName, op::ToString(rhsShape).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckCrossTensorShapes(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                   const aclTensor *dout, const aclTensor *out, const aclTensor *dQuery,
+                                   const aclTensor *dKey, const aclTensor *dValue, const char *layout)
+{
+    const struct {
+        const aclTensor *lhs;
+        const aclTensor *rhs;
+        const char *lhsName;
+        const char *rhsName;
+    } pairs[] = {{dout, query, "dout", "query"},     {out, query, "out", "query"},
+                 {dQuery, query, "dQuery", "query"}, {value, key, "value", "key"},
+                 {dKey, key, "dKey", "key"},         {dValue, key, "dValue", "key"}};
+    for (const auto &pair : pairs) {
+        aclnnStatus st = CheckShapeEqual(pair.lhs, pair.rhs, pair.lhsName, pair.rhsName);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+    }
+
+    const LayoutDims dims = GetLayoutDims(layout);
+    const auto &qShape = query->GetViewShape();
+    const auto &kShape = key->GetViewShape();
+    if (dims.batch >= 0 && qShape.GetDim(dims.batch) != kShape.GetDim(dims.batch)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: query batch(%ld) must equal key batch(%ld), layout=%s.",
+                qShape.GetDim(dims.batch), kShape.GetDim(dims.batch), layout);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const int64_t qHeadDim = qShape.GetDim(dims.headDim);
+    if (qHeadDim != kShape.GetDim(dims.headDim) || qHeadDim != GSAG_HEAD_DIM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: query/key headDim must both be %ld, got %ld and %ld.",
+                GSAG_HEAD_DIM, qHeadDim, kShape.GetDim(dims.headDim));
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckLseShape(const aclTensor *lse, const aclTensor *query, const char *layout, int64_t qHeadNum)
+{
+    const LayoutDims dims = GetLayoutDims(layout);
+    const auto &qShape = query->GetViewShape();
+    const int64_t qSeqLen = qShape.GetDim(dims.seq);
+    const int64_t batch = dims.batch >= 0 ? qShape.GetDim(dims.batch) : 1;
+    const auto &lseShape = lse->GetViewShape();
+    if (lseShape.GetShapeSize() != batch * qHeadNum * qSeqLen ||
+        lseShape.GetDim(0) != (dims.batch >= 0 ? batch : qSeqLen)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: lse shape[%s] must be [T1, N1] for TND or [B, N1, S1] otherwise, "
+                "query shape[%s] layout=%s.",
+                op::ToString(lseShape).GetString(), op::ToString(qShape).GetString(), layout);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckSparseAndSeqShapes(const aclTensor *query, const aclTensor *sparseBlockIdx,
+                                    const aclTensor *sparseBlockCount, const aclTensor *metadata,
+                                    const aclTensor *cuSeqLengthsQ, const aclTensor *cuSeqLengthsKv,
+                                    const aclTensor *sequsedQ, const aclTensor *sequsedKv, const char *layout)
+{
+    const auto &idxShape = sparseBlockIdx->GetViewShape();
+    const auto &cntShape = sparseBlockCount->GetViewShape();
+    if (idxShape.GetDimNum() != GSAG_SPARSE_IDX_RANK || cntShape.GetDimNum() != GSAG_SPARSE_CNT_RANK ||
+        cntShape.GetDim(0) != idxShape.GetDim(0) || cntShape.GetDim(1) != idxShape.GetDim(1) ||
+        cntShape.GetDim(2) != idxShape.GetDim(2)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: sparseBlockIdx must be [B, N2, J, maxS1] and sparseBlockCount the "
+                "matching [B, N2, J], got idx shape[%s] cnt shape[%s].",
+                op::ToString(idxShape).GetString(), op::ToString(cntShape).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const int64_t metaElems = metadata->GetViewShape().GetShapeSize();
+    if (metaElems < GSAG_METADATA_HEADER_SIZE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: metadata must hold at least %ld int32 elements, got %ld.",
+                GSAG_METADATA_HEADER_SIZE, metaElems);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    const bool isTnd = IsTndLayout(layout);
+    if (isTnd && (cuSeqLengthsQ == nullptr || cuSeqLengthsKv == nullptr)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: cuSeqLengthsQ and cuSeqLengthsKv are mandatory for layout=TND.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const int64_t batch = isTnd ? idxShape.GetDim(0) : query->GetViewShape().GetDim(0);
+    const struct {
+        const aclTensor *tensor;
+        const char *name;
+        DataType dtype;
+        int64_t elems;
+    } seqTensors[] = {{cuSeqLengthsQ, "cuSeqLengthsQ", DataType::DT_INT64, batch + 1},
+                      {cuSeqLengthsKv, "cuSeqLengthsKv", DataType::DT_INT64, batch + 1},
+                      {sequsedQ, "sequsedQ", DataType::DT_INT32, batch},
+                      {sequsedKv, "sequsedKv", DataType::DT_INT32, batch}};
+    for (const auto &seq : seqTensors) {
+        if (seq.tensor == nullptr) {
+            continue;
+        }
+        if (seq.tensor->GetDataType() != seq.dtype || seq.tensor->GetViewShape().GetShapeSize() != seq.elems) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GenericBlockSparseAttentionGrad: %s must be %s with %ld elements, got %s shape[%s].", seq.name,
+                    op::ToString(seq.dtype).GetString(), seq.elems,
+                    op::ToString(seq.tensor->GetDataType()).GetString(),
+                    op::ToString(seq.tensor->GetViewShape()).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout,
                      const aclTensor *out, const aclTensor *lse, const aclTensor *sparseBlockIdx,
                      const aclTensor *sparseBlockCount, const aclTensor *metadataOptional,
-                     const aclTensor *attenMaskOptional, const aclIntArray *blockShape, int64_t isPackedGQA,
+                     const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsQOptional,
+                     const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
+                     const aclTensor *sequsedKvOptional, const aclIntArray *blockShape, int64_t isPackedGQA,
                      char *layoutQ, char *layoutKv, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft,
                      int64_t winRight, const aclTensor *dQuery, const aclTensor *dKey, const aclTensor *dValue)
 {
@@ -190,6 +325,12 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
             if (st != ACLNN_SUCCESS) {
                 return st;
             }
+        }
+    }
+    {
+        aclnnStatus st = CheckCrossTensorShapes(query, key, value, dout, out, dQuery, dKey, dValue, layoutQ);
+        if (st != ACLNN_SUCCESS) {
+            return st;
         }
     }
     if (isPackedGQA != 1) {
@@ -237,8 +378,8 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    const int64_t qHeadNum = GetHeadNumFromQuery(query, layoutQ);
-    const int64_t kvHeadNum = GetHeadNumFromKey(key, layoutKv);
+    const int64_t qHeadNum = GetHeadNum(query, layoutQ);
+    const int64_t kvHeadNum = GetHeadNum(key, layoutKv);
     if (qHeadNum <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "GenericBlockSparseAttentionGrad: failed to get qHeadNum from query shape[%s] with layout=%s.",
@@ -268,6 +409,17 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
                 "GenericBlockSparseAttentionGrad: qHeadNum(%ld) must be divisible by kvHeadNum(%ld).", qHeadNum,
                 kvHeadNum);
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    {
+        aclnnStatus st = CheckLseShape(lse, query, layoutQ, qHeadNum);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
+        st = CheckSparseAndSeqShapes(query, sparseBlockIdx, sparseBlockCount, metadataOptional, cuSeqLengthsQOptional,
+                                     cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, layoutQ);
+        if (st != ACLNN_SUCCESS) {
+            return st;
+        }
     }
     DataType qDtype = query->GetDataType();
     if (qDtype != ACL_FLOAT16 && qDtype != ACL_BF16) {
@@ -312,6 +464,13 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
                 op::ToString(metadataOptional->GetDataType()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
+    int64_t deterministicLevel = 0;
+    if (aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicLevel) == ACL_SUCCESS && deterministicLevel != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GenericBlockSparseAttentionGrad: deterministic computation is not supported, got level %ld.",
+                deterministicLevel);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -338,7 +497,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = Validate(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataOptional,
-                        attenMaskOptional, blockShape, isPackedGQA, layoutQ, layoutKv, maskType, softmaxPrecision,
+                        attenMaskOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional,
+                        sequsedKvOptional, blockShape, isPackedGQA, layoutQ, layoutKv, maskType, softmaxPrecision,
                         winLeft, winRight, dQuery, dKey, dValue);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
@@ -353,7 +513,6 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     auto metaC = l0op::Contiguous(metadataOptional, uniqueExecutor.get());
     CHECK_RET(queryC && keyC && valueC && doutC && outC && lseC && idxC && cntC && metaC, ACLNN_ERR_INNER_NULLPTR);
 
-    // attenMaskOptional already required nullptr in Validate; keep placeholder for OP_INPUT slot.
     const aclTensor *attenC = nullptr;
     const aclTensor *cuQC = nullptr;
     if (cuSeqLengthsQOptional != nullptr) {
