@@ -99,11 +99,7 @@ static ge::graphStatus TilingKvCacheTurboQuant(gert::TilingContext *context)
     }
     const int64_t *pBits = attrs->GetAttrPointer<int64_t>(ATTR_MSE_BITS_INDEX);
     const int64_t mseBits = (pBits != nullptr) ? *pBits : 3;
-    const bool plainOk = (mseBits == 2 || mseBits == 3 || mseBits == 4 || mseBits == 8 || mseBits == 9 ||
-                          mseBits == 10 || mseBits == 11 || mseBits == 12);
-    // dev-only phase probes can carry the real width: mseBits = probe*16 + bits
-    const bool encOk = (mseBits >= 32 && mseBits <= 200 && (mseBits & 15) >= 2 && (mseBits & 15) <= 4);
-    if (!plainOk && !encOk) {
+    if (mseBits != 2 && mseBits != 3 && mseBits != 4) {
         return ge::GRAPH_FAILED;
     }
 

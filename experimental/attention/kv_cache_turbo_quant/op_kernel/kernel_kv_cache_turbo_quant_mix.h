@@ -58,23 +58,6 @@ public:
         totalVec_ = tiling->totalVec;
         qjlDim_ = tiling->qjlDim;
         mseBits_ = tiling->mseBits;
-        if (mseBits_ == 8) {
-            mseBits_ = 3;   // probe mode: mse3 tables, truncated pipeline
-            probeCutAfterQuant_ = true;
-        }
-        if (mseBits_ == 9) {
-            mseBits_ = 3;   // probe mode: AIV exits after splits -> AIC-only wall
-            probeAivExit_ = true;
-        }
-        if (mseBits_ >= 16) {
-            probeMode_ = mseBits_ >> 4;        // 8/9 = phase cuts, 10/11/12 = quant ablations
-            mseBits_ = mseBits_ & 15;          // real bit width preserved
-            if (probeMode_ == 8) {
-                probeCutAfterQuant_ = true;
-            } else if (probeMode_ == 9) {
-                probeAivExit_ = true;
-            }
-        }
         nCent_ = 1 << mseBits_;
         idxBytesPerVec_ = HEAD_DIM * mseBits_ / 8;
         qjlBytesPerVec_ = qjlDim_ / 8;
@@ -235,16 +218,6 @@ public:
                 GmFlagSet(FlagCell(slotBase, l, SLOT_Z_HI), MAGIC_Z);
             }
             // ---- phase P (AIC): p1 = rh@Sh, p3 = rh@Sl, p2 = rl@Sh per chunk
-            if (probeCutAfterQuant_) {
-                // still consume the R flags so the cells return to zero
-                for (int64_t l = 0; l < myChunks_; ++l) {
-                    GmFlagWait(FlagCell(slotBase, l, SLOT_R_LO), MAGIC_R);
-                    GmFlagWait(FlagCell(slotBase, l, SLOT_R_HI), MAGIC_R);
-                    GmFlagSet(FlagCell(slotBase, l, SLOT_P_LO), MAGIC_P);
-                    GmFlagSet(FlagCell(slotBase, l, SLOT_P_HI), MAGIC_P);
-                }
-                return;
-            }
             LoadSplitToL1(wsShGm_, wsSlGm_);
             for (int64_t l = 0; l < myChunks_; ++l) {
                 GmFlagWait(FlagCell(slotBase, l, SLOT_R_LO), MAGIC_R);
@@ -636,43 +609,6 @@ private:
 
             // row norms from z (fp32): ||z||_2 = ||x||_2 to ~2^-24
             LocalTensor<float> y = yBuf_.Get<float>();
-            if (probeMode_ == 12) {
-                // skip norms + inv extraction: norm=1, y=z (timing probe)
-                Duplicate(normVec, 1.0f, nv);
-                PipeBarrier<PIPE_V>();
-                Adds(y, zTile, 0.0f, nv * HEAD_DIM);
-                PipeBarrier<PIPE_V>();
-                QuantizeBatch(0, nv, zTile, rnVec, y);
-                Sqrt(rnVec, rnVec, nv);
-                PipeBarrier<PIPE_V>();
-                Mul(gammaVec, normVec, rnVec, nv);
-                PipeBarrier<PIPE_V>();
-                Cast(gammaBF, gammaVec, RoundMode::CAST_RINT, nv);
-                PipeBarrier<PIPE_V>();
-                Cast(normBF, normVec, RoundMode::CAST_RINT, nv);
-                PipeBarrier<PIPE_V>();
-                SyncPipe<HardEvent::V_S>();
-                for (int32_t v = 0; v < nv; ++v) {
-                    const float rn = rnVec.GetValue(v);
-                    invR_[v] = (rn > 0.0f) ? 1.0f / ((rn < MIN_DENOM) ? MIN_DENOM : rn) : 0.0f;
-                }
-                PackIdxTile(nv, bufSel);
-                SyncPipe<HardEvent::S_V>();
-                for (int32_t v = 0; v < nv; ++v) {
-                    Muls(zTile[v * HEAD_DIM], zTile[v * HEAD_DIM], invR_[v], HEAD_DIM);
-                }
-                PipeBarrier<PIPE_V>();
-                UploadRhat(c, aivSubIdx_ * HALF_CHUNK_ROWS + t, nv, zTile, bufSel);
-                LocalTensor<uint8_t> idxStageP = idxStageBuf_.Get<uint8_t>()[bufSel * TILE_VEC * MAX_IDX_BYTES];
-                SyncPipe<HardEvent::V_MTE3>();
-                if (nv == TILE_VEC) {
-                    DataCopy(normGm_[g0], normBF, nv);
-                    DataCopy(gammaGm_[g0], gammaBF, nv);
-                    DataCopy(idxGm_[g0 * idxBytesPerVec_], idxStageP, nv * idxBytesPerVec_);
-                }
-                SyncPipe<HardEvent::MTE3_V>();
-                continue;
-            }
             Mul(sqTmp, zTile, zTile, nv * HEAD_DIM);
             PipeBarrier<PIPE_V>();
             WholeReduceSum(normVec, sqTmp, 64, nv, 1, 1, 16);
@@ -832,14 +768,6 @@ private:
         }
         const int32_t zSlot = aivSubIdx_ == 0 ? SLOT_Z_LO : SLOT_Z_HI;
         const int32_t pSlot = aivSubIdx_ == 0 ? SLOT_P_LO : SLOT_P_HI;
-        if (probeAivExit_) {
-            // feed the AIC's R/P waits with empty flags, then exit: the AIC
-            // pipeline runs alone (timing probe for the cube-side wall)
-            for (int64_t l = 0; l < myChunks_; ++l) {
-                GmFlagSet(FlagCell(SlotBase(), l, aivSubIdx_ == 0 ? SLOT_R_LO : SLOT_R_HI), MAGIC_R);
-            }
-            return;
-        }
         for (int64_t l = 0; l < myChunks_; ++l) {
             GmFlagWait(FlagCell(SlotBase(), l, zSlot), MAGIC_Z);
             QuantChunk(l);
@@ -1325,9 +1253,6 @@ private:
         Cast(wordsIHi, wordHi, RoundMode::CAST_RINT, ((nv * WORDS_PER_VEC) + 7) & ~7);
         PipeBarrier<PIPE_V>();
         PipeBarrier<PIPE_ALL>();
-        if (probeMode_ == 10) {
-            return;   // words computed, byte walk skipped (timing probe)
-        }
         // vectorized pack (the scalar walk was 40-86us/launch): merge lo/hi into
         // full words with wide ops, regroup with Gather, and write int32 (never
         // byte-at-a-time; the AIV scalar pipe runs ~5cyc/op).
@@ -1526,9 +1451,6 @@ private:
     LocalTensor<float> normAll_;
 
     bool isAic_ = false;
-    bool probeCutAfterQuant_ = false;
-    bool probeAivExit_ = false;
-    int32_t probeMode_ = 0;
     int64_t aivSubIdx_ = 0;
     int64_t logicalIdx_ = 0;
     int64_t totalVec_ = 0;
