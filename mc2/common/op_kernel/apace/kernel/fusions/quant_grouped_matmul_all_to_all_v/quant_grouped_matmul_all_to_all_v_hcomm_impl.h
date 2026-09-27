@@ -12,8 +12,13 @@
  * \file quant_grouped_matmul_all_to_all_v_hcomm_impl.h
  * \brief AIC-only HCCL AllToAllV + Blaze MX GroupedMatMul implementation (GMM first, then comm).
  *
- * 结构参考镜像算子 allto_allv_quant_grouped_mat_mul apace hcomm 实现：直接复用算子
- * legacy tiling 数据，每批 Blaze GroupedMatmulMxKernel 以栈上局部对象构造。
+ * 结构参考镜像算子 allto_allv_quant_grouped_mat_mul apace hcomm 实现（直接复用算子
+ * legacy tiling 数据），并按本算子两侧真机证据采用混合 kernel 生命周期：
+ *   - 路由专家：持久成员 GmmKernel（ctor 一次预置核内事件、每批仅 re-Init）——
+ *     409d5e04a 真机实证形态；BlockMmad ctor/dtor 为 SetFlag/WaitFlag 事件协议，
+ *     每批栈上构造会重复 SetFlag（上批排空后事件已 SET），存在事件失步挂死风险
+ *   - 共享专家：栈上局部 MmKernel（镜像 RunLocalMatmul 模式）——持久成员形态即
+ *     历史挂死形态，栈上构造是镜像对其的解法
  *
  * Blaze 入参保持 409d5e04a（路由专家真机验证形态）：LENGTH groupList + B/scaleB
  * 显式偏移表（全核冗余写、每核写读一致，无跨核可见性依赖）、kAL1/kBL1/scaleKAL1
@@ -236,11 +241,10 @@ private:
         params.groupOffsetTables.scaleBGroupAddrTable =
             reinterpret_cast<const __gm__ uint64_t *>(scaleBGroupOffsetTableGm_);
 
-        {
-            GmmKernel kernel;
-            kernel.Init(params);
-            kernel.Run();
-        }
+        // 持久成员每批 re-Init（409d5e04a 实证形态：ctor 一次预置核内事件，避免逐批
+        // SetFlag/WaitFlag 事件协议失步）
+        gmmKernel_.Init(params);
+        gmmKernel_.Run();
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
@@ -408,6 +412,7 @@ private:
     }
 
     const TilingDataType *tilingData_{nullptr};
+    GmmKernel gmmKernel_;
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle a2avHandles_[GMM_A2AV_MAX_BATCH_NUM]{};
     uint32_t submitted_{0};

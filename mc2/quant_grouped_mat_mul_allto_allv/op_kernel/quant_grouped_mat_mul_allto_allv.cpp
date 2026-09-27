@@ -60,7 +60,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     if constexpr (TILINGKEY_USING_APACE_IMPL) {
 #if MX_QUANT_MODE && GMM_A2AV_APACE_DTYPE_SUPPORTED
-        GET_TILING_DATA_WITH_STRUCT(QuantGmmA2avTilingData, tilingData, tilingGM);
+        GET_TILING_DATA(tilingData, tilingGM);
         constexpr HcclServerType serverType = TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
@@ -68,7 +68,7 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
                                      TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS, serverType>
             op(&tilingData);
         // apace 通路 userWorkspace 即路由专家 GMM 输出缓冲（sendBuf），groupList 与
-        // C 偏移表由 block0 在其后的 gmmComputeWS 区域构建（见 hcomm impl 布局注释）
+        // 各偏移表全核冗余写于其后的 gmmComputeWS 区域（见 hcomm impl 布局注释）
         op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM, mmweightOptionalGM,
                 mmWeightScaleGM, mmyOptionalGM, yGM, userWorkspace);
         op.Run();
