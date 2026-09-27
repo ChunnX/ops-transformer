@@ -228,13 +228,13 @@ __aicore__ inline void QuantGroupedMatmulMx<TilingDataType, GmmTilingDataType, x
                     (unsigned long long)(uintptr_t)wGM_, (unsigned long long)(uintptr_t)yGM_,
                     (unsigned long long)(uintptr_t)xScaleGM_, (unsigned long long)(uintptr_t)weightScaleGM_);
     InitApaceKernel(startExpertIdx, expertNum);
-    AscendC::printf("[ApaceDBG] P3-post-init isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     AscendC::printf("[ApaceDBG] pre-Run isLocal=%d core=%u m=%lld n=%lld k=%lld bM=%u bN=%u bK=%u "
                     "kAL1=%u kBL1=%u sKAL1=%u dbL0C=%u l1S=%u gN=%u glT=%u\n",
                     isLocal ? 1 : 0, AscendC::GetBlockIdx(), (long long)dbgM, (long long)dbgN, (long long)dbgK,
                     dbgBaseM, dbgBaseN, dbgBaseK, dbgKAL1, dbgKBL1, dbgScaleKAL1, dbgDbL0C, dbgL1Stage, dbgGroupNum,
                     dbgGroupListType);
     mxKernel_.Run();
+    AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     AscendC::printf("[ApaceDBG] post-Run isLocal=%d core=%u\n", isLocal ? 1 : 0, AscendC::GetBlockIdx());
     // Run 返回后 L0C→GM 的 fixpipe 为异步收尾，排空本核管线确保 C 落 GM（对齐参考实现）
     AscendC::PipeBarrier<PIPE_ALL>();
