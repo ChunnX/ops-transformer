@@ -20,16 +20,22 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(quant_grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
+    file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/impl/c_api
+                         ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/include/c_api)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
+    # apace hcomm 通路（MX 量化实例默认编译）kernel 头（blaze/tensor_api）经 op_kernel 根与 ops-tensor include 引入
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME QuantGroupedMatMulAlltoAllv
+            COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
+                    -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

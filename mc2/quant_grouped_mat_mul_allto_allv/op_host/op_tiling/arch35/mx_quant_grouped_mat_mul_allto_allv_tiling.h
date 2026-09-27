@@ -47,12 +47,14 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     ge::graphStatus CheckAndSetInputOutputInfo() override;
+    ge::graphStatus DoOpTiling() override;
 
     ge::graphStatus CheckAndSetLocalParamsGmm() override;
     ge::graphStatus CheckAndSetLocalParamsMm() override;
     ge::graphStatus CheckParamsRelationGmm() override;
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
+    ge::graphStatus SetGmmA2avWorkspaceInfo() override;
     ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
 
 private:
@@ -61,6 +63,9 @@ private:
     ge::graphStatus CheckMxQuantDtypeConstraints();
 
     ge::graphStatus CheckMxfp4SpecificConstraints(); // MXFP4 约束校验
+    bool CheckApaceImplCapable() const;
+
+    bool usingApaceImpl_{false};
 };
 
 } // namespace Mc2GroupedMatmul

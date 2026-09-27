@@ -59,8 +59,9 @@ uint64_t TTQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
     if (QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // TT 量化实例恒走原通路（MIX_AIC_1_2，AIC 计算 + AIV 通信）
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode);
+                                                  localParams_.isMmWeightTrans, commMode, false);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
             localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;

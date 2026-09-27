@@ -679,17 +679,86 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::SetGmmA2avWorkspaceInfo()
+{
+    constexpr uint64_t alignAddrLen = 512;
+    constexpr uint64_t tensorListSize = 512;
+    auto gmmYDtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
+    inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
+    localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
+    // MX 量化路径 workspace：GroupedMatmulMxKernel 的 group 序
+    // (expertIdx * ep + rankIdx) 与 expert 序不一致，B/ScaleB 无法走 kernel 默认公式，
+    // 需在公共布局（groupList + cGroupOffsetTable + ptrTable + scale repeat）基础上
+    // 追加 B/scaleB 偏移表
+    uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
+    uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
+    uint64_t mxOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t) * 2;
+    uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t gmmComputeWsSize =
+        groupListSize + cGroupOffsetTableSize + mxOffsetTableSize + tensorListSize + ttScaleRepeatSize;
+    localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
+    uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
+    uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
+    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
+        mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
+
+    workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
+                     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
+                     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize;
+
+    return ge::GRAPH_SUCCESS;
+}
+
 uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;
     if (QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // apace 融合通路按 CheckApaceImplCapable 动态选路：命中时编码 USING=1，
+    // 对应 kernel 组合经 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 声明 AIC_ONLY
+    // 任务类型（GMM 走 GroupedMatmulMxKernel，AllToAllV 在 AIC 核内经 Hccl 提交）
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+                                                  localParams_.isMmWeightTrans, commMode, usingApaceImpl_);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, usingApaceImpl_, tilingKey);
+    // 通路命中证据：MX 量化实例以 AIC_ONLY 任务类型执行 apace 融合通路，
+    // 运行后在 host 侧 plog 过滤关键字 "ApaceMXPath" 即可确认
+    OP_LOGI(opName_,
+            "ApaceMXPath selected: tilingKey=%lu, e=%lu, ep=%lu, A=%lu, BSK=%lu, N1=%lu, H1=%lu, hasSharedMm=%d.",
+            tilingKey, localParams_.ep, localParams_.epWorldSize, localParams_.A, localParams_.BsK, localParams_.N1,
+            localParams_.H1, localParams_.hasSharedMm);
+
     return tilingKey;
+}
+
+ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::DoOpTiling()
+{
+    MC2_CHECK_LOG_RET(opName_, QuantGroupedMatmulAllToAllvTilingCommon::DoOpTiling());
+    // 公共 tiling 完成后 localParams_/taskTilingInfo 已齐备，此处裁决 apace 选路
+    // （GetTilingKey 晚于此，保证读到一致的 usingApaceImpl_）
+    usingApaceImpl_ = CheckApaceImplCapable();
+    OP_LOGI(opName_, "QuantGroupedMatMulAlltoAllv MX implementation: %s.",
+            usingApaceImpl_ ? "APACE AIC-only HCCL+Blaze" : "legacy");
+    return ge::GRAPH_SUCCESS;
+}
+
+bool MxQuantGroupedMatmulAllToAllvTiling::CheckApaceImplCapable() const
+{
+    if (localParams_.epWorldSize == 0U || localParams_.epWorldSize > MAX_EXPERT_NUM || localParams_.ep == 0U ||
+        localParams_.ep * localParams_.epWorldSize > MAX_EXPERT_NUM) {
+        return false;
+    }
+    // Blaze GroupedMatmulMxKernel 仅支持同位宽 MXFP4/MXFP8 组合
+    const bool xSupported = localParams_.gmmXDtype == ge::DT_FLOAT8_E5M2 ||
+                            localParams_.gmmXDtype == ge::DT_FLOAT8_E4M3FN ||
+                            localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1;
+    const bool weightSupported = localParams_.gmmWeightDtype == ge::DT_FLOAT8_E5M2 ||
+                                 localParams_.gmmWeightDtype == ge::DT_FLOAT8_E4M3FN ||
+                                 localParams_.gmmWeightDtype == ge::DT_FLOAT4_E2M1;
+    const bool xIsFp4 = localParams_.gmmXDtype == ge::DT_FLOAT4_E2M1;
+    const bool weightIsFp4 = localParams_.gmmWeightDtype == ge::DT_FLOAT4_E2M1;
+    return xSupported && weightSupported && xIsFp4 == weightIsFp4;
 }
 
 // 注册tiling类
