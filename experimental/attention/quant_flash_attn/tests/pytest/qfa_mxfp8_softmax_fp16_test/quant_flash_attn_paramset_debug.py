@@ -12,7 +12,7 @@
 
 from quant_flash_attn_paramset_common import expand_paramset_to_cases
 
-# 调试用例集（seq_used=0 空批探索，2026-09-27 生成、待上板验证）
+# 调试用例集（当前为空）
 # =====================================================================
 # 修复存档（本文件历史上承载的 FAIL 用例及根因，均已修复并迁至 func_rdv）
 # =====================================================================
@@ -42,166 +42,13 @@ from quant_flash_attn_paramset_common import expand_paramset_to_cases
 #    上板 6/6 全过（100% PctRlt），已迁至 func_rdv——kernel 零修改即正确
 #    （k=align64(1)=64 + P 零填充 + softmax 尾行单行链均为 ③ 修复的既有路径）
 # =====================================================================
-TEST_PARAMS = {
-    # ===== seq_used=0 空批系列（2026-09-27 生成，探索零长 batch 的全链路行为）=====
-    # 语义背景：metadata CheckNeedInitOutput 对 q=0 / kv=0 批均置 needInitOutput=1（输出应清零），
-    # 但 kernel DEAL_ZERO 的 AIV 清零仍是 TODO、needInitOutput 读入后未消费、torch 扩展输出
-    # 用 torch.empty 分配——零批输出当前无清零保障。分三组隔离验证：
-    #   A 组 seqused_q=0（KV 有效）：golden 无 q 循环输出 0，test_runner 掩码将零批双侧
-    #       清零后对比 → 预期通过（验证调度器 DEAL_ZERO/SKIP_ZERO 不崩不挂）
-    #   B 组 seqused_kv=0（Q 有效）：掩码不遮挡（seqused_q=满）→ 严格对比；golden 分母
-    #       零保护输出 0，但 lse 行 m_acc=None.float() 会崩（golden 已知缺陷）；kernel
-    #       不写零批输出=未初始化内存 → 预期 ERROR/FAIL，暴露 DEAL_ZERO TODO 空白
-    #   C 组 双轴混合：同用例内两种路径交错
-    # 注：全批均为 0 不构造（max(seqused)=0 → 空 tensor，host 侧 GetEmptyTensorFlag 拒绝）
-    # ===== A 组：seqused_q 含 0（B2/B3，KV 满宽 256）=====
-    # 首批空 Q：batch0 q=0（DEAL_ZERO）× batch1 正常
-    "BNSD_B2_QS0x256_KVS256x256_Nq1_Nkv1_D128_qm3": {
-        "B": [2],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[0, 256]],
-        "seqused_kv": [[256, 256]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # 尾批空 Q：batch0 正常 × batch1 q=0（零批在末位，验证行推进收尾）
-    "BNSD_B2_QS256x0_KVS256x256_Nq1_Nkv1_D128_qm3": {
-        "B": [2],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[256, 0]],
-        "seqused_kv": [[256, 256]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # 空批夹正常批：q=[0, 256, 0]（首尾零、中间正常，验证零批间任务推进）
-    "BNSD_B3_QS0x256x0_KVS256x256x256_Nq1_Nkv1_D128_qm3": {
-        "B": [3],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[0, 256, 0]],
-        "seqused_kv": [[256, 256, 256]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # ===== B 组：seqused_kv 含 0（Q 满宽 256，严格对比路径）=====
-    # 首批空 KV：batch0 kv=0（q 有效，输出应全 0）× batch1 正常
-    "BNSD_B2_QS256x256_KVS0x256_Nq1_Nkv1_D128_qm3": {
-        "B": [2],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[256, 256]],
-        "seqused_kv": [[0, 256]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # 尾批空 KV：batch0 正常 × batch1 kv=0
-    "BNSD_B2_QS256x256_KVS256x0_Nq1_Nkv1_D128_qm3": {
-        "B": [2],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[256, 256]],
-        "seqused_kv": [[256, 0]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # 空批夹正常批：kv=[0, 256, 0]（首尾零 KV、中间正常）
-    "BNSD_B3_QS256x256x256_KVS0x256x0_Nq1_Nkv1_D128_qm3": {
-        "B": [3],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[256, 256, 256]],
-        "seqused_kv": [[0, 256, 0]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # ===== C 组：双轴混合 0 =====
-    # batch0 空 Q × batch1 空 KV：同用例覆盖 A/B 两条路径
-    "BNSD_B2_QS0x256_KVS256x0_Nq1_Nkv1_D128_qm3": {
-        "B": [2],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[0, 256]],
-        "seqused_kv": [[256, 0]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-    # 双轴交错变长：q=[0,256,0,128] × kv=[256,0,65,832]——空Q批/空KV批/双零批/正常非对齐批
-    # （batch3 叠加 S1=128 半宽部分行 + S2=832 任意长度，零批与泛化路径同场）
-    "BNSD_B4_QS0x256x0x128_KVS256x0x65x832_Nq1_Nkv1_D128_qm3": {
-        "B": [4],
-        "N_q": [1],
-        "N_kv": [1],
-        "D": [128],
-        "cu_seqlens_q": [None],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [[0, 256, 0, 128]],
-        "seqused_kv": [[256, 0, 65, 832]],
-        "enable_pa": [False],
-        "kv_cache_layout": [None],
-        "block_size": [None],
-        "mask_mode": [0],
-        "q_scale_layout": ["BNSD"],
-        "p_scale": [1.0],
-        "enable_lse": [False],
-    },
-}
+# ⑥ 2026-09-27 seq_used=0 空批系列（A 组 q=0 / B 组 kv=0 / C 组双轴混合，共 8 个）
+#    探索发现两层空白并修复后上板 8/8 全过，已迁至 func_rdv：
+#    - golden：kv=0 批 m_acc=None → lse 行 AttributeError（空批保护：输出 0 / lse=-inf）
+#    - kernel：DEAL_ZERO 行不写输出=未初始化内存（PctRlt 随内存漂移，B2_KVS0x256 实测
+#      50%）；修复：DEAL_ZERO 分支 AIV 整行清零（消费 metadata needInitOutput，
+#      VectorBlock.ZeroOutputRows 专用 UB 零源 + EVT_ZERO_OUT）
+# =====================================================================
+TEST_PARAMS = {}
 
 CASES = expand_paramset_to_cases(TEST_PARAMS)

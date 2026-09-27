@@ -12,14 +12,15 @@
 
 from quant_flash_attn_paramset_common import expand_paramset_to_cases
 
-# 功能正确性 RDV 用例（2026-09-27 全量上板验证通过：37 用例全部 100.0000% PctRlt）
+# 功能正确性 RDV 用例（2026-09-27 全量上板验证通过：45 用例全部 100.0000% PctRlt）
 # 维度矩阵：
 #   S2（KV 轴）：256 对齐（整块）/ 128 对齐（单 subLoop 尾块）/ 64 粒度尾 subLoop /
 #               任意值（2026-09-24 泛化：1/65/100/129/257/388/556/832；
 #               2026-09-27 S2=1 边界系列：GQA/MHA/多批/满核 × 单 key 组合）
 #   S1（Q 轴）：256 对齐（整行）/ 128 对齐（V1 空列）/ 非对齐部分列（V1=64/60、V0=64）/ 极小（1）
 #   per-batch seqused：每批独立 S1/S2（≤ 满 shape；2026-09-24：golden 逐 batch 循环 +
-#               对比无效行掩码，kernel 零修改）
+#               对比无效行掩码，kernel 零修改）；含 0 值空批（2026-09-27：DEAL_ZERO
+#               行 kernel 整行清零 + golden 空批保护，q=0/kv=0/双轴混合全覆盖）
 #   bN2（行 = B×N_q×ceil(S1/256)，跨 32 核切分）：单核 / 分不满（≤32 行）/ 大于 32（核内多行）
 #   GQA（G = N_q/N_kv）：2 / 3（非 2 幂）/ 4 / 8 / 16（G=1 MHA 基线即基础冒烟用例）
 # 注：S1/S2 均无对齐约束（V-scale 尾组 0 补齐 + ceil 组；MmadMx k 对齐 64 + P 零填充 + softmax 尾行链）
@@ -523,7 +524,7 @@ TEST_PARAMS = {
         "enable_lse": [False],
     },
     # ===== per-batch seqused 系列（2026-09-24 泛化，kernel 零修改、golden 逐 batch 循环 + 对比掩码）=====
-    # 无效 query 行 kernel 不写（DEAL_ZERO 清零 TODO），golden 置 0、对比侧双侧清零
+    # 无效 query 行 kernel 不写（padding 行，2026-09-27 后 DEAL_ZERO 行已有清零，padding 行仍掩码覆盖），golden 置 0、对比侧双侧清零
     # B2：batch0 满宽×832（3 全块+64 尾），batch1 S1=100×S2=65（V0 部分列 × 单 subK 尾块）
     "BNSD_B2_QS256x100_KVS832x65_Nq1_Nkv1_D128_qm3": {
         "B": [2],
@@ -552,6 +553,154 @@ TEST_PARAMS = {
         "cu_seqlens_kv": [None],
         "seqused_q": [[192, 444, 1]],
         "seqused_kv": [[100, 257, 832]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # ===== seq_used=0 空批系列（2026-09-27 上板 8/8 全过自 debug 迁入，DEAL_ZERO 清零已落地）=====
+    # 某些 batch 的 seqused_q/kv 为 0：kv=0 批（q 有效）输出严格对比须为 0——由 kernel
+    # DEAL_ZERO 分支 AIV 整行清零保障（消费 metadata needInitOutput）；q=0 批走对比掩码。
+    # A 组 q=0（KV 有效）：首批空 Q——batch0 q=0（DEAL_ZERO）× batch1 正常
+    "BNSD_B2_QS0x256_KVS256x256_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[0, 256]],
+        "seqused_kv": [[256, 256]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # 尾批空 Q：batch0 正常 × batch1 q=0（零批在末位，验证行推进收尾）
+    "BNSD_B2_QS256x0_KVS256x256_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 0]],
+        "seqused_kv": [[256, 256]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # 空批夹正常批：q=[0, 256, 0]（首尾零、中间正常，验证零批间任务推进）
+    "BNSD_B3_QS0x256x0_KVS256x256x256_Nq1_Nkv1_D128_qm3": {
+        "B": [3],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[0, 256, 0]],
+        "seqused_kv": [[256, 256, 256]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # B 组 kv=0（Q 满宽，严格对比路径）：首批空 KV——batch0 kv=0（q 有效，输出应全 0）
+    "BNSD_B2_QS256x256_KVS0x256_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 256]],
+        "seqused_kv": [[0, 256]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # 尾批空 KV：batch0 正常 × batch1 kv=0
+    "BNSD_B2_QS256x256_KVS256x0_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 256]],
+        "seqused_kv": [[256, 0]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # 空批夹正常批：kv=[0, 256, 0]（首尾零 KV、中间正常）
+    "BNSD_B3_QS256x256x256_KVS0x256x0_Nq1_Nkv1_D128_qm3": {
+        "B": [3],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256, 256, 256]],
+        "seqused_kv": [[0, 256, 0]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # C 组双轴混合：batch0 空 Q × batch1 空 KV（同用例覆盖两条路径）
+    "BNSD_B2_QS0x256_KVS256x0_Nq1_Nkv1_D128_qm3": {
+        "B": [2],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[0, 256]],
+        "seqused_kv": [[256, 0]],
+        "enable_pa": [False],
+        "kv_cache_layout": [None],
+        "block_size": [None],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # 双轴交错变长：q=[0,256,0,128] × kv=[256,0,65,832]——空Q批/空KV批/双零批/正常非对齐批
+    # （batch3 叠加 S1=128 半宽部分行 + S2=832 任意长度，零批与泛化路径同场）
+    "BNSD_B4_QS0x256x0x128_KVS256x0x65x832_Nq1_Nkv1_D128_qm3": {
+        "B": [4],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[0, 256, 0, 128]],
+        "seqused_kv": [[256, 0, 65, 832]],
         "enable_pa": [False],
         "kv_cache_layout": [None],
         "block_size": [None],
