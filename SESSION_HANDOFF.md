@@ -371,6 +371,35 @@ qCmp+kCmp=16KB，pooledScore 紧随其后…16,384 也在"低区"却可见！→
 3. 兜底工程方案：把 pooledScore/qCmp/kCmp 全部挪到 workspace 高区（>16MB）——
    若高区写全部持久，一次布局重排绕过硬件异常
 
+## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
+
+### GeneralFinalize 行均值修复（366b5c986，本地待推送）
+- 修复：t 循环后、PIPE_ALL 屏障前补 Muls——uniform 单条 `Muls(acc, 1/unitRows, nUnits*groupsWinA)`；
+  非 uniform 逐 unit 按 rowsInPx=min(unitRows, validXBlocks−px*unitRows)。
+- 验证：blk8 ws pooled vs golden 均值比 **8.0 → 1.0000**（最大相对 0.097%=fp16 舍入级）；
+  blk8 3/3 TOL-PASS、n1 EXACT、bigsq EXACT、tail TOL、base0 EXACT、客户 PASS。
+
+### 竞态量化与 bit 级定性（blk8，40 次：1 次 FAIL ≈ 2.5%）
+- **基线恒定 2 处 mask 差异**（h1 (9,3)/(14,3)，确定性、golden 边界容忍区内）——非竞态，
+  属舍入级近并列合法翻转；竞态 = 偶发叠加 ~20-40 处。
+- **失败现场签名**（race_ws/fail_1.bin）：h0 的 py=15 整列（16/16 px）+ py14 单点 = fp16 特殊值
+  （±inf/±0/5644/-2.05）；py0-14 逐位正确（0.0% 偏差）。
+- **bit 级判别**：fp16 特殊值只能是 **fp32 域垃圾（inf/nan/tiny）经 Mul/Cast 忠实转换**的产物
+  → pooled GM 写路径无辜、垃圾在 acc 域 = **partSum 槽 group-15 列在 head0 finalize MTE2 读取时
+  即为陈旧/未定义内容**（~1% 的 4B 组列散点丢失；head3 槽终态全对——被 head1-3 重写覆盖）。
+- **首触假说**：head0 = 该 partSum region 在本 launch 的首次写消费对；head1-3 同址重写正常。
+  与第二轮 fixpipe 分析的 GM write-allocate 协议、历轮"MTE3 写选择性丢弃"同族。API 级同步链
+  （MTE3_V 排空/SyncAll/MTE3_MTE2 门）第十三轮已全审计正确——异常在 API 层之下。
+- 竞态危害实测量级：命中时 mask 错 ~24/1024 位（inf 全被 top-k 选中 + 阈值位移）——真实输出错误。
+- **下轮手段**（按性价比）：① partSum/partMax region 内核入口 memset/首触预热（写分配异常
+  规避，1.3MB 填充代价小，可实验验证）；② 冗余双写实验；③ msprof aic-metrics 长跑采样抓
+  MTE3 异常态；④ 携 bit 级证据找硬件侧升级。
+
+### 工具链备忘
+- dbg harness dump 触发行（pooledScoreOffset/pooledScoreSize 两行）会被 `run_pp_cpu_golden_0828.sh`
+  的 gen_data.py 重写丢失——套件后需重新 append（本次已踩：blk8 ws dump 消失一次）。
+  workspaceSize=28662740（当前 tiling 不变）。
+
 ## blk8 第十三轮（2026-09-25，**根因破案 + 修复合入**：AR ReduceSum isReuseSource=true 踩毁折叠源 tile）
 
 ### 十二轮两嫌疑均被代码证伪（本轮静态审计）
