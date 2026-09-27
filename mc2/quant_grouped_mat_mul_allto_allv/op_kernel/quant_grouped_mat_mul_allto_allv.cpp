@@ -127,11 +127,11 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // bit0=mmX bit1=mmWeight bit2=mmXScale bit3=mmWeightScale bit4=mmY；
             // 0=全 gmm（已验证可跑）、0x1F=全 mm（原始行为）。对调实验已锁定 mm 张量为根因
             const uint64_t mmMask = tilingData_->taskTilingInfo.ubSize;
-            const GM_ADDR shX = (mmMask & 0x1UL) ? mmxOptionalGM : gmmxGM;
-            const GM_ADDR shW = (mmMask & 0x2UL) ? mmweightOptionalGM : gmmweightGM;
-            const GM_ADDR shSA = (mmMask & 0x4UL) ? mmxScaleGM : gmmxScaleGM;
-            const GM_ADDR shSB = (mmMask & 0x8UL) ? mmWeightScaleGM : gmmWeightScaleGM;
-            const GM_ADDR shC = (mmMask & 0x10UL) ? mmyOptionalGM : gmmOutputGM;
+            GM_ADDR shX = (mmMask & 0x1UL) ? mmxOptionalGM : gmmxGM;
+            GM_ADDR shW = (mmMask & 0x2UL) ? mmweightOptionalGM : gmmweightGM;
+            GM_ADDR shSA = (mmMask & 0x4UL) ? mmxScaleGM : gmmxScaleGM;
+            GM_ADDR shSB = (mmMask & 0x8UL) ? mmWeightScaleGM : gmmWeightScaleGM;
+            GM_ADDR shC = (mmMask & 0x10UL) ? mmyOptionalGM : gmmOutputGM;
             shareComputeOp.Init(shX, shW, shSA, shSB, shC, sharedGmmComputeWSGM, tilingData_,
                                 &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
             AscendC::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
