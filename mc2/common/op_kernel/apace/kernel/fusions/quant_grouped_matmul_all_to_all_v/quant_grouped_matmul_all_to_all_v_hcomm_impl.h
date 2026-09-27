@@ -116,19 +116,21 @@ public:
             tokenPrefix += batchTokens;
         }
 
-        // 尾部先排空全部通信（Wait + SyncAll），再执行共享专家：共享专家为栈上
-        // 局部 MmKernel（镜像 RunLocalMatmul 模式），其 ctor/dtor 的 SetFlag×10/
-        // WaitFlag×10 核内事件操作必须避开通信在途窗口（通信提交与栈上 ctor 交叠
-        // 会挂死，真机二分实证；路由持久成员的每批 re-Init/Run 无此问题）；Blaze
-        // 计算必须位于 Finalize 之前（既有真机结论）
-        for (uint32_t i = 0U; i < submitted_; ++i) {
-            hccl_.Wait(a2avHandles_[i]);
-        }
-        AscendC::SyncAll();
+        // 共享专家位于批循环后、Wait 之前（镜像 RunLocalMatmul 位置语义：与末批
+        // 在途通信重叠执行；Blaze 于 hccl_.Wait 之后执行为未验证序列，规避）；
+        // Blaze 计算必须位于 Finalize 之前（既有真机结论）
         if (tilingData_->taskTilingInfo.BS != 0U && tilingData_->taskTilingInfo.H2 != 0U &&
             tilingData_->taskTilingInfo.N2 != 0U) {
             RunLocalMatmul();
         }
+
+        // 尾部统一等待全部批次完成（全核，按提交顺序）；Wait 后排空管线再汇聚、
+        // Finalize（对齐镜像 WaitExpert 的 Wait → PipeBarrier 模式）
+        for (uint32_t i = 0U; i < submitted_; ++i) {
+            hccl_.Wait(a2avHandles_[i]);
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::SyncAll();
         if (submitted_ > 0U) {
             hccl_.Finalize();
         }
