@@ -17,14 +17,18 @@ import torch
 import torch.nn.functional as F
 
 
-SOURCE_COMMIT = "dbe6a50a2"
-MODEL_REVISION = "r32_ub_state32_npu_sum_v3"
+SOURCE_COMMIT = "7217efce8"
+MODEL_REVISION = "r32_ub_state32_boundary_dispatch_v5"
 CHUNK_SIZE = 64
 INVERSE_BLOCK_SIZE = CHUNK_SIZE // 2
-# 与 FusedStage123Exact::UseStreamingExact 保持一致，均为静态代价权重。
-STREAM_ARITHMETIC_FACTOR = 7
-STREAM_VECTOR_COST = 256
-CUBE_MAC_PER_CHUNK = 5832704
+# 与 BasicBlock::UseStreamingExact 的边界校准一致；分数只用于相对选路。
+STREAM_ROW_TOKEN_COST = 33
+STREAM_WIDE_ROW_TOKEN_COST = 37
+CHUNK_SETUP_BUDGET = 3600
+CHUNK_BATCH_BUDGET = 1100
+SINGLE_HEAD_TOKEN_CREDIT = 43
+MULTI_HEAD_TOKEN_CREDIT = 36
+MAX_CALIBRATED_VALUE_HEADS = 32
 
 
 class ChunkPrefix(NamedTuple):
@@ -48,16 +52,29 @@ def _bf16(x):
     return x.bfloat16().float()
 
 
-def uses_streaming(seq_len, dk, dv, C=CHUNK_SIZE):
-    """优化方案：小工作量用纯 AIV 递推，省去 Cube 固定 tile 的计算和搬运。
+def uses_streaming(seq_len, dk, dv, C=CHUNK_SIZE, *, nv=1):
+    """按状态行组、实际长度和 value-head 数选择路径，与 C++ 一致。
 
-    比较 7*seq_len*Dk*Dv*256 与 ceil(seq_len/C)*2*5832704；分数不是实测耗时。
-    保留 C 关键字兼容现有调用；实际融合路径固定 C=64，空序列只复制初态。
+    Δ=(a*R-b)*L-(3600+1100*ceil(L/64))；Δ<0 选 stream。
+    a=33/37；b=43（单head）/36（2..32head）；Nv>32保留原判据，避免多波外推。
+    这是误选损失校准分数，非耗时预测。
+    单行组保留 stream，128x128 保留专用 chunk；空序列仅复制初态。
+    C 保留历史调用兼容性，kernel 固定 C=64；生产调用须传实际 nv。
     """
-    chunk_count = (seq_len + C - 1) // C
-    cube_score = chunk_count * 2 * CUBE_MAC_PER_CHUNK
-    streaming_score = seq_len * dk * dv * STREAM_ARITHMETIC_FACTOR * STREAM_VECTOR_COST
-    return streaming_score < cube_score or seq_len == 0
+    if seq_len == 0:
+        return True
+    if dk == 128 and dv == 128:
+        return False
+    rows = min(dv, 64)
+    row_groups = (rows + 7) // 8 if dk <= 8 else rows
+    if row_groups == 1:
+        return True
+    chunks = (seq_len + C - 1) // C
+    row_token_cost = STREAM_WIDE_ROW_TOKEN_COST if dk > 64 else STREAM_ROW_TOKEN_COST
+    if nv > MAX_CALIBRATED_VALUE_HEADS:
+        return (row_token_cost * row_groups - 49) * seq_len < 3200 + 800 * chunks
+    token_credit = SINGLE_HEAD_TOKEN_CREDIT if nv == 1 else MULTI_HEAD_TOKEN_CREDIT
+    return (row_token_cost * row_groups - token_credit) * seq_len < CHUNK_SETUP_BUDGET + CHUNK_BATCH_BUDGET * chunks
 
 
 def _inclusive_log_decay_scan(log_decay):
@@ -322,7 +339,7 @@ def chunk_gdn_benchmark_fused(
         token_end = token_start + seq_len
         state = initial_state[batch].clone()  # [Nv,Dv,Dk]，空序列原样返回
         cur_q, cur_k, cur_v, cur_beta, cur_g = [tensor[token_start:token_end] for tensor in (q, k, v, beta, g)]
-        if uses_streaming(seq_len, k.shape[-1], v.shape[-1]):
+        if uses_streaming(seq_len, k.shape[-1], v.shape[-1], nv=nv):
             # 小数据量走逐token计算分支
             sequence_output, state = _stream_sequence(
                 cur_q, cur_k, cur_v, cur_beta, state, cur_g, scale,
