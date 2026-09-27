@@ -92,15 +92,6 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             // MIX 诊断实验：AIV 不参与 apace 路径（通信已改 AIC 核内），直接退出
             return;
         }
-        AscendC::printf("[ApaceDBG] K-enter AIC core=%u\n", AscendC::GetBlockIdx());
-        // 部署自检：block0 先写 y[0]=0xA5A5A5A5，可判定"新二进制在跑 + apace 分支生效"
-        // （通信成功后该值被 recv 数据覆盖，不影响结果）
-        if (AscendC::GetBlockIdx() == 0) {
-            *reinterpret_cast<__gm__ uint32_t *>(yGM) = 0xA5A5A5A5U;
-        }
-        AscendC::printf("[ApaceDBG] K-post-magic core=%u\n", AscendC::GetBlockIdx());
-        GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
-                                           gmmArrayAddr_, tilingGM);
         HcommImpl hcommImpl;
         hcommImpl.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, yGM, gmmComputeWSGM,
                        tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
@@ -134,11 +125,8 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             GM_ADDR shC = (mmMask & 0x10UL) ? mmyOptionalGM : gmmOutputGM;
             shareComputeOp.Init(shX, shW, shSA, shSB, shC, sharedGmmComputeWSGM, tilingData_,
                                 &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
-            AscendC::printf("[ApaceDBG] K-pre-shared core=%u\n", AscendC::GetBlockIdx());
             shareComputeOp.Process(0, 1);
-            AscendC::printf("[ApaceDBG] K-post-shared core=%u\n", AscendC::GetBlockIdx());
         }
-        hcommImpl.End();
 #else
         // TT dtype 实例不含 apace 组合实现（MX 宏判别为否）：TT tiling 类恒编码
         // TILINGKEY_USING_APACE_IMPL=0，该组合不会被选中，空实现仅占位

@@ -23,7 +23,6 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
-#include "kernel_operator.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
@@ -205,9 +204,6 @@ public:
             groupListLayout);
         BlockScheduler scheduler(tiling_.baseM, tiling_.baseN, tiling_.baseK);
         SetSchedulerTailAlign(scheduler); // 设置尾块调度器能切的最小block大小
-        AscendC::printf("[ApaceDBG] G-run enter core=%u gNum=%u glType=%u coreNum=%u blockIdx=%u\n",
-                        AscendC::GetBlockIdx(), groupNum_, tiling_.groupListType, AscendC::GetBlockNum(),
-                        AscendC::GetBlockIdx());
         const uint32_t lastGroupIdx = groupNum_ - 1;
         for (uint32_t groupIdx = 0; groupIdx < lastGroupIdx; ++groupIdx) {
             SetMNK(gmGroupList, groupIdx); // 按当前 group 的 M 重新均衡 baseM
@@ -220,11 +216,7 @@ public:
             BaseMBalance(scheduler, problemM, tiling_.baseM); // 按当前 group 的 M 重新均衡 baseM
             scheduler.UpdateNextProblem(
                 SchedulerProblemShape{problemM, problemN, problemK, 0}); // 对当前的 groupidx 更新调度器状态
-            AscendC::printf("[ApaceDBG] G-loop g=%u M=%lld N=%lld K=%lld bM=%u bN=%u bK=%u core=%u\n", groupIdx,
-                            (long long)problemM, (long long)problemN, (long long)problemK, tiling_.baseM, tiling_.baseN,
-                            tiling_.baseK, AscendC::GetBlockIdx());
             ProcessSingleGroup<false>(scheduler, gmGroupList, groupIdx);
-            AscendC::printf("[ApaceDBG] G-loop-done g=%u core=%u\n", groupIdx, AscendC::GetBlockIdx());
         }
 
         SetMNK(gmGroupList, lastGroupIdx);
@@ -234,16 +226,12 @@ public:
         if (problemM > 0 && problemN > 0 && problemK > 0) {
             BaseMBalance(scheduler, problemM, tiling_.baseM);
             scheduler.UpdateNextProblem(SchedulerProblemShape{problemM, problemN, problemK, 0});
-            const bool needSplit = IsLastGroupAndNeedSplit(scheduler);
-            AscendC::printf("[ApaceDBG] G-last M=%lld N=%lld K=%lld split=%d core=%u\n", (long long)problemM,
-                            (long long)problemN, (long long)problemK, needSplit ? 1 : 0, AscendC::GetBlockIdx());
-            if (needSplit) {
+            if (IsLastGroupAndNeedSplit(scheduler)) {
                 scheduler.UpdateTailTile(); // 尾部均衡
                 ProcessSingleGroup<true>(scheduler, gmGroupList, lastGroupIdx);
             } else {
                 ProcessSingleGroup<false>(scheduler, gmGroupList, lastGroupIdx);
             }
-            AscendC::printf("[ApaceDBG] G-last-done core=%u\n", AscendC::GetBlockIdx());
         }
     }
 
@@ -401,12 +389,8 @@ private:
     {
         BlockCoord blockCoord;
         if (!scheduler.GetNextBlockCoord(blockCoord)) {
-            AscendC::printf("[ApaceDBG] S-enter-noblock g=%u core=%u\n", groupIdx, AscendC::GetBlockIdx());
             return;
         }
-        AscendC::printf("[ApaceDBG] S-enter g=%u split=%d mBlk=%lld nBlk=%lld core=%u\n", groupIdx,
-                        isLastGroupAndNeedSplit ? 1 : 0, (long long)asc::te::get<MNK_M>(blockCoord),
-                        (long long)asc::te::get<MNK_N>(blockCoord), AscendC::GetBlockIdx());
         UpdateBaseOffsets(gmGroupList, groupIdx);
 
         mmadOp_.UpdateParamsForNextProblem(problemShape_);
@@ -469,7 +453,6 @@ private:
             auto gmBlockC = gmC.slice(asc::te::make_coord(mPos, nPos), asc::te::make_shape(blockM, blockN));
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, blockShape);
         } while (scheduler.GetNextBlockCoord(blockCoord));
-        AscendC::printf("[ApaceDBG] S-done g=%u core=%u\n", groupIdx, AscendC::GetBlockIdx());
     }
 
 private:
