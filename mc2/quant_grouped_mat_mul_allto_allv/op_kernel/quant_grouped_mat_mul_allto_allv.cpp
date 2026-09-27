@@ -88,10 +88,6 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
             Apace::QuantGmmA2avHcommImpl<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
                                          DTYPE_GMM_X_SCALE, DTYPE_Y, CubeFormat::ND, false,
                                          TILINGKEY_GROUPED_MATMUL_TRANS, false, TILINGKEY_COMM_MODE>;
-        if ASCEND_IS_AIV {
-            // MIX 诊断实验：AIV 不参与 apace 路径（通信已改 AIC 核内），直接退出
-            return;
-        }
         GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                            gmmArrayAddr_, tilingGM);
         HcommImpl hcommImpl;
