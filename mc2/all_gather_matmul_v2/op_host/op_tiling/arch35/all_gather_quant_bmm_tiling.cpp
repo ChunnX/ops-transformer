@@ -311,7 +311,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                     .c_str()),
             return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    constexpr uint64_t FP8_E8M0_SIZE = 1;
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * EVEN_ALIGN * FP8_E8M0_SIZE;
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
@@ -550,7 +551,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     SetTilingKeyParams();
     SetRcsTilingData(MutableRCSTilingDataA5());
-    DoSplitMTiling(MutableRCSTilingDataA5());
+    MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingDataA5()));
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
@@ -771,10 +772,10 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-CutResult AllGatherQuantBmmTiling::GetTilingResult()
+ge::graphStatus AllGatherQuantBmmTiling::GetTilingResult(CutResult &result)
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTiling();
+    result = tileFormulate.GetTiling();
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
 
@@ -787,12 +788,13 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
 
     if (isCcuMode) {
         CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
-        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+        OP_TILING_CHECK(AdjustCutResultForCCU(result, args_.mValue, commSize, opName_) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(opName_, "Fail to adjust cut result for CCU HCCL limit."), return ge::GRAPH_FAILED);
     } else {
         AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
     }
 
-    return result;
+    return ge::GRAPH_SUCCESS;
 }
 
 Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5()

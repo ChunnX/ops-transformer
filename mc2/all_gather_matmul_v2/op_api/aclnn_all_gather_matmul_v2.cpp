@@ -427,7 +427,7 @@ static bool IsAMaxOut(const aclTensor *amaxOut)
     return true;
 }
 
-// fp16/bf16场景不支持amaxOut输入，fp8/hif8场景amaxOut为scalar且只支持float类型
+// fp16/bf16场景不支持amaxOut输入；其余场景当前版本amaxOut仅支持nullptr或空tensor（与文档及host侧tiling校验一致）
 static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
 {
     if (IsFp16orBf16Input(x1)) {
@@ -438,19 +438,11 @@ static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
             return false;
         }
     }
-    if (IsAMaxOut(amaxOut)) {
-        if (amaxOut->GetViewShape().GetDimNum() != ONE_DIMS) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                "aclnnAllGatherMatmulV2", "amaxOut",
-                (std::to_string(amaxOut->GetViewShape().GetDimNum()) + "D").c_str(),
-                "The shape of amaxOut must be 1D.");
-            return false;
-        }
-        auto amaxOutLen = amaxOut->GetViewShape().GetDim(0);
-        if (amaxOutLen != SCALAR) {
-            return false;
-        }
-        CHECK_RET(CheckParamDtypeFP8Vaild(amaxOut), false);
+    if (amaxOut != nullptr && !amaxOut->IsEmpty()) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnAllGatherMatmulV2", "amaxOut", "non-empty",
+            "The value of amaxOut must be nullptr or empty tensor in current version");
+        return false;
     }
     return true;
 }
@@ -559,7 +551,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     CHECK_RET(CheckShape(x1, x2, output, transposeX1), ACLNN_ERR_PARAM_INVALID);
     bool isGatherOut = IsGatherOut(gatherOut);
     bool isAMaxOut = IsAMaxOut(amaxOut);
-    // 如果为bf16/fp16的,不能输入amaxout, 如果为低精度，amaxout 数据类型只能为float类型且维度为1维
+    // 如果为bf16/fp16的,不能输入amaxout; 其余场景amaxout仅支持nullptr或空tensor
     CHECK_RET(CheckAMaxOutVaild(x1, amaxOut), ACLNN_ERR_PARAM_INVALID);
     // outDtype 通过output类型判断
     uint64_t outDtype = static_cast<uint64_t>(output->GetDataType());
@@ -630,6 +622,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     retParam = CheckShapeForAIVMode(x1, x2, output, gatherOut, transposeX1, viewTransposeX2);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    CHECK_RET(CheckAMaxOutVaild(x1, amaxOut), ACLNN_ERR_PARAM_INVALID);
     // 【A2、A3】校验非连续入参合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (!transposeX2 && !MC2Aclnn::IsTensorContiguous(x2)) {

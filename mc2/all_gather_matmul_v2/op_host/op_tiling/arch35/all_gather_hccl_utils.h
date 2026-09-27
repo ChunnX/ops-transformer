@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <string>
+#include "graph/ge_error_codes.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h"
 
 namespace optiling {
@@ -48,7 +49,8 @@ uint64_t DetermineFinalTileMWithLimit(uint64_t mValue, uint64_t candidateTileM, 
 void ApplyTileSplit(CutResult &cutRes, uint64_t mValue, uint64_t tileM, const CommSizeInfo &commSize,
                     const std::string &opName);
 
-void AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInfo &commSize, const std::string &opName);
+ge::graphStatus AdjustCutResultForCCU(CutResult &cutRes, uint64_t mValue, const CommSizeInfo &commSize,
+                                      const std::string &opName);
 
 void AdjustCutResultForAICPU(CutResult &cutRes, uint64_t mValue, uint64_t baseM, const std::string &opName);
 } // namespace optiling
