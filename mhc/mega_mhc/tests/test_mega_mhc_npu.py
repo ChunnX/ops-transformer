@@ -89,6 +89,9 @@ class TestMegaMhcNpu(unittest.TestCase):
             raise unittest.SkipTest("mega_mhc acceptance requires Ascend 950")
         torch.npu.set_device(device)
         torch.set_num_threads(4)
+        cls.schedule_mode = int(os.getenv("MEGA_MHC_TEST_SCHEDULE_MODE", "0"))
+        if cls.schedule_mode not in (0, 1, 2):
+            raise ValueError("MEGA_MHC_TEST_SCHEDULE_MODE must be 0, 1, or 2")
         limit = os.getenv("MEGA_MHC_TEST_AIC_LIMIT")
         if limit is not None:
             # Process-local CANN quota, applied before dispatch; production tiling
@@ -198,6 +201,7 @@ class TestMegaMhcNpu(unittest.TestCase):
                                 kwargs = {
                                     "gamma_2": gamma2.npu() if mid else None,
                                     "compute_mode": mode,
+                                    "schedule_mode": self.schedule_mode,
                                 }
                                 actual = cann_ops_transformer.mega_mhc(
                                     *device_inputs, **kwargs
@@ -276,6 +280,7 @@ class TestMegaMhcNpu(unittest.TestCase):
                                     norm_eps=epsilon,
                                     hc_eps=0.0,
                                     compute_mode=mode,
+                                    schedule_mode=self.schedule_mode,
                                 )
                                 torch.npu.synchronize()
                                 tolerance = (

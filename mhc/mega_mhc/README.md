@@ -1,16 +1,16 @@
 # mega_mhc on Ascend 950
 
-950 专用 m-k 基线：N=4、2560≤D≤7168 且 D 为256的倍数，FP16/BF16 输入，FP32/HF32 投影。
+950 专用 M-K/ND/BS 实现：N=4、2560≤D≤7168 且 D 为256的倍数，FP16/BF16 输入，FP32/HF32 投影。
 扩展范围目前为实验实现，数值验收例外见[通用 D 分块实验](docs/generic_d_tiling_experiment.md)。
 `gamma_0` 必须非空；gamma_2=None 为四算子，提供 [4D] gamma_2 为五算子。
-保留四个输出及阶段舍入点，无 Sinkhorn、3BF16、bs/nd 调度。
+保留四个输出及阶段舍入点，无 Sinkhorn、3BF16。
 
 ## 目录与调用链
 
 - op_host/op_api：aclnnAiInfraMegaMhc 参数校验、Contiguous、L0 launch、ViewCopy。
 - op_host/op_tiling：GE总注册与arch35 host分块；memory_plan逐buffer计数，TilingData负责下发。
 - op_kernel/arch35/compute：五阶段RegBase数学函数，公式与舍入点写在函数注释中。
-- op_kernel/arch35/schedule_mk.h、epilogue.h：四/五调度、行归属、同步和最终归约。
+- op_kernel/arch35/schedule.h、epilogue.h：四/五调度、行归属、同步和最终归约。
 - op_kernel/arch35/compute/projection_cube.h：Cube Basic API微流水，读取host给定L1/L0/Mmad/LoadData参数。
 - op_kernel/arch35/transfer.h：GM、UB→L1双槽传输及READY/credit协议。
 - torch_extension：仓内自动收集的mega_mhc Python、Meta、PrivateUse1/JIT C++封装。
@@ -20,6 +20,27 @@ FP16/BF16 共用同一套 RegBase 计算与归约顺序，仅加载/写回的类
 RMS0/RMS1 平方和使用双链累加；Post 内融合的 RMSMid 平方和按 head 0/1、2/3
 先用 FMA 求局部平方和再累计，复用已消费的 Post 寄存器，仅保留一个累加寄存器。
 该顺序缩短长累加链，无 BF16 专用补偿分支。
+
+## 模板选择
+
+Torch 可选参数 `schedule_mode=0/1/2` 分别选择 M-K/ND/BS；默认仍为已验证的 M-K。
+三种模板支持四/五算子与 FP32/HF32，复用全部 RegBase/Cube 计算函数和 `schedule.h`。
+旧 ACLNN ABI 保留并选择 M-K；`aclnnAiInfraMegaMhcV2` 增加 `scheduleMode` 参数。
+
+- ND：`mGrid=1`，沿 `K=N*D` 分核；所有 K 分片共同计算同一批 token，最后按 K 顺序归约。
+- BS：`kGrid=1`，沿 token 分核；每核遍历完整 K，按既有规则输出 1024 长度有序 partial。
+- M-K：保留已有二维分核及四算子跨批流水。
+
+ND/BS 的 `Mcap=alignDown16(min(256, L0C/(2*32*4), L1A/(2*128*4)))`。
+ND 取 `Mtile=min(Mcap,alignUp16(T))`；BS 取 `Mtile=min(Mcap,alignUp16(ceil(T/C)))`。
+BS 的 `mGrid=min(C,ceil(T/Mtile))`；ND 的 K 路数先取 `min(C,ceil(K/256))`，
+再依照共同的 K 对齐/partial 规则去掉空分片。其余 L1/L0 块与尾块由同一 CubePlan 计算。
+这里 C 为可用 AIC 数，L1A 为 A 操作数双槽总预算；无 D 特化。
+
+ND/BS 首版在完整 RMS0/Post/可选 Mid 后同步，投影内部继续 CV 双缓冲，
+投影完成后同步并复用 Pre/RMS1 尾处理。与 mhc_pre 对齐的是分核方向，
+尚未迁移其 ND 特有跨核流水或 BS 每个 token 块独立完成 epilogue 的同步方式。
+不声称跨模板逐位一致，也不因 BS 分核而新增跨 batch 一致性承诺。
 
 ## 当前调度
 

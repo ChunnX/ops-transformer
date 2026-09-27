@@ -239,6 +239,13 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         OP_LOGE(context_->GetNodeName(), "compute_mode supports only 0 (FP32) and 1 (HF32)");
         return ge::GRAPH_FAILED;
     }
+    const int64_t *schedule = attrs->GetAttrPointer<int64_t>(3);
+    const int64_t scheduleMode = schedule == nullptr ? 0 : *schedule;
+    if (scheduleMode < 0 || scheduleMode > 2) {
+        OP_LOGE(context_->GetNodeName(), "schedule_mode supports 0 (M-K), 1 (ND), 2 (BS)");
+        return ge::GRAPH_FAILED;
+    }
+    scheduleMode_ = static_cast<mega_mhc::ScheduleMode>(scheduleMode);
     projectionMode_ = mode == 0 ? mega_mhc::ProjectionMode::FP32 : mega_mhc::ProjectionMode::HF32;
     return ge::GRAPH_SUCCESS;
 }
@@ -314,6 +321,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
 {
     mega_mhc::CubePlanRequest request;
     request.rows = totalRows_;
+    request.schedule = scheduleMode_;
     request.wavePipeline = false;
     request.preferWideTile = true; // Both variants project materialized rows; wave tiling overrides this preference.
     request.k = k_;
@@ -333,7 +341,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
 
     const uint64_t availableUb = std::min<uint64_t>(ubBytes_, kUbLimitBytes);
     // Try waves only when every producer owns complete rows and all live buffers fit.
-    if (!hasMid_ && std::min(aicCount_, aivCount_ / 2U) >= 4U) {
+    if (scheduleMode_ == mega_mhc::ScheduleMode::MK && !hasMid_ && std::min(aicCount_, aivCount_ / 2U) >= 4U) {
         // Prefer a complete-wave plan; if alignment invalidates it, retain the larger batch and use its tail.
         for (uint32_t candidate = 0U; candidate < 2U; ++candidate) {
             auto waveRequest = request;
@@ -351,6 +359,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
             }
         }
     }
+    tilingData_.set_scheduleMode(static_cast<uint32_t>(scheduleMode_));
     tilingData_.set_hasMid(hasMid_ ? 1U : 0U);
     tilingData_.set_projectionMode(static_cast<uint32_t>(projectionMode_));
     tilingData_.set_stagingKind(static_cast<uint32_t>(hasMid_ ? AiInfraMegaMhc::kFiveProjectionTransport :

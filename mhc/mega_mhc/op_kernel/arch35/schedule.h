@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_MK_H
-#define OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_MK_H
+#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_H
+#define OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_H
 
 #include "compute/mhc_post.h"
 #include "compute/rms_norm_0.h"
@@ -608,10 +608,12 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors, co
 }
 
 /** Schedule RMS0/Post -> optional Mid -> projection; all variants finalize Pre/RMS1 after the barrier.
+ * Host grid defines M-K, ND (mGrid=1) or BS (kGrid=1); ND/BS reuse the staged synchronization protocol.
+ * Projection computes X*Phi^T and sum(X^2); ordered partials are reduced in the shared epilogue.
  * Four-op waves publish complete Post rows while earlier rows project; five-op completes Mid first.
  */
 template <typename T, bool WITH_MID = true>
-__aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
+__aicore__ inline void RunSchedule(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
 {
     using StageTransfer = Transfer::StagePolicyT<WITH_MID ? kFiveProjectionTransport : kFourProjectionTransport>;
     if constexpr (!WITH_MID) {
@@ -641,4 +643,4 @@ __aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
 
 } // namespace AiInfraMegaMhc::Schedule
 
-#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_MK_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_H

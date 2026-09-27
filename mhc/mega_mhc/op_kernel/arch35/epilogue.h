@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
-#define OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
+#ifndef OPS_TRANSFORMER_MHC_MEGA_MHC_EPILOGUE_H
+#define OPS_TRANSFORMER_MHC_MEGA_MHC_EPILOGUE_H
 
 #include "compute/mhc_pre.h"
 #include "compute/rms_norm_1.h"
@@ -170,7 +170,7 @@ __aicore__ inline void FinalizeMhcRows(Kernel::Tensors<T> &tensors, const MegaMh
 
 /** Assign complete final rows to AIVs after all Cube and statistic partials are globally visible. */
 template <typename T>
-__aicore__ inline void RunMkEpilogue(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
+__aicore__ inline void RunEpilogue(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling, TPipe *pipe)
 {
     if ASCEND_IS_AIV {
         TBuf<TPosition::VECCALC> x2Buffer;
@@ -224,4 +224,4 @@ __aicore__ inline void RunMkEpilogue(Kernel::Tensors<T> &tensors, const MegaMhcT
 
 } // namespace AiInfraMegaMhc::Schedule
 
-#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_MK_EPILOGUE_H
+#endif // OPS_TRANSFORMER_MHC_MEGA_MHC_EPILOGUE_H

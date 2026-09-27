@@ -11,7 +11,7 @@ g++ -std=c++17 -O2 mhc/mega_mhc/tests/host/test_cube_plan.cpp \
 
 Python 合约测试直接执行生产 validator/Meta 函数的 AST，以 metadata 对象代替 Tensor；
 不代表真实 Torch dispatcher/JIT 验证。Host 测试直接调用生产 BuildCubePlan，覆盖9500组
-M/D/核数/投影模式/四五模板，检查 M/K 覆盖、partial 边界、尾块、L1/L0容量及两种 producer UB。
+M/D/核数/投影模式/四五模板，另增加836组ND/BS分核检查，检查 M/K 覆盖、partial 边界、尾块、L1/L0容量及两种 producer UB。
 
 ## 950 验收
 
@@ -52,3 +52,6 @@ UB→L1 等非默认传输路径需要独立验收，不能从 GM 结果推定�
 
 扩展 D 的本轮精度及性能实测范围见[实验记录](../docs/generic_d_tiling_experiment.md)；
 上述历史验收结果不代表新增矩阵全部通过。
+
+通过 `MEGA_MHC_TEST_SCHEDULE_MODE=0/1/2` 分别对 M-K/ND/BS 运行完整数值矩阵。
+ND/BS 的实测子集及精度例外见通用分块实验记录，定义测试矩阵不代表全量已通过。

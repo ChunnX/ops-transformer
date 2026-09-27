@@ -12,16 +12,17 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mega_mhc_kernel_context.h"
 #include "arch35/epilogue.h"
-#include "arch35/schedule_mk.h"
+#include "arch35/schedule.h"
 
 using namespace AscendC;
 using namespace AiInfraMegaMhc;
 
 /**
- * Total entry for the 950 four-op/five-op m-k families.
+ * Total entry for the 950 four-op/five-op M-K, ND and BS families.
  * Four-op: complete RMS0/Post rows -> overlapped m-k projection when wave tiling is selected.
  * Five-op: complete RMS0/Post/Mid -> barrier -> m-k projection -> barrier.
- * Both variants reuse the same ordered Pre/RMS1 compute routines.
+ * ND partitions K=N*D; BS partitions tokens with full K. Both use staged barriers.
+ * All variants reuse the same ordered Pre/RMS1 compute routines.
  */
 __global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
                                              GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR gamma0,
@@ -57,14 +58,14 @@ __global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_
 
     if (tilingData.hasMid == 0U) {
         TPipe fourOpPipe;
-        Schedule::RunMkSchedule<T, false>(tensors, tilingData, &fourOpPipe);
+        Schedule::RunSchedule<T, false>(tensors, tilingData, &fourOpPipe);
     } else {
         TPipe fiveOpPipe;
-        Schedule::RunMkSchedule<T>(tensors, tilingData, &fiveOpPipe);
+        Schedule::RunSchedule<T>(tensors, tilingData, &fiveOpPipe);
     }
 
     TPipe epiloguePipe;
-    Schedule::RunMkEpilogue<T>(tensors, tilingData, &epiloguePipe);
+    Schedule::RunEpilogue<T>(tensors, tilingData, &epiloguePipe);
     epiloguePipe.Destroy();
 }
 

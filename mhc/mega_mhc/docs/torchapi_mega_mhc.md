@@ -24,7 +24,7 @@
 
 ```python
 mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
-         *, gamma_2=None, norm_eps=1e-6, hc_eps=1e-6, compute_mode=0)
+         *, gamma_2=None, norm_eps=1e-6, hc_eps=1e-6, compute_mode=0, schedule_mode=0)
 ```
 
 ## 参数与输出
@@ -46,9 +46,12 @@ N 固定为4，D 在[2560,7168]内且为256的倍数，前导维度必须为正�
 | norm_eps | 否 | 转为FP32后仍有限且大于0 |
 | hc_eps | 否 | 有限非负，转为FP32不溢出 |
 | compute_mode | 否 | 0=FP32，1=HF32；不支持2/3BF16 |
+| schedule_mode | 否 | 0=M-K（默认），1=ND（沿N*D分核），2=BS（沿token分核） |
 
 返回 `(h_in_prime, h_post_new, h_res_new, x_2_out)`，shape 分别同
 `(h_out, h_post, h_res, residual)`，dtype 为 `(T, FP32, FP32, T)`。输出为连续 ND。
+
+Torch 使用 `aclnnAiInfraMegaMhcV2`，在 computeMode 后增加 scheduleMode；旧接口保持签名和默认 M-K 行为。
 
 ABI 沿用 `aclnnAiInfraMegaMhc` 的 gamma0Optional 参数名；950 合约要求其非空。
 同一950配置以确定性为目标；与910按误差阈值验收，不承诺逐位相同或跨batch组成一致。

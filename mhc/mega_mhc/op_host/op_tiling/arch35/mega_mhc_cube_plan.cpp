@@ -88,7 +88,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     }
 
     const uint64_t active = std::min(request.aicCount, request.aivCount / 2);
-    if (active == 0 || (request.wavePipeline && active < 4U)) {
+    if (active == 0 || (request.wavePipeline && (active < 4U || request.schedule != ScheduleMode::MK))) {
         return false;
     }
 
@@ -129,12 +129,26 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     if (request.wavePipeline && waveKGrid < minWaveKGrid) {
         return false;
     }
-    const uint64_t selectedMTile = request.wavePipeline ? 2U * waveRowsPerAiv * waveKGrid :
-                                                          (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
+    uint64_t selectedMTile = request.wavePipeline ? 2U * waveRowsPerAiv * waveKGrid :
+                                                    (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
+    // ND keeps one M lane and partitions K=N*D. BS owns full K and partitions token tiles.
+    // Cap M by both L0C and the minimum legal double-buffered L1 transfer; all counts stay host planned.
+    if (request.schedule != ScheduleMode::MK) {
+        const uint64_t mCapacity = AlignDown(std::min<uint64_t>({256U, request.l0CBytes / (2U * 32U * kFp32Bytes),
+                                                                 request.l1ABytes / (2U * kL1KAlign * kFp32Bytes)}),
+                                             kMAlign);
+        if (mCapacity == 0U) {
+            return false;
+        }
+        const uint64_t targetRows = request.schedule == ScheduleMode::ND ? request.rows : CeilDiv(request.rows, active);
+        selectedMTile = std::min(mCapacity, AlignUp(targetRows, kMAlign));
+    }
     const uint64_t selectedMGrid =
-        std::min(request.wavePipeline ? active / waveKGrid : active, CeilDiv(request.rows, selectedMTile));
+        request.schedule == ScheduleMode::ND ?
+            1U :
+            std::min(request.wavePipeline ? active / waveKGrid : active, CeilDiv(request.rows, selectedMTile));
     const uint64_t kBlocks = CeilDiv(request.k, kKAlign);
-    uint64_t selectedKGrid = std::min(active / selectedMGrid, kBlocks);
+    uint64_t selectedKGrid = request.schedule == ScheduleMode::BS ? 1U : std::min(active / selectedMGrid, kBlocks);
     if (selectedKGrid == 0) {
         return false;
     }

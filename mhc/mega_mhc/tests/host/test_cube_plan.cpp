@@ -29,6 +29,41 @@ extern "C"
     int
     run_plan_tests()
 {
+    for (auto schedule : {ScheduleMode::ND, ScheduleMode::BS}) {
+        for (uint64_t m : {1U, 17U, 33U, 255U, 256U, 257U, 512U, 1025U, 3072U, 8192U, 8193U}) {
+            for (uint64_t d = 2560U; d <= 7168U; d += 256U) {
+                for (auto mode : {ProjectionMode::FP32, ProjectionMode::HF32}) {
+                    CubePlanRequest r;
+                    r.schedule = schedule;
+                    r.rows = m;
+                    r.k = 4U * d;
+                    r.q = 24U;
+                    r.aicCount = 32U;
+                    r.aivCount = 64U;
+                    r.l1ABytes = r.l1BBytes = 256U * 1024U;
+                    r.l0ABytes = r.l0BBytes = 64U * 1024U;
+                    r.l0CBytes = 128U * 1024U;
+                    r.mode = mode;
+                    CubePlan p;
+                    REQUIRE(BuildCubePlan(r, p));
+                    REQUIRE(schedule == ScheduleMode::ND ? p.mGrid == 1U : p.kGrid == 1U);
+                    REQUIRE(p.activeAic == p.mGrid * p.kGrid && p.activeAic <= r.aicCount);
+                    REQUIRE((p.mWaveCount - 1ULL) * p.rowsPerWave + p.lastWaveRows == m);
+                    REQUIRE((p.lastWaveMGrid - 1ULL) * p.mTile + p.lastMCoreRows == p.lastWaveRows);
+                    const uint64_t largeBeforeLast = std::min(p.kGrid - 1U, p.largeKCoreCount);
+                    REQUIRE(largeBeforeLast * p.splitK + (p.kGrid - 1U - largeBeforeLast) * p.shortSplitK +
+                                p.lastKCoreElements ==
+                            r.k);
+                    REQUIRE(p.lastKCoreElements > 0U && p.lastKCoreElements <= p.splitK);
+                    REQUIRE(p.partialGroupK < 2048U);
+                    REQUIRE(2ULL * p.l0ASlotElements * 4U <= r.l0ABytes);
+                    REQUIRE(2ULL * p.l0BSlotElements * 4U <= r.l0BBytes);
+                    REQUIRE(2ULL * p.l0CSlotElements * 4U <= r.l0CBytes);
+                    REQUIRE(ProjectionUbBytes(r.k, p.l1K, (p.mTile + 1U) / 2U) <= 248U * 1024U);
+                }
+            }
+        }
+    }
     const bool midModes[] = {false, true};
     const uint64_t rows[] = {1,   2,   15,   16,   17,   31,   32,   33,   63,   64,   160,  192,          257,
                              512, 768, 1024, 1536, 1537, 2048, 3071, 3072, 3073, 4096, 6145, 4294967295ULL};

@@ -33,6 +33,16 @@ aclnnStatus aclnnAiInfraMegaMhcGetWorkspaceSize(const aclTensor *hOut, const acl
 
 aclnnStatus aclnnAiInfraMegaMhc(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
+/** V2 adds scheduleMode: 0=M-K (default), 1=ND, 2=BS. */
+aclnnStatus aclnnAiInfraMegaMhcV2GetWorkspaceSize(
+    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
+    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
+    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps, int64_t computeMode,
+    int64_t scheduleMode, const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut, const aclTensor *hResNewOut,
+    const aclTensor *x2Out, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+aclnnStatus aclnnAiInfraMegaMhcV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+
 #ifdef __cplusplus
 }
 #endif

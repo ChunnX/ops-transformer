@@ -19,7 +19,14 @@ enum class ProjectionMode : uint32_t {
     HF32 = 1
 };
 
+enum class ScheduleMode : uint32_t {
+    MK = 0,
+    ND = 1,
+    BS = 2
+};
+
 struct CubePlanRequest {
+    ScheduleMode schedule = ScheduleMode::MK;
     uint64_t rows = 0;
     uint64_t k = 0;
     uint64_t q = 0;

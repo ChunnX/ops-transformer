@@ -42,6 +42,7 @@ private:
 
     MegaMhcTilingData tilingData_;
     mega_mhc::CubePlan cubePlan_;
+    mega_mhc::ScheduleMode scheduleMode_ = mega_mhc::ScheduleMode::MK;
     uint64_t aicCount_ = 0;
     uint64_t aivCount_ = 0;
     uint64_t ubBytes_ = 0;

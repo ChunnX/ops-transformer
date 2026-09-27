@@ -32,6 +32,7 @@ def _check_inputs(
     norm_eps,
     hc_eps,
     compute_mode,
+    schedule_mode,
 ):
     """Validate the common eager/Meta contract; leading token axes remain symbolic."""
     torch._check(h_out.dim() in (2, 3), lambda: "h_out must be [T,D] or [B,S,D]")
@@ -72,6 +73,10 @@ def _check_inputs(
         for actual, expected in zip(value.shape, shape):
             torch._check(actual == expected, lambda: f"{name} has incorrect shape")
     torch._check(
+        schedule_mode in (0, 1, 2),
+        lambda: "schedule_mode must be 0 (M-K), 1 (ND), or 2 (BS)",
+    )
+    torch._check(
         compute_mode in (0, 1), lambda: "compute_mode must be 0 (FP32) or 1 (HF32)"
     )
     torch._check(
@@ -103,7 +108,7 @@ class MegaMhcOpBuilder(OpBuilder):
             "mega_mhc(Tensor h_out, Tensor residual, Tensor h_post, Tensor h_res, "
             "Tensor phi, Tensor alpha, Tensor bias, Tensor gamma_1, Tensor gamma_0, *, "
             "Tensor? gamma_2=None, float norm_eps=1e-6, float hc_eps=1e-6, "
-            "int compute_mode=0) -> (Tensor, Tensor, Tensor, Tensor)"
+            "int compute_mode=0, int schedule_mode=0) -> (Tensor, Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -125,6 +130,7 @@ class MegaMhcOpBuilder(OpBuilder):
             norm_eps=1e-6,
             hc_eps=1e-6,
             compute_mode=0,
+            schedule_mode=0,
         ):
             _check_inputs(
                 h_out,
@@ -140,6 +146,7 @@ class MegaMhcOpBuilder(OpBuilder):
                 norm_eps,
                 hc_eps,
                 compute_mode,
+                schedule_mode,
             )
             leading = h_out.shape[:-1]
             return (
@@ -170,6 +177,7 @@ def _mega_mhc(
     norm_eps=1e-6,
     hc_eps=1e-6,
     compute_mode=0,
+    schedule_mode=0,
 ):
     """Dispatch validated NPU tensors to the ACLNN wrapper, compiling on first use."""
     _check_inputs(
@@ -186,6 +194,7 @@ def _mega_mhc(
         norm_eps,
         hc_eps,
         compute_mode,
+        schedule_mode,
     )
     return _mega_mhc_op_builder.load().mega_mhc(
         h_out,
@@ -201,6 +210,7 @@ def _mega_mhc(
         norm_eps,
         hc_eps,
         compute_mode,
+        schedule_mode,
     )
 
 
@@ -219,6 +229,7 @@ def mega_mhc(
     norm_eps: float = 1e-6,
     hc_eps: float = 1e-6,
     compute_mode: int = 0,
+    schedule_mode: int = 0,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute RMS0 -> Post -> optional RMSMid -> Pre -> RMS1 on Ascend 950.
 
@@ -236,6 +247,7 @@ def mega_mhc(
         norm_eps: Finite positive FP32-representable RMS epsilon.
         hc_eps: Finite nonnegative FP32-representable pre-gate epsilon.
         compute_mode: 0 for FP32 projection, 1 for HF32; no 3BF16.
+        schedule_mode: 0 keeps M-K, 1 partitions N*D (ND), 2 partitions tokens (BS).
 
     Returns:
         (h_in_prime, h_post_new, h_res_new, x_2_out), shaped like
@@ -256,4 +268,5 @@ def mega_mhc(
         norm_eps=norm_eps,
         hc_eps=hc_eps,
         compute_mode=compute_mode,
+        schedule_mode=schedule_mode,
     )

@@ -110,6 +110,15 @@ class TestTorchContract(unittest.TestCase):
                                     [dtype, "float32", "float32", dtype],
                                 )
 
+    def test_schedule_modes_preserve_outputs(self):
+        """ND and BS change ownership only, preserving the four-output contract."""
+        for mode in (0, 1, 2):
+            args, kwargs = make_inputs(mid=True)
+            outputs = self.meta(*args, **kwargs, schedule_mode=mode)
+            self.assertEqual(
+                [x.shape for x in outputs], [args[i].shape for i in (0, 2, 3, 1)]
+            )
+
     def test_required_gamma0_and_optional_gamma2(self):
         args, kwargs = make_inputs()
         args[-1] = None
@@ -148,6 +157,7 @@ class TestTorchContract(unittest.TestCase):
                 self.meta(*args, **kwargs)
         for key, invalids in {
             "compute_mode": (-1, 2),
+            "schedule_mode": (-1, 3),
             "norm_eps": (0, -1, math.inf, math.nan, 1e-50, 1e40),
             "hc_eps": (-1, math.inf, math.nan, 1e40),
         }.items():

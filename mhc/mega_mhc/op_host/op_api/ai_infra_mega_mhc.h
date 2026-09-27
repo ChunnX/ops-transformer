@@ -26,8 +26,9 @@ namespace AiInfraMegaMhcl0op {
 bool AiInfraMegaMhc(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
                     const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
                     const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps,
-                    int64_t computeMode, const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut,
-                    const aclTensor *hResNewOut, const aclTensor *x2Out, aclOpExecutor *executor);
+                    int64_t computeMode, int64_t scheduleMode, const aclTensor *hInPrimeOut,
+                    const aclTensor *hPostNewOut, const aclTensor *hResNewOut, const aclTensor *x2Out,
+                    aclOpExecutor *executor);
 
 } // namespace AiInfraMegaMhcl0op
 

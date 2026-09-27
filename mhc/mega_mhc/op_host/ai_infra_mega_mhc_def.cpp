@@ -63,6 +63,7 @@ public:
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("compute_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("schedule_mode").AttrType(OPTIONAL).Int(0);
     }
 };
 
