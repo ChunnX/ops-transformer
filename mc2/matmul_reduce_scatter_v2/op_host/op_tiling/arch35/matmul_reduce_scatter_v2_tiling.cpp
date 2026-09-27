@@ -101,6 +101,12 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2Scale", "not nullptr",
                                                           "If the dtype of x is fp16 or bf16, x2Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
+    auto amaxShape = context_->GetOutputShape(OUTPUT_AMAX);
+    OP_TILING_CHECK((amaxShape != nullptr) && (amaxShape->GetStorageShape().GetDim(0) != 0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "amax", std::to_string(amaxShape->GetStorageShape().GetDim(0)).c_str(),
+                        "The value of amax must be nullptr or empty tensor"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

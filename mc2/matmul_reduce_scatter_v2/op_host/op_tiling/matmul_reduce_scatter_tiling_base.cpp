@@ -278,7 +278,11 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
     // 根据入参commMode设置hccl通信方式
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    auto attrsPtr = context_->GetAttrs();
+    OP_TILING_CHECK(attrsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
+    auto commMode = attrsPtr->GetAttrPointer<char>(COMMMODE_INDEX);
+    OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
+                    return ge::GRAPH_FAILED);
     bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
     commMode_ = isAicpu ? TPL_AICPU_COMM_MODE : TPL_CCU_COMM_MODE;
     // AICPU时不走All2All + Vec Reduce通路
@@ -352,31 +356,40 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         return false;
     } else {
         auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
+        OP_TILING_CHECK(reduceOpType == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "reduceOpType"), return false);
         OP_TILING_CHECK(strcmp(reduceOpType, "sum") != 0,
                         OP_LOGE_FOR_INVALID_VALUE(opName_, "reduceOpType", reduceOpType, "sum"), return false);
 
         auto isTransA = context_->GetAttrs()->GetAttrPointer<bool>(2);
+        OP_TILING_CHECK(isTransA == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "isTransA"), return false);
         OP_TILING_CHECK(*isTransA != false, OP_LOGE_FOR_INVALID_VALUE(opName_, "isTransA", "1", "false"), return false);
+        auto isTransB = context_->GetAttrs()->GetAttrPointer<bool>(3);
+        OP_TILING_CHECK(isTransB == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "isTransB"), return false);
         OP_TILING_CHECK((kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(kValue).c_str(),
                                                               "The value of kValue must be in the range [256, 65535)"),
                         return false);
     }
     auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
+    OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize_), OP_LOGE(opName_, "GetRankSize failed."),
                     return false);
     OP_TILING_CHECK(
         SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
         OP_LOGE_FOR_INVALID_VALUE(opName_, "world_size", std::to_string(rankSize_).c_str(), "2, 4, 8, 16, 32 or 64"),
         return false);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
+    auto commTurnPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
+    OP_TILING_CHECK(commTurnPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "commTurn"), return false);
+    int64_t commTurn = *commTurnPtr;
     OP_TILING_CHECK(commTurn != 0,
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "commTurn", std::to_string(commTurn).c_str(), "0"),
                     return false);
     // blockSize 语义同 AllGatherMatmulV2: 0 - 非量化, 32 - MX 量化, packed - PerBlock 量化
     // 仅对非 fp8 输入硬拒非零值; fp8 路径 (QuantBmmReduceScatterTiling) 使用非零值,
     // base 不拒, 否则 README §情形4 MX 路径不可达。
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
+    auto blockSizePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
+    OP_TILING_CHECK(blockSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "blockSize"), return false);
+    int64_t blockSize = *blockSizePtr;
     ge::DataType x1Type = context_->GetInputDesc(INPUT_X1)->GetDataType();
     bool x1IsFp8 = (x1Type == ge::DT_FLOAT8_E4M3FN) || (x1Type == ge::DT_FLOAT8_E5M2) || (x1Type == ge::DT_HIFLOAT8);
     OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
@@ -552,7 +565,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(),
-                                              "The value of rankDim must be positive and divisible by orgMValue"),
+                                              "rankDim must be positive and orgMValue must be divisible by rankDim"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 };
