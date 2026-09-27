@@ -20,12 +20,17 @@
 #include <cstdint>
 #endif
 
+constexpr float GMMSQ_DEFAULT_CLAMP_LIMIT = 7.0F;
+constexpr float GMMSQ_DEFAULT_GLU_ALPHA = 1.702F;
+constexpr float GMMSQ_DEFAULT_GLU_BIAS = 1.0F;
+constexpr uint32_t GMMSQ_SWIGLU_PARAMS_BYTES = 32;
+
 #pragma pack(push, 8)
 struct GMMSwigluQuantSwigluParams {
     int64_t swigluMode = 0;
-    float clampLimit = 7.0F;
-    float gluAlpha = 1.702F;
-    float gluBias = 1.0F;
+    float clampLimit = GMMSQ_DEFAULT_CLAMP_LIMIT;
+    float gluAlpha = GMMSQ_DEFAULT_GLU_ALPHA;
+    float gluBias = GMMSQ_DEFAULT_GLU_BIAS;
     uint8_t scaleAlg = 0;
     uint8_t reserved0 = 0;
     uint16_t reserved1 = 0;
@@ -36,6 +41,7 @@ struct GMMSwigluQuantSwigluParams {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(GMMSwigluQuantSwigluParams) == 32, "SwiGLU tiling attributes must occupy 32 bytes");
+static_assert(sizeof(GMMSwigluQuantSwigluParams) == GMMSQ_SWIGLU_PARAMS_BYTES,
+              "SwiGLU tiling attributes must occupy 32 bytes");
 
 #endif // GROUPED_MATMUL_SWIGLU_QUANT_SWIGLU_PARAMS_H

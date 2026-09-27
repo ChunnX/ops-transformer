@@ -295,7 +295,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
         "checkTensorApiScaleShapes=%d, checkMSizeGroupNumRatio=%d, checkBNoTransMLimlit=%d, capable=%d.",
         dtypeSupported, quantDtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize,
         averageMPerGroup, mPerGroupLowerLimit, inputParams_.transB, inputParams_.nSize, aicoreParams_.aicNum, aivNum_,
-        checkTensorApiShapes, inputParams_.kSize > 64U,
+        checkTensorApiShapes, inputParams_.kSize > GroupedMatmulSwigluQuantTensorApiTiling::K_LOWER_LIMIT,
         inputParams_.kSize % GroupedMatmulSwigluQuantTensorApiTiling::K_ALIGN == 0U, checkTensorApiScaleShapes,
         averageMPerGroup > mPerGroupLowerLimit,
         inputParams_.transB || inputParams_.mSize > GroupedMatmulSwigluQuantTensorApiTiling::NOT_TRANS_B_M_LOWER_LIMIT,

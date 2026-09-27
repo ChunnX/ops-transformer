@@ -20,6 +20,11 @@
 
 namespace op_api {
 namespace {
+constexpr int64_t kCeilDivAdjustment = 1;
+constexpr int64_t kWeightScaleRank = 4;
+constexpr int64_t kSwigluSplitFactor = 2;
+constexpr int64_t kMxScalePairSize = 2;
+constexpr int64_t kMxQuantMode = 2;
 constexpr int64_t kDim0 = 0;
 constexpr int64_t kDim2 = 2;
 constexpr int64_t kMxGroupSize = 64;
@@ -32,7 +37,7 @@ constexpr double kDefaultGluBias = 1.0;
 
 int64_t CeilDiv(int64_t value, int64_t divisor)
 {
-    return (value + divisor - 1) / divisor;
+    return (value + divisor - kCeilDivAdjustment) / divisor;
 }
 
 int64_t NormalizeGeDtype(int64_t dtype)
@@ -90,7 +95,7 @@ void CheckListForIndexing(const std::vector<at::Tensor> &tensors, const char *na
 
 int64_t InferLogicalN(const at::Tensor &weightScale)
 {
-    TORCH_CHECK(weightScale.dim() == 4, "weight_scale[0] must be 4D in the V3 MXFP8 scenario, but got ",
+    TORCH_CHECK(weightScale.dim() == kWeightScaleRank, "weight_scale[0] must be 4D in the V3 MXFP8 scenario, but got ",
                 weightScale.dim(), ".");
     // Both the non-transposed scale and the view produced by
     // weightScaleSource.transpose(-3, -2) are [E, ceil(K / 64), N, 2].
@@ -131,7 +136,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
 
     const int64_t m = x.size(kDim0);
     const int64_t n = InferLogicalN(weightScale[0]);
-    TORCH_CHECK(n > 0 && n % 2 == 0, "The logical N dimension must be positive and even, but got ", n, ".");
+    TORCH_CHECK(n > 0 && n % kSwigluSplitFactor == 0, "The logical N dimension must be positive and even, but got ", n,
+                ".");
     const aclDataType xAclDtype = GetTensorAclDtype(xDtype, x, "x");
     const aclDataType weightAclDtype = GetTensorAclDtype(weightDtype, weight[0], "weight");
     const aclDataType weightScaleAclDtype = GetMxScaleAclDtype(weightScaleDtype, weightScale[0], "weight_scale");
@@ -141,13 +147,14 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     at::Tensor outputScale;
     {
         const c10::OptionalDeviceGuard deviceGuard(c10::Device(x.device()));
-        output = at::empty({m, n / 2}, x.options().dtype(at::ScalarType::Float8_e4m3fn));
+        output = at::empty({m, n / kSwigluSplitFactor}, x.options().dtype(at::ScalarType::Float8_e4m3fn));
         // The MX scale writer can leave padding/empty lanes untouched. Clear
         // the output tensor first so every externally visible lane is
         // deterministic.
         // ZerosLike does not support float8_e8m0fnu. Allocate byte storage,
         // initialize it, then reinterpret the one-byte elements as E8M0.
-        outputScale = at::zeros({m, CeilDiv(n / 2, kMxGroupSize), 2}, x.options().dtype(at::ScalarType::Byte))
+        outputScale = at::zeros({m, CeilDiv(n / kSwigluSplitFactor, kMxGroupSize), kMxScalePairSize},
+                                x.options().dtype(at::ScalarType::Byte))
                           .view(at::ScalarType::Float8_e8m0fnu);
     }
 
@@ -175,14 +182,14 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_swiglu_quant_v2(
     // ACLNN_CMD forwards every argument through the ACL type converter, whose
     // interface takes non-const lvalue references.  Keep the scalar attributes
     // in named variables instead of passing value_or() / temporary expressions.
-    int64_t dequantModeValue = dequantMode.value_or(2);
+    int64_t dequantModeValue = dequantMode.value_or(kMxQuantMode);
     // Preserve the legacy Torch FP32 enum alias, but forward every other value
     // unchanged so ACLNN, not this bridge, validates the dequantization mode.
     int64_t dequantDtypeValue = dequantDtype.value_or(static_cast<int64_t>(ACL_FLOAT));
     if (dequantDtypeValue == static_cast<int64_t>(at::ScalarType::Float)) {
         dequantDtypeValue = static_cast<int64_t>(ACL_FLOAT);
     }
-    int64_t quantModeValue = quantMode.value_or(2);
+    int64_t quantModeValue = quantMode.value_or(kMxQuantMode);
     int64_t groupListTypeValue = groupListType.value_or(0);
     int64_t swigluModeValue = swigluMode.value();
     double clampLimitArg = clampLimitValue;

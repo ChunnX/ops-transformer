@@ -16,6 +16,12 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+namespace {
+constexpr float DEFAULT_CLAMP_LIMIT = 7.0F;
+constexpr float DEFAULT_GLU_ALPHA = 1.702F;
+constexpr float DEFAULT_GLU_BIAS = 1.0F;
+} // namespace
+
 class GroupedMatmulSwigluQuantV2 : public OpDef {
 public:
     explicit GroupedMatmulSwigluQuantV2(const char *name)
@@ -88,9 +94,9 @@ public:
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
         this->Attr("swiglu_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("clamp_limit").AttrType(OPTIONAL).Float(7.0F);
-        this->Attr("glu_alpha").AttrType(OPTIONAL).Float(1.702F);
-        this->Attr("glu_bias").AttrType(OPTIONAL).Float(1.0F);
+        this->Attr("clamp_limit").AttrType(OPTIONAL).Float(DEFAULT_CLAMP_LIMIT);
+        this->Attr("glu_alpha").AttrType(OPTIONAL).Float(DEFAULT_GLU_ALPHA);
+        this->Attr("glu_bias").AttrType(OPTIONAL).Float(DEFAULT_GLU_BIAS);
         this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(0);
         this->Attr("dst_type_max").AttrType(OPTIONAL).Float(0.0F);

@@ -146,8 +146,9 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
 {
     return GroupedMatmulSwigluQuantV2(x, weight, weightScale, xScale, weightAssistanceMatrix, bias, smoothScale,
                                       groupList, dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,
-                                      groupListType, tuningConfigOptional, 0, 7.0F, 1.702F, 1.0F, "rint", 0, 0.0F,
-                                      executor);
+                                      groupListType, tuningConfigOptional, 0, gmm_swiglu_quant_v3::DEFAULT_CLAMP_LIMIT,
+                                      gmm_swiglu_quant_v3::DEFAULT_GLU_ALPHA, gmm_swiglu_quant_v3::DEFAULT_GLU_BIAS,
+                                      "rint", 0, 0.0F, executor);
 }
 
 } // namespace l0op
