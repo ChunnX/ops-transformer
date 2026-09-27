@@ -119,8 +119,9 @@ struct RunInfo {
     int64_t groupIdx = 0;         /* g轴的index */
     int32_t qSeqRealSize;
     int32_t halfQSeqRealSize; /* vector侧实际的qSeq基本块大小，如果Cube基本块=128，那么halfQSeqRealSize=64 */
-    int32_t firstHalfQSeqRealSize; /* 当qSeqRealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的qSeq
-                                      size */
+    int32_t
+        firstHalfQSeqRealSize; /* 当qSeqRealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的qSeq
+                                  size */
     int32_t kvSeqRealSize; /* kvSeq方向基本块的真实长度 */
     int64_t taskId;
     int64_t multiCoreInnerIdx = 0;
