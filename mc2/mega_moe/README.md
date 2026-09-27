@@ -87,6 +87,8 @@
 
     - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：不支持上表中A8W8-FP场景。
     - <term>Ascend 950PR&950DT系列产品</term>：不支持上表中A16W16、A8W8-INT、A8W4-INT场景。
+    - <term>Ascend 950PR&950DT系列产品</term>的dispatch阶段有两条路径：`dispatchQuantMode` = 4时，按下文各量化场景的描述由算子内部对BF16的`x`做MX逐组量化；`dispatchQuantMode` = 0时为预量化直通，`x`已经是量化后的数据、缩放因子由`scales`入参给出，算子跳过下文第一阶段的量化步骤，直接用`x`与`scales`参与后续矩阵乘，其余阶段与下文一致。
+    - <term>Ascend 950PR&950DT系列产品</term>：MoE专家与共享专家可以采用不同的权重类型与量化类型，共享专家的量化输出类型由`sharedExpertQuantOutDtype`指定，未显式配置时与`dispatchQuantOutDtype`一致。
 
     <details>
     <summary> A16W16 非量化场景</summary>
@@ -622,8 +624,8 @@
   <tr>
    <td>x</td>
    <td>输入</td>
-   <td>MoE层输入的token隐藏状态。</td>
-   <td>BF16</td>
+   <td>MoE层输入的token隐藏状态。Ascend 950PR/Ascend 950DT：dispatchQuantMode为4时必须为BF16，由算子内部做MX逐组量化；dispatchQuantMode为0时为调用方已离线量化好的数据（预量化直通），其数据类型必须与dispatchQuantOutDtype指定的类型一致，并且必须同时传入scales。预量化场景下x的shape仍为(BS, H)，H为逻辑隐藏维，与weight1的最后一维一致。</td>
+   <td>BF16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -692,21 +694,21 @@
   <tr>
    <td>scales</td>
    <td>可选输入</td>
-   <td>量化平滑参数。</td>
+   <td>量化平滑参数。Ascend 950PR/Ascend 950DT：该参数为预量化x的MX反量化缩放因子，仅在预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下必须传入，shape为(BS, CeilDiv(H, 32))，数据类型必须为FLOAT8_E8M0；其余情况必须传入空指针。</td>
    <td>FLOAT8_E8M0、FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedWeight1</td>
    <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型必须与MoE专家第一线性层权重weight1的数据类型一致。</td>
+   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型可以与MoE专家第一线性层权重weight1不同，支持MoE专家与共享专家采用不同的权重类型与量化类型（如MoE专家W8配共享专家W4、MoE专家W4配共享专家W8）；sharedWeight1与sharedWeight2的数据类型必须一致。</td>
    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeight2</td>
    <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型必须与MoE专家第二线性层权重weight2的数据类型一致。</td>
+   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型可以与MoE专家第二线性层权重weight2不同，取值要求同sharedWeight1。</td>
    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
@@ -769,14 +771,21 @@
   <tr>
    <td>dispatchQuantMode</td>
    <td>可选属性</td>
-   <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。默认值为0。</td>
+   <td>dispatch通信时量化模式。默认值为0。Atlas A2/A3产品：0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景）。Ascend 950PR/Ascend 950DT：仅支持0和4，4表示算子内部执行MX逐组量化（A8W8-FP、A8W4-FP、A4W4-FP场景），0表示算子内部不量化（x为预量化输入，需配套传入scales）。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatchQuantOutDtype</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。</td>
+   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。Ascend 950PR/Ascend 950DT：dispatchQuantMode为4时该属性表示算子内量化的输出类型，为0时表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。</td>
+   <td>INT64</td>
+   <td></td>
+  </tr>
+  <tr>
+   <td>sharedExpertQuantOutDtype</td>
+   <td>可选属性</td>
+   <td>共享专家输入的量化数据类型。默认值为DT_UNDEFINED，表示与dispatchQuantOutDtype保持一致；显式配置时支持23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1），用于共享专家与MoE专家采用不同量化配置的场景。预量化直通（dispatchQuantMode为0）场景下只能取DT_UNDEFINED或与dispatchQuantOutDtype相同。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -811,7 +820,7 @@
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"在Atlas A2/A3产品上支持[]、[beta]或[beta, linear_beta]，在Ascend 950产品上支持[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0；A2/A3的situglu使用空列表时，beta默认为1.0且linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。</td>
+   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"在Atlas A2/A3产品上支持[]、[beta]或[beta, linear_beta]，在Ascend 950PR/Ascend 950DT上支持[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0；A2/A3的situglu使用空列表时，beta默认为1.0且linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
@@ -853,7 +862,7 @@
   <tr>
    <td>rankNumPerServer</td>
    <td>可选属性</td>
-   <td>每台server上的rank数量，最少为2。默认值为2。</td>
+   <td>每台server上的rank数量，最少为2。默认值为2。Ascend 950PR/Ascend 950DT的MTE拓扑（topoType为0）下该属性不生效，算子内部按epWorldSize处理。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -867,7 +876,7 @@
   <tr>
    <td>y</td>
    <td>输出</td>
-   <td>计算输出结果，数据类型与输入x相同。</td>
+   <td>计算输出结果。x为BF16时数据类型与x相同；Ascend 950PR/Ascend 950DT上x为预量化的FLOAT8/FLOAT4输入时，y固定为BF16。shape为(BS, H)，与x的shape一致。</td>
    <td>BF16</td>
    <td>ND</td>
   </tr>
@@ -915,7 +924,7 @@
     - `numMaxTokensPerRank`必须大于等于1且所有Rank配置一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡`BS`。设置越大，内部申请的通信内存越多。
     - `H`（`x`.dim1）范围[1024, 8192]。A8W8-FP场景要求`H`为32的倍数；A8W4-FP场景要求`H`为64的倍数；A4W4-FP场景仅支持`weight1`为FRACTAL_NZ格式，要求`H`为64的倍数。
     - `topK`（`topkIds`.dim1）支持[1, 32]。
-    - `expertPerRank` 范围 [1, 1024]。
+    - `localMoeExpertNum`（= `moeExpertNum` / `epWorldSize`）范围 [1, 1024]；共享专家数`sharedExpertNumPerRank`另按 [0, 4] 单独约束，不计入该上限。
     - `intermediateHidden`表示激活后的中间特征维度，范围[256, 4096]且128对齐；`weight1`的完整输出宽度为2 × `intermediateHidden`。
     - `epWorldSize`范围 [2, 1024]。
     - `moeExpertNum`范围 [`epWorldSize`, 2048]，且`moeExpertNum` % `epWorldSize` == 0。
@@ -932,9 +941,11 @@
     - URMA拓扑下，`activation`不支持`swiglustep`和`swigluoai`。
     - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
-    - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
+    - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。此处的「一致」指同一专家组内部一致，MoE专家与共享专家之间可以采用不同的权重类型与量化类型。
+    - MoE专家与共享专家的量化配置不同时，仅`topoType` = 0（MTE拓扑）支持。
     - `topkWeights`数据类型仅支持BF16或FP32。
-    - `xActiveMask`和`scales`当前版本不支持非空输入，需传入空指针。
+    - `xActiveMask`当前版本不支持非空输入，需传入空指针。
+    - `scales`仅在预量化直通（`dispatchQuantMode` = 0且`dispatchQuantOutDtype`为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）场景为必选，shape为(`BS`, CeilDiv(`H`, 32))，数据类型必须为FLOAT8_E8M0；其余场景必须传入空指针。两者不匹配时算子在tiling阶段直接报错。
 
   - **MXFP量化场景约束**：
       - `weight1` shape为(`localMoeExpertNum`, 2 × `intermediateHidden`, `H`)，`weight2` shape为(`localMoeExpertNum`, `H`, `intermediateHidden`)。
@@ -943,7 +954,7 @@
       - `sharedWeight1` shape为(`sharedExpertNumPerRank`, 2 × `intermediateHidden`, `H`)，`sharedWeight2` shape为(`sharedExpertNumPerRank`, `H`, `intermediateHidden`)。
       - `sharedWeightScales1` shape为(`sharedExpertNumPerRank`, 2 × `intermediateHidden`, CeilDiv(`H`, 64), 2)，`sharedWeightScales2` shape为(`sharedExpertNumPerRank`, `H`, CeilDiv(`intermediateHidden`, 64), 2)。
       - `weightScales1`的dim3和`weightScales2`的dim3必须等于2。
-      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FRACTAL_NZ格式。两种场景的`weight2`均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，`sharedWeight1`和`sharedWeight2`必须分别与`weight1`和`weight2`使用相同格式。
+      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FRACTAL_NZ格式。两种场景的`weight2`均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，`sharedWeight1`和`sharedWeight2`的格式按共享专家自身的量化类型确定（W8走ND或FRACTAL_NZ、W4走FRACTAL_NZ或FORMAT_FRACTAL_NZ_C0_32），与`weight1`、`weight2`的格式可以不同。
       - A8W8-FP场景下，`weight1`和`weight2`必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1。
       - 权重及其scale支持两种TensorList布局。对于`weight1`、`weight2`、`weightScales1`和`weightScales2`，逐专家布局下四个TensorList的长度均为`localMoeExpertNum`，权重列表中的Tensor为二维，权重scale列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重scale Tensor为四维，且各Tensor的dim0均为`localMoeExpertNum`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
 
