@@ -54,14 +54,14 @@ public:
 
 private:
     // L1 完整槽图见 FusedLayout；本类私有区按实际容量衔接：
-    // Q:[0,16)KiB -> K:[16,32)KiB -> 公共A:[32,40)KiB -> lowerTmp:[40,42)KiB。
-    // lowerTmp 是紧凑 BF16[32,32]，只占2KiB；到 rawKcd 起点48KiB之间的6KiB当前未使用。
+    // Q:[0,16)KiB -> K:[16,32)KiB -> 公共A:[32,40)KiB -> lowerTimesInverse:[40,42)KiB。
+    // lowerTimesInverse 是紧凑 BF16[32,32]，只占2KiB；到 rawKcd 起点48KiB之间的6KiB当前未使用。
     static constexpr uint32_t L1_Q_OFFSET = 0;
     static constexpr uint32_t L1_K_OFFSET = L1_Q_OFFSET + L1_TILE_BYTES;
-    static constexpr uint32_t L1_LOWER_TMP_OFFSET = L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t);
+    static constexpr uint32_t L1_LOWER_TIMES_INVERSE_OFFSET = L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t);
 
     // L0C FP32 布局（半开区间，KiB）：
-    // [  0, 64) 临时结果，M -> FIX；求逆[32,32](4KiB)、前缀/投影(32KiB)、delta[D,D](64KiB)复用
+    // [  0, 64) 临时结果，M -> FIX；求逆[32,32](4KiB)、前缀/投影(32KiB)、stateDelta[D,D](64KiB)复用
     // [ 64, 96) U -> R:[C,D]，跨 MMAD 保留并原地累加，最终 FIX -> UB
     // [ 96,128) O_inter -> O:[C,D]，跨 MMAD 保留并原地累加，最终 FIX -> GM
     // [128,256) 当前未使用；三个活动区分开，避免临时结果覆盖仍存活的R/O。
@@ -86,9 +86,9 @@ private:
                   "AIC Q scratch overlaps K scratch");
     static_assert(L1_K_OFFSET + CHUNK * DIM * sizeof(bfloat16_t) <= L1_INVERSE_OFFSET,
                   "AIC Q/K scratch overlaps the shared inverse matrix");
-    static_assert(L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) <= L1_LOWER_TMP_OFFSET,
+    static_assert(L1_INVERSE_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) <= L1_LOWER_TIMES_INVERSE_OFFSET,
                   "AIC inverse product overlaps the shared inverse matrix");
-    static_assert(L1_LOWER_TMP_OFFSET + HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) <= L1_RAW_KCD_OFFSET,
+    static_assert(L1_LOWER_TIMES_INVERSE_OFFSET + HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) <= L1_RAW_KCD_OFFSET,
                   "AIC inverse product overlaps shared rawKcd");
     static_assert(CHUNK * 2 * DIM * sizeof(bfloat16_t) <= L0A_STAGE_BYTES,
                   "arch35 exact L0A tile exceeds one ping-pong stage");
@@ -105,27 +105,27 @@ private:
 
     // 一个 chunk 的内部工作集；shape 为补零后的计算范围，不分配缓冲区。
     struct ChunkMatrices {
-        LocalTensor<bfloat16_t> inverse;            // A:[C,C]
-        LocalTensor<bfloat16_t> inverseProduct;     // (-L10)@A00:[C/2,C/2]
-        LocalTensor<bfloat16_t> rawStateProjection; // -beta*exp(G)*K:[C,DIM]
-        LocalTensor<bfloat16_t> weightedValue;      // beta*V:[C,DIM]
-        LocalTensor<bfloat16_t> stateProjections;   // [Kcd;Q']:[2*C,DIM]
-        LocalTensor<bfloat16_t> state;              // S:[DIM,DIM]，逻辑方向 [Dv,Dk]
-        LocalTensor<bfloat16_t> residualBf16;       // R:[C,DIM] 的 Cube 输入副本
-        LocalTensor<bfloat16_t> decayedKey;         // Kg:[C,DIM]
-        LocalTensor<bfloat16_t> causalScores;      // M:[C,C]
-        LocalTensor<float> residual;              // U -> R:[C,DIM]，L0C
-        LocalTensor<float> output;                // O_inter -> O:[C,DIM]，L0C
+        LocalTensor<bfloat16_t> inverse;           // A:[C,C]，由 A00/A11/-L10 逐步补齐
+        LocalTensor<bfloat16_t> lowerTimesInverse; // (-L10)@A00:[C/2,C/2]
+        LocalTensor<bfloat16_t> rawKcd;            // -beta*exp(G)*K:[C,DIM]
+        LocalTensor<bfloat16_t> vBeta;             // beta*V:[C,DIM]
+        LocalTensor<bfloat16_t> kcdQPrime;         // [Kcd;Q']:[2*C,DIM]，两份矩阵连续存储
+        LocalTensor<bfloat16_t> state;            // S:[DIM,DIM]，逻辑方向 [Dv,Dk]
+        LocalTensor<bfloat16_t> residualBf16;      // R:[C,DIM] 的 Cube 输入副本
+        LocalTensor<bfloat16_t> kg;               // Kg:[C,DIM]
+        LocalTensor<bfloat16_t> maskedQkt;        // M:[C,C]
+        LocalTensor<float> residual;             // U -> R:[C,DIM]，L0C
+        LocalTensor<float> output;               // O_inter -> O:[C,DIM]，L0C
     };
 
     __aicore__ inline ChunkMatrices BindChunkMatrices(uint32_t chunk)
     {
         const uint32_t base = (chunk & 1) * L1_SLOT_STRIDE_BYTES;
         return {BufferViews::L1<bfloat16_t>(base + L1_INVERSE_OFFSET),
-                BufferViews::L1<bfloat16_t>(base + L1_LOWER_TMP_OFFSET),
+                BufferViews::L1<bfloat16_t>(base + L1_LOWER_TIMES_INVERSE_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_RAW_KCD_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_VBETA_OFFSET),
-                BufferViews::L1<bfloat16_t>(base + L1_STATE_PROJECTIONS_OFFSET),
+                BufferViews::L1<bfloat16_t>(base + L1_KCD_QPRIME_OFFSET),
                 BufferViews::L1<bfloat16_t>(L1_STATE_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_RESIDUAL_OFFSET),
                 BufferViews::L1<bfloat16_t>(base + L1_KG_OFFSET),
@@ -152,7 +152,7 @@ private:
         ComputeResidualAndStateOutput(x, slot); // [6a/b] R=U+Kcd@S.T；O_inter=Q'@S.T。
         // [6c, Vector] 等待 R32 -> R16 及 UB -> L1；此后两次 MMAD 都消费同一份 R16。
         WaitForVector<VectorToCubeEvent::ResidualReady>();
-        ComputeResidualKeyStateDelta(x, chunk); // [7] delta=R16.T@Kg:[Dv,Dk]，交 Vector [9a]。
+        ComputeResidualKeyStateDelta(x, chunk); // [7] stateDelta=R16.T@Kg:[Dv,Dk]，交 Vector [9a]。
         WaitForVector<VectorToCubeEvent::CausalScoresReady>(slot);
         AccumulateCausalResidualOutput(x);      // [8] O=O_inter+M@R16:[C,Dv]。
 
@@ -185,10 +185,10 @@ private:
         if (chunk != 0) {
             WaitForVector<VectorToCubeEvent::StateDeltaBufferFree>();
         }
-        // FP32 接口直接传 FP32；BF16 接口先量化 delta，再由 AIV 升为 FP32 与主状态累加。
-        const uint32_t deltaOffset = STATE_FP32 ? PrefixTransformsUbOffset(chunk & 1) : UB_STATE_DELTA_BF16_OFFSET;
-        auto delta = BufferViews::Ub<stateType>(deltaOffset);
-        CopyResultRowsL0CToUb(delta, result, DIM, DIM);
+        // FP32 接口直接传 FP32；BF16 接口先量化 stateDelta，再由 AIV 升为 FP32 与主状态累加。
+        const uint32_t stateDeltaOffset = STATE_FP32 ? PrefixTransformsUbOffset(chunk & 1) : UB_STATE_DELTA_BF16_OFFSET;
+        auto stateDelta = BufferViews::Ub<stateType>(stateDeltaOffset);
+        CopyResultRowsL0CToUb(stateDelta, result, DIM, DIM);
         NotifyVector<PIPE_FIX, CubeToVectorEvent::StateDeltaReady>();
         Mutex::Unlock<PIPE_FIX>(resultMutex);
     }
@@ -244,7 +244,7 @@ private:
     }
 
     // [5a, Cube] Kcd=A@rawKcd:[C,Dk]。Kcd 已带负号，是旧状态对 R 的贡献系数。
-    // 结果以 BF16 写入 stateProjections 前 C 行，后 C 行的 Q' 由 Vector 准备。
+    // 结果以 BF16 写入 kcdQPrime 前 C 行，后 C 行的 Q' 由 Vector 准备。
     // rawKcd 来自 Vector [2b]，A 由 Vector [3b] + Cube [4] 完成；Kcd 经 BF16 FIX 交 [6a]。
     __aicore__ inline void ComputeInverseWeightedKeys(const ChunkMatrices &x)
     {
@@ -255,7 +255,7 @@ private:
         // CompleteBlockLowerInverse 的 FIX 刚写回 A；在读取该 L1 区域前等待它完成。
         Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
         CopyL1ToL0<false>(operands.lhs, x.inverse, CHUNK, CHUNK, CHUNK);
-        CopyL1ToL0<true>(operands.rhs, x.rawStateProjection, CHUNK, DIM, CHUNK);
+        CopyL1ToL0<true>(operands.rhs, x.rawKcd, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
@@ -264,7 +264,7 @@ private:
         Mmad(result, operands.lhs, operands.rhs, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_M>(operands.mutex);
         // CopyResultL0CToL1 释放 result 的 M 锁，再交给 FIX；保留此次独立 BF16 舍入。
-        CopyResultL0CToL1(x.stateProjections, result, CHUNK, DIM, DIM, resultMutex);
+        CopyResultL0CToL1(x.kcdQPrime, result, CHUNK, DIM, DIM, resultMutex);
     }
 
     // [5b, Cube] U=A@(beta*V)：[C,C] @ [C,Dv] -> [C,Dv]，物理 [C,DIM]。
@@ -275,7 +275,7 @@ private:
         // A 已在上一阶段读过；beta*V 的就绪由 ComputeCubeChunk 的 InverseInputsReady 保证。
         Mutex::Lock<PIPE_MTE1>(operands.mutex);
         CopyL1ToL0<false>(operands.lhs, x.inverse, CHUNK, CHUNK, CHUNK);
-        CopyL1ToL0<true>(operands.rhs, x.weightedValue, CHUNK, DIM, CHUNK);
+        CopyL1ToL0<true>(operands.rhs, x.vBeta, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
         Mutex::Lock<PIPE_M>(operands.mutex);
@@ -292,7 +292,7 @@ private:
         const auto operands = NextOperands();
         // ComputeCubeChunk 已分别等待 Vector 的 CausalScoresReady 与 ResidualReady。
         Mutex::Lock<PIPE_MTE1>(operands.mutex);
-        CopyL1ToL0<false>(operands.lhs, x.causalScores, CHUNK, CHUNK, CHUNK);
+        CopyL1ToL0<false>(operands.lhs, x.maskedQkt, CHUNK, CHUNK, CHUNK);
         CopyL1ToL0<true>(operands.rhs, x.residualBf16, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
@@ -302,7 +302,7 @@ private:
         // CopyOutputL0CToGm 负责释放 output 的 M 锁并取得 FIX 锁。
     }
 
-    // [7, Cube -> Vector] delta=R16.T@Kg：[Dv,C] @ [C,Dk] -> [Dv,Dk]，物理 [DIM,DIM]。
+    // [7, Cube -> Vector] stateDelta=R16.T@Kg：[Dv,C] @ [C,Dk] -> [Dv,Dk]，物理 [DIM,DIM]。
     // R16 来自 Vector [6c]，Kg 来自 [2b]；CopyStateDeltaL0CToUb + StateDeltaReady 交接到 [9a]。
     __aicore__ inline void ComputeResidualKeyStateDelta(const ChunkMatrices &x, uint32_t chunk)
     {
@@ -314,7 +314,7 @@ private:
         Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
         // A 的 true 表示 R.T()；B 的 true 是 NZ -> L0B 的装载方式，Kg 数学上不转置。
         CopyL1ToL0<true>(operands.lhs, x.residualBf16, CHUNK, DIM, CHUNK);
-        CopyL1ToL0<true>(operands.rhs, x.decayedKey, CHUNK, DIM, CHUNK);
+        CopyL1ToL0<true>(operands.rhs, x.kg, CHUNK, DIM, CHUNK);
         Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
         Mutex::Unlock<PIPE_MTE1>(operands.mutex);
 
@@ -346,7 +346,7 @@ private:
     {
         auto l0cResidual = matrices.residual;
         auto l0cOutput = matrices.output;
-        auto l1StateProjections = matrices.stateProjections;
+        auto l1KcdQPrime = matrices.kcdQPrime;
         auto l1State = matrices.state;
         // 优化方案：两次 MMAD 共用 L0B 中的 S:[Dv,Dk]，减少一次状态装载。
         // 输入 l0cResidual=U:[C,Dv]，原地累加为 R=U+Kcd*S^T；l0cOutput=Q'*S^T:[C,Dv]。
@@ -355,29 +355,29 @@ private:
         const uint32_t outputStage = NextL0AbStage();
         const MutexID stateMutex = MutexId(AIC_L0AB_MUTEX_BASE + stateStage);
         const MutexID outputMutex = MutexId(AIC_L0AB_MUTEX_BASE + outputStage);
-        auto l0aState = BufferViews::L0A<bfloat16_t>(stateStage * L0A_STAGE_BYTES);
-        auto l0aOutput = BufferViews::L0A<bfloat16_t>(outputStage * L0A_STAGE_BYTES);
+        auto l0aKcd = BufferViews::L0A<bfloat16_t>(stateStage * L0A_STAGE_BYTES);
+        auto l0aQPrime = BufferViews::L0A<bfloat16_t>(outputStage * L0A_STAGE_BYTES);
         auto l0bState = BufferViews::L0B<bfloat16_t>(stateStage * L0B_STAGE_BYTES);
 
         Mutex::Lock<PIPE_MTE1>(stateMutex);
         Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
-        CopyL1ToL0<false>(l0aState, l1StateProjections, CHUNK, DIM, DIM, 0, 0);
+        CopyL1ToL0<false>(l0aKcd, l1KcdQPrime, CHUNK, DIM, DIM, 0, 0);
         CopyL1ToL0<false>(l0bState, l1State, DIM, DIM, DIM);
         Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
         NotifyVector<PIPE_MTE1, CubeToVectorEvent::StateBufferFree>();
         Mutex::Unlock<PIPE_MTE1>(stateMutex);
         Mutex::Lock<PIPE_M>(stateMutex);
         // [6a] R=U+Kcd@S.T；累加到 [5b] 的 U，不清零 L0C。
-        Mmad(l0cResidual, l0aState, l0bState, CHUNK, DIM, DIM, false);
+        Mmad(l0cResidual, l0aKcd, l0bState, CHUNK, DIM, DIM, false);
         CopyResidualL0CToUb(l0cResidual, slot);
 
         Mutex::Lock<PIPE_MTE1>(outputMutex);
-        CopyL1ToL0<false>(l0aOutput, l1StateProjections, CHUNK, DIM, DIM, CHUNK, 0);
+        CopyL1ToL0<false>(l0aQPrime, l1KcdQPrime, CHUNK, DIM, DIM, CHUNK, 0);
         Mutex::Unlock<PIPE_MTE1>(outputMutex);
         Mutex::Lock<PIPE_M>(outputMutex);
         Mutex::Lock<PIPE_M>(MutexId(AIC_L0C_OUTPUT_MUTEX));
         // [6b] O_inter=Q'@S.T；新的输出累加器，S 的 L0B 副本仍来自 [6a]。
-        Mmad(l0cOutput, l0aOutput, l0bState, CHUNK, DIM, DIM, true);
+        Mmad(l0cOutput, l0aQPrime, l0bState, CHUNK, DIM, DIM, true);
         // 两次 MMAD 均完成后，先归还共享 S 所在的槽，再归还 output 操作数所在的槽。
         Mutex::Unlock<PIPE_M>(stateMutex);
         Mutex::Unlock<PIPE_M>(outputMutex);
@@ -457,7 +457,7 @@ private:
         auto result = BufferViews::L0C<float>(0);
         const MutexID resultMutex = MutexId(AIC_L0C_TMP_MUTEX);
         {
-            // [4a] tmp=(-L10)@A00:[32,32]；FIX 为 BF16 写回 inverseProduct。
+            // [4a] tmp=(-L10)@A00:[32,32]；FIX 为 BF16 写回 lowerTimesInverse。
             const auto operands = NextOperands();
             // 输入由 ComputeCubeChunk 的 InverseInputsReady 保证，此处没有前置 FIX 写回。
             Mutex::Lock<PIPE_MTE1>(operands.mutex);
@@ -469,16 +469,16 @@ private:
             Mutex::Lock<PIPE_M>(resultMutex);
             Mmad(result, operands.lhs, operands.rhs, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK);
             Mutex::Unlock<PIPE_M>(operands.mutex);
-            CopyResultL0CToL1(x.inverseProduct, result, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, resultMutex);
+            CopyResultL0CToL1(x.lowerTimesInverse, result, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, resultMutex);
         }
         {
             // [4b] A10=A11@tmp:[32,32]；FIX 为 BF16 覆盖原先 -L10，完成完整逆矩阵。
             const auto operands = NextOperands();
             Mutex::Lock<PIPE_MTE1>(operands.mutex);
-            // 等待上一步 FIX 写完 inverseProduct，再加载 A11 和这个紧凑 [32,32] 中间积。
+            // 等待上一步 FIX 写完 lowerTimesInverse，再加载 A11 和这个紧凑 [32,32] 中间积。
             Mutex::Lock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
             CopyL1ToL0<false>(operands.lhs, x.inverse, HALF_CHUNK, HALF_CHUNK, CHUNK, HALF_CHUNK, HALF_CHUNK);
-            CopyL1ToL0<true>(operands.rhs, x.inverseProduct, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK);
+            CopyL1ToL0<true>(operands.rhs, x.lowerTimesInverse, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK);
             Mutex::Unlock<PIPE_MTE1>(MutexId(AIC_L1_FIX_MUTEX));
             Mutex::Unlock<PIPE_MTE1>(operands.mutex);
             Mutex::Lock<PIPE_M>(operands.mutex);

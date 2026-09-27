@@ -48,6 +48,13 @@ using namespace AscendC;
  * 编号是数学依赖顺序，不是跨核串行执行顺序：[1]/[2] 并行，下块 [1~3] 与当前块 [6~9] 重叠。
  * 公式省略中间 BF16 舍入；Exact 表示实现递推语义，不表示无舍入。不得据实数结合律重排乘法。
  *
+ * 符号和存储命名约定（Python golden 使用相同词根的 snake_case）：
+ *   G -> gCum，expG -> gExp，Q' -> qPrime，Kg -> kg，M -> maskedQkt，L -> lower，A -> inverse。
+ *   rawKcd / vBeta 保留公式名；golden 的 Kcd/U 字段为 kcd/u；tmp -> lowerTimesInverse。
+ *   delta=R.T@Kg -> stateDelta；Streaming 的 beta*(v-alpha*S@k) 则叫 residual。
+ *   kcdQPrime 是 [Kcd;Q'] 的连续存储，不是额外计算结果。
+ *   residual/output 缓冲分别跨阶段保存 U->R / O_inter->O，保留生命周期说明。
+ *
  * Cube/Vector 分工:
  *   -> PrepareStateIndependentChunkInputs 准备对角逆块/rawKcd/Q'/Kg/M
  *   -> ComputeCubeChunk 计算 R/O/delta

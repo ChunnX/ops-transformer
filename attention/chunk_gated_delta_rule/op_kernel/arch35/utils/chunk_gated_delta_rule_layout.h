@@ -106,8 +106,8 @@ struct FusedLayout {
     static constexpr uint32_t L1_RAW_KCD_OFFSET = L1_INVERSE_OFFSET +
         CHUNK * CHUNK * sizeof(bfloat16_t) + HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) + 6 * 1024;
     static constexpr uint32_t L1_VBETA_OFFSET = L1_RAW_KCD_OFFSET + L1_TILE_BYTES;
-    static constexpr uint32_t L1_STATE_PROJECTIONS_OFFSET = L1_VBETA_OFFSET + L1_TILE_BYTES;
-    static constexpr uint32_t L1_RESIDUAL_OFFSET = L1_STATE_PROJECTIONS_OFFSET + 2 * L1_TILE_BYTES;
+    static constexpr uint32_t L1_KCD_QPRIME_OFFSET = L1_VBETA_OFFSET + L1_TILE_BYTES;
+    static constexpr uint32_t L1_RESIDUAL_OFFSET = L1_KCD_QPRIME_OFFSET + 2 * L1_TILE_BYTES;
     static constexpr uint32_t L1_KG_OFFSET = L1_RESIDUAL_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_MASKED_QKT_OFFSET = L1_KG_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_SLOT_BYTES = L1_MASKED_QKT_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) + 8 * 1024;
