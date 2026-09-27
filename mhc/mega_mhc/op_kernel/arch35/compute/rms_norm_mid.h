@@ -20,8 +20,7 @@ __aicore__ inline void ComputeRmsNormMidFromSquares(__ubuf__ T *postRow, __ubuf_
                                                     float epsilon, __ubuf__ float *sumScratch,
                                                     __ubuf__ float *invRmsScratch, __ubuf__ T *x2)
 {
-    FinalizeInverseRms(sumScratch, k, epsilon, invRmsScratch);
-    ApplyGammaAndCastRow<T>(postRow, gamma2, k, invRmsScratch, x2);
+    ApplyGammaAndCastRow<T, true>(postRow, gamma2, k, sumScratch, x2, epsilon);
 }
 
 /**

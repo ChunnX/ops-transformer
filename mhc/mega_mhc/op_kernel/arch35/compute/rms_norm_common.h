@@ -131,43 +131,51 @@ __aicore__ inline void AddFp32Scalar(__ubuf__ float *accumulator, __ubuf__ float
 
 /**
  * What: finish RMS normalization statistics for one row.
- * Formula: invRms = rsqrt(sumSquares / rowLength + epsilon).
+ * Formula: invRms = rsqrt(sumSquares * meanScale + epsilon), meanScale = 1 / rowLength.
  * Refinement: y <- y + 0.5*y*(1 - x*y*y), using fused residual evaluation for x=meanSquare+epsilon.
- * Inputs: sumSquares is the FP32 result from AccumulateRowSquares; epsilon is FP32.
- * Output: one FP32 inverse RMS value. The caller controls the reduction ownership and visibility.
+ * Inputs: sumSquares is the FP32 square sum; meanScale is computed outside VF; epsilon is FP32.
+ * Output: lane zero holds inverse RMS. The caller broadcasts it or stores it for chunk reuse.
  */
+__simd_callee__ inline void InverseRmsRegister(__ubuf__ float *sumSquares, float meanScale, float epsilon,
+                                               Reg::RegTensor<float> &rms)
+{
+    Reg::RegTensor<float> sum;
+    Reg::RegTensor<float> scale;
+    Reg::RegTensor<float> eps;
+    Reg::RegTensor<float> one;
+    Reg::RegTensor<float> mean;
+    Reg::RegTensor<float> negative;
+    Reg::RegTensor<float> product;
+    Reg::RegTensor<float> error;
+    Reg::RegTensor<float> halfInverse;
+    Reg::MaskReg mask = Compute::MaskForCount(1);
+    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(sum, sumSquares);
+    Reg::Duplicate(scale, meanScale, mask);
+    Reg::Duplicate(eps, epsilon, mask);
+    Reg::Duplicate(one, 1.0f, mask);
+    Reg::Mul(rms, sum, scale, mask);
+    Reg::Add(rms, rms, eps, mask);
+    Reg::Adds(mean, rms, 0.0f, mask);
+    Reg::Sqrt(rms, mean, mask);
+    Reg::Div(rms, one, rms, mask);
+    Reg::Muls(negative, rms, -1.0f, mask);
+    Reg::Mul(product, rms, mean, mask);
+    Reg::Duplicate(error, 1.0f, mask);
+    Reg::MulAddDst(error, product, negative, mask);
+    Reg::Muls(halfInverse, rms, 0.5f, mask);
+    Reg::MulAddDst(rms, error, halfInverse, mask);
+}
+
+/** Finish one RMS statistic in UB: invRms=rsqrt(sumSquares/rowLength+epsilon), with Newton refinement. */
 __aicore__ inline void FinalizeInverseRms(__ubuf__ float *sumSquares, uint32_t rowLength, float epsilon,
                                           __ubuf__ float *invRmsOut)
 {
+    const float meanScale = 1.0f / static_cast<float>(rowLength);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> sum;
-        Reg::RegTensor<float> scale;
-        Reg::RegTensor<float> eps;
-        Reg::RegTensor<float> one;
-        Reg::RegTensor<float> mean;
-        Reg::RegTensor<float> negative;
-        Reg::RegTensor<float> product;
-        Reg::RegTensor<float> error;
-        Reg::RegTensor<float> halfInverse;
-        Reg::RegTensor<float> rms;
-        Reg::MaskReg mask = Compute::MaskForCount(1);
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(sum, sumSquares);
-        Reg::Duplicate(scale, 1.0f / static_cast<float>(rowLength), mask);
-        Reg::Duplicate(eps, epsilon, mask);
-        Reg::Duplicate(one, 1.0f, mask);
-        Reg::Mul(rms, sum, scale, mask);
-        Reg::Add(rms, rms, eps, mask);
-        Reg::Adds(mean, rms, 0.0f, mask);
-        Reg::Sqrt(rms, mean, mask);
-        Reg::Div(rms, one, rms, mask);
-        Reg::Muls(negative, rms, -1.0f, mask);
-        Reg::Mul(product, rms, mean, mask);
-        Reg::Duplicate(error, 1.0f, mask);
-        Reg::MulAddDst(error, product, negative, mask);
-        Reg::Muls(halfInverse, rms, 0.5f, mask);
-        Reg::MulAddDst(rms, error, halfInverse, mask);
-        Reg::Store<float>(invRmsOut, rms, 1U);
+        Reg::RegTensor<float> inverse;
+        InverseRmsRegister(sumSquares, meanScale, epsilon, inverse);
+        Reg::Store<float>(invRmsOut, inverse, 1U);
     }
 }
 
@@ -175,12 +183,14 @@ __aicore__ inline void FinalizeInverseRms(__ubuf__ float *sumSquares, uint32_t r
  * What: apply inverse RMS and gamma to a row, then round to the input type.
  * Formula: y[i] = Cast<T>(FP32(x[i]) * invRms * gamma[i]).
  * Inputs: inputRow and gammaRow are UB views; valid range is [0, rowLength).
+ * FROM_SQUARES consumes a square sum and computes invRms in registers; otherwise invRms is precomputed.
  * Output: outputRow is T. This is the explicit stage rounding point for RMSNorm.
  */
-template <typename T>
+template <typename T, bool FROM_SQUARES = false>
 __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float *gammaRow, uint32_t rowLength,
-                                            __ubuf__ float *invRms, __ubuf__ T *outputRow)
+                                            __ubuf__ float *invRms, __ubuf__ T *outputRow, float epsilon = 0.0f)
 {
+    const float meanScale = 1.0f / static_cast<float>(rowLength);
     const uint16_t repeatTimes =
         static_cast<uint16_t>((rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
     __VEC_SCOPE__
@@ -191,7 +201,14 @@ __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float
         Reg::RegTensor<float> inverse;
         Reg::RegTensor<float> scaled;
         Reg::RegTensor<T> output;
-        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(inverse, invRms);
+        if constexpr (FROM_SQUARES) {
+            Reg::RegTensor<float> scalarInverse;
+            InverseRmsRegister(invRms, meanScale, epsilon, scalarInverse);
+            Reg::MaskReg fullMask = MaskForCount(kRegFloatLanes);
+            Reg::Duplicate(inverse, scalarInverse, fullMask);
+        } else {
+            Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(inverse, invRms);
+        }
         uint32_t remaining = rowLength;
         for (uint16_t repeat = 0; repeat < repeatTimes; ++repeat) {
             const uint32_t offset = repeat * Compute::kRegCastVectorLanes;

@@ -20,8 +20,7 @@ __aicore__ inline void ComputeRmsNorm1FromSquares(__ubuf__ T *hIn, __ubuf__ floa
                                                   __ubuf__ float *sumScratch, __ubuf__ float *invRmsScratch,
                                                   __ubuf__ T *hInPrime)
 {
-    FinalizeInverseRms(sumScratch, d, epsilon, invRmsScratch);
-    ApplyGammaAndCastRow<T>(hIn, gamma1, d, invRmsScratch, hInPrime);
+    ApplyGammaAndCastRow<T, true>(hIn, gamma1, d, sumScratch, hInPrime, epsilon);
 }
 
 /**

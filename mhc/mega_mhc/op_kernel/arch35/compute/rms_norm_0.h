@@ -51,8 +51,8 @@ template <typename T>
 __aicore__ inline void ComputeRmsNorm0Row(__ubuf__ T *hOut, __ubuf__ float *gamma0, uint32_t d, float epsilon,
                                           __ubuf__ float *sumScratch, __ubuf__ float *invRmsScratch, __ubuf__ T *x1)
 {
-    ComputeRmsNorm0Statistics<T>(hOut, d, epsilon, sumScratch, invRmsScratch);
-    ApplyRmsNorm0Gamma<T>(hOut, gamma0, d, invRmsScratch, x1);
+    AccumulateRowSquares<T>(hOut, d, sumScratch);
+    ApplyGammaAndCastRow<T, true>(hOut, gamma0, d, sumScratch, x1, epsilon);
 }
 
 } // namespace AiInfraMegaMhc::Compute
