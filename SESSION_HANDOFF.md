@@ -395,9 +395,17 @@ ktilesBatch，尾 tile groupsValid = 余数列组**上取整**（修正 K_TILE_C
   基线 2 tolerated + 偶发 bursts）；tndtail/tndvar/bigsq/blklen 等全过
 - 客户 3/3 PASS（尾列修正后无回归）
 
-### 剩余
-- **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——与 p16var 不同源，
-  下轮专查（疑 actual_block_len 变长池化 kCmp 值，qCmp/kCmp 低区 dump 不可见须经 score 间接验证）
+### 剩余 + bfvar 第十五轮深挖
+- **bfvar**（唯一确定性 FAIL）：w8 路径 + use_block_len=1 变长块 + bf16——与本轮 p16var 不同源。
+  本轮 ws 取证（偏移链精确闭环：aicNum=52 硬件核；qCmp@0/kCmp@8192/softmaxTmp@16384 共
+  27.26MB/topkWS@27277936/partSum@27279572/partMax@28590292/pooled@28611540；对 bf16 输入
+  golden 用 fp16 池化语义已验证 0 偏差）：失败仅 B1（seqlen_kv=3772 变长批）py=2 集中；
+  B0 pooled 逐位正确、B1 pooled 错；B1H3 partMax rows[0,8) 逐位正确（pass1 max 无辜）；
+  B1H3 partSum 值正确（=exp 和，×l=23.53 精确）但 **行范围 +3 移位**（数据落 rows[3,11) 而
+  非 [0,8)，4 个 owner AIV 一致；aiv0 另有 straggler (1,43),(2,19),(2,59-62)）→ 指向 slice 的
+  chunkRowStart=3，即 **变长 block_len 下 post 单元解析（bsa_vec_post_pool_service.h
+  ComputeChunkUnits/ComputeMineFlags）行号错位**。下轮首查该单元解析对 seqlen/block_len 的
+  行号推导；qCmp/kCmp 低区 dump 不可见，须经 partMax/partSum 间接验证（比对脚本已建立）。
 - blk8/bigsq/n1/客户偶发竞态（第十四轮 bit 级定性，首触假说待实验）
 
 ## 第十四轮（2026-09-27，行均值修复合入 + 竞态 bit 级定性）
