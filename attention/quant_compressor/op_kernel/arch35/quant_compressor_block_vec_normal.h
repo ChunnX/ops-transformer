@@ -189,6 +189,7 @@ __aicore__ inline void QuantCompressorBlockVectorNormal<COMP>::OverLap(
     }
     this->SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, dDealSize,
                     static_cast<uint32_t>(IS_SCORE));
+    PipeBarrier<PIPE_MTE3>();
     this->template ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize,
                                        static_cast<uint32_t>(IS_SCORE));
 

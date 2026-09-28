@@ -100,6 +100,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::CopyInApe(const LocalT
 
     this->DataCopyWithInputQue(this->apeUb, this->apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount,
                                dstSingleRowCount);
+    PipeBarrier<PIPE_V>();
 
     prevApeDStartIdx_ = dStartIdx;
     prevApeDDealSize_ = dDealSize;
@@ -171,6 +172,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLap(
     }
     this->SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, dDealSize,
                     static_cast<uint32_t>(IS_SCORE));
+    PipeBarrier<PIPE_MTE3>();
     this->template ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize,
                                        static_cast<uint32_t>(IS_SCORE));
 

@@ -306,6 +306,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::LoadDescale()
     this->inputQue3.template DeQue<T>();
     DataCopy(this->xWKvDescaleUb, wDescale, this->coff_ * this->constInfo_.headDim);
     DataCopy(this->xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->coff_ * this->constInfo_.headDim);
+    PipeBarrier<PIPE_V>();
     this->inputQue3.template FreeTensor(wDescale);
     MulsVF(this->xWKvDescaleUb, this->xWKvDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
     MulsVF(this->xWGateDescaleUb, this->xWGateDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
