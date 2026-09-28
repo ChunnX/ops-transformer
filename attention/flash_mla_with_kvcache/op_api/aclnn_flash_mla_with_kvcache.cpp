@@ -41,18 +41,27 @@ extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t works
 
 namespace {
 
-void FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
-                                          const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+aclnnStatus FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+                                                 const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (returnSoftmaxLse == false) {
         std::vector<int64_t> shape = {0};
-        int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void *>(&addr));
+                                     shape.data(), shape.size(), nullptr);
+        if (tempTensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Create placeholder tensor for softmaxLse failed.");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
         placeHolder = tempTensor;
     } else {
+        if (softmaxLse == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                    "When returnSoftmaxLse is enabled, softmaxLse must be provided, but got nullptr.");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
         placeHolder = softmaxLse;
     }
+    return ACLNN_SUCCESS;
 }
 
 } // namespace
@@ -71,9 +80,13 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
 
-    FlashMlaWithKvcacheProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
+    aclnnStatus ret =
+        FlashMlaWithKvcacheProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
 
-    aclnnStatus ret = aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
+    ret = aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
         q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional, sequsedQOptional, attnMaskOptional,
         metadataOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
         returnSoftmaxLse, attnOut, placeHolder, workspaceSize, executor);
