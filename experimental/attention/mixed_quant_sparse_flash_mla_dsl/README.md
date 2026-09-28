@@ -293,7 +293,7 @@ CPU golden 独立执行反量化、稀疏 gather 与注意力计算，使用测�
 
 Excel 模式复用同一个 `tests/test_mqsmla.py` 入口，每行运行一个独立用例并显示 `Testcase_Name`，继续进行 CPU golden 与已安装 wheel 的 `torch.ops` 精度比较。指定 Excel 后只运行该表格，不追加 Python 参数集；未指定时仍运行 `ENABLED_PARAMS`。
 
-安装读取依赖 `python3 -m pip install openpyxl`，复制 [example.xlsx](tests/excel/example.xlsx) 后编辑。模板包含 `decode`（两种模式）和 `prefill`（变长列表）工作表。从仓库根目录执行：
+安装读取依赖 `python3 -m pip install openpyxl`，从仓库根目录执行：
 
 ```bash
 python3 -m pytest -q -s experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_mqsmla.py \
