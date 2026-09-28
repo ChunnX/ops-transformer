@@ -23,7 +23,13 @@
 
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
 
-#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201) && ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && \
+    (ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1 || ORIG_DTYPE_WEIGHT == DT_HIFLOAT4)
+#define GMM_SWIGLU_QUANT_WEIGHT_QUANT_ASW
+#include "arch35/weight_quant_asw/grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling_data.h"
+#include "arch35/weight_quant_asw/grouped_matmul_swiglu_quant_v2_weight_quant_asw_tiling_key.h"
+#include "arch35/weight_quant_asw/grouped_matmul_swiglu_quant_v2_weight_quant_asw_kernel.h"
+#elif (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
 #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
 #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
@@ -39,6 +45,9 @@
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
 #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#elif ORIG_DTYPE_X_SCALE == DT_HIFLOAT4_SCALE
+#include "arch35/grouped_matmul_swiglu_quant_v2_hif4quant.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
@@ -63,7 +72,9 @@ constexpr bool isMxFp8Input =
 #endif
 } // namespace
 
-#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
+#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT_ASW)
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
+#elif defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
 #else
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
@@ -73,7 +84,23 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                                                           GM_ADDR bias, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
-#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
+#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT_ASW)
+    AscendC::InitSocState();
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
+    if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+        REGISTER_TILING_DEFAULT(GMMSQArch35Tiling::GMMSQWeightQuantAswTilingData);
+        GET_TILING_DATA_MEMBER(GMMSQArch35Tiling::GMMSQWeightQuantAswTilingData, gmmWeightQuantAswParam,
+                               gmmWeightQuantAswParam_, tiling);
+        GET_TILING_DATA_MEMBER(GMMSQArch35Tiling::GMMSQWeightQuantAswTilingData, mmTilingData, mmTilingData_, tiling);
+        GMMSQWeightQuantAsw::GMMSQWeightQuantASWKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_X_SCALE, DTYPE_WEIGHT_SCALE,
+                                                       DTYPE_Y, DTYPE_Y_SCALE> op;
+        op.Init(x, weight, xScale, weightScale, groupList, y, yScale, &gmmWeightQuantAswParam_, &mmTilingData_);
+        op.Process();
+    }
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#elif defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
     // MxA8W4场景
     AscendC::InitSocState();
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
@@ -162,6 +189,13 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling, &tPipe);
         }
+    }
+#elif ORIG_DTYPE_X_SCALE == DT_HIFLOAT4_SCALE
+    if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS &&
+        KERNEL_TYPE == GMM_SWIGLU_HIF4_QUANT_KERNEL_TYPE) {
+        GmmSwigluHiF4<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+            tiling);
     }
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);

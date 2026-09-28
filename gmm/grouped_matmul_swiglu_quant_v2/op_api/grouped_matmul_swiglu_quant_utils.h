@@ -75,6 +75,7 @@ struct GroupedMatmulSwigluQuantParamsBase {
     bool isA8W4 = false;
     bool isA4W4 = false;
     bool isMxA8W4 = false;
+    bool isMxA8Hif4 = false;
 };
 
 class GroupedMatmulSwigluQuantParamsBuilder {
@@ -170,6 +171,8 @@ public:
                       ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32));
         p_.isMxA8W4 = (this->p_.x->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
                        ((*this->p_.weight)[0])->GetDataType() == DataType::DT_FLOAT4_E2M1);
+        p_.isMxA8Hif4 = (this->p_.x->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+                         ((*this->p_.weight)[0])->GetDataType() == DataType::DT_HIFLOAT4);
         return *this;
     }
 
@@ -402,7 +405,8 @@ public:
         auto ret = CheckParams();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
+            op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
             auto x1MDim = gmmDsqParams_.x->GetViewShape().GetDim(0);
             auto x2NIndex = (*gmmDsqParams_.weight)[0]->GetViewShape().GetDimNum() - 1;
             auto x2NDim = (*gmmDsqParams_.weight)[0]->GetViewShape().GetDim(x2NIndex);

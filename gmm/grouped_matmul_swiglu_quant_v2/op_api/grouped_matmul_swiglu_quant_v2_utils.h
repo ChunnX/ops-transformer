@@ -137,6 +137,8 @@ constexpr size_t SINGLE_TENSOR_SIZE = 1;
 constexpr int64_t MAX_GROUP_LIST_SIZE = 1024L;
 constexpr int64_t QUNAT_MODE_MX = 2;
 constexpr int64_t QUNAT_MODE_PERTOKEN = 0;
+constexpr int64_t QUNAT_MODE_HIF4 = 3;
+constexpr int64_t HIF4_N_ALIGN = 128;
 constexpr int64_t MXA8W4_K_ALIGN = 32LL;
 constexpr int64_t MXA8W4_K_MIN = 32LL;
 constexpr int64_t MXA8W4_N_ALIGN = 128LL;
@@ -169,6 +171,9 @@ const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLO
 const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_HIF4 = {DataType::DT_HIFLOAT4};
+const std::vector<DataType> HIF4_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_HIFLOAT4_SCALE};
+const std::vector<DataType> HIF4_OUTPUT_DTYPE_SUPPORT_LIST = {DataType::DT_HIFLOAT4};
 
 inline bool IsFp8Dtype(DataType dtype)
 {
@@ -254,7 +259,9 @@ protected:
 
     bool IsMxWeightNzMultiTensorSupported() const
     {
-        return gmmDsqParams_.quantMode == QUNAT_MODE_MX && !gmmDsqParams_.isMxA8W4 && gmmDsqParams_.weight != nullptr &&
+        return op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_9201 &&
+               gmmDsqParams_.quantMode == QUNAT_MODE_MX && !gmmDsqParams_.isMxA8W4 &&
+               gmmDsqParams_.weight != nullptr &&
                gmmDsqParams_.weight->Size() > 0 && (*gmmDsqParams_.weight)[0] != nullptr &&
                op::IsPrivateFormat((*gmmDsqParams_.weight)[0]->GetStorageFormat()) &&
                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
@@ -276,6 +283,21 @@ protected:
             return true;
         }
         return false;
+    }
+
+    bool IsTransposeForHif4Shape(const aclTensor *tensor) const
+    {
+        auto shape = tensor->GetViewShape();
+        if (shape.GetDimNum() < MX_SPLIT_K_PER_TOKEN_SCALE_DIM) {
+            return false;
+        }
+        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+        int64_t last = dimNum - 1;
+        int64_t secondLast = dimNum - static_cast<int64_t>(LAST_SECOND_DIM_INDEX);
+        int64_t thirdLast = dimNum - static_cast<int64_t>(LAST_THIRD_DIM_INDEX);
+        auto strides = tensor->GetViewStrides();
+        return strides[last] == 1 && strides[thirdLast] == 1 &&
+               strides[secondLast] == shape.GetDim(thirdLast);
     }
 
     bool IsTransposeLastTwoDims(const aclTensor *tensor) const
@@ -398,19 +420,24 @@ protected:
             OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "tuningConfig", "nonnull", "nullptr");
             return false;
         }
-        if ((gmmDsqParams_.dequantMode != QUNAT_MODE_MX && gmmDsqParams_.dequantMode != QUNAT_MODE_PERTOKEN) ||
-            (gmmDsqParams_.quantMode != QUNAT_MODE_MX && gmmDsqParams_.quantMode != QUNAT_MODE_PERTOKEN) ||
+        bool hif4Supported = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201;
+        if ((gmmDsqParams_.dequantMode != QUNAT_MODE_MX && gmmDsqParams_.dequantMode != QUNAT_MODE_PERTOKEN &&
+             !(hif4Supported && gmmDsqParams_.dequantMode == QUNAT_MODE_HIF4)) ||
+            (gmmDsqParams_.quantMode != QUNAT_MODE_MX && gmmDsqParams_.quantMode != QUNAT_MODE_PERTOKEN &&
+             !(hif4Supported && gmmDsqParams_.quantMode == QUNAT_MODE_HIF4)) ||
             (gmmDsqParams_.dequantMode != gmmDsqParams_.quantMode)) {
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                 apiName_.c_str(), "dequantMode and quantMode",
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
-                "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal; "
+                "the values of dequantMode and quantMode must be 0 (pertoken), 2 (mx), or 3 (hif4 on 9201), "
+                "and they must be equal; "
                 "FRACTAL_NZ weight supports pertoken mode for INT8, FLOAT8 or HIFLOAT8 x and weight");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
-        if (gmmDsqParams_.quantMode == QUNAT_MODE_MX && dequantDtype != ge::DT_FLOAT) {
+        if ((gmmDsqParams_.quantMode == QUNAT_MODE_MX || gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) &&
+            dequantDtype != ge::DT_FLOAT) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName_.c_str(), "dequantDtype",
                                                   std::to_string(gmmDsqParams_.dequantDtype),
                                                   "when the quant mode is mx, dequantDtype must be 0");
@@ -423,7 +450,8 @@ protected:
             return false;
         }
 
-        if (gmmDsqParams_.isMxA8W4 && gmmDsqParams_.dequantMode != QUNAT_MODE_MX) {
+        if ((gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4) &&
+            gmmDsqParams_.dequantMode != QUNAT_MODE_MX) {
             OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "dequantMode", std::to_string(gmmDsqParams_.dequantMode),
                                       std::to_string(QUNAT_MODE_MX));
             return false;
@@ -458,11 +486,20 @@ protected:
 
     bool CheckMXTranspose()
     {
-        bool transposeWeightScale = IsTransposeForMxShape((*gmmDsqParams_.weightScale)[0]);
+        bool hif4Weight = (*gmmDsqParams_.weight)[0]->GetDataType() == DataType::DT_HIFLOAT4;
+        bool transposeWeightScale = hif4Weight ? IsTransposeForHif4Shape((*gmmDsqParams_.weightScale)[0]) :
+                                               IsTransposeForMxShape((*gmmDsqParams_.weightScale)[0]);
         bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
         bool transposeX = IsTransposeLastTwoDims(gmmDsqParams_.x);
-        bool transposeXScale = IsTransposeForMxShape(gmmDsqParams_.xScale);
-        if (gmmDsqParams_.isMxA8W4) {
+        bool transposeXScale = hif4Weight && gmmDsqParams_.quantMode == QUNAT_MODE_HIF4 ?
+                                   IsTransposeForHif4Shape(gmmDsqParams_.xScale) :
+                                   IsTransposeForMxShape(gmmDsqParams_.xScale);
+        if (gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4 ||
+            gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) {
+            if (hif4Weight && IsMultiTensorWeight()) {
+                OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "weight", "multiple tensors", "single tensor");
+                return false;
+            }
             if (IsMultiTensorWeight()) {
                 if (!CheckMxA8W4MultiWeightTranspose(transposeWeight, transposeWeightScale)) {
                     return false;
@@ -680,12 +717,13 @@ protected:
         // x的shape期望为[M, K]
         op::Shape xExpectShape = {m, k};
         // xScale的shape期望为[M, CeilDiv(K, 64), 2]
-        op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
+        int64_t outputScaleFactor = gmmDsqParams_.quantMode == QUNAT_MODE_HIF4 ? 1 : SWIGLU_SPLIT_FACTOR;
+        op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), outputScaleFactor};
         int64_t nAfterHalve = static_cast<int64_t>(n / SWIGLU_SPLIT_FACTOR);
         // output的shape期望为[M, N / 2]
         op::Shape outputExpectShape = {m, nAfterHalve};
         // outputScale的shape期望为[M, CeilDiv(N / 2, 64), 2]
-        op::Shape outputScaleExpectShape = {m, Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
+        op::Shape outputScaleExpectShape = {m, Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE), outputScaleFactor};
         const aclTensor *x = gmmDsqParams_.x;
         const aclTensor *xScale = gmmDsqParams_.xScale;
         const aclTensor *output = gmmDsqParams_.output;
@@ -784,7 +822,9 @@ protected:
         // weight转置的shape期望为[E, N, K]
         op::Shape weightTransExpectShape = {e, n, k};
         // weightScale转置的shape期望为[E, N, CeilDiv(K, 64), 2]
-        op::Shape weightScaleTransExpectShape = {e, n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
+        int64_t weightScaleFactor = (*gmmDsqParams_.weight)[0]->GetDataType() == DataType::DT_HIFLOAT4 ?
+                                        1 : SWIGLU_SPLIT_FACTOR;
+        op::Shape weightScaleTransExpectShape = {e, n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), weightScaleFactor};
         const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
         const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         if (gmmDsqParams_.transposeWeight) {
@@ -932,8 +972,12 @@ protected:
         for (size_t i = 0; i < weightLength; i++) {
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
-            GMM_SWIGLU_CHECK_DTYPE(weight, "weight", WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4, return false);
-            GMM_SWIGLU_CHECK_DTYPE(weightScale, "weightScale", WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
+            GMM_SWIGLU_CHECK_DTYPE(weight, "weight", gmmDsqParams_.isMxA8Hif4 ?
+                                   WEIGHT_DTYPE_SUPPORT_LIST_HIF4 : WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4,
+                                   return false);
+            GMM_SWIGLU_CHECK_DTYPE(weightScale, "weightScale", gmmDsqParams_.isMxA8Hif4 ?
+                                   HIF4_SCALE_DTYPE_SUPPORT_LIST : WEIGHT_SCALE_DTYPE_SUPPORT_LIST,
+                                   return false);
         }
 
         DataType outputDtype = output->GetDataType();
@@ -943,6 +987,23 @@ protected:
             return false;
         }
         GMM_SWIGLU_CHECK_DTYPE(outputScale, "outputScale", QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
+        return true;
+    }
+
+    bool CheckHif4DtypeValid(const aclTensor *x, const aclTensor *xScale, const aclTensor *groupList,
+                             const aclTensor *output, const aclTensor *outputScale)
+    {
+        GMM_SWIGLU_CHECK_DTYPE(x, "x", WEIGHT_DTYPE_SUPPORT_LIST_HIF4, return false);
+        GMM_SWIGLU_CHECK_DTYPE(xScale, "xScale", HIF4_SCALE_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(groupList, "groupList", GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(output, "output", HIF4_OUTPUT_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(outputScale, "outputScale", HIF4_SCALE_DTYPE_SUPPORT_LIST, return false);
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
+            GMM_SWIGLU_CHECK_DTYPE((*gmmDsqParams_.weight)[i], "weight", WEIGHT_DTYPE_SUPPORT_LIST_HIF4,
+                                   return false);
+            GMM_SWIGLU_CHECK_DTYPE((*gmmDsqParams_.weightScale)[i], "weightScale",
+                                   HIF4_SCALE_DTYPE_SUPPORT_LIST, return false);
+        }
         return true;
     }
 
@@ -1049,11 +1110,14 @@ protected:
 
         // mxfp8、NZ场景下，N需满足64对齐
         if (IsMxfp8WeightNzFormat((*gmmDsqParams_.weight)[0])) {
-            if (nValue % MXFP8_NZ_N_ALIGN != 0 || nValue == 0) {
+            int64_t nAlign = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201 ?
+                                 MXFP4_NZ_N_ALIGN : MXFP8_NZ_N_ALIGN;
+            if (nValue % nAlign != 0 || nValue == 0) {
                 std::string weightDtypeStr = op::ToString((*gmmDsqParams_.weight)[0]->GetDataType()).GetString();
                 std::string reasonStr =
                     "when using the weightNZ format with " + weightDtypeStr +
-                    " data type, axis N of weight must be greater than 0 and an integer multiple of 64";
+                    " data type, axis N of weight must be greater than 0 and an integer multiple of " +
+                    std::to_string(nAlign);
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "weight",
                                                       ViewShapeToString((*gmmDsqParams_.weight)[0]), reasonStr.c_str());
                 return false;
@@ -1141,7 +1205,7 @@ protected:
             return false;
         }
 
-        if (gmmDsqParams_.quantMode == QUNAT_MODE_MX) {
+        if (gmmDsqParams_.quantMode == QUNAT_MODE_MX || gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) {
             return CheckInputOutDimsForMX();
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN) {
             return CheckInputOutDimsForPertoken();
@@ -1174,6 +1238,11 @@ protected:
         }
 
         if (IsMultiTensorWeight()) {
+            if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
+                OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "weight", "multiple tensors",
+                                          "a single tensor on Ascend 9201");
+                return false;
+            }
             if (!gmmDsqParams_.isMxA8W4 && !IsMxWeightNzMultiTensorSupported()) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(apiName_.c_str(), "weight", std::to_string(MX_MULTI_WEIGHT_DIM),
                                              std::to_string(MX_WEIGHT_DIM));
@@ -1232,7 +1301,8 @@ protected:
         int64_t kInWeight = 0;
         if (IsMxWeightNzMultiTensorSupported()) {
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
-        } else if (gmmDsqParams_.isMxA8W4) {
+        } else if (gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4 ||
+                   gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) {
             auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
         } else {
@@ -1249,7 +1319,7 @@ protected:
                 "axis K of x must be equal to axis K of weight");
             return false;
         }
-        if (gmmDsqParams_.quantMode == QUNAT_MODE_MX) {
+        if (gmmDsqParams_.quantMode == QUNAT_MODE_MX || gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) {
             return CheckInputOutShapeForMX();
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN) {
             return CheckInputOutShapeForPertoken();
@@ -1289,8 +1359,19 @@ protected:
             return checkMxfp8InputShape();
         }
 
-        if (gmmDsqParams_.isMxA8W4) {
+        if (gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4) {
             return CheckMxA8W4InputShape();
+        }
+
+        if (gmmDsqParams_.quantMode == QUNAT_MODE_HIF4) {
+            int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
+            int64_t n = (*gmmDsqParams_.weight)[0]->GetViewShape().GetDim(1);
+            if (k <= 2 || k % 2 != 0 || n < HIF4_N_ALIGN || n % HIF4_N_ALIGN != 0) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "x and weight",
+                                                      ViewShapeToString(gmmDsqParams_.x),
+                                                      "HIF4 requires even K greater than 2 and N aligned to 128");
+                return false;
+            }
         }
 
         return true;
@@ -1356,7 +1437,9 @@ protected:
         bool xDtypeNotSupportedPertoken =
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
-        if (xDtypeNotSupported && xDtypeNotSupportedMxfp4 && xDtypeNotSupportedPertoken) {
+        bool hif4Supported = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201;
+        if (xDtypeNotSupported && xDtypeNotSupportedMxfp4 && xDtypeNotSupportedPertoken &&
+            !(hif4Supported && xDtype == DataType::DT_HIFLOAT4)) {
             OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "x", op::ToString(xDtype).GetString(), dtypeSupportList);
             return false;
         }
@@ -1368,7 +1451,8 @@ protected:
         bool weightDtypeNotSupportedPertoken =
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), weightDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
-        if (weightDtypeNotSupported && weightDtypeNotSupportedMxfp4 && weightDtypeNotSupportedPertoken) {
+        if (weightDtypeNotSupported && weightDtypeNotSupportedMxfp4 && weightDtypeNotSupportedPertoken &&
+            !(hif4Supported && weightDtype == DataType::DT_HIFLOAT4)) {
             OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "weight", op::ToString(weightDtype).GetString(),
                                       dtypeSupportList);
             return false;
@@ -1387,8 +1471,12 @@ protected:
                    (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
                    (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
             return CheckFp4DtypeValid(x, xScale, groupList, output, outputScale);
-        } else if (gmmDsqParams_.quantMode == QUNAT_MODE_MX && gmmDsqParams_.isMxA8W4) {
+        } else if (gmmDsqParams_.quantMode == QUNAT_MODE_MX &&
+                   (gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4)) {
             return CheckMxA8W4DtypeValid(x, xScale, groupList, output, outputScale);
+        } else if (gmmDsqParams_.quantMode == QUNAT_MODE_HIF4 && xDtype == DataType::DT_HIFLOAT4 &&
+                   weightDtype == DataType::DT_HIFLOAT4) {
+            return CheckHif4DtypeValid(x, xScale, groupList, output, outputScale);
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN &&
                    std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) !=
                        XW_DTYPE_SUPPORT_LIST_PERTOKEN.end() &&
@@ -1436,9 +1524,18 @@ protected:
         for (size_t i = 0; i < wLength; i++) {
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
-            if (gmmDsqParams_.isMxA8W4) {
+            if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201 &&
+                gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN &&
+                op::IsPrivateFormat(weight->GetStorageFormat())) {
+                OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), "weight",
+                                           op::ToString(weight->GetStorageFormat()).GetString(), "ND");
+                return false;
+            }
+            if (gmmDsqParams_.isMxA8W4 || gmmDsqParams_.isMxA8Hif4) {
                 if (weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
-                    weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
+                    (!gmmDsqParams_.isMxA8Hif4 &&
+                     op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_9201 &&
+                     weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32)) {
                     OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), "weight",
                                                op::ToString(weight->GetStorageFormat()).GetString(),
                                                "{FORMAT_FRACTAL_NZ, FORMAT_FRACTAL_NZ_C0_32}");

@@ -1363,7 +1363,8 @@ ge::graphStatus GroupedQmmTiling::DoLibApiTiling()
     tilingData_.mmTilingData.dbL0A = 2; // db switch, 1: off, 2: on
     tilingData_.mmTilingData.dbL0B = 2; // db switch, 1: off, 2: on
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
             tilingData_.mmTilingData.mxTypePara =
@@ -1384,7 +1385,8 @@ void GroupedQmmTiling::SetKernelType()
     // 以选择主模板设置kernelType, 0: dequant fixp随路（包含K轴分组）；1：dequant vector计算；2：perGroup-perBlock
     inputParams_.kernelType = 0UL;
     // mx K轴分组当前是独立的模板，后续归一
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         return;
     }
     // perGroup-perBlock(GB)有独立pertile模板
@@ -1473,9 +1475,11 @@ void GroupedQmmTiling::CalBasicBlock()
         std::min(GetShapeWithDataType(GmmConstant::BASIC_BLOCK_SIZE_128, inputParams_.aDtype), inputParams_.kSize),
         GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype));
 
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         basicTiling_.baseK = CeilAlign(basicTiling_.baseK, MXFP_BASEK_FACTOR); // mx_mmad requires basek align to 64
-        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2 ||
+                          inputParams_.aDtype == ge::DT_HIFLOAT4;
         if (isFp4Input && !inputParams_.transB) {
             // 64: mx_mmad requires the inner axis to align to 64
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
@@ -1528,12 +1532,11 @@ ge::graphStatus GroupedQmmTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
 
 void GroupedQmmTiling::CalcAlignedMxBaseScaleSize(uint64_t &baseScaleASize, uint64_t &baseScaleBSize) const
 {
-    baseScaleASize = GetSizeWithDataType(
-        CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) * basicTiling_.baseM,
-        inputParams_.perTokenScaleDtype);
-    baseScaleBSize = GetSizeWithDataType(
-        CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) * basicTiling_.baseN,
-        inputParams_.scaleDtype);
+    uint64_t baseScaleK = inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE ?
+                              CeilDiv(basicTiling_.baseK, HIF4_BASEK_FACTOR) :
+                              CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE);
+    baseScaleASize = GetSizeWithDataType(baseScaleK * basicTiling_.baseM, inputParams_.perTokenScaleDtype);
+    baseScaleBSize = GetSizeWithDataType(baseScaleK * basicTiling_.baseN, inputParams_.scaleDtype);
 }
 
 ge::graphStatus GroupedQmmTiling::CalL1Tiling()
@@ -1555,7 +1558,8 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
 
     uint64_t baseScaleASize = 0;
     uint64_t baseScaleBSize = 0;
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         if (inputParams_.groupType == SPLIT_M) {
             CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
         } else {
@@ -1585,7 +1589,8 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
         basicTiling_.depthB1 = depthASec < depthBSec ? depthBSec : depthInit;
     }
     CalStepKs();
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE ||
+        inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE) {
         CalScaleFactors();
     }
     return ge::GRAPH_SUCCESS;
@@ -1653,10 +1658,12 @@ void GroupedQmmTiling::CalScaleFactors()
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
-    uint64_t baseScaleASize = GetSizeWithDataType(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
+    uint64_t scaleGroup = inputParams_.bQuantMode == optiling::QuantMode::HIF4_PERGROUP_MODE ?
+                              HIF4_BASEK_FACTOR : MX_GROUP_SIZE;
+    uint64_t baseScaleASize = GetSizeWithDataType(CeilDiv(basicTiling_.baseK, scaleGroup) * basicTiling_.baseM,
                                                   inputParams_.perTokenScaleDtype);
     uint64_t baseScaleBSize =
-        GetSizeWithDataType(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
+        GetSizeWithDataType(CeilDiv(basicTiling_.baseK, scaleGroup) * basicTiling_.baseN, inputParams_.scaleDtype);
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t leftL1Size =
@@ -1701,7 +1708,8 @@ void GroupedQmmTiling::CalScaleFactors()
 uint64_t GroupedQmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
     // shapeSize应该是偶数
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4 ||
+                        dtype == ge::DT_HIFLOAT4);
     if (is4BitInput) {
         // 2: 判断是否是偶数
         OP_CHECK_IF(shapeSize % 2 != 0,
@@ -1718,7 +1726,8 @@ uint64_t GroupedQmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType 
 
 uint64_t GroupedQmmTiling::GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4 ||
+                        dtype == ge::DT_HIFLOAT4);
     if (is4BitInput) {
         return shapeSize + shapeSize;
     } else {

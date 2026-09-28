@@ -75,7 +75,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
     gert::Shape scaleOutShape({m});
     auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
+        op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
         bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensor(weight);
         if (quantMode == QUANT_MODE_PERTOKEN) {
             // A8W4/A4W4 weightScale is [E, N] for per-channel and [E, KGroup, N] for per-group.
@@ -91,15 +92,16 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
         gert::Shape outShapeV2({m, nAfterHalve});
         gert::Shape scaleOutShapeV2;
         // 当quantMode等于2时，out_scale 的形状为三维
-        if (quantMode == 2) {
+        if (quantMode == 2 || quantMode == 3) {
             int64_t nAfterSplit = static_cast<int64_t>(Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE));
-            scaleOutShapeV2 = gert::Shape({m, nAfterSplit, 2});
+            scaleOutShapeV2 = gert::Shape({m, nAfterSplit, quantMode == 3 ? 1 : 2});
         } else {
             scaleOutShapeV2 = gert::Shape({m});
         }
         out = executor->AllocTensor(outShapeV2, static_cast<ge::DataType>(quantDtype), ge::FORMAT_ND);
         // 当quantMode等于2时，outScale的DataType为FLOAT8_E8M0
         scaleOut = quantMode == 2 ? executor->AllocTensor(scaleOutShapeV2, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND) :
+                   quantMode == 3 ? executor->AllocTensor(scaleOutShapeV2, DataType::DT_HIFLOAT4_SCALE, ge::FORMAT_ND) :
                                     executor->AllocTensor(scaleOutShapeV2, DataType::DT_FLOAT, ge::FORMAT_ND);
     }
     if (out == nullptr) {
