@@ -28,7 +28,8 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateWideDenominator
         RegTensor<float> ratio;
         LoadAlign(den, denom);
         LoadAlign(ratio, alpha);
-        MulDstAdd(den, ratio, sum, f);
+        Mul(den, den, ratio, f);
+        Add(den, den, sum, f);
     }
     StoreAlign(denom, den, f);
     return den;
@@ -47,11 +48,13 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateWidePairDenomin
     } else {
         LoadAlign(den, denom);
         LoadAlign(a, alpha0);
-        MulDstAdd(den, a, sum, f);
+        Mul(den, den, a, f);
+        Add(den, den, sum, f);
     }
     LoadAlign(a, alpha1);
     LoadAlign(sum, alpha1 + 64);
-    MulDstAdd(den, a, sum, f);
+    Mul(den, den, a, f);
+    Add(den, den, sum, f);
     StoreAlign(denom, den, f);
     return den;
 }
@@ -141,10 +144,15 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
             LoadAlign(y2, partial + (row + 2) * DP + col);
             LoadAlign(y3, partial + (row + 3) * DP + col);
 
-            MulDstAdd(x0, r0, y0, f);
-            MulDstAdd(x1, r1, y1, f);
-            MulDstAdd(x2, r2, y2, f);
-            MulDstAdd(x3, r3, y3, f);
+            Mul(x0, x0, r0, f);
+            Mul(x1, x1, r1, f);
+            Mul(x2, x2, r2, f);
+            Mul(x3, x3, r3, f);
+
+            Add(x0, x0, y0, f);
+            Add(x1, x1, y1, f);
+            Add(x2, x2, y2, f);
+            Add(x3, x3, y3, f);
 
             Mul(x0, x0, inv0, f);
             Mul(x1, x1, inv1, f);
@@ -195,10 +203,15 @@ __simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ floa
 
         LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
         LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-        MulDstAdd(x0_0, a0_0, y0_0, f);
-        MulDstAdd(x0_1, a0_1, y0_1, f);
-        MulDstAdd(x1_0, a0_0, y1_0, f);
-        MulDstAdd(x1_1, a0_1, y1_1, f);
+        Mul(x0_0, x0_0, a0_0, f);
+        Mul(x0_1, x0_1, a0_1, f);
+        Mul(x1_0, x1_0, a0_0, f);
+        Mul(x1_1, x1_1, a0_1, f);
+
+        Add(x0_0, x0_0, y0_0, f);
+        Add(x0_1, x0_1, y0_1, f);
+        Add(x1_0, x1_0, y1_0, f);
+        Add(x1_1, x1_1, y1_1, f);
     }
 
     LoadAlign(z0_0, partial1 + row * DP);
@@ -209,10 +222,15 @@ __simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ floa
     RegTensor<float> a1_0, a1_1;
     LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
     LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-    MulDstAdd(x0_0, a1_0, z0_0, f);
-    MulDstAdd(x0_1, a1_1, z0_1, f);
-    MulDstAdd(x1_0, a1_0, z1_0, f);
-    MulDstAdd(x1_1, a1_1, z1_1, f);
+    Mul(x0_0, x0_0, a1_0, f);
+    Mul(x0_1, x0_1, a1_1, f);
+    Mul(x1_0, x1_0, a1_0, f);
+    Mul(x1_1, x1_1, a1_1, f);
+
+    Add(x0_0, x0_0, z0_0, f);
+    Add(x0_1, x0_1, z0_1, f);
+    Add(x1_0, x1_0, z1_0, f);
+    Add(x1_1, x1_1, z1_1, f);
 
     if constexpr (LAST) {
         RegTensor<float> inv0, inv1;
@@ -264,10 +282,15 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             LoadAlign(y2, partial + (row + 2) * DP + col);
             LoadAlign(y3, partial + (row + 3) * DP + col);
 
-            MulDstAdd(x0, ratio0, y0, f);
-            MulDstAdd(x1, ratio1, y1, f);
-            MulDstAdd(x2, ratio2, y2, f);
-            MulDstAdd(x3, ratio3, y3, f);
+            Mul(x0, x0, ratio0, f);
+            Mul(x1, x1, ratio1, f);
+            Mul(x2, x2, ratio2, f);
+            Mul(x3, x3, ratio3, f);
+
+            Add(x0, x0, y0, f);
+            Add(x1, x1, y1, f);
+            Add(x2, x2, y2, f);
+            Add(x3, x3, y3, f);
 
             StoreAlign(accum + (row + 0) * DP + col, x0, f);
             StoreAlign(accum + (row + 1) * DP + col, x1, f);
@@ -304,10 +327,15 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
             LoadAlign(y2, partial + (row + 2) * DP + col);
             LoadAlign(y3, partial + (row + 3) * DP + col);
 
-            MulDstAdd(x0, ratio0, y0, f);
-            MulDstAdd(x1, ratio1, y1, f);
-            MulDstAdd(x2, ratio2, y2, f);
-            MulDstAdd(x3, ratio3, y3, f);
+            Mul(x0, x0, ratio0, f);
+            Mul(x1, x1, ratio1, f);
+            Mul(x2, x2, ratio2, f);
+            Mul(x3, x3, ratio3, f);
+
+            Add(x0, x0, y0, f);
+            Add(x1, x1, y1, f);
+            Add(x2, x2, y2, f);
+            Add(x3, x3, y3, f);
 
             StoreAlign(accum + (row + 0) * DP + col, x0, f);
             StoreAlign(accum + (row + 1) * DP + col, x1, f);
@@ -361,10 +389,15 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
 
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-            MulDstAdd(x0_0, a0_0, y0_0, f);
-            MulDstAdd(x1_0, a0_0, y1_0, f);
-            MulDstAdd(x0_1, a0_1, y0_1, f);
-            MulDstAdd(x1_1, a0_1, y1_1, f);
+            Mul(x0_0, x0_0, a0_0, f);
+            Mul(x1_0, x1_0, a0_0, f);
+            Mul(x0_1, x0_1, a0_1, f);
+            Mul(x1_1, x1_1, a0_1, f);
+
+            Add(x0_0, x0_0, y0_0, f);
+            Add(x1_0, x1_0, y1_0, f);
+            Add(x0_1, x0_1, y0_1, f);
+            Add(x1_1, x1_1, y1_1, f);
 
             LoadAlign(z0_0, partial1 + row * DP);
             LoadAlign(z1_0, partial1 + row * DP + 64);
@@ -373,10 +406,15 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
 
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-            MulDstAdd(x0_0, a1_0, z0_0, f);
-            MulDstAdd(x1_0, a1_0, z1_0, f);
-            MulDstAdd(x0_1, a1_1, z0_1, f);
-            MulDstAdd(x1_1, a1_1, z1_1, f);
+            Mul(x0_0, x0_0, a1_0, f);
+            Mul(x1_0, x1_0, a1_0, f);
+            Mul(x0_1, x0_1, a1_1, f);
+            Mul(x1_1, x1_1, a1_1, f);
+
+            Add(x0_0, x0_0, z0_0, f);
+            Add(x1_0, x1_0, z1_0, f);
+            Add(x0_1, x0_1, z0_1, f);
+            Add(x1_1, x1_1, z1_1, f);
 
             StoreAlign(accum + row * DP, x0_0, f);
             StoreAlign(accum + row * DP + 64, x1_0, f);
@@ -405,10 +443,15 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
-            MulDstAdd(x0, a0_0, y0, f);
-            MulDstAdd(x1, a0_1, y1, f);
-            MulDstAdd(x2, a0_2, y2, f);
-            MulDstAdd(x3, a0_3, y3, f);
+            Mul(x0, x0, a0_0, f);
+            Mul(x1, x1, a0_1, f);
+            Mul(x2, x2, a0_2, f);
+            Mul(x3, x3, a0_3, f);
+
+            Add(x0, x0, y0, f);
+            Add(x1, x1, y1, f);
+            Add(x2, x2, y2, f);
+            Add(x3, x3, y3, f);
 
             LoadAlign(z0, partial1 + (row + 0) * DP);
             LoadAlign(z1, partial1 + (row + 1) * DP);
@@ -419,10 +462,15 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
-            MulDstAdd(x0, a1_0, z0, f);
-            MulDstAdd(x1, a1_1, z1, f);
-            MulDstAdd(x2, a1_2, z2, f);
-            MulDstAdd(x3, a1_3, z3, f);
+            Mul(x0, x0, a1_0, f);
+            Mul(x1, x1, a1_1, f);
+            Mul(x2, x2, a1_2, f);
+            Mul(x3, x3, a1_3, f);
+
+            Add(x0, x0, z0, f);
+            Add(x1, x1, z1, f);
+            Add(x2, x2, z2, f);
+            Add(x3, x3, z3, f);
 
             StoreAlign(accum + (row + 0) * DP, x0, f);
             StoreAlign(accum + (row + 1) * DP, x1, f);

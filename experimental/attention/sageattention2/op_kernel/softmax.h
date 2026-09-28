@@ -259,7 +259,8 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     RegTensor<float> sum;
     LoadAlign(sum, scratch);
-    MulDstAdd(oldDen, ratio, sum, f);
+    Mul(oldDen, oldDen, ratio, f);
+    Add(oldDen, oldDen, sum, f);
     StoreAlign(denom, oldDen, f);
 }
 
