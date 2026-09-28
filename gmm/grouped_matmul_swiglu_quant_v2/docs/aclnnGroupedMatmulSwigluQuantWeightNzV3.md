@@ -64,7 +64,7 @@
     - 全零组使用编码 0；含 Inf/NaN 的组使用编码 255。有限 scale 的解码值为 $2^{s-127}$。量化使用 BF16 倒数 scale，并将乘积按最近偶数舍入转换为 FLOAT8_E4M3FN；因此不能用无限精度除法替代实现中的倒数乘法。OCP 对最大指数位为 0 的组（全零或仅包含 BF16 次正规数）将倒数置 0；cuBLAS 仅对全零组将倒数置 0。
     - `dstTypeMax=0.0` 表示使用输出类型的默认最大值（E4M3FN 为 448），不是用 0 做除数。当前接口不支持非零自定义值。
 
-  `FRACTAL_NZ` 是接口的格式枚举。下文中的 NZ/ZN 仅用于区分非转置和转置权重的物理排列，不是两个不同的 ACL 格式；两者都传入 `ACL_FORMAT_FRACTAL_NZ`。
+  非转置和转置的 `weight` 均使用 `ACL_FORMAT_FRACTAL_NZ` 格式，通过 view stride 和物理存储排列区分。
 
 ## 函数原型
 
@@ -135,7 +135,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     </thead>
     <tbody>
       <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入；当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。支持下文规定的NZ/ZN view、stride和storage shape，包括ZN转置形成的非连续view；接口保留其FRACTAL_NZ物理存储，不执行任意非连续weight的转连续操作。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维，(E, K, N)</td><td>仅支持约束说明中的ZN转置view</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList长度必须为1；非转置和转置的API入口view shape均为(E, K, N)。支持下文规定的非转置和转置weight的view、stride和storage shape，包括转置形成的非连续view；接口保留其FRACTAL_NZ物理存储，不执行任意非连续weight的转连续操作。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>3维，(E, K, N)</td><td>仅支持约束说明中的转置weight view</td></tr>
       <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置和转置的API入口view shape均为(E, ceil(K / 64), N, 2)，转置属性必须与weight一致。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维，(E, ceil(K / 64), N, 2)</td><td>√</td></tr>
       <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持有效数据；可传nullptr、长度为0的TensorList，或长度为1且唯一元素为nullptr/shape (0)的TensorList。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
@@ -310,7 +310,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
           </table>
 
         - 维度取值：`E` 是 expert 数量，取值范围为 [1, 1024]，`weight` 的逻辑首维和 `groupList` 的长度均为 E，“单 Tensor”并不限制 E 为 1；`M` 是 token 数量，`K` 是输入特征维度，二者均必须大于 0；`N` 是 SwiGLU 拆分前的输出维度，必须大于 0 且为 64 的整数倍，拆分后输出维度为 `N / 2`；`weightScale` 的最后一维固定为 2，表示每 64 个 K 元素对应的两个 MX block scale。
-        - 权重布局：非转置和转置 `weight` 的 API 入口 view shape 均为 (E, K, N)，storage shape 见上表；非转置使用 stride `(K * N, N, 1)`，转置场景先构造 (E, N, K) 的 source，再交换末两轴，入口 view stride 为 `(K * N, 1, K)`；仅支持这两种 NZ/ZN view、stride 和 storage shape，不支持任意非连续 view。
+        - 权重布局：非转置和转置 `weight` 的 API 入口 view shape 均为 (E, K, N)，storage shape 见上表；非转置使用 stride `(K * N, N, 1)`，转置场景先构造 (E, N, K) 的 source，再交换末两轴，入口 view stride 为 `(K * N, 1, K)`；仅支持上述非转置和转置 weight 的 view、stride 和 storage shape，不支持任意非连续 view。
         - Scale 布局：非转置和转置 `weightScale` 的 API 入口 view shape 均为 (E, ceil(K / 64), N, 2)，转置属性必须与 `weight` 一致；非转置 source/storage 与入口 view 相同，stride 为 `(ceil(K / 64) * N * 2, N * 2, 2, 1)`；转置场景先构造 (E, N, ceil(K / 64), 2) 的 source/storage，再交换中间两轴，入口 view stride 为 `(N * ceil(K / 64) * 2, 2, ceil(K / 64) * 2, 1)`。
         - 非连续输入输出：`x`、`xScale`、`weightScale`、`groupList`、`output` 和 `outputScale` 支持满足上述 shape 和布局约束的非连续 Tensor。
         - 分组信息：`groupListType` 仅支持 0 和 1；取 0 时，`groupList[i]` 表示累计 token 数，数值必须非负、单调不递减且不大于 `M`；取 1 时，`groupList[i]` 表示当前 group 的 token 数，数值必须非负且所有值之和不大于 `M`；`groupList` 未指定的输出区域不会被更新。
@@ -465,7 +465,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       int64_t N = 128;
 
       std::vector<int64_t> xShape = {M, K};
-      // The API entry view is always [E, K, N]. A transposed (ZN) weight is
+      // The API entry view is always [E, K, N]. A transposed weight is
       // distinguished by its view stride and physical FRACTAL_NZ storage.
       std::vector<int64_t> weightLogicalShape = {E, K, N};
       std::vector<int64_t> weightStorageShape = transposeWeight ?
@@ -533,7 +533,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
                                                                                                  aclDestroyTensorList);
       // aclDestroyTensorList also destroys its member tensors.
       weightTensorPtr.release();
-      // The ZN scale view is obtained by transposing an [E, N, scaleK, 2]
+      // The transposed weight scale view is obtained from an [E, N, scaleK, 2]
       // source. Its API entry view remains [E, scaleK, N, 2].
       std::vector<int64_t> weightScaleViewStrides = transposeWeight ?
                                                         std::vector<int64_t>{N * scaleK * 2, 2, scaleK * 2, 1} :
