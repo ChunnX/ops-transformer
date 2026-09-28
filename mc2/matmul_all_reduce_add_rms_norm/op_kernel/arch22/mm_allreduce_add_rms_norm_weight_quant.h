@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file mm_allreduce_add_rms_norm_910_general.h
+ * \file mm_allreduce_add_rms_norm_weight_quant.h
  * \brief
  */
-#ifndef MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
-#define MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
+#ifndef MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
+#define MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -21,25 +21,25 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../../matmul_all_reduce/op_kernel/matmul_all_reduce_common.h"
-#include "../../matmul_all_reduce/op_kernel/arch22/matmul_all_reduce_910_general.h"
-#include "add_rms_norm_kernel.h"
-#include "matmul_all_reduce_add_rms_norm_tiling_data.h"
+#include "../../../matmul_all_reduce/op_kernel/matmul_all_reduce_common.h"
+#include "../../../matmul_all_reduce/op_kernel/arch22/matmul_all_reduce_weight_quant.h"
+#include "../add_rms_norm_kernel.h"
+#include "../matmul_all_reduce_add_rms_norm_tiling_data.h"
 
 namespace MatmulAllReduceAddRmsNormImpl {
 using namespace AscendC;
-using MatmulAllReduceImpl::MatmulAllReduce910General;
+using MatmulAllReduceImpl::MatmulAllReduceWeightQuant;
+using Mc2WeightQuantBatchMatmulV2::Mc2QuantType;
 template <typename xType, typename wType, typename yType, class mmType>
-class MatmulAllReduceAddRmsNorm910General
-    : public MatmulAllReduce910General<xType, wType, yType, mmType, Mc2CoreType::ON_CUBE_AND_VECTOR> {
+class MatmulAllReduceAddRmsNormWeightQuant : public MatmulAllReduceWeightQuant<xType, wType, yType, mmType> {
 public:
-    __aicore__ inline MatmulAllReduceAddRmsNorm910General(MC2GmAddrs *addrs, ArnGmAddrs *arnAddrs,
-                                                          MC2TilingHeader *tilingData, TPipe *tPipe)
-        : MatmulAllReduce910General<xType, wType, yType, mmType, Mc2CoreType::ON_CUBE_AND_VECTOR>(addrs, arnAddrs,
-                                                                                                  tilingData, tPipe)
+    __aicore__ inline MatmulAllReduceAddRmsNormWeightQuant(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs,
+                                                           ArnGmAddrs *arnAddrs, MC2TilingHeader *tilingData,
+                                                           TPipe *tPipe)
+        : MatmulAllReduceWeightQuant<xType, wType, yType, mmType>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        Mc2Tiling::MatmulAllReduceAddRmsNormTilingData *p =
-            (Mc2Tiling::MatmulAllReduceAddRmsNormTilingData *)tilingData;
+        Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData *p =
+            (Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData *)tilingData;
         arnTile_ = &p->addRMSNormTileTilingData;
         arnTail_ = &p->addRMSNormTailTilingData;
         arnTilineKey_ = &p->addRmsNormTilingeKeyData;
@@ -76,29 +76,18 @@ private:
     Mc2Tiling::AddRMSNormTilingData *arnTail_;
 };
 
-#define INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag) \
+#define INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag) \
     do { \
-        using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, false>; \
-        using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, bTransFlag>; \
-        using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_Y>; \
-        using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS_FOR_MC2>; \
-        using opType = opTemplateClass<aType, bType, cType, biasType, Mc2MatmulBaseBlock, MM_CFG_NO_PRELOAD>; \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
+        using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false, \
+                                                     bTransFlag, quantType, offsetFlag, Mc2QuantType::NONE>; \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, nullptr, normOutGM, workspaceGM, normOutGM}; \
+        QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr}; \
         ArnGmAddrs arnAddrs = {residualGM, gammaGM, yGM, normOutGM}; \
-        MatmulAllReduceAddRmsNorm910General<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op( \
-            &addrs, &arnAddrs, (MC2TilingHeader *)&tilingData, &tPipe); \
+        MatmulAllReduceAddRmsNormWeightQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op( \
+            &addrs, &quantAddrs, &arnAddrs, (MC2TilingHeader *)&tilingData, &tPipe); \
         op.Init(); \
         op.Process(); \
     } while (0)
-
-#define INVOKE_MC2_ARN_910_OP_IMPL(opTemplateClass) \
-    do { \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData, tilingData, tilingGM); \
-        if (tilingData.matmulAllReduceTilingData.tilematmulTiling.matmulRunInfo.transB != 0U) { \
-            INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, true); \
-        } else { \
-            INVOKE_MC2_ARN_910_OP_IMPL_HELPER(opTemplateClass, false); \
-        } \
-    } while (0)
 } // namespace MatmulAllReduceAddRmsNormImpl
-#endif // MM_ALLREDUCE_ADD_RMS_NORM_910_GENERAL_H
+#endif // MM_ALLREDUCE_ADD_RMS_NORM_WEIGHT_QUANT_H

@@ -335,11 +335,6 @@ def validate_mxfp8_case(case):
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
         )
 
-    if case["s2_base_size"] != 512:
-        raise ValueError(
-            f"s2_base_size must be 512 for MXFP8, got {case['s2_base_size']}"
-        )
-
     block_size = case.get("block_size")
     sparse_q_block_size = case.get("sparse_q_block_size")
     sparse_kv_block_size = case.get("sparse_kv_block_size")
@@ -443,6 +438,8 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
+    # S2 is an internal tile derived from D, not an operator input.
+    case["s2_base_size"] = 256 if case["D"] == 256 else 512
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         case[name] = (
@@ -1527,6 +1524,12 @@ LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
 
 
+def _cast_mxfp8_p_to_e4m3(value):
+    """Saturate P to the E4M3FN finite range before the CPU FP8 cast."""
+    fp8_max = torch.finfo(FP8_DTYPE).max
+    return value.clamp(-fp8_max, fp8_max).to(FP8_DTYPE).to(torch.float32)
+
+
 def _align_up_to_ln2(value, use_quant_matmul):
     value_fp32 = value.to(torch.float32).contiguous()
     if use_quant_matmul:
@@ -1586,11 +1589,68 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
     return torch.where(sticky_overflow, sticky_value, finite_value)
 
 
+def _qk_matmul_rounded_cpu(q_block, q_scale, k_mat, k_scale):
+    """CPU rounding model validated against saved MXFP8 QK dumps.
+
+    Align products within each 16-element group to 2**(max_exponent - 18),
+    truncate toward zero, then apply the original 32-element MX descales.
+    For each 32-element group, truncate its scaled sum to the current FP32
+    accumulator spacing before the FP32 addition. This is an empirical model
+    checked against the D64/D256 dumps, including D256 group permutations.
+    FP64 represents the explicit intermediate truncations without extra rounding.
+    Chunk KV rows to avoid materializing an entire M x N x D product tensor.
+    """
+    q = q_block.to(torch.float64)
+    k = k_mat.to(torch.float64)
+    qs = q_scale.to(torch.float64)
+    ks = k_scale.to(torch.float64)
+    result = torch.zeros((q.shape[0], k.shape[0]), dtype=torch.float64, device=q.device)
+    for n_start in range(0, k.shape[0], 64):
+        n_end = min(n_start + 64, k.shape[0])
+        accumulator = result[:, n_start:n_end]
+        for group_start in range(0, q.shape[1], QUANT_GROUP_SIZE):
+            group_sum = torch.zeros_like(accumulator)
+            for d_start in range(group_start, group_start + QUANT_GROUP_SIZE, 16):
+                products = (
+                    q[:, None, d_start : d_start + 16]
+                    * k[None, n_start:n_end, d_start : d_start + 16]
+                )
+                maximum = products.abs().amax(dim=-1, keepdim=True)
+                _, exponent = torch.frexp(maximum)
+                # frexp exponent is one greater than floor(log2(maximum)).
+                step = torch.ldexp(torch.ones_like(maximum), exponent - 19)
+                group_sum += (torch.trunc(products / step) * step).sum(dim=-1)
+            group = group_start // QUANT_GROUP_SIZE
+            increment = (
+                group_sum * qs[:, group : group + 1] * ks[None, n_start:n_end, group]
+            )
+            _, accumulator_exponent = torch.frexp(accumulator.abs())
+            # FP32 has 24 significant bits; its minimum subnormal step is 2**-149.
+            accumulator_step = torch.ldexp(
+                torch.ones_like(accumulator),
+                torch.clamp(accumulator_exponent - 24, min=-149),
+            )
+            increment = torch.where(
+                accumulator == 0,
+                increment,
+                torch.trunc(increment / accumulator_step) * accumulator_step,
+            )
+            accumulator = (accumulator + increment).to(torch.float32).to(torch.float64)
+        result[:, n_start:n_end] = accumulator
+    return result.to(torch.float32)
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
-    """CPU torch.matmul path: FP32 dequant + matmul."""
+    """CPU MXFP8 QK rounding with the existing non-finite fallback."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
     k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
-    scores = torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
+    qk_raw = torch.matmul(q_dequant, k_dequant.transpose(0, 1))
+    rounded_qk = _qk_matmul_rounded_cpu(q_block, q_scale_block, k_mat, k_scale_mat)
+    # Leave non-finite cases to the existing overflow/NaN handling below.
+    qk_raw = torch.where(
+        torch.isfinite(qk_raw) & torch.isfinite(rounded_qk), rounded_qk, qk_raw
+    )
+    scores = qk_raw * softmax_scale
 
     # Applying the descales before matmul can introduce a non-finite score that
     # does not exist in MXFP8 cube arithmetic.  For example, a finite E4M3
@@ -1601,8 +1661,8 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     # finite FP8 payloads in each 32-element group and applies the group
     # descales afterwards.
     #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial non-finite results.  NaNs present in either
+    # Keep the rounded result for finite values and repair artificial
+    # non-finite results from the dequant + torch.matmul fallback.  NaNs present in either
     # FP8 payload are deliberately excluded from repair and therefore continue
     # to propagate.  A genuine Cube overflow remains non-finite after the
     # grouped recomputation, so replacing it is also semantics-preserving.
@@ -2142,6 +2202,69 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE,
     )
 
+    blocks_per_task = max(1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE)
+    progress_total = 0
+    for progress_batch_idx, progress_q_len in enumerate(q_lengths):
+        progress_qb_count = math.ceil(int(progress_q_len) / SPARSE_BLOCK_SIZE)
+        block_counts = sparse_seq_len[progress_batch_idx, :, :progress_qb_count].to(
+            torch.int64
+        )
+        progress_total += int(
+            torch.div(
+                block_counts + blocks_per_task - 1,
+                blocks_per_task,
+                rounding_mode="floor",
+            )
+            .sum()
+            .item()
+        )
+
+    progress_done = 0
+    progress_start = time.monotonic()
+    progress_last_log = progress_start
+    progress_last_done = -1
+    progress_next_percent = 0.0
+
+    def log_golden_progress(force=False):
+        nonlocal progress_last_log, progress_last_done, progress_next_percent
+        if force and progress_done == progress_last_done:
+            return
+        now = time.monotonic()
+        percent = (
+            100.0
+            if progress_total == 0
+            else min(100.0, 100.0 * progress_done / progress_total)
+        )
+        if not force and progress_done < progress_total:
+            if percent < progress_next_percent and now - progress_last_log < 30.0:
+                return
+
+        elapsed = now - progress_start
+        if progress_done > 0 and progress_done < progress_total:
+            eta_seconds = elapsed * (progress_total - progress_done) / progress_done
+            eta_text = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+        elif progress_done >= progress_total:
+            eta_text = "00:00:00"
+        else:
+            eta_text = "--:--:--"
+        elapsed_text = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+        filled = min(20, int(percent / 5.0))
+        logger.info(
+            "[CPU Golden] progress [%s%s] %6.2f%% (%d/%d), elapsed=%s, ETA=%s",
+            "#" * filled,
+            "-" * (20 - filled),
+            percent,
+            progress_done,
+            progress_total,
+            elapsed_text,
+            eta_text,
+        )
+        progress_last_log = now
+        progress_last_done = progress_done
+        progress_next_percent = min(100.0, (math.floor(percent / 5.0) + 1) * 5.0)
+
+    log_golden_progress(force=True)
+
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
@@ -2293,7 +2416,7 @@ def cpu_mxfp8_golden(
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = _cast_mxfp8_p_to_e4m3(p_subloop)
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -2338,6 +2461,9 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
+                    progress_done += 1
+                    log_golden_progress()
+
                 # Match the master kernel's final guards. LastDivNewVF writes
                 # zero when sum == 0, RowInvalidUpdateVF writes zero when max
                 # is the -FLT_MAX sentinel, and ComputeLseOutputVF maps either
@@ -2363,6 +2489,9 @@ def cpu_mxfp8_golden(
                         )
                     if bool(lse_active[local_idx].item()):
                         softmax_lse[out_idx, head_idx] = lse[local_idx]
+
+    progress_done = progress_total
+    log_golden_progress(force=True)
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
@@ -3299,8 +3428,9 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     Including the backend prevents CPU torch.matmul and npu_quant_matmul
     golden outputs from reusing each other's cache. It also intentionally
     avoids pre-fix cache files whose key did not encode the backend.
+    The CPU version suffix also isolates results from older QK rounding models.
     """
-    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul_v2"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
