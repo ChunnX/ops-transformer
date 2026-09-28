@@ -404,6 +404,26 @@ void SFAMlaTiling::SplitBalanced()
     tilingData_.innerSplitParams.set_s2BaseSize(sfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
+    const bool splitKVSupported = sfaInfo_->isA5 && sfaInfo_->bSize == 1 && sfaInfo_->n2Size == 1 &&
+                                  (sfaInfo_->s1Size == 1 || sfaInfo_->s1Size == 4) &&
+                                  sfaInfo_->s2Size >= 2048 &&
+                                  sfaInfo_->sparseBlockCount == 2048 && sfaInfo_->sparseBlockSize == 1 &&
+                                  sfaInfo_->gSize == 8 && sfaInfo_->ropeHeadDim == 64 &&
+                                  sfaInfo_->inputQType == ge::DT_BF16 && sfaInfo_->inputKvType == ge::DT_BF16 &&
+                                  sfaInfo_->outputType == ge::DT_BF16 && sfaInfo_->qLayout == SFALayout::TND &&
+                                  sfaInfo_->kvLayout == SFALayout::PA_BSND && sfaInfo_->sparseMode == 0 &&
+                                  !sfaInfo_->returnSoftmaxLse && sfaInfo_->opParamInfo.sinks.tensor == nullptr;
+    // Each partition must contain at least 128 indices; the merge UB supports at most 16 partitions.
+    const uint32_t maxSplitCount = splitKVSupported ? std::min(16U, aicNum_ / sfaInfo_->s1Size) : 1U;
+    uint32_t splitCount = 1;
+    while (splitCount * 2U <= maxSplitCount) {
+        splitCount *= 2U;
+    }
+    if (splitKVSupported && splitCount > 1) {
+        splitKVFlag_ = true;
+        kvSplitPart_ = splitCount;
+        usedCoreNum_ = sfaInfo_->s1Size * splitCount;
+    }
 }
 
 void SFAMlaTiling::Split()
@@ -507,6 +527,9 @@ void SFAMlaTiling::GetWorkspaceSize()
         if (sfaInfo_->gSize > 64) { // N1大于64时切G，相邻两个cube核处理同一个s2Base
             aicNum = aicNum >> 1;
         }
+        if (splitKVFlag_) {
+            aicNum = usedCoreNum_;
+        }
         workspaceSize_ += (S2_BASE_SIZE * D_SIZE * GetTypeSize(sfaInfo_->inputQType) * TRIPLE_BUFFER_NUM * aicNum);
     } else {
         uint32_t mmResElemSize = 4;       // 4:fp32
@@ -540,7 +563,17 @@ void SFAMlaTiling::GetWorkspaceSize()
             4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
     }
 
-    CalcFDWorkSpace(actCoreNum);
+    if (sfaInfo_->isA5 && splitKVFlag_) {
+        // One slot per (query, KV split, vector sub-block): FP32 O and
+        // separately aligned max/sum rows for the two AIVs on each AIC.
+        constexpr uint32_t VECTOR_SUBBLOCKS = 2;
+        constexpr uint32_t HEADS_PER_SUBBLOCK = 4;
+        constexpr uint32_t STATS_STRIDE = 8;
+        const uint64_t slots = static_cast<uint64_t>(usedCoreNum_) * VECTOR_SUBBLOCKS;
+        workspaceSize_ += slots * HEADS_PER_SUBBLOCK * (512 + 2 * STATS_STRIDE) * sizeof(float);
+    } else {
+        CalcFDWorkSpace(actCoreNum);
+    }
 }
 
 void SFAMlaTiling::CalcBlockDim()
