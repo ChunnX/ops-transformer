@@ -286,7 +286,6 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlo
         this->SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         LocalTensor<T> comperssoredUb = scoreLocal;
-        PipeBarrier<PIPE_V>();
         this->KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         this->CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt,

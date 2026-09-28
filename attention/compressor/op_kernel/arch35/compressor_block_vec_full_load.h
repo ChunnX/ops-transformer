@@ -269,7 +269,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
             PipeBarrier<PIPE_V>();
         }
         LocalTensor<T> comperssoredUb = scoreLocal;
-        PipeBarrier<PIPE_V>();
         this->KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         this->CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt,
