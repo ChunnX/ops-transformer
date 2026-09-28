@@ -84,7 +84,16 @@ def load_whitelist():
         return _WHITELIST_CACHE
     with open(WHITELIST_PATH, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
-    _WHITELIST_CACHE = cfg.get("ops") or {}
+    ops = cfg.get("ops") or {}
+    for key, entry in ops.items():
+        soc_value = entry.get("soc")
+        if isinstance(soc_value, list):
+            valid = any(str(item).strip() for item in soc_value)
+        else:
+            valid = bool(str(soc_value).strip())
+        if not valid:
+            raise ValueError(f"{WHITELIST_PATH}: {key} missing required soc")
+    _WHITELIST_CACHE = ops
     return _WHITELIST_CACHE
 
 
@@ -197,15 +206,14 @@ def whitelist_selection(key, entry, by_key, target_socs):
         for item in impact:
             item = str(item)
             impact_keys.append(item if "/" in item else f"{domain}/{item}")
-    entry_socs = split_socs(entry.get("soc")) if "soc" in entry else None
+    entry_socs = split_socs(entry.get("soc"))
     selected = set()
     for impact_key in impact_keys:
         if impact_key not in by_key:
             continue
         domain, name, path = by_key[impact_key]
-        if entry_socs is not None and target_socs and entry_socs:
-            if not set(entry_socs).intersection(target_socs):
-                continue
+        if target_socs and not set(entry_socs).intersection(target_socs):
+            continue
         selected.add(name)
     return selected
 
