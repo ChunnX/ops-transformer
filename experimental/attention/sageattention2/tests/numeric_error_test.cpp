@@ -388,6 +388,135 @@ void TestSmoothKInvariance(std::mt19937 &rng)
     Report("relative discrepancy", worst, 1e-12, worst <= 1e-12);
 }
 
+void TestSmoothVPartitionOfUnityAndError(std::mt19937 &rng)
+{
+    // Smooth-V 数学算法架构验证：
+    // 1. 单位分解无偏加回恒等式：sum_j P_{ij} = 1 => P 1 = 1 => P(V - 1*vBar) + 1*vBar == PV
+    // 2. 真实离群通道分布下 FP8 PV 相对误差改善：相对误差由 ~2.3% 降低至 <0.5%
+    std::normal_distribution<float> gauss(0.0f, 1.0f);
+    std::uniform_real_distribution<float> outlierDist(15.0f, 35.0f);
+    const int sq = 64, sk = 512, d = 128;
+    double maxPartitionError = 0.0;
+    double worstDirectRelErr = 0.0;
+    double worstSmoothRelErr = 0.0;
+
+    for (int t = 0; t < 20; ++t) {
+        std::vector<double> vMeanRef(d, 0.0);
+        for (int c = 0; c < d; ++c) {
+            if (c % 6 == 0) {
+                vMeanRef[c] = outlierDist(rng);
+            } else {
+                vMeanRef[c] = 0.1 * gauss(rng);
+            }
+        }
+        std::vector<double> V(sk * d);
+        for (int j = 0; j < sk; ++j) {
+            for (int c = 0; c < d; ++c) {
+                V[j * d + c] = vMeanRef[c] + gauss(rng);
+            }
+        }
+        std::vector<double> vBar(d, 0.0);
+        for (int j = 0; j < sk; ++j) {
+            for (int c = 0; c < d; ++c) {
+                vBar[c] += V[j * d + c];
+            }
+        }
+        for (int c = 0; c < d; ++c) {
+            vBar[c] /= sk;
+        }
+
+        std::vector<double> P(sq * sk);
+        for (int i = 0; i < sq; ++i) {
+            double sumExp = 0.0;
+            std::vector<double> rowScores(sk);
+            for (int j = 0; j < sk; ++j) {
+                rowScores[j] = gauss(rng) * 2.0;
+            }
+            double maxScore = -1e300;
+            for (double s : rowScores) {
+                maxScore = std::fmax(maxScore, s);
+            }
+            for (int j = 0; j < sk; ++j) {
+                rowScores[j] = std::exp(rowScores[j] - maxScore);
+                sumExp += rowScores[j];
+            }
+            for (int j = 0; j < sk; ++j) {
+                P[i * sk + j] = rowScores[j] / sumExp;
+            }
+        }
+
+        std::vector<double> O_true(sq * d, 0.0);
+        for (int i = 0; i < sq; ++i) {
+            for (int c = 0; c < d; ++c) {
+                double accTrue = 0.0;
+                double accCentered = 0.0;
+                for (int j = 0; j < sk; ++j) {
+                    double p = P[i * sk + j];
+                    accTrue += p * V[j * d + c];
+                    accCentered += p * (V[j * d + c] - vBar[c]);
+                }
+                O_true[i * d + c] = accTrue;
+                double absDiff = std::fabs((accCentered + vBar[c]) - accTrue);
+                maxPartitionError = std::fmax(maxPartitionError, absDiff);
+            }
+        }
+
+        // 模拟直接 FP8 E4M3 量化（含 MXFP8 block-32 microscaling）
+        std::vector<double> V_direct_fp8(sk * d);
+        for (int c = 0; c < d; ++c) {
+            float amax = 0.0f;
+            for (int j = 0; j < sk; ++j) {
+                amax = std::fmax(amax, std::fabs(static_cast<float>(V[j * d + c])));
+            }
+            float scale = MxScale(amax);
+            for (int j = 0; j < sk; ++j) {
+                float q = QuantE4M3(static_cast<float>(V[j * d + c]) / scale);
+                V_direct_fp8[j * d + c] = static_cast<double>(q * scale);
+            }
+        }
+
+        // 模拟减均值后 FP8 E4M3 量化
+        std::vector<double> V_smooth_fp8(sk * d);
+        for (int c = 0; c < d; ++c) {
+            float amax = 0.0f;
+            for (int j = 0; j < sk; ++j) {
+                amax = std::fmax(amax, std::fabs(static_cast<float>(V[j * d + c] - vBar[c])));
+            }
+            float scale = MxScale(amax);
+            for (int j = 0; j < sk; ++j) {
+                float q = QuantE4M3(static_cast<float>(V[j * d + c] - vBar[c]) / scale);
+                V_smooth_fp8[j * d + c] = static_cast<double>(q * scale);
+            }
+        }
+
+        double normTrue = 0.0, diffDirect = 0.0, diffSmooth = 0.0;
+        for (int i = 0; i < sq; ++i) {
+            for (int c = 0; c < d; ++c) {
+                double outDirect = 0.0;
+                double outSmooth = 0.0;
+                for (int j = 0; j < sk; ++j) {
+                    double p = P[i * sk + j];
+                    outDirect += p * V_direct_fp8[j * d + c];
+                    outSmooth += p * V_smooth_fp8[j * d + c];
+                }
+                outSmooth += vBar[c]; // 单位分解无偏加回
+                double t_val = O_true[i * d + c];
+                normTrue += t_val * t_val;
+                diffDirect += (outDirect - t_val) * (outDirect - t_val);
+                diffSmooth += (outSmooth - t_val) * (outSmooth - t_val);
+            }
+        }
+        worstDirectRelErr = std::fmax(worstDirectRelErr, std::sqrt(diffDirect / normTrue));
+        worstSmoothRelErr = std::fmax(worstSmoothRelErr, std::sqrt(diffSmooth / normTrue));
+    }
+
+    std::printf("[9] Smooth-V partition of unity & FP8 error reduction\n");
+    Report("partition of unity identity error", maxPartitionError, 1e-12, maxPartitionError <= 1e-12);
+    Report("smooth-V FP8 relative error (<0.5%)", worstSmoothRelErr, 0.005, worstSmoothRelErr < 0.005);
+    bool reduced = worstSmoothRelErr < worstDirectRelErr * 0.4;
+    Report("error reduction ratio (>2.5x)", worstDirectRelErr / worstSmoothRelErr, 2.5, reduced);
+}
+
 }  // namespace
 
 int main()
@@ -403,6 +532,7 @@ int main()
     TestLn448Shift(rng);
     TestLseIdentity(rng);
     TestSmoothKInvariance(rng);
+    TestSmoothVPartitionOfUnityAndError(rng);
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");

@@ -164,7 +164,10 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
             const event_t event = static_cast<event_t>(1 + slot);
             WaitFlag<HardEvent::MTE2_V>(event);
             auto input = r.ubBuf.template GetBufferByByte<T>(slot * SLOT_BYTES);
-            StatsSumVF(input, sum, rows, p.dp);
+            auto x = r.ubBuf.template GetBufferByByte<float>(65536);
+            Cast(x, input, RoundMode::CAST_NONE, rows * p.dp);
+            PipeBarrier<PIPE_V>();
+            StatsSumVF(x, sum, rows, p.dp);
             SetFlag<HardEvent::V_MTE2>(event);
         }
         WaitFlag<HardEvent::V_MTE2>(1);
