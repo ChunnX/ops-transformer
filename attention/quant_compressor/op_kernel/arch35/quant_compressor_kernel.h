@@ -233,13 +233,12 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
         mSize += bSeqUsed;
     }
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
-    // 切m要求每个m组都能分到一个核组：mBaseNum > coreGroupNum 时（如28核下
-    // mBaseNum=4 > coreGroupNum=3），第coreGroupNum组之后的m段没有任何核处理，
-    // 序列尾部的token（压缩块/stateCache）全部丢失，必须改走K轴切分；
-    // 该兜底不依赖确定性开关（确定性模式下同样丢尾，正确性优先）
-    if ((constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum &&
-         constInfo.batchConsistency != BATCH_CONSISTENCY) ||
-        mBaseNum > constInfo.coreGroupNum) {
+    // arch35 NORMAL 为多轮窗口推进式 M 切分（GetLoopTimes 动态轮数），
+    // mBaseNum 只影响轮数，mBaseNum > coreGroupNum 时仍完整覆盖，无需切 K；
+    // 仅开不满核（dBasicBlockNum * mBaseNum < usedCoreNum）且非确定性模式时切 K；
+    // kBaseNum 裁剪与 K 段索引重写逻辑保留（容量约束修复，非策略切换）
+    if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum &&
+        constInfo.batchConsistency != BATCH_CONSISTENCY) {
         constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
         // K轴最多切 hSize/块宽 段（fp8等1字节类型块宽为32）：超出时裁剪kBaseNum，
         // 否则kAlignSize上取整后被Trunc截成0（如36核+K=1024+fp8：kBaseNum=36>32
