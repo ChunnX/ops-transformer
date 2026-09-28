@@ -1,11 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
- * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -52,7 +51,7 @@ struct TurboQuantAttentionScoreParams {
 static const std::initializer_list<op::DataType> BF16_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> UINT8_TYPE_SUPPORT_LIST = {op::DataType::DT_UINT8};
 static const std::initializer_list<op::DataType> NORM_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
-                                                                          op::DataType::DT_FLOAT16};
+                                                                           op::DataType::DT_FLOAT16};
 static const std::initializer_list<op::DataType> INT32_TYPE_SUPPORT_LIST = {op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> FP32_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
@@ -90,8 +89,7 @@ static inline bool CheckDtype(const TurboQuantAttentionScoreParams &params)
 static inline bool CheckAttr(const TurboQuantAttentionScoreParams &params)
 {
     OP_CHECK(params.mseBits == 2 || params.mseBits == 3 || params.mseBits == 4,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mseBits must be in {2, 3, 4}, got %ld.", params.mseBits),
-             return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mseBits must be in {2, 3, 4}, got %ld.", params.mseBits), return false);
     return true;
 }
 
@@ -105,11 +103,12 @@ static aclnnStatus CheckParams(const TurboQuantAttentionScoreParams &params)
 
 } // namespace
 
-aclnnStatus aclnnTurboQuantAttentionScoreGetWorkspaceSize(
-    const aclTensor *queryRotated, const aclTensor *queryQjl, const aclTensor *keyCacheIdx,
-    const aclTensor *keyCacheQjl, const aclTensor *keyCacheNorm, const aclTensor *keyCacheGamma,
-    const aclTensor *blockTable, const aclTensor *seqLens, int64_t mseBits, aclTensor *out,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnTurboQuantAttentionScoreGetWorkspaceSize(const aclTensor *queryRotated, const aclTensor *queryQjl,
+                                                          const aclTensor *keyCacheIdx, const aclTensor *keyCacheQjl,
+                                                          const aclTensor *keyCacheNorm, const aclTensor *keyCacheGamma,
+                                                          const aclTensor *blockTable, const aclTensor *seqLens,
+                                                          int64_t mseBits, aclTensor *out, uint64_t *workspaceSize,
+                                                          aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnTurboQuantAttentionScore,
                    DFX_IN(queryRotated, queryQjl, keyCacheIdx, keyCacheQjl, keyCacheNorm, keyCacheGamma, blockTable,
@@ -119,7 +118,7 @@ aclnnStatus aclnnTurboQuantAttentionScoreGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    TurboQuantAttentionScoreParams params{queryRotated, queryQjl,   keyCacheIdx, keyCacheQjl, keyCacheNorm,
+    TurboQuantAttentionScoreParams params{queryRotated,  queryQjl,   keyCacheIdx, keyCacheQjl, keyCacheNorm,
                                           keyCacheGamma, blockTable, seqLens,     mseBits,     out};
     CHECK_RET(CheckParams(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 

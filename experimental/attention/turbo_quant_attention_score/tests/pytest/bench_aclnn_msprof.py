@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# Licensed under CANN Open Software License Agreement Version 2.0.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 """A2 aclnn latency via torch_npu custom op path is unavailable; use ctypes+acl.
 
@@ -33,7 +40,9 @@ BASELINE_US = {
 
 
 def _make_case(name: str) -> dict:
-    cases = json.loads(Path(__file__).with_name("case.json").read_text(encoding="utf-8"))
+    cases = json.loads(
+        Path(__file__).with_name("case.json").read_text(encoding="utf-8")
+    )
     return next(c for c in cases if c["case_name"] == name)
 
 
@@ -50,8 +59,12 @@ def _inputs(case: dict):
         "query_qjl": rng.uniform(-1, 1, shapes["query_qjl"]).astype(np.float32),
         "key_cache_idx": rng.integers(0, 256, shapes["key_cache_idx"], dtype=np.uint8),
         "key_cache_qjl": rng.integers(0, 256, shapes["key_cache_qjl"], dtype=np.uint8),
-        "key_cache_norm": rng.uniform(0.1, 2, shapes["key_cache_norm"]).astype(np.float32),
-        "key_cache_gamma": rng.uniform(0.1, 2, shapes["key_cache_gamma"]).astype(np.float32),
+        "key_cache_norm": rng.uniform(0.1, 2, shapes["key_cache_norm"]).astype(
+            np.float32
+        ),
+        "key_cache_gamma": rng.uniform(0.1, 2, shapes["key_cache_gamma"]).astype(
+            np.float32
+        ),
         "block_table": bt,
         "seq_lens": np.full(shapes["seq_lens"], int(lo), dtype=np.int32),
         "mse_bits": int(attrs.get("mse_bits", 3)),
@@ -90,8 +103,14 @@ def main():
 
         def once(i=inp):
             return calc_expect_func(
-                i["query_rotated"], i["query_qjl"], i["key_cache_idx"], i["key_cache_qjl"],
-                i["key_cache_norm"], i["key_cache_gamma"], i["block_table"], i["seq_lens"],
+                i["query_rotated"],
+                i["query_qjl"],
+                i["key_cache_idx"],
+                i["key_cache_qjl"],
+                i["key_cache_norm"],
+                i["key_cache_gamma"],
+                i["block_table"],
+                i["seq_lens"],
                 i["mse_bits"],
             )
 

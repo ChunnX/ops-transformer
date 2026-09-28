@@ -1,11 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -47,8 +46,8 @@ uint16_t FloatToBf16Bits(float value)
 }
 
 template <typename T>
-int CreateTensor(const std::vector<T> &data, const std::vector<int64_t> &shape, aclDataType dtype,
-                 void **device, aclTensor **tensor)
+int CreateTensor(const std::vector<T> &data, const std::vector<int64_t> &shape, aclDataType dtype, void **device,
+                 aclTensor **tensor)
 {
     const size_t bytes = data.size() * sizeof(T);
     CHECK_ACL(aclrtMalloc(device, bytes, ACL_MEM_MALLOC_HUGE_FIRST));
@@ -57,8 +56,8 @@ int CreateTensor(const std::vector<T> &data, const std::vector<int64_t> &shape, 
     for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *device);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                              shape.size(), *device);
     return *tensor == nullptr ? 1 : ACL_SUCCESS;
 }
 
@@ -157,9 +156,8 @@ int RunCase(const CaseCfg &cfg)
     auto launch = [&]() -> int {
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor = nullptr;
-        CHECK_ACL(aclnnTurboQuantAttentionScoreGetWorkspaceSize(
-            qT, qjlT, idxT, qjlPT, normT, gammaT, tableT, seqT, MSE_BITS, outT, &workspaceSize,
-            &executor));
+        CHECK_ACL(aclnnTurboQuantAttentionScoreGetWorkspaceSize(qT, qjlT, idxT, qjlPT, normT, gammaT, tableT, seqT,
+                                                                MSE_BITS, outT, &workspaceSize, &executor));
         void *workspace = nullptr;
         if (workspaceSize > 0) {
             CHECK_ACL(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
@@ -189,8 +187,8 @@ int RunCase(const CaseCfg &cfg)
     }
     const double meanUs = MeanDropMax(times);
     const double ratio = meanUs / cfg.baselineUs;
-    std::printf("case=%s latency_us=%.3f baseline_us=%.3f ratio=%.3f pass_1p2x=%s\n", cfg.name,
-                meanUs, cfg.baselineUs, ratio, ratio <= 1.2 ? "YES" : "NO");
+    std::printf("case=%s latency_us=%.3f baseline_us=%.3f ratio=%.3f pass_1p2x=%s\n", cfg.name, meanUs, cfg.baselineUs,
+                ratio, ratio <= 1.2 ? "YES" : "NO");
 
     aclDestroyTensor(qT);
     aclDestroyTensor(qjlT);
@@ -220,10 +218,8 @@ int main(int argc, char **argv)
     // Paged Full-QK baselines from task book; prefill_kv32k left blank there,
     // so use kv4k * (32768/4096) linear extrapolation.
     const CaseCfg cases[] = {
-        {"gqa_decode_kv4k", 1, 32, 8, 4096, 1501.634},
-        {"gqa_decode_kv32k", 1, 32, 8, 32768, 9278.507},
-        {"gqa_decode_kv128k", 1, 32, 8, 131072, 35681.690},
-        {"gqa_prefill_kv4k", 512, 32, 8, 4096, 75984.253},
+        {"gqa_decode_kv4k", 1, 32, 8, 4096, 1501.634},        {"gqa_decode_kv32k", 1, 32, 8, 32768, 9278.507},
+        {"gqa_decode_kv128k", 1, 32, 8, 131072, 35681.690},   {"gqa_prefill_kv4k", 512, 32, 8, 4096, 75984.253},
         {"gqa_prefill_kv32k", 512, 32, 8, 32768, 607874.024},
     };
     std::string only;
