@@ -240,7 +240,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     Buffer<BufferType::L1> inputLeftBuf;
     PrepareLeftMatrixBmm1SFA(inputLeftBuf, runInfo, constInfo);
 
-    inputRightBuf.WaitCrossCore();
     SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
@@ -422,4 +421,5 @@ DEFINE_CUBE_BLOCK_TRAITS(SFAMatmulServiceDummy);
     SFA_CUBE_TRAIT_TYPES(GEN_ARGS_TYPE) \
     SFA_CUBE_TRAIT_CONSTANTS(GEN_ARGS_CONST)
 } // namespace BaseApi
+
 #endif // SPARSE_FLASH_ATTENTION_SERVICE_CUBE_MLA_ARCH35_H
