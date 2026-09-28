@@ -405,8 +405,7 @@ void SFAMlaTiling::SplitBalanced()
 
     usedCoreNum_ = aicNum_;
     const bool splitKVSupported = sfaInfo_->isA5 && sfaInfo_->bSize == 1 && sfaInfo_->n2Size == 1 &&
-                                  (sfaInfo_->s1Size == 1 || sfaInfo_->s1Size == 4) &&
-                                  sfaInfo_->s2Size >= 2048 &&
+                                  (sfaInfo_->s1Size == 1 || sfaInfo_->s1Size == 4) && sfaInfo_->s2Size >= 2048 &&
                                   sfaInfo_->sparseBlockCount == 2048 && sfaInfo_->sparseBlockSize == 1 &&
                                   sfaInfo_->gSize == 8 && sfaInfo_->ropeHeadDim == 64 &&
                                   sfaInfo_->inputQType == ge::DT_BF16 && sfaInfo_->inputKvType == ge::DT_BF16 &&
