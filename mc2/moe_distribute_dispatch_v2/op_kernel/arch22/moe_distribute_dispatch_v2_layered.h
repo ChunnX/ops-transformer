@@ -131,8 +131,8 @@ private:
     __aicore__ inline uint32_t GetSelfServerTokenInfo(uint32_t tokenIdx, bool justExpInfo,
                                                       LocalTensor<uint8_t> receiveTokenStructU8Lt);
     __aicore__ inline void CreateZeroInnerCnt(uint32_t curServerId);
-    __aicore__ inline void CalExpCntAndOffset(uint32_t realBS, uint32_t currServerExpBegin, uint32_t currServerExpEnd,
-                                              LocalTensor<int32_t> tokenTopKInfoI32Lt);
+    __aicore__ inline uint32_t CalExpCntAndOffset(uint32_t realBS, uint32_t currServerExpBegin,
+                                                  uint32_t currServerExpEnd, LocalTensor<int32_t> tokenTopKInfoI32Lt);
     __aicore__ inline void CalInnerCntxAndOffset(uint32_t realBS, LocalTensor<int32_t> tokenTopKInfoI32Lt);
     __aicore__ inline void TransInnerToEpRecvCountsOutGM(uint32_t realBS, uint32_t curServerId);
     __aicore__ inline void TransOuterToEpRecvCountsOutGM();
@@ -182,6 +182,8 @@ private:
     LocalTensor<int32_t> outExpIdxTensor_;
     LocalTensor<int16_t> expRecvTokenIdxMap_;
     LocalTensor<int32_t> expCntMap_;
+    LocalTensor<int32_t> minExpTokenCnt_;
+    LocalTensor<int32_t> minExpWriteCursor_;
     LocalTensor<int32_t> tokenOffsetLt_;
     LocalTensor<int32_t> innerOffsetLt_;
     LocalTensor<int16_t> innerCntLt_;
@@ -229,15 +231,15 @@ private:
     uint32_t moeExpertNumInServer_{0};
     uint32_t localMoeExpertNum_{0};
     uint32_t serverSizeOnWin_{0};
-    uint32_t rankSizeOnIpc_{0};
+    uint64_t rankSizeOnIpc_{0};
     uint32_t dataSpaceSize_{0};
     uint32_t bufferId_{0};
-    uint32_t totalSize_{0};
+    uint64_t totalSize_{0};
     uint32_t rdmaWinSize_{0};
     uint32_t halfWinSize_{0};
     uint32_t serverNum_{0};
     uint32_t expertTokenNumsType_{0};
-    uint32_t shareMemOffset_{0};
+    uint64_t shareMemOffset_{0};
     uint32_t tokenUbSize_{0};
 
     // TokenStruct
@@ -263,6 +265,7 @@ private:
     uint64_t combineInnerCntIndexOffset_{0};
     uint64_t combineOuterCntOffset_{0};
     uint64_t combineOuterCntIndexOffset_{0};
+    uint32_t maxBs_{0};
     uint32_t activeMaskBsCnt_{0};
     uint64_t sendToMoeExpTokenCnt_{0};
     bool isTokenMaskFlag_ = false;
@@ -287,8 +290,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
     isTokenMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isTokenMask;
     localMoeExpertNum_ = moeExpertNum_ / worldSize_;
+    maxBs_ = globalBs_ / worldSize_;
     totalSize_ = winContext_->winSize;
-    rdmaWinSize_ = RDMA_DATA_SIZE; // 100 MB for RDMA
+    rdmaWinSize_ = RDMA_DATA_SIZE;
     shareMemOffset_ = rdmaWinSize_;
     halfWinSize_ = rdmaWinSize_ / DOUBLE_WIN_SPACE;
     dataSpaceSize_ = halfWinSize_ - STATUS_SPACE_SIZE;
@@ -430,7 +434,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     epRecvCountsOutGM_ = epRecvCountsOut;       // 无GlobalTensor, 无需初始化
     expandIdxOutGM_ = expandIdxOut;             // 无GlobalTensor, 无需初始化
     // UB init
-    tpipe_->InitBuffer(statusBuf_, FLAG_SIZE);
+    // GetArrivedTokenInfo loads the end flag, current token flag, and next token flag into this buffer.
+    tpipe_->InitBuffer(statusBuf_, FLAG_SIZE * 3U);
     tpipe_->InitBuffer(rdmaInBuf_, UB_32B_ALIGN);
     ubLocalTensor_ = rdmaInBuf_.Get<uint64_t>();
     tpipe_->InitBuffer(rdmaInBuf2_, UB_32B_ALIGN);
@@ -522,7 +527,11 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyExtParams copyTokenParams{static_cast<uint16_t>(1),
                                       static_cast<uint32_t>(tokenCntInBatch * tokenStructLen_), 0, 0, 0};
     DataCopyPadExtParams<uint8_t> padParams;
-    uint32_t srcIpcOffset = srIdx * rankSizeOnIpc_ + batchIdx * tokenNumsInUB * tokenStructLen_;
+    // srcIpcGt 按 uint8_t 寻址，这里所有 offset/stride 均为字节，不能按 tensor 元素数换算。
+    // srIdx = localExpert * worldSize + sourceRank，对应 Win2Ipc 的 expert/server/local-rank 分片。
+    // 大 window 的高 expert slice 可超过 4 GiB；必须在乘法前提升位宽，不能算完再转 uint64_t。
+    uint64_t srcIpcOffset = static_cast<uint64_t>(srIdx) * rankSizeOnIpc_ +
+                            static_cast<uint64_t>(batchIdx) * tokenNumsInUB * tokenStructLen_;
     DataCopyPad(outTokenTensor_, srcIpcGt[srcIpcOffset], copyTokenParams, padParams);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopyExtParams writeTokenParams{static_cast<uint16_t>(tokenCntInBatch),
@@ -639,8 +648,10 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     // tBuf_ 内存分配
     // 4k ~ 6k 保存按expert统计的token个数信息
     tokenCntByExpTensor_ = tBuf_.GetWithOffset<int64_t>(2 * 1024 / sizeof(int64_t), 4 * 1024);
-    // 6k ~ 8k 保存token个数统计信息
-    tokenCntTensor_ = tBuf_.GetWithOffset<int32_t>(2 * 1024 / sizeof(int32_t), 6 * 1024);
+    // 6k 起保存全部 expert/rank 的稀疏统计，512 个专家需要 16 KiB，不能用原 2 KiB 视图。
+    // CalculateTokenStatics 原地压缩为最多 2 KiB 后，稀疏尾部失效，才可复用 TBUF_TEMP_OFFSET 起的区域。
+    uint32_t tokenCntNum = serverNum_ * SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT;
+    tokenCntTensor_ = tBuf_.GetWithOffset<int32_t>(tokenCntNum, 6 * 1024);
     // 2k ~ 4k 保存权重信息
     weightTensor_ = tBuf_.GetWithOffset<float>(2 * 1024 / sizeof(float), 2 * 1024);
 
@@ -685,7 +696,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             bufferChosenGMTensor_);
     }
 
-    uint32_t tokenEndFlagCleanSize = MAX_BS_NUM * FLAG_SIZE;
+    uint32_t tokenEndFlagCleanSize = maxBs_ * FLAG_SIZE;
     uint32_t writeEndFlagCleanSize = serverNum_ * STATE_OFFSET;
     uint32_t maxCleanSize =
         tokenEndFlagCleanSize > writeEndFlagCleanSize ? tokenEndFlagCleanSize : writeEndFlagCleanSize;
@@ -700,7 +711,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
     GlobalTensor<int32_t> tokenEndFlagCleanTensor;
     tokenEndFlagCleanTensor.SetGlobalBuffer((__gm__ int32_t *)(windowInGM_ + aivId_ * serverSizeOnWin_));
-    DataCopyExtParams cleanTokenEndFlagParams{uint16_t(MAX_BS_NUM), uint32_t(flagLenInStruct_), 0,
+    DataCopyExtParams cleanTokenEndFlagParams{uint16_t(maxBs_), uint32_t(flagLenInStruct_), 0,
                                               uint32_t(tokenStructLen_ - flagLenInStruct_), 0};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(tokenEndFlagCleanTensor[flagOffsetInStruct_ / sizeof(int32_t)], cleanTempLt_, cleanTokenEndFlagParams);
@@ -712,7 +723,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint32_t curServerId)
 {
     uint32_t copyTokenNum = aivNum_ < globalBs_ ? aivNum_ : globalBs_;
-    LocalTensor<int16_t> zeroTemp = tBuf_.GetWithOffset<int16_t>(copyTokenNum * sizeof(int16_t), 0);
+    LocalTensor<int16_t> zeroTemp = tBuf_.GetWithOffset<int16_t>(RoundUp(copyTokenNum, B16_PER_BLOCK), 0);
     Duplicate<int16_t>(zeroTemp, 0, RoundUp(copyTokenNum, B16_PER_BLOCK));
     GlobalTensor<int16_t> combineInnerCntGMTensor;
     combineInnerCntGMTensor.SetGlobalBuffer(
@@ -726,7 +737,7 @@ template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateInnerReduceInfo(
     uint32_t serverIdx)
 {
-    // 最后serverNum个Core加入本函数
+    // Process 中 aivId_ < serverNum_ 的核先发送，再为对应来源 server 生成 Inner 元数据。
     uint32_t curServerId = serverIdx;
     uint32_t baseBuffOffset = TBUF_TEMP_OFFSET;
     uint32_t tokenStatus = WAIT_STATUS;
@@ -757,9 +768,19 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         return;
     }
 
-    expRecvTokenIdxMap_ = tBuf_.GetWithOffset<int16_t>(moeExpertNumInServer_ * realBS, baseBuffOffset);
-    baseBuffOffset += sizeof(int16_t) * RoundUp(moeExpertNumInServer_ * realBS, TBUF_OFFSET_ALIGN_B32_CNT);
+    // Store each token only once in stable minimum-expert order.  The old implementation allocated
+    // moeExpertNumInServer_ * realBS entries and could exceed the 190 KiB UB for valid hierarchy shapes.
+    // 排序键为 (本 server 内命中的最小 expertId, 接收 token 序号)：与旧版按专家扫描、首次命中去重等价。
+    // 不能换成不稳定排序，否则同一最小专家下的 token 顺序会变，破坏 Combine 对 Inner 表的解释。
+    expRecvTokenIdxMap_ = tBuf_.GetWithOffset<int16_t>(RoundUp(realBS, B16_PER_BLOCK), baseBuffOffset);
+    baseBuffOffset += sizeof(int16_t) * RoundUp(realBS, TBUF_OFFSET_ALIGN_B32_CNT);
+    miniExpIds_ = tBuf_.GetWithOffset<int32_t>(RoundUp(realBS, B32_PER_BLOCK), baseBuffOffset);
+    baseBuffOffset += sizeof(int32_t) * RoundUp(realBS, TBUF_OFFSET_ALIGN_B32_CNT);
     expCntMap_ = tBuf_.GetWithOffset<int32_t>(moeExpertNumInServer_, baseBuffOffset);
+    baseBuffOffset += sizeof(int32_t) * RoundUp(moeExpertNumInServer_, TBUF_OFFSET_ALIGN_B32_CNT);
+    minExpTokenCnt_ = tBuf_.GetWithOffset<int32_t>(moeExpertNumInServer_, baseBuffOffset);
+    baseBuffOffset += sizeof(int32_t) * RoundUp(moeExpertNumInServer_, TBUF_OFFSET_ALIGN_B32_CNT);
+    minExpWriteCursor_ = tBuf_.GetWithOffset<int32_t>(moeExpertNumInServer_, baseBuffOffset);
     baseBuffOffset += sizeof(int32_t) * RoundUp(moeExpertNumInServer_, TBUF_OFFSET_ALIGN_B32_CNT);
     tokenOffsetLt_ = tBuf_.GetWithOffset<int32_t>(RoundUp(realBS * alignK_, B32_PER_BLOCK), baseBuffOffset);
     baseBuffOffset += sizeof(int32_t) * RoundUp(realBS * alignK_, TBUF_OFFSET_ALIGN_B32_CNT);
@@ -767,11 +788,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     baseBuffOffset += sizeof(int32_t) * RoundUp(realBS * alignK_, TBUF_OFFSET_ALIGN_B32_CNT);
     innerCntLt_ = tBuf_.GetWithOffset<int16_t>(RoundUp(realBS + aivNum_, B16_PER_BLOCK), baseBuffOffset);
 
-    Duplicate<int16_t>(expRecvTokenIdxMap_, int16_t(-1), moeExpertNumInServer_ * realBS);
+    Duplicate<int16_t>(expRecvTokenIdxMap_, int16_t(-1), RoundUp(realBS, B16_PER_BLOCK));
+    Duplicate<int32_t>(miniExpIds_, int32_t(moeExpertNumInServer_), RoundUp(realBS, B32_PER_BLOCK));
     Duplicate<int32_t>(expCntMap_, int32_t(0), moeExpertNumInServer_);
+    Duplicate<int32_t>(minExpTokenCnt_, int32_t(0), moeExpertNumInServer_);
+    Duplicate<int32_t>(minExpWriteCursor_, int32_t(0), moeExpertNumInServer_);
     Duplicate<int32_t>(tokenOffsetLt_, int32_t(0), realBS * alignK_);
     Duplicate<int16_t>(innerCntLt_, 0, RoundUp(realBS + aivNum_, B16_PER_BLOCK));
-    Duplicate<int32_t>(innerOffsetLt_, 0, (realBS)*alignK_);
+    Duplicate<int32_t>(innerOffsetLt_, 0, realBS * alignK_);
     SyncFunc<AscendC::HardEvent::V_S>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
@@ -782,21 +806,27 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CalExpCntAndOffset(
+__aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CalExpCntAndOffset(
     uint32_t realBS, uint32_t currServerExpBegin, uint32_t currServerExpEnd, LocalTensor<int32_t> tokenTopKInfoI32Lt)
 {
     for (uint32_t tokenIdx = 0; tokenIdx < realBS; tokenIdx++) {
+        uint32_t minExpIdInServer = moeExpertNumInServer_;
         for (uint32_t expIdx = 0; expIdx < axisK_; expIdx++) {
             int32_t expId = tokenTopKInfoI32Lt(tokenIdx * alignK_ + expIdx);
             if (expId >= currServerExpBegin && expId < currServerExpEnd) {
                 int32_t expIdInServer = expId % moeExpertNumInServer_;
                 uint32_t offsetInExp = expCntMap_(expIdInServer);
                 expCntMap_(expIdInServer) += 1; // expCntMap_记录当前server内的每个exp收到几个token
-                expRecvTokenIdxMap_(expIdInServer * realBS + offsetInExp) =
-                    static_cast<uint16_t>(tokenIdx); // expRecvTokenIdxMap_记录exp对应偏移位置上的token序号
                 tokenOffsetLt_(tokenIdx * axisK_ + expIdx) =
                     offsetInExp; // tokenOffsetLt_记录每个token在其topk专家上的偏移值
+                minExpIdInServer = minExpIdInServer < static_cast<uint32_t>(expIdInServer) ?
+                                       minExpIdInServer :
+                                       static_cast<uint32_t>(expIdInServer);
             }
+        }
+        miniExpIds_(tokenIdx) = minExpIdInServer;
+        if (minExpIdInServer < moeExpertNumInServer_) {
+            minExpTokenCnt_(minExpIdInServer) += 1;
         }
     }
     for (uint32_t expIdx = 0; expIdx < moeExpertNumInServer_; expIdx++) {
@@ -805,6 +835,24 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
         expCntMap_(expIdx) += expCntMap_(expIdx - 1);
     }
+
+    // Stable counting sort by the minimum destination expert. This preserves the old output order without
+    // materializing a [moeExpertNumInServer_, realBS] token map.
+    uint32_t tokenPrefix = 0;
+    for (uint32_t expIdx = 0; expIdx < moeExpertNumInServer_; ++expIdx) {
+        minExpWriteCursor_(expIdx) = tokenPrefix;
+        tokenPrefix += minExpTokenCnt_(expIdx);
+    }
+    for (uint32_t tokenIdx = 0; tokenIdx < realBS; ++tokenIdx) {
+        uint32_t minExpIdInServer = miniExpIds_(tokenIdx);
+        if (minExpIdInServer < moeExpertNumInServer_) {
+            uint32_t writeOffset = minExpWriteCursor_(minExpIdInServer);
+            expRecvTokenIdxMap_(writeOffset) = static_cast<int16_t>(tokenIdx);
+            minExpWriteCursor_(minExpIdInServer) = writeOffset + 1U;
+        }
+    }
+    // 未命中当前 server 的 token 不写入 map；返回有效长度而不是 realBS，尾部仍为 -1 哨兵。
+    return tokenPrefix;
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -814,39 +862,28 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint32_t currServerExpBegin = rankId_ / SERVER_RANK_SIZE * moeExpertNumInServer_; // 目标Server的起始专家
     uint32_t currServerExpEnd = currServerExpBegin + moeExpertNumInServer_;           // 目标Server的结束专家
     uint32_t expOccurNum = 0;
-    uint32_t tokenOccurNum = 0;
     // 计算exportCnt累加表,combineReduceInfo和tokenOffset
-    CalExpCntAndOffset(realBS, currServerExpBegin, currServerExpEnd, tokenTopKInfoI32Lt);
+    uint32_t validTokenNum = CalExpCntAndOffset(realBS, currServerExpBegin, currServerExpEnd, tokenTopKInfoI32Lt);
 
-    // 通过前面计算得到的三张表计算 innerCnt表和innerOffset表
-    for (uint32_t expBlockId = 0; expBlockId < moeExpertNumInServer_; expBlockId++) {
-        uint32_t validCnt = (expBlockId % localMoeExpertNum_ == 0) ?
-                                expCntMap_(expBlockId) :
-                                (expCntMap_(expBlockId) - expCntMap_(expBlockId - 1));
-        for (uint32_t tokenIdx = 0; tokenIdx < validCnt; tokenIdx++) {
-            uint32_t tokenId = static_cast<uint32_t>(expRecvTokenIdxMap_(expBlockId * realBS + tokenIdx)); // 获取
-            if (tokenId == -1) {
-                continue;
+    // Tokens are already stably ordered by their minimum expert in the current server.
+    // 只遍历有效前缀；遍历到 realBS 会把尾部 -1 转成 uint32_t 并用于索引 topK 表。
+    for (uint32_t tokenOccurNum = 0; tokenOccurNum < validTokenNum; ++tokenOccurNum) {
+        uint32_t tokenId = static_cast<uint32_t>(expRecvTokenIdxMap_(tokenOccurNum));
+        for (uint32_t expIdx = 0; expIdx < axisK_; ++expIdx) {
+            uint32_t expId = tokenTopKInfoI32Lt(tokenId * alignK_ + expIdx);
+            if (expId >= currServerExpBegin && expId < currServerExpEnd) {
+                uint32_t expIdInServer = expId % moeExpertNumInServer_;
+                uint32_t rankIdInServer = expIdInServer / localMoeExpertNum_;
+                innerCntLt_(tokenOccurNum) += 1;
+                // 专家偏移: 第一个专家偏移为0,否则为前一个专家的累加值
+                innerOffsetLt_(expOccurNum) =
+                    (expIdInServer % localMoeExpertNum_ == 0) ? 0 : expCntMap_(expIdInServer - 1);
+                // 专家内偏移,即专家收到的第几个token
+                innerOffsetLt_(expOccurNum) += tokenOffsetLt_(tokenId * axisK_ + expIdx);
+                // rank偏移
+                innerOffsetLt_(expOccurNum) += rankIdInServer * globalBs_ * axisK_;
+                expOccurNum += 1;
             }
-            for (uint32_t expIdx = 0; expIdx < axisK_; expIdx++) {
-                uint32_t expId = tokenTopKInfoI32Lt(tokenId * alignK_ + expIdx);
-                if (expId >= currServerExpBegin && expId < currServerExpEnd) {
-                    uint32_t expIdInServer = expId % moeExpertNumInServer_;
-                    uint32_t rankIdInServer = expIdInServer / localMoeExpertNum_;
-                    innerCntLt_(tokenOccurNum) += 1;
-                    // 专家偏移: 第一个专家偏移为0,否则为前一个专家的累加值
-                    innerOffsetLt_(expOccurNum) =
-                        (expIdInServer % localMoeExpertNum_ == 0) ? 0 : expCntMap_(expIdInServer - 1);
-                    // 专家内偏移,即专家收到的第几个token
-                    innerOffsetLt_(expOccurNum) += tokenOffsetLt_(tokenId * axisK_ + expIdx);
-                    // rank偏移
-                    innerOffsetLt_(expOccurNum) += rankIdInServer * globalBs_ * axisK_;
-                    expOccurNum += 1;
-                    expRecvTokenIdxMap_(expIdInServer * realBS + tokenOffsetLt_(tokenId * axisK_ + expIdx)) =
-                        -1; // 记录处理过的token不再重复处理
-                }
-            }
-            tokenOccurNum += 1;
         }
     }
     // 前缀和
@@ -1147,7 +1184,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         uint32_t tokenId = startTokenId + tokenIndex;
         uint32_t startExpId = tokenId * axisK_;
         uint32_t flagOffset = (tokenIndex * tokenStructLen_ + flagOffsetInStruct_) / sizeof(uint64_t);
-        tokenTempTensorU64(flagOffset) = SHOULD_SEND_FLAG_VALUE;
+        tokenTempTensorU64(flagOffset) = SHOULD_SEND_FLAG_VALUE + magicVal_;
         uint64_t sendServerInfo = 0;
         for (uint32_t i = 0; i < axisK_; i++) {
             uint32_t expertId = static_cast<uint32_t>(expertIdsI16Tensor_(startExpId + i)); // 读取expId
@@ -1182,9 +1219,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
         SyncFunc<AscendC::HardEvent::V_S>();
         float maxVal = maxLt(RES_VAL_OFFSET);
-        dynamicScale = float(QUANT_MAX) / float(maxVal);
+        bool isZeroToken = (maxVal == 0.0f);
+        dynamicScale = isZeroToken ? 0.0f : float(QUANT_MAX) / float(maxVal);
         SyncFunc<AscendC::HardEvent::S_V>();
-        Muls(tokenCastLt[i * axisH_], tokenCastLt[i * axisH_], dynamicScale, axisH_);
+        if (isZeroToken) {
+            Duplicate(tokenCastLt[i * axisH_], 0.0f, axisH_);
+        } else {
+            Muls(tokenCastLt[i * axisH_], tokenCastLt[i * axisH_], dynamicScale, axisH_);
+        }
         PipeBarrier<PIPE_V>();
 
         LocalTensor<half> halfLocalTemp = tokenCastLt[i * axisH_].template ReinterpretCast<half>();
@@ -1203,7 +1245,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 
         LocalTensor<float> scaleTensor =
             tokenUnitLt[i * tokenStructLen_ + scaleOffsetInStruct_].template ReinterpretCast<float>();
-        scaleTensor.SetValue(0, float(1.0) / dynamicScale); // int8->float32
+        scaleTensor.SetValue(0, isZeroToken ? 0.0f : float(1.0) / dynamicScale); // int8->float32
     }
 }
 
@@ -1252,15 +1294,25 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
 
     LocalTensor<uint64_t> statusTensor = statusBuf_.Get<uint64_t>();
     uint32_t TokenOffset = serverIdx * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
-
     uint32_t nextTokenOffset = serverIdx * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
-    DataCopy(statusTensor, TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
-             FLAG_SIZE / sizeof(uint64_t));
+    uint32_t copyNum = FLAG_SIZE / sizeof(uint64_t);
+    DataCopy(statusTensor, readStatusGMTensor_[(serverIdx)*STATE_OFFSET / sizeof(uint64_t)], copyNum);
+    // MTE2 is asynchronous. Ensure the end flag is loaded before either token flag so an arriving end flag cannot
+    // be paired with a stale token flag and make the receiver finish before consuming the final token.
+    // 这不是三个 flag 的原子快照：要求 end -> current -> next 顺序取样，允许读到较旧 end 后继续轮询。
+    // 两个 MTE2 屏障约束搬运顺序；末尾 MTE2_S 保证标量 GetValue 读取已完成，不能只保留后者。
+    PipeBarrier<PIPE_MTE2>();
+    DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    PipeBarrier<PIPE_MTE2>();
+    DataCopy(statusTensor[copyNum * 2U], TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+             copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint64_t nextTokenFlagValue = statusTensor.GetValue(0);
+    uint64_t endFlagValue = statusTensor.GetValue(0);
+    uint64_t tokenFlagValue = statusTensor.GetValue(copyNum);
+    uint64_t nextTokenFlagValue = statusTensor.GetValue(copyNum * 2U);
 
-    // 等到发送结束信号，没等到token结束信号，则返回结束等待状态
-    if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE) {
+    // The next token flag proves that the current token is ready.
+    if (nextTokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
         if (justExpInfo) {
             DataCopy(receiveTokenStructU8Lt, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
         } else {
@@ -1269,21 +1321,11 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         return ARRIVAL_STATUS;
     }
 
-    DataCopy(statusTensor, readStatusGMTensor_[(serverIdx)*STATE_OFFSET / sizeof(uint64_t)],
-             FLAG_SIZE / sizeof(uint64_t));
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint64_t endFlagValue = statusTensor.GetValue(0);
-
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         // 等待 token 或者 endOfWrite
         return WAIT_STATUS;
-    } else { // 得到上个token->可以处理 读到结束符
-             // 先搬运当前最后一个token，再走进来，越界读，读到不存在的token，返回finish
-        DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
-                 FLAG_SIZE / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint64_t tokenFlagValue = statusTensor.GetValue(0);
-        if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE) {
+    } else { // If the end flag arrived, the current token flag decides whether there is one final token to consume.
+        if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE + magicVal_) {
             if (justExpInfo) {
                 DataCopy(receiveTokenStructU8Lt, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
             } else {
@@ -1432,11 +1474,11 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
 
         // 本核需要发送
-        uint32_t targetExpOffset = (targetExpId % localMoeExpertNum_) * worldSize_ * rankSizeOnIpc_; // 第几个Exp段
-        uint32_t targetServerOffset = formServerId * SERVER_RANK_SIZE * rankSizeOnIpc_; // 第几个Server段
-        uint32_t targetRankOffset = (rankId_ % SERVER_RANK_SIZE) * rankSizeOnIpc_;      // 第几个Rank段
-        uint32_t targetTokenOffset = tokenStructLen_ * targetTokenIdx;                  // 第几个Token位
-        uint32_t targetOffset = targetExpOffset + targetServerOffset + targetRankOffset + targetTokenOffset; // 总偏移
+        uint64_t targetExpOffset = (targetExpId % localMoeExpertNum_) * worldSize_ * rankSizeOnIpc_; // 第几个Exp段
+        uint64_t targetServerOffset = formServerId * SERVER_RANK_SIZE * rankSizeOnIpc_; // 第几个Server段
+        uint64_t targetRankOffset = (rankId_ % SERVER_RANK_SIZE) * rankSizeOnIpc_;      // 第几个Rank段
+        uint64_t targetTokenOffset = tokenStructLen_ * targetTokenIdx;                  // 第几个Token位
+        uint64_t targetOffset = targetExpOffset + targetServerOffset + targetRankOffset + targetTokenOffset; // 总偏移
         targetTokenIpcGt.SetGlobalBuffer(
             (__gm__ uint8_t *)(shareIPCAddrsGM_[targetRankId % SERVER_RANK_SIZE] + IPC_DATA_OFFSET + targetOffset));
         DataCopy(targetTokenIpcGt, tokenStructU8Lt, tokenStructLen_);
