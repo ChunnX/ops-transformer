@@ -34,7 +34,7 @@ _MOE_EP_METADATA_FIELDS = 5
 _MOE_EP_METADATA_ALIGN_ELEMENTS = 128  # 512 bytes, int32 elements
 
 
-def _metadata_buffer_layout(capacity: int, ep_world_size: int, route_slots: int):
+def _metadata_buffer_layout(capacity: int, ep_world_size: int):
     torch._check(
         0 <= capacity <= 2147483647,
         lambda: "metadata capacity must be in [0, INT32_MAX]",
@@ -42,27 +42,14 @@ def _metadata_buffer_layout(capacity: int, ep_world_size: int, route_slots: int)
     torch._check(
         2 <= ep_world_size <= 1024, lambda: "ep_world_size must be in [2, 1024]"
     )
-    torch._check(
-        0 <= route_slots <= 2147483647,
-        lambda: "metadata route_slots must be in [0, INT32_MAX]",
-    )
     align = _MOE_EP_METADATA_ALIGN_ELEMENTS
-    rank_offsets_offset = (
-        (capacity * _MOE_EP_METADATA_FIELDS + align - 1) // align * align
-    )
-    local_index_offset = (
-        rank_offsets_offset + (ep_world_size + 1 + align - 1) // align * align
-    )
-    total = local_index_offset + (route_slots + align - 1) // align * align
-    return rank_offsets_offset, local_index_offset, total
+    offset = (capacity * _MOE_EP_METADATA_FIELDS + align - 1) // align * align
+    total = offset + (ep_world_size + 1 + align - 1) // align * align
+    return offset, total
 
 
-def _metadata_buffer_views(
-    buffer: torch.Tensor, capacity: int, ep_world_size: int, route_slots: int
-):
-    rank_offsets_offset, _, total = _metadata_buffer_layout(
-        capacity, ep_world_size, route_slots
-    )
+def _metadata_buffer_views(buffer: torch.Tensor, capacity: int, ep_world_size: int):
+    offset, total = _metadata_buffer_layout(capacity, ep_world_size)
     torch._check(
         buffer.dtype == torch.int32 and buffer.dim() == 1 and buffer.numel() == total,
         lambda: "metadata buffer must have the full packed int32 shape",
@@ -75,19 +62,17 @@ def _metadata_buffer_views(
         buffer[: capacity * _MOE_EP_METADATA_FIELDS].view(
             capacity, _MOE_EP_METADATA_FIELDS
         ),
-        buffer[rank_offsets_offset : rank_offsets_offset + ep_world_size + 1],
+        buffer[offset : offset + ep_world_size + 1],
     )
 
 
-def _checked_handle_metadata_buffer(
-    handle, capacity: int, ep_world_size: int, route_slots: int, device
-):
+def _checked_handle_metadata_buffer(handle, capacity: int, ep_world_size: int, device):
     buffer = handle.recv_metadata_buffer
     torch._check(
         buffer is not None,
         lambda: "EPHandle requires packed recv_metadata_buffer; regenerate or explicitly repack the old handle",
     )
-    rows, offsets = _metadata_buffer_views(buffer, capacity, ep_world_size, route_slots)
+    rows, offsets = _metadata_buffer_views(buffer, capacity, ep_world_size)
     torch._check(
         buffer.device == device,
         lambda: "metadata buffer and x must be on the same device",
@@ -1224,11 +1209,7 @@ class ElasticBuffer:
         )
 
         metadata = _checked_handle_metadata_buffer(
-            handle,
-            x.shape[0],
-            self._ep_world_size,
-            handle.topk_idx.numel(),
-            x.device,
+            handle, x.shape[0], self._ep_world_size, x.device
         )
         event = self._reserve_moe_epilogue(
             async_with_compute_stream,
@@ -1509,11 +1490,7 @@ class ElasticBuffer:
             )
             capacity = handle.recv_src_metadata.shape[0]
             packed_metadata = _checked_handle_metadata_buffer(
-                handle,
-                capacity,
-                self._ep_world_size,
-                handle.topk_idx.numel(),
-                x.device,
+                handle, capacity, self._ep_world_size, x.device
             )
             torch._check(
                 x.shape[0] == handle.topk_idx.shape[0],
@@ -1593,9 +1570,7 @@ class ElasticBuffer:
         recv_x = torch.empty(
             (actual_a, self._hidden), dtype=args.x.dtype, device=args.x.device
         )
-        _, _, packed_elements = _metadata_buffer_layout(
-            actual_a, self._ep_world_size, args.topk_idx.numel()
-        )
+        _, packed_elements = _metadata_buffer_layout(actual_a, self._ep_world_size)
         recv_src_meta = torch.empty(
             (packed_elements,), dtype=torch.int32, device=args.x.device
         )
@@ -1628,7 +1603,7 @@ class ElasticBuffer:
         route_scaleout_slot: torch.Tensor,
     ) -> EPHandle:
         metadata_rows, rank_offsets = _metadata_buffer_views(
-            recv_src_meta, capacity, self._ep_world_size, args.topk_idx.numel()
+            recv_src_meta, capacity, self._ep_world_size
         )
         topk_idx = (
             args.topk_idx
