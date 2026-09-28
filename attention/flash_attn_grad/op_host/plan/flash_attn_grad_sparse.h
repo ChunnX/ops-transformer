@@ -127,6 +127,13 @@ inline int64_t FagGetTotalPerBatchNum(int64_t s1, int64_t s2, int64_t s1Outer, i
     }
     int64_t p = FagCeilDiv(s1Token, FAG_CUBE_BASE);
     int64_t q = FagCeilDiv(s2Token, FAG_CUBE_BASE);
+    // 将窗口的有效块跨度限制在实际 outer 范围内。
+    if (s1Outer > 0 && p > s1Outer - 1) {
+        p = s1Outer - 1;
+    }
+    if (s2Outer > 0 && q > s2Outer - 1) {
+        q = s2Outer - 1;
+    }
     int64_t total = 0;
     for (int64_t s2oIdx = 0; s2oIdx < s2Outer; ++s2oIdx) {
         int64_t xMin = (s2oIdx - q) > 0 ? (s2oIdx - q) : 0;

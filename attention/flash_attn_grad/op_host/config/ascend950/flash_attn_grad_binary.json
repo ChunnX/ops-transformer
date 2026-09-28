@@ -153,7 +153,7 @@
         {
           "name": "dsink",
           "index": 3,
-          "dtype": "float",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [-2],
@@ -360,7 +360,7 @@
         {
           "name": "dsink",
           "index": 3,
-          "dtype": "float",
+          "dtype": "float32",
           "format": "ND",
           "paramType": "required",
           "shape": [-2],
