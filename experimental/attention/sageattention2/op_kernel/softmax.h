@@ -41,7 +41,8 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateSoftmaxRescaleF
     Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
-    auto h64 = UpdateMask<half>(64);
+    uint32_t validRows = 64;
+    auto h64 = UpdateMask<half>(validRows);
     StoreAlign(maxima, newMax, h64);
     StoreAlign(alpha, ratio, f);
     return ratio;
