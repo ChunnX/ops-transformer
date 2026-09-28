@@ -645,6 +645,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStag
             // AIV1 即将通过 MTE2 搬入 count 表；等待下标/count 发送或共享 A8W4 激活搬出完成。
             SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
         } else {
+            if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
+                // 共享直接读取输入时，AIV0 在进入 MoE 前等待全部 quant/pack 完成。
+                CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
+            }
             // AIV0 由具体 MoE 实现确定后继写 UB 的流水，承接输入准备或共享计算的搬出。
             derived.SyncBeforeMoeExpertStages();
         }
@@ -1053,12 +1057,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         SyncBeforeSharedExpertGmm1();
         ProcessSharedExpertGmm1(sharedGmm1ActivationSync);
-        if constexpr (g_coreType == AIV) {
-            if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly && GetSubBlockIdx() == 0U) {
-                // 此路径 AIV0 仅等待 reset 完成就启动共享 GMM，token ready 留到共享计算结束后等待。
-                CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
-            }
-        }
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
