@@ -8,27 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
   */
 qiuzhiyang
-# Azure resource inferred from the Microsoft Foundry URL:
-#   resource: az-codex-model-resource
-#   project:  az-codex-model
-#
-# Deployment read from Foundry > Models > Deployments:
-#   deployment: gpt-5.6-sol
-#   model:      gpt-5.6-sol (2026-07-09)
-#   status:     Succeeded
-
-model = "gpt-5.6-sol"
-model_provider = "azure"
-model_reasoning_effort = "medium"
-
-[model_providers.azure]
-name = "Azure OpenAI"
-base_url = "https://az-codex-model-resource.services.ai.azure.com/openai/v1"
-env_key = "AZURE_OPENAI_API_KEY"
-wire_api = "responses"
-request_max_retries = 4
-stream_max_retries = 10
-stream_idle_timeout_ms = 300000
+[Environment]::SetEnvironmentVariable(
+    "AZURE_OPENAI_API_KEY",
+  "5WtGmtzFlwgNOiCPMeKqJtle11GDluGehIScrYBu6bUb3IdwylAkJQQJ99CIACHYHv6XJ3w3AAAAACOGUXMr",
+    "User"
+)
 /*!
  * \file dequant_checker.cpp
  * \brief
