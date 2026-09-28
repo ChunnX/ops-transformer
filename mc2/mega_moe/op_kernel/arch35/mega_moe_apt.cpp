@@ -100,11 +100,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                                     GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR maskBuffer, GM_ADDR yOut,
                                     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-#if MEGA_MOE_PROFILE_INPUT
-    if constexpr (CommModeType == TILINGKEY_TPL_MTE && g_coreType == AIV) {
-        MarkStamp<PIPE_S, 0>(); // kernel 函数体入口，开始初始化运行状态和 tiling。
-    }
-#endif
     InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
@@ -122,11 +117,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                                     DispatchQuantOutType, SharedQuantOutType, CombineQuantOutType, TopkWeightsPrefetch,
                                     TopkIndexType>
             op;
-#if MEGA_MOE_PROFILE_INPUT
-        if constexpr (g_coreType == AIV) {
-            MarkStamp<PIPE_S, 1>(); // tiling 读取及对象构造之后，op.Init 之前。
-        }
-#endif
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2, scales,
                 sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut, expertTokenNumsOut,
                 workspaceGM, &tilingData, tilingGM);
