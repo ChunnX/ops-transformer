@@ -169,7 +169,7 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     auto f = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> oldDen;
     LoadAlign(oldDen, denom);
-    RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
+    RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, (__ubuf__ half *)alpha, alpha, f, h);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // NZ planes store 32 of the 64 float lanes each; the boundary between the
     // two planes of an 8x8 fragment sits inside one 64-lane register.

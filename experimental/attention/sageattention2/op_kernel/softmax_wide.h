@@ -191,7 +191,7 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
+    UpdateSoftmaxRescaleFactors(maxima, (__ubuf__ half *)alpha, alpha, f, h);
 }
 
 template <bool FIRST>
