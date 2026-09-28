@@ -187,32 +187,14 @@ public:
         }
     }
 
-    /** Publish phase=wave+1 after all local rows are stored, then wait for all group members.
-     * Completion epochs are monotone; immutable x2 rows need no acknowledgement or flag clearing.
+    /** Publish completed Post stores, then gate projection loads on all AIV arrivals.
+     * Alternate two hardware notifications; immutable x2 rows need no reuse acknowledgement.
      */
     __aicore__ inline void WaitReady(uint32_t wave)
     {
-        const int32_t phase = static_cast<int32_t>(wave + 1U);
-        const uint32_t member = GetBlockIdx();
-        const uint32_t base = member / tiling_->waveGroupSize * tiling_->waveGroupSize;
-        auto flags = tensors_->invRms0.template ReinterpretCast<int32_t>();
-        sync_.SetValue(0, phase);
-        SetFlag<HardEvent::S_MTE3>(EVENT_ID6);
-        WaitFlag<HardEvent::S_MTE3>(EVENT_ID6);
-        DataCopy(flags[member * 32U], sync_, 8U);
-        SetFlag<HardEvent::MTE3_S>(EVENT_ID6);
-        WaitFlag<HardEvent::MTE3_S>(EVENT_ID6);
-        for (uint32_t sender = base; sender < base + tiling_->waveGroupSize; ++sender) {
-            if (sender != member) {
-                int32_t observed;
-                do {
-                    DataCopy(sync_, flags[sender * 32U], 8U);
-                    SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                    WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                    observed = sync_.GetValue(0);
-                } while (observed < phase);
-            }
-        }
+        const uint16_t ready = 6U + (wave & 1U);
+        CrossCoreSetFlag<0, PIPE_MTE3>(ready);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(ready);
     }
 
     /** Consume both input-slot credits after the final producer batch to close event lifetimes. */
@@ -285,7 +267,7 @@ __aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
     using StageTransfer = Transfer::StagePolicyT<WITH_MID ? kFiveProjectionTransport : kFourProjectionTransport>;
     if constexpr (!WITH_MID) {
         if (tiling.wavePipeline != 0U) {
-            InitWaveEpochs(tensors);
+            // Hardware notifications need no GM epoch initialization.
             RunMkProjectionPhase<T, StageTransfer, USE_HF32, true>(tensors, tiling);
             WaitMkProjectionReady();
             RunMkEpiloguePhase<T>(tensors, tiling);
