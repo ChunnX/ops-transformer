@@ -60,7 +60,7 @@ void printUsage(const std::string &programName)
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  localMatmul: optional, 0=REMOTE融合 | 1=DEFERRED_SYNC | 2=GM累加(LOCAL+REMOTE) (default 0)" << std::endl;
-    std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
+    std::cerr << "  headMSize: optional, long block M size (default 0 = auto from tiling; >0 overrides)" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
     std::cerr << "         " << programName << " 2048 3584 4096 2 1 512" << std::endl;
 }
@@ -88,9 +88,9 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: localMatmul must be in [0, 2]");
     }
 
-    headMSize = (argc >= 7) ? std::stoi(argv[6]) : 512;
-    if (headMSize <= 0) {
-        throw std::invalid_argument("ERROR: headMSize must be positive");
+    headMSize = (argc >= 7) ? std::stoi(argv[6]) : 0;
+    if (headMSize < 0) {
+        throw std::invalid_argument("ERROR: headMSize must be non-negative (0 = auto from tiling)");
     }
 
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
@@ -116,9 +116,14 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
     // 非量化 tiling 引擎按数据类型字节宽度推导 baseK（fp16 = 2 字节）
     tilingEngine.GetTilingData(m, n, ka, sizeof(uint16_t), false, true, tilingData.tileMmTilingData, true);
 
-    // headMSize 直接采用命令行/CSV 指定值（不再由 tiling 重算），保证 cases.csv 的 head_m_size 列生效。
-    // 仅约束 headMSize 不超过 m，超限时退化为单尾块。
+    // headMSize：命令行显式指定（>0）则直接采用（含钳制不超过 m）；未指定（0）则从 tiling 推导：
+    // 将 usedCoreNum 个核按 N 方向 tile 列均分，每列核数 × baseM 即 M 方向每个 head 块的高度。
     uint32_t headMSize = static_cast<uint32_t>(headMSizeArg);
+    if (headMSize == 0) {
+        auto nTile = CeilDiv(n, tilingData.tileMmTilingData.baseN);
+        headMSize = CeilDiv(tilingData.tileMmTilingData.usedCoreNum, nTile) *
+                    tilingData.tileMmTilingData.baseM;
+    }
     if (headMSize > static_cast<uint32_t>(m)) {
         headMSize = static_cast<uint32_t>(m);
     }
