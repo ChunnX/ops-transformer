@@ -414,8 +414,6 @@ ge::graphStatus LIInfoParser::GetGSize()
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
-    // OP_CHECK_IF(gSize_ != 64, OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.",
-    //     n1Size_, n2Size_), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
