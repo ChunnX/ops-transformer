@@ -48,15 +48,15 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     Mul(x1_1, x1_1, c1_1, h);
 
     if constexpr (MASK) {
-        MaskReg valid0_0, valid1_0, valid0_1, valid1_1;
-        CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(causalLimit0 + row - col * 16), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(causalLimit0 + row + 8 - col * 16), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(causalLimit1 + row - col * 16), h);
-        CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(causalLimit1 + row + 8 - col * 16), h);
-        Select(x0_0, x0_0, negative, valid0_0);
-        Select(x1_0, x1_0, negative, valid1_0);
-        Select(x0_1, x0_1, negative, valid0_1);
-        Select(x1_1, x1_1, negative, valid1_1);
+        MaskReg valid;
+        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit0 + int32_t(row) - int32_t(col) * 16), h);
+        Select(x0_0, x0_0, negative, valid);
+        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit0 + int32_t(row) + 8 - int32_t(col) * 16), h);
+        Select(x1_0, x1_0, negative, valid);
+        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit1 + int32_t(row) - int32_t(col) * 16), h);
+        Select(x0_1, x0_1, negative, valid);
+        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit1 + int32_t(row) + 8 - int32_t(col) * 16), h);
+        Select(x1_1, x1_1, negative, valid);
     }
 
     Max(m0, m0, x0_0, h);

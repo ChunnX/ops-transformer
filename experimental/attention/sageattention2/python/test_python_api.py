@@ -281,23 +281,41 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_tc07_causal_attention(self):
         """TC-07: Verify causal attention masking (future key positions masked)."""
-        b, h, s, d = 1, 2, 64, 64
-        q = torch.randn(b, h, s, d, dtype=torch.float16)
-        k = torch.randn(b, h, s, d, dtype=torch.float16)
-        v = torch.randn(b, h, s, d, dtype=torch.float16)
+        b, h, d = 1, 2, 64
+        for s in [64, 128, 256]:
+            with self.subTest(seq_len=s):
+                q = torch.randn(b, h, s, d, dtype=torch.float16)
+                k = torch.randn(b, h, s, d, dtype=torch.float16)
+                v = torch.randn(b, h, s, d, dtype=torch.float16)
 
-        out_causal = sageattn(q, k, v, is_causal=True)
-        self.assertEqual(out_causal.shape, (b, h, s, d))
-        self.assertFalse(torch.isnan(out_causal).any())
+                out_causal = sageattn(q, k, v, is_causal=True)
+                self.assertEqual(out_causal.shape, (b, h, s, d))
+                self.assertFalse(torch.isnan(out_causal).any())
 
-        # Modify future tokens of k and v, output at pos 0 must remain identical
-        k_modified = k.clone()
-        v_modified = v.clone()
-        k_modified[:, :, 1:, :] = torch.randn_like(k_modified[:, :, 1:, :])
-        v_modified[:, :, 1:, :] = torch.randn_like(v_modified[:, :, 1:, :])
-        out_modified = sageattn(q, k_modified, v_modified, is_causal=True)
-        diff = (out_causal[:, :, 0, :] - out_modified[:, :, 0, :]).abs().max()
-        self.assertLess(diff.item(), 0.05)
+                # Modify future tokens of k and v, output at pos 0 must remain identical within quant noise
+                k_modified = k.clone()
+                v_modified = v.clone()
+                k_modified[:, :, 1:, :] = torch.randn_like(k_modified[:, :, 1:, :])
+                v_modified[:, :, 1:, :] = torch.randn_like(v_modified[:, :, 1:, :])
+                out_modified = sageattn(q, k_modified, v_modified, is_causal=True)
+                diff = (out_causal[:, :, 0, :] - out_modified[:, :, 0, :]).abs().max()
+                self.assertLess(diff.item(), 0.05)
+
+                # Strict causality without sequence-wide meanK: past tokens strictly independent of future keys
+                out_exact = sageattn(q, k, v, is_causal=True, smooth_k=False)
+                out_exact_mod = sageattn(q, k_modified, v_modified, is_causal=True, smooth_k=False)
+                diff_exact = (out_exact[:, :, 0, :] - out_exact_mod[:, :, 0, :]).abs().max()
+                self.assertEqual(diff_exact.item(), 0.0)
+
+                # Midpoint causality without smooth_k
+                mid = s // 2
+                k_mid = k.clone()
+                v_mid = v.clone()
+                k_mid[:, :, mid + 1 :, :] = torch.randn_like(k_mid[:, :, mid + 1 :, :])
+                v_mid[:, :, mid + 1 :, :] = torch.randn_like(v_mid[:, :, mid + 1 :, :])
+                out_mid = sageattn(q, k_mid, v_mid, is_causal=True, smooth_k=False)
+                diff_mid = (out_exact[:, :, : mid + 1, :] - out_mid[:, :, : mid + 1, :]).abs().max()
+                self.assertEqual(diff_mid.item(), 0.0)
 
     # -------------------------------------------------------------------------
     # TC-08: 严格异常拦截机制 (Input validation & 4-tier exception checks)

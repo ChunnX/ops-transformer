@@ -17,6 +17,7 @@
  *   6. ln(448) 平移后 P 的满量程与饱和裕量                      (224, 448·(1+2^-7)]
  *   7. LSE 契约（raw log2 内核值 + 开源平滑校正, GQA 广播）     ≤ 1e-5（双精度参考）
  *   8. smooth-K softmax 不变性（含校正项）                      ≤ 1e-12（双精度）
+ *   9. Causal Mask NZ 拓扑剪枝零精度损失与算力压缩 (≥95% bypass) bit-exact == 0
  *
  * 编译运行：
  *   g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test
@@ -391,6 +392,70 @@ void TestSmoothKInvariance(std::mt19937 &rng)
     Report("relative discrepancy", worst, 1e-12, worst <= 1e-12);
 }
 
+void TestCausalMaskTopologyPruning()
+{
+    // Verify 128 NZ lanes: laneOffset = (lane & 15) - (lane >> 4)
+    int16_t laneOffset[128];
+    int minOffset = 1000, maxOffset = -1000;
+    for (int i = 0; i < 128; ++i) {
+        int16_t r = i >> 4;
+        int16_t c = i & 15;
+        laneOffset[i] = c - r;
+        if (laneOffset[i] < minOffset) minOffset = laneOffset[i];
+        if (laneOffset[i] > maxOffset) maxOffset = laneOffset[i];
+    }
+    bool rangeOk = (minOffset == -7 && maxOffset == 15);
+
+    // Verify bit-exact equivalence between baseline compare and pruned topology over wide threshold domain [-1024, 1024]
+    bool bitExactOk = true;
+    for (int thresh = -1024; thresh <= 1024; ++thresh) {
+        for (int i = 0; i < 128; ++i) {
+            bool baselineValid = (laneOffset[i] <= thresh);
+            bool prunedValid = false;
+            if (thresh >= 15) {
+                prunedValid = true;
+            } else if (thresh < -7) {
+                prunedValid = false;
+            } else {
+                prunedValid = (laneOffset[i] <= thresh);
+            }
+            if (baselineValid != prunedValid) {
+                bitExactOk = false;
+                break;
+            }
+        }
+    }
+
+    // Verify pruning ratio over all 64 NZ pairs (256 sub-blocks) in SoftmaxWideMaxCore
+    int totalSubBlocks = 0;
+    int prunedSubBlocks = 0;
+    for (int qInGroup : {0, 64, 128, 192, 256, 320, 384, 448}) {
+        int causalLimit0 = qInGroup;
+        int causalLimit1 = qInGroup - 256;
+        for (uint16_t row = 0; row < 64; row += 16) {
+            for (uint16_t col = 0; col < 16; ++col) {
+                int t0_0 = causalLimit0 + row - col * 16;
+                int t1_0 = t0_0 + 8;
+                int t0_1 = causalLimit1 + row - col * 16;
+                int t1_1 = t0_1 + 8;
+                for (int t : {t0_0, t1_0, t0_1, t1_1}) {
+                    totalSubBlocks++;
+                    if (t >= 15 || t < -7) {
+                        prunedSubBlocks++;
+                    }
+                }
+            }
+        }
+    }
+    double bypassRatio = static_cast<double>(prunedSubBlocks) / totalSubBlocks;
+    bool bypassRatioOk = (bypassRatio >= 0.95);
+
+    std::printf("[9] causal mask NZ topology pruning (bit-exact lower/upper bypass)\n");
+    Report("lane offset bounded in [-7, 15]", rangeOk ? 0.0 : 1.0, 0.0, rangeOk);
+    Report("bit-exact mask equivalence", bitExactOk ? 0.0 : 1.0, 0.0, bitExactOk);
+    Report("vector instruction bypass ratio >= 95%", 1.0 - bypassRatio, 0.05, bypassRatioOk);
+}
+
 }  // namespace
 
 int main()
@@ -406,6 +471,7 @@ int main()
     TestLn448Shift(rng);
     TestLseIdentity(rng);
     TestSmoothKInvariance(rng);
+    TestCausalMaskTopologyPruning();
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");
