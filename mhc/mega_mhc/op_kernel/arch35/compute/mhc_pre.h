@@ -184,103 +184,11 @@ __aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__
     }
 }
 
-/**
- * What: compute the four Pre branch gates after projection RMS scaling.
- * Formula: hPre[n] = sigmoid(alpha0*normalized[n]+bias[n]) + hcEps.
- * Inputs: normalizedProjection[0:4], alpha[0], bias[0:4].
- * Output: four FP32 hPre coefficients used by the later weighted input mix.
- */
-__simd_callee__ inline void ComputePreGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
-                                            __ubuf__ float *bias, float hcEps, __ubuf__ float *hPre)
-{
-    Reg::RegTensor<float> projected;
-    Reg::RegTensor<float> scale;
-    Reg::RegTensor<float> offset;
-    Reg::RegTensor<float> logit;
-    Reg::RegTensor<float> negative;
-    Reg::RegTensor<float> expValue;
-    Reg::RegTensor<float> one;
-    Reg::RegTensor<float> gate;
-    Reg::RegTensor<float> epsilon;
-    Reg::MaskReg mask = Compute::MaskForCount(4);
-    Reg::Duplicate(one, 1.0f, mask);
-    Reg::Duplicate(epsilon, hcEps, mask);
-    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scale, alpha);
-    Reg::RegTensor<uint32_t> indices;
-    Reg::Arange(reinterpret_cast<Reg::RegTensor<int32_t> &>(indices), 0);
-    Reg::Gather(projected, normalizedProjection + 0U, indices, mask);
-    Reg::Gather(offset, bias + 0U, indices, mask);
-    Reg::Mul(logit, projected, scale, mask);
-    Reg::Add(logit, logit, offset, mask);
-    Reg::Muls(negative, logit, -1.0f, mask);
-    Reg::Exp(expValue, negative, mask);
-    Reg::Add(expValue, expValue, one, mask);
-    Reg::Div(gate, one, expValue, mask);
-    Reg::Add(gate, gate, epsilon, mask);
-    Reg::Store<float>(hPre, gate, 4U);
-}
-
-/**
- * What: compute the four post coefficients after projection RMS scaling.
- * Formula: hPostNew[n] = 2 * sigmoid(alpha1*normalized[n+4]+bias[n+4]).
- * Inputs: normalizedProjection[4:8], alpha[1], bias[4:8].
- * Output: four FP32 hPostNew coefficients.
- */
-__simd_callee__ inline void ComputePostGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
-                                             __ubuf__ float *bias, __ubuf__ float *hPostNew)
-{
-    Reg::RegTensor<float> projected;
-    Reg::RegTensor<float> scale;
-    Reg::RegTensor<float> offset;
-    Reg::RegTensor<float> logit;
-    Reg::RegTensor<float> negative;
-    Reg::RegTensor<float> expValue;
-    Reg::RegTensor<float> one;
-    Reg::RegTensor<float> gate;
-    Reg::MaskReg mask = Compute::MaskForCount(4);
-    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scale, alpha + 1);
-    Reg::Duplicate(one, 1.0f, mask);
-    Reg::RegTensor<uint32_t> indices;
-    Reg::Arange(reinterpret_cast<Reg::RegTensor<int32_t> &>(indices), 0);
-    Reg::Gather(projected, normalizedProjection + 4U, indices, mask);
-    Reg::Gather(offset, bias + 4U, indices, mask);
-    Reg::Mul(logit, projected, scale, mask);
-    Reg::Add(logit, logit, offset, mask);
-    Reg::Muls(negative, logit, -1.0f, mask);
-    Reg::Exp(expValue, negative, mask);
-    Reg::Add(expValue, expValue, one, mask);
-    Reg::Div(gate, one, expValue, mask);
-    Reg::Muls(gate, gate, 2.0f, mask);
-    Reg::Store<float>(hPostNew, gate, 4U);
-}
-
-/**
- * What: compute the 4x4 residual coefficients after projection RMS scaling.
- * Formula: hResNew[i,j] = alpha2*normalized[8+i*4+j]+bias[8+i*4+j].
- * Inputs: normalizedProjection[8:24], alpha[2], bias[8:24].
- * Output: sixteen FP32 values in row-major [4,4] order; Sinkhorn is not applied.
- */
-__simd_callee__ inline void ComputeResidualGates(__ubuf__ float *normalizedProjection, __ubuf__ float *alpha,
-                                                 __ubuf__ float *bias, __ubuf__ float *hResNew)
-{
-    Reg::RegTensor<float> projected;
-    Reg::RegTensor<float> scale;
-    Reg::RegTensor<float> offset;
-    Reg::RegTensor<float> result;
-    Reg::MaskReg mask = Compute::MaskForCount(16);
-    Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(scale, alpha + 2);
-    Reg::RegTensor<uint32_t> indices;
-    Reg::Arange(reinterpret_cast<Reg::RegTensor<int32_t> &>(indices), 0);
-    Reg::Gather(projected, normalizedProjection + 8U, indices, mask);
-    Reg::Gather(offset, bias + 8U, indices, mask);
-    Reg::Mul(result, projected, scale, mask);
-    Reg::Add(result, result, offset, mask);
-    Reg::Store<float>(hResNew, result, 16U);
-}
-
-/** Compute all row gates in one VF, with packed planes for two batched output DMAs.
- * Formula: pre=sigmoid(a0*z[0:4]+b)+eps; post=2*sigmoid(a1*z[4:8]+b); res=a2*z[8:24]+b.
- * Output planes are [pre:4*alignedRows, post:4*alignedRows, res:16*alignedRows].
+/** Compute all gates from the packed [pre:4, post:4, res:16] projection in one row loop.
+ * Formula: logits = alpha[branch]*normalized + bias; pre=sigmoid(logits[0:4])+eps;
+ * post=2*sigmoid(logits[4:8]); res=logits[8:24]. Mul and Add retain separate FP32 rounding.
+ * Affine work uses 24 lanes and the shared sigmoid uses 8; res never passes through sigmoid.
+ * Output planes remain [pre:4*alignedRows, post:4*alignedRows, res:16*alignedRows].
  */
 __aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ float *alpha, __ubuf__ float *bias,
                                        float eps, uint32_t rows, uint32_t rowStride, uint32_t alignedRows,
@@ -289,12 +197,42 @@ __aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ floa
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     __VEC_SCOPE__
     {
+        Reg::MaskReg headMask = MaskForCount(4U);
+        Reg::MaskReg sigmoidMask = MaskForCount(8U);
+        Reg::MaskReg resMask = MaskForCount(16U);
+        Reg::MaskReg affineMask = MaskForCount(24U);
+        Reg::RegTensor<uint32_t> indices, postIndices, resIndices;
+        Reg::RegTensor<float> alphaPre, alphaPost, alphaRes, scale, offset;
+        Reg::RegTensor<float> projected, logits, residual, negative, expValue, one, gate, post;
+        Reg::Arange(reinterpret_cast<Reg::RegTensor<int32_t> &>(indices), 0);
+        Reg::Adds(postIndices, indices, 4U, headMask);
+        Reg::Adds(resIndices, indices, 8U, resMask);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(alphaPre, alpha);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(alphaPost, alpha + 1U);
+        Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(alphaRes, alpha + 2U);
+        Reg::Select(scale, alphaPost, alphaRes, sigmoidMask);
+        Reg::Select(scale, alphaPre, scale, headMask);
+        Reg::Gather(offset, bias, indices, affineMask);
+        Reg::Duplicate(one, 1.0f, sigmoidMask);
         for (uint16_t row = 0; row < rowCount; ++row) {
             auto normalizedRow = normalized + row * rowStride;
             auto preRow = coefficients + row * 4U;
-            ComputePreGates(normalizedRow, alpha, bias, eps, preRow);
-            ComputePostGates(normalizedRow, alpha, bias, preRow + alignedRows * 4U);
-            ComputeResidualGates(normalizedRow, alpha, bias, coefficients + alignedRows * 8U + row * 16U);
+            auto postRow = preRow + alignedRows * 4U;
+            auto resRow = coefficients + alignedRows * 8U + row * 16U;
+            Reg::Gather(projected, normalizedRow, indices, affineMask);
+            Reg::Mul(logits, projected, scale, affineMask);
+            Reg::Add(logits, logits, offset, affineMask);
+            Reg::Gather(residual, logits, resIndices);
+            Reg::Store<float>(resRow, residual, 16U);
+            Reg::Muls(negative, logits, -1.0f, sigmoidMask);
+            Reg::Exp(expValue, negative, sigmoidMask);
+            Reg::Add(expValue, expValue, one, sigmoidMask);
+            Reg::Div(gate, one, expValue, sigmoidMask);
+            Reg::Gather(post, gate, postIndices);
+            Reg::Muls(post, post, 2.0f, headMask);
+            Reg::Store<float>(postRow, post, 4U);
+            Reg::Adds(gate, gate, eps, headMask);
+            Reg::Store<float>(preRow, gate, 4U);
         }
     }
 }
