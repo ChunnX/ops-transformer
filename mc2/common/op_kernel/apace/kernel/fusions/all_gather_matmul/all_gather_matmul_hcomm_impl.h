@@ -38,9 +38,9 @@
 #include "include/tensor_api/tensor.h"
 #include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
-#include "apace/kernel/matmul/batch_matmul/all_gather_bmm_kernel.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "../../matmul/batch_matmul/all_gather_bmm_kernel.h"
+#include "../all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
+#include "../../../tiling/quant_matmul_tiling_data.h"
 
 namespace Apace {
 

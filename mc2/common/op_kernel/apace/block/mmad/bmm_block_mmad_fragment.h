@@ -35,7 +35,7 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad.h"
 #include "tensor_api/tensor.h"
-#include "apace/basic/fragment_tensor/fragment_tensor.h"
+#include "../../basic/fragment_tensor/fragment_tensor.h"
 
 namespace Blaze {
 namespace Gemm {

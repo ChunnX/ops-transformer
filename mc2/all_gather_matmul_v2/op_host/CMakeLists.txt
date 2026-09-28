@@ -28,18 +28,11 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTIONS --cce-auto-sync=off
     )
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
-    # -I .../mc2/common/op_kernel：APACE 非量化路径（N5）include 链贯通——apace 既有头（tiling data 等）
-    # 内部使用 apace/ 前缀 include，kernel 编译选项集需补该搜索路径（编译联动最小修改，
-    # 机制同款 a2a 的 add_ops_compile_options 选项注入）
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
-        # bisheng 对含 .. 的 -I 路径解析异常，须传入规范化绝对路径
-        get_filename_component(AGMV2_APACE_KERNEL_INC
-                               "${CMAKE_CURRENT_SOURCE_DIR}/../../common/op_kernel" REALPATH)
         add_ops_compile_options(
             OP_NAME AllGatherMatmulV2
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
-                      -I${AGMV2_APACE_KERNEL_INC}
         )
     endif()
 else() # 回黄host
