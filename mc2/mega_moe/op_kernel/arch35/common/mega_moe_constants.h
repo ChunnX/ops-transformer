@@ -27,8 +27,9 @@ constexpr uint16_t TOKEN_DATA_READY_FLAG = 8;
 constexpr uint16_t COUNT_TABLE_READ_DONE_FLAG = 9;
 // reset 完成事件编号：等待全部 AIV 完成状态清零。
 constexpr uint16_t INPUT_RESET_DONE_FLAG = 10;
-// 输入就绪事件编号：AIV0 通知配对 AIC，输入可读且全部 AIV 的 reset 已完成。
-constexpr uint16_t INPUT_READY_FLAG = 2;
+// 输入准备完成事件编号：AIV0 通知配对 AIC，全部 reset 及当前路径所需的 quant/pack 已完成。
+// 共享直接读取原始输入时仅汇总 reset，AIC 在 MoE 前消费；其余路径在入口消费。
+constexpr uint16_t INPUT_PREPARE_DONE_FLAG = 2;
 // UB 释放事件编号：AIV0 通知配对 AIC，可以通过 FIX 写入输入准备阶段占用的 UB。
 constexpr uint16_t INPUT_UB_FREE_FLAG = 15;
 
