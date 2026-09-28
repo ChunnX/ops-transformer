@@ -80,8 +80,11 @@ void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, int64_t qua
                        ge::graphStatus expectedStatus, uint64_t expectedTilingKey = 0UL)
 {
     AttentionToFfnV2CompileInfo compileInfo;
+    constexpr uint64_t A5_CORE_NUM = 64U;
+    constexpr uint64_t A5_UB_SIZE = 196608U; // 192KB
     gert::TilingContextPara tilingContextPara("AttentionToFfnV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}},
-                                              BuildAttrs(quantMode, sync), &compileInfo, "3510");
+                                              BuildAttrs(quantMode, sync), &compileInfo, "3510", A5_CORE_NUM,
+                                              A5_UB_SIZE);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
