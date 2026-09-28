@@ -132,7 +132,7 @@ def npu_op_exec(
     if not dt_bias.is_contiguous():
         dt_bias = dt_bias.contiguous()
 
-    g, beta_output = torch.ops.custom.npu_fused_gdn_gating(
+    g, beta_output = torch.ops.cann_ops_transformer.fused_gdn_gating(
         A_log.npu(),
         a.npu(),
         b.npu(),
