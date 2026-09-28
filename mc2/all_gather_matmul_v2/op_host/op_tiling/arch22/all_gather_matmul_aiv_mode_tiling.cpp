@@ -31,6 +31,8 @@ using namespace Mc2Tiling;
 namespace {
 const char *K_INNER_DEBUG = "AllGatherMatmulAIVMode Tiling Debug";
 constexpr uint32_t ALLGATHER_CORENUM_SIXTEEN = 16;
+// int4 每两个元素占用 1 个字节（elementSize 为 0 表示 int4）
+constexpr uint32_t INT4_ELEMENTS_PER_BYTE = 2;
 constexpr uint32_t ATTR_GROUP_INDEX = 0;
 constexpr uint32_t ATTR_IS_TRANS_X1 = 1;
 constexpr uint32_t ATTR_IS_TRANS_X2 = 2;
