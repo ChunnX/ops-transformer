@@ -91,7 +91,7 @@ protected:
     virtual TilingDataView GetTilingDataView() const = 0;
 
     ge::graphStatus CheckInputShapes();
-    ge::graphStatus CheckInputDtypes() const;
+    ge::graphStatus CheckInputDtypes();
     ge::graphStatus CalculateWorkDistribution(uint64_t totalWorkUnits, uint64_t maxCoreNum, const char *templateName,
                                               WorkDistribution &distribution) const;
 
@@ -99,6 +99,7 @@ protected:
     uint64_t totalN_ = 0;
     uint64_t totalS_ = 0;
     uint64_t totalD_ = 0;
+    bool inputBf16_ = false;
     float eps_ = BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS;
 
     uint64_t aicCoreNum_ = 0;

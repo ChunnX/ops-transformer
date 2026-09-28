@@ -96,9 +96,16 @@ aclnnStatus CheckTensorDtype(const aclTensor *tensor, const char *tensorName, Da
 aclnnStatus CheckDtype(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery,
                        const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
-    if (CheckTensorDtype(blockRes, "blockRes", DataType::DT_FLOAT) != ACLNN_SUCCESS ||
-        CheckTensorDtype(validBlocks, "validBlocks", DataType::DT_UINT64) != ACLNN_SUCCESS ||
-        CheckTensorDtype(pseudoQuery, "pseudoQuery", DataType::DT_FLOAT) != ACLNN_SUCCESS ||
+    const DataType inputDtype = blockRes->GetDataType();
+    if (inputDtype != DataType::DT_FLOAT && inputDtype != DataType::DT_BF16) {
+        OP_LOGE_FOR_INVALID_DTYPE("aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes",
+                                  op::ToString(inputDtype).GetString(), "FLOAT or BFLOAT16");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (CheckTensorDtype(pseudoQuery, "pseudoQuery", inputDtype) != ACLNN_SUCCESS) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (CheckTensorDtype(validBlocks, "validBlocks", DataType::DT_UINT64) != ACLNN_SUCCESS ||
         CheckTensorDtype(numerator, "numerator", DataType::DT_FLOAT) != ACLNN_SUCCESS ||
         CheckTensorDtype(logitMax, "logitMax", DataType::DT_FLOAT) != ACLNN_SUCCESS ||
         CheckTensorDtype(expSum, "expSum", DataType::DT_FLOAT) != ACLNN_SUCCESS) {

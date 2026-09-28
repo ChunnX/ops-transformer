@@ -29,7 +29,7 @@ public:
     {
         this->Input("block_res")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("valid_blocks")
@@ -39,7 +39,7 @@ public:
             .AutoContiguous();
         this->Input("pseudo_query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
