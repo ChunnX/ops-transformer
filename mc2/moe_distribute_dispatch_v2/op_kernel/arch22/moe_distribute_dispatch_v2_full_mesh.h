@@ -1283,6 +1283,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     sendCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCountsOutGM_));
     workspaceGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(recStatusNumPerCore_ * sizeof(int32_t)), 0U, 0U, 0U};
+    // Ensure scalar prefix-sum writes are visible before MTE3 copies the counts to GM.
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(sendCountsGlobal[startStatusIndex_], outCountLocal, dataCopyOutParams);
     // 复制aivNum_份
     for (uint32_t index = 0; index < aivNum_; index++) {
