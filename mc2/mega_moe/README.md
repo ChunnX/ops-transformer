@@ -624,7 +624,7 @@
   <tr>
    <td>x</td>
    <td>输入</td>
-   <td>MoE层输入的token隐藏状态。Ascend 950PR/Ascend 950DT：dispatchQuantMode为4时必须为BF16，由算子内部做MX逐组量化；dispatchQuantMode为0时算子内部不做量化（预量化直通），此时x的数据类型必须与dispatchQuantOutDtype指定的类型一致，并且必须同时传入scales。预量化场景下x的shape仍为(BS, H)，H为逻辑隐藏维，与weight1的最后一维一致。</td>
+   <td>MoE层输入的token隐藏状态。shape为(BS, H)，H为逻辑隐藏维，与weight1的最后一维一致。除预量化直通场景外，x的数据类型必须为BF16，量化（若有）由算子内部完成；预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下算子内部不做量化，此时x的数据类型必须与dispatchQuantOutDtype指定的逻辑类型一致，并且必须同时传入scales。各产品支持的数据类型详见约束说明。</td>
    <td>BF16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND</td>
   </tr>
@@ -694,7 +694,7 @@
   <tr>
    <td>scales</td>
    <td>可选输入</td>
-   <td>Ascend 950PR/Ascend 950DT：预量化x的MX反量化缩放因子，仅在预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下必须传入，shape为(BS, CeilDiv(H, 32))，数据类型必须为FLOAT8_E8M0；其余情况必须传入空指针。Atlas A2/A3产品：预留输入，当前必须传入空指针。</td>
+   <td>x的反量化缩放因子，给出x各量化组对应的缩放值。预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下必选，shape为(BS, CeilDiv(H, 32))，数据类型必须为FLOAT8_E8M0；其余场景必须传入空指针。各产品支持情况详见约束说明。</td>
    <td>FLOAT8_E8M0、FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -771,14 +771,14 @@
   <tr>
    <td>dispatchQuantMode</td>
    <td>可选属性</td>
-   <td>dispatch通信时量化模式。默认值为0。Atlas A2/A3产品：0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景）。Ascend 950PR/Ascend 950DT：仅支持0和4，4表示算子内部执行MX逐组量化（A8W8-FP、A8W4-FP、A4W4-FP场景），0表示算子内部不量化（x为预量化输入，需配套传入scales）。</td>
+   <td>dispatch通信时量化模式。0表示算子内部不做dispatch量化，2表示INT8 pertoken量化，4表示算子内部执行MX逐组量化。默认值为0。各产品支持的取值、对应的计算场景以及取值0的具体含义详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatchQuantOutDtype</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。Ascend 950PR/Ascend 950DT：dispatchQuantMode为4时该属性表示算子内量化的输出类型，为0时表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。</td>
+   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。dispatchQuantMode为4时该属性表示算子内量化的输出类型；预量化直通场景（dispatchQuantMode为0且该属性为23、24或296）下表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。各产品实际支持的取值范围详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -820,7 +820,7 @@
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"在Atlas A2/A3产品上支持[]、[beta]或[beta, linear_beta]，在Ascend 950PR/Ascend 950DT上支持[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0；A2/A3的situglu使用空列表时，beta默认为1.0且linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。</td>
+   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"支持[]、[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。各产品对"situglu"参数列表的支持差异详见约束说明。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
@@ -862,7 +862,7 @@
   <tr>
    <td>rankNumPerServer</td>
    <td>可选属性</td>
-   <td>每台server上的rank数量，最少为2。默认值为2。Ascend 950PR/Ascend 950DT的MTE拓扑（topoType为0）下该属性不生效，算子内部按epWorldSize处理。</td>
+   <td>每台server上的rank数量，最少为2。默认值为2。该属性在部分产品的部分通信拓扑下不生效，详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -876,14 +876,14 @@
   <tr>
    <td>combineCommMode</td>
    <td>可选属性</td>
-   <td>combine阶段通信去重开关。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方按形状决定，算子内部不做收益裁决。开启会改变通信记录布局，所有Rank必须配置相同取值。默认值为0。仅Ascend 950PR/Ascend 950DT的MTE拓扑支持。</td>
+   <td>combine阶段通信去重开关。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方按形状决定，算子内部不做收益裁决。开启会改变通信记录布局，所有Rank必须配置相同取值。默认值为0。各产品与通信拓扑对该开关的支持范围详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>y</td>
    <td>输出</td>
-   <td>计算输出结果。Ascend 950PR/Ascend 950DT：数据类型固定为BF16。Atlas A2/A3产品：数据类型与x一致。shape为(BS, H)，与x的shape一致。</td>
+   <td>计算输出结果。shape为(BS, H)，与x的shape一致。数据类型详见约束说明。</td>
    <td>BF16</td>
    <td>ND</td>
   </tr>
@@ -925,8 +925,14 @@
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
+    - `dispatchQuantMode`仅支持0和2，0对应A16W16场景（算子内部不做dispatch量化），2对应A8W8-INT、A8W4-INT场景（INT8 pertoken量化）。`dispatchQuantMode`与`dispatchQuantOutDtype`的取值由`weight1`的数据类型唯一确定，取值不匹配时算子在tiling阶段报错：`weight1`为INT4或INT8时分别取2与1（INT8）；`weight1`为BF16或FLOAT16时分别取0与`weight1`相同的数据类型。`dispatchQuantOutDtype`传DT_UNDEFINED时不做该校验，各场景的对应取值见上表。
+    - `scales`为预留输入，当前必须传入空指针。
+    - `activation`为"situglu"时，`activation_params`支持[]、[beta]或[beta, linear_beta]；使用空列表时`beta`默认为1.0且`linear_beta`不启用。
+    - 不支持combine阶段通信去重，`combineCommMode`必须保持默认值0。
+    - `y`的数据类型与`x`一致。
+
   - **<term>Ascend 950PR&950DT系列产品</term>**：
-    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"，各激活的参数配套关系见参数说明。
+    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"situglu"的`activation_params`必须显式给出，仅支持[beta]或[beta, linear_beta]，不支持空列表。其余激活的参数配套关系见参数说明。
     - `BS`为本Rank本次调用的`x`.dim0，支持[1, +∞)，且不得超过创建`sym_buffer`时设置的`numMaxTokensPerRank`。不同Rank的实际`BS`可以不同，同一`sym_buffer`可以复用于多次不同`BS`的调用。
     - `numMaxTokensPerRank`必须大于等于1且所有Rank配置一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡`BS`。设置越大，内部申请的通信内存越多。
     - `H`（`x`.dim1）范围[1024, 8192]。A8W8-FP场景要求`H`为32的倍数；A8W4-FP场景要求`H`为64的倍数；A4W4-FP场景仅支持`weight1`为FRACTAL_NZ格式，要求`H`为64的倍数。
@@ -937,7 +943,7 @@
     - `moeExpertNum`范围 [`epWorldSize`, 2048]，且`moeExpertNum` % `epWorldSize` == 0。
     - `maxRecvTokenNum`范围 [0, `numMaxTokensPerRank` × `epWorldSize` × min(`topK`, `localMoeExpertNum`)]，建议保持默认值0，由接口自动计算接收容量。
     - `dispatchQuantOutDtype`仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
-    - `dispatchQuantMode`取值为0或4。4表示算子内部对BF16的`x`做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0）；0表示预量化直通，即`x`已经是量化后的数据、算子内部不再量化，缩放因子由`scales`入参给出。
+    - `dispatchQuantMode`取值为0或4。4表示算子内部对BF16的`x`做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0），对应A8W8-FP、A8W4-FP、A4W4-FP场景；0表示预量化直通，即`x`已经是量化后的数据、算子内部不再量化，缩放因子由`scales`入参给出。
     - 预量化直通（`dispatchQuantMode` = 0）的约束：`x`的数据类型必须与`dispatchQuantOutDtype`指定的逻辑类型一致；`scales`为必选；仅支持`topoType` = 0（MTE拓扑）；`sharedExpertQuantOutDtype`只能取DT_UNDEFINED或与`dispatchQuantOutDtype`相同。
     - `combineQuantMode`取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型
     - `commAlg`为预留参数，请保持默认空字符串""。
@@ -946,6 +952,7 @@
     - `localMoeExpertNum` = `moeExpertNum` / `epWorldSize`；`sharedExpertNumPerRank` = `sharedWeight1`.dim0（未启用共享专家时为0）；`expertPerRank` = `sharedExpertNumPerRank` + `localMoeExpertNum`。
     - `sharedExpertNumPerRank`范围 [0, 4]。
     - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
+    - MTE拓扑（`topoType` = 0）下`rankNumPerServer`不生效，算子内部按`epWorldSize`处理。
     - URMA拓扑下，`activation`不支持`swiglustep`和`swigluoai`。
     - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。
     - `combineCommMode`取值为0或1，0表示关闭combine阶段通信去重，1表示开启。是否开启完全由调用方决定，算子内部不做收益裁决；所有Rank必须配置相同取值，否则跨卡的通信记录布局不一致会导致读写错位。适用场景：`topK`较大、同一token命中同卡多个专家的比例较高、性能瓶颈在通信的形状，开启后收益明显；专家数多且瓶颈在计算的形状可能没有收益甚至变慢，建议按实际形状实测后再决定。

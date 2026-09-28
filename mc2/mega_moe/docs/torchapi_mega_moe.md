@@ -692,7 +692,7 @@ sym_buffer.update_group(group) -> None
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>通信域内各Rank可能出现的最大单卡token数。<term>Ascend 950PR&950DT系列产品</term>支持各Rank的实际token数不同，每次调用需满足x.shape[0]不大于该值；所有Rank必须配置相同的上界。</td>
+        <td>通信域内各Rank可能出现的最大单卡token数。每次调用需满足x.shape[0]不大于该值；所有Rank必须配置相同的上界。各Rank的实际token数是否允许不同见约束说明。</td>
     </tr>
     <tr>
         <td>num_topk</td>
@@ -722,13 +722,13 @@ sym_buffer.update_group(group) -> None
         <td>dispatch_quant_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>dispatch通信时量化模式。<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：0表示非量化（A16W16场景），2表示int8量化（A8W8-INT、A8W4-INT场景）。<term>Ascend 950PR/Ascend 950DT</term>：仅支持0和4，4表示算子内部做MX逐组量化（A8W8-FP、A8W4-FP、A4W4-FP场景），0表示预量化直通（x已是量化后的数据，需配套传入scales）。各产品支持的取值见约束说明。默认值为0。</td>
+        <td>dispatch通信时量化模式。0表示算子内部不做dispatch量化，2表示int8 pertoken量化，4表示算子内部做MX逐组量化。各产品支持的取值、对应的计算场景以及取值0的具体含义见约束说明。默认值为0。</td>
     </tr>
     <tr>
         <td>dispatch_quant_out_dtype</td>
         <td>torch.dtype 或 int</td>
         <td>可选</td>
-        <td>dispatch量化后输出的数据类型。支持torch.int8、torch.float8_e5m2、torch.float8_e4m3fn、torch_npu.float4_e2m1fn_x2。其中FLOAT4_E2M1只能传类型枚举torch_npu.float4_e2m1fn_x2（int，取值296），不能传torch.dtype。<term>Ascend 950PR/Ascend 950DT</term>：dispatch_quant_mode为4时该参数表示算子内量化的输出类型，为0时表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。各产品支持的取值见约束说明。默认值为None。</td>
+        <td>dispatch量化后输出的数据类型。支持torch.int8、torch.float8_e5m2、torch.float8_e4m3fn、torch_npu.float4_e2m1fn_x2。其中FLOAT4_E2M1只能传类型枚举torch_npu.float4_e2m1fn_x2（int，取值296），不能传torch.dtype。dispatch_quant_mode为4时该参数表示算子内量化的输出类型；预量化直通场景（dispatch_quant_mode为0且该参数为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。各产品支持的取值见约束说明。默认值为None。</td>
     </tr>
     <tr>
         <td>combine_quant_mode</td>
@@ -746,7 +746,7 @@ sym_buffer.update_group(group) -> None
         <td>combine_comm_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>combine阶段通信去重开关，仅<term>Ascend 950PR/Ascend 950DT</term>的MTE拓扑支持。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方决定，算子内部不做收益裁决。开启会改变通信缓冲区布局，必须在创建sym_buffer时指定，且同一通信域内所有Rank取值一致。默认值为0。</td>
+        <td>combine阶段通信去重开关。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方决定，算子内部不做收益裁决。开启会改变通信缓冲区布局，必须在创建sym_buffer时指定，且同一通信域内所有Rank取值一致。各产品支持情况与开启条件见约束说明。默认值为0。</td>
     </tr>
     <tr>
         <td>topk_weights_type</td>
@@ -791,7 +791,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="4">x</td>
         <td rowspan="4">Tensor</td>
         <td rowspan="4">必选</td>
-        <td rowspan="4">MoE层输入的token隐藏状态。<term>Ascend 950PR/Ascend 950DT</term>：dispatch_quant_mode为4时必须为bfloat16，由算子内部做MX逐组量化；dispatch_quant_mode为0时算子内部不做量化（预量化直通），此时x的数据类型必须与dispatch_quant_out_dtype指定的逻辑类型一致，并且必须同时传入scales。float4_e2m1在PyTorch侧以uint8打包传入，每字节2个元素。</td>
+        <td rowspan="4">MoE层输入的token隐藏状态。除预量化直通场景外，x的数据类型必须为bfloat16，量化（若有）由算子内部完成；预量化直通场景（dispatch_quant_mode为0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下算子内部不做量化，此时x的数据类型必须与dispatch_quant_out_dtype指定的逻辑类型一致，并且必须同时传入scales。float4_e2m1在PyTorch侧以uint8打包传入，每字节2个元素。各产品支持的数据类型见约束说明。</td>
         <td>bfloat16</td>
         <td>ND</td>
         <td>(num_tokens, hidden)</td>
@@ -965,7 +965,7 @@ sym_buffer.update_group(group) -> None
         <td>scales<sup>1</sup></td>
         <td>Tensor</td>
         <td>可选</td>
-        <td>dispatch阶段的缩放因子输入。<term>Ascend 950PR/Ascend 950DT</term>：预量化x的MX反量化缩放因子，dispatch_quant_mode为0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2时（预量化直通场景）必须传入，其余情况必须为None。其余产品：预留输入，当前必须传入None。</td>
+        <td>dispatch阶段的缩放因子输入。预量化直通场景（dispatch_quant_mode为0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下为预量化x的MX反量化缩放因子，该场景下必选；其余场景必须传入None。各产品支持情况见约束说明。</td>
         <td>float8_e8m0</td>
         <td>ND</td>
         <td>(num_tokens, CeilDiv(hidden, 32))</td>
@@ -1187,7 +1187,7 @@ sym_buffer.update_group(group) -> None
         <td>y</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>本卡收到的token数据，对应公式中的Y。<term>Ascend 950PR/Ascend 950DT</term>：数据类型固定为bfloat16。其余产品：数据类型与<code>x</code>一致。要求为2维张量，数据格式为ND，支持非连续的Tensor。</td>
+        <td>本卡收到的token数据，对应公式中的Y。要求为2维张量，数据格式为ND，支持非连续的Tensor。数据类型见约束说明。</td>
         <td>bfloat16</td>
         <td>(num_tokens, hidden)</td>
     </tr>
@@ -1241,25 +1241,25 @@ sym_buffer.update_group(group) -> None
         </tr>
         <tr>
             <td>l1_weights</td>
-            <td>Atlas A2系列产品、Atlas A3系列产品为num_experts_per_rank；Ascend 950PR&950DT系列产品的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights</td>
-            <td>Atlas A2系列产品、Atlas A3系列产品为num_experts_per_rank；Ascend 950PR&950DT系列产品的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l1_weights_sf</td>
-            <td>与对应权重的TensorList长度和布局一致；Atlas A2系列产品、Atlas A3系列产品为num_experts_per_rank；Ascend 950PR&950DT系列产品的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>与对应权重的TensorList长度和布局一致；逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights_sf</td>
-            <td>与对应权重的TensorList长度和布局一致；Atlas A2系列产品、Atlas A3系列产品为num_experts_per_rank；Ascend 950PR&950DT系列产品的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>与对应权重的TensorList长度和布局一致；逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
@@ -1287,6 +1287,9 @@ sym_buffer.update_group(group) -> None
   <!-- npu="950" id21 -->
   - Ascend 950PR&950DT系列产品的MXFP场景支持两种TensorList布局。对于`l1_weights`、`l2_weights`、`l1_weights_sf`和`l2_weights_sf`，逐专家布局下四个TensorList的长度均为`local_moe_expert_num`，权重列表中的Tensor为二维，权重缩放因子列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重缩放因子Tensor为四维，且各Tensor的dim0均为`local_moe_expert_num`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
   <!-- end id21 -->
+  <!-- npu="A3,910b" id27 -->
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：`l1_weights`、`l2_weights`、`l1_weights_sf`、`l2_weights_sf`仅支持逐专家布局，四个TensorList的长度均为`num_experts_per_rank`（= `num_experts` / `ep_world_size`，与`local_moe_expert_num`同值）。
+  <!-- end id27 -->
 
 - **参数一致性约束**：
   - mega_moe接口的所有输入参数及其对应的张量维度，必须与get_symm_buffer_for_mega_moe的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
@@ -1447,6 +1450,9 @@ sym_buffer.update_group(group) -> None
         </table>
 
   <!-- end id17 -->
+  <!-- npu="A3,910b" id26 -->
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：不支持combine阶段通信去重，`combine_comm_mode`必须保持默认值0；`scales`为预留输入，当前必须传入None；输出`y`的数据类型与`x`一致。
+  <!-- end id26 -->
   <!-- npu="950" id18 -->
   - **Ascend 950PR&950DT系列产品：**
     - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。`activation_clamp`用于配置前三种激活的截断值；`activation_params`用于配置"swigluoai"的`alpha`、`beta`以及"situglu"的`beta`、`linear_beta`。
@@ -1460,7 +1466,7 @@ sym_buffer.update_group(group) -> None
     - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
     - max_recv_token_num范围 [0, num_max_tokens_per_rank × ep_world_size × min(num_topk, local_moe_expert_num)]；建议保持默认值0，由接口自动计算接收容量。
     - dispatch_quant_out_dtype仅支持torch.float8_e5m2、torch.float8_e4m3fn或torch_npu.float4_e2m1fn_x2（该值是整型枚举，取值296；FLOAT4_E2M1只能以该整型枚举传入，不能传torch.dtype）。
-    - dispatch_quant_mode取值为0或4。4表示算子内部对bfloat16的x做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0）；0表示预量化直通，即x已经是量化后的数据、算子内部不再量化，缩放因子由scales入参给出。
+    - dispatch_quant_mode取值为0或4。4表示算子内部对bfloat16的x做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0），对应A8W8-FP、A8W4-FP、A4W4-FP场景；0表示预量化直通，即x已经是量化后的数据、算子内部不再量化，缩放因子由scales入参给出。
     - 预量化直通（dispatch_quant_mode = 0）的约束：x的数据类型必须与dispatch_quant_out_dtype指定的逻辑类型一致；scales为必选；仅支持topo_type = 0（MTE拓扑），跨超URMA拓扑不支持；shared_expert_quant_out_dtype只能取None或与dispatch_quant_out_dtype相同。
     - x_active_mask当前版本必须传入None，不支持非空输入。
     - scales仅在预量化直通（dispatch_quant_mode = 0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）场景为必选，数据类型为FLOAT8_E8M0，shape为(num_tokens, CeilDiv(hidden, 32))；其余场景必须传入None。
