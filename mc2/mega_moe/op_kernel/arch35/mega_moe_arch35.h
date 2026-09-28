@@ -649,8 +649,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStag
                 // 共享直接读取输入时，AIV0 在进入 MoE 前等待全部 quant/pack 完成。
                 CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
             }
-            // AIV0 由具体 MoE 实现确定后继写 UB 的流水，承接输入准备或共享计算的搬出。
-            derived.SyncBeforeMoeExpertStages();
+            if (params_.tilingData->dedupMode != 0 &&
+                params_.tilingData->hiddenDim <= DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+                // AIV0 参与去重建表，先通过 MTE2 搬入 count 表，等待前序搬出读完 UB。
+                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+            } else {
+                // AIV0 直接进入 MoE 计算，由具体实现确定后继写 UB 的流水。
+                derived.SyncBeforeMoeExpertStages();
+            }
         }
     } else {
         if (sharedExpertNum_ > 0U) {
