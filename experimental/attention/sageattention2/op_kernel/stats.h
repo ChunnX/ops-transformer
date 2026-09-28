@@ -268,10 +268,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
     auto input = r.ubBuf.GetBufferByByte<T>(STATS_RAW_UB);
     auto x = r.ubBuf.GetBufferByByte<float>(STATS_F32_UB);
     auto sum = r.ubBuf.GetBufferByByte<float>(STATS_SUM_UB);
-    const bool grouped = UseDieGroups(p);
-    const uint32_t workers = grouped ? p.cores : 2 * p.cores;
     const uint32_t rank = GetBlockIdx() % workers;
-    const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
     const uint64_t firstHead = grouped ? GetBlockIdx() / p.cores * heads : 0;
     const float invSk = 1.0f / float(p.sk);
     for (uint64_t local = rank; local < heads; local += workers) {
