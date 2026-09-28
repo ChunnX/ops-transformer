@@ -317,25 +317,31 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     ]
     tensor_view_shapes = repr(tuple(shapes))
 
-    def _dt(key, default):
-        return _norm_dtype(g(key)) or default
+    def _csv_dtype(key, default):
+        raw = g(key)
+        dt = (
+            str(raw).strip().lower()
+            if raw is not None and str(raw).strip() != ""
+            else ""
+        )
+        return repr(dt) if dt else repr(default)
 
     dtypes = [
-        "'float4_e2m1'",
-        "'float4_e2m1'",
-        "'float4_e2m1'",  # q/k/v (golden 写未打包 codes, TTK pack)
-        "'float8_e8m0'",
-        "'float8_e8m0'",
-        "'float8_e8m0'",  # descale e8m0
-        "'int32'",  # block_table
-        "'float32'",  # p_scale
-        "'int32'",
-        "'int32'",
-        "'int32'",
-        "'int32'",  # cu_seqlens/seqused
-        "'float32'",  # sinks
-        "'int8'",  # attn_mask
-        "'int32'",  # metadata
+        _csv_dtype("q_dtype", "float4_e2m1"),
+        _csv_dtype("k_dtype", "float4_e2m1"),
+        _csv_dtype("v_dtype", "float4_e2m1"),
+        _csv_dtype("q_descale_dtype", "float8_e8m0"),
+        _csv_dtype("k_descale_dtype", "float8_e8m0"),
+        _csv_dtype("v_descale_dtype", "float8_e8m0"),
+        _csv_dtype("block_table_dtype", "int32"),
+        _csv_dtype("p_scale_dtype", "float32"),
+        _csv_dtype("cu_seqlens_q_dtype", "int32"),
+        _csv_dtype("cu_seqlens_kv_dtype", "int32"),
+        _csv_dtype("seqused_q_dtype", "int32"),
+        _csv_dtype("seqused_kv_dtype", "int32"),
+        _csv_dtype("learnable_sink_dtype", "float32"),
+        _csv_dtype("attn_mask_dtype", "int8"),
+        _csv_dtype("metadata_dtype", "int32"),
     ]
     tensor_dtypes = "(" + ",".join(dtypes) + ")"
 
