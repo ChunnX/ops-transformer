@@ -442,7 +442,6 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
     auto f = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> den, inv;
     LoadAlign(den, denom);
-    Maxs(den, den, MIN_POSITIVE_FLOAT, f);
     FastReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -459,7 +458,6 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> den = UpdateWideDenominator(denom, alpha, f, FIRST);
-    Maxs(den, den, MIN_POSITIVE_FLOAT, f);
     RegTensor<float> inv;
     FastReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
@@ -483,7 +481,6 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
     RegTensor<float> den = UpdateWidePairDenominator(denom, alpha0, alpha1, f, FIRST);
     if constexpr (LAST) {
         RegTensor<float> inv;
-        Maxs(den, den, MIN_POSITIVE_FLOAT, f);
         FastReciprocal(inv, den, f);
         StoreAlign(scratch, inv, f);
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();

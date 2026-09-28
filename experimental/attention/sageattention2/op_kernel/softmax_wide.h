@@ -48,15 +48,15 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     Mul(x1_1, x1_1, c1_1, h);
 
     if constexpr (MASK) {
-        MaskReg valid;
-        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit0 + int32_t(row) - int32_t(col) * 16), h);
-        Select(x0_0, x0_0, negative, valid);
-        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit0 + int32_t(row) + 8 - int32_t(col) * 16), h);
-        Select(x1_0, x1_0, negative, valid);
-        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit1 + int32_t(row) - int32_t(col) * 16), h);
-        Select(x0_1, x0_1, negative, valid);
-        CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(causalLimit1 + int32_t(row) + 8 - int32_t(col) * 16), h);
-        Select(x1_1, x1_1, negative, valid);
+        MaskReg valid0_0, valid1_0, valid0_1, valid1_1;
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(causalLimit0 + row - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(causalLimit0 + row + 8 - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(causalLimit1 + row - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(causalLimit1 + row + 8 - col * 16), h);
+        Select(x0_0, x0_0, negative, valid0_0);
+        Select(x1_0, x1_0, negative, valid1_0);
+        Select(x0_1, x0_1, negative, valid0_1);
+        Select(x1_1, x1_1, negative, valid1_1);
     }
 
     Max(m0, m0, x0_0, h);
@@ -102,43 +102,44 @@ __simd_callee__ inline void ComputeProbAndPackNZPair(
     ExpSub<float, half, RegLayout::ZERO>(p2_1, x1_1, m, h);
     ExpSub<float, half, RegLayout::ONE>(p3_1, x1_1, m, h);
 
-    // Block 0: Cast, Add, and Or scheduled to maximize RAW dependency distance.
-    // ExpSubs for Block 1 (p0_1..p3_1) mature in hardware pipeline (12-14 cycles) while Block 0 executes.
-    RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
-    RegTensor<float> pair0, pair1;
-    RegTensor<uint8_t> merge0, merge1, merged;
+    RegTensor<float> pair0_0, pair1_0, pair0_1, pair1_1;
+    Add(pair0_0, p0_0, p1_0, f);
+    Add(pair0_1, p0_1, p1_1, f);
+    Add(pair1_0, p2_0, p3_0, f);
+    Add(pair1_1, p2_1, p3_1, f);
 
-    Cast<float8_e4m3_t, float, cast0>(packed0, p0_0, f);
-    Cast<float8_e4m3_t, float, cast2>(packed1, p1_0, f);
-    Add(pair0, p0_0, p1_0, f);
-    Cast<float8_e4m3_t, float, cast1>(packed2, p2_0, f);
-    Cast<float8_e4m3_t, float, cast3>(packed3, p3_0, f);
-    Add(pair1, p2_0, p3_0, f);
+    RegTensor<float8_e4m3_t> packed0_0, packed1_0, packed2_0, packed3_0;
+    RegTensor<float8_e4m3_t> packed0_1, packed1_1, packed2_1, packed3_1;
 
-    Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
-    Add(pair0, pair0, pair1, f);
-    Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
+    Cast<float8_e4m3_t, float, cast0>(packed0_0, p0_0, f);
+    Cast<float8_e4m3_t, float, cast0>(packed0_1, p0_1, f);
+    Cast<float8_e4m3_t, float, cast2>(packed1_0, p1_0, f);
+    Cast<float8_e4m3_t, float, cast2>(packed1_1, p1_1, f);
 
-    Add(rowSum, rowSum, pair0, f);
-    Or(merged, merge0, merge1, b);
-    StoreAlign((__ubuf__ uint8_t *)out + outOffset0, merged, b);
+    Add(pair0_0, pair0_0, pair1_0, f);
+    Add(pair0_1, pair0_1, pair1_1, f);
 
-    // Block 1: executed after 12+ instructions since ExpSubs were issued, ensuring 0 RAW stall cycles.
-    // Reuses temporary registers to reduce peak vector register pressure and avoid spills.
-    Cast<float8_e4m3_t, float, cast0>(packed0, p0_1, f);
-    Cast<float8_e4m3_t, float, cast2>(packed1, p1_1, f);
-    Add(pair0, p0_1, p1_1, f);
-    Cast<float8_e4m3_t, float, cast1>(packed2, p2_1, f);
-    Cast<float8_e4m3_t, float, cast3>(packed3, p3_1, f);
-    Add(pair1, p2_1, p3_1, f);
+    Cast<float8_e4m3_t, float, cast1>(packed2_0, p2_0, f);
+    Cast<float8_e4m3_t, float, cast1>(packed2_1, p2_1, f);
+    Cast<float8_e4m3_t, float, cast3>(packed3_0, p3_0, f);
+    Cast<float8_e4m3_t, float, cast3>(packed3_1, p3_1, f);
 
-    Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
-    Add(pair0, pair0, pair1, f);
-    Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
+    RegTensor<uint8_t> merge0_0, merge1_0, merged_0;
+    RegTensor<uint8_t> merge0_1, merge1_1, merged_1;
 
-    Add(rowSum, rowSum, pair0, f);
-    Or(merged, merge0, merge1, b);
-    StoreAlign((__ubuf__ uint8_t *)out + outOffset1, merged, b);
+    Or(merge0_0, (RegTensor<uint8_t> &)packed0_0, (RegTensor<uint8_t> &)packed1_0, b);
+    Or(merge0_1, (RegTensor<uint8_t> &)packed0_1, (RegTensor<uint8_t> &)packed1_1, b);
+    Or(merge1_0, (RegTensor<uint8_t> &)packed2_0, (RegTensor<uint8_t> &)packed3_0, b);
+    Or(merge1_1, (RegTensor<uint8_t> &)packed2_1, (RegTensor<uint8_t> &)packed3_1, b);
+
+    Add(rowSum, rowSum, pair0_0, f);
+    Add(rowSum, rowSum, pair0_1, f);
+
+    Or(merged_0, merge0_0, merge1_0, b);
+    Or(merged_1, merge0_1, merge1_1, b);
+
+    StoreAlign((__ubuf__ uint8_t *)out + outOffset0, merged_0, b);
+    StoreAlign((__ubuf__ uint8_t *)out + outOffset1, merged_1, b);
 }
 
 // NZ scores retain eight rows in each FP16 register. ReduceDataBlock produces
@@ -188,7 +189,7 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    UpdateSoftmaxRescaleFactors(maxima, (__ubuf__ half *)alpha, alpha, f, h);
+    UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
 }
 
 template <bool FIRST>
