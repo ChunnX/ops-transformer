@@ -25,10 +25,10 @@
  *       二、切分与输出层(CutPlanner + CommCutResult 适配) /
  *       三、求解层(自由长度求解器, ctx+键控分支) / 四、公共逻辑片段
  *
- * 零特有代码架构(2026-09-17 §4.24 裁定): 钩子机制已废除, 算子差异按
- * (通信原语 CommPrimitive, 通算顺序 CommComputeOrder, 通信引擎 TilingCommEngine, dtype)
- * 键控分支内化于引擎(FitTunables 阈值载体已随 §4.37 阶段2 开销补丁废弃而删除)。
- * 算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用, 无任何算子特有代码。
+ * 零特有代码架构(§4.24/§4.38 演进): 钩子机制已废除; 引擎不区分通信原语——原语语义
+ * (通信份数口径已融进标定斜率 k / 轴向与 mm 倍数在 CommProfile / 流水线结构由 LocalMMPosition
+ * 表达)全部终结在标定层; 键控维度仅 (LocalMMPosition 本地块位置, CommComputeOrder 通算顺序,
+ * TilingCommEngine 通信引擎, dtype)。算子侧 = CALIBRATION 实例 + 枚举入参 + 一行调用。
  *
  * 统一引擎分派（三引擎接入结构完全一致, 见 TilingCommEngine/ParseCommEngine）:
  *   同时支持多通信模式的算子按同一模式接入——CCU/AICPU 走自由长度分支（各引擎拟合表）;
@@ -70,15 +70,6 @@ enum class TilingSocVersion {
                 // 引擎仅支持 950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域; 后续芯片在此扩展)
 };
 
-enum class CommPrimitive {
-    ALL_REDUCE, // default
-    ALL_GATHER,
-    REDUCE_SCATTER,
-    ALL_TO_ALL,
-    REDUCE_SCATTER_VIA_ALL_TO_ALL,
-    ALL_REDUCE_VIA_TWO_SHOT,
-};
-
 enum class MatmulDtypeKind {
     FP16, // default
     QUANT,
@@ -115,7 +106,6 @@ struct CommModelInfo {
     uint64_t rankDim;
     uint64_t commDtypeSize; // data type size in hccl
     uint64_t commMatrixLen; // equal to kValue in gather, equal to nValue in reduce
-    CommPrimitive commPrimitive;
     CommMeshType commMethod;
     CommTopology topoType;
     uint64_t maxStepSize; // number of steps in a full round of communication
@@ -249,6 +239,41 @@ enum class CommComputeOrder {
     COMM_FIRST,    // 通信在前计算在后(输入侧通信: AG/allto_all_matmul)
 };
 
+// ====== 本地 mm 块位置枚举(§4.38 核心键控维度, 2026-09-25 裁定) ======
+// 引擎不区分通信原语——原语语义(份数口径/轴向/流水线结构)全部终结在标定层 CommProfile;
+// 引擎唯一的结构键控是"本地 mm 块在流水线的位置"(不经通信的数据块, 2026-09-25 前按
+// 通信原语隐式表达, 现显式化):
+enum class LocalMMPosition {
+    FRONT, // 本地 mm 块前置: 流水线首端(AGMM——本卡 A 块已在手, 聚合前即可计算, 启动端
+           // 被本地块免费占据, 短块退到尾部专职快速收尾)
+    BACK,  // 本地 mm 块后置: 流水线尾端(matmul_allto_all——本地保留份无需发出、无通信
+          // deadline, 放尾部与末块通信重叠, 收尾端被本地块占据, 短块前置专职启动通信管道)
+    NONE, // 无本地 mm 块(MMRS/MMAR/MMA2A——短块作流水线垫片, 按 bound 判定放首/尾)
+};
+
+// ====== 标定层结构参数的模式枚举(CommProfile 消费; 倍数依赖运行时 rankDim, 标定层存模式,
+//       引擎一处集中换算——避免按原语的散落取值表) ======
+enum class CommAxis { // 通信承载的数据侧(决定通信矩阵另一维与 dtype 字节取值)
+    K,                // A 侧(输入): 通信沿 K 轴聚散(AGMM/A2A-in——传 A 矩阵行, kValue)
+    N,                // C 侧(输出): 沿 N 轴(RS/AR/A2A-out——传 C 矩阵行, nValue)
+};
+enum class RankMul { // m 的倍数模式(换算: ONE=1, RANK_DIM=rankDim, RANK_DIM_MINUS_ONE=rankDim-1)
+    ONE,
+    RANK_DIM,
+    RANK_DIM_MINUS_ONE,
+};
+inline uint64_t RankMulValue(RankMul mode, uint64_t rankDim)
+{
+    switch (mode) {
+        case RankMul::RANK_DIM:
+            return rankDim;
+        case RankMul::RANK_DIM_MINUS_ONE:
+            return rankDim - 1U; // rankDim 已在模型入口钳位 ≥2, 无下溢
+        default:
+            return 1U;
+    }
+}
+
 // fp4 子字节建模分母: 1 字节打包 2 个 fp4 元素(D6, dtype 键控)
 constexpr uint64_t FP4_PACK_RATIO = 2;
 
@@ -272,27 +297,11 @@ public:
     CommFitParams commEstimatePar_;
     CommModelInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // 时间折算因子, 恒 1(§4.31: 8-die 折算桥接已随 plain RS 死分支删除)
-    // 实际参与通信的数据卡数(旧代码原名 lookUpTileNum_, "数据拟合查表参数"; 语义经开发人员确认):
-    // AG/RS(含 via-A2A)=rankDim——聚合/分发时全部卡份数据都过网(AG 自己的份也要广播给别人);
-    // AR/A2A=1——两卡口径按单份拟合(A2A 的拟合 x 轴取单卡发送量, 标定口径使然, 并非字面上
-    // 只有一卡数据过网)。进 CommTime/InverseCommTime 的字节数换算。
-    uint64_t commRankCnt_ = 1;
-    // 被 mm 计算依赖的通信数据卡数(旧代码原名 rankTileNum_, 由 GetRankTileNum()/
-    // GetFullMeshRankTileNum() 派生; 语义经开发人员确认): 同一批通信数据, 通信完之后(AG,
-    // comm→calc)或之前(RS/A2A, calc→comm)参与本卡计算的部分——
-    //   AG=rankDim-1: 远程份经通信到达后参与计算, 自己的份不经通信(本地 front 块, E5 单独按 1 建模);
-    //   RS/A2A=rankDim: 全部卡份先算后发(收到侧依赖全部卡的计算产物);
-    //   AR=1: two-shot 每轮一份。
-    // 与 commRankCnt_(通信视角全量, AG=rankDim/A2A=1)、ctx.mmRankMul(mm 总行数倍数,
-    // AG·RS=rankDim/A2A·AR=1) 是三个独立标定的口径系数——取值表是标定历史事实而非同一物理量
-    // 的推导, 勿混用勿"统一"。
-    uint64_t commRankCntForMm_ = 1;
 
-    // Constructor(soc 恒 950; commFitParams 由 InitCtx 按 rankDim 从标定选定的行, miss=零值行)
-    HCCLCommModel(uint32_t inputRankDim, CommPrimitive inputKernelType, CommFitParams commFitParams,
+    // Constructor(soc 恒 950; commFitParams 由 InitCtx 按 rankDim 从标定的行, miss=零值行)
+    HCCLCommModel(uint32_t inputRankDim, CommFitParams commFitParams,
                   CommTopology topoType = CommTopology::STANDARD_CARD)
     {
-        commTypeInfo_.commPrimitive = inputKernelType; // 区分哪个MC2算子
         // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
         //   ① 防 uint64 下溢: AG 远程流转份数 = rankDim-1, rankDim=0 时下溢;
         //   ② 防退化: 单卡无集合通信可建模, 拟合表均按 ≥2 卡标定, 退化输入按最接近的 2 卡建模;
@@ -300,7 +309,7 @@ public:
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         commTypeInfo_.maxStepSize = 1;
-        InitPrimitiveParams();
+        commTypeInfo_.commMethod = CommMeshType::FULL_MESH; // 全互联(旧 InitPrimitiveParams 残余, 仅完整性保留)
         commTypeInfo_.topoType = topoType;
         commEstimatePar_ = commFitParams; // InitCtx 按 rankDim 选定的标定行(miss=零值行)
     };
@@ -327,34 +336,11 @@ public:
         return commTypeInfo_.rankDim;
     }
 
-    // ---- 构造期按通信原语初始化两个建模口径 + 标定查表 ----
-    // commRankCnt_/commRankCntForMm_: 两个通信数据卡数口径(见成员定义处取值表);
-    // commTimeFactor_: 恒 1(§4.31)——老公式化家族的 8-die AR 折算桥接(plain RS 专用, 无 A 家族
-    //   消费者且 950 表无标定行)已随死分支删除, A 家族全部原语的标定行均为直接口径。
-    // 标定查表按 rankDim 匹配(首个命中行; soc/commPrimitive 为算子实例常量, 已在构造参数区分)。
-    //   §4.29 分派后 miss 由 op 层走 COF——未命中置零值行(CommTime 恒 0 → NoCut), 防御而非回退。
-    void InitPrimitiveParams()
-    {
-        commTypeInfo_.commMethod = CommMeshType::FULL_MESH;
-        // AG / RS-via-A2A: 聚合/分发量即拟合口径(一轮线上流动 rankDim 份, 标定行直接可用);
-        // 其余(AR/A2A): 每轮一份, 均为默认值 commRankCnt_=1 / commTimeFactor_=1, 无需设置
-        if ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ||
-            (commTypeInfo_.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
-            commRankCnt_ = commTypeInfo_.rankDim;
-        }
-        commRankCntForMm_ =
-            (commTypeInfo_.commPrimitive == CommPrimitive::ALL_REDUCE) ?
-                1 :
-                ((commTypeInfo_.commPrimitive == CommPrimitive::ALL_GATHER) ? (commTypeInfo_.rankDim - 1) :
-                                                                              commTypeInfo_.rankDim);
-    }
-
     // 单轮通信耗时: y = k·x + b(§4.37)——本轮数据量按带宽线性计, 外加该轮启动开销 b;
     // 一次性开销 c 不进单轮口径。配平(E18/E19 反解)消费的就是这个单轮语义。
     double CommTime(uint64_t mSize) const
     {
-        const double commDataSize =
-            static_cast<double>(mSize) * commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes();
+        const double commDataSize = static_cast<double>(mSize) * commTypeInfo_.commMatrixLen * GetRealDtypeSizes();
         const double tmpSize = commDataSize / BYTES_PER_MB;
         return (commEstimatePar_.slopeUsPerMb * tmpSize + commEstimatePar_.roundOverheadUs) / commTimeFactor_;
     }
@@ -364,8 +350,7 @@ public:
     {
         const double tmpSize =
             (targetTime * commTimeFactor_ - commEstimatePar_.roundOverheadUs) / commEstimatePar_.slopeUsPerMb;
-        return static_cast<uint64_t>(tmpSize * BYTES_PER_MB /
-                                     (commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes()));
+        return static_cast<uint64_t>(tmpSize * BYTES_PER_MB / (commTypeInfo_.commMatrixLen * GetRealDtypeSizes()));
     }
 
     // 总通信耗时(N 轮求和口径): y = k·X + N·b + c(§4.37)——X 为切分域总数据量, 每轮各付
@@ -373,8 +358,7 @@ public:
     // 之差 = (N−1)·b, 即切分多付的启动税; Estimate 阶段轮数未知, 按 N=1 保守估(§4.37 拍板)。
     double TotalCommTime(uint64_t totalLen, uint64_t numRounds) const
     {
-        const double commDataSize =
-            static_cast<double>(totalLen) * commTypeInfo_.commMatrixLen * commRankCnt_ * GetRealDtypeSizes();
+        const double commDataSize = static_cast<double>(totalLen) * commTypeInfo_.commMatrixLen * GetRealDtypeSizes();
         const double tmpSize = commDataSize / BYTES_PER_MB;
         return (commEstimatePar_.slopeUsPerMb * tmpSize +
                 commEstimatePar_.roundOverheadUs * static_cast<double>(numRounds) + commEstimatePar_.fixedOverheadUs) /
@@ -395,7 +379,7 @@ constexpr double CYCLE_PER_MICRO_SEC = 1.65 * BYTES_PER_KB;
 constexpr double MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL = 1.4;
 constexpr double MNVALUE_THRESHOLD = 820;
 constexpr double KVALUE_THRESHOLD = 1280;
-constexpr double FRONT_UTIL_EXPONENT_COEFFICIENT = 0.6;
+constexpr double LOCAL_MM_UTIL_EXPONENT_COEFFICIENT = 0.6; // 本地窗口(单份数据/流水未满)的 MN 指数
 constexpr double CUBE_UTIL_EXPONENT_COEFFICIENT = 0.7;
 constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
@@ -561,7 +545,7 @@ public:
     // 离散切分对齐 (A 家族全部算子的 Adjust 阶段使用)
     void AlignTileSmall();
     void AlignTileLarge();
-    void FitTileLengthDiscrete(bool goodLinearityShape, bool localAtFront = false);
+    void FitTileLengthDiscrete(bool goodLinearityShape, bool localBlockProtected = false);
     void CalcShortTile();
     void CalcBackTile();
     void RedistributeTile();
@@ -645,7 +629,7 @@ inline void CutPlanner::GenerateInitialPartition()
     cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
 }
 
-inline void CutPlanner::FitTileLengthDiscrete(bool goodLinearityShape, bool localAtFront)
+inline void CutPlanner::FitTileLengthDiscrete(bool goodLinearityShape, bool localBlockProtected)
 {
     // 流水配平，找到初始切分长度和个数
     GenerateInitialPartition();
@@ -665,7 +649,8 @@ inline void CutPlanner::FitTileLengthDiscrete(bool goodLinearityShape, bool loca
         cutRes.totalTileCnt = cutRes.numShortTile + cutRes.numLongTile;
         largeBackTile = false;
     }
-    if (cutRes.totalTileCnt == 2U && !localAtFront) {
+    if (cutRes.totalTileCnt == 2U && !localBlockProtected) { // 有本地块的形态跳过两块均摊
+                                                             // (保护含本地块的端部结构)
         // 如果前面没有local特殊处理，就把剩余长度均分给长块和短块
         RedistributeTile();
         largeBackTile = false;
@@ -783,32 +768,22 @@ struct FitBasedBalanceCtx {
     MatmulPerfModel matmulPerf;
     HCCLCommModel commPerf;
     CutPlanner tilingM;
-    CommPrimitive commPrimitive; // 键控维度: 通信原语
-    CommComputeOrder order;      // 键控维度: 通算顺序
-    TilingCommEngine commEngine; // 键控维度: 通信引擎(CCU 专属的单轮通信量上限整形)
-    uint64_t commRankCntForMm = 1; // 派生: commPerf.commRankCntForMm_(mm 工作集 rank 份数, 取值表见模型成员注释)
-    uint64_t mmRankMul = 1;     // 派生: MmRankMul(ctx)(本卡 mm 总行数的 rank 倍数, 见该函数注释)
+    LocalMMPosition localMMPosition; // 键控维度: 本地 mm 块位置(§4.38——引擎唯一的结构键控,
+                                     // 取代原通信原语; 原语语义全部终结在标定层 CommProfile)
+    CommComputeOrder order;          // 键控维度: 通算顺序
+    TilingCommEngine commEngine;     // 键控维度: 通信引擎(CCU 专属的单轮通信量上限整形)
+    uint64_t commRankCntForMm = 1;   // 派生: CommProfile.mmWorksetMul 换算(mm 工作集 M 跨度倍数)
+    uint64_t mmRankMul = 1;          // 派生: CommProfile.mmTotalMul 换算(mm 总行数倍数)
+    uint64_t commVolumeMul = 1; // 派生: CommProfile.commVolumeMul 换算(单次通信调用物理字节倍数, ⑥ 消费)
     double ratioCalcComm = 1.0; // 过程量: Estimate 骨干设置的通算比(键控分支消费)
-    double frontMMTime = 0; // 过程量(AG 键): 本地首轮计算耗时(本卡 A 块已在手, 首块无通信依赖)
+    double frontMMTime = 0; // 过程量(FRONT 键): 本地首块计算耗时(流水线首端, 启动端被本地块占据)
+    double backMMTime = 0; // 过程量(BACK 键): 本地尾块计算耗时(流水线尾端, 与末块通信重叠)
     // 诊断量(§4.37, Schedule 尾部写入): 切分完成后按实际轮数精算的总通信时, 与 NoCut 候单轮
     // 之差 = (N−1)·b 启动税。仅供 op 侧日志消费, 不参与引擎决策(机制与日志分离, §4.24 裁定)
     double commTimeActualUs = 0; // 实际切分(N 轮)的总通信时
     double commTimeNoCutUs = 0;  // 不切候选(1 轮)的总通信时
 };
 
-// 本卡 mm 总行数的 rank 倍数(通信原语语义派生; InitCtx 单次赋值进 ctx.mmRankMul, 消费方读字段。
-// 旧代码无独立变量——隐式散在各算子钩子对 MatmulTime(m, rankDim_)/MatmulTime(m, 1) 的调用里,
-// §4.11 五算子逐行对比时显名提取):
-//   AG: mValue 为聚合前本卡份, 聚合后每卡算全量 m×rankDim 行;
-//   RS: mValue 已被除为 scatter 保留份, mm 算除之前的全量 orgM = m×rankDim 行;
-//   AR/A2A: mm 即本卡 1 份 m 行(规约/分发在原语语义内)。
-inline uint64_t MmRankMul(const FitBasedBalanceCtx &ctx)
-{
-    return (ctx.commPrimitive == CommPrimitive::ALL_GATHER || ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER ||
-            ctx.commPrimitive == CommPrimitive::REDUCE_SCATTER_VIA_ALL_TO_ALL) ?
-               ctx.commPerf.rankDim() :
-               1;
-}
 // ============================================================================
 // 客户标定数据总集（算子侧唯一需要接触的标定类型, 2026-09-15 评审裁定:
 // 单一大结构体替代"引擎侧一堆小结构体 + 算子侧一堆具名 constexpr"）
@@ -830,6 +805,20 @@ struct FitBalanceCalibration {
     static constexpr size_t MAX_COMM_FIT_ROWS = 4;   // 已标定通信形态数上限
     static constexpr size_t MAX_CUBE_CALC_ROWS = 4;  // matmul 算力档位数上限
     static constexpr size_t MAX_BASE_BLOCK_ROWS = 2; // 最优基本块档位数上限
+
+    // —— 通信结构参数(§4.38: 原语语义终结在标定层——每算子一份, 引擎不区分通信原语) ——
+    // 倍数依赖运行时 rankDim 故存模式枚举, 引擎经 RankMulValue() 一处集中换算。
+    struct CommProfile {
+        CommAxis axis = CommAxis::K;         // 通信承载侧: K=A 侧输入(传 A 行), N=C 侧输出(传 C 行)
+        RankMul mmWorksetMul = RankMul::ONE; // mm 工作集 M 跨度倍数(FindCubeUtil): AG=rankDim−1
+                                             // (自己的份不经通信, 本地块单独按 1 建模), RS/A2A=rankDim, AR=1
+        RankMul mmTotalMul = RankMul::ONE;    // mm 总行数倍数(MatmulTime): AG/RS=rankDim(聚合全量/
+                                              // scatter 除前全量), AR/A2A=1
+        RankMul commVolumeMul = RankMul::ONE; // 单次通信调用的物理字节倍数(⑥ 的 256MB 上限判定用,
+                                              // 与 k 的标定口径融合无关): AG/RS=rankDim(单次调用搬全量),
+                                              // AR/A2A=1(单次调用按单份)
+    };
+    CommProfile profile{};
 
     // —— 通信拟合（单引擎）——
     struct CommFit {
@@ -866,8 +855,9 @@ struct FitBalanceCalibration {
 };
 
 // 统一入口: 算子侧只传大结构体标定数据 + 键控枚举(原语/顺序/引擎; soc 恒 950)
-inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitive commPrimitive, CommComputeOrder order,
-                                  TilingCommEngine commEngine, const FitBalanceCalibration &calib,
+inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, LocalMMPosition localMMPosition,
+                                  CommComputeOrder order, TilingCommEngine commEngine,
+                                  const FitBalanceCalibration &calib,
                                   CommTopology topoType = CommTopology::STANDARD_CARD)
 {
     // ---- 标定选行(所有匹配键此刻已知: rankDim 与 dtype 均来自 args, 就地选定传纯参数) ----
@@ -908,26 +898,28 @@ inline FitBasedBalanceCtx InitCtx(const FitBalanceTilingArgs &args, CommPrimitiv
         }
     }
     FitBasedBalanceCtx ctx{MatmulPerfModel(args, computesPerCycle, calib.mmFit.baseBlock),
-                           HCCLCommModel(args.rankDim, commPrimitive, commFitParams, topoType),
+                           HCCLCommModel(args.rankDim, commFitParams, topoType),
                            CutPlanner(args),
-                           commPrimitive,
+                           localMMPosition,
                            order,
                            commEngine,
                            1,
                            1,
+                           1,
                            1.0};
     ctx.tilingM.SetMaxTileCnt(MAX_COMM_ROUNDS); // 通信 API FFTS 队列轮次上限(2026-09-17: 63)
-    ctx.commRankCntForMm = ctx.commPerf.commRankCntForMm_;
-    ctx.mmRankMul = MmRankMul(ctx);
+    // §4.38 结构参数入口换算(标定层 CommProfile 声明模式, 引擎一处集中换算)
+    ctx.commRankCntForMm = RankMulValue(calib.profile.mmWorksetMul, ctx.commPerf.rankDim());
+    ctx.mmRankMul = RankMulValue(calib.profile.mmTotalMul, ctx.commPerf.rankDim());
+    ctx.commVolumeMul = RankMulValue(calib.profile.commVolumeMul, ctx.commPerf.rankDim());
 
     // ---- 通算胶水(键控, 原散在各算子构造函数, §4.24 裁定随引擎下沉) ----
-    // D4 通信矩阵另一维: AG/A2A-in 沿 K 轴聚散 → kValue; RS/AR/A2A-out 沿 N 轴 → nValue
-    const bool commOnKAxis = (commPrimitive == CommPrimitive::ALL_GATHER) ||
-                             ((commPrimitive == CommPrimitive::ALL_TO_ALL) && (order == CommComputeOrder::COMM_FIRST));
+    // D4 通信矩阵另一维(§4.38: 轴向由标定层 CommProfile.axis 声明——A 侧承载沿 K 轴, C 侧沿 N 轴)
+    const bool commOnKAxis = (calib.profile.axis == CommAxis::K);
     ctx.commPerf.SetCommShapeLen(commOnKAxis ? ctx.matmulPerf.mmShapeInfo_.kValue : ctx.matmulPerf.mmShapeInfo_.nValue);
     // D5+D6 通信承载 dtype 与 fp4 子字节建模(两件独立的事, 原耦合在 AG 构造函数单分支内, §4.33 解耦):
-    // ① 通信 dtype 按承载侧: AG/A2A-in 传 A 侧数据, 其余传 C 侧——fp4 只可能是输入 A 的 dtype,
-    //    C 侧(计算输出)永远不是 fp4, 故子字节建模仅 A 侧承载时需要;
+    // ① 通信 dtype 按 CommProfile.axis 承载侧: K(A 侧输入)取 A 字节, N(C 侧输出)取 C 字节——
+    //    fp4 只可能是输入 A 的 dtype, C 侧(计算输出)永远不是 fp4, 故子字节建模仅 K 轴承载时需要;
     // ② fp4(0.5B/元素)无法用 uint64 表达: 通信侧按"1 字节打包 2 元素"建模(dtypeSize=1+
     //    fraction=2 → GetRealDtypeSizes()=0.5, 复用 HCCL 子字节机制)
     const bool isFp4Input = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
@@ -1078,25 +1070,35 @@ inline double EstimateCutTotalTime(FitBasedBalanceCtx &ctx, const CommCutResult 
     const double totalCommTime = ctx.commPerf.TotalCommTime(mValue, cut.totalTileCnt);
     const uint64_t firstLen = (cut.numShortTile > 0U && !cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
     const uint64_t lastLen = (cut.numShortTile > 0U && cut.shortTileAtBack) ? cut.shortTileLen : cut.longTileLen;
-    if (ctx.order == CommComputeOrder::COMM_FIRST) {
+    if (ctx.localMMPosition == LocalMMPosition::FRONT) {
+        // 通信在前 + 本地首块: 首块通信不可重叠(远程数据未到), 末段计算收尾
         const double commFirst = ctx.commPerf.CommTime(firstLen);
         const double mmLast = ctx.matmulPerf.MatmulTime(lastLen, ctx.mmRankMul);
         return commFirst + std::max(totalCommTime - commFirst, totalMmTime - mmLast) + mmLast;
+    }
+    if (ctx.localMMPosition == LocalMMPosition::BACK) {
+        // 计算在前 + 本地尾块: 首块计算不可重叠, 末段本地窗口与末块通信并行(取 max)——
+        // 本地窗口时长自总计算中抽出归末段(待 MMA2A 迁移实测校准)
+        const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
+        const double commLast = ctx.commPerf.CommTime(lastLen);
+        const double mmRest = totalMmTime - mmFirst - ctx.backMMTime;
+        return mmFirst + std::max(mmRest, totalCommTime - commLast) + std::max(commLast, ctx.backMMTime);
     }
     const double mmFirst = ctx.matmulPerf.MatmulTime(firstLen, ctx.mmRankMul);
     const double commLast = ctx.commPerf.CommTime(lastLen);
     return mmFirst + std::max(totalMmTime - mmFirst, totalCommTime - commLast) + commLast;
 }
 
-inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t mValue)
+inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &commPerf, uint64_t volumeMul,
+                                      uint64_t mValue)
 {
     constexpr uint64_t MAX_ROUND_COMM_BYTES = 268435456;               // HCCL 单次调用通信量上限 (256MB)
     constexpr uint64_t TILE_LEN_CANDIDATES[] = {2048, 1024, 512, 256}; // 等长重切候选(大值优先=少轮次)
     constexpr uint64_t CANDIDATE_ALIGN = 256;                          // 候选全超限时的兜底对齐粒度
-    // 单行通信字节数 = 通信矩阵另一维 × 每元素字节 / 子字节折算 × 通信数据卡份数(与 CommTime 同口径;
-    // fp4 时=矩阵另一维×卡数/2, 与老调用点 kValue/2×dtypeSize=1 的折算口径等价)
-    const uint64_t rowBytes = commPerf.commTypeInfo_.commMatrixLen * commPerf.commTypeInfo_.commDtypeSize *
-                              commPerf.commRankCnt_ / commPerf.commTypeInfo_.commDtypeSizeExpansionFraction;
+    // 单行通信字节数(物理量, 256MB 是 HCCL 单次调用的真实传输上限——须含份数, 与 k 的标定口径
+    // 融合无关): 通信矩阵另一维 × 每元素字节 / 子字节折算 × 单次调用物理倍数(CommProfile.commVolumeMul)
+    const uint64_t rowBytes = commPerf.commTypeInfo_.commMatrixLen * commPerf.commTypeInfo_.commDtypeSize * volumeMul /
+                              commPerf.commTypeInfo_.commDtypeSizeExpansionFraction;
     if (rowBytes == 0) {
         return; // 防御: 单行为零无法约束
     }
@@ -1143,24 +1145,34 @@ inline void ApplySingleRoundCommLimit(CutPlanner &tilingM, const HCCLCommModel &
     tilingM.cutRes.totalTileCnt = tilingM.cutRes.numLongTile + tilingM.cutRes.numShortTile;
 }
 
-// 键控维度: isAllGather = (通信原语 == ALL_GATHER)。AllGather 语义——本卡 A 块已在手:
-// 首块计算无通信依赖(E5), 长块通信掩盖的是本地首轮计算而非短块(E19), 短块恒后置(E4)
+// 键控维度: LocalMMPosition(§4.38——取代通信原语的结构键控)。
+// FRONT: 本地 mm 块在流水线首端(本卡数据已在手, 不等通信)——启动端被本地块免费占据,
+//        短块退到尾部专职快速收尾(恒后置), 长块通信掩盖本地首块计算(E5/E19, 原 AG 分支);
+// BACK:  本地 mm 块在流水线尾端(本地保留份无需发出、无通信 deadline)——收尾端被本地块
+//        占据(与末块通信重叠), 短块前置专职启动通信管道, 长块通信掩盖本地尾块计算(镜像 E5/E19);
+// NONE:  无本地块——短块作流水线垫片, 按 bound 判定放首/尾(E4 通用规律)。
 inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 {
-    const bool isAllGather = (ctx.commPrimitive == CommPrimitive::ALL_GATHER);
+    const bool isLocalMMFront = (ctx.localMMPosition == LocalMMPosition::FRONT);
+    const bool isLocalMMBack = (ctx.localMMPosition == LocalMMPosition::BACK);
 
     // ---- ① Estimate: 公共骨干(E1) + E2 总量倍数(ctx.mmRankMul, InitCtx 已派生) ----
     const auto estimate = EstimateTotalTimes(ctx);
-    if (isAllGather) {
-        // E5: 首轮独立计算的 L2 利用率与聚合后不同(frontUtil 修正)
-        const double frontUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.mValue, 1,
-                                                             MatmulPerfConst::FRONT_UTIL_EXPONENT_COEFFICIENT);
-        if (std::abs(frontUtil) > 1e-10) {
-            ctx.frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / frontUtil;
+    if (isLocalMMFront || isLocalMMBack) {
+        // 本地块独立计算的 L2 利用率与稳态不同(单份数据、流水未满, 0.6 指数口径;
+        // FRONT=首端 E5, BACK=尾端镜像——同一物理量: 本地窗口的计算时长)
+        const double localMMUtil = ctx.matmulPerf.FindCubeUtil(ctx.matmulPerf.mmShapeInfo_.mValue, 1,
+                                                               MatmulPerfConst::LOCAL_MM_UTIL_EXPONENT_COEFFICIENT);
+        const double localMMTime = (std::abs(localMMUtil) > 1e-10) ?
+                                       ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1) / localMMUtil :
+                                       ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+        if (isLocalMMFront) {
+            ctx.frontMMTime = localMMTime;
+            ctx.tilingM.cutRes.shortTileAtBack = true; // 本地块占启动端, 短块专职收尾(恒后置)
         } else {
-            ctx.frontMMTime = ctx.matmulPerf.MatmulTime(ctx.matmulPerf.mmShapeInfo_.mValue, 1);
+            ctx.backMMTime = localMMTime;
+            ctx.tilingM.cutRes.shortTileAtBack = false; // 本地块占收尾端, 短块专职启动(恒前置)
         }
-        ctx.tilingM.cutRes.shortTileAtBack = true; // E4: AG 恒后置
     } else if (ctx.order == CommComputeOrder::COMPUTE_FIRST) {
         // 先行段为瓶颈 → 短块后置(短块放另一端, 由长块掩盖)
         ctx.tilingM.cutRes.shortTileAtBack = (estimate.totalMatmulTime >= estimate.totalTpTime);
@@ -1178,9 +1190,13 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         return ctx.tilingM.cutRes;
     }
 
-    // ---- ③ SetLong: E19(AG 键) 长块通信掩盖本地首轮计算 / E18 公共双向配平 ----
-    if (isAllGather) {
+    // ---- ③ SetLong: 本地窗口配平(FRONT/BACK) / E18 公共双向配平(NONE) ----
+    if (isLocalMMFront) {
+        // 首长块的通信恰好掩盖本地首块计算(E19)
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.frontMMTime);
+    } else if (isLocalMMBack) {
+        // 末长块的通信恰好掩盖本地尾块计算(镜像 E19: 本地保留份在收尾端与末块通信重叠)
+        ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(ctx.backMMTime);
     } else {
         BalanceLongTileLen(ctx); // 乘数 ctx.mmRankMul(老代码 A2A 曾误用管线系数 rankTileNum)
     }
@@ -1189,15 +1205,18 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     const CommCutResult afterLong = ctx.tilingM.cutRes;
 
     // ---- ④ Adjust: E24(goodLinearity: AG 恒 true) + 离散化 + E25 等长归一 ----
-    const bool goodLinearity = isAllGather ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
-    ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isAllGather); // localAtFront: AllGather 前端有本地块
+    // 有本地块的形态恒信线性段(行为基线, 原 AG 恒 true); 离散化保护含本地块的端部结构
+    const bool goodLinearity =
+        (isLocalMMFront || isLocalMMBack) ? true : IsGoodLinearityShape(ctx.matmulPerf.mmShapeInfo_);
+    ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isLocalMMFront || isLocalMMBack);
     MergeEqualTiles(ctx.tilingM);
 
     // ---- ⑤ 轮数搜索 + 切分收益门控(§4.37.1): 把每轮启动开销纳入切分决策 ----
     // 切分不改变总通信数据量(k·X 不变), 只多付启动税 (N−1)·b, 买到的是通信-计算重叠。
-    // 流水线总时近似(不可重叠段在流水线两端, 与通算顺序对应):
-    //   通信在前(AG):       T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
-    //   通信在后(RS/AR/A2A): T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
+    // 流水线总时近似(不可重叠段在流水线两端, 按 LocalMMPosition/顺序三形态, 见 EstimateCutTotalTime):
+    //   FRONT(本地首块): T_cut ≈ T_comm(首块) + max(T_comm(其余轮), T_mm − T_mm(末块)) + T_mm(末块)
+    //   BACK(本地尾块):  T_cut ≈ T_mm(首块) + max(T_mm(其余), T_comm(除末轮)) + max(T_comm(末轮), 本地窗口)
+    //   NONE(通信在后):  T_cut ≈ T_mm(首块) + max(T_mm − T_mm(首块), T_comm(除末轮)) + T_comm(末轮)
     // 不切 T_serial = T_comm(1 轮) + T_mm(全串行)。
     // 搜索动机(2026-09-21 用户指出): 配平产出的轮数 N₀ 是"配平最优"而非"全局最优"——
     // 通信重时 T(N) 随轮数单调增(启动税吃收益)、计算重时单调降(至首块通信≈b 触底),
@@ -1212,7 +1231,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
     for (uint64_t budget = 2U; budget < bestCut.totalTileCnt; ++budget) {
         ctx.tilingM.cutRes = afterLong;    // 恢复 ③ 后形态(反解值复用)
         ctx.tilingM.SetMaxTileCnt(budget); // 收紧轮次预算
-        ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isAllGather);
+        ctx.tilingM.FitTileLengthDiscrete(goodLinearity, isLocalMMFront || isLocalMMBack);
         MergeEqualTiles(ctx.tilingM);
         const double cutTime = EstimateCutTotalTime(ctx, ctx.tilingM.cutRes, estimate.totalMatmulTime, serialTotalTime);
         if (cutTime < bestTime) {
@@ -1229,7 +1248,7 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
 
     // ---- ⑥ 单轮通信量上限整形(CCU 键, §4.37): HCCL 单次调用 256MB 上限, 超限块等长重切 ----
     if (ctx.commEngine == TilingCommEngine::CCU) {
-        ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.matmulPerf.mmShapeInfo_.mValue);
+        ApplySingleRoundCommLimit(ctx.tilingM, ctx.commPerf, ctx.commVolumeMul, ctx.matmulPerf.mmShapeInfo_.mValue);
     }
 
     // §4.37: 按最终切分的实际轮数精算总通信时(N 轮 vs NoCut 候选 1 轮), 差值即切分

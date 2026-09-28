@@ -13,13 +13,15 @@
  * \brief AllGatherMatmulV2 fit-balance 算子侧零特有代码形态（2026-09-17 §4.24 收官裁定）
  *
  * 命名空间 optiling(与本目录其他文件一致); 引擎符号为 global(apace/tiling 约定)。
- * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, AG 特有逻辑已键控内化引擎）:
- *   一、客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值）;
- *   二、一行组装: InitCtx(ALL_GATHER, COMM_FIRST, commEngine, CALIBRATION) + Schedule;
+ * 本文件只剩三样东西, 无任何算子特有逻辑（钩子机制已废除, 结构差异由 LocalMMPosition 键控）:
+ *   一、客户标定数据 CALIBRATION（唯一编辑面, 重新标定只改数值; §4.38 后含 CommProfile
+ *       结构参数——本算子: 通信沿 K 轴传 A 侧数据 / mm 工作集倍数 rankDim−1(本地份不经
+ *       通信) / mm 总行数倍数 rankDim(聚合后算全量)）;
+ *   二、一行组装: InitCtx(LocalMMPosition::FRONT, COMM_FIRST, commEngine, CALIBRATION) + Schedule;
  *   三、kUseNewEngine 新旧切换（置 false 重编译即回老类, 老类原样保留）。
  *
- * 公共逻辑与 AG 键控分支（E4 恒后置/E5 本地首轮重叠/E9 减半鼓励/E19 长块反解/E24
- * localAtFront + D4/D5/D6 胶水)均在 apace/tiling/fit_balance_tiling.h(global)。
+ * 公共逻辑与 FRONT 键控分支（本地首块重叠建模/长块反解/短块收尾 + D4/D5/D6 胶水)
+ * 均在 apace/tiling/fit_balance_tiling.h(global)。
  */
 
 #ifndef __ALL_GATHER_MATMUL_V2_FIT_BALANCE_TILING_H__
@@ -42,27 +44,34 @@ namespace optiling { // 与本目录其他 op_tiling 文件一致(2026-09-17 裁
 // ============================================================================
 
 static const FitBalanceCalibration CALIBRATION = {
+    /* profile: 通信结构参数(§4.38——原语语义终结在标定层, 引擎不区分通信原语) */
+    {
+        CommAxis::K,                 // 通信承载 A 侧输入(gather 沿 K 轴聚散, 传 A 矩阵行)
+        RankMul::RANK_DIM_MINUS_ONE, // mm 工作集倍数: 远程 rankDim−1 份经通信参与计算(本地份不经通信)
+        RankMul::RANK_DIM,           // mm 总行数倍数: 聚合后每卡算全量 m×rankDim 行
+        RankMul::RANK_DIM, // 单次 gather 调用物理字节倍数: 单次搬 rankDim 份(⑥ 的 256MB 判定)
+    },
     /* aicpu（commMode != "ccu"）*/
     {
         /* rows: {卡数, k 带宽斜率(us/MB), b 每轮启动开销(us), c 一次性固定开销(us)} */
         {
             // 2026-09-23 CommBench 实测标定(runner/calib_kbc.py, AG/aicpu/int8/rank4):
-            //   k: turn=1 尺寸扫描 8-96MB/rank 线性拟合 k_tool=26.5894us/MB(R2=1.00000),
-            //      引擎口径 x=rankDim*S → k=26.5894/4=6.647350
+            //   k: turn=1 尺寸扫描 8-96MB/rank 线性拟合 26.5894us/MB(R2=1.00000)。
+            //      §4.38 口径消融: 引擎 x = m×K×字节数(单卡份 MB), k 直接用工具原始值——
+            //      原 commRankCnt(=rankDim) 乘子已融进 k(旧值 6.647350=26.5894/4 为含乘子口径)
             //   b: 固定 chunk 扫轮数 T(N)=N(k*chunk+b)+c, chunk 1/4MB 一致(b=32.27/33.17,
             //      取中位 33.17); 16MB 大块带宽略亚线性致其拟合值偏离(b=66,c=-146),弃用
             //   c: 同拟合截距, chunk 1/4MB 值 34.42/20.58, 取中位 20.58
-            // 旧占位值(5.841842, 8.590666, 0)系 CCU 时代混含截距, 已按 §4.37 阶段2 激活真实数据。
-            {4, 6.647350, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测(CommBench)
-                                         // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
+            {4, 26.5894, 33.17, 20.58}, // 950 AllGather AICPU 标卡 4P 实测(CommBench, 工具口径 k)
+                                        // 8P 未标定(留空, miss 走 COF 分派); 标定后追加 {8, k, b, c}
         },
-        // platformDefault: 平台默认回退行, 用公共层默认值(勿动)
     },
     /* ccu（commMode == "ccu"）*/
     {
         /* rows */
         {
-            {4, 5.841842, 8.590666, 0.0}, // TODO(CCU 重标): 当前沿用历史共用值(旧表无引擎维度)
+            // §4.38 口径消融等价换算: 旧值(含 commRankCnt=4 乘子口径)×4 = 引擎新口径(x=单卡份)
+            {4, 23.367368, 8.590666, 0.0}, // TODO(CCU 重标): 历史共用值换算, 旧表无引擎维度
         },
     },
     /* mmFit: matmul 性能拟合(算力档位/基本块) */
@@ -75,13 +84,11 @@ static const FitBalanceCalibration CALIBRATION = {
              8192}, // fp8 量化(glue 真实/假设口径键天然合并)
                     // fp4 glue 真实口径: GetDataTypeSize(DT_FLOAT4_E2M1) 无条目返回 0 → 键 {0,0}
                     // [上游演化同步点] 若 GetDataTypeSize 补 fp4 条目(glue 将发 1), 此处需补
-                    // {QUANT, true, 1, 1, 16384} 行, 否则 miss 落 4096(同款算力查表缺陷复发)
             {MatmulDtypeKind::QUANT, true, 0, 0, 16384},
         },
         /* baseBlock: matmul 最优基本块(单值; 未填用默认 {128,256,64}) */
         {256, 256, 128},
     },
-    // tunables: 键控分支阈值(E9 减半鼓励门 40/40 等), 缺省=现网值, 通常勿动
 };
 
 // ============================================================================
@@ -139,7 +146,7 @@ inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, TilingCom
 {
     // 引擎分路在 InitCtx 内完成(按 CommEngine 选 CALIBRATION 的 aicpu/ccu 分区);
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(枚举值保留供三引擎分派框架)
-    auto ctx = InitCtx(ToEngineArgs(args), CommPrimitive::ALL_GATHER, CommComputeOrder::COMM_FIRST, commEngine,
+    auto ctx = InitCtx(ToEngineArgs(args), LocalMMPosition::FRONT, CommComputeOrder::COMM_FIRST, commEngine,
                        CALIBRATION, CommTopology::STANDARD_CARD);
     CutResult cut = ToLegacyCut(Schedule(ctx));
     // INFO 级分派标识(与 miss 路径的 "COF cut:" 对仗): 默认日志级别即可正向确认命中标定并
