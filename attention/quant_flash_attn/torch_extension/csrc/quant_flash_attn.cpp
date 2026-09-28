@@ -76,9 +76,11 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &attn_mask,
-    const c10::optional<at::Tensor> &metadata, double softmax_scale, int64_t mask_mode, int64_t win_left,
-    int64_t win_right, int64_t max_seqlen_q, int64_t max_seqlen_kv, std::string layout_q, std::string layout_q_descale,
-    std::string layout_kv, std::string layout_out, bool return_softmax_lse)
+    const c10::optional<at::Tensor> &metadata, const c10::optional<at::Tensor> &v_tail,
+    const c10::optional<at::Tensor> &block_table_tail, const c10::optional<at::Tensor> &seqused_kv_tail,
+    double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
+    int64_t max_seqlen_kv, std::string layout_q, std::string layout_q_descale, std::string layout_kv,
+    std::string layout_out, bool return_softmax_lse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -143,22 +145,24 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
         TensorWrapper v_descale_wrapper = make_wrapper(v_descale, FLOAT8_E8M0);
         ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale_wrapper, k_descale_wrapper,
                   v_descale_wrapper, block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks,
-                  attn_mask, metadata, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q,
-                  max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse,
-                  attentionOutput, softmaxLse);
+                  attn_mask, metadata, v_tail, block_table_tail, seqused_kv_tail, quant_mode, softmax_scale, mask_mode,
+                  win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr,
+                  layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
     } else if (quant_mode == QUANT_MODE_HIF8) {
         TensorWrapper q_wrapper = make_wrapper(q, HIFLOAT8);
         TensorWrapper k_wrapper = make_wrapper(k, HIFLOAT8);
         TensorWrapper v_wrapper = make_wrapper(v, HIFLOAT8);
         ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale, block_table,
-                  p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode,
-                  softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
-                  layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
+                  p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, v_tail,
+                  block_table_tail, seqused_kv_tail, quant_mode, softmax_scale, mask_mode, win_left, win_right,
+                  max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr,
+                  return_softmax_lse, attentionOutput, softmaxLse);
     } else {
         ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale, cu_seqlens_q,
-                  cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode, softmax_scale,
-                  mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr,
-                  layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
+                  cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, v_tail, block_table_tail,
+                  seqused_kv_tail, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q,
+                  max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse,
+                  attentionOutput, softmaxLse);
     }
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);

@@ -125,6 +125,7 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
     op.Process();
 }
 
+// [SK-FALLBACK] tiling 形参与入口 __gm__ 裸传不一致: SK 静态编译地址空间冲突失败, 静默回退 aclgraph; 动态编译不受影响
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
           uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
           bool enableKVPrefix, bool enableS1OutSplit>
@@ -133,7 +134,8 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
     __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    __tiling_data_ptr__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
     fa_base_matmul::ResetIdCounter();
@@ -182,7 +184,8 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // KernelType
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
+    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
     __gm__ uint8_t *fiaMetaData =
@@ -205,7 +208,7 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
                                                     __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale,
                                                     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                                     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                                    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                                    __gm__ uint8_t *workspace, __tiling_data_ptr__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
     fa_base_matmul::ResetIdCounter();
@@ -254,7 +257,8 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
     // KernelType
     using Kernel = FlashAttentionFullQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
+    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
     __gm__ uint8_t *fiaMetaData =
@@ -275,7 +279,8 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
     __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    __tiling_data_ptr__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
     fa_base_matmul::ResetIdCounter();
@@ -319,7 +324,8 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
+    __gm__ uint8_t *tilingGm = const_cast<__gm__ uint8_t *>(tiling);
+    GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tilingGm);
     const FullQuantTiling *__restrict tilingData = &baseTilingIn;
     GET_TILING_DATA_PTR_WITH_STRUCT(FusedInferAttentionScoreFullQuantTilingData, tilingDataPtr, tiling);
     __gm__ uint8_t *fiaMetaData =
