@@ -46,14 +46,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
         dq = at::empty(q.sizes(), q.options());
         dk = at::empty(k.sizes(), k.options());
         dv = at::empty(v.sizes(), v.options());
-        // dsink 按 Q head 数 N1 存放。没有 sinks 时保持全 0（kernel 不写）。
+        // dsink 按 Q head 数 N1 存放。
         int64_t n1 = 0;
         if (layoutQ == "TND" || layoutQ == "BNSD") {
             n1 = q.size(1);
         } else {
             n1 = q.size(2);
         }
-        dsink = at::zeros({n1}, q.options().dtype(at::kFloat));
+        // dsink 仅在传入 sinks 时有定义（kernel 归约后全量写出）；
+        // sinks=None 时 kernel 不写，内容未定义。故用 empty 分配、不清零。
+        dsink = at::empty({n1}, q.options().dtype(at::kFloat));
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());

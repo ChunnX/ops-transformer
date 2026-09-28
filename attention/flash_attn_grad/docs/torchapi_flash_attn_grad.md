@@ -1,24 +1,24 @@
-# flash\_attn\_grad
+# flash_attn_grad
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -132,7 +132,7 @@ cann_ops_transformer.flash_attn_grad(
 
 ## 参数说明
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度(shape) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的Q | bfloat16/float16 | ND | <ul><li>BSND：(B, S1, N1, D)</li><li>BNSD：(B, N1, S1, D)</li><li>TND：(T1, N1, D)</li></ul> |
 | k | Tensor | 必选 | 公式中的K | bfloat16/float16 | ND | <ul><li>BSND：(B, S2, N2, D)</li><li>BNSD：(B, N2, S2, D)</li><li>TND：(T2, N2, D)</li></ul> |
@@ -144,7 +144,7 @@ cann_ops_transformer.flash_attn_grad(
 | cu_seqlens_kv | Tensor | 可选 | TND布局下KV的累积序列长度，第一个元素必须为0，最后一个元素等于T2。`layout_kv`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。默认值为None | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。默认值为None | int32 | ND | (B,) |
-| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性，shape为(N1,)。默认值为None，此时`dsink`返回全0 | float32 | ND | (N1,) |
+| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性，shape为(N1,)。默认值为None，此时`dsink`内容未定义（不应读取） | float32 | ND | (N1,) |
 | attn_mask | Tensor | 可选 | 掩码矩阵。默认值为None | int8 | ND | (2048, 2048) |
 | metadata | Tensor | 可选 | `flash_attn_metadata`生成的FAG任务切分数据。schema中为可选参数，但实际调用时必须传入 | int32 | ND | shape根据batch大小和N2动态计算 |
 | softmax_scale | float | 可选 | Softmax缩放系数。默认值为0.0，表示使用$1/\sqrt{D}$ | float32 | - | - |
@@ -163,20 +163,21 @@ cann_ops_transformer.flash_attn_grad(
 
 ## 返回值说明
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度(shape) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | dq | Tensor | 必选 | 公式中的dQ，Query的梯度 | bfloat16/float16 | ND | shape与`q`相同 |
 | dk | Tensor | 必选 | 公式中的dK，Key的梯度 | bfloat16/float16 | ND | shape与`k`相同 |
 | dv | Tensor | 必选 | 公式中的dV，Value的梯度 | bfloat16/float16 | ND | shape与`v`相同 |
-| dsink | Tensor | 必选 | 公式中的dSink，sink参数的梯度 | float32 | ND | (N1,)；`sinks`为None时为全0 |
+| dsink | Tensor | 必选 | 公式中的dSink，sink参数的梯度；仅在传入`sinks`时有定义 | float32 | ND | (N1,)；`sinks`为None时内容未定义 |
 
 ## 约束说明
 
-- 接口支持以下组合：
-  - 数据类型为float16或bfloat16。
-  - `layout_q`、`layout_kv`、`layout_out`支持BSND、BNSD、TND，且必须相同。
-  - Dense Attention，`mask_mode=0`、`attn_mask=None`、`win_left=-1`、`win_right=-1`。
-  - TND布局下`cu_seqlens_q`、`cu_seqlens_kv`必须传入；非TND布局下不支持传入。
+- 公共约束：
+  - 接口支持以下组合：
+    - 数据类型为float16或bfloat16。
+    - `layout_q`、`layout_kv`、`layout_out`支持BSND、BNSD、TND，且必须相同。
+    - Dense Attention，`mask_mode=0`、`attn_mask=None`、`win_left=-1`、`win_right=-1`。
+    - TND布局下`cu_seqlens_q`、`cu_seqlens_kv`必须传入；非TND布局下不支持传入。
 - `q`、`k`、`v`、`dout`、`attn_out`的数据类型必须一致。
 - B、S1、S2、N1、N2、D和Dv必须为正数，其中B的取值范围为(0, 65536)。
 - N1必须能被N2整除，支持MHA（N1=N2）和GQA（N1>N2）。
@@ -187,7 +188,7 @@ cann_ops_transformer.flash_attn_grad(
 - `metadata`必须由`flash_attn_metadata`生成，并设置`is_grad_enabled=True`。生成metadata和调用本接口时，N1、N2、D、B、S1、S2、layout及mask相关参数必须一致，否则行为未定义。
 - `is_grad_enabled=True`生成的metadata同时包含正向和反向任务切分数据，前向`flash_attn`和反向`flash_attn_grad`均可使用同一份metadata，无需分别生成。
 - `softmax_lse`、`attn_out`必须来自与本次反向计算配置一致的前向调用，尤其是`softmax_scale`和layout必须一致。
-- `sinks`为float32、shape为(N1,)，N1为Query head数；提供时必须与前向`flash_attn`所用sinks一致。不提供时`dsink`为全0。
+- `sinks`为float32、shape为(N1,)，N1为Query head数；提供时必须与前向`flash_attn`所用sinks一致。
 - `dsink`为float32、shape为(N1,)，逐次运行逐位可复现：kernel 里每个 AIV 子核在 UB 内按 head 精确累加部分和，写成 workspace 中自己独占的槽位行（每 AIV 一行，无原子加）；`sync_all` 后由 AIV0 按固定行序归约成 dsink，读前带一遍读侧预热以避开「紧随栅栏的首次读可能尚未全局可见」的窗口。
 - 当前仅支持单算子模式。
 
@@ -218,9 +219,8 @@ cann_ops_transformer.flash_attn_metadata(
 ) -> Tensor
 ```
 
-与反向接口直接相关的参数如下：
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度(shape) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | num_heads_q | int | 必选 | Query head数，即N1 | int32 | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数，即N2 | int32 | - | - |
@@ -241,6 +241,10 @@ cann_ops_transformer.flash_attn_metadata(
 | is_grad_enabled | bool | 可选 | 是否生成反向算子所需的metadata。调用`flash_attn_grad`前必须设置为True。默认值为False | bool | - | - |
 
 返回的`metadata`为int32、ND格式的一维Tensor，长度根据batch大小和N2动态计算。
+
+## 确定性计算
+
+- 确定性说明：默认不支持确定性计算。
 
 ## 调用示例
 
@@ -327,8 +331,7 @@ cann_ops_transformer.flash_attn_metadata(
     assert dq.shape == q.shape
     assert dk.shape == k.shape
     assert dv.shape == v.shape
-    # 未传 sinks 时 dsink 为全 0
+    # 未传 sinks 时 dsink 内容未定义，仅在传入 sinks 时才有意义
     assert dsink.shape == (N1,)
     assert dsink.dtype == torch.float32
-    assert torch.count_nonzero(dsink) == 0
     ```

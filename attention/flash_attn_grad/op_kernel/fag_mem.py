@@ -335,7 +335,7 @@ POST_ELEMS = {
     192: 21120,
     256: 21120,
     768: 21120,
-}  # depth-2，fp32 + fp16
+}  # depth-2，fp32 + 16-bit
 
 
 def _build_ub(width, pool):
@@ -373,11 +373,11 @@ def _build_ub(width, pool):
     mm1 = shared.buf("mm1_res", resBlk, cv="mm1_res")
     mm2 = shared.buf("mm2_res", resBlk, cv="mm2_res")
 
-    # pre 的 fp16 支（BN2 need_zero）只占一半，按 fp32 算上限。
+    # pre 的 16-bit 支（BN2 need_zero）只占一半，按 fp32 算上限。
     pre = _Arena(f"UB pre d_align={width}", _UB_BYTES, pool, base=UB_HEAD_RESERVE)
     zero = pre.buf("pre_zero", PRE_ELEMS[width] * 4)
 
-    # post 的 fp32 输入与 fp16 输出各用一套号，框架据此判定「下一块的 load」与
+    # post 的 fp32 输入与 16-bit 输出各用一套号，框架据此判定「下一块的 load」与
     # 「本块的 cast/store」无冲突，从而让 MTE2 / V / MTE3 三条流水重叠。
     post = _Arena(f"UB post d_align={width}", _UB_BYTES, pool, base=UB_HEAD_RESERVE)
     n = POST_ELEMS[width]

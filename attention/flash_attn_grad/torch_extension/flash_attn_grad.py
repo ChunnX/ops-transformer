@@ -40,7 +40,7 @@ class FlashAttnGradOpBuilder(OpBuilder):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         dq shape = q shape, dk shape = k shape, dv shape = v shape.
-        dsink shape = (N1,) fp32; zeros when sinks is None.
+        dsink shape = (N1,) fp32; only meaningful when sinks is provided.
         """
 
         @impl(get_as_library(), self.name, "Meta")
@@ -125,7 +125,7 @@ def flash_attn_grad(
         cu_seqlens_kv: Cumulative sequence lengths for KV (TND layout).
         seqused_q: Actual sequence lengths used for Q.
         seqused_kv: Actual sequence lengths used for KV.
-        sinks: Sink tensor of shape (N1,), fp32. When None, dsink is all zeros.
+        sinks: Sink tensor of shape (N1,), fp32.
         attn_mask: Attention mask tensor (for mask_mode 3 or 4).
         metadata: Precomputed metadata tensor from flash_attn_metadata.
         softmax_scale: Softmax scale factor. 0.0 means 1/sqrt(head_dim).
@@ -140,7 +140,7 @@ def flash_attn_grad(
 
     Returns:
         A tuple of (dq, dk, dv, dsink) gradient tensors. dsink is fp32 of shape
-        (N1,); it is zero when sinks is None.
+        (N1,); it is meaningful only when sinks is provided.
     """
     op_module = flash_attn_grad_op_builder.load()
     return op_module.flash_attn_grad(

@@ -39,9 +39,9 @@ BLOCK_ELEMS_F16 = 16
 #     128+64 (DB)         0.549 (+15.2%)   0.818 (+9.8%)
 #     192 单发(无 DB)      0.781            1.123
 # 两段等宽时 mac 与 MTE1 的节拍整齐；128+64 的第二段只有一半宽，盖不住前段。
-# 分块的首要目的是保住 L0A/L0B 双缓冲：[128,96]fp16=24KB，x2=48KB<=64KB。
+# 分块的首要目的是保住 L0A/L0B 双缓冲：[128,96]16-bit=24KB，x2=48KB<=64KB。
 # 若直接按 192 单发，L0 tile 变 48KB，双缓冲放不下 —— 那是之前 319->184us
-# 的最大一项优化。96=6*16 满足 fp16 的 C0=16 分形对齐。
+# 的最大一项优化。96=6*16 满足 16-bit 的 C0=16 分形对齐。
 #
 # 表拆成几个**平铺的标量表**而不是一个嵌套元组表：把 tuple-of-tuples 赋给
 # 局部变量(哪怕只是 `chunks = TABLE[d_align]` 之后再下标取)会让 codegen 报
@@ -69,9 +69,9 @@ CV_CORE_RATIO = 2
 VECTOR_BASEM = CUBE_BASEM // CV_CORE_RATIO  # 64，每个 vector 子核处理半个 S1
 VECTOR_BASEN = CUBE_BASEN
 
-# 单个 VF 寄存器的 fp32 / fp16 lane 数
+# 单个 VF 寄存器的 fp32 / 16-bit(fp16/bf16) lane 数
 VF_LANES = 64
-VF_LANES_FP16 = 128
+VF_LANES_F16 = 128  # fp16/bf16 同宽，256B 寄存器各 128 lane
 # 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
 ATTEN_MASK_COMPRESS = 2048
 ATTEN_MASK_MIN = -3.4028234663852886e38
@@ -85,10 +85,10 @@ TILE_D = HEAD_DIM_ALIGN
 # ---- NZ 分形排布常量 ----
 # v3/v4 的融合 VF 直接以 NZ 写出，随后 insert 进 CV 共享 L1；
 # 搬运在 fag_block_vec.copy_ub2l1，这里只放几何。
-# NZ 分形：fp16 的 C0 = 16 元素 = 32B(一个 DataBlock)
+# NZ 分形：16-bit(fp16/bf16) 的 C0 = 16 元素 = 32B(一个 DataBlock)
 FRACTAL_C0 = 16
 UB_BLOCK_BYTES = 32
-# 一个分形列占 VECTOR_BASEM*C0 个 fp16 = (64*16)*2/32 = 64 个 32B block，
+# 一个分形列占 VECTOR_BASEM*C0 个 16-bit = (64*16)*2/32 = 64 个 32B block，
 # 末尾 +1 垫一个 block 错开 bank：
 #   blockStride = (srcM * blockN) * sizeof(T1) / blockSize + 1
 NZP_BLOCK_STRIDE = (VECTOR_BASEM * FRACTAL_C0) * 2 // UB_BLOCK_BYTES + 1  # 65
