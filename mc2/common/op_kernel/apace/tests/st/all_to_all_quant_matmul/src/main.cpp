@@ -54,7 +54,7 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize] [bufferCount]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (total K, distributed across ranks)" << std::endl;
@@ -62,14 +62,11 @@ void printUsage(const std::string &programName)
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
-    std::cerr << "  bufferCount: optional, win buffer slot reuse count, 0=no reuse (default 0)" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
     std::cerr << "         " << programName << " 2048 8192 3584 4 perf 512" << std::endl;
-    std::cerr << "         " << programName << " 2048 8192 3584 4 perf 512 4" << std::endl;
 }
 
-void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize,
-                    int &bufferCount)
+void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -97,11 +94,6 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: headMSize must be positive");
     }
 
-    bufferCount = (argc >= 8) ? std::stoi(argv[7]) : 0;
-    if (bufferCount < 0) {
-        throw std::invalid_argument("ERROR: bufferCount must be >= 0");
-    }
-
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
@@ -116,20 +108,18 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
     }
 }
 
-int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg,
-                      int bufferCountArg)
+int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d, bufferCount=%d", rankNum, rankId, ipport,
-             mode.c_str(), headMSizeArg, bufferCountArg);
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d", rankNum, rankId, ipport, mode.c_str(),
+             headMSizeArg);
 
     uint32_t ka = k / rankNum;
 
     allToAllMatmulTilingData tilingData;
 
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-
-    tilingEngine.SetOptimizeEnable(false);
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT>
+        tilingEngine;
     tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
 
     auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
@@ -149,11 +139,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
     tilingData.scaleCommTilingData = tilingData.commTilingData;
     tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;
-    tilingData.commTilingData.slotNum = static_cast<uint64_t>(bufferCountArg);
 
-    tilingData.scaleCommTilingData.slotNum = 0;
-    INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u, bufferCount=%u", tileCnt,
-             headTileCnt, headMSize, tailTileCnt, tailMSize, bufferCountArg);
+    INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u", tileCnt, headTileCnt, headMSize,
+             tailTileCnt, tailMSize);
 
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -314,18 +302,18 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
 int main(int argc, char *argv[])
 {
-    int m, k, n, rankNum, headMSize, bufferCount;
+    int m, k, n, rankNum, headMSize;
     std::string mode;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize, bufferCount);
+        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d, bufferCount=%d)", getpid(), rankNum,
-             mode.c_str(), headMSize, bufferCount);
+    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d)", getpid(), rankNum, mode.c_str(),
+             headMSize);
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -335,7 +323,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, mode, headMSize, bufferCount);
+            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, mode, headMSize);
             exit(ret);
         } else {
             pids[rankId] = pid;

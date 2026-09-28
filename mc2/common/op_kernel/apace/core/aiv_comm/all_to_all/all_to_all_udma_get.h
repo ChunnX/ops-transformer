@@ -33,9 +33,8 @@ private:
     {}
 
     template <uint8_t BarrierMode>
-    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize, uint64_t bufferOffset)
+    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
     {
-        (void)bufferOffset;
         if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }

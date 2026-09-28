@@ -40,9 +40,8 @@ private:
     }
 
     template <uint8_t BarrierMode>
-    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize, uint64_t bufferOffset)
+    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
     {
-        (void)bufferOffset;
         if (targetRankId == this->udmaCtx_->rankId) {
             return;
         }
