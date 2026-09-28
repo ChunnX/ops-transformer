@@ -178,10 +178,10 @@ private:
 
     static constexpr uint32_t Q_MUTEX_ID_BASE = 0;
 
-    static constexpr uint32_t KV_MUTEX_ID_BASE = 1; // buf0半区A/B=1,2; buf1=3,4; buf2=5,6; buf3=7,8
-    uint32_t kvBufId = 0;                           // 共享分配游标, K/V拷贝时轮流取用
-    uint32_t kDataBufId = 0;                        // K流当前pair所在buffer(拷贝时记录)
-    uint32_t vDataBufId = 0;                        // V流当前pair所在buffer(拷贝时记录)
+    static constexpr uint32_t KV_MUTEX_ID_BASE = 1;
+    uint32_t kvBufId = 0;
+    uint32_t kDataBufId = 0;
+    uint32_t vDataBufId = 0;
     static constexpr uint32_t VSUM_MUTEX_ID_BASE = 9;
     static constexpr uint32_t P_FILL_MUTEX_ID = 25;
     static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 10;
@@ -321,7 +321,7 @@ public:
     {
         if (unlikely(info.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_MUTEX_ID_BASE);
-            CopyQGmToL1(info); // 单次最大128行
+            CopyQGmToL1(info);
             CopyQScaleGmToL1(info);
             Mutex::Unlock<PIPE_MTE2>(Q_MUTEX_ID_BASE);
             Mutex::Lock<PIPE_MTE1>(Q_MUTEX_ID_BASE);
@@ -337,7 +337,7 @@ public:
         if (!info.prefetched) {
             Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId * 2);
             Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId * 2 + 1);
-            CopyKGmToL1(info); // 单次最大512行
+            CopyKGmToL1(info);
             CopyKScaleGmToL1(info);
             Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId * 2);
             Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId * 2 + 1);
@@ -360,10 +360,10 @@ public:
                 Mutex::Lock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
                 {
                     Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
-                    LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128, Q 已常驻 L0B
+                    LoadKToL0(info, loop, actS2SizeAlign);
                     Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     Mutex::Lock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
-                    MatmulQK(info, actS2Size); // 128 * 128 * 128
+                    MatmulQK(info, actS2Size);
                     Mutex::Unlock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     qkL0abBufId = (qkL0abBufId + 1) % 2;
                 }
@@ -386,7 +386,7 @@ public:
             uint32_t l1P_Base_Offset = (info.loop % 20) * L1_P_SIZE;
             Fill(pL1Tensor[l1P_Base_Offset + info.actSingleLoopS2SizeAlign * 32].template ReinterpretCast<uint16_t>(),
                  PL1InitParams);
-            if (likely(info.actMSizeAlign128 == mBaseSize)) { // prefill整M块, Q短且128对齐时恒真
+            if (likely(info.actMSizeAlign128 == mBaseSize)) {
                 Fill(pL1Tensor[l1P_Base_Offset + 2 * info.actSingleLoopS2SizeAlign * 32 + 32 * 32]
                          .template ReinterpretCast<uint16_t>(),
                      PL1InitParams);
@@ -420,14 +420,14 @@ public:
         Mutex::Unlock<PIPE_MTE2>(vHalfA);
         Mutex::Unlock<PIPE_MTE2>(vHalfA + 1);
         if (!info.prefetched) {
-            vDataBufId = kvBufId; // 记录本pair所在buffer, prefetched task按此定位后半
+            vDataBufId = kvBufId;
             kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
         }
-        if (unlikely(info.isLastS2Loop)) {     // 每问题仅1次, S2循环越多越稀疏
-            InitL0MXBufferForReduceSum(false); // 只刷当前pvL0abBufId那块
+        if (unlikely(info.isLastS2Loop)) {
+            InitL0MXBufferForReduceSum(false);
         }
         uint32_t vHalf = vHalfA + (info.prefetched ? 1 : 0);
-        if (unlikely(info.isC2Sync)) { // 1/16结构频率: 等上一结果fixpipe出去后mmad才能覆盖PV_L0C
+        if (unlikely(info.isC2Sync)) {
             Mutex::Lock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
         }
         Mutex::Lock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
@@ -438,18 +438,18 @@ public:
             }
             LoadPToL0(info);
             if (isPadFill) {
-                Mutex::Unlock<PIPE_MTE1>(P_FILL_MUTEX_ID); // LoadP指令已入MTE1队列, 放锁
+                Mutex::Unlock<PIPE_MTE1>(P_FILL_MUTEX_ID);
             }
             Mutex::Lock<PIPE_MTE1>(vHalf);
             LoadVToL0(info);
-            Mutex::Unlock<PIPE_MTE1>(vHalf); // L1半区数据已进L0, 立即放锁, MTE2可回写该半区
+            Mutex::Unlock<PIPE_MTE1>(vHalf);
             Mutex::Unlock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
             Mutex::Lock<PIPE_M>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
             MatmulPV(info);
             Mutex::Unlock<PIPE_M>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
             pvL0abBufId = (pvL0abBufId + 1) % PV_L0AB_BUFCNT;
         }
-        if (unlikely(info.isUpdatePScale)) { // ~1/16结构频率
+        if (unlikely(info.isUpdatePScale)) {
             Mutex::Unlock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
             Mutex::Lock<PIPE_FIX>(PV_L0C_MUTEX_ID_BASE);
             FixpipeMm2(info);
@@ -589,7 +589,7 @@ private:
     __aicore__ inline void CopyQGmToL1(const CubeRunInfo &info)
     {
         qNd2NzParams.nValue = info.actMSize;
-        qNd2NzParams.dstNzC0Stride = info.actMSizeAlign128; // 已128对齐, 无需再对齐32
+        qNd2NzParams.dstNzC0Stride = info.actMSizeAlign128;
         uint64_t gmOffset = info.bIdx * qGmStrideB + info.n2Idx * qGmStrideN2 + info.gS1Idx * qGmStrideS1;
         DataCopy(qL1Tensor, queryGm[gmOffset], qNd2NzParams);
     }
@@ -638,7 +638,7 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = info.actMSizeAlign128 / 16; // 已128对齐
+        loadData2DParamsA.mStep = info.actMSizeAlign128 / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
         loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
@@ -647,7 +647,7 @@ private:
         LoadData2DMxParams loadData2DMxParamsA;
         loadData2DMxParamsA.xStartPosition = 0;
         loadData2DMxParamsA.yStartPosition = 0;
-        loadData2DMxParamsA.xStep = info.actMSizeAlign128 / 16; // 已128对齐, 128 为 M 轴
+        loadData2DMxParamsA.xStep = info.actMSizeAlign128 / 16;
         loadData2DMxParamsA.yStep = loadData2DParamsA.kStep;
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
@@ -690,14 +690,10 @@ private:
 
     __aicore__ inline void FixpipeMm1(const CubeRunInfo &info, uint32_t subLoop, uint32_t actS2Size)
     {
-        // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
         fixpipeMm1Params.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
-        // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeMm1Params.mSize = (actS2Size + 1) >> 1 << 1;
-        // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
-        // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeMm1Params.srcStride = ((actS2Size + 15) / 16) * 16;
-        fixpipeMm1Params.subBlockId = info.loop % 2; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeMm1Params.subBlockId = info.loop % 2;
         fixpipeMm1Params.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
 
         uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
@@ -736,8 +732,7 @@ private:
         load2DMxParamsB.yStartPosition = 0;
         load2DMxParamsB.xStep = info.actMSizeAlign128 / 16;
         load2DMxParamsB.yStep = (info.actSingleLoopS2SizeAlign64 + 63) / 64;
-        load2DMxParamsB.srcStride =
-            5; // S2BaseSIze=256，5由s2BaseSize / 64 + 1得到，1为解UB Bank冲突预留的一个Block，一次全拷过来
+        load2DMxParamsB.srcStride = 5;
         load2DMxParamsB.dstStride = load2DMxParamsB.yStep;
 
         uint32_t pvL0BOffset = pvL0abBufId * (PV_L0B_SIZE / sizeof(DATA_T));
@@ -766,7 +761,7 @@ private:
         load2DMxParamsA.xStep = (constInfo.dSize + 15) / 16;
         load2DMxParamsA.yStep =
             (info.actSingleLoopS2SizeAlign64 + GetBlockElemCnt<QUANT_T>() - 1) /
-            GetBlockElemCnt<QUANT_T>(); // 2Byte分形的行数，64个V在S2方向上的元素一组对应一个2Byte分形
+            GetBlockElemCnt<QUANT_T>();
         load2DMxParamsA.srcStride = s2BaseSize * 2 / 64;
         load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
 
@@ -797,12 +792,8 @@ private:
     __aicore__ inline void FixpipeMm2(const CubeRunInfo &info)
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
-        // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
         fixpipeParams.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
-        // 有效数据不足16行，只需输出部分行即可
         fixpipeParams.mSize = constInfo.dSize + 1;
-        // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
-        // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = constInfo.dSize + 16;
         fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
