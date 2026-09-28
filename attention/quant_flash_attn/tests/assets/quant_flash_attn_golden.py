@@ -723,30 +723,51 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale):
     return S_ij * softmax_scale
 
 
-def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
+def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, tail_mask=None):
     """Online softmax: 计算 m, P, s 更新 (MXFP8: stored max 不含 -ln(p_scale), P 含 p_scale 因子)
-    1. mask 位置填 -inf
-    2. 求 block 内 max (m_block_j)
-    3. m 对齐到 ln2 整数倍 (ceil)，模拟 NPU MXFP8 量化精度损失
-    4. 与前一个 block 的 m 取 max (stored max 不含 -ln(p_scale))
-    5. 计算 P = exp(S - m + ln_p_scale)，模拟 NPU: exp 用 adjusted max (含 -ln(p_scale))，但 stored max 不含
-    6. 求 s = sum(P)
-    7. P 转 FP8 再转回 FP32，模拟 NPU 侧 P 的量化损失
+
+    [验证版] ceil(m / LN2) 除法对齐 + stored max 不含 -ln(pScale) + P = exp(S - m + ln_p_scale),
+    与 kernel UpdateMinCheckValueVF(CAST_CEIL) 语义一致 (pytest 256 + TTK 20 用例验证)。
+    尾列(tail_mask=True)不量化到e4m3, 直存bf16 — 模拟纯尾task VF bf16直出语义。
     """
     LN2 = 0.6931471824645996
-    INV_LN2 = 1.4426950216293335
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
-    m_block_j = m_block_j - ln_p_scale
+    m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    # NPU 语义: stored max 不含 -ln(pScale), P 计算用 adjusted max (含)
     m_block_j = torch.max(mi, m_block_j)
 
-    P_ij_raw = torch.exp(S_ij - m_block_j)
+    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
+    if tail_mask is not None:
+        P_ij_drop = torch.where(
+            tail_mask, P_ij_raw.to(torch.bfloat16).to(torch.float32), P_ij_drop
+        )
 
     return m_block_j, s_block_j, P_ij_drop
+
+
+def _p_dot_v_scaled(P_eff, V_raw, dv_exp_block):
+    """O = P @ V 的 mm2 L0C 语义模拟: 先 fp8 原值 dot, 再按 32 行 group 乘 dv scale。
+
+    - dot 阶段 P/V 均为有限值 (P≤448, V fp8≤448; 尾段 V 为 bf16 注入原值),
+      0×有限=0 — 不会产生 0×±inf=NaN 的中毒;
+    - scale 阶段: group 内 32 行共享 dv (per-channel), dot×dv 溢出→单符号 ±inf;
+      0(dot)×scale(有限)=0 — 与硬件 L0C 反量化在累加之后的行为一致。
+    P_eff: (b,n,sq,blk) fp32 (rescale 因子已折叠, ≤p_scale);
+    V_raw: (b,n,blk,D) fp32 V 原值 (未反量化);
+    dv_exp_block: (b,n,blk,D) 逐行展开的 dv scale (尾段=1)。
+    """
+    blk = V_raw.shape[2]
+    O = None
+    for c0 in range(0, blk, 32):
+        dot = torch.matmul(P_eff[..., c0 : c0 + 32], V_raw[..., c0 : c0 + 32, :])
+        sc = dv_exp_block[:, :, c0, :][:, :, None, :]
+        term = dot * sc
+        O = term if O is None else O + term
+    return O
 
 
 def cpu_mxfp8_golden(
@@ -760,8 +781,16 @@ def cpu_mxfp8_golden(
     actual_seq_q,
     actual_seq_kv,
     softmax_scale=None,
+    v_tail_bnsd=None,
+    tail_lens=None,
 ):
-    """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
+    """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水
+
+    [v_tail高精窗口] v_tail_bnsd: (B, N_kv, tail_capacity, D) bf16 尾块原值
+    (TTK: 由 golden 插件从 v_tail slot 反布局得到), tail_lens: 每 batch 尾长
+    (0<tail<64, kv%64)。注入语义与 pytest 侧一致: 尾段 V 用 bf16 原值替换反量化值
+    (尾段 scale 恒 1), 尾列 P 直存 bf16 不走 e4m3 量化往返。
+    """
     EPSILON = 1e-20
     Q_BLOCK_SIZE = 128
     if D == 256:
@@ -825,6 +854,38 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE, dim=2
     )[:, :, :, :D]
 
+    # 尾块高精窗口: CPU参考 = 主体V反量化 + 尾段V的bf16原值(模拟完美尾块cache, 尾段scale恒1)
+    # 注: V_BLOCKS 是 v_tensor 的 split 视图(共享存储), in-place 注入对视图可见
+    vtail_tail_start = None
+    if (
+        v_tail_bnsd is not None
+        and tail_lens is not None
+        and any(t > 0 for t in tail_lens)
+    ):
+        for b_i in range(v_tensor.shape[0]):
+            kv_len = actual_seq_kv[b_i]
+            tail_len = tail_lens[b_i]
+            main_len = kv_len - tail_len
+            if tail_len > 0 and main_len < v_tensor.shape[2]:
+                # [bf16对齐] op的v_tail输入为bf16(接口契约), CPU参考必须注入同精度值:
+                # 注入fp32原值会比kernel多出V精度 — 与kernel的bf16直存窗口失配
+                tail_seg = (
+                    v_tail_bnsd[b_i, :, :tail_len, :]
+                    .to(torch.bfloat16)
+                    .to(torch.float32)
+                )
+                # GQA: 尾块原值按KV head组织, 需与已广播的v_tensor头数对齐(同broadcast_kv语义)
+                if tail_seg.shape[0] != v_tensor.shape[1]:
+                    factor = v_tensor.shape[1] // tail_seg.shape[0]
+                    tail_seg = tail_seg.repeat_interleave(factor, dim=0)
+                v_tensor[b_i, :, main_len:kv_len, :] = tail_seg
+                dequant_scale_v_expanded[b_i, :, main_len:kv_len, :] = 1.0
+        # 尾窗口起点(per batch): 尾列P直存bf16的判定边界, 与V注入窗口同语义
+        vtail_tail_start = torch.tensor(
+            [actual_seq_kv[b_i] - tail_lens[b_i] for b_i in range(v_tensor.shape[0])]
+        )
+        logger.info("[V_TAIL] CPU参考已注入尾段bf16原值, tail_lens=%s", tail_lens)
+
     logger.info(
         "[CPU Golden] TILES_Q=%d, TILES_KV=%d, Sq=%d, Skv=%d",
         TILES_Q,
@@ -850,8 +911,16 @@ def cpu_mxfp8_golden(
 
             S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale)
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
+            # [v_tail高精窗口] 尾列(全局列号>=kv_len-tail_len)的P直存bf16不量化e4m3,
+            # 与V注入窗口同语义, 模拟kernel纯尾task的VF bf16直出
+            tail_mask_j = None
+            if vtail_tail_start is not None:
+                col_j = torch.arange(Sk_start, Sk_end)
+                tail_mask_j = col_j.view(1, 1, 1, -1) >= vtail_tail_start.view(
+                    -1, 1, 1, 1
+                )
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
-                S_ij, mask_j, mi, si, oi, ln_p_scale
+                S_ij, mask_j, mi, si, oi, ln_p_scale, tail_mask=tail_mask_j
             )
 
             if j + 1 < TILES_KV:
@@ -865,22 +934,40 @@ def cpu_mxfp8_golden(
                     Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale
                 )
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
+                tail_mask_j1 = None
+                if vtail_tail_start is not None:
+                    col_j1 = torch.arange(Sk1_start, Sk1_end)
+                    tail_mask_j1 = col_j1.view(1, 1, 1, -1) >= vtail_tail_start.view(
+                        -1, 1, 1, 1
+                    )
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
-                    S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale
+                    S_ij1,
+                    mask_j1,
+                    m_block_j,
+                    s_block_j,
+                    oi,
+                    ln_p_scale,
+                    tail_mask=tail_mask_j1,
                 )
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
+                # [mm2语义对齐] 先 fp8 原值 dot 再乘 dv scale (模拟 L0C):
+                # 若先反量化 V (V×dv→±inf), 0×±inf=NaN 会中毒整个 O —
+                # 而硬件 raw dot 时 0×有限=0, scale 在 dot 之后应用 (0×scale=0),
+                # 000108 极端值下 NPU out=-inf 而非 NaN 的关键区别。
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = (j // 2) * V_BLOCK_SIZE
                 Sv_end = min(Sv_start + V_BLOCK_SIZE, Skv)
                 deq_scale_v_j = dequant_scale_v_expanded[:, :, Sv_start:Sv_end, :]
-                Vj_dequant = Vj * deq_scale_v_j[:, :, : Vj.shape[2], :]
-
-                V_part1 = Vj_dequant[:, :, : Kj.shape[2], :]
-                V_part2 = Vj_dequant[:, :, Kj.shape[2] : Kj.shape[2] + Kj1.shape[2], :]
-                P_ij_Vj = torch.matmul(
-                    P_ij_drop * torch.exp(m_block_j - m_block_j1), V_part1
-                ) + torch.matmul(P_ij1_drop, V_part2)
+                n1 = Kj.shape[2]
+                P_eff1 = P_ij_drop * torch.exp(m_block_j - m_block_j1)
+                O_part1 = _p_dot_v_scaled(P_eff1, Vj[:, :, :n1, :], deq_scale_v_j)
+                O_part2 = _p_dot_v_scaled(
+                    P_ij1_drop,
+                    Vj[:, :, n1 : n1 + Kj1.shape[2], :],
+                    deq_scale_v_j[:, :, n1:, :],
+                )
+                P_ij_Vj = O_part1 + O_part2
 
                 update_mul_si = torch.exp(mi - m_block_j1)
                 si_new = (
@@ -896,10 +983,10 @@ def cpu_mxfp8_golden(
                 Sv_start = j * K_BLOCK_SIZE
                 Sv_end = min(Sv_start + K_BLOCK_SIZE, Skv)
                 deq_scale_v_j = dequant_scale_v_expanded[:, :, Sv_start:Sv_end, :]
-                Vj_expanded = Vj[:, :, : Kj.shape[2], :]
-                Vj_dequant = Vj_expanded * deq_scale_v_j[:, :, : Kj.shape[2], :]
 
-                P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
+                P_ij_Vj = _p_dot_v_scaled(
+                    P_ij_drop, Vj[:, :, : Kj.shape[2], :], deq_scale_v_j
+                )
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
                 o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
@@ -908,16 +995,24 @@ def cpu_mxfp8_golden(
 
     out = torch.cat(o_BLOCKS, dim=2)
     out_sum = torch.cat(s_BLOCKS, dim=2)
-    out = out / (out_sum + EPSILON)
+    # [极端值对齐] 无 EPSILON 除法: NPU 的 O/s 为真除法 — s=0 时 0/0=NaN、
+    # ±inf/s=±inf 自然传播 (000108: s=0 行 NPU out=NaN)。正常行 s≥p_scale, eps 无影响。
+    out = out / out_sum
 
     o_max = torch.cat(m_BLOCKS, dim=2)
-    all_masked = o_max <= minValue.item()
+    # [极端值对齐] 全 masked 判定改用 mask 直接判定: m 恒不更新(init=-3.4e38)的行
+    # 除"无有效列"外还包括"有效列全为 -inf 溢出"行 (后者 NPU: lse=-inf, out=NaN),
+    # 旧的 o_max<=minValue 判定会把二者混为 all_masked(lse=+inf, out=0)。
+    row_valid = (~mask_global).any(dim=-1)[..., None]
     lse = torch.where(
-        all_masked,
+        row_valid,
+        o_max + torch.log(out_sum),
         torch.full_like(o_max, float("inf")),
-        o_max + torch.log(out_sum + EPSILON),
     )
-    out = torch.where(all_masked, torch.zeros_like(out), out)
+    out = torch.where(row_valid, out, torch.zeros_like(out))
+    # [极端值对齐] 删除 nan_to_num(NaN→-inf): NPU 极端值行为是自然传播 —
+    # m 对齐舍入使 exp 参数>0 → P=+inf → s=+inf → lse=+inf, O/s=NaN;
+    # exp 参数<0 → P=0 → s=0 → lse=-inf, 0/0=NaN。CPU 自然传播即与 NPU 一致。
     logger.info("[CPU Golden] output=%s", out.shape)
     return out, lse
 
