@@ -9,6 +9,9 @@
  */
 
 #include "aclnn_fused_infer_attention_score_v3.h"
+#include <cstring>
+#include "opdev/tensor_view_utils.h"
+#include "opdev/format_utils.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/platform.h"
@@ -25,6 +28,77 @@ extern "C" {
 #endif
 
 namespace {
+extern "C" void UnInitPTACacheThreadLocal() __attribute__((weak));
+// Select opdev's complete argument key for the validated dense GQA decode path.
+// Executor ownership, cached launch data, and address updates remain in opdev.
+bool IsDenseCacheInput(const aclTensor *tensor)
+{
+    if (tensor == nullptr || tensor->IsEmpty() || tensor->GetPlacement() != gert::kOnDeviceHbm ||
+        tensor->GetStorageAddr() == nullptr ||
+        tensor->GetViewOffset() != 0 || tensor->GetStorageOffset() != 0 || !IsContiguous(tensor)) {
+        return false;
+    }
+    const auto format = tensor->GetViewFormat();
+    return !IsPrivateFormat(format) && tensor->GetStorageFormat() == format &&
+           tensor->GetOriginalFormat() == format &&
+           tensor->GetOriginalShape() == tensor->GetStorageShape() &&
+           tensor->GetStorageShape().GetShapeSize() == tensor->GetViewShape().GetShapeSize();
+}
+
+bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *key,
+                                const aclTensorList *value, const aclTensor *mask,
+                                const aclTensor *blockTable, const aclTensor *output,
+                                const char *layout, int64_t heads, int64_t kvHeads,
+                                int64_t blockSize, int64_t sparseMode,
+                                const aclIntArray *queryLengths, const aclIntArray *kvLengths)
+{
+    if (UnInitPTACacheThreadLocal == nullptr ||
+        op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 ||
+        layout == nullptr || std::strcmp(layout, "TND") != 0 || heads <= 0 || kvHeads != 1 ||
+        queryLengths == nullptr || kvLengths == nullptr ||
+        blockSize != 128 || (sparseMode != 0 && sparseMode != 3) ||
+        key == nullptr || value == nullptr || key->Size() != 1 || value->Size() != 1) {
+        return false;
+    }
+    const aclTensor *inputs[] = {query, (*key)[0], (*value)[0], blockTable, output, mask};
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        if (i == 5 && inputs[i] == nullptr && sparseMode == 0) {
+            continue;
+        }
+        if (!IsDenseCacheInput(inputs[i])) {
+            return false;
+        }
+        // opdev records storage-to-argument relations: keep this cache domain alias-free.
+        for (size_t j = 0; j < i; ++j) {
+            if (inputs[i]->GetStorageAddr() == inputs[j]->GetStorageAddr()) {
+                return false;
+            }
+        }
+    }
+    const auto dtype = query->GetDataType();
+    if ((dtype != DataType::DT_FLOAT16 && dtype != DataType::DT_BF16) ||
+        (*key)[0]->GetDataType() != dtype || (*value)[0]->GetDataType() != dtype ||
+        output->GetDataType() != dtype) {
+        return false;
+    }
+    const auto &q = query->GetViewShape();
+    const auto &k = (*key)[0]->GetViewShape();
+    const auto &v = (*value)[0]->GetViewShape();
+    if (q.GetDimNum() != 3 || q.GetDim(1) != heads || q.GetDim(2) != 128 ||
+        k.GetDimNum() != 3 || k.GetDim(1) != blockSize || k.GetDim(2) != 128 ||
+        k != v || q != output->GetViewShape() || blockTable->GetDataType() != DataType::DT_INT32 ||
+        blockTable->GetViewShape().GetDimNum() != 2 || blockTable->GetViewShape().GetDim(0) != q.GetDim(0) ||
+        queryLengths->Size() != static_cast<uint64_t>(q.GetDim(0)) || kvLengths->Size() != queryLengths->Size()) {
+        return false;
+    }
+    for (uint64_t i = 0; i < queryLengths->Size(); ++i) {
+        if ((*queryLengths)[i] != static_cast<int64_t>(i + 1)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * @brief for acl graph calculates the max workspace size based on the specific calculation process.
  * declaration here for testcase to use by extern the interface
@@ -166,6 +240,27 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, const aclTensor *attentionOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    const bool useLocalExecutorCache = executor != nullptr && workspaceSize != nullptr &&
+        !softmaxLseFlag &&
+        antiquantMode == 0 && keyAntiquantMode == 0 && valueAntiquantMode == 0 &&
+        pseShiftOptional == nullptr && deqScale1Optional == nullptr && quantScale1Optional == nullptr &&
+        deqScale2Optional == nullptr && quantScale2Optional == nullptr && quantOffset2Optional == nullptr &&
+        antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr &&
+        queryPaddingSizeOptional == nullptr && kvPaddingSizeOptional == nullptr &&
+        keyAntiquantScaleOptional == nullptr && keyAntiquantOffsetOptional == nullptr &&
+        valueAntiquantScaleOptional == nullptr && valueAntiquantOffsetOptional == nullptr &&
+        keySharedPrefixOptional == nullptr && valueSharedPrefixOptional == nullptr &&
+        actualSharedPrefixLenOptional == nullptr && queryRopeOptional == nullptr &&
+        keyRopeOptional == nullptr && keyRopeAntiquantScaleOptional == nullptr &&
+        CanUseDenseFiaExecutorCache(query, key, value, attenMaskOptional, blockTableOptional,
+                                    attentionOut, inputLayout, numHeads, numKeyValueHeads, blockSize, sparseMode,
+                                    actualSeqLengthsOptional, actualSeqLengthsKvOptional);
+    if (useLocalExecutorCache) {
+        // A caller-supplied empty PTA key disables plan reuse. Let the following
+        // L2 macro build its full key, including sequence values, strides and offsets.
+        UnInitPTACacheThreadLocal();
+    }
+
     L2_DFX_PHASE_1(
         aclnnFusedInferAttentionScoreV3,
         DFX_IN(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
@@ -176,7 +271,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
                keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional,
                keyRopeOptional, keyRopeAntiquantScaleOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
                numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-               valueAntiquantMode),
+               valueAntiquantMode, useLocalExecutorCache),
         DFX_OUT(attentionOut, softmaxLse));
 
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
