@@ -17,8 +17,8 @@
  *     attn_mask, metadata. No v / q_rope / k_rope; rope is merged into q and
  *     k_cache (last dim 576 = nope 512 + rope 64), k_cache carries BOTH key and
  *     value data (k == v, single latent KV head: kvHeadNum == n2Size == 1).
- *   - Layout matrix: q/out in {TND, BNSD, BSND} (out must equal q, transpose
- *     is not supported), kv is paged-only {PA_NZ, PA_BBND, PA_BNBD}; continuous KV is rejected.
+ *   - Layout matrix: BSND -> BSND, BNSD -> BNSD, TND -> TND/NTD;
+ *     kv is paged-only {PA_NZ, PA_BBND, PA_BNBD}; continuous KV is rejected.
  *     TND requires cu_seqlens_q, paged kv requires block_table.
  */
 
@@ -49,31 +49,34 @@ using namespace Ops::Base;
 
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // q/out share the same tri-set; out is required to equal q (no transpose),
-    // the pairing itself is enforced by LAYOUT_CONSTRAINT_TABLE below.
-    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {FlashMlaWithKvcacheLayout::TND};
+    // Output follows Q, with an additional TND -> NTD transpose path.
+    // The pairing itself is enforced by LAYOUT_CONSTRAINT_TABLE below.
+    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {
+        FlashMlaWithKvcacheLayout::BSND, FlashMlaWithKvcacheLayout::BNSD, FlashMlaWithKvcacheLayout::TND};
     // kv 侧只接受 paged 布局（仅 PA 分页，KvLayoutType 0 连续 KV 永不放行）。
-    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {FlashMlaWithKvcacheLayout::PA_NZ,
-                                                                       FlashMlaWithKvcacheLayout::PA_BBND};
-    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {FlashMlaWithKvcacheLayout::NTD};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {
+        FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {
+        FlashMlaWithKvcacheLayout::BSND, FlashMlaWithKvcacheLayout::BNSD, FlashMlaWithKvcacheLayout::TND,
+        FlashMlaWithKvcacheLayout::NTD};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) == supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q", LayoutToSerialString(faInfo.qLayout).c_str(),
-                                              "The value of layout_q must be TND");
+                                              "The value of layout_q must be BSND, BNSD or TND");
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(
         std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-                                              "The value of layout_kv must be PA_NZ or PA_BBND"),
+                                              "The value of layout_kv must be PA_NZ, PA_BBND or PA_BNBD"),
         return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
                                               LayoutToSerialString(faInfo.outLayout).c_str(),
-                                              "The value of layout_out must be NTD");
+                                              "The value of layout_out must be BSND, BNSD, TND or NTD");
         return ge::GRAPH_FAILED;
     }
 
@@ -299,7 +302,7 @@ ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingI
 }
 
 // ============================================================================
-// Layout — MultiPara constraint table (q × paged-kv × out==q)
+// Layout — MultiPara constraint table (q × paged-kv × matching/NTD output)
 // ============================================================================
 
 struct LayoutConstraintConfig {
@@ -307,10 +310,17 @@ struct LayoutConstraintConfig {
     std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts;
 };
 
-// Only TND queries, paged BBND/NZ cache and NTD output are supported.
+// All Q layouts support the three paged KV layouts; only TND can output NTD.
 static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
+    {FlashMlaWithKvcacheLayout::BSND,
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::BSND}}},
+    {FlashMlaWithKvcacheLayout::BNSD,
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::BNSD}}},
     {FlashMlaWithKvcacheLayout::TND,
-     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND}, {FlashMlaWithKvcacheLayout::NTD}}},
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::TND, FlashMlaWithKvcacheLayout::NTD}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)
