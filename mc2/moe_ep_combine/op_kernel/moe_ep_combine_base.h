@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+// hidden_size
 /*!
  * \file moe_ep_combine_base.h
  * \brief
