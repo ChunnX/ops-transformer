@@ -491,8 +491,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
             smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
             DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
             DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
-            DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams,
-                        copyPadExtParams);
+            DataCopyPad(smoothScalesTensor_,
+                        scalesGMTensor_[(static_cast<uint64_t>(layerId_) * expertNum_ + expertIndex) * axisH_],
+                        scalesCopyInParams, copyPadExtParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
             PipeBarrier<PIPE_V>();
@@ -574,7 +575,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
         smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
         DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
-        DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams, copyPadExtParams);
+        DataCopyPad(smoothScalesTensor_,
+                    scalesGMTensor_[(static_cast<uint64_t>(layerId_) * expertNum_ + expertIndex) * axisH_],
+                    scalesCopyInParams, copyPadExtParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
         PipeBarrier<PIPE_V>();
