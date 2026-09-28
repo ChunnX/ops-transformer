@@ -1,0 +1,13 @@
+version: 1
+ops:
+  ffn:
+    ut: false
+  ffn_worker_batching:
+    examples: false
+    ut: false
+  swin_attention_ffn:
+    ut: false
+  swin_transformer_ln_qkv:
+    ut: false
+  swin_transformer_ln_qkv_quant:
+    examples: false

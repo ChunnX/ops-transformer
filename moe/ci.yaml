@@ -1,0 +1,18 @@
+version: 1
+ops:
+  moe_finalize_routing_v2:
+    links:
+    - moe_finalize_routing_v2
+    - moe_token_unpermute
+  moe_init_routing_v2_grad:
+    links:
+    - moe_init_routing_v2_grad
+    - moe_token_permute_grad
+  moe_token_permute_with_routing_map_grad:
+    links:
+    - moe_token_permute_with_routing_map_grad
+    - moe_token_unpermute
+  moe_token_unpermute:
+    links:
+    - moe_token_permute_with_routing_map_grad
+    - moe_token_unpermute

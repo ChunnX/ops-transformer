@@ -1,0 +1,106 @@
+version: 1
+ops:
+  attention_update:
+    ut: false
+  bsa_select_block_mask:
+    examples: false
+    ut: false
+  block_sparse_attention:
+    examples: false
+  compressor_grad:
+    examples: false
+    ut: false
+  fused_causal_conv1d:
+    examples: false
+    ut: false
+  indexer_quant_cache:
+    examples: false
+    ut: false
+  inplace_fused_causal_conv1d:
+    examples: false
+    ut: false
+  kv_compress_epilog:
+    examples: false
+    ut: false
+  sparse_flash_attention_grad:
+    examples: false
+    ut: false
+  sparse_flash_mla:
+    examples: false
+  mixed_quant_sparse_flash_mla:
+    examples: false
+  quant_sparse_flash_mla:
+    examples: false
+  stem_oam_prep_paged_kv:
+    examples: false
+    ut: false
+  generic_block_sparse_attention:
+    examples: false
+  fused_infer_attention_score:
+    examples: false
+    links:
+    - fused_infer_attention_score
+    - incre_flash_attention
+    - prompt_flash_attention
+    watch:
+    - attention/common/op_host
+  incre_flash_attention:
+    links:
+    - fused_infer_attention_score
+    - incre_flash_attention
+    - prompt_flash_attention
+  nsa_compress:
+    ut: false
+  nsa_compress_attention:
+    examples: false
+    ut: false
+  nsa_compress_attention_infer:
+    ut: false
+  nsa_compress_grad:
+    ut: false
+  nsa_compress_with_cache:
+    examples: false
+    ut: false
+  nsa_selected_attention:
+    examples: false
+    ut: false
+  nsa_selected_attention_grad:
+    ut: false
+  nsa_selected_attention_infer:
+    ut: false
+  prompt_flash_attention:
+    links:
+    - fused_infer_attention_score
+    - incre_flash_attention
+    - prompt_flash_attention
+  mla_prolog:
+    examples: false
+    ut: false
+  mla_prolog_v2:
+    examples: false
+  mla_prolog_v3:
+    examples: false
+  lightning_indexer:
+    examples: false
+  lightning_indexer_v2:
+    examples: false
+  msa_index_score:
+    ut: false
+  sparse_flash_attention:
+    examples: false
+  quant_lightning_indexer:
+    examples: false
+  quant_lightning_indexer_v2:
+    examples: false
+  kv_quant_sparse_flash_attention:
+    examples: false
+  kda_input_proj:
+    examples: false
+  kv_quant_sparse_flash_attention_v2:
+    examples: false
+  flash_attn:
+    examples: false
+  compressor:
+    examples: false
+  quant_compressor:
+    examples: false

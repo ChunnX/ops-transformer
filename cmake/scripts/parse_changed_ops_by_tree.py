@@ -15,6 +15,8 @@ import glob
 import os
 from pathlib import Path
 
+import yaml
+
 OP_DOMAINS = (
     "attention",
     "ffn",
@@ -27,6 +29,7 @@ OP_DOMAINS = (
 )
 SKIP_EXTS = {".md", ".json", ".ini"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_CONFIG_CACHE = {}
 
 
 def read_changed_files(changed_file):
@@ -62,6 +65,22 @@ def domain_op_dirs(domain):
     ]
 
 
+def load_domain_config(domain):
+    if domain in _CONFIG_CACHE:
+        return _CONFIG_CACHE[domain]
+    for candidate in (
+        REPO_ROOT / domain / "common" / "ci.yaml",
+        REPO_ROOT / domain / "ci.yaml",
+    ):
+        if candidate.is_file():
+            with open(candidate, "r", encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+            _CONFIG_CACHE[domain] = cfg
+            return cfg
+    _CONFIG_CACHE[domain] = {}
+    return {}
+
+
 def has_pkg_sources(path):
     return any((path / name).is_dir() for name in ("op_host", "op_kernel", "op_api"))
 
@@ -81,18 +100,6 @@ def has_pr_ut(path):
     return any((ut_dir / name).is_dir() for name in ("op_host", "op_api"))
 
 
-def expand_domain(domain, mode):
-    if mode == "kernel":
-        return sorted(
-            child.name for child in domain_op_dirs(domain) if has_pkg_sources(child)
-        )
-    if mode.startswith("ut"):
-        return sorted(
-            child.name for child in domain_op_dirs(domain) if has_pr_ut(child)
-        )
-    return []
-
-
 def match_mode(path, mode):
     if mode == "kernel":
         return has_pkg_sources(path)
@@ -101,6 +108,70 @@ def match_mode(path, mode):
     if mode.startswith("ut"):
         return has_pr_ut(path)
     return False
+
+
+def mode_key(mode):
+    if mode == "kernel":
+        return "kernel"
+    if mode == "examples":
+        return "examples"
+    return "ut"
+
+
+def op_config(cfg, op_name):
+    return (cfg.get("ops") or {}).get(op_name) or {}
+
+
+def configured_value(cfg, domain, op_name, mode):
+    key = mode_key(mode)
+    op_cfg = op_config(cfg, op_name)
+    if key in op_cfg:
+        return op_cfg[key]
+    return (cfg.get("defaults") or {}).get(key)
+
+
+def eligible(cfg, domain, op_name, mode):
+    value = configured_value(cfg, domain, op_name, mode)
+    if value is False:
+        return False
+    if value is True:
+        return True
+    return match_mode(op_dir(domain, op_name), mode)
+
+
+def add_with_links(ops, cfg, domain, op_name, mode):
+    ops.add(op_name)
+    for linked in op_config(cfg, op_name).get("links") or []:
+        if configured_value(cfg, domain, linked, mode) is not False:
+            ops.add(linked)
+
+
+def expand_domain(cfg, domain, mode):
+    ops = set()
+    for child in domain_op_dirs(domain):
+        if eligible(cfg, domain, child.name, mode):
+            add_with_links(ops, cfg, domain, child.name, mode)
+    return ops
+
+
+def path_under(path, prefix):
+    prefix = prefix.rstrip("/")
+    return path == prefix or path.startswith(prefix + "/")
+
+
+def collect_from_watch(cfg, domain, changed_path, mode):
+    ops = set()
+    if mode != "examples":
+        for prefix in cfg.get("watch") or []:
+            if path_under(changed_path, str(prefix)):
+                ops.update(expand_domain(cfg, domain, mode))
+    for op_name, op_cfg in (cfg.get("ops") or {}).items():
+        for prefix in op_cfg.get("watch") or []:
+            if path_under(changed_path, str(prefix)) and eligible(
+                cfg, domain, op_name, mode
+            ):
+                add_with_links(ops, cfg, domain, op_name, mode)
+    return ops
 
 
 def collect_ops(changed_file, mode):
@@ -113,12 +184,16 @@ def collect_ops(changed_file, mode):
             continue
         if mode == "ut_exclude_mc2" and domain == "mc2":
             continue
+        cfg = load_domain_config(domain)
         if op_name in ("common", "3rd"):
-            ops.update(expand_domain(domain, mode))
+            ops.update(collect_from_watch(cfg, domain, path, mode))
             continue
         path_dir = op_dir(domain, op_name)
-        if path_dir.is_dir() and match_mode(path_dir, mode):
-            ops.add(op_name)
+        watch_ops = collect_from_watch(cfg, domain, path, mode)
+        if watch_ops:
+            ops.update(watch_ops)
+        if path_dir.is_dir() and eligible(cfg, domain, op_name, mode):
+            add_with_links(ops, cfg, domain, op_name, mode)
     return sorted(ops)
 
 

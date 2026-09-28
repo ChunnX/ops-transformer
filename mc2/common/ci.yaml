@@ -1,0 +1,147 @@
+version: 1
+ops:
+  all_gather_matmul:
+    examples: false
+    watch:
+    - mc2/all_gather_matmul_v2
+  allto_all_all_gather_batch_mat_mul:
+    examples: false
+  allto_allv_grouped_mat_mul:
+    examples: false
+  allto_allv_quant_grouped_mat_mul:
+    examples: false
+    watch:
+    - mc2/3rd/grouped_matmul
+  quant_grouped_mat_mul_allto_allv:
+    examples: false
+    watch:
+    - mc2/3rd/grouped_matmul
+  allto_all_matmul:
+    examples: false
+  batch_mat_mul_reduce_scatter_allto_all:
+    examples: false
+  grouped_mat_mul_all_reduce:
+    examples: false
+  grouped_mat_mul_allto_allv:
+    examples: false
+  inplace_matmul_all_reduce_add_rms_norm:
+    examples: false
+    links:
+    - inplace_matmul_all_reduce_add_rms_norm
+    - matmul_all_reduce_add_rms_norm
+    watch:
+    - mc2/matmul_all_reduce
+    - mc2/matmul_all_reduce_add_rms_norm
+  matmul_all_reduce:
+    examples: false
+  matmul_all_reduce_add_rms_norm:
+    examples: false
+    watch:
+    - mc2/matmul_all_reduce
+  matmul_reduce_scatter:
+    examples: false
+    watch:
+    - mc2/matmul_reduce_scatter_v2
+  matmul_allto_all:
+    examples: false
+  matmul_reduce_scatter_v2:
+    examples: false
+  mega_moe:
+    examples: false
+  quant_all_reduce:
+    examples: false
+  quant_reduce_scatter:
+    examples: false
+  distribute_barrier:
+    examples: false
+    links:
+    - distribute_barrier
+    - distribute_barrier_extend
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  distribute_barrier_extend:
+    examples: false
+    watch:
+    - mc2/distribute_barrier
+  elastic_receivable_info_collect:
+    examples: false
+  elastic_receivable_test:
+    examples: false
+  ffn_to_attention:
+    examples: false
+  moe_distribute_buffer_reset:
+    examples: false
+  moe_distribute_combine:
+    examples: false
+    links:
+    - moe_distribute_combine
+    - moe_distribute_dispatch
+  moe_distribute_combine_add_rms_norm:
+    examples: false
+    links:
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  moe_distribute_combine_setup:
+    examples: false
+  moe_distribute_combine_teardown:
+    examples: false
+  moe_distribute_dispatch_setup:
+    examples: false
+    links:
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  moe_distribute_dispatch_teardown:
+    examples: false
+    links:
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  moe_distribute_combine_v2:
+    examples: false
+    links:
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  moe_distribute_combine_v3:
+    examples: false
+    watch:
+    - mc2/moe_distribute_combine_v2
+  moe_distribute_dispatch:
+    examples: false
+    links:
+    - moe_distribute_combine
+    - moe_distribute_dispatch
+  moe_distribute_dispatch_v2:
+    examples: false
+    links:
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+  moe_distribute_dispatch_v3:
+    examples: false
+    watch:
+    - mc2/moe_distribute_dispatch_v2
+  moe_update_expert:
+    examples: false
+    links:
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+  attention_to_ffn:
+    examples: false
+watch:
+- mc2/3rd
+- mc2/common

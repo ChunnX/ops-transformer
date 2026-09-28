@@ -1,0 +1,23 @@
+version: 1
+ops:
+  mhc_sinkhorn_backward:
+    examples: false
+    watch:
+    - mhc/mhc_sinkhorn_common
+  mhc_post:
+    ut: false
+  mhc_pre:
+    examples: false
+  mhc_pre_backward:
+    examples: false
+  mhc_pre_sinkhorn:
+    examples: false
+    ut: false
+  mhc_pre_sinkhorn_backward:
+    ut: false
+  mhc_post_backward:
+    ut: false
+  block_attention_residuals_grad:
+    ut: false
+  block_attention_residuals:
+    ut: false

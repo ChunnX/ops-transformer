@@ -1,0 +1,5 @@
+version: 1
+ops:
+  grouped_matmul_activation_quant:
+    examples: false
+    ut: false
