@@ -415,18 +415,6 @@ private:
         }
     }
 
-    // 不返回FP32时，直接在已消费完的低精度h_in缓存上完成R7量化，
-    // 省去FP32暂存和VECOUT队列往返，保留原有量化边界。
-    __aicore__ inline void WriteHInPrimeTileFromCache(LocalTensor<T> srcDst, LocalTensor<float> gamma, float scale,
-                                                      uint64_t gmOffset, uint32_t count)
-    {
-        MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(srcDst, srcDst, gamma, scale, count);
-        PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
-        DataCopy(hInPrimeGm_[gmOffset], srcDst, count);
-    }
-
     __aicore__ inline uint32_t GetTileD(uint32_t tile) const
     {
         if (lastDimTile_ != 0 && tile == dimLoop_ - 1) {
