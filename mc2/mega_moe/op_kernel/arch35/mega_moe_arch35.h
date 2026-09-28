@@ -651,11 +651,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStag
     } else {
         if (sharedExpertNum_ > 0U) {
             if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
-                // 共享直接读取输入时，在 MoE 前消费输入准备完成通知，承接全部 reset 完成。
-                CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_PREPARE_DONE_FLAG);
+                // Scalar 直接等待全部 reset 完成，再读取 MoE 的 GM 状态。
+                CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_S>(INPUT_PREPARE_DONE_FLAG);
+            } else {
+                // 共享使用 quant/pack 结果：BF16 输入，或预量化输入的 H 仅满足 32 对齐。
+                // 输入准备通知已在共享 GMM 前由 MTE2 消费，此处将完成条件传递给 Scalar。
+                // 此同步也会等待此前共享 GMM 的 MTE2 搬入完成。
+                SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
             }
-            // MoE 的 Scalar 状态轮询承接输入准备完成通知，保证 reset 已完成。
-            SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
         }
     }
 }
