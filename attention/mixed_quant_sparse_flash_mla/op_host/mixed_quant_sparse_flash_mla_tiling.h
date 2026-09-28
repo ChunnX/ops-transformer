@@ -29,6 +29,8 @@
 
 namespace optiling {
 
+std::string MQSMLALayoutToSerialString(MQSMLALayout layout);
+
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(MixedQuantSparseFlashMlaBaseParams)
 TILING_DATA_FIELD_DEF(uint32_t, batchSize)
