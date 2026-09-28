@@ -680,6 +680,19 @@ gen_golden_cpu.py 语义：q_pooled=pool_blocks(Q,8token均值) → score=q_pool
 → att=softmax(score,dim=-1) → pooled=avg_pool2d(att,(post_bx,post_by))。
 inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上述链 → 与 dump 比值。
 
+### 第十七轮续：TopK 层审计开局（basebf16/basevar）
+- UpdateRuntimeParams 与 golden 语义一致（sortLen=valid 网格、kValue=round(ratio×sortLen)）——
+  count/域公式排除。
+- 选择 = 多轮位切片 radix（numValue_ bins/轮、bitsPerRound），boundary-bin = 累计≥remainK 的
+  首个 bin；**exact tie（同 fp16 位型）落在同一 bin，最终轮内 tie-break 逻辑未读完**
+  （line 890-1000 已读：ReduceGlobalHist/FindBoundaryBin/AddTileHist2TileTopK/CumSum）。
+- 失败特征回顾：basevar B1H1 row11 整行 ~19 错（该行 att 值紧贴全局中位数阈值，tie-break
+  敏感区）；basebf16 散点。flip 位置在 golden 边界区**之外**（>1e-3）⟹ 非纯 ±1ulp 值差可解释，
+  **NPU 选择与 value-order 存在结构性差异**——首疑 boundary-bin 内的选取顺序（golden=
+  stable index 序）。
+- 下轮：①读完 boundary-bin 内选取与 mask 写回代码（line 1000-1654）②对照 golden stable
+  argsort 语义定位差异点 ③若 tie-break 不可改，评估 mask compare 边界容差放宽的合理性。
+
 ### 下轮任务（按序）
 1. ~~blk8 级联修复~~（第十三轮，9238a7b19）
 2. ~~GeneralFinalize 行均值~~（第十四轮，366b5c986）
