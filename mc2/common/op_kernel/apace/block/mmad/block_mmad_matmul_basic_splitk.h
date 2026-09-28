@@ -465,8 +465,9 @@ private:
             // 判别法2（LockMte2 sync）：在 L1 bias 写 与 L1->BT 读 之间加显式同步。
             if (dbgBiasDumpCnt_ < 8) {
                 dbgBiasDumpCnt_++;
-                printf("[DBG] bias: abL1=%u btBufId=%u btAddr=%u nl1Align=%u curN0=%u splitKIdx=%u\n",
+                printf("[DBG] bias: abL1=%u btBufId=%u l0cPP=%u enPP=%u btAddr=%u nl1Align=%u curN0=%u splitKIdx=%u\n",
                        static_cast<uint32_t>(abL1LoopCnt_), static_cast<uint32_t>(btBufId),
+                       static_cast<uint32_t>(l0cPingPong_), static_cast<uint32_t>(enableL0cPingPong_),
                        static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
                        static_cast<uint32_t>(curN0), static_cast<uint32_t>(dbgSplitKIdx_));
 #if A2A_DBG_DUMP_BT
