@@ -264,6 +264,9 @@ public:
             } else {
                 Get<3>(offset) = nOffset * MXFP_MULTI_BASE_SIZE; // 3: idx of x2Scale
             }
+        } else if constexpr (aQuantMode == GroupedMatmul::QuantMode::HIF4_PEGROUP_MODE) {
+            Get<2>(offset) = isTransA ? mOffset / 2 : mOffset * CeilDiv(k, MXFP_DIVISOR_SIZE);
+            Get<3>(offset) = isTransB ? nOffset * CeilDiv(k, MXFP_DIVISOR_SIZE) : nOffset / 2;
         } else {
             Get<2>(offset) = mOffset; // 2: idx of x1Scale
             Get<3>(offset) = nOffset; // 3: idx of x2Scale
@@ -315,6 +318,11 @@ public:
             auto scaleN = CeilDiv(n / 2, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
             // 6: idx of yScale
             Get<6>(offset) = mOffset * scaleN + CeilDiv(nOffset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        } else if constexpr (aQuantMode == GroupedMatmul::QuantMode::HIF4_PEGROUP_MODE) {
+            Get<2>(offset) = mOffset * CeilDiv(k, MXFP_DIVISOR_SIZE);
+            Get<3>(offset) = isTransB ? nOffset * CeilDiv(k, MXFP_DIVISOR_SIZE) : nOffset;
+            int64_t scaleN = CeilDiv(n / 2, MXFP_DIVISOR_SIZE);
+            Get<6>(offset) = mOffset * scaleN + CeilDiv(nOffset, MXFP_DIVISOR_SIZE);
         } else {
             Get<2>(offset) = mOffset; // 2: idx of x1Scale
             Get<3>(offset) = nOffset; // 3: idx of x2Scale

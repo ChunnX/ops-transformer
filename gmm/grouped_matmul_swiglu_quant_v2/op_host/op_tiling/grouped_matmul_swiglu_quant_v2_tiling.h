@@ -17,6 +17,7 @@
 
 #include <set>
 #include "op_host/tiling_base.h"
+#include "platform/platform_infos_def.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/arch35/grouped_matmul_swiglu_quant_swiglu_params.h"
 
@@ -156,16 +157,25 @@ TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiMMTiling, mmTilingData);
 TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantSwigluParamsHost, swigluParams);
 END_TILING_DATA_DEF;
 
+// The 9201 HIF4 path uses the same matrix tiling fields as the Tensor API path,
+// but keeps its own tiling data class and key.
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantBasicApiTilingDataParams)
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantParams, gmmSwigluQuantParams);
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiMMTiling, basicTilingData);
+END_TILING_DATA_DEF;
+
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_0, GMMSwigluQuantTilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_1, GMMSwigluQuantTilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_16, GMMSwigluQuantV2TensorApiTilingData)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_17, GMMSwigluQuantV2TensorApiTilingData)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_33, GMMSwigluQuantBasicApiTilingDataParams)
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2, GMMSwigluQuantV2TilingData)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_3, GMMSwigluQuantV2TilingFusionData)
 
 struct GMMSwigluV2CompileInfo {
     uint64_t ubSize_ = 0;
+    uint64_t l0cSize_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
     uint32_t baseM_ = 128;
@@ -174,6 +184,7 @@ struct GMMSwigluV2CompileInfo {
     uint64_t l1Size_ = 0;
     uint64_t l0CSize_ = 0;
     int32_t npuArch_ = 0;
+    bool supportMmadF16S8 = false;
 };
 
 namespace GroupedMatmulSwigluQuantV2Tiling {
