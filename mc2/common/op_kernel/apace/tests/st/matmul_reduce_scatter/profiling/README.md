@@ -11,6 +11,7 @@
 |---|---|---|
 | **★ 全量 v5 vs v8 对比** | [reports/full_suite_v5_vs_v8_report.md](reports/full_suite_v5_vs_v8_report.md) | **101/101 用例** v5/v8 同日同机交替 A/B；优化收益归因、机制要点、已验证不可行/关闭方向 (P0/P3/P2-AIC) |
 | 隔离测试（当前代码重测） | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) | 四分量分解 (T_mm/T_a2a/T_rs/T_before/T_after)、融合加速比与掩盖率（12 代表 case），与 v1 期对比 |
+| tileM 公式化场景验证 | [reports/formula_tiling_scenario_report.md](reports/formula_tiling_scenario_report.md) | `tileM=ceil(blockNum/(N/256))*256` 场景（localLast=0）：56 case A/B（净 −0.48%，分族 ±28% 分化）+ 掩盖率对比，结论维持 cases.csv 实测表 |
 
 > v1 期外部基线对比 (97 用例 vs 级联/MC2 融合)、v6/v7/v8 分轮专项 A/B 报告已移除:
 > 核心结论分别保留于本文件「v1 期外部基线结论」小节与 full_suite 报告第三/四节, 明细可查 git 历史。
@@ -81,7 +82,8 @@ profiling/
 ├── README.md                             # 本文件（总览入口 + v1 期外部基线结论留存）
 └── reports/
     ├── full_suite_v5_vs_v8_report.md     # ★ v8 全量 101 case A/B + 归因 + 机制要点 + 已关闭方向
-    └── isolation_metrics_report.md       # 隔离测试（当前代码重测）：四分量分解 + 加速比/掩盖率
+    ├── isolation_metrics_report.md       # 隔离测试（当前代码重测）：四分量分解 + 加速比/掩盖率
+    └── formula_tiling_scenario_report.md # tileM 公式化场景验证：56 case A/B + 掩盖率对比
 ```
 
 > **数据口径**: v8 报告采用同日同机交替双二进制 A/B (v5 md5=1883722f / v8 md5=7abed458)，

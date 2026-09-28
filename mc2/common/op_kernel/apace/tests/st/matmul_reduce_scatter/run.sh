@@ -19,7 +19,7 @@
 #   bash run.sh 2-4                    # 运行 CSV 第 2~4 行
 #   bash run.sh all                    # 运行 CSV 全部行
 #   bash run.sh --csv <file> 1 3       # 指定 csv 文件 + 行号
-#   bash run.sh --cli m k n r [h]      # 命令行模式(绕过 csv, h=headMSize 可选)
+#   bash run.sh --cli m k n r [h] [l]  # 命令行模式(h=headMSize, <=0=公式实验; l=localScopeLast 0/1)
 #   bash run.sh --skip-build ...       # 跳过编译
 #   bash run.sh --gen-only ...         # 仅生成 CPU golden
 #   bash run.sh --verify-only ...      # 仅精度比对
@@ -105,7 +105,7 @@ print_perf_hint() {
 
 # ---- 单 case 执行函数 ----
 run_single() {
-    local M=$1 K=$2 N=$3 RANK_NUM=$4 HEAD_M_SIZE=$5
+    local M=$1 K=$2 N=$3 RANK_NUM=$4 HEAD_M_SIZE=$5 LOCAL_LAST=${6:-0}
     echo ""
     echo "=========================================="
     echo "apace QuantMatmulReduceScatter ST"
@@ -178,7 +178,7 @@ run_single() {
                     (cd "$EXE_DIR" && timeout ${MSPROF_TIMEOUT}s msprof --output="$PROF_DIR" \
                         --ai-core=on --aic-mode=task-based --aic-metrics=PipeUtilization \
                         --task-time=on --ascendcl=on \
-                        ./"$(basename "$EXE_PATH")" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                        ./"$(basename "$EXE_PATH")" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" "$LOCAL_LAST" 2>&1)
                     local MSPROF_RC=$?
                     set -e
                 else
@@ -186,7 +186,7 @@ run_single() {
                     (cd "$EXE_DIR" && msprof --output="$PROF_DIR" \
                         --ai-core=on --aic-mode=task-based --aic-metrics=PipeUtilization \
                         --task-time=on --ascendcl=on \
-                        ./"$(basename "$EXE_PATH")" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                        ./"$(basename "$EXE_PATH")" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" "$LOCAL_LAST" 2>&1)
                     local MSPROF_RC=$?
                     set -e
                 fi
@@ -274,12 +274,12 @@ run_single() {
                 # ---- precision 模式: 直接调 exe ----
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
-                    KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                    KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" "$LOCAL_LAST" 2>&1)
                     KERNEL_RC=$?
                     set -e
                 else
                     set +e
-                    KERNEL_OUT=$("$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                    KERNEL_OUT=$("$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" "$LOCAL_LAST" 2>&1)
                     KERNEL_RC=$?
                     set -e
                 fi
@@ -342,7 +342,9 @@ if [ "${CLI_MODE:-0}" -eq 1 ]; then
     [ $idx -lt ${#ARGS[@]} ] && { N=${ARGS[$idx]}; idx=$((idx+1)); }
     [ $idx -lt ${#ARGS[@]} ] && { RANK_NUM=${ARGS[$idx]}; idx=$((idx+1)); }
     [ $idx -lt ${#ARGS[@]} ] && { HEAD_M_SIZE=${ARGS[$idx]}; idx=$((idx+1)); }
-    run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE"
+    LOCAL_SCOPE_LAST=0
+    [ $idx -lt ${#ARGS[@]} ] && { LOCAL_SCOPE_LAST=${ARGS[$idx]}; idx=$((idx+1)); }
+    run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_SCOPE_LAST"
     rc=$?
     print_perf_hint
     exit $rc

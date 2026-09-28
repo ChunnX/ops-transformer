@@ -75,19 +75,21 @@ __aicore__ inline void ReduceSumDtypeCompileCheck()
     reduceSumFloat.ExecuteReduceSum(0);
 }
 
-// headMSize 命令行缺省值 (P1-b tile 策略旋钮默认值)
+// headMSize 命令行缺省值 (显式 <=0 可切换公式化 tileM, 见 FormulaHeadMSize)
 constexpr int QMRS_DEFAULT_HEAD_M_SIZE = 512;
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize] [localScopeLast]" << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A (must be divisible by rankNum)" << std::endl;
     std::cerr << "  k: col of matrix A (full K, NOT split across ranks)" << std::endl;
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
-    std::cerr << "  headMSize: optional, long block M size (default " << QMRS_DEFAULT_HEAD_M_SIZE << ")" << std::endl;
+    std::cerr << "  headMSize: optional, absent = " << QMRS_DEFAULT_HEAD_M_SIZE
+              << " (default), <=0 = formula tileM (experimental), positive = override" << std::endl;
+    std::cerr << "  localScopeLast: optional, 0 = LOCAL scope first (default) | 1 = LOCAL scope last" << std::endl;
     std::cerr << "Example: " << programName << " 2048 3584 4096 4" << std::endl;
 }
 
@@ -104,7 +106,8 @@ constexpr int QMRS_MIN_ROW_ALIGN = 16;
 // barrier 槽位字节数 (与 apace barrier_ubmem.h BARRIER_FLAG_SIZE 同口径)
 constexpr uint64_t QMRS_BARRIER_FLAG_BYTES = 32UL;
 
-void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize)
+void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize,
+                    int &localScopeLast)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -131,9 +134,17 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: mode must be 'precision' or 'perf'");
     }
 
-    headMSize = (argc >= 7) ? std::stoi(argv[6]) : QMRS_DEFAULT_HEAD_M_SIZE;
-    if (headMSize <= 0) {
-        throw std::invalid_argument("ERROR: headMSize must be positive");
+    // headMSize: 缺省 512; 显式 <=0 → 公式化 tileM (runQuantMatmulReduceScatter 内 FormulaHeadMSize)
+    try {
+        headMSize = (argc >= 7) ? std::stoi(argv[6]) : QMRS_DEFAULT_HEAD_M_SIZE;
+        localScopeLast = (argc >= 8) ? std::stoi(argv[7]) : 0;
+    } catch (const std::invalid_argument &) {
+        throw std::invalid_argument("ERROR: headMSize/localScopeLast must be Integer");
+    } catch (const std::out_of_range &) {
+        throw std::invalid_argument("ERROR: headMSize/localScopeLast exceeds int range");
+    }
+    if (localScopeLast != 0 && localScopeLast != 1) {
+        throw std::invalid_argument("ERROR: localScopeLast must be 0 or 1");
     }
 
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
@@ -156,11 +167,37 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
     }
 }
 
-int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg)
+// 公式化 tileM (实验入口, headMSize 显式 <=0 触发): 每 tile 的 base-tile 网格
+// (tileM/256)×(N/256) ≥ blockNum, 保证逐 tile 全核占用。
+// 实测结论 (2026-09-28 方向批, 11 case): N ≥ blockNum*256 时 tileM=256 小幅正向/中性;
+// N < blockNum*256 时公式抬 tileM 在 N=4096/5120 r4 族显著回退 (row10 +34%/row8 +15.7%,
+// 占用率准则与该族 PUT/compute 重叠粒度最优相反), 故不作缺省, cases.csv 实测表为唯一生效配置。
+// 约束链: tileM ≤ chunkM (钳制); T = CeilDiv(chunkM, tileM) ≤ QMRS_MAX_COMM_TILES (超限倍增)。
+// 256 为固定粒度常数 (非求解器 baseM/baseN, 后者随 shape 变化); blockNum = mmTilingData.usedCoreNum
+// (tiling 引擎输出的 AIC 核数, 平台自适应)。
+uint32_t FormulaHeadMSize(uint32_t n, uint32_t chunkM, uint32_t blockNum)
+{
+    const uint32_t nTiles = (n / 256U) > 1U ? (n / 256U) : 1U; // N 方向 256 宽 slab 数 (下限 1 防 N<256 除零)
+    const uint32_t blocks = blockNum > 1U ? blockNum : 1U;
+    uint32_t tileM = CeilDiv(blocks, nTiles) * 256U;
+    if (tileM > chunkM) {
+        tileM = chunkM;
+    }
+    while (CeilDiv(chunkM, tileM) > QMRS_MAX_COMM_TILES) {
+        tileM *= 2U;
+        if (tileM > chunkM) {
+            tileM = chunkM;
+        }
+    }
+    return tileM;
+}
+
+int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg,
+                                int localScopeLastArg)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d", rankNum, rankId, ipport, mode.c_str(),
-             headMSizeArg);
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d (<=0: formula), localScopeLast=%d", rankNum,
+             rankId, ipport, mode.c_str(), headMSizeArg, localScopeLastArg);
 
     // 与 all_to_all_quant_matmul 不同：K 不切分，每卡持有完整 K
     // m 按 rankSize 切分用于 AlltoAll 通信
@@ -173,14 +210,28 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
         tilingEngine;
     tilingEngine.GetTilingData(m, n, k, false, true, tilingData.mmTilingData);
 
-    // 通信 tiling: PUT 模式多 tile (headMSize 由参数传入，默认 512)
+    // scope 执行顺序开关: 0 = LOCAL 先 (默认), 1 = LOCAL 后置
+    // (单 flag 语义下二者时序等价 — flag = 双 scope 全部完成; 策略开关, 供实验与调优)
+    tilingData.localScopeLast = static_cast<uint8_t>(localScopeLastArg);
+
+    // 通信 tiling: PUT 模式多 tile
     // 切分轴 = M, 非切分轴 = N
     // chunkM = m / rankSize, 按 headMSize 切分为 headTileCnt 个头块 + 可选 1 个尾块
     // PUT 模式: AIC 写 workspace, AIV 从 workspace 推送到其他 rank win 区
     // win 区布局 = C_i 连续 [m,n] = rank-major chunks (与 workspace 一致)
-    uint32_t headMSize = static_cast<uint32_t>(headMSizeArg);
-    if (headMSize > chunkM || headMSize == 0) {
-        headMSize = chunkM;
+    // headMSize 解析: <=0 (含缺省) → 公式化 tileM; 显式正数 → 逐 case 覆盖 (钳制到 chunkM)
+    uint32_t headMSize;
+    if (headMSizeArg <= 0) {
+        headMSize = FormulaHeadMSize(static_cast<uint32_t>(n), chunkM, tilingData.mmTilingData.usedCoreNum);
+        if (rankId == 0) {
+            INFO_LOG("FormulaHeadMSize: n=%u chunkM=%u blockNum=%u -> tileM=%u", static_cast<uint32_t>(n), chunkM,
+                     tilingData.mmTilingData.usedCoreNum, headMSize);
+        }
+    } else {
+        headMSize = static_cast<uint32_t>(headMSizeArg);
+        if (headMSize > chunkM) {
+            headMSize = chunkM;
+        }
     }
     headMSize = (headMSize / QMRS_MIN_ROW_ALIGN) * QMRS_MIN_ROW_ALIGN;
     if (headMSize == 0) {
@@ -484,9 +535,10 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n, co
 int main(int argc, char *argv[])
 {
     int m, k, n, rankNum, headMSize;
+    int localScopeLast = 0;
     std::string mode;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize);
+        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize, localScopeLast);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
@@ -497,8 +549,8 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d)", getpid(), rankNum, mode.c_str(),
-             headMSize);
+    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d, localScopeLast=%d)", getpid(), rankNum,
+             mode.c_str(), headMSize, localScopeLast);
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -508,7 +560,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runQuantMatmulReduceScatter(rankNum, rankId, m, k, n, mode, headMSize);
+            int ret = runQuantMatmulReduceScatter(rankNum, rankId, m, k, n, mode, headMSize, localScopeLast);
             exit(ret);
         } else {
             pids[rankId] = pid;

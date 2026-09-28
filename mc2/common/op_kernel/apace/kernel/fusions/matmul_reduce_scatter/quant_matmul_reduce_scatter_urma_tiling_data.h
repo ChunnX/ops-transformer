@@ -58,6 +58,9 @@ struct QuantMatmulReduceScatterTilingData {
     QuantMatmulTilingData remoteTailMmTilingData; // REMOTE tail 段 (m=(R-1)*tailMSize)
     QuantMatmulTilingData localHeadMmTilingData;  // LOCAL head tile (m=headMSize)
     QuantMatmulTilingData localTailMmTilingData;  // LOCAL tail tile (m=tailMSize)
+    // scope 执行顺序: 0 = LOCAL 先 (默认), 1 = LOCAL 后置。
+    // 单 flag 语义下二者时序等价 (flag = 双 scope 全部完成), 策略开关。
+    uint8_t localScopeLast{0};
 };
 
 // 通信 tiles (splitAxisTileCnt + splitAxisTailCnt) 上限 — host/kernel 同源常量。

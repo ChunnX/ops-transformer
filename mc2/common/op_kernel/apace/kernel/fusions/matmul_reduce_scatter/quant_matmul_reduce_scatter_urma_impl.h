@@ -19,7 +19,8 @@
  *
  * 架构 (AIC/AIV 分工 + 逐 tile 交错 + 通算重叠流水):
  *   AIC: RunInterleavedMatmul(): for t = 0..T-1:
- *          LOCAL 片段(t) → [L1 布局变化时排空] → REMOTE 片段(t) → SetFlag(tid)
+ *          scope①(t) → [L1 布局变化时排空] → scope②(t) → SetFlag(tid)
+ *          (scope 顺序由 tilingData.localScopeLast 控制: 0=LOCAL 先(默认), 1=LOCAL 后置)
  *        flag 语义 = 本 block tile t 全部片段完成 (local+remote)
  *   AIV: for t = 0..T-1: RunOneTileTurn(t)
  *          = 全核 WaitFlag(tid) → SyncAll → 通信核 Commit(t)+fence(t-1)+Drain(t)
@@ -365,7 +366,10 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     fragKernelImpl_(params);
 }
 
-// 逐 tile 交错: 每 tile 先 LOCAL 后 REMOTE 片段, 全部完成后 SetFlag(tid)。
+// 逐 tile 交错: 每 tile 依次执行 LOCAL/REMOTE 两个片段 (顺序由 tilingData.localScopeLast
+// 控制: 0=LOCAL 先(默认), 1=LOCAL 后置), 全部完成后 SetFlag(tid)。
+// 单 flag 语义下两种顺序时序等价 (flag = 双 scope 全部完成, 触发时间 = max(两 scope));
+// 稳态流水中 PUT(t) 已与 AIC 整个 tile t+1 重叠, tile 内顺序对 AIV 不可见 — 开关为策略实验保留。
 // flag 语义 = 本 block 的 tile t 两个片段全部完成 (PIPE_FIX 保证 fixpipe 写出后生效);
 // AIV 侧 Wait(tid)+SyncAll 聚合后即证全 AIC 核 tile t 完成 — PUT(t) 源数据与 reduceSum 的
 // selfPartial 依赖同步就绪, 无需独立完成信号。
@@ -383,25 +387,31 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     const auto &remoteTailT = tilingData_->remoteTailMmTilingData;
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
 
+    // scope 顺序开关: 0 = LOCAL 先 (默认), 1 = LOCAL 后置
+    const bool localLast = (tilingData_->localScopeLast != 0U);
+
     // 前一 scope 的 tiling (首个 scope 无前排空); head→tail 切换由统一 prev 比较覆盖
     const QuantMatmulTilingData *prevScopeT = nullptr;
     for (uint32_t tileIdx = 0; tileIdx < commTurn; ++tileIdx) {
         bool isHeadTile = (tileIdx < baseParams_.headTileCnt);
         const QuantMatmulTilingData &localT = isHeadTile ? localHeadT : localTailT;
         const QuantMatmulTilingData &remoteT = isHeadTile ? remoteHeadT : remoteTailT;
+        const QuantMatmulTilingData &firstT = localLast ? remoteT : localT;
+        const QuantMatmulTilingData &secondT = localLast ? localT : remoteT;
 
-        // LOCAL 片段 (本 rank 段 → workspace 本 rank 槽位), tiling m = tileM
-        if (prevScopeT != nullptr && IsL1LayoutChanged(*prevScopeT, localT)) {
-            DrainL1BeforeTilingSwitch(); // remote(t-1) → local(t) L1 布局变化 (含 head→tail)
+        // 第一片段 (LOCAL: 本 rank 段 → workspace 本 rank 槽位, tiling m = tileM;
+        //          REMOTE: remote rank 段 → workspace 各 remote rank 槽位, tiling m = (R-1)*tileM)
+        if (prevScopeT != nullptr && IsL1LayoutChanged(*prevScopeT, firstT)) {
+            DrainL1BeforeTilingSwitch(); // 第二片段(t-1) → 第一片段(t) L1 布局变化 (含 head→tail)
         }
-        RunOneFragScope(tileIdx, true, localT);
+        RunOneFragScope(tileIdx, !localLast, firstT);
 
-        // REMOTE 片段 (remote rank 段 → workspace 各 remote rank 槽位), tiling m = (R-1)*tileM
-        if (IsL1LayoutChanged(localT, remoteT)) {
-            DrainL1BeforeTilingSwitch(); // local(t) → remote(t) L1 布局变化
+        // 第二片段 (与第一片段互补的 scope)
+        if (IsL1LayoutChanged(firstT, secondT)) {
+            DrainL1BeforeTilingSwitch(); // tile 内 scope 切换 L1 布局变化
         }
-        RunOneFragScope(tileIdx, false, remoteT);
-        prevScopeT = &remoteT;
+        RunOneFragScope(tileIdx, localLast, secondT);
+        prevScopeT = &secondT;
 
         // tile t 全部片段完成 (flagid = tid)
         CrossCoreSetFlag<AIC_NOTIFY_MODE, PIPE_FIX>(tileIdx);
