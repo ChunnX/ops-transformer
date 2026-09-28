@@ -276,8 +276,8 @@ __aicore__ inline void VFPairSquareAdd(const LocalTensor<float> &dst, const Loca
 
 // 在一个VF内完成两路乘法并求和，用于相邻head对同一输出行的点积部分和。
 __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTensor<float> &src00,
-                                    const LocalTensor<float> &src01, const LocalTensor<float> &src10,
-                                    const LocalTensor<float> &src11, uint32_t count)
+                                     const LocalTensor<float> &src01, const LocalTensor<float> &src10,
+                                     const LocalTensor<float> &src11, uint32_t count)
 {
     __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
     __local_mem__ float *src00Addr = (__local_mem__ float *)src00.GetPhyAddr();
@@ -300,6 +300,48 @@ __aicore__ inline void VFPairMulAdd(const LocalTensor<float> &dst, const LocalTe
             Reg::Mul(product1Reg, src10Reg, src11Reg, mask);
             Reg::Add(dstReg, product0Reg, product1Reg, mask);
             Reg::StoreAlign(dstAddr + i * VL_FP32, dstReg, mask);
+        }
+    }
+}
+
+// 同一对x2生成相邻两个dot输出，避免第二个输出再次从UB读取x2。
+__aicore__ inline void VFPairMulAddTwoOutputs(const LocalTensor<float> &dst0, const LocalTensor<float> &dst1,
+                                              const LocalTensor<float> &x0, const LocalTensor<float> &x1,
+                                              const LocalTensor<float> &phi00, const LocalTensor<float> &phi01,
+                                              const LocalTensor<float> &phi10, const LocalTensor<float> &phi11,
+                                              uint32_t count)
+{
+    __local_mem__ float *dst0Addr = (__local_mem__ float *)dst0.GetPhyAddr();
+    __local_mem__ float *dst1Addr = (__local_mem__ float *)dst1.GetPhyAddr();
+    __local_mem__ float *x0Addr = (__local_mem__ float *)x0.GetPhyAddr();
+    __local_mem__ float *x1Addr = (__local_mem__ float *)x1.GetPhyAddr();
+    __local_mem__ float *phi00Addr = (__local_mem__ float *)phi00.GetPhyAddr();
+    __local_mem__ float *phi01Addr = (__local_mem__ float *)phi01.GetPhyAddr();
+    __local_mem__ float *phi10Addr = (__local_mem__ float *)phi10.GetPhyAddr();
+    __local_mem__ float *phi11Addr = (__local_mem__ float *)phi11.GetPhyAddr();
+    uint32_t remain = count;
+    const uint16_t loops = static_cast<uint16_t>((count + VL_FP32 - 1U) / VL_FP32);
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> x0Reg, x1Reg, phi0Reg, phi1Reg, product0Reg, product1Reg, dstReg;
+        Reg::MaskReg mask;
+        for (uint16_t i = 0; i < loops; ++i) {
+            mask = Reg::UpdateMask<float>(remain);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(x0Reg, x0Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(x1Reg, x1Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi0Reg, phi00Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi1Reg, phi01Addr + i * VL_FP32);
+            Reg::Mul(product0Reg, x0Reg, phi0Reg, mask);
+            Reg::Mul(product1Reg, x1Reg, phi1Reg, mask);
+            Reg::Add(dstReg, product0Reg, product1Reg, mask);
+            Reg::StoreAlign(dst0Addr + i * VL_FP32, dstReg, mask);
+
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi0Reg, phi10Addr + i * VL_FP32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(phi1Reg, phi11Addr + i * VL_FP32);
+            Reg::Mul(product0Reg, x0Reg, phi0Reg, mask);
+            Reg::Mul(product1Reg, x1Reg, phi1Reg, mask);
+            Reg::Add(dstReg, product0Reg, product1Reg, mask);
+            Reg::StoreAlign(dst1Addr + i * VL_FP32, dstReg, mask);
         }
     }
 }
