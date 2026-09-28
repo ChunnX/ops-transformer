@@ -30,6 +30,11 @@
  *
  * AIC side: 通信下发 + 计算 + per-tile wait 均在 AIC 核内完成，无 AIV↔AIC 跨核 flag 同步.
  *
+ * \note TransB 模板参数控制右矩阵 x2 的布局:
+ *       true  = x2 转置 (N, K_total), dn_ext_layout_ptn, x2Scale shape (N, K_total/64, 2);
+ *       false = x2 非转置 (K_total, N), nd_ext_layout_ptn, x2Scale shape (K_total/64, N, 2).
+ *       B/scaleB 的布局解释由 Blaze 层(LayoutB/LayoutScaleB)承担, 通信与调度路径不受影响.
+ *
  * \note 本实现仅启动 AIC 核。若需启动 AIV 核，须为 Init/Run 中的通信下发、
  *       Wait、Finalize 及核间屏障增加 AIC 守卫（if ASCEND_IS_AIC），否则 AIV 误参与 HCCL
  *       调用将导致 Prepare/Wait 失配或死锁。
@@ -88,7 +93,8 @@ struct HcommCommWaitPolicy {
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
+          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4,
+          bool TransB = true>
 class AllToAllMxQuantMatmulHcommImpl {
 public:
     explicit __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType *tilingData)
@@ -101,7 +107,8 @@ public:
 
     // Layout 定义
     using LayoutA = asc::te::nd_ext_layout_ptn;
-    using LayoutB = asc::te::dn_ext_layout_ptn;
+    using LayoutB =
+        typename AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
     using LayoutC = asc::te::nd_ext_layout_ptn;
     using LayoutBias = asc::te::nd_ext_layout_ptn;
     using BiasType = float;
@@ -164,11 +171,11 @@ private:
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void
-AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
-                                              GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM)
+          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4, bool TransB>
+__aicore__ inline void AllToAllMxQuantMatmulHcommImpl<
+    X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType, IsMxFp4,
+    TransB>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale,
+                  GM_ADDR x2_scale, GM_ADDR workspaceGM)
 {
     auto &&commTiling = tilingData_->commTilingData;
     splitAxisSize_ = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt +
@@ -238,9 +245,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
+          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
-                                                      AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Run()
+                                                      AlltoAllMatmulTilingDataType, ServerType, IsMxFp4, TransB>::Run()
 {
     if (tilingData_->localMatmul != 0) {
         opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_LOCAL_BEFORE);
@@ -254,10 +261,10 @@ __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, Com
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
+          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4, bool TransB>
 __aicore__ inline void
 AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4>::SetupParams(Params &out, MatmulMode matmulMode)
+                               IsMxFp4, TransB>::SetupParams(Params &out, MatmulMode matmulMode)
 {
     auto &&commTiling = tilingData_->commTilingData;
     const auto &mmTile = tilingData_->tileQbmmTilingData;
@@ -302,10 +309,10 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
-          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
+          typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4, bool TransB>
 __aicore__ inline void
 AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMatmulTilingDataType, ServerType,
-                               IsMxFp4>::MatmulProcess(MatmulMode matmulMode)
+                               IsMxFp4, TransB>::MatmulProcess(MatmulMode matmulMode)
 {
     Params params;
     SetupParams(params, matmulMode);

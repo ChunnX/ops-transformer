@@ -186,7 +186,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>对应公式中的x2Scale。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>ND</td>
-    <td>1维/3维。K-C量化和K-C动态量化时shape为(N)。mx量化场景时shape为(N, ceil(H*rankSize/64), 2)</td>
+    <td>1维/3维。K-C量化和K-C动态量化时shape为(N)。mx量化场景且x2转置（transposeX2为True）时shape为(N, ceil(H*rankSize/64), 2)；mx量化场景且x2非转置（transposeX2为False，仅Ascend 950PR/Ascend 950DT的Apace实现路线支持）时shape为(ceil(H*rankSize/64), N, 2)</td>
     <td>x</td>
     </tr>
     <tr>
@@ -604,7 +604,8 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     * 维度约束：
       * rankSize * H范围仅支持[1, 65535]。
       * mx量化场景下，H必须整除64。
-      * mx量化场景下，x2必须转置，shape为(H*rankSize, N)，transposeX2为True。
+      * mx量化场景下，x2必须转置，shape为(N, H*rankSize)，transposeX2为True，x2Scale的shape为(N, ceil(H\*rankSize/64), 2)。
+      * <term>Ascend 950PR/Ascend 950DT</term>上，当满足Apace实现路线准入条件（allToAllOutOptional为空且rankSize不超过8）时，mx量化场景额外支持x2非转置：transposeX2为False，x2的shape为(H*rankSize, N)，x2Scale的shape为(ceil(H\*rankSize/64), N, 2)；x2转置时x2Scale的shape为(N, ceil(H\*rankSize/64), 2)。
   <!-- end id15 -->
 
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
