@@ -214,8 +214,11 @@ public:
                 AscendC::DataCopy(oUBTensorB16, oTransUBTensorB16, actMSizeThisCore * embedColumnCnt);
                 AscendC::PipeBarrier<PIPE_V>();
 
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
+                // 无 LSE 时 oTrans 已拷完，可以还给 P。有 LSE 时 oTrans 还要做 LSE 的 UB→GM，信号放到搬出之后。
+                if constexpr (DispatchPolicy::LSE_MODE != LseMode::OUT_ONLY) {
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_ATTN_BUF_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_ATTN_BUF_FLAG);
 
@@ -255,6 +258,8 @@ public:
                     auto gLseTensorTlaTile = GetTile(gLseTensor, tla::MakeCoord(rowOffsetCurSubCore, 0),
                                                      tla::MakeShape(actMSizeThisCore, 1));
                     CopyUbToGmLse(gLseTensorTlaTile, ubLseTensorTla);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
                 }
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_ATTN_BUF_FLAG);

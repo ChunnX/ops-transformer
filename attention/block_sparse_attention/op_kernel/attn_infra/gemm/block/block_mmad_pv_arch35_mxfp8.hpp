@@ -429,30 +429,30 @@ public:
     // kernel 在 Wait(V2_C2)/pscale 之前调用，让 V 的 MTE2 和 AIV rescale 重叠。
     template <class TensorV, class TaskInfoT, class TileInfoT>
     __aicore__ inline void PrefetchV(TensorV &gV, AscendC::GlobalTensor<uint8_t> gVDequantScale,
-                                     AscendC::GlobalTensor<int32_t> gSparseIdx, TileInfoT &delay12TileInfo,
-                                     TaskInfoT &delay12TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                     AscendC::GlobalTensor<int32_t> gSparseIdx, TileInfoT &delay20TileInfo,
+                                     TaskInfoT &delay20TaskInfo, uint32_t kvSBaseTile, uint32_t blockShapeY,
                                      uint32_t kvHeadMul, GemmCoord actualBlockShapePV)
     {
         uint32_t embedReal = actualBlockShapePV[1];
         uint32_t curBaseTileSize = actualBlockShapePV[2];
-        uint32_t gatheredKvSTileIdx = delay12TileInfo.pvGatheredKvSTileIdx;
+        uint32_t gatheredKvSTileIdx = delay20TileInfo.pvGatheredKvSTileIdx;
 
         const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;
         if (pairOdd) {
             return;
         }
-        const bool pairEven = !delay12TileInfo.isLastKvsTile;
+        const bool pairEven = !delay20TileInfo.isLastKvsTile;
         uint32_t pairRows = curBaseTileSize;
         if (pairEven) {
-            pairRows += MXFP8::Mxfp8NextKvsTileRows(gatheredKvSTileIdx, kvSBaseTile, delay12TaskInfo.gatheredKvSeqlen);
+            pairRows += MXFP8::Mxfp8NextKvsTileRows(gatheredKvSTileIdx, kvSBaseTile, delay20TaskInfo.gatheredKvSeqlen);
         }
         uint32_t pairAlign64 = MXFP8::Mxfp8Align64(pairRows);
         uint32_t vSlot = l1ABufId;
         uint32_t scaleRows = pairRows;
         uint32_t vScaleAlign64 = pairAlign64;
 
-        AscendC::GlobalTensor<uint8_t> gVScale = gVDequantScale[delay12TaskInfo.gmOffsetVScale];
-        AscendC::GlobalTensor<int32_t> gSparseBlockIdx = gSparseIdx[delay12TaskInfo.gmOffsetSparseIdx];
+        AscendC::GlobalTensor<uint8_t> gVScale = gVDequantScale[delay20TaskInfo.gmOffsetVScale];
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx = gSparseIdx[delay20TaskInfo.gmOffsetSparseIdx];
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
         uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
@@ -473,8 +473,8 @@ public:
                                                  Arch::PositionL1{});
 
         SparseVFusedBaseTileL1FullLoad(gV, l1ATensorTla, gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx,
-                                       gatheredKvSTileIdx, delay12TaskInfo.kvSeqlen, kvSBaseTile, blockShapeY,
-                                       delay12TaskInfo.yBlockNumAval, delay12TaskInfo.yBlockNumRsvd, pairRows,
+                                       gatheredKvSTileIdx, delay20TaskInfo.kvSeqlen, kvSBaseTile, blockShapeY,
+                                       delay20TaskInfo.yBlockNumAval, delay20TaskInfo.yBlockNumRsvd, pairRows,
                                        scaleRows, embedReal, firstYBlockIdx, firstOriYBlockIdx);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + vSlot);
@@ -485,21 +485,21 @@ public:
 
     // 等本拍 V 的 MTE2 完成后 LoadV/mmad。P pad 每 128-tile 一次。odd 复用 even 的 L1。
     template <class TensorC, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void ComputePV(TensorC &ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT &delay12TileInfo,
-                                     TaskInfoT &delay12TaskInfo)
+    __aicore__ inline void ComputePV(TensorC &ubOTmpTensor, GemmCoord actualBlockShapePV, TileInfoT &delay20TileInfo,
+                                     TaskInfoT &delay20TaskInfo)
     {
         uint32_t embedReal = actualBlockShapePV[1];
-        uint32_t gatheredKvSTileIdx = delay12TileInfo.pvGatheredKvSTileIdx;
-        uint32_t pSlot = delay12TileInfo.pSlot;
+        uint32_t gatheredKvSTileIdx = delay20TileInfo.pvGatheredKvSTileIdx;
+        uint32_t pSlot = delay20TileInfo.pSlot;
 
         const bool pairOdd = (gatheredKvSTileIdx & 1u) != 0u;
-        const bool pairEven = ((gatheredKvSTileIdx & 1u) == 0u) && !delay12TileInfo.isLastKvsTile;
+        const bool pairEven = ((gatheredKvSTileIdx & 1u) == 0u) && !delay20TileInfo.isLastKvsTile;
         uint32_t vSlot = pairVSlot_;
         uint32_t pairAlign64 = pairVL1Align64_;
         uint32_t mMmad = MXFP8::PV_MMAD_M_DIM;
 
-        if (delay12TileInfo.kvsActBaseTileAlign32 != delay12TileInfo.kvsActBaseTileAlign64) {
-            PadPS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, delay12TileInfo.kvsActBaseTileAlign32, pSlot);
+        if (delay20TileInfo.kvsActBaseTileAlign32 != delay20TileInfo.kvsActBaseTileAlign64) {
+            PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign32, pSlot);
         }
 
         if (!pairOdd) {
@@ -511,32 +511,32 @@ public:
         uint32_t l0BBufId = pvL0abBufId;
         uint32_t l0ABEventId = PV_L0AB_EVENT0 + pvL0abBufId;
 
-        if (delay12TileInfo.isTileGoupFirstTile) {
+        if (delay20TileInfo.isTileGoupFirstTile) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
 
-        uint32_t s2Full = delay12TileInfo.kvsActBaseTileAlign64;
+        uint32_t s2Full = delay20TileInfo.kvsActBaseTileAlign64;
         uint32_t s2Start = pairOdd ? MXFP8::QK_HALF_KVS : 0;
-        bool initC = delay12TileInfo.isTileGoupFirstTile;
-        LoadPToL0(pSlot, l0BBufId, s2Full, embedReal, delay12TaskInfo.qsActBaseTileAlign64, 0);
+        bool initC = delay20TileInfo.isTileGoupFirstTile;
+        LoadPToL0(pSlot, l0BBufId, s2Full, embedReal, delay20TaskInfo.qsActBaseTileAlign64, 0);
         LoadVToL0(vSlot, l0ABufId, embedReal, s2Full, s2Start, pairAlign64, vSlot, s2Start, pairAlign64);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
 
-        MatmulPV(l0ABufId, l0BBufId, mMmad, delay12TaskInfo.qsActBaseTileAlign64, s2Full, initC);
+        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTileAlign64, s2Full, initC);
 
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
         pvL0abBufId = (pvL0abBufId + 1) % MXFP8::L0A_PV_BUF_CNT;
 
-        if (delay12TileInfo.isUpdatePScale) {
+        if (delay20TileInfo.isUpdatePScale) {
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            if (delay12TaskInfo.qsActBaseTileAlign8 <= MXFP8::CONST_64) {
-                FixpipeMm2SingleVect(delay12TaskInfo.qsActBaseTileAlign64, ubOTmpTensor);
+            if (delay20TaskInfo.qsActBaseTileAlign8 <= MXFP8::CONST_64) {
+                FixpipeMm2SingleVect(delay20TaskInfo.qsActBaseTileAlign64, ubOTmpTensor);
             } else {
-                FixpipeMm2(delay12TaskInfo.qsActBaseTileAlign64, ubOTmpTensor);
+                FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign64, ubOTmpTensor);
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
@@ -545,7 +545,7 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
         }
 
-        if (delay12TileInfo.isLastSecondKvsTile) {
+        if (delay20TileInfo.isLastSecondKvsTile) {
             InitL0BufferForReduceSum();
         }
     }

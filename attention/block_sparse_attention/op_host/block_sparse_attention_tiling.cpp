@@ -101,7 +101,6 @@ constexpr uint32_t SOC_VER_950_CODE = 4;
 constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_16 = 16;
-constexpr uint32_t TILE_SIZE_64 = 64;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
 constexpr uint32_t TILE_SIZE_512 = 512;
@@ -515,13 +514,6 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (IsMxFullQuant(quantMode_) &&
-        (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "(quantMode:%d) mx full-quant requires embeddingSize to be 64 or 128, but got %u.", quantMode_,
-                embeddingSize_);
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -742,12 +734,12 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     }
     // mx full-quant (mxfp4/mxfp8) requires blockShapeX/Y to be multiples of 64
     if (IsMxFullQuant(quantMode_)) {
-        if (blockShapeX_ % 64 != 0) {
+        if (blockShapeX_ % NUM_64 != 0) {
             OP_LOGE(bsaContext->GetNodeName(), "mx full-quant requires blockShapeX to be multiple of 64, but got %u.",
                     blockShapeX_);
             return ge::GRAPH_FAILED;
         }
-        if (blockShapeY_ % 64 != 0) {
+        if (blockShapeY_ % NUM_64 != 0) {
             OP_LOGE(bsaContext->GetNodeName(), "mx full-quant requires blockShapeY to be multiple of 64, but got %u.",
                     blockShapeY_);
             return ge::GRAPH_FAILED;

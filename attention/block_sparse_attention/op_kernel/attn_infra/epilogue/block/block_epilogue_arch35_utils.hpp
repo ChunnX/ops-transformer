@@ -259,7 +259,7 @@ static constexpr uint32_t UB_UPDATE_SCALE_BUF_OFFSET = 182 * KB_BYTE + 768;
 static constexpr uint32_t UB_INDEX_BUF_SIZE = 256;
 static constexpr uint32_t UB_INDEX_BUF_OFFSET = 183 * KB_BYTE + 768;
 
-// last-tile pscale 把 K_g 快照下来，delay12 rescale 再读（softmaxMax 会被后续 task 覆盖）
+// last-tile pscale 把 K_g 快照下来，delay20 rescale 再读（softmaxMax 会被后续 task 覆盖）
 static constexpr uint32_t UB_LSE_MAX_SNAP_CNT = 32;
 static constexpr uint32_t UB_LSE_MAX_SNAP_SIZE = 256; // 128 × fp16
 static constexpr uint32_t UB_LSE_MAX_SNAP_OFFSET = 200 * KB_BYTE;
