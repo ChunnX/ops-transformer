@@ -93,7 +93,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
-    __aicore__ inline void PrepareLocalInput();
+    __aicore__ inline void PrepareLocalInput(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void ProcessInputPreparationStage(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void WaitForInputPreparation();
     __aicore__ inline SharedGmmStartCondition GetSharedGmmStartCondition() const;
@@ -890,13 +890,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExportAndResetExpertCou
 
 // 仅由 AIV 调用：准备本核输入，分别发布 reset 完成和 token 数据就绪通知。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput(
+    SharedGmmStartCondition sharedGmmStartCondition)
 {
+    AivJobContext resetJob = aivJob_;
+    AivJobContext tokenJob = aivJob_;
+    if (sharedGmmStartCondition == SharedGmmStartCondition::ResetDone) {
+        // 共享 GMM 直接读取原始输入：AIV0 分担 reset，AIV1 分担 pack，两者并行。
+        const AivJobContext halfAivJob{.jobIndex = blockIdx_, .totalJobs = blockNum_};
+        resetJob = GetSubBlockIdx() == 0U ? halfAivJob : AivJobContext{};
+        tokenJob = GetSubBlockIdx() == 1U ? halfAivJob : AivJobContext{};
+    }
+
     SendAndQuantBuffInit();
-    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    // 本核状态清零完成后，通知其他 AIV。
+    ResetSyncStatus<TopkWeightsPrefetch>(resetJob, params_, resetBatchElementCount_, resetTensor_);
+    // 本核 reset 任务完成后发布通知；空任务核同样参与全 AIV 事件。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
-    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
+    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, tokenJob);
     if (tokenRange.count > 0U) {
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
             QuantizeInputTokens(tokenRange);
@@ -920,7 +930,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage(
     SharedGmmStartCondition sharedGmmStartCondition)
 {
-    PrepareLocalInput();
+    PrepareLocalInput(sharedGmmStartCondition);
     auto sendIndexAndCount = [&](const WorkRange &ownedExpertRange, bool notifyAicAfterQuantOrPack)
         __attribute__((cce_aicore))
     {
@@ -950,7 +960,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         sendIndexAndCount(ownedExpertRange, GetSubBlockIdx() == 0U);
     } else {
         if (GetSubBlockIdx() == 1U) {
-            // AIV1 分担全部发送任务，等待 quant/pack 完成后发布 count。
+            // AIV1 分担全部发送任务，等待 reset 和 quant/pack 完成后发布 count。
             const WorkRange ownedExpertRange =
                 GetBalancedWorkRange(totalExperts, {.jobIndex = blockIdx_, .totalJobs = blockNum_});
             sendIndexAndCount(ownedExpertRange, false);
