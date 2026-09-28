@@ -41,6 +41,8 @@ inline ge::DataType ParseGeDtype(const std::string &dtype)
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
         {"FLOAT8-E8M0", ge::DT_FLOAT8_E8M0},
         {"HIFLOAT8", ge::DT_HIFLOAT8},
+        {"HIFLOAT4", ge::DT_HIFLOAT4},
+        {"HIFLOAT4_SCALE", ge::DT_HIFLOAT4_SCALE},
         {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
         {"FLOAT4_E1M2", ge::DT_FLOAT4_E1M2},
         {"UNDEFINED", ge::DT_UNDEFINED},

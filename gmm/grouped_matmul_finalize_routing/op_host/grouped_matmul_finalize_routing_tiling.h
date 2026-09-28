@@ -35,6 +35,8 @@ struct GroupedMatmulFinalizeRoutingCompileInfo {
     bool supportL0c2out = false;
     bool supportL12BtBf16 = false;
     NpuArch npuArch;
+    // Tail field keeps all pre-A6 aggregate initializers source-compatible.
+    bool supportMmadF16S8 = false;
 };
 
 BEGIN_TILING_DATA_DEF(GroupMatmulFRTilingData)

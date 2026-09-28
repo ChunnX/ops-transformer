@@ -79,16 +79,19 @@ constexpr int64_t MAX_NUM_EXPERTS = 1024L;
 constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize";
 
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
-    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1,
+    op::DataType::DT_HIFLOAT4};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8 = {op::DataType::DT_FLOAT8_E4M3FN,
                                                                  op::DataType::DT_FLOAT8_E5M2};
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
-static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0,
+                                                                    op::DataType::DT_HIFLOAT4_SCALE};
 static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
 static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX_BF16_OUTPUT = {op::DataType::DT_INT32};
 static const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
-static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0,
+                                                                             op::DataType::DT_HIFLOAT4_SCALE};
 static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
@@ -297,12 +300,14 @@ public:
     {
         op::Shape xExpectShape = {m, k};
         op::Shape weightExpectShape = {e, k, n};
+        int64_t mxScaleLastDim =
+            gmmParams_.scale->GetDataType() == op::DataType::DT_HIFLOAT4_SCALE ? 1 : GMMFR_SPLIT_FACTOR;
         op::Shape weightScaleExpectShape =
-            quantMode_ == QuantMode::MX ? op::Shape{e, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), n, GMMFR_SPLIT_FACTOR} :
+            quantMode_ == QuantMode::MX ? op::Shape{e, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), n, mxScaleLastDim} :
                                           op::Shape{e, 1, n};
         op::Shape weightTransExpectShape = {e, n, k};
         op::Shape weightScaleTransExpectShape =
-            quantMode_ == QuantMode::MX ? op::Shape{e, n, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} :
+            quantMode_ == QuantMode::MX ? op::Shape{e, n, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), mxScaleLastDim} :
                                           op::Shape{e, 1, n};
         op::Shape grouplistExpectShape = {e};
         op::Shape logitExpectShape = {m};
@@ -326,9 +331,11 @@ public:
     bool CheckOptionalShapes(int64_t m, int64_t k, int64_t e, int64_t n)
     {
         if (gmmParams_.pertokenScaleOptional != nullptr) {
+            int64_t mxScaleLastDim =
+                gmmParams_.scale->GetDataType() == op::DataType::DT_HIFLOAT4_SCALE ? 1 : GMMFR_SPLIT_FACTOR;
             op::Shape xScaleExpectShape =
                 quantMode_ == QuantMode::MX ?
-                    op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} :
+                    op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), mxScaleLastDim} :
                     op::Shape{m};
             GMMFR_CHECK_SHAPE(gmmParams_.pertokenScaleOptional, "perTokenScale", xScaleExpectShape, return false);
         }

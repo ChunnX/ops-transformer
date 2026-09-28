@@ -110,6 +110,8 @@ struct GMMCompileInfo {
     uint64_t l0BSize;
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch;
+    // Tail field keeps all pre-A6 aggregate initializers source-compatible.
+    bool supportMmadF16S8{false};
 };
 
 class GMMTiling {
