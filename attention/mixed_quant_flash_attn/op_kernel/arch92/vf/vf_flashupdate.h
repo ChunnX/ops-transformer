@@ -18,8 +18,8 @@
  * \file vf_flashupdate.h
  * \brief
  */
-#ifndef VF_FLASH_UPDATE_920R1_H
-#define VF_FLASH_UPDATE_920R1_H
+#ifndef VF_FLASH_UPDATE_92_H
+#define VF_FLASH_UPDATE_92_H
 
 #include "kernel_tensor.h"
 

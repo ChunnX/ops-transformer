@@ -12,8 +12,8 @@
  * \file ifa_public_define.h
  * \brief
  */
-#ifndef FIA_PUBLIC_DEFINE_ARCH920R1_H
-#define FIA_PUBLIC_DEFINE_ARCH920R1_H
+#ifndef FIA_PUBLIC_DEFINE_ARCH92_H
+#define FIA_PUBLIC_DEFINE_ARCH92_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
@@ -48,4 +48,4 @@ using AscendC::WaitFlag;
 #define CC_L1Q_1  9U   // L1 Q slot2
 // id [11-14] SyncAll要用
 
-#endif // FIA_PUBLIC_DEFINE_ARCH920R1_H
+#endif // FIA_PUBLIC_DEFINE_ARCH92_H
