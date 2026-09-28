@@ -239,8 +239,8 @@ private:
     bool flushPending_[2]{false, false};
     int32_t flushEvtVMte3Arr_[2]{0, 0};
     int32_t flushEvtMte3VArr_[2]{0, 0};
-    uint32_t runCnt_{0};      // 本批 direct-run 数
-    uint32_t accumCnt_{0};    // 本批 accum 行数(≤ENTRY_BATCH_CAP)
+    uint32_t runCnt_{0};   // 本批 direct-run 数
+    uint32_t accumCnt_{0}; // 本批 accum 行数(≤ENTRY_BATCH_CAP)
     uint32_t dupCnt_{0};
     uint32_t accumRowCnt_{0}; // 当前 accum 组已累加行数
 };
@@ -900,7 +900,7 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
 }
 
 __aicore__ inline void EngramFetchGradUnique::CastToFP32(AscendC::LocalTensor<float> outT,
-                                                          AscendC::LocalTensor<uint8_t> gradRaw, uint32_t count)
+                                                         AscendC::LocalTensor<uint8_t> gradRaw, uint32_t count)
 {
     if (inputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
         AscendC::LocalTensor<bfloat16_t> inT = gradRaw.ReinterpretCast<bfloat16_t>();
@@ -1016,12 +1016,9 @@ __aicore__ inline void EngramFetchGradUnique::FlushDirectRun(AscendC::LocalTenso
     }
 }
 
-__aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cur, uint32_t batchLen,
-                                                                      int32_t runningOffset, int32_t &prevEntry,
-                                                                      bool &isFirstElement, int32_t &inclusiveSum,
-                                                                      GM_ADDR recvLocalEntryOutGM,
-                                                                      GM_ADDR sortCompanionGM, bool emitLists,
-                                                                      bool sparseCompact)
+__aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(
+    uint32_t cur, uint32_t batchLen, int32_t runningOffset, int32_t &prevEntry, bool &isFirstElement,
+    int32_t &inclusiveSum, GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM, bool emitLists, bool sparseCompact)
 {
     AscendC::LocalTensor<int32_t> entryUb = indicesBuf_->Get<int32_t>();
 
@@ -1240,9 +1237,9 @@ __aicore__ inline void EngramFetchGradUnique::WriteBatchUnique(uint32_t tileUniq
 }
 
 __aicore__ inline void EngramFetchGradUnique::ProcessNonDirectRow(int32_t pos, uint32_t subStart,
-                                                                   AscendC::LocalTensor<uint8_t> &gradRaw,
-                                                                   AscendC::LocalTensor<float> &castRow,
-                                                                   GM_ADDR gradUniqueOutGM, int32_t compactIdx)
+                                                                  AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                  AscendC::LocalTensor<float> &castRow,
+                                                                  GM_ADDR gradUniqueOutGM, int32_t compactIdx)
 {
     AscendC::LocalTensor<float> accumBase = accumBuf_->Get<float>();
     uint32_t hiddenDim = static_cast<uint32_t>(hiddenDim_);
@@ -1287,10 +1284,10 @@ __aicore__ inline void EngramFetchGradUnique::ProcessNonDirectRow(int32_t pos, u
     accumDirty_ = true;
 }
 __aicore__ inline void EngramFetchGradUnique::AccumulateDupListWalk(uint32_t subStart, uint32_t subLen,
-                                                                     uint32_t &cursor,
-                                                                     AscendC::LocalTensor<uint8_t> &gradRaw,
-                                                                     AscendC::LocalTensor<float> &castRow,
-                                                                     GM_ADDR gradUniqueOutGM)
+                                                                    uint32_t &cursor,
+                                                                    AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                    AscendC::LocalTensor<float> &castRow,
+                                                                    GM_ADDR gradUniqueOutGM)
 {
     uint32_t subEnd = subStart + subLen;
     while (cursor < dupCnt_) {
@@ -1320,8 +1317,8 @@ __aicore__ inline void EngramFetchGradUnique::AccumulateDupListWalk(uint32_t sub
     }
 }
 __aicore__ inline void EngramFetchGradUnique::EmitRunsFromDupList(uint32_t subStart, uint32_t subLen, uint32_t &cursor,
-                                                                   AscendC::LocalTensor<uint8_t> &gradRaw,
-                                                                   GM_ADDR gradUniqueOutGM)
+                                                                  AscendC::LocalTensor<uint8_t> &gradRaw,
+                                                                  GM_ADDR gradUniqueOutGM)
 {
     uint32_t subEnd = subStart + subLen;
     while (cursor < runCnt_) {
