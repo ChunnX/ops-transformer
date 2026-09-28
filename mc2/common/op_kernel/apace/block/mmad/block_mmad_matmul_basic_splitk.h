@@ -186,6 +186,15 @@ public:
 
         kL1Iter_ = Blaze::Gemm::CeilDiv(oriK, kL1_);
         dbgCurN0_ = static_cast<uint32_t>(curN); // DEBUG
+        if (dbgBiasDumpCnt_ < 1) {
+            printf("[DBG] cfg: l1Stages=%u mL1=%u nL1=%u kL1=%u baseM=%u baseN=%u baseK=%u aL1=%u bL1=%u totalL1=%u\n",
+                   static_cast<uint32_t>(l1Stages_), static_cast<uint32_t>(mL1_), static_cast<uint32_t>(nL1_),
+                   static_cast<uint32_t>(kL1_), static_cast<uint32_t>(baseM_), static_cast<uint32_t>(baseN_),
+                   static_cast<uint32_t>(baseK_),
+                   static_cast<uint32_t>(mL1_ * kL1_ * sizeof(AType)),
+                   static_cast<uint32_t>(nL1_ * kL1_ * sizeof(BType)),
+                   static_cast<uint32_t>(AscendC::TOTAL_L1_SIZE));
+        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
