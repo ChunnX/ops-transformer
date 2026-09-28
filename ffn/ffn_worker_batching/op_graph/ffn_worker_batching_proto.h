@@ -73,7 +73,6 @@ REG_OP(FfnWorkerBatching)
     .ATTR(need_schedule, Int, 0)
     .ATTR(layer_num, Int, 0)
     .ATTR(sync_flag, Bool, false)
-    .ATTR(sync_flag, Int, 0)
     .OP_END_FACTORY_REG(FfnWorkerBatching)
 #endif // OPS_PROTO_DEF_FFNWORKERBATCHING
 

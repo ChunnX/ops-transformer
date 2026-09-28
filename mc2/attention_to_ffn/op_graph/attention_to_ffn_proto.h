@@ -55,7 +55,7 @@ REG_OP(AttentionToFFN)
     .REQUIRED_ATTR(attn_token_info_table_shape, ListInt)
     .REQUIRED_ATTR(moe_expert_num, Int)
     .ATTR(quant_mode, Int, 0)
-    .ATTR(sync_flag, Int, 0)
+    .ATTR(sync_flag, Bool, false)
     .ATTR(ffn_start_rank_id, Int, 0)
     .OP_END_FACTORY_REG(AttentionToFFN)
 
