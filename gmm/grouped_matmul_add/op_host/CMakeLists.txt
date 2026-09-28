@@ -16,6 +16,7 @@ if (BUILD_OPEN_PROJECT)
     endif()
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_add_def.cpp
+        pointer_grouped_matmul_add_def.cpp
     )
 endif()
 
@@ -32,6 +33,14 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
             OP_NAME GroupedMatmulAdd
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
+        add_ops_compile_options(
+            OP_NAME PointerGroupedMatmulAdd
+            COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS --cce-auto-sync=on
+                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -Wno-deprecated-declarations
+                    -Werror
         )
     elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend350")
         set(grouped_matmul_add_depends gmm/common CACHE INTERNAL "Dependencies for grouped_matmul_add")

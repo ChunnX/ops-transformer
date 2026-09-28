@@ -17,8 +17,9 @@
 
 namespace optiling {
 
-bool GroupedMatmulAddNoQuantTiling::SetTiling(gert::TilingContext *context)
+bool GroupedMatmulAddNoQuantTiling::SetTiling(gert::TilingContext *context, bool pointerTargets)
 {
+    pointerTargets_ = pointerTargets;
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is nullptr."), return false);
     usedCoreNum_ = compileInfoPtr->aicNum;
@@ -37,16 +38,23 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
 {
     OP_CHECK_IF(!GetAttrs(context), OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
 
-    auto xTensor = context->GetDynamicInputTensor(INDEX_X, 0);
+    auto xTensor = pointerTargets_ ? context->GetInputTensor(INDEX_X) : context->GetDynamicInputTensor(INDEX_X, 0);
     OP_CHECK_IF(xTensor == nullptr, OP_LOGE(context->GetNodeName(), "xTensor is nullptr."), return false);
-    gert::Shape xShape = xTensor->GetStorageShape();
+    const auto *xStorageShape = pointerTargets_ ? context->GetInputShape(INDEX_X) : nullptr;
+    OP_CHECK_IF(pointerTargets_ && xStorageShape == nullptr,
+                OP_LOGE(context->GetNodeName(), "x input shape is nullptr."), return false);
+    gert::Shape xShape = pointerTargets_ ? xStorageShape->GetOriginShape() : xTensor->GetStorageShape();
     xDimNum_ = static_cast<uint32_t>(xShape.GetDimNum());
     for (uint32_t i = 0; i < xDimNum_; i++) {
         OP_LOGI(context->GetNodeName(), "x DIM[%u] is %lu", i, static_cast<uint64_t>(xShape.GetDim(i)));
     }
-    auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, 0);
+    auto wTensor =
+        pointerTargets_ ? context->GetInputTensor(INDEX_WEIGHT) : context->GetDynamicInputTensor(INDEX_WEIGHT, 0);
     OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
-    gert::Shape wShape = wTensor->GetOriginShape();
+    const auto *wStorageShape = pointerTargets_ ? context->GetInputShape(INDEX_WEIGHT) : nullptr;
+    OP_CHECK_IF(pointerTargets_ && wStorageShape == nullptr,
+                OP_LOGE(context->GetNodeName(), "weight input shape is nullptr."), return false);
+    gert::Shape wShape = pointerTargets_ ? wStorageShape->GetOriginShape() : wTensor->GetOriginShape();
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     for (uint32_t i = 0; i < xDimNum_; i++) {
         OP_LOGI(context->GetNodeName(), "w DIM[%u] is %lu", i, static_cast<uint64_t>(wShape.GetDim(i)));
@@ -60,8 +68,8 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     xKDim_ = transposeX_ ? 0U : xDimNum_ - 1U;
     weightNDim_ = transposeWeight_ ? wDimNum - DIM_TWO : wDimNum - DIM_ONE;
 
-    OP_CHECK_IF(context->GetDynamicInputTensor(INDEX_WEIGHT, 1) != nullptr ||
-                    context->GetDynamicInputTensor(INDEX_X, 1) != nullptr,
+    OP_CHECK_IF(!pointerTargets_ && (context->GetDynamicInputTensor(INDEX_WEIGHT, 1) != nullptr ||
+                    context->GetDynamicInputTensor(INDEX_X, 1) != nullptr),
                 OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
                     context->GetNodeName(), "x, weight", "",
                     Ops::Transformer::Gmm::FormatString("The tensor nums of %s must be %s", "x, weight", "1").c_str()),
@@ -100,12 +108,13 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
                         .c_str()),
                 return false);
 
-    auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
+    auto xDesc = pointerTargets_ ? context->GetInputDesc(INDEX_X) : context->GetDynamicInputDesc(INDEX_X, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
     xDType_ = xDesc->GetDataType();
     auto xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
 
-    auto w0Desc = context->GetDynamicInputDesc(INDEX_WEIGHT, 0);
+    auto w0Desc =
+        pointerTargets_ ? context->GetInputDesc(INDEX_WEIGHT) : context->GetDynamicInputDesc(INDEX_WEIGHT, 0);
     OP_CHECK_IF(w0Desc == nullptr, OP_LOGE(context->GetNodeName(), "w0Desc is nullptr."), return false);
     weightDtype_ = w0Desc->GetDataType();
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
@@ -268,10 +277,15 @@ void GroupedMatmulAddNoQuantTiling::SetMatMulTiling()
 bool GroupedMatmulAddNoQuantTiling::SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context,
                                                                      const gert::Shape xShape, const gert::Shape wShape)
 {
-    auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
+    auto groupListTensor = pointerTargets_ ? context->GetInputTensor(INDEX_GROUPLIST)
+                                           : context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
     OP_CHECK_IF(groupListTensor == nullptr, OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr"),
                 return false);
-    gert::Shape groupListShape = groupListTensor->GetStorageShape();
+    const auto *groupStorageShape = pointerTargets_ ? context->GetInputShape(INDEX_GROUPLIST) : nullptr;
+    OP_CHECK_IF(pointerTargets_ && groupStorageShape == nullptr,
+                OP_LOGE(context->GetNodeName(), "groupList input shape is nullptr."), return false);
+    gert::Shape groupListShape =
+        pointerTargets_ ? groupStorageShape->GetOriginShape() : groupListTensor->GetStorageShape();
     groupNum_ = static_cast<uint32_t>(groupListShape.GetDim(0)); // 0: the first dim of groupList is groupNum
     m_ = static_cast<uint64_t>(xShape.GetDim(1));
     k_ = static_cast<uint64_t>(xShape.GetDim(xKDim_));

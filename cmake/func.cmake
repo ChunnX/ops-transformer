@@ -754,6 +754,24 @@ function(add_bin_compile_target)
         list(GET bin_sep 1 op_file)
         list(GET bin_sep 2 op_index)
 
+        # A source directory may expose more than one public op type.  The
+        # generated compile script is named after that public type, while
+        # BINARY_OP_INFO is keyed by the source-directory name.  Resolve the
+        # owning directory from the kernel source instead of silently
+        # dropping the additional op.
+        if (NOT DEFINED ${op_file}_dir)
+            foreach(_op_info ${BINARY_OP_INFO})
+                if (EXISTS "${_op_info}/op_kernel/${op_file}.cpp")
+                    set(${op_file}_dir ${_op_info})
+                    get_filename_component(_owner_op_name "${_op_info}" NAME)
+                    if (DEFINED ${_owner_op_name}_depends)
+                        set(${op_file}_depends ${${_owner_op_name}_depends})
+                    endif()
+                    break()
+                endif()
+            endforeach()
+        endif()
+
         if (NOT DEFINED ${op_file}_dir)
             continue()
         endif ()
@@ -764,14 +782,14 @@ function(add_bin_compile_target)
         endif ()
 
         set(OP_TARGET_NAME ${op_file}_${BINARY_COMPUTE_UNIT})
+        set(OP_SRC_OUT_DIR  ${SRC_OUT_DIR}/${op_file})
+        set(OP_BIN_OUT_DIR  ${BIN_OUT_DIR}/${op_file})
 
         if (NOT TARGET ${OP_TARGET_NAME})
             add_custom_target(${OP_TARGET_NAME})
             add_dependencies(${op_file} ${OP_TARGET_NAME})
             list(APPEND _ops_target_list ${OP_TARGET_NAME})
 
-            set(OP_SRC_OUT_DIR  ${SRC_OUT_DIR}/${op_file})
-            set(OP_BIN_OUT_DIR  ${BIN_OUT_DIR}/${op_file})
             file(MAKE_DIRECTORY ${OP_SRC_OUT_DIR})
 
             add_ops_src_copy(
@@ -825,16 +843,6 @@ function(add_bin_compile_target)
                 )
             endif ()
 
-            set(DYNAMIC_PY_FILE ${OP_SRC_OUT_DIR}/${op_type}.py)
-            add_custom_command(OUTPUT ${DYNAMIC_PY_FILE}
-                    COMMAND cp -rf ${ASCEND_IMPL_OUT_DIR}/dynamic/${op_file}.py ${DYNAMIC_PY_FILE}
-                    # COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/update_get_kernel_source.sh ${DYNAMIC_PY_FILE}
-            )
-
-            add_custom_target(${OP_TARGET_NAME}_py_copy
-                    DEPENDS ${DYNAMIC_PY_FILE}
-            )
-
             add_custom_command(OUTPUT ${OP_BIN_OUT_DIR}
                     COMMAND mkdir -p ${OP_BIN_OUT_DIR}
             )
@@ -859,6 +867,25 @@ function(add_bin_compile_target)
                 )
             endif()
         endif ()
+
+        # One source directory may intentionally register more than one op
+        # type.  Each generated kernel script must receive the matching
+        # dynamic implementation, rather than whichever type was visited
+        # first for this directory.
+        set(DYNAMIC_PY_FILE ${OP_SRC_OUT_DIR}/${op_type}.py)
+        string(REGEX REPLACE "([a-z0-9])([A-Z])" "\\1_\\2" DYNAMIC_IMPL_BASENAME ${op_type})
+        string(TOLOWER "${DYNAMIC_IMPL_BASENAME}" DYNAMIC_IMPL_BASENAME)
+        set(OP_PY_COPY_TARGET ${OP_TARGET_NAME}_${op_type}_py_copy)
+        if (NOT TARGET ${OP_PY_COPY_TARGET})
+            add_custom_command(OUTPUT ${DYNAMIC_PY_FILE}
+                    COMMAND cp -rf ${ASCEND_IMPL_OUT_DIR}/dynamic/${DYNAMIC_IMPL_BASENAME}.py ${DYNAMIC_PY_FILE}
+                    # COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/update_get_kernel_source.sh ${DYNAMIC_PY_FILE}
+            )
+
+            add_custom_target(${OP_PY_COPY_TARGET}
+                    DEPENDS ${DYNAMIC_PY_FILE}
+            )
+        endif()
 
         set(_group "1-0")
         if (DEFINED ASCEND_OP_NAME AND NOT "${ASCEND_OP_NAME}" STREQUAL "")
@@ -933,7 +960,7 @@ function(add_bin_compile_target)
             if (ENABLE_OPS_HOST OR ENABLE_HOST_TILING)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
-            add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
+            add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_PY_COPY_TARGET} ${OP_TARGET_NAME}_mkdir)
             if (${op_file}_pypto_enabled)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_pypto_install)
             endif ()

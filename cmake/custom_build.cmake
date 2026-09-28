@@ -1045,6 +1045,15 @@ if (NOT ENABLE_AICPU_KERNEL)
         )
     endforeach ()
 
+    # One selected source directory can register several public op types.
+    # Their generated dynamic implementations are not necessarily named
+    # after the directory in OP_LIST, so install the generated directory at
+    # package time rather than omitting those additional implementations.
+    install(DIRECTORY ${ASCEND_IMPL_OUT_DIR}/dynamic/
+            DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+            FILES_MATCHING PATTERN "*.py"
+    )
+
     install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )

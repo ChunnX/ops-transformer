@@ -26,7 +26,7 @@ using namespace GroupedMatmulAdd;
 
 class GroupedMatmulAddNoQuantTiling {
 public:
-    bool SetTiling(gert::TilingContext *context);
+    bool SetTiling(gert::TilingContext *context, bool pointerTargets = false);
 
 protected:
     bool Init(const gert::TilingContext *context);
@@ -44,6 +44,7 @@ protected:
                                           const gert::Shape wShape);
 
 private:
+    bool pointerTargets_ = false;
     bool transposeX_ = false;
     bool transposeWeight_ = false;
 
