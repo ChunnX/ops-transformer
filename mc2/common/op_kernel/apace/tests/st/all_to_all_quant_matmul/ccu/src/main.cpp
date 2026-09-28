@@ -253,9 +253,17 @@ int RunAllToAllMatmul(ThreadContext &ctx)
         aclrtEvent iterStartEvent = nullptr;
         aclrtEvent iterEndEvent = nullptr;
         float eventElapsedTotalMs = 0.0F;
+        // 重型算子 buffer（吸收 host launch gap：迭代间在 streamAicore 上插入大块
+        // memset，设备忙 ~430us 期间各 rank host 线程完成下一帧提交，消除 host
+        // bound 导致的 rank 间起跑偏斜——参考 mc2_test 框架的 Exp 重型算子方法；
+        // msprof 解析按 kernel name 过滤，memset 自动排除在统计外）
+        void *heavyBuf = nullptr;
+        constexpr uint64_t HEAVY_BUF_SIZE = 128UL * 1024 * 1024; // 128MB
+        constexpr uint32_t HEAVY_MEMSET_COUNT = 4;               // ~4×107us ≈ 430us
         if (ctx.mode == RunMode::PERF) {
             ACLCHECK(aclrtCreateEvent(&iterStartEvent));
             ACLCHECK(aclrtCreateEvent(&iterEndEvent));
+            ACLCHECK(aclrtMalloc(&heavyBuf, HEAVY_BUF_SIZE, ACL_MEM_MALLOC_HUGE_ONLY));
         }
         int runRet = 0;
         for (uint32_t iter = 0; iter < totalRuns; iter++) {
@@ -281,9 +289,19 @@ int RunAllToAllMatmul(ThreadContext &ctx)
                 }
                 std::cout << "rankId: " << myRank << ", perf iter " << (iter + 1) << "/" << totalRuns
                           << " event=" << (iterMs * 1000.0F) << "us" << std::endl;
+                // 插入重型算子（非阻塞：设备忙期间 host 完成下一帧提交；尾帧不插）
+                if (iter < totalRuns - 1) {
+                    for (uint32_t j = 0; j < HEAVY_MEMSET_COUNT; j++) {
+                        ACLCHECK(aclrtMemsetAsync(heavyBuf, HEAVY_BUF_SIZE, 0,
+                                                  HEAVY_BUF_SIZE, streamAicore));
+                    }
+                }
             }
         }
         if (ctx.mode == RunMode::PERF) {
+            if (heavyBuf != nullptr) {
+                (void)aclrtFree(heavyBuf);
+            }
             const uint32_t steadyRuns = (totalRuns > 1) ? (totalRuns - 1) : 1;
             std::cout << "rankId: " << myRank << ", event timing steady avg="
                       << (eventElapsedTotalMs * 1000.0F / steadyRuns) << "us/iter over " << steadyRuns
