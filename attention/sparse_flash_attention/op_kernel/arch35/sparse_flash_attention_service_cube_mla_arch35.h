@@ -240,7 +240,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     Buffer<BufferType::L1> inputLeftBuf;
     PrepareLeftMatrixBmm1SFA(inputLeftBuf, runInfo, constInfo);
 
-    inputRightBuf.WaitCrossCore();
     SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
