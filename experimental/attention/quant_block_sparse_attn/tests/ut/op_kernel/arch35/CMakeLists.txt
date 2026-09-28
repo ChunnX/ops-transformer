@@ -10,14 +10,20 @@
 
 # NOTE: quant_block_sparse_attn uses AIC+AIV coordination (KERNEL_TYPE_MIX_AIC_1_2) and RegBase
 # patterns, which are NOT supported by tikicpulib CPU simulation. This CMakeLists.txt creates a
-# placeholder test object that compiles and links into the UT runner without compiling the kernel
-# source. Full kernel tests require NPU hardware execution.
+# test object for pure layout/boundary helpers and a full-kernel placeholder without compiling
+# the kernel source. Full kernel tests require NPU hardware execution.
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
     set(socVersion "Ascend950PR_9599")
     set(opName "quant_block_sparse_attn")
 
     file(GLOB OPKERNEL_CASES_SRC ${CMAKE_CURRENT_SOURCE_DIR}/test_${opName}*.cpp)
+
+    # Only the pure helper tests use host compilation of device-decorated functions.
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_quant_block_sparse_attn_mx_layout.cpp
+        PROPERTIES COMPILE_DEFINITIONS "__aicore__="
+    )
 
     add_library(${opName}_${socVersion}_cases_obj OBJECT ${OPKERNEL_CASES_SRC})
     target_include_directories(

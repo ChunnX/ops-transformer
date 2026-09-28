@@ -464,6 +464,16 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>√</td>
       </tr>
       <tr>
+        <td>softmaxOutOut</td>
+        <td>输出</td>
+        <td>预留参数，暂未使用，接口不写入该输出。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
         <td>attentionOutOut</td>
         <td>输出</td>
         <td>计算公式的最终输出。</td>
@@ -523,7 +533,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、softmaxOutOut、attentionOutOut的数据类型不在支持的范围内。</td>
+      <td>query、key、value、realShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、sinkOptional、softmaxMaxOut、softmaxSumOut、attentionOutOut的数据类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>

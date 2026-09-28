@@ -13,8 +13,8 @@
  * \brief QuantFlashAttnGrad算子InferShape实现
  * 输出shape严格按规格：
  *   - dq: 按layout‑q解析(BSND‑>[B,Sq,Nq,D] / BNSD‑>[B,Nq,Sq,D] / TND‑>[Tq,Nq,D])
- *   - dk: 与dq同形(dk/dv为Q形状)
- *   - dv: 与dq同形
+ *   - dk: 与key同形
+ *   - dv: 与value同形
  *   - dsink: 一维 [numHeadsQ]
  */
 
@@ -50,8 +50,9 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     for (auto &c : kvInputLayoutStr) {
         c = toupper(c);
     }
-    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD") ||
-        (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD") || kvInputLayoutStr != qInputLayoutStr) {
+    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD" && qInputLayoutStr != "TND") ||
+        (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD" && kvInputLayoutStr != "TND") ||
+        kvInputLayoutStr != qInputLayoutStr) {
         OP_LOGI(context, "QuantFlashAttnGrad inputLayout error.");
         return GRAPH_FAILED;
     }
@@ -70,7 +71,6 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     gert::Shape *dvShape = context->GetOutputShape(OUTPUT_IDX_DV);
     OP_CHECK_NULL_WITH_CONTEXT(context, dvShape);
     *dvShape = *valueShape;
-    OP_LOGI(context, "QuantFlashAttnGrad InferShape done. dq dims.");
     return ge::GRAPH_SUCCESS;
 }
 

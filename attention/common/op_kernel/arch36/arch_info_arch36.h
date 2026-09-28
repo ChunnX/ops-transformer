@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file arch_info_arch35.h
+ * \file arch_info_arch36.h
  * \brief Common constants
  */
 #ifndef ARCH_INFO_ARCH36_H
@@ -19,7 +19,7 @@ namespace ArchInfo {
 constexpr uint32_t CV_RATIO = 1;
 constexpr uint32_t NPU_MAX_CUBE_NUM = 64;
 constexpr uint32_t NPU_MAX_VEC_NUM = NPU_MAX_CUBE_NUM * CV_RATIO;
-}
+} // namespace ArchInfo
 
 #define ATTN_MUTEX_ENABLE
 

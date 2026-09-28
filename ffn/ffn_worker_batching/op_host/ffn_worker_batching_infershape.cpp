@@ -16,6 +16,8 @@
 #include "util/shape_util.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
+#include <limits>
+#include <string>
 
 using namespace ge;
 namespace ops {
@@ -42,6 +44,12 @@ static constexpr uint32_t INDEX_ONE = 1;
 static constexpr uint32_t INDEX_TWO = 2;
 static constexpr uint32_t INDEX_THREE = 3;
 
+static constexpr int64_t EVEN_ALIGN = 2;
+static constexpr int64_t TOKEN_DTYPE_E5M2 = 3;
+static constexpr int64_t TOKEN_DTYPE_E4M3 = 4;
+static constexpr int64_t TOKEN_DTYPE_E2M1 = 5;
+static constexpr int64_t MXFP_SCALE_GROUP = 32;
+
 static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context)
 {
     auto attrs = context->GetAttrs();
@@ -50,17 +58,49 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     const int64_t *expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertNumPtr);
     auto expertNum = *expertNumPtr;
+    if (expertNum <= 0) {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "expert_num", std::to_string(expertNum), "greater than 0");
+        return ge::GRAPH_FAILED;
+    }
     auto maxOutShapePtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(MAX_OUT_SHAPE_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context, maxOutShapePtr);
     if (maxOutShapePtr->GetSize() != NUM_FOUR) {
-        OP_LOGE(context->GetNodeName(), "attr max_out_shape len must be 4, but is [%d].",
-                static_cast<int32_t>(maxOutShapePtr->GetSize()));
+        OP_LOGE_WITH_INVALID_ATTR_SIZE(context->GetNodeName(), "max_out_shape",
+                                       std::to_string(maxOutShapePtr->GetSize()), std::to_string(NUM_FOUR));
         return ge::GRAPH_FAILED;
     }
 
     const int64_t *maxOutShapeArray = reinterpret_cast<const int64_t *>(maxOutShapePtr->GetData());
-    int64_t Y = maxOutShapeArray[INDEX_ZERO] * maxOutShapeArray[INDEX_ONE] * maxOutShapeArray[INDEX_TWO];
-    int64_t H = maxOutShapeArray[INDEX_THREE];
+    const int64_t A = maxOutShapeArray[INDEX_ZERO];
+    const int64_t BS = maxOutShapeArray[INDEX_ONE];
+    const int64_t K = maxOutShapeArray[INDEX_TWO];
+    const int64_t H = maxOutShapeArray[INDEX_THREE];
+    if (A <= 0 || BS <= 0 || K <= 0 || H <= 0) {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "max_out_shape",
+                                  "[" + std::to_string(A) + ", " + std::to_string(BS) + ", " + std::to_string(K) +
+                                      ", " + std::to_string(H) + "]",
+                                  "all elements greater than 0");
+        return ge::GRAPH_FAILED;
+    }
+    // The runtime context stores H as uint32. Reject unsupported values during
+    // inference, before deriving output shapes or reaching the later tiling checks.
+    OP_CHECK_IF(H > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "max_out_shape[3]", std::to_string(H),
+                                          "at most " + std::to_string(std::numeric_limits<uint32_t>::max())),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(A > std::numeric_limits<int64_t>::max() / BS,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "max_out_shape[0], max_out_shape[1]",
+                                                       std::to_string(A) + ", " + std::to_string(BS),
+                                                       "A*BS must not overflow int64"),
+                return ge::GRAPH_FAILED);
+    const int64_t aBs = A * BS;
+    OP_CHECK_IF(
+        aBs > std::numeric_limits<int64_t>::max() / K,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context->GetNodeName(), "max_out_shape[0], max_out_shape[1], max_out_shape[2]",
+            std::to_string(A) + ", " + std::to_string(BS) + ", " + std::to_string(K), "A*BS*K must not overflow int64"),
+        return ge::GRAPH_FAILED);
+    const int64_t Y = aBs * K;
 
     gert::Shape *yShape = context->GetOutputShape(Y_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
@@ -92,7 +132,18 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     *microBatchIds = {Y};
     *tokenIds = {Y};
     *expertOffsets = {Y};
-    *dynamicScale = {Y};
+    const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t tokenDtype = tokenDtypePtr == nullptr ? TOKEN_KIND_ZERO : *tokenDtypePtr;
+    if (tokenDtype == TOKEN_DTYPE_E2M1 && H % EVEN_ALIGN != 0) {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "max_out_shape[3]", std::to_string(H),
+                                  "even when token_dtype is 5 (float4_e2m1)");
+        return ge::GRAPH_FAILED;
+    }
+    if (tokenDtype >= TOKEN_DTYPE_E5M2 && tokenDtype <= TOKEN_DTYPE_E2M1) {
+        *dynamicScale = {Y, H / MXFP_SCALE_GROUP + (H % MXFP_SCALE_GROUP != 0)};
+    } else {
+        *dynamicScale = {Y};
+    }
     *actualTokenNum = {1};
 
     return GRAPH_SUCCESS;
@@ -112,6 +163,12 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
         context->SetOutputDataType(Y_OUT, ge::DT_FLOAT16);
     } else if (tokenDtype == TOKEN_KIND_ONE) {
         context->SetOutputDataType(Y_OUT, ge::DT_BF16);
+    } else if (tokenDtype == TOKEN_DTYPE_E5M2) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E5M2);
+    } else if (tokenDtype == TOKEN_DTYPE_E4M3) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E4M3FN);
+    } else if (tokenDtype == TOKEN_DTYPE_E2M1) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT4_E2M1);
     } else {
         context->SetOutputDataType(Y_OUT, ge::DT_INT8);
     }
@@ -121,11 +178,12 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
     context->SetOutputDataType(MICRO_BATCH_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(TOKEN_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(EXPERT_OFFSETS_OUT, ge::DT_INT32);
-    context->SetOutputDataType(DYNAMIC_SCALE_OUT, ge::DT_FLOAT);
+    context->SetOutputDataType(DYNAMIC_SCALE_OUT, tokenDtype >= TOKEN_DTYPE_E5M2 && tokenDtype <= TOKEN_DTYPE_E2M1 ?
+                                                      ge::DT_FLOAT8_E8M0 :
+                                                      ge::DT_FLOAT);
     context->SetOutputDataType(ACTUAL_TOKEN_NUM_OUT, ge::DT_INT64);
     return ge::GRAPH_SUCCESS;
 }
-
 
 IMPL_OP_INFERSHAPE(FfnWorkerBatching)
     .InferShape(InferShape4FfnWorkerBatching)

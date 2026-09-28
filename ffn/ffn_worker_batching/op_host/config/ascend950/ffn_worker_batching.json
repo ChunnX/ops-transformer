@@ -30,7 +30,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -41,28 +41,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -73,8 +51,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -85,7 +85,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -96,7 +96,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -131,6 +131,11 @@
                     "name": "layer_num",
                     "dtype": "int",
                     "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
+                    "value": null
                 }
             ]
         },
@@ -163,7 +168,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -174,28 +179,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -206,8 +189,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -218,7 +223,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -229,7 +234,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -264,6 +269,11 @@
                     "name": "layer_num",
                     "dtype": "int",
                     "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
+                    "value": null
                 }
             ]
         },
@@ -296,7 +306,7 @@
                 },
                 {
                     "name": "group_list",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -307,28 +317,6 @@
                 },
                 {
                     "name": "session_ids",
-                    "index": 0,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "micro_batch_ids",
-                    "index": 1,
-                    "dtype": "int32",
-                    "format": "ND",
-                    "paramType": "required",
-                    "shape": [
-                        -2
-                    ],
-                    "format_match_mode": "FormatAgnostic"
-                },
-                {
-                    "name": "token_ids",
                     "index": 2,
                     "dtype": "int32",
                     "format": "ND",
@@ -339,8 +327,30 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "expert_offsets",
-                    "index": 0,
+                    "index": 5,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -351,7 +361,7 @@
                 },
                 {
                     "name": "dynamic_scale",
-                    "index": 0,
+                    "index": 6,
                     "dtype": "float32",
                     "format": "ND",
                     "paramType": "required",
@@ -362,7 +372,7 @@
                 },
                 {
                     "name": "actual_token_num",
-                    "index": 0,
+                    "index": 7,
                     "dtype": "int64",
                     "format": "ND",
                     "paramType": "required",
@@ -396,6 +406,425 @@
                 {
                     "name": "layer_num",
                     "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
+                    "value": null
+                }
+            ]
+        },
+        {
+            "bin_filename": "FfnWorkerBatching_float8_e5m2",
+            "inputs": [
+                {
+                    "name": "schedule_context",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float8_e5m2",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "group_list",
+                    "index": 1,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "session_ids",
+                    "index": 2,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "expert_offsets",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "dynamic_scale",
+                    "index": 6,
+                    "dtype": "float8_e8m0",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "actual_token_num",
+                    "index": 7,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "expert_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "max_out_shape",
+                    "dtype": "listInt",
+                    "value": null
+                },
+                {
+                    "name": "token_dtype",
+                    "dtype": "int",
+                    "value": 3
+                },
+                {
+                    "name": "need_schedule",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "layer_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
+                    "value": null
+                }
+            ]
+        },
+        {
+            "bin_filename": "FfnWorkerBatching_float8_e4m3fn",
+            "inputs": [
+                {
+                    "name": "schedule_context",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float8_e4m3fn",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "group_list",
+                    "index": 1,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "session_ids",
+                    "index": 2,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "expert_offsets",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "dynamic_scale",
+                    "index": 6,
+                    "dtype": "float8_e8m0",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "actual_token_num",
+                    "index": 7,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "expert_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "max_out_shape",
+                    "dtype": "listInt",
+                    "value": null
+                },
+                {
+                    "name": "token_dtype",
+                    "dtype": "int",
+                    "value": 4
+                },
+                {
+                    "name": "need_schedule",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "layer_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
+                    "value": null
+                }
+            ]
+        },
+        {
+            "bin_filename": "FfnWorkerBatching_float4_e2m1",
+            "inputs": [
+                {
+                    "name": "schedule_context",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float4_e2m1",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "group_list",
+                    "index": 1,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "session_ids",
+                    "index": 2,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "micro_batch_ids",
+                    "index": 3,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "token_ids",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "expert_offsets",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "dynamic_scale",
+                    "index": 6,
+                    "dtype": "float8_e8m0",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "actual_token_num",
+                    "index": 7,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "expert_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "max_out_shape",
+                    "dtype": "listInt",
+                    "value": null
+                },
+                {
+                    "name": "token_dtype",
+                    "dtype": "int",
+                    "value": 5
+                },
+                {
+                    "name": "need_schedule",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "layer_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "bool",
                     "value": null
                 }
             ]

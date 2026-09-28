@@ -99,6 +99,8 @@ public:
                                                             const bool isScales, const uint32_t quantMode);
     static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context, const bool isScales,
                                                               const uint32_t quantMode, const bool isTokenMask);
+    static bool CheckScaleTensorDim(const gert::TilingContext *context, const char *nodeName, const bool isScales,
+                                    const uint32_t quantMode, const uint32_t scalesIndex);
 
 protected:
     static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, const bool isScales,

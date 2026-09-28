@@ -17,7 +17,7 @@
 #include "utils/mixed_quant_flash_attn_utils.h"
 #include "mixed_quant_flash_attn_template_tiling_key.h"
 #include "mixed_quant_flash_attn_tiling_data.h"
-#include "arch-920r1/mixed_quant_flash_attn_kernel_gqa.h"
+#include "arch92/mixed_quant_flash_attn_kernel_gqa.h"
 
 using namespace AscendC;
 

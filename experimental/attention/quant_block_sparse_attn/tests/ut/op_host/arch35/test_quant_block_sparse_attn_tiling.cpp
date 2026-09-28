@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -154,9 +155,15 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
 
 class QuantBlockSparseAttnTilingArch35Test : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl;
+    }
 };
 
 TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
@@ -179,5 +186,112 @@ INSTANTIATE_TEST_SUITE_P(
     QuantBlockSparseAttnTiling, QuantBlockSparseAttnTilingArch35Test,
     testing::ValuesIn(GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<QuantBlockSparseAttnTilingUtParam>);
+
+static QuantBlockSparseAttnTilingUtParam MakePaddedStrideCase(const std::string &layout, int64_t batch,
+                                                              int64_t sequence, int64_t heads)
+{
+    const auto cases = GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__));
+    for (auto param : cases) {
+        if (param.case_name != "mxfp8_tiling_bnsd_bns_lse") {
+            continue;
+        }
+        const int64_t dim1 = layout == "BSND" ? sequence : heads;
+        const int64_t dim2 = layout == "BSND" ? heads : sequence;
+        param.layout_q = layout;
+        param.layout_out = layout;
+        param.mask_mode = 0;
+        param.attenMask = TensorDesc(gert::StorageShape({0}, {0}), ge::DT_UINT8, ge::FORMAT_ND);
+        param.query = TensorDesc(gert::StorageShape({batch, dim1, dim2, 128}, {batch, dim1, dim2, 128}),
+                                 ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
+        param.qDescale = TensorDesc(gert::StorageShape({batch, dim1, dim2, 2, 2}, {batch, dim1, dim2, 2, 2}),
+                                    ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
+        param.key = TensorDesc(gert::StorageShape({4, heads, 128, 128}, {4, heads, 128, 128}), ge::DT_FLOAT8_E4M3FN,
+                               ge::FORMAT_ND);
+        param.value = param.key;
+        param.kDescale = TensorDesc(gert::StorageShape({4, heads, 128, 2, 2}, {4, heads, 128, 2, 2}),
+                                    ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
+        param.vDescale = TensorDesc(gert::StorageShape({4, heads, 2, 128, 2}, {4, heads, 2, 128, 2}),
+                                    ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
+        param.sequsedKv = TensorDesc(gert::StorageShape({batch}, {batch}), ge::DT_INT32, ge::FORMAT_ND);
+        param.sparseIndices =
+            TensorDesc(gert::StorageShape({batch, heads, 1, 4}, {batch, heads, 1, 4}), ge::DT_INT32, ge::FORMAT_ND);
+        param.sparseSeqLen =
+            TensorDesc(gert::StorageShape({batch, heads, 1}, {batch, heads, 1}), ge::DT_INT32, ge::FORMAT_ND);
+        param.blockTable = TensorDesc(gert::StorageShape({batch, 8}, {batch, 8}), ge::DT_INT32, ge::FORMAT_ND);
+        param.attentionOut = TensorDesc(gert::StorageShape({batch, dim1, dim2, 128}, {batch, dim1, dim2, 128}),
+                                        ge::DT_BF16, ge::FORMAT_ND);
+        param.softmaxLse = TensorDesc(gert::StorageShape({batch, heads, sequence}, {batch, heads, sequence}),
+                                      ge::DT_FLOAT, ge::FORMAT_ND);
+        for (auto *input : {&param.query, &param.qDescale}) {
+            const auto &shape = input->shape_.GetStorageShape();
+            int64_t stride = 1;
+            for (size_t i = shape.GetDimNum(); i > 0U; --i) {
+                input->stride_.SetStride(i - 1U, stride);
+                stride *= shape.GetDim(i - 1U);
+            }
+            input->stride_.SetDimNum(shape.GetDimNum());
+            input->hasStride_ = true;
+        }
+        return param;
+    }
+    throw std::runtime_error("Missing padded-layout baseline tiling case");
+}
+
+TEST(QuantBlockSparseAttnPaddedStrideTest, AcceptsSingletonDimensionStrides)
+{
+    // Includes LAYOUT006 (B=2, N=1, S=31), singleton B/S, and a non-singleton control.
+    const int64_t dimensions[][3] = {{2, 31, 1}, {1, 31, 4}, {2, 1, 4}, {2, 31, 4}};
+    for (const std::string layout : {"BSND", "BNSD"}) {
+        for (const auto &dims : dimensions) {
+            // Exercise Q and QScale independently, then together; mode 0 is canonical.
+            for (uint32_t mode = 0U; mode < 4U; ++mode) {
+                SCOPED_TRACE(layout + " B=" + std::to_string(dims[0]) + " S=" + std::to_string(dims[1]) +
+                             " N=" + std::to_string(dims[2]) + " mode=" + std::to_string(mode));
+                auto param = MakePaddedStrideCase(layout, dims[0], dims[1], dims[2]);
+                TensorDesc *inputs[] = {&param.query, &param.qDescale};
+                for (size_t inputIndex = 0U; inputIndex < 2U; ++inputIndex) {
+                    if ((mode & (1U << inputIndex)) == 0U) {
+                        continue;
+                    }
+                    auto &input = *inputs[inputIndex];
+                    const auto &shape = input.shape_.GetStorageShape();
+                    for (size_t dim = 0U; dim < shape.GetDimNum(); ++dim) {
+                        if (shape.GetDim(dim) == 1) {
+                            // A singleton index is always zero, so its stride cannot change an address.
+                            input.stride_.SetStride(dim, inputIndex == 0U ? 128 : 4);
+                        }
+                    }
+                }
+                TilingInfo tilingInfo;
+                EXPECT_TRUE(ExecuteCase(param, tilingInfo));
+            }
+        }
+    }
+}
+
+TEST(QuantBlockSparseAttnPaddedStrideTest, RejectsNonContiguousInputsAndWrongStrideRank)
+{
+    for (const std::string layout : {"BSND", "BNSD"}) {
+        for (size_t inputIndex = 0U; inputIndex < 2U; ++inputIndex) {
+            // Keep N=1 so the relaxed singleton rule must not hide a real stride error.
+            auto baseline = MakePaddedStrideCase(layout, 2, 31, 1);
+            const auto &shape = (inputIndex == 0U ? baseline.query : baseline.qDescale).shape_.GetStorageShape();
+            for (size_t dim = 0U; dim < shape.GetDimNum(); ++dim) {
+                if (shape.GetDim(dim) == 1) {
+                    continue;
+                }
+                auto param = baseline;
+                auto &input = inputIndex == 0U ? param.query : param.qDescale;
+                input.stride_.SetStride(dim, input.stride_.GetStride(dim) + 1);
+                TilingInfo tilingInfo;
+                EXPECT_FALSE(ExecuteCase(param, tilingInfo));
+            }
+            auto &input = inputIndex == 0U ? baseline.query : baseline.qDescale;
+            input.stride_.SetDimNum(shape.GetDimNum() - 1U);
+            TilingInfo tilingInfo;
+            EXPECT_FALSE(ExecuteCase(baseline, tilingInfo));
+        }
+    }
+}
 
 } // namespace QuantBlockSparseAttnUT

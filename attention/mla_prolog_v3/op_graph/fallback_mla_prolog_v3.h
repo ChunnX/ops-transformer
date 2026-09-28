@@ -13,18 +13,18 @@
 
 #include <vector>
 #include "log/log.h"
+#include "../../mla_prolog/op_graph/fallback_mla_prolog.h"
 #include "fallback/fallback_comm.h"
 #include "fallback/fallback.h"
-#include "../../mla_prolog/op_graph/fallback_mla_prolog.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 namespace fallback {
 
-constexpr size_t DEQUANT_SCALE_Q_NOPE_INDEX = 4;
 constexpr size_t QUERY_NORM_INDEX = 5;
 constexpr size_t DEQUANT_SCALE_Q_NORM_INDEX = 6;
+constexpr size_t DEQUANT_SCALE_Q_NOPE_INDEX = 4;
 
 // INPUT
 constexpr size_t TOKEN_X_INDEX_V3 = 0;
@@ -58,6 +58,7 @@ constexpr size_t ATTR_QUANT_SCALE_REPO_MODE_INDEX = 8;
 constexpr size_t ATTR_TILE_SIZE_INDEX = 9;
 constexpr size_t ATTR_QC_QR_SCALE_INDEX = 10;
 constexpr size_t ATTR_KC_SCALE_INDEX = 11;
+constexpr size_t ATTR_DO_ROPE_INDEX = 12;
 
 struct MlaPrologV3FallBackParam : MlaPrologFallBackParam {
     const gert::Tensor *actualAeqLen = nullptr;
@@ -74,6 +75,7 @@ struct MlaPrologV3FallBackParam : MlaPrologFallBackParam {
     int tileSize = 128;
     double qcQrScale = 1.0f;
     double kcScale = 1.0f;
+    bool doRope = true;
 };
 
 graphStatus GetMlaPrologV3OutputTensor(const OpExecuteContext *ctx, MlaPrologV3FallBackParam &param);

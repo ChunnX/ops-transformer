@@ -46,7 +46,7 @@ using namespace AscendC::Reg;
                                                       s1TemplateType, s2TemplateType, dTemplateType) \
     do { \
         if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) { \
-            if constexpr ((uint32_t)dTemplateType > 64) { \
+            if constexpr ((uint32_t)dTemplateType > 64 || IS_PSE) { \
                 FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL, \
                                                       DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> \
                     opPre; \
@@ -93,6 +93,7 @@ using namespace AscendC::Reg;
         op.Process(); \
         if (ORIG_DTYPE_QUERY != DT_FLOAT) { \
             op.SyncALLCores(); \
+            op.UnInit(); \
             pipeBase.Destroy(); \
             TPipe pipePost; \
             if constexpr (!IS_NZ_OUT) { \
@@ -112,6 +113,7 @@ using namespace AscendC::Reg;
                 opPost.Process(); \
             } \
         } else { \
+            op.UnInit(); \
             pipeBase.Destroy(); \
         } \
     } while (0)
@@ -149,7 +151,6 @@ using namespace AscendC::Reg;
                                          IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE, \
                                          IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, \
                                          dTemplateType>>::type; \
-\
         FagBaseApi::FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType> op; \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum, \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, dsScale, \
@@ -223,6 +224,7 @@ using namespace AscendC::Reg;
         op.Process(); \
         if (tilingData->s1s2BNGS1S2BaseParams.sinkOptional) { \
             op.SyncALLCores(); \
+            op.UnInit(); \
             pipeBase.Destroy(); \
             TPipe pipePost; \
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE, \
@@ -231,6 +233,7 @@ using namespace AscendC::Reg;
             opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost); \
             opPost.Process(); \
         } else { \
+            op.UnInit(); \
             pipeBase.Destroy(); \
         } \
     } while (0)
@@ -272,7 +275,6 @@ inline __aicore__ void RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __
     constexpr static bool needDeterPrefix = NEED_DETER_PREFIX(deterType, isTnd);
     using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(deterType), needDeterPrefix,
                                                                              isTnd, isTndSwizzle>;
-    // GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
     size_t offset = (size_t)(&((fagTiling *)0)->s1s2BNGS1S2BaseParams);
 
     const __gm__ fagTiling *__restrict tilingData = (const __gm__ fagTiling *__restrict)(tiling_data + offset);

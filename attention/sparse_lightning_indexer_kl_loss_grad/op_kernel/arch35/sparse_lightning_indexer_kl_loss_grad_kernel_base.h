@@ -744,9 +744,15 @@ __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType,
         dweightOffset = (uint64_t)vBlockIdx * weightPreBlockFactor;
         initsoftMaxSize = vBlockIdx == softmaxOutPreBlockTotal - 1 ? softmaxOutPreBlockTail : softmaxOutPreBlockFactor;
         softMaxOffset = (uint64_t)vBlockIdx * softmaxOutPreBlockFactor;
-        InitOutput<float>(softmaxOutGm[softMaxOffset], initsoftMaxSize, 0);
-        InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
-        InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
+        if (vBlockIdx < softmaxOutPreBlockTotal) {
+            InitOutput<float>(softmaxOutGm[softMaxOffset], initsoftMaxSize, 0);
+        }
+        if (vBlockIdx < weightPreBlockTotal) {
+            InitOutput<float>(dWeightGm[dweightOffset], initdweightSize, 0);
+        }
+        if (vBlockIdx < qPreBlockTotal) {
+            InitOutput<OUT_T>(dqGm[dqOffset], initdqSize, 0);
+        }
     }
     SyncAll<false>();
 }

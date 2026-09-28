@@ -61,8 +61,7 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_3d_fp16_success)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo,
-                                              kSocVersion910B);
+                                              &compileInfo, kSocVersion910B);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -72,11 +71,11 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_3d_fp16_success)
 TEST_F(MhcPostTilingArch22, test_mhc_post_4d_fp16_success)
 {
     MhcPostCompileInfo compileInfo = {64, 64, platform_ascendc::SocVersion::ASCEND910B, NpuArch::DAV_3002};
-    gert::TilingContextPara tilingContextPara("MhcPost",
-                                              {
-                                                  // input info: x, h_res, h_out, h_post
-                                                  {{{1, 1024, 4, 5120}, {1, 1024, 4, 5120}},
-                                                      ge::DT_FLOAT16, ge::FORMAT_ND},
+    gert::TilingContextPara tilingContextPara(
+        "MhcPost",
+        {
+            // input info: x, h_res, h_out, h_post
+            {{{1, 1024, 4, 5120}, {1, 1024, 4, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1, 1024, 4, 4}, {1, 1024, 4, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1, 1024, 5120}, {1, 1024, 5120}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1, 1024, 4}, {1, 1024, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -88,15 +87,14 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_4d_fp16_success)
         {
             // attr
         },
-        &compileInfo,
-        kSocVersion910B);
+        &compileInfo, kSocVersion910B);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
-TEST_F(MhcPostTilingArch22, test_mhc_post_3d_n6_success)
+TEST_F(MhcPostTilingArch22, test_mhc_post_3d_n6_invalid)
 {
     MhcPostCompileInfo compileInfo = {64, 64, platform_ascendc::SocVersion::ASCEND910B, NpuArch::DAV_3002};
     gert::TilingContextPara tilingContextPara("MhcPost",
@@ -114,12 +112,8 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_3d_n6_success)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo,
-                                              kSocVersion910B);
-    uint64_t expectTilingKey = 1;
-    string expectTilingDataStr = "6 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
-    std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+                                              &compileInfo, kSocVersion910B);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_n)
@@ -140,12 +134,8 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_n)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo,
-                                              kSocVersion910B);
-    uint64_t expectTilingKey = 1;
-    string expectTilingDataStr = "7 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
-    std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+                                              &compileInfo, kSocVersion910B);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_d)
@@ -166,10 +156,6 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_d)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo,
-                                              kSocVersion910B);
-    uint64_t expectTilingKey = 0;
-    string expectTilingDataStr = "4 30000 64 32 32 1 512 1 7504 4 7488 7488 ";
-    std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+                                              &compileInfo, kSocVersion910B);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
