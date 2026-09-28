@@ -225,12 +225,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     const uint64_t tokenSlotNum = static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_;
     tokenSlotNum_ = tokenSlotNum;
     winTokenInfoTableSize_ = Ceil(tokenSlotNum * sizeof(int32_t), URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
-    const uint64_t tokenWindowEnd = winTokenInfoTableSize_ + tokenSlotNum * axisHS_ * sizeof(xType);
-    const uint64_t flagWindowOffset =
-        Ceil(tokenWindowEnd, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
-    // Keep flag sources in place; address-table metadata follows all per-core flag slots.
-    GM_ADDR localScratchAddr = GetWindowAddr(rankId_) + flagWindowOffset;
-    localFlagAddr_ = localScratchAddr + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     // Follow MoeEpCombine's layout: one independent compact address table per rank, followed by the total-count row
     // and the per-core count matrix. Every core publishes only its own count row.
@@ -249,8 +243,16 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     totalRankCountWinAddr_ = addressTableWinAddr_ + addressTableBytes;
     perCoreRankCountWinAddr_ = totalRankCountWinAddr_ + totalRankCountBytes;
 
-    // x may be a view of registered memory, but its payload must not alias the scratch tail.
     const uint64_t flagWindowSize = static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
+    ascendc_assert(
+        addressTableWinOffset_ >= flagWindowSize + winTokenInfoTableSize_ + tokenSlotNum * axisHS_ * sizeof(xType),
+        "address table offset must reserve flag slots after the receiving area, "
+        "addressTableWinOffset=%lu",
+        addressTableWinOffset_);
+    GM_ADDR localScratchAddr = addressTableWinAddr_ - flagWindowSize;
+    localFlagAddr_ = localScratchAddr + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
+
+    // x may be a view of registered memory, but its payload must not alias the scratch tail.
     const uint64_t inputAddr = reinterpret_cast<uint64_t>(inputDataAddr_);
     const uint64_t scratchBegin = reinterpret_cast<uint64_t>(localScratchAddr);
     const uint64_t scratchEnd = reinterpret_cast<uint64_t>(localScratchAddr) + flagWindowSize;

@@ -75,7 +75,6 @@ constexpr int64_t BS_MAX = 512;
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 16;
-constexpr int64_t MAX_WORLD_SIZE = 768L; // 384 * 2
 constexpr int64_t MIN_WORLD_SIZE = 2;
 
 constexpr uint32_t USER_QUANT_MODE_MX_E5M2 = 3U;
@@ -213,7 +212,7 @@ static bool CheckAndSetShapeAttrs(const gert::TilingContext *context, const char
 
 static bool CheckAttrValues(const char *nodeName, const uint32_t moeExpertNum, const uint32_t worldSize,
                             const int worldSizeRaw, const int quantMode, const int syncFlag, const int ffnStartRankId,
-                            const bool allowMxQuantMode)
+                            const bool allowMxQuantMode, const int64_t maxWorldSize)
 {
     OP_TILING_CHECK(
         (moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
@@ -242,10 +241,10 @@ static bool CheckAttrValues(const char *nodeName, const uint32_t moeExpertNum, c
                                   (std::string("[0, ") + std::to_string(worldSizeRaw) + ")").c_str()),
         return false);
     OP_TILING_CHECK(
-        (worldSize < MIN_WORLD_SIZE) || (worldSize > MAX_WORLD_SIZE),
+        (worldSize < MIN_WORLD_SIZE) || (static_cast<int64_t>(worldSize) > maxWorldSize),
         OP_LOGE_WITH_INVALID_ATTR(
             nodeName, "world_size", std::to_string(worldSize).c_str(),
-            (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
+            (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(maxWorldSize) + "]").c_str()),
         return false);
     return true;
 }
@@ -274,7 +273,7 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
     uint32_t worldSize = *worldSizePtr;
 
     OP_TILING_CHECK(!CheckAttrValues(nodeName, moeExpertNum, worldSize, *worldSizePtr, *quantModePtr, *syncFlagPtr,
-                                     *ffnStartRankIdPtr, config.allowMxQuantMode),
+                                     *ffnStartRankIdPtr, config.allowMxQuantMode, config.maxWorldSize),
                     static_cast<void>(0), return false);
 
     OP_TILING_CHECK(!CheckAndSetShapeAttrs(context, nodeName, tilingData, config),
@@ -358,6 +357,28 @@ static void InitTilingDataByExpert(AttentionToFFNTilingData &tilingData, const i
     tilingData.attentionToFFNInfo.sharedExpertNum = expertRankTableDim1 - tilingData.attentionToFFNInfo.moeExpertNum;
 }
 
+static bool CheckExpertTensorDataTypes(const gert::TilingContext *context, const char *nodeName,
+                                       const AttentionToFFNTilingConfig &config)
+{
+    OP_TILING_CHECK(context->GetInputDesc(config.expertIdsIndex) == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdDesc"), return false);
+    auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
+    OP_TILING_CHECK(expertIdDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_ids",
+                                              Ops::Base::ToString(expertIdDesc->GetDataType()).c_str(), "INT32"),
+                    return false);
+
+    OP_TILING_CHECK(context->GetInputDesc(config.expertRankTableIndex) == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertRankTableDesc"), return false);
+    auto expertRankTableDesc = context->GetInputDesc(config.expertRankTableIndex);
+    OP_TILING_CHECK(expertRankTableDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_rank_table",
+                                              Ops::Base::ToString(expertRankTableDesc->GetDataType()).c_str(), "INT32"),
+                    return false);
+
+    return true;
+}
+
 static bool CheckRequiredTensorDataTypes(const gert::TilingContext *context, const char *nodeName,
                                          const AttentionToFFNTilingConfig &config)
 {
@@ -393,23 +414,7 @@ static bool CheckRequiredTensorDataTypes(const gert::TilingContext *context, con
                                               Ops::Base::ToString(layerIdDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(config.expertIdsIndex) == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdDesc"), return false);
-    auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
-    OP_TILING_CHECK(expertIdDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_ids",
-                                              Ops::Base::ToString(expertIdDesc->GetDataType()).c_str(), "INT32"),
-                    return false);
-
-    OP_TILING_CHECK(context->GetInputDesc(config.expertRankTableIndex) == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertRankTableDesc"), return false);
-    auto expertRankTableDesc = context->GetInputDesc(config.expertRankTableIndex);
-    OP_TILING_CHECK(expertRankTableDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expert_rank_table",
-                                              Ops::Base::ToString(expertRankTableDesc->GetDataType()).c_str(), "INT32"),
-                    return false);
-
-    return true;
+    return CheckExpertTensorDataTypes(context, nodeName, config);
 }
 
 static bool CheckOptionalTensorDataTypes(const gert::TilingContext *context, const char *nodeName, const bool isScales,
@@ -447,6 +452,35 @@ static bool CheckTensorDataType(gert::TilingContext *context, const char *nodeNa
     return true;
 }
 
+static bool CheckBatchAndLayerTensorFormats(const gert::TilingContext *context, const char *nodeName,
+                                            const AttentionToFFNTilingConfig &config)
+{
+    OP_TILING_CHECK(context->GetInputDesc(config.microBatchIdIndex) == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "microBatchIdDesc"), return false);
+    auto microBatchIdDesc = context->GetInputDesc(config.microBatchIdIndex);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName, "micro_batch_id",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())))
+                .c_str(),
+            "ND"),
+        return false);
+
+    OP_TILING_CHECK(context->GetInputDesc(config.layerIdIndex) == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "layerIdDesc"), return false);
+    auto layerIdDesc = context->GetInputDesc(config.layerIdIndex);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName, "layer_id",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat()))).c_str(),
+            "ND"),
+        return false);
+
+    return true;
+}
+
 static bool CheckPrimaryTensorFormats(const gert::TilingContext *context, const char *nodeName,
                                       const AttentionToFFNTilingConfig &config)
 {
@@ -473,30 +507,7 @@ static bool CheckPrimaryTensorFormats(const gert::TilingContext *context, const 
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(config.microBatchIdIndex) == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "microBatchIdDesc"), return false);
-    auto microBatchIdDesc = context->GetInputDesc(config.microBatchIdIndex);
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE_FOR_INVALID_FORMAT(
-            nodeName, "micro_batch_id",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())))
-                .c_str(),
-            "ND"),
-        return false);
-
-    OP_TILING_CHECK(context->GetInputDesc(config.layerIdIndex) == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "layerIdDesc"), return false);
-    auto layerIdDesc = context->GetInputDesc(config.layerIdIndex);
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE_FOR_INVALID_FORMAT(
-            nodeName, "layer_id",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat()))).c_str(),
-            "ND"),
-        return false);
-
-    return true;
+    return CheckBatchAndLayerTensorFormats(context, nodeName, config);
 }
 
 static bool CheckExpertTensorFormats(const gert::TilingContext *context, const char *nodeName,
@@ -711,8 +722,8 @@ static bool CheckXAndExpertIdShapes(const char *nodeName, const int32_t xDim0, c
 }
 
 static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expertRankTableDim0,
-                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum,
-                                      const AttentionToFFNTilingConfig &config)
+                                      const int32_t expertRankTableDim1, const int32_t expertRankTableDim2,
+                                      const int64_t moeExpertNum, const AttentionToFFNTilingConfig &config)
 {
     if (config.allowMultiLayer) {
         OP_TILING_CHECK(
@@ -736,6 +747,14 @@ static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expert
                                   (std::string("[") + std::to_string(moeExpertNum) + ", " +
                                    std::to_string(moeExpertNum + SHARED_EXPERT_MAX_NUM) + "]")
                                       .c_str()),
+        return false);
+    // 每行布局为 [rankCnt, (toRankId, localExpId) * rankCnt]，rankCnt 不超过 worldSize，故 M 上界为 2 * maxWorldSize +
+    // 1
+    const int64_t expRankTableMMax = 2 * config.maxWorldSize + 1;
+    OP_TILING_CHECK(
+        (expertRankTableDim2 < 1) || (expertRankTableDim2 > expRankTableMMax),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expert_rank_table", std::to_string(expertRankTableDim2).c_str(),
+                                  (std::string("[1, ") + std::to_string(expRankTableMMax) + "]").c_str()),
         return false);
     return true;
 }
@@ -767,9 +786,9 @@ static bool CheckTensorShapeAndSetTinglingData(const gert::TilingContext *contex
     OP_TILING_CHECK(!CheckXAndExpertIdShapes(nodeName, xDim0, xDim1, xDim2, sessionIdDim0, microBatchIdDim0,
                                              layerIdDim0, expertIdsDim0, expertIdsDim1, expertIdsDim2, moeExpertNum),
                     OP_LOGE(nodeName, "Check x and expertId shape failed!"), return false);
-    OP_TILING_CHECK(
-        !CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum, config),
-        OP_LOGE(nodeName, "Check expertRankTable shape failed!"), return false);
+    OP_TILING_CHECK(!CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, expertRankTableDim2,
+                                               moeExpertNum, config),
+                    OP_LOGE(nodeName, "Check expertRankTable shape failed!"), return false);
 
     if (isScales) {
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
@@ -1011,6 +1030,23 @@ static ge::graphStatus CheckAttentionWindowSize(gert::TilingContext *context, co
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckAttentionFFNRankRange(const char *nodeName, const AttentionToFFNTilingData *tilingData)
+{
+    // ffn_start_rank_id + ffn_num must not exceed world_size, otherwise the
+    // kernel will access epHcclBuffer_[rankId] / hcommHandle_[rankId] beyond
+    // the valid [0, worldSize) range populated during context init.
+    uint32_t ffnNum = tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum;
+    OP_TILING_CHECK(
+        tilingData->attentionToFFNInfo.ffnStartRankId + ffnNum > tilingData->attentionToFFNInfo.worldSize,
+        OP_LOGE_WITH_INVALID_ATTR(
+            nodeName, "ffn_start_rank_id", std::to_string(tilingData->attentionToFFNInfo.ffnStartRankId).c_str(),
+            (std::string("[0, ") + std::to_string(tilingData->attentionToFFNInfo.attentionWorkerNum) +
+             "] (ffn_start_rank_id + ffn_num must not exceed world_size)")
+                .c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const AttentionToFFNTilingConfig &config)
 {
     AttentionToFFNTilingData *tilingData = context->GetTilingData<AttentionToFFNTilingData>();
@@ -1031,18 +1067,8 @@ ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const
     OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
                     OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
 
-    // ffn_start_rank_id + ffn_num must not exceed world_size, otherwise the
-    // kernel will access epHcclBuffer_[rankId] / hcommHandle_[rankId] beyond
-    // the valid [0, worldSize) range populated during context init.
-    uint32_t ffnNum = tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum;
-    OP_TILING_CHECK(
-        tilingData->attentionToFFNInfo.ffnStartRankId + ffnNum > tilingData->attentionToFFNInfo.worldSize,
-        OP_LOGE_WITH_INVALID_ATTR(
-            nodeName, "ffn_start_rank_id", std::to_string(tilingData->attentionToFFNInfo.ffnStartRankId).c_str(),
-            (std::string("[0, ") + std::to_string(tilingData->attentionToFFNInfo.attentionWorkerNum) +
-             "] (ffn_start_rank_id + ffn_num must not exceed world_size)")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAttentionFFNRankRange(nodeName, tilingData) != ge::GRAPH_SUCCESS, static_cast<void>(0),
+                    return ge::GRAPH_FAILED);
 
     uint32_t quantMode = tilingData->attentionToFFNInfo.quantMode;
     OP_TILING_CHECK(CheckAttentionWindowSize(context, nodeName, tilingData, quantMode, config) != ge::GRAPH_SUCCESS,
@@ -1078,7 +1104,7 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
 }
 
 struct AttentionToFFNCompileInfo {};
-ge::graphStatus TilingParseForAttentionToFFN(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForAttentionToFFN(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -1086,5 +1112,7 @@ ge::graphStatus TilingParseForAttentionToFFN(gert::TilingParseContext *context)
 
 IMPL_OP_OPTILING(AttentionToFFN)
     .Tiling(AttentionToFFNTilingFunc)
-    .TilingParse<AttentionToFFNCompileInfo>(TilingParseForAttentionToFFN);
+    .TilingParse<AttentionToFFNCompileInfo>([](gert::TilingParseContext *context) {
+        return TilingParseForAttentionToFFN(context);
+    });
 } // namespace MC2Tiling

@@ -411,7 +411,6 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::CopyOutXQuantEH(in
     DataCopyExtParams quantScaleParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
 
     int32_t lastExpertIdx = -1;
-    LocalTensor<T> inLocal = inputXInQueue.AllocTensor<T>();
     LocalTensor<float> smoothLocal = smoothInQueue.AllocTensor<float>();
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
@@ -428,6 +427,7 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::CopyOutXQuantEH(in
         if (this->dropPadMode == DROPLESS_MODE && rowOffset + i >= this->activateRows) {
             break;
         }
+        LocalTensor<T> inLocal = inputXInQueue.AllocTensor<T>();
         int32_t srcIdx = indicesLocal.GetValue(i);
         int32_t expertIdx = indicesLocal.GetValue(currentLoopRowsAlign + i);
 
@@ -456,11 +456,11 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T, quantType>::CopyOutXQuantEH(in
         LocalTensor<int8_t> outLocal = inputXOutQueue.template DeQue<int8_t>();
         DataCopyPad(expandedXGm[(rowOffset + i) * this->cols], outLocal, copyOutParams);
 
+        inputXInQueue.FreeTensor(inLocal);
         inputXOutQueue.template FreeTensor(outLocal);
         scaleOutQueue.template FreeTensor(quantScaleLocal);
     }
 
-    inputXInQueue.FreeTensor(inLocal);
     smoothInQueue.FreeTensor(smoothLocal);
     expandRowIdxInQueue.FreeTensor(indicesLocal);
 }

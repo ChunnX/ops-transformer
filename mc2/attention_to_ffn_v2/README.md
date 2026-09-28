@@ -207,10 +207,10 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoS
 - 参数说明里shape格式说明：
     - `X`：表示micro batch sequence size（token组数），当前版本只支持`X` = 1。
     - `BS`：表示batch sequence size（本卡最终输出的token数量）取值范围为0 < `BS` ≤ 512。
-    - `K`：表示选取topK个专家，，取值范围为0 < `K` ≤ 16且满足0 < `K` ≤ moeExpertNum。
+    - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16且满足0 < `K` ≤ moeExpertNum。
     - `H`：表示hidden size（隐藏层大小），取值范围为1024 ≤ `H` ≤ 8192。
     - `L`：表示模型层数，取值范围为`L` ≥ 1，且运行时`LayerId`取值需小于`L`。
-    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度。
+    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度，取值范围为0 < `M` ≤ 2049（每行布局为`[rankCnt, (toRankId, localExpId) × rankCnt]`，rankCnt不超过worldSize）。
     - `moeExpertNum`：表示MoE专家数量，取值范围为0 < `moeExpertNum` ≤ 1024。
 
 - 通信域使用约束：

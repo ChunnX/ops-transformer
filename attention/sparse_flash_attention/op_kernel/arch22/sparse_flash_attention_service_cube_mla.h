@@ -574,23 +574,23 @@ template <typename SFAT>
 __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1NoRope(const RunInfo &info, const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
-    uint32_t mL1Size = M_SPLIT_SIZE;
-    uint32_t mL1SizeAlign = SFAAlign(M_SPLIT_SIZE, 16U);
-    uint32_t mL1Loops = (mSize + M_SPLIT_SIZE - 1) / M_SPLIT_SIZE;
+    uint32_t mm1NrML1Size = M_SPLIT_SIZE;
+    uint32_t mm1NrML1SizeAlign = SFAAlign(M_SPLIT_SIZE, 16U);
+    uint32_t mm1NrML1Loops = (mSize + M_SPLIT_SIZE - 1) / M_SPLIT_SIZE;
 
     uint32_t nSize = info.actualSingleProcessSInnerSize;
-    uint32_t nL1Size = N_SPLIT_SIZE;
-    uint32_t nL1SizeAlign = SFAAlign(N_SPLIT_SIZE, 16U);
-    uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
+    uint32_t mm1NrNL1Size = N_SPLIT_SIZE;
+    uint32_t mm1NrNL1SizeAlign = SFAAlign(N_SPLIT_SIZE, 16U);
+    uint32_t mm1NrNL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
 
-    constexpr uint32_t kL1Loops = 2;
-    constexpr uint32_t kL0Size = 128;
-    constexpr uint32_t kL0Loops = 2;
+    constexpr uint32_t mm1NrKL1Loops = 2;
+    constexpr uint32_t mm1NrKL0Size = 128;
+    constexpr uint32_t mm1NrKL0Loops = 2;
     constexpr uint32_t MERGE_K_PITCH = 576;
 
-    LocalTensor<KV_T> bL1Tensor;
+    LocalTensor<KV_T> mm1NrBL1Tensor;
     LocalTensor<KV_T> kTensor;
-    uint32_t ka = 0, kb = 0;
+    uint32_t mm1NrKa = 0, mm1NrKb = 0;
 
     uint32_t curTopKIdx = info.curTopKIdx;
     uint64_t curOffsetInSparseBlock = info.curOffsetInSparseBlock;
@@ -602,23 +602,23 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1NoRope(const RunInfo &i
     uint32_t copyRowCntTmp = 0;
     int64_t idInTopKTmp = 0;
 
-    for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) {
-        if (nL1 == (nL1Loops - 1)) {
-            nL1Size = nSize - (nL1Loops - 1) * N_SPLIT_SIZE;
-            nL1SizeAlign = SFAAlign(nL1Size, 16U);
+    for (uint32_t mm1NrNL1 = 0; mm1NrNL1 < mm1NrNL1Loops; mm1NrNL1++) {
+        if (mm1NrNL1 == (mm1NrNL1Loops - 1)) {
+            mm1NrNL1Size = nSize - (mm1NrNL1Loops - 1) * N_SPLIT_SIZE;
+            mm1NrNL1SizeAlign = SFAAlign(mm1NrNL1Size, 16U);
         }
         curTopKIdxTmp = curTopKIdx;
         curOffsetInSparseBlockTmp = curOffsetInSparseBlock;
         copyRowCntTmp = copyRowCnt;
         idInTopKTmp = idInTopK;
 
-        for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
+        for (uint32_t mm1NrKL1 = 0; mm1NrKL1 < mm1NrKL1Loops; mm1NrKL1++) {
             kvL1BufIter++;
-            kb = kvL1BufIter % 3;
-            WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
-            bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
+            mm1NrKb = kvL1BufIter % 3;
+            WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[mm1NrKb]);
+            mm1NrBL1Tensor = l1KVTensor[mm1NrKb * L1_BLOCK_OFFSET];
 
-            uint32_t curSeqIdx = info.s2BatchOffset + nL1 * N_SPLIT_SIZE;
+            uint32_t curSeqIdx = info.s2BatchOffset + mm1NrNL1 * N_SPLIT_SIZE;
             uint32_t copyFinishRowCnt = 0;
             curTopKIdx = curTopKIdxTmp;
             curOffsetInSparseBlock = curOffsetInSparseBlockTmp;
@@ -627,29 +627,29 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1NoRope(const RunInfo &i
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                 Nd2NzParams nd2nzPara;
                 nd2nzPara.ndNum = 1;
-                nd2nzPara.nValue = nL1Size;
+                nd2nzPara.nValue = mm1NrNL1Size;
                 nd2nzPara.dValue = constInfo.headDim >> 1;
                 nd2nzPara.srcDValue = constInfo.headDim;
-                nd2nzPara.dstNzC0Stride = nL1SizeAlign;
+                nd2nzPara.dstNzC0Stride = mm1NrNL1SizeAlign;
                 nd2nzPara.dstNzNStride = 1;
                 nd2nzPara.srcNdMatrixStride = 0;
                 nd2nzPara.dstNzMatrixStride = 0;
-                DataCopy(bL1Tensor,
-                         kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH + kL1 * (constInfo.headDim >> 1) +
-                                    nL1 * N_SPLIT_SIZE * constInfo.headDim],
+                DataCopy(mm1NrBL1Tensor,
+                         kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH +
+                                    mm1NrKL1 * (constInfo.headDim >> 1) + mm1NrNL1 * N_SPLIT_SIZE * constInfo.headDim],
                          nd2nzPara);
             } else {
-                while (copyFinishRowCnt < nL1Size) {
+                while (copyFinishRowCnt < mm1NrNL1Size) {
                     CalcTopKBlockInfo(info, curTopKIdx, curOffsetInSparseBlock, curSeqIdx, copyRowCnt, idInTopK);
-                    if (copyFinishRowCnt + copyRowCnt > nL1Size) {
-                        copyRowCnt = nL1Size - copyFinishRowCnt;
+                    if (copyFinishRowCnt + copyRowCnt > mm1NrNL1Size) {
+                        copyRowCnt = mm1NrNL1Size - copyFinishRowCnt;
                     }
                     if constexpr (PAGE_ATTENTION) {
                         Position startPos;
                         startPos.bIdx = info.bIdx;
                         startPos.n2Idx = info.n2Idx;
                         startPos.s2Idx = idInTopK * constInfo.sparseBlockSize + curOffsetInSparseBlock;
-                        startPos.dIdx = kL1 * 256;
+                        startPos.dIdx = mm1NrKL1 * 256;
                         PAShape shape;
                         shape.blockSize = kvCacheBlockSize;
                         shape.headNum = constInfo.kvHeadNum;
@@ -657,8 +657,8 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1NoRope(const RunInfo &i
                         shape.actHeadDim = 256;
                         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
                         shape.copyRowNum = copyRowCnt;
-                        shape.copyRowNumAlign = nL1SizeAlign;
-                        kTensor = bL1Tensor[copyFinishRowCnt * 16];
+                        shape.copyRowNumAlign = mm1NrNL1SizeAlign;
+                        kTensor = mm1NrBL1Tensor[copyFinishRowCnt * 16];
                         DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, keyGm, blockTableGm, shape, startPos);
                     } else {
                         uint64_t keyOffset = info.tensorBOffset;
@@ -669,91 +669,97 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1NoRope(const RunInfo &i
                             keyOffset +=
                                 (idInTopK * constInfo.sparseBlockSize + curOffsetInSparseBlock) * constInfo.headDim;
                         }
-                        CopyInMm1BToL1(bL1Tensor, keyOffset + kL1 * 256, nL1SizeAlign, copyFinishRowCnt, copyRowCnt,
-                                       256);
+                        CopyInMm1BToL1(mm1NrBL1Tensor, keyOffset + mm1NrKL1 * 256, mm1NrNL1SizeAlign, copyFinishRowCnt,
+                                       copyRowCnt, 256);
                     }
                     copyFinishRowCnt += copyRowCnt;
                     curSeqIdx += copyRowCnt;
                 }
             }
 
-            SetFlag<HardEvent::MTE2_MTE1>(mte21KVIds[kb]);
-            WaitFlag<HardEvent::MTE2_MTE1>(mte21KVIds[kb]);
-            mL1Size = M_SPLIT_SIZE;
-            mL1SizeAlign = SFAAlign(M_SPLIT_SIZE, 16U);
-            for (uint32_t mL1 = 0; mL1 < mL1Loops; mL1++) {
+            SetFlag<HardEvent::MTE2_MTE1>(mte21KVIds[mm1NrKb]);
+            WaitFlag<HardEvent::MTE2_MTE1>(mte21KVIds[mm1NrKb]);
+            mm1NrML1Size = M_SPLIT_SIZE;
+            mm1NrML1SizeAlign = SFAAlign(M_SPLIT_SIZE, 16U);
+            for (uint32_t mm1NrML1 = 0; mm1NrML1 < mm1NrML1Loops; mm1NrML1++) {
                 uint32_t aL1PaddingSize = 0;
-                if (mL1 == (mL1Loops - 1)) {
-                    mL1Size = mSize - (mL1Loops - 1) * M_SPLIT_SIZE;
-                    mL1SizeAlign = SFAAlign(mL1Size, 16U);
-                    aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * 256;
+                if (mm1NrML1 == (mm1NrML1Loops - 1)) {
+                    mm1NrML1Size = mSize - (mm1NrML1Loops - 1) * M_SPLIT_SIZE;
+                    mm1NrML1SizeAlign = SFAAlign(mm1NrML1Size, 16U);
+                    aL1PaddingSize = (M_SPLIT_SIZE - mm1NrML1SizeAlign) * 256;
                 }
-                uint32_t mIdx = qpL1BufIter + mL1;
-                ka = GetQPL1RealIdx(mIdx, kL1);
-                LocalTensor<Q_T> aL1Tensor = l1QPTensor[ka * L1_BLOCK_OFFSET + (1 - kL1) * aL1PaddingSize];
-                if (nL1 == 0) {
-                    if (kL1 == 0) {
-                        WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]);
-                        WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka + 1]);
+                uint32_t mIdx = qpL1BufIter + mm1NrML1;
+                mm1NrKa = GetQPL1RealIdx(mIdx, mm1NrKL1);
+                LocalTensor<Q_T> mm1NrAL1Tensor =
+                    l1QPTensor[mm1NrKa * L1_BLOCK_OFFSET + (1 - mm1NrKL1) * aL1PaddingSize];
+                if (mm1NrNL1 == 0) {
+                    if (mm1NrKL1 == 0) {
+                        WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[mm1NrKa]);
+                        WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[mm1NrKa + 1]);
                     }
-                    CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256,
-                                   kL1 * 256);
-                    SetFlag<HardEvent::MTE2_MTE1>(mte21QPIds[ka]);
-                    WaitFlag<HardEvent::MTE2_MTE1>(mte21QPIds[ka]);
+                    CopyInMm1AToL1(mm1NrAL1Tensor, info, mSplitInfo.nBufferStartM + mm1NrML1 * M_SPLIT_SIZE,
+                                   mm1NrML1Size, 256, mm1NrKL1 * 256);
+                    SetFlag<HardEvent::MTE2_MTE1>(mte21QPIds[mm1NrKa]);
+                    WaitFlag<HardEvent::MTE2_MTE1>(mte21QPIds[mm1NrKa]);
                 }
 
-                LocalTensor cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * (L0C_PP_SIZE / sizeof(MM_OUT_T))];
-                for (uint32_t kL0 = 0; kL0 < kL0Loops; kL0++) {
+                LocalTensor mm1NrCL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * (L0C_PP_SIZE / sizeof(MM_OUT_T))];
+                for (uint32_t mm1NrKL0 = 0; mm1NrKL0 < mm1NrKL0Loops; mm1NrKL0++) {
                     WaitFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
-                    LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(abL0BufIter % 2) * (L0A_PP_SIZE / sizeof(KV_T))];
-                    LoadDataMm1A(aL0Tensor, aL1Tensor, kL0, kL0Size, mL1SizeAlign, kL0Size);
-                    LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(abL0BufIter % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
-                    LoadDataMm1B(bL0Tensor, bL1Tensor, kL0, kL0Size, kL0Size, nL1SizeAlign);
+                    LocalTensor<KV_T> mm1NrAL0Tensor =
+                        aL0TensorPingPong[(abL0BufIter % 2) * (L0A_PP_SIZE / sizeof(KV_T))];
+                    LoadDataMm1A(mm1NrAL0Tensor, mm1NrAL1Tensor, mm1NrKL0, mm1NrKL0Size, mm1NrML1SizeAlign,
+                                 mm1NrKL0Size);
+                    LocalTensor<KV_T> mm1NrBL0Tensor =
+                        bL0TensorPingPong[(abL0BufIter % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
+                    LoadDataMm1B(mm1NrBL0Tensor, mm1NrBL1Tensor, mm1NrKL0, mm1NrKL0Size, mm1NrKL0Size,
+                                 mm1NrNL1SizeAlign);
                     SetFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
-                    MmadParams mmadParams;
-                    mmadParams.m = mL1SizeAlign;
-                    mmadParams.n = nL1SizeAlign;
-                    mmadParams.k = kL0Size;
-                    mmadParams.cmatrixInitVal = (kL1 == 0 && kL0 == 0);
-                    mmadParams.cmatrixSource = false;
-                    mmadParams.unitFlag = (kL1 == 1 && kL0 == (kL0Loops - 1)) ? 0b11 : 0b10;
-                    Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-                    if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
+                    MmadParams mm1NrMmadParams;
+                    mm1NrMmadParams.m = mm1NrML1SizeAlign;
+                    mm1NrMmadParams.n = mm1NrNL1SizeAlign;
+                    mm1NrMmadParams.k = mm1NrKL0Size;
+                    mm1NrMmadParams.cmatrixInitVal = (mm1NrKL1 == 0 && mm1NrKL0 == 0);
+                    mm1NrMmadParams.cmatrixSource = false;
+                    mm1NrMmadParams.unitFlag = (mm1NrKL1 == 1 && mm1NrKL0 == (mm1NrKL0Loops - 1)) ? 0b11 : 0b10;
+                    Mmad(mm1NrCL0Tensor, mm1NrAL0Tensor, mm1NrBL0Tensor, mm1NrMmadParams);
+                    if ((mm1NrMmadParams.m / 16) * (mm1NrMmadParams.n / 16) < 10) {
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));
                     abL0BufIter++;
                 }
 
-                if (nL1 == (nL1Loops - 1)) {
-                    SetFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]);
+                if (mm1NrNL1 == (mm1NrNL1Loops - 1)) {
+                    SetFlag<HardEvent::MTE1_MTE2>(mte21QPIds[mm1NrKa]);
                 }
-                if (kL1 == 1) {
-                    FixpipeParamsV220 fixParams;
-                    fixParams.srcStride = mL1SizeAlign;
-                    fixParams.nSize = nL1SizeAlign;
-                    fixParams.mSize = mL1SizeAlign;
-                    fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign;
-                    fixParams.unitFlag = 0b11;
-                    fixParams.ndNum = 1;
-                    Fixpipe(mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize + nL1 * N_SPLIT_SIZE +
-                                     (mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE) *
+                if (mm1NrKL1 == 1) {
+                    FixpipeParamsV220 mm1NrFixParams;
+                    mm1NrFixParams.srcStride = mm1NrML1SizeAlign;
+                    mm1NrFixParams.nSize = mm1NrNL1SizeAlign;
+                    mm1NrFixParams.mSize = mm1NrML1SizeAlign;
+                    mm1NrFixParams.dstStride = info.actualSingleProcessSInnerSizeAlign;
+                    mm1NrFixParams.unitFlag = 0b11;
+                    mm1NrFixParams.ndNum = 1;
+                    Fixpipe(mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize +
+                                     mm1NrNL1 * N_SPLIT_SIZE +
+                                     (mSplitInfo.nBufferStartM + mm1NrML1 * M_SPLIT_SIZE) *
                                          info.actualSingleProcessSInnerSizeAlign],
-                            cL0Tensor, fixParams);
+                            mm1NrCL0Tensor, mm1NrFixParams);
                 }
-                if (mL1Loops == 2) {
+                if (mm1NrML1Loops == 2) {
                     cL0BufIter++;
                 }
             }
-            SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
+            SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[mm1NrKb]);
         }
-        if (mL1Loops == 1) {
+        if (mm1NrML1Loops == 1) {
             cL0BufIter++;
         }
     }
-    qpL1BufIter += mL1Loops;
+    qpL1BufIter += mm1NrML1Loops;
 }
 
 template <typename SFAT>

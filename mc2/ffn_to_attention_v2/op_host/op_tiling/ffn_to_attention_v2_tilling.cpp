@@ -78,7 +78,6 @@ static_assert(sizeof(FFNToAttentionV2TilingData) >= sizeof(FFNToAttentionTilingD
               "FFNToAttention V2 tiling cannot contain base tiling");
 
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
-constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t ADDRESS_ENTRY_SIZE = 2U * sizeof(uint64_t);
 constexpr size_t ADDRESS_TABLE_ALIGN = 512U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
@@ -178,26 +177,84 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     // Shape limits validated by the base tiling bound these products (MB in [1, uint32 max], BS<=512, K<=256,
     // HS<=8320).
     const uint64_t tokenSlotNum = static_cast<uint64_t>(info.microBatchNum) * info.BS * info.expertNumPerToken;
-    const uint64_t tokenInfoBytes =
-        (tokenSlotNum * sizeof(int32_t) + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
-    const uint64_t tokenWindowEnd = tokenInfoBytes + tokenSlotNum * info.HS * TOKEN_DTYPE_BYTES;
-    const uint64_t flagWindowOffset =
-        (tokenWindowEnd + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     const uint64_t rankTableStride =
         (static_cast<uint64_t>(maxTokenNum) * ADDRESS_ENTRY_SIZE + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN *
         ADDRESS_TABLE_ALIGN;
     const uint64_t countRowStride = (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + ADDRESS_TABLE_ALIGN - 1U) /
                                     ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
     const uint64_t tableBytes = rankTableStride * worldSize + (static_cast<uint64_t>(aivNum) + 1U) * countRowStride;
+
+    const uint64_t infoTableLastDimNum = 2U + static_cast<uint64_t>(info.BS) * info.expertNumPerToken;
+    const auto recvRegionBytes = [&](uint64_t workerNum) {
+        const uint64_t recvInfoRegionSize =
+            (workerNum * info.microBatchNum * infoTableLastDimNum * sizeof(int32_t) + ADDRESS_TABLE_ALIGN - 1U) /
+            ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
+        const uint64_t recvDataRegionSize =
+            (workerNum * tokenSlotNum * info.HS * TOKEN_DTYPE_BYTES + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN *
+            ADDRESS_TABLE_ALIGN;
+        return recvInfoRegionSize + recvDataRegionSize;
+    };
+    const auto requiredWindowSizeOf = [&](uint64_t workerNum) {
+        const uint64_t tableOffset = (recvRegionBytes(workerNum) + flagWindowSize + ADDRESS_TABLE_ALIGN - 1U) /
+                                     ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
+        return tableOffset + tableBytes;
+    };
+    // Bound the N-scaled products (the base tiling's single-session bound does not include the worker factor).
+    const uint64_t windowSizeSafeMax = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) / 4U;
+    const uint64_t maxWorkerNum = worldSize - 1U; // worldSize >= 2 is validated by the base tiling
+    OP_TILING_CHECK(
+        maxWorkerNum > windowSizeSafeMax / tokenSlotNum ||
+            static_cast<uint64_t>(info.HS) * TOKEN_DTYPE_BYTES > windowSizeSafeMax / tokenSlotNum / maxWorkerNum,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "world_size", std::to_string(worldSize).c_str(),
+            (std::string("N-scaled token data region overflows the window size range, tokenSlotNum=") +
+             std::to_string(tokenSlotNum) + ", HS=" + std::to_string(info.HS))
+                .c_str()),
+        return ge::GRAPH_FAILED);
+
+    const auto cclBufferSize = context->GetAttrs()->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
+    OP_TILING_CHECK(cclBufferSize == nullptr || *cclBufferSize <= 0,
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "ccl_buffer_size"), return ge::GRAPH_FAILED);
+    uint64_t attentionWorkerNum = 0U;
+    if (info.isInputRankTable) {
+        attentionWorkerNum = static_cast<uint64_t>(info.A);
+        OP_TILING_CHECK(attentionWorkerNum == 0U || attentionWorkerNum >= worldSize,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context->GetNodeName(), "attn_rank_table", std::to_string(info.A).c_str(),
+                            (std::string("dim0 in [1, worldSize=") + std::to_string(worldSize) +
+                             ") matching attention_to_ffn_v2's attentionWorkerNum")
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+    } else {
+        for (uint64_t workerNum = 1U; workerNum <= maxWorkerNum; ++workerNum) {
+            if (requiredWindowSizeOf(workerNum) > static_cast<uint64_t>(*cclBufferSize)) {
+                break;
+            }
+            attentionWorkerNum = workerNum;
+        }
+    }
+    OP_TILING_CHECK(attentionWorkerNum == 0U,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "ccl_buffer_size", std::to_string(*cclBufferSize).c_str(),
+                        (std::string("should be >= ") + std::to_string(requiredWindowSizeOf(1U)) +
+                         " bytes (one attention worker session + flag sources and address tables); use "
+                         "get_ffn_to_attention_ccl_buffer_size to compute it")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    // The session count only drives the layout below; the kernel derives its flag-source base from
+    // addressTableWinOffset, so no extra tiling field is needed.
+    const uint64_t flagWindowOffset = recvRegionBytes(attentionWorkerNum);
     const uint64_t tableOffset =
         (flagWindowOffset + flagWindowSize + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
     const uint64_t requiredWindowSize = tableOffset + tableBytes;
-    const auto cclBufferSize = context->GetAttrs()->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
-    OP_TILING_CHECK(
-        cclBufferSize == nullptr || *cclBufferSize <= 0 || static_cast<uint64_t>(*cclBufferSize) < requiredWindowSize,
-        OP_LOGE(context->GetNodeName(), "ccl_buffer_size must include flag sources and address tables (%llu bytes)",
-                static_cast<unsigned long long>(requiredWindowSize)),
-        return ge::GRAPH_FAILED);
+    // Rank-table mode enforces the exact session count here; in default mode the search above already
+    // guarantees requiredWindowSize <= ccl_buffer_size.
+    OP_TILING_CHECK(static_cast<uint64_t>(*cclBufferSize) < requiredWindowSize,
+                    OP_LOGE(context->GetNodeName(),
+                            "ccl_buffer_size must include the attention_to_ffn receiving area, flag sources and "
+                            "address tables (%llu bytes)",
+                            static_cast<unsigned long long>(requiredWindowSize)),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - RESERVED_WORKSPACE_SIZE,
                     OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
     workSpaces[0] += RESERVED_WORKSPACE_SIZE;

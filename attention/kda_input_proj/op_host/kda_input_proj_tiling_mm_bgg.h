@@ -141,6 +141,11 @@ private:
     static constexpr double kCubeBoundRatio = 0.85;
     static constexpr double kEps = 1e-9;
     static constexpr double kBalanceRateEdge = 0.9;
+    // 与 MatMulV3 arch35 一致：platform 缺字段或无法解析成非负整数时的带宽模型兜底。
+    static constexpr int64_t kDefaultCubeFreqMhz = 1650;
+    static constexpr int64_t kDefaultAiCoreCnt = 32;
+    static constexpr int64_t kDefaultDdrRate = 31;
+    static constexpr int64_t kDefaultL2Rate = 100;
 
     struct HwLimit {
         uint64_t l1Size{0};
@@ -293,22 +298,17 @@ private:
         return true;
     }
 
-    bool GetRequiredPlatformInt(const char *opName, const char *label, const char *key, int64_t &out) const
+    int64_t GetPlatformIntWithDefault(const char *label, const char *key, int64_t defaultValue) const
     {
         std::string val;
-        if (tilingInfo_.platformInfo == nullptr) {
-            OP_LOGE(opName, "MmBgg platformInfo is null, cannot get %s.%s.", label, key);
-            return false;
+        if (tilingInfo_.platformInfo != nullptr) {
+            (void)tilingInfo_.platformInfo->GetPlatformRes(label, key, val);
         }
-        if (!tilingInfo_.platformInfo->GetPlatformRes(label, key, val) || val.empty()) {
-            OP_LOGE(opName, "MmBgg failed to get platform res %s.%s.", label, key);
-            return false;
+        int64_t out = defaultValue;
+        if (!ParseNonNegInt(val, out) || out == 0) {
+            return defaultValue;
         }
-        if (!ParseNonNegInt(val, out)) {
-            OP_LOGE(opName, "MmBgg invalid platform res %s.%s='%s'.", label, key, val.c_str());
-            return false;
-        }
-        return true;
+        return out;
     }
 
     bool QueryHwLimit(HwLimit &hw) const
@@ -333,20 +333,10 @@ private:
             return false;
         }
 
-        int64_t cubeFreq = 0;
-        int64_t coreCnt = 0;
-        int64_t ddrRate = 0;
-        int64_t l2Rate = 0;
-        if (!GetRequiredPlatformInt(opName, "AICoreSpec", "cube_freq", cubeFreq) ||
-            !GetRequiredPlatformInt(opName, "SoCInfo", "ai_core_cnt", coreCnt) ||
-            !GetRequiredPlatformInt(opName, "AICoreMemoryRates", "ddr_rate", ddrRate) ||
-            !GetRequiredPlatformInt(opName, "AICoreMemoryRates", "l2_rate", l2Rate)) {
-            return false;
-        }
-        if (cubeFreq == 0 || coreCnt == 0) {
-            OP_LOGE(opName, "MmBgg invalid platform spec cube_freq=%ld ai_core_cnt=%ld.", cubeFreq, coreCnt);
-            return false;
-        }
+        const int64_t cubeFreq = GetPlatformIntWithDefault("AICoreSpec", "cube_freq", kDefaultCubeFreqMhz);
+        const int64_t coreCnt = GetPlatformIntWithDefault("SoCInfo", "ai_core_cnt", kDefaultAiCoreCnt);
+        const int64_t ddrRate = GetPlatformIntWithDefault("AICoreMemoryRates", "ddr_rate", kDefaultDdrRate);
+        const int64_t l2Rate = GetPlatformIntWithDefault("AICoreMemoryRates", "l2_rate", kDefaultL2Rate);
         hw.coreFreq = static_cast<double>(cubeFreq) / 1000.0;
         hw.hbmBw = hw.coreFreq * static_cast<double>(coreCnt) * static_cast<double>(ddrRate) / 1024.0;
         hw.l2Bw = hw.coreFreq * static_cast<double>(coreCnt) * static_cast<double>(l2Rate) / 1024.0;
