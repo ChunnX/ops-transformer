@@ -4,22 +4,22 @@
 
 ## 产品支持情况
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -108,7 +108,7 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
   const aclTensor  *kScaleCache,
   const aclTensor  *vScale,
   double            lambdaMag,
-  const char        *kvLayout,
+  char              *kvLayout,
   int64_t           stemBlockSize,
   int64_t           stemStride,
   const aclTensor  *kFlat,
@@ -155,7 +155,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">kCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">Paged K cache。</td>
-      <td class="tg-0pky">不支持空Tensor。<br>两种布局, 由kvLayout指定, 当前仅支持"BNBD":<br>"BBND"为[total_blocks, kvBlockSize, H_kv, D=128], <br>"BNBD"为[total_blocks, H_kv, kvBlockSize, D=128]。<br>支持前三维非连续，最后一维必须连续。</td>
+      <td class="tg-0pky">不支持空Tensor。<br>两种布局, 由kvLayout指定, 当前仅支持"BNBD":<br>"BBND"为[total_blocks, kvBlockSize, H_kv, D=128], <br>"BNBD"为[total_blocks, H_kv, kvBlockSize, D=128]。<br>支持前三维非连续, 最后一维必须连续, H_kv最大值为8。</td>
       <td class="tg-0pky">FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">kvIndices（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每batch KV Block index数组</td>
-      <td class="tg-0pky">不支持空Tensor。<br>shape:[batch, max_kv_blocks], max_kv_blocks最大值2048</td>
+      <td class="tg-0pky">不支持空Tensor。<br>shape:[batch, max_kv_blocks], batch最大值为16, max_kv_blocks最大值2048</td>
       <td class="tg-0pky">INT32</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">lambdaMag</td>
       <td class="tg-0pky">ATTR</td>
       <td class="tg-0pky">V bias 乘数</td>
-      <td class="tg-0pky">取值范围: (0,1]。</td>
+      <td class="tg-0pky">取值范围: [0,1]。</td>
       <td class="tg-0pky">double</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>
@@ -459,7 +459,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
     int64_t stemStride = 16;
     int64_t maxKb = 2;
     int64_t kflatDim = stemStride * dimQk;
-    const char *kvLayout = "BNBD";
+    char *kvLayout = "BNBD";
 
     std::vector<int64_t> kCacheShape = {totalBlocks, numKvHeads, 64, dimQk};
     std::vector<int64_t> kvIndicesShape = {batch, maxKvBlocks};

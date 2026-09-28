@@ -30,9 +30,10 @@ inline constexpr int64_t SLI_NO_MASK_MODE = 0;
 inline constexpr int64_t SLI_CAUSAL_MASK_MODE = 3;
 inline constexpr int64_t SLI_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t SLI_CMP_RATIO_UPPER_BOUND = 128;
-inline constexpr int64_t SLI_NUM_HEADS_Q_LOWER_BOUND_A5 = 1;
-inline constexpr int64_t SLI_NUM_HEADS_Q_UPPER_BOUND_A5 = 128;
-inline constexpr int64_t SLI_TOPK_LOWER_BOUND_A5 = 1;
+inline constexpr int64_t SLI_NUM_HEADS_Q_LOWER_BOUND = 1;
+inline constexpr int64_t SLI_NUM_HEADS_Q_UPPER_BOUND = 128;
+inline constexpr int64_t SLI_TOPK_LOWER_BOUND = 1;
+inline constexpr int64_t SLI_TOPK_UPPER_BOUND_A3 = 8192;
 inline constexpr int64_t SLI_TOPK_UPPER_BOUND_A5 = 2048;
 inline constexpr int64_t SLIKG_METADATA_SIZE = 64;
 
@@ -59,7 +60,10 @@ aclDataType GetDataTypeSli(const aclTensor *tensor)
     return dataType;
 }
 
-inline bool IsTensorSourceSli(const std::string &source) { return source != "batch_size"; }
+inline bool IsTensorSourceSli(const std::string &source)
+{
+    return source != "batch_size";
+}
 
 inline int64_t GetRawShapeSizeSli(const std::string &source, int64_t batchValue)
 {
@@ -117,15 +121,15 @@ int64_t GetKeyBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensKOptiona
 aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, int64_t numHeadsQ,
                                 int64_t numHeadsK, int64_t headDim, int64_t topk, const char *layoutQOptional,
                                 const char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, uint32_t aicCoreNum,
-                                uint32_t aivCoreNum, const std::string &socVersion)
+                                uint32_t aivCoreNum, const std::string &socVersion, int64_t topkUpperBound)
 {
     // num_heads_q 校验
-    if (numHeadsQ < SLI_NUM_HEADS_Q_LOWER_BOUND_A5 || numHeadsQ > SLI_NUM_HEADS_Q_UPPER_BOUND_A5) {
+    if (numHeadsQ < SLI_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > SLI_NUM_HEADS_Q_UPPER_BOUND) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
-                                                  std::to_string(SLI_NUM_HEADS_Q_LOWER_BOUND_A5) + ", " +
-                                                  std::to_string(SLI_NUM_HEADS_Q_UPPER_BOUND_A5) + "]");
+                                                  std::to_string(SLI_NUM_HEADS_Q_LOWER_BOUND) + ", " +
+                                                  std::to_string(SLI_NUM_HEADS_Q_UPPER_BOUND) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_k 校验
@@ -139,12 +143,12 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         return ACLNN_ERR_PARAM_INVALID;
     }
     // topk 校验
-    if (topk < SLI_TOPK_LOWER_BOUND_A5 || topk > SLI_TOPK_UPPER_BOUND_A5) {
+    if (topk < SLI_TOPK_LOWER_BOUND || topk > topkUpperBound) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "topk", std::to_string(topk),
                                               "The current value is not within the valid range. "
                                               "The valid range is [" +
-                                                  std::to_string(SLI_TOPK_LOWER_BOUND_A5) + ", " +
-                                                  std::to_string(SLI_TOPK_UPPER_BOUND_A5) + "]");
+                                                  std::to_string(SLI_TOPK_LOWER_BOUND) + ", " +
+                                                  std::to_string(topkUpperBound) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // batch_size 非负校验
@@ -209,6 +213,13 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
                                               "When layout_q is BSND, the value of max_seqlen_q "
                                               "must be equal to the size of the second axis of q");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 layout_k 为 BSND 时，max_seqlen_k 必须大于 0
+    if (strcmp(layoutKOptional, "BSND") == 0 && maxSeqlenK <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SLI_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
+                                              "When layout_k is BSND, the value of max_seqlen_k "
+                                              "must be equal to the size of the second axis of k");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核心数校验
@@ -376,13 +387,13 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
                     std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
                 GetSourceDescSli(querySource) + " must be equal to " + GetSourceDescSli(keySource));
         } else if (IsTensorSourceSli(querySource)) {
-            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                SLI_ACLNN_OP_NAME, querySource, std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)),
-                GetSourceDescSli(querySource) + " must be equal to batch_size");
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME, querySource,
+                                                      std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)),
+                                                      GetSourceDescSli(querySource) + " must be equal to batch_size");
         } else {
-            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                SLI_ACLNN_OP_NAME, keySource, std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
-                GetSourceDescSli(keySource) + " must be equal to batch_size");
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME, keySource,
+                                                      std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
+                                                      GetSourceDescSli(keySource) + " must be equal to batch_size");
         }
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -444,9 +455,9 @@ aclnnStatus ParamsCheckSliA5(const aclTensor *cuSeqlensQOptional, const aclTenso
                              const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum,
                              const std::string &socVersion)
 {
-    auto ret =
-        CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk, layoutQOptional,
-                            layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
+    auto ret = CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
+                                   layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum,
+                                   socVersion, SLI_TOPK_UPPER_BOUND_A5);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckExistenceSli(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, cmpResidualKOptional,
@@ -471,6 +482,10 @@ aclnnStatus ParamsCheckSli(const aclTensor *cuSeqlensQOptional, const aclTensor 
     // A2/A3 校验
     const std::string ascend950 = "Ascend950";
     if (socVersion.find(ascend950) == std::string::npos) {
+        auto ret = CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
+                                       layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum,
+                                       socVersion, SLI_TOPK_UPPER_BOUND_A3);
+        CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(metadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         return ACLNN_SUCCESS;
     }

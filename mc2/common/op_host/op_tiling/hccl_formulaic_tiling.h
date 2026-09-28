@@ -104,9 +104,7 @@ public:
     void CommBoundShortAlign();
     void FitTileLengthContinuous(bool kGreaterThanN, bool largeCalcCommRatio = true, bool soc310Flag = false);
 
-    virtual ~FormPartition()
-    {
-    }
+    virtual ~FormPartition() {}
 };
 
 // 单通信域算子通信轮次切分基类，每个算子各有一个派生类
@@ -120,12 +118,17 @@ public:
     uint64_t rankTileNum_ = 1;
     double ratioCalcComm_ = 1.0;
     bool noCutFlag_ = false;
-    bool inferFlag_ = false; // 部分逻辑只适配了推理或者训练算子，进行区分
+    bool inferFlag_ = false;                // 部分逻辑只适配了推理或者训练算子，进行区分
+    NpuArch npuArch_ = Ops::Base::DAV_2201; // 目标平台arch:由调用点经框架GetCurNpuArch取后传入
 
     // Constructor
     explicit OneCalcOneCommBase(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : matmulPerf_(args, inputSocVersion), commPerf_(inputRankDim, inputKernelType, inputSocVersion), tilingM_(args)
+                                NpuArch npuArch = Ops::Base::DAV_2201,
+                                SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
+        : matmulPerf_(args, npuArch, socVersion_2201),
+          commPerf_(inputRankDim, inputKernelType, npuArch, socVersion_2201),
+          tilingM_(args),
+          npuArch_(npuArch)
     {
         rankDim_ = inputRankDim;
         clusterInfo_ = matmulPerf_.mmShapeInfo_;
@@ -144,9 +147,7 @@ public:
     // 调用函数
     void GetTiling();
 
-    virtual ~OneCalcOneCommBase()
-    {
-    }
+    virtual ~OneCalcOneCommBase() {}
 };
 
 #endif // __HCCL_FORMULAIC_TILING_H__

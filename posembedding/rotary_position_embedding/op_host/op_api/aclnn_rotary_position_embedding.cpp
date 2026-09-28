@@ -27,6 +27,50 @@ extern "C" {
 
 namespace {
 
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_FLOAT,
+                                                                       DataType::DT_BF16};
+
+static bool IsAscend950()
+{
+    return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
+static aclnnStatus CheckDtype(const aclTensor *x, const aclTensor *cos, const aclTensor *sin, const aclTensor *rotate,
+                              const aclTensor *out)
+{
+    // Keep nullptr handling in the existing preprocessing path. This function is
+    // responsible only for validating tensors that are present.
+    if (x != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x, DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (cos != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(cos, DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (sin != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(sin, DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (rotate != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(rotate, DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (out != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(out, DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    }
+
+    if (x != nullptr && cos != nullptr) {
+        OP_CHECK_DTYPE_NOT_SAME(x, cos, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (x != nullptr && sin != nullptr) {
+        OP_CHECK_DTYPE_NOT_SAME(x, sin, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (x != nullptr && rotate != nullptr) {
+        OP_CHECK_DTYPE_NOT_SAME(x, rotate, return ACLNN_ERR_PARAM_INVALID);
+    }
+    if (x != nullptr && out != nullptr) {
+        OP_CHECK_DTYPE_NOT_SAME(x, out, return ACLNN_ERR_PARAM_INVALID);
+    }
+    return ACLNN_SUCCESS;
+}
+
 static inline bool TensorContiguousProcess(const aclTensor *&contiguousTensor, aclOpExecutor *executor)
 {
     if (contiguousTensor == nullptr) {
@@ -53,15 +97,22 @@ static aclnnStatus RotaryPositionEmbeddingCommonProcess(const aclTensor *x, cons
                                                         const aclTensor *rotate, int64_t mode, aclTensor *out,
                                                         aclOpExecutor *executor)
 {
+    aclnnStatus ret = ACLNN_SUCCESS;
+    if (IsAscend950()) {
+        ret = CheckDtype(x, cos, sin, rotate, out);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    }
+
     const aclTensor *xProcessed = x;
     const aclTensor *cosProcessed = cos;
     const aclTensor *sinProcessed = sin;
     const aclTensor *rotateProcessed = rotate;
 
-    auto ret = PreProcess(xProcessed, cosProcessed, sinProcessed, rotateProcessed, executor);
+    ret = PreProcess(xProcessed, cosProcessed, sinProcessed, rotateProcessed, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto result = l0op::RotaryPositionEmbedding(xProcessed, cosProcessed, sinProcessed, rotateProcessed, mode, executor);
+    auto result =
+        l0op::RotaryPositionEmbedding(xProcessed, cosProcessed, sinProcessed, rotateProcessed, mode, executor);
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto outContiguous = l0op::Contiguous(out, executor);
@@ -80,9 +131,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(const aclTensor *x, con
                                                          int64_t mode, aclTensor *out, uint64_t *workspaceSize,
                                                          aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnRotaryPositionEmbedding,
-                   DFX_IN(x, cos, sin, mode),
-                   DFX_OUT(out));
+    L2_DFX_PHASE_1(aclnnRotaryPositionEmbedding, DFX_IN(x, cos, sin, mode), DFX_OUT(out));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -112,17 +161,16 @@ aclnnStatus aclnnRotaryPositionEmbedding(void *workspace, uint64_t workspaceSize
 
 /* v2 interface - supports rotate parameter */
 aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor *x, const aclTensor *cos,
-                                                           const aclTensor *sin, int64_t mode,
-                                                           const aclTensor *rotate, aclTensor *out,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                           const aclTensor *sin, int64_t mode, const aclTensor *rotate,
+                                                           aclTensor *out, uint64_t *workspaceSize,
+                                                           aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnRotaryPositionEmbeddingV2,
-                   DFX_IN(x, cos, sin, mode, rotate),
-                   DFX_OUT(out));
+    L2_DFX_PHASE_1(aclnnRotaryPositionEmbeddingV2, DFX_IN(x, cos, sin, mode, rotate), DFX_OUT(out));
 
     if (rotate != nullptr) {
-        CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201,
-                   ACLNN_ERR_PARAM_INVALID, "the soc verison is not support");
+        CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201, ACLNN_ERR_PARAM_INVALID,
+                   "the rotate parameter is only supported on Ascend910B/Ascend910_93, "
+                   "please pass nullptr for rotate");
     }
 
     auto uniqueExecutor = CREATE_EXECUTOR();

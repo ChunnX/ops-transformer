@@ -17,28 +17,24 @@
 #define ROTARY_POSITION_EMBEDDING_BAB_H
 
 #include "op_kernel/math_util.h"
-#if __has_include("../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h")
-#include "../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h"
-#else
 #include "../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_common.h"
-#endif
 
 namespace RotaryPositionEmbedding {
 using namespace AscendC;
 
 template <typename T>
-class RotaryPositionEmbeddingBAB
-{
+class RotaryPositionEmbeddingBAB {
 public:
-    __aicore__ inline RotaryPositionEmbeddingBAB(TPipe* pipe, const RopeRegbaseTilingData* tiling)
-        : pipe_(pipe), tilingData_(tiling){};
+    __aicore__ inline RotaryPositionEmbeddingBAB(TPipe *pipe, const RopeRegbaseTilingData *tiling)
+        : pipe_(pipe),
+          tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y);
     __aicore__ inline void Process();
 
 private:
     constexpr static int32_t bufferNum = 2;
-    const RopeRegbaseTilingData* tilingData_;
-    TPipe* pipe_;
+    const RopeRegbaseTilingData *tilingData_;
+    TPipe *pipe_;
     int64_t blockIdx_ = 0;
     int64_t dSplitCoef_ = 1; // 切分系数初始化为1
     uint32_t dSplitSize_ = 0;
@@ -62,12 +58,11 @@ private:
 private:
     __aicore__ inline void PrePareParams();
     __aicore__ inline void ProcessNLoop(const uint32_t bIdx, const uint32_t sIdx, const uint32_t currSNum);
-    __aicore__ inline void Compute(
-        const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-        const LocalTensor<T>& outTensor, const uint32_t currSNum, const uint32_t currDNum);
-    __aicore__ inline void ProcessN(
-        const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
-        const uint32_t currSNum);
+    __aicore__ inline void Compute(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
+                                   const LocalTensor<T> &inTensor, const LocalTensor<T> &outTensor,
+                                   const uint32_t currSNum, const uint32_t currDNum);
+    __aicore__ inline void ProcessN(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
+                                    const uint32_t bIdx, const uint32_t sIdx, const uint32_t currSNum);
 };
 
 template <typename T>
@@ -81,13 +76,14 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::Init(GM_ADDR x, GM_ADDR co
         this->dSplitCoef_ = QUARTER_MODE_COEF;
     }
     this->dSplitSize_ = tilingData_->D / dSplitCoef_ * sizeof(T);
-    this->dAlign_ = Ops::Base::CeilAlign<int64_t>(tilingData_->D / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(T)) * dSplitCoef_;
+    this->dAlign_ =
+        Ops::Base::CeilAlign<int64_t>(tilingData_->D / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(T)) * dSplitCoef_;
     ubFactorN_ = tilingData_->ubFactorN;
     ubFactorS_ = tilingData_->ubFactorS;
-    this->xGm_.SetGlobalBuffer((__gm__ T*)x);
-    this->cosGm_.SetGlobalBuffer((__gm__ T*)cos);
-    this->sinGm_.SetGlobalBuffer((__gm__ T*)sin);
-    this->yOutGm_.SetGlobalBuffer((__gm__ T*)y);
+    this->xGm_.SetGlobalBuffer((__gm__ T *)x);
+    this->cosGm_.SetGlobalBuffer((__gm__ T *)cos);
+    this->sinGm_.SetGlobalBuffer((__gm__ T *)sin);
+    this->yOutGm_.SetGlobalBuffer((__gm__ T *)y);
     this->pipe_->InitBuffer(xInQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
@@ -125,8 +121,8 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessNLoop(
-    const uint32_t bIdx, const uint32_t sIdx, const uint32_t currSNum)
+__aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessNLoop(const uint32_t bIdx, const uint32_t sIdx,
+                                                                   const uint32_t currSNum)
 {
     LocalTensor<T> sinTensor = sinInQue_.AllocTensor<T>();
     LocalTensor<T> cosTensor = cosInQue_.AllocTensor<T>();
@@ -145,9 +141,9 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessNLoop(
 }
 
 template <typename T>
-__aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessN(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
-    const uint32_t currSNum)
+__aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessN(const LocalTensor<T> &sinTensor,
+                                                               const LocalTensor<T> &cosTensor, const uint32_t bIdx,
+                                                               const uint32_t sIdx, const uint32_t currSNum)
 {
     LocalTensor<T> xTensor;
     LocalTensor<T> yTensor;
@@ -177,9 +173,11 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessN(
 }
 
 template <typename T>
-__aicore__ inline void RotaryPositionEmbeddingBAB<T>::Compute(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, const uint32_t currSNum, const uint32_t currDNum)
+__aicore__ inline void RotaryPositionEmbeddingBAB<T>::Compute(const LocalTensor<T> &sinTensor,
+                                                              const LocalTensor<T> &cosTensor,
+                                                              const LocalTensor<T> &inTensor,
+                                                              const LocalTensor<T> &outTensor, const uint32_t currSNum,
+                                                              const uint32_t currDNum)
 {
     if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF)) {
         HalfAlignVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->D, dAlign_, currSNum, currDNum);

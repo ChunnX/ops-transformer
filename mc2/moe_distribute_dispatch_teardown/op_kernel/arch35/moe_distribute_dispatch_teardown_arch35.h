@@ -19,15 +19,9 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_teardown_tiling.h"
-#if __has_include("../../common/mc2_kernel_utils.h")
-#include "../../moe_distribute_dispatch_setup/moe_distribute_base.h"
-#include "../../moe_distribute_dispatch_setup/common.h"
-#include "../../common/mc2_kernel_utils.h"
-#else
-#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
-#include "../../../moe_distribute_dispatch_setup/op_kernel/common.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_base.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_common.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
@@ -43,7 +37,7 @@ constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
 
-#define TemplateMC2TypeClass                                                                                           \
+#define TemplateMC2TypeClass \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsShareExpertRank
 #define TemplateMC2TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsShareExpertRank
 
@@ -168,7 +162,7 @@ private:
 
     DataCopyExtParams floatDataCopyParams_;
     DataCopyExtParams expandXCopyParams_;
-    DataCopyExtParams hCommuCopyOutParams_;
+    DataCopyParams hCommuCopyOutParams_;
 };
 
 template <TemplateMC2TypeClass>
@@ -271,7 +265,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
 
     uint32_t axisHCommu = hOutSizeAlign_ / sizeof(ExpandXOutType); // 有效搬运长度
     floatDataCopyParams_ = {1U, sizeof(float), 0U, 0U, 0U};
-    hCommuCopyOutParams_ = {1U, static_cast<uint32_t>(axisHCommu * sizeof(ExpandXOutType)), 0U, 0U, 0U};
+    hCommuCopyOutParams_ = {1U, static_cast<uint16_t>(axisHCommu * sizeof(ExpandXOutType)), 0U, 0U};
     expandXCopyParams_ = {1U, static_cast<uint32_t>(axisH_ * sizeof(ExpandXOutType)), 0U, 0U, 0U};
 }
 
@@ -298,9 +292,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Quant
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::CopyScalesToOut(uint32_t currentTokenIndex,
-                                                                    LocalTensor<ExpandXOutType> &quantTok)
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::CopyScalesToOut(
+    uint32_t currentTokenIndex, LocalTensor<ExpandXOutType> &quantTok)
 {
     DataCopyParams scaleOutParams = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U};
     if constexpr ((QuantMode > UNQUANT) && (QuantMode != STATIC_QUANT)) {
@@ -315,10 +308,9 @@ MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::CopyScalesToOut(uint32_t cur
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum,
-                                                                uint32_t &startTokenId, uint32_t &endTokenId,
-                                                                uint32_t &sendTokenNum, bool isFront)
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::SplitToCore(
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum,
+    bool isFront)
 {
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
@@ -339,10 +331,9 @@ MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::SplitToCore(uint32_t curSend
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
-                                                                  LocalTensor<uint32_t> &gatherTmpTensor,
-                                                                  LocalTensor<float> &statusSumOutTensor)
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::SyncCntOnCore(
+    LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
+    LocalTensor<float> &statusSumOutTensor)
 {
     gatherTmpTensor.SetValue(0, 2); // 源操作数每个datablock取下标为1的元素
     uint32_t mask = 2;              // 源操作数每个datablock只需要处理两个元素
@@ -479,8 +470,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     GetCumSum(outCountLocal, aivId_);
     uint32_t beginIdx = outCountLocal.GetValue(0); // outcount表示当前专家之前的所有专家接收的token数目总和
     statusTensor_ = waitStatusBuf_.Get<int32_t>();
-    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
-                                                          *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
+    DataCopyPadParams copyPadParams{false, 0U, 0U, 0U};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
@@ -503,7 +493,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
             tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
             // 将数据从Window拷贝到UB
             xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
-            DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+            DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
             xQueue_.EnQue(xTmpTensor_);
             xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
@@ -595,7 +585,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         UpdateTokenNumsOut();
     }
 }
-
 
 } // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_TEARDOWN_H

@@ -16,7 +16,9 @@
 #ifndef MC2_HCCL_COMMUNICATOR_H
 #define MC2_HCCL_COMMUNICATOR_H
 
+#include "../../../mc2_tiling_struct.h"
 #include "../primitives/hccl_primitives.h"
+#include "../../../apace/utils/op_state_dump.h"
 
 namespace MC2KernelTemplate {
 /**
@@ -33,7 +35,8 @@ template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType
 class HcclCommunicator {
 public:
     // 通信器构造方法
-    __aicore__ inline HcclCommunicator(TilingDataType *tiling) : tiling_(tiling){};
+    __aicore__ inline HcclCommunicator(TilingDataType *tiling)
+        : tiling_(tiling){};
     // 初始化通信器参数
     __aicore__ inline void Init();
     // 获取上下文指针
@@ -52,6 +55,10 @@ public:
     __aicore__ inline void Process();
     // 释放通信器资源
     __aicore__ inline void End();
+    __aicore__ inline void SetOpStateDump(Mc2Kernel::OpStateDump &rt)
+    {
+        opStateDump_ = rt;
+    }
 
 private:
     enum Communicationtype {
@@ -69,6 +76,7 @@ private:
     static constexpr uint8_t MAX_HCCL_HANDLE_ = 63; // hccl只支持最多63个任务并行
     AscendC::HcclHandle hTasks_[MAX_HCCL_HANDLE_];
     bool taskSuccess_[MAX_HCCL_HANDLE_];
+    Mc2Kernel::OpStateDump opStateDump_{};
 };
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
@@ -110,9 +118,8 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
           template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::PrepareAll(
-    uint32_t taskCnt)
+__aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt,
+                                        RecvCnt>::PrepareAll(uint32_t taskCnt)
 {
     // 只有通信核参与通信
     if (!notifyFlag_) {
@@ -128,15 +135,16 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         for (uint32_t i = 0; i < taskCnt; i++) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0,
+                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
         }
     }
 }
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
           template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::Process(
-    uint32_t taskIndex)
+__aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt,
+                                        RecvCnt>::Process(uint32_t taskIndex)
 {
     // 只有通信核参与通信
     if (!notifyFlag_) {
@@ -145,17 +153,18 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         hccl_.Wait(hTasks_[startIndex_ + taskIndex]);
         taskSuccess_[startIndex_ + taskIndex] = true;
+        opStateDump_.DoDump(DUMP_FIELD_WAIT);
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
         taskSuccess_[startIndex_ + taskIndex] = false;
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     }
 }
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
           template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::ProcessWithPrepare(
-    uint32_t taskIndex)
+__aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt,
+                                        RecvCnt>::ProcessWithPrepare(uint32_t taskIndex)
 {
     // 只有通信核参与通信
     if (!notifyFlag_) {
@@ -164,6 +173,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         AscendC::HcclHandle handleId = primitive_.SyncSend(&hccl_, &context_, taskIndex);
         hccl_.Wait(handleId);
+        opStateDump_.DoDump(DUMP_FIELD_WAIT);
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hTasks_[endIndex_ + taskIndex] = primitive_.SyncSend(&hccl_, &context_, taskIndex);
         taskSuccess_[endIndex_ + taskIndex] = false;
@@ -172,9 +182,8 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
           template <typename> class Primitive, uint32_t SendCnt, uint32_t RecvCnt>
-__aicore__ inline void
-HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt, RecvCnt>::AddIndex(
-    uint32_t taskCnt)
+__aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, SendCnt,
+                                        RecvCnt>::AddIndex(uint32_t taskCnt)
 {
     // 只有通信核参与通信
     if (!notifyFlag_) {
@@ -205,6 +214,8 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         for (uint32_t i = 0; i < context_.repeat; ++i) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0,
+                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
         }
     }
 }
@@ -231,20 +242,22 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             if (!taskSuccess_[i]) {
                 hccl_.Wait(hTasks_[i]);
                 taskSuccess_[i] = true;
+                opStateDump_.DoDump(DUMP_FIELD_WAIT);
             }
         }
     }
 
     if (notifyFlag_) {
         hccl_.Finalize();
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     }
 }
 
 #ifndef DEFINE_MC2_HCCL_FOR_COMMUNICATION
-#define DEFINE_MC2_HCCL_FOR_COMMUNICATION(AICSync, ServerType, HcclContextType, TilingDataType, Primitive,             \
-                                          sendCntPerTask, recvCntPerTask, CommunicationType)                           \
-    using CommunicationType =                                                                                          \
-        MC2KernelTemplate::HcclCommunicator<AICSync, ServerType, HcclContextType, TilingDataType, Primitive,           \
+#define DEFINE_MC2_HCCL_FOR_COMMUNICATION(AICSync, ServerType, HcclContextType, TilingDataType, Primitive, \
+                                          sendCntPerTask, recvCntPerTask, CommunicationType) \
+    using CommunicationType = \
+        MC2KernelTemplate::HcclCommunicator<AICSync, ServerType, HcclContextType, TilingDataType, Primitive, \
                                             sendCntPerTask, recvCntPerTask>
 #endif
 }; // namespace MC2KernelTemplate

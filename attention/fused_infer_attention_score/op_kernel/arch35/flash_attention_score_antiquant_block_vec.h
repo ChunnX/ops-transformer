@@ -18,11 +18,11 @@
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
 #include "flash_attention_score_antiquant_processor.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 using namespace optiling;
 using namespace FaVectorApi;
@@ -123,7 +123,7 @@ public:
                                         RunParamStr<isInfer> &runParam, Buffer<BufferType::L1> &outBufAntiKey,
                                         GlobalTensor<KV_T> &tempKeyGm, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void SetAntiqParamCommon(const RunInfo<isInfer> &runInfo, int64_t kvOffset,
-                                               ConstInfo<isInfer, hasRope> &constInfo);
+                                               ConstInfo<isInfer, hasRope> &constInfo, bool isKey);
     __aicore__ inline void AntiquantValue(const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first,
                                           RunParamStr<isInfer> &runParam, Buffer<BufferType::L1> &outBufAntiValue,
                                           ConstInfo<isInfer, hasRope> &constInfo);
@@ -352,8 +352,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCo
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBuffer(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     this->InitAntiquantBuffer();
     this->SoftmaxInitBuffer();
@@ -420,8 +420,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ClearOutput
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitOutputSingleCore(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     auto &initParams = this->tilingData->initOutputParams;
     if (initParams.totalOutputSize > constInfo.aivIdx * initParams.singleCoreSize) {
@@ -438,8 +438,8 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo<isI
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLseOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLseOutputSingleCore(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     int64_t coreNum = GetBlockNum() * GetTaskRation();
     auto &initParams = this->tilingData->initOutputParams;
@@ -553,10 +553,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitPostQua
     }
 }
 
-
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAntiTaskParam(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     isBeforeHalf = ((constInfo.aivIdx & 1) == 0);
     taskParam.batchSize = this->tilingData->inputParamsRegbase.bSize;
@@ -581,8 +580,10 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAntiTaskParam(ConstInfo<is
     taskParam.sInnerLoopSize = constInfo.sInnerLoopSize;
     taskParam.antiqSeqSize = antiqSeqSize;
     taskParam.isKvCacheNz = false;
+    taskParam.kvCacheNzD0 = 0;
     if constexpr (isPa) {
         taskParam.isKvCacheNz = taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
+        taskParam.kvCacheNzD0 = constInfo.kvCacheNzD0;
     }
 }
 
@@ -591,7 +592,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     const RunInfo<isInfer> &runInfo, int64_t &subTaskId, bool &first, RunParamStr<isInfer> &runParam,
     Buffer<BufferType::L1> &outBufAntiKey, GlobalTensor<KV_T> &tempKeyGm, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    SetAntiqParamCommon(runInfo, runInfo.keyOffset, constInfo);
+    const bool isKey = true; // key 侧 stride (区别于 value 侧)
+    SetAntiqParamCommon(runInfo, runInfo.keyOffset, constInfo, isKey);
     if constexpr (KVFP4) {
         taskParam.isLoadAntiqParam = true;
         taskParam.isFreeAntiqParam = false;
@@ -612,11 +614,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
                                          kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
 }
 
-
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<isInfer> &runInfo, int64_t kvOffset,
-                                                                  ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(
+    const RunInfo<isInfer> &runInfo, int64_t kvOffset, ConstInfo<isInfer, hasRope> &constInfo, bool isKey)
 {
     if (isBeforeHalf) {
         taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize); // 2 is Vec num
@@ -635,10 +635,25 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
     taskParam.s2BatchOffset = curSequence;
     taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
-    taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
     taskParam.bIdx = runInfo.boIdx;
     taskParam.n2Idx = runInfo.n2oIdx;
     taskParam.s2Idx = runInfo.s2LoopCount;
+    if (isKey) {
+        taskParam.kvBnStride = constInfo.keyBnStride;
+        taskParam.kvN2Stride = constInfo.keyN2Stride;
+        taskParam.scaleBnStride = constInfo.kScaleBnStride;
+        taskParam.scaleN2Stride = constInfo.kScaleN2Stride;
+        taskParam.offsetBnStride = constInfo.kOffsetBnStride;
+        taskParam.offsetN2Stride = constInfo.kOffsetN2Stride;
+    } else {
+        taskParam.kvBnStride = constInfo.valueBnStride;
+        taskParam.kvN2Stride = constInfo.valueN2Stride;
+        taskParam.scaleBnStride = constInfo.vScaleBnStride;
+        taskParam.scaleN2Stride = constInfo.vScaleN2Stride;
+        taskParam.offsetBnStride = constInfo.vOffsetBnStride;
+        taskParam.offsetN2Stride = constInfo.vOffsetN2Stride;
+    }
+    taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
     if constexpr (isInfer) {
         taskParam.s2Idx += runInfo.s2StartIdx / constInfo.s2BaseSize;
         if constexpr (enableKVPrefix) {
@@ -652,6 +667,42 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
                     kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
                 taskParam.s2Idx -= constInfo.prefixLoopCount;
             }
+        }
+    }
+    if constexpr (isPa) {
+        if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ)) {
+            uint64_t nzHeadStride = static_cast<uint64_t>(taskParam.headDim) * taskParam.kvCacheBlockSize;
+            if (taskParam.kvN2Stride != 0) {
+                nzHeadStride = taskParam.kvN2Stride;
+            }
+            uint64_t nzBlockStride = static_cast<uint64_t>(taskParam.kvHeadNum) * nzHeadStride;
+            if (taskParam.kvBnStride != 0) {
+                nzBlockStride = taskParam.kvBnStride;
+            }
+            taskParam.paBlockStride = nzBlockStride;
+            taskParam.paRowStride = taskParam.isKvCacheNz ? taskParam.kvCacheNzD0 : (ONE_BLK_SIZE / sizeof(Q_T));
+            taskParam.paN2HeadOffset = static_cast<uint64_t>(taskParam.n2Idx) * nzHeadStride;
+        } else if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
+            uint64_t bsStride = static_cast<uint64_t>(taskParam.kvHeadNum) * taskParam.headDim;
+            uint64_t bnStride = static_cast<uint64_t>(taskParam.kvCacheBlockSize) * bsStride;
+            if (taskParam.kvBnStride != 0) {
+                bnStride = taskParam.kvBnStride;
+            }
+            taskParam.paBlockStride = bnStride;
+            taskParam.paRowStride = bsStride;
+            taskParam.paN2HeadOffset = static_cast<uint64_t>(taskParam.n2Idx) * taskParam.headDim;
+        } else {
+            uint64_t headStride = static_cast<uint64_t>(taskParam.kvCacheBlockSize) * taskParam.headDim;
+            if (taskParam.kvN2Stride != 0) {
+                headStride = taskParam.kvN2Stride;
+            }
+            uint64_t blockStride = static_cast<uint64_t>(taskParam.kvHeadNum) * headStride;
+            if (taskParam.kvBnStride != 0) {
+                blockStride = taskParam.kvBnStride;
+            }
+            taskParam.paBlockStride = blockStride;
+            taskParam.paRowStride = taskParam.headDim;
+            taskParam.paN2HeadOffset = static_cast<uint64_t>(taskParam.n2Idx) * headStride;
         }
     }
 }
@@ -826,9 +877,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
 
 // fd
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(const RunInfo<isInfer> &runInfo,
-                                                                          ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(
+    const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
     constexpr uint32_t FP32_ONE_BLOCK_SIZE = 8;
 
@@ -941,7 +991,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
         tempValueGm = this->valueGm;
         GetKvByTensorList(runInfo, this->valueGm, tempValueGm, constInfo);
     }
-    SetAntiqParamCommon(runInfo, runInfo.valueOffset, constInfo);
+    const bool isKey = false; // value 侧 stride (区别于 key 侧)
+    SetAntiqParamCommon(runInfo, runInfo.valueOffset, constInfo, isKey);
     if constexpr (VALUE_ANTIQUANT_PER_TOKEN || ANTIQUANT_PER_GROUP) {
         taskParam.isFreeAntiqParam = true;
         taskParam.isLoadAntiqParam = true;
@@ -1151,19 +1202,19 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeOffsetForSoftmax(const RunInfo<isInfer> &runInfo,
-                                                                      const int64_t vec2S1Idx)
+__aicore__ inline int64_t FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeOffsetForSoftmax(
+    const RunInfo<isInfer> &runInfo, const int64_t vec2S1Idx)
 {
     return vec2S1Idx * runInfo.vec2S1BaseSize;
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
-                                                         const RunInfo<isInfer> &runInfo, int64_t dSizeAligned64,
-                                                         ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                                int64_t vec2S1Idx,
+                                                                                const RunInfo<isInfer> &runInfo,
+                                                                                int64_t dSizeAligned64,
+                                                                                ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer && hasAtten) {
         if (!constInfo.isRowInvalid) {
@@ -1342,8 +1393,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::FlashDecode
 
 /*FD*/
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitFDBuffers(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
 
@@ -1436,10 +1487,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetActualSe
 
 /*FD*/
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CombineSplitKVRes(uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx,
-                                                                ConstInfo<isInfer, hasRope> &constInfo,
-                                                                __gm__ int64_t *actualSeqQlenAddr)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CombineSplitKVRes(
+    uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx, ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     uint32_t gSplitSizeLse =
         bufferSizeByte32K / (FA_BYTE_BLOCK_ANTIQUANT * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
@@ -1523,10 +1573,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyLseIn(u
 
 /*FD*/
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb,
-                                                                uint32_t splitSize, uint64_t lseOffset,
-                                                                ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ComputeScaleValue(
+    LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, uint32_t splitSize, uint64_t lseOffset,
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<T> lseOutputUb;
     if (constInfo.isSoftmaxLseEnable) {
@@ -1564,10 +1613,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ReduceFinal
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyAccumOutIn(uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex,
-                                                             uint32_t startRow, uint32_t dealRowCount,
-                                                             ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyAccumOutIn(
+    uint32_t bIdx, uint32_t n2Idx, uint32_t splitKVIndex, uint32_t startRow, uint32_t dealRowCount,
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>();
 
@@ -1646,9 +1694,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InvalidLine
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
-                                                                      SoftMaxShapeInfo &softmaxShapeInfo)
+__aicore__ inline bool FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(
+    LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo)
 {
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
@@ -1670,9 +1717,8 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(LocalTenso
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxDataCopyOut(const RunInfo<isInfer> &runInfo,
-                                                                 ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxDataCopyOut(
+    const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         return;
@@ -1724,7 +1770,6 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxDataCopyOut(const RunInfo<i
     }
 }
 
-
 ANTIQUANT_TEMPLATES_DEF
 class FABlockVecAntiquantDummy {
 public:
@@ -1734,34 +1779,21 @@ public:
                                         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *workspace,
                                         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *pipe,
                                         AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo)
-    {
-    }
-    __aicore__ inline void SetCrossCoreFlag()
-    {
-    }
-    __aicore__ inline void WaitCrossCoreFlag()
-    {
-    }
-    __aicore__ inline void setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo)
-    {
-    }
-    __aicore__ inline void InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo)
-    {
-    }
-    __aicore__ inline void ClearOutput(ConstInfo<isInfer, hasRope> &constInfo)
-    {
-    }
+    {}
+    __aicore__ inline void SetCrossCoreFlag() {}
+    __aicore__ inline void WaitCrossCoreFlag() {}
+    __aicore__ inline void setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo) {}
+    __aicore__ inline void InitLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo) {}
+    __aicore__ inline void ClearOutput(ConstInfo<isInfer, hasRope> &constInfo) {}
     __aicore__ inline void InitQuant(__gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
                                      __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
                                      __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset,
                                      __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
                                      ConstInfo<isInfer, hasRope> &constInfo)
-    {
-    }
+    {}
     __aicore__ inline void FlashDecode(ConstInfo<isInfer, hasRope> &constInfo, __gm__ int64_t *seqQlenAddr,
                                        __gm__ int64_t *seqKVlenAddr, int64_t s2InCurrentBatch)
-    {
-    }
+    {}
 };
 
 } // namespace BaseApi

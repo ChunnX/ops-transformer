@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_tiling_registry.h
@@ -27,12 +27,12 @@
 
 #include "matmul_base_tiling.h"
 #include "matmul_tiling_cfg.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 
 namespace optiling {
 struct Mc2MMRegisterCfg {
     const char *opType{nullptr};
-    NpuArch npuArch{NpuArch::DAV_RESV};
+    NpuArch npuArch{Ops::Base::DAV_RESV};
     std::vector<int32_t> priorities{}; // 0 base
 };
 
@@ -46,9 +46,9 @@ using Mc2MMTilingClassCase = std::unique_ptr<Mc2MatMulBaseTiling> (*)(gert::Tili
 
 class Mc2MMTilingCases {
 public:
-    explicit Mc2MMTilingCases(std::string opType) : opType_(std::move(opType))
-    {
-    }
+    explicit Mc2MMTilingCases(std::string opType)
+        : opType_(std::move(opType))
+    {}
 
     template <typename T>
     void AddTiling(int32_t priority)
@@ -167,9 +167,9 @@ private:
 
 class Mc2MMRegister {
 public:
-    explicit Mc2MMRegister(std::string opType) : opType_(std::move(opType))
-    {
-    }
+    explicit Mc2MMRegister(std::string opType)
+        : opType_(std::move(opType))
+    {}
 
     template <typename T>
     Mc2MMRegister &tiling(int32_t priority, NpuArch npuArch)
@@ -189,10 +189,10 @@ private:
 // opType: 算子名称， className: 注册的 tiling 类,
 // priority: tiling 类的优先级, 越小表示优先级越高, 即被选中的概率越大
 // 取代 MC2_MM_REGISTER_TILING_TEMPLATE , 传入的op_type如果是字符串常量，需要去掉引号
-#define MC2_MM_REGISTER_TILING_TEMPLATE(opType, className, npuArch, priority)                                          \
-    [[maybe_unused]] uint32_t op_impl_register_template_##opType##_##className##_##npuArch##_##priority;               \
-    static Mc2MMRegister __attribute__((unused)) mc2_mm_register_##opType##_##className##_##npuArch##_##priority##_ =  \
-        Mc2MMRegister(#opType).tiling<className>(static_cast<int32_t>(priority), NpuArch::npuArch)
+#define MC2_MM_REGISTER_TILING_TEMPLATE(opType, className, npuArch, priority) \
+    [[maybe_unused]] uint32_t op_impl_register_template_##opType##_##className##_##npuArch##_##priority; \
+    static Mc2MMRegister __attribute__((unused)) mc2_mm_register_##opType##_##className##_##npuArch##_##priority##_ = \
+        Mc2MMRegister(#opType).tiling<className>(static_cast<int32_t>(priority), Ops::Base::npuArch)
 } // namespace optiling
 
 #endif // __OP_HOST_MATMUL_TILING_REGISTRY_H__

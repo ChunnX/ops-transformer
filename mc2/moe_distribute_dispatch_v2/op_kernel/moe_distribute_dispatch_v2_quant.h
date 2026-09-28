@@ -20,7 +20,8 @@
 #include "moe_distribute_v2_base.h"
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#include "quantize_functions.h"
+#include "moe_distribute_dispatch_v2_common.h"
+#include "../../common/op_kernel/quantize_functions.h"
 #endif
 
 namespace Mc2Kernel {
@@ -236,8 +237,11 @@ public:
             __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)outLocal.GetPhyAddr();
             __ubuf__ float *scaleOutLocalAddr = (__ubuf__ float *)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
 
-            Quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
-                srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
+            // per-group路径不使用floatLocalTemp_，复用这块UB暂存各group的最大值和量化系数。
+            __ubuf__ float *groupScaleLocalAddr = (__ubuf__ float *)floatLocalTemp_.GetPhyAddr();
+            Quant::ComputePerTileDynamicBatchScale<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT,
+                                                   IsSmoothScaleExist>(srcAddr, smoothLocalAddr, groupScaleLocalAddr,
+                                                                       scaleOutLocalAddr, outLocalAddr, axisH_);
         }
     }
 

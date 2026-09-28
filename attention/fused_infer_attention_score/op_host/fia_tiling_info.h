@@ -73,7 +73,6 @@ constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 constexpr int32_t SPARSE_MODE_TREE = 9;
 
-
 enum class FiaQuantMode : uint32_t {
     NO_QUANT = 0,
     ANTI_QUANT,
@@ -238,6 +237,8 @@ public:
     const gert::Stride *kRopeStrides = nullptr;
     const gert::Stride *kScaleStrides = nullptr;
     const gert::Stride *vScaleStrides = nullptr;
+    const gert::Stride *kOffsetStrides = nullptr;
+    const gert::Stride *vOffsetStrides = nullptr;
     bool hasViewStride = true;
     uint64_t keyBnStride = 0;
     uint64_t keyN2Stride = 0;
@@ -245,6 +246,14 @@ public:
     uint64_t valueN2Stride = 0;
     uint64_t kRopeBnStride = 0;
     uint64_t kRopeN2Stride = 0;
+    uint64_t kScaleBnStride = 0;
+    uint64_t kScaleN2Stride = 0;
+    uint64_t vScaleBnStride = 0;
+    uint64_t vScaleN2Stride = 0;
+    uint64_t kOffsetBnStride = 0;
+    uint64_t kOffsetN2Stride = 0;
+    uint64_t vOffsetBnStride = 0;
+    uint64_t vOffsetN2Stride = 0;
     // empty Tensor
     bool emptyTensorFlag = false;
     uint64_t totalOutputSize = 0;
@@ -347,6 +356,9 @@ public:
     FiaLayout qLayout = FiaLayout::BSND;
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
+
+    // NZ layout D0 from KV shape last dim
+    uint32_t kvCacheNzD0 = 0;
 };
 } // namespace optiling
 #endif // FIA_TILING_INFO_H

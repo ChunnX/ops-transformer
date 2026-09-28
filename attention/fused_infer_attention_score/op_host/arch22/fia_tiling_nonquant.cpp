@@ -70,10 +70,7 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-constexpr uint64_t RecursiveSum()
-{
-    return 0;
-}
+constexpr uint64_t RecursiveSum() { return 0; }
 
 template <typename T, typename... Args>
 constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
@@ -87,10 +84,7 @@ constexpr uint64_t FIA_GET_TILINGKEY(Args... templateIds)
     return RecursiveSum(templateIds...);
 }
 
-void FiaTilingNonQuant::InitTilingInfo(TilingInfo *tilingInfo)
-{
-    fiaInfo_ = static_cast<FiaTilingInfo *>(tilingInfo);
-}
+void FiaTilingNonQuant::InitTilingInfo(TilingInfo *tilingInfo) { fiaInfo_ = static_cast<FiaTilingInfo *>(tilingInfo); }
 
 ge::graphStatus FiaTilingNonQuant::GetPlatformInfo()
 {
@@ -510,6 +504,11 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.baseParams.set_l2CacheOffFlag(l2CacheOffFlag_);
     tilingData_.baseParams.set_isLegacyIfa(fiaInfo_->isLegacyIfa);
     tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
+    // The generic arch22 template does not consume cache view strides.
+    tilingData_.kvStrideParams.set_keyBnStride(0);
+    tilingData_.kvStrideParams.set_valueBnStride(0);
+    tilingData_.kvStrideParams.set_keyRopeBnStride(0);
+    tilingData_.baseParams.set_needInit(fiaInfo_->needInit);
 }
 
 void FiaTilingNonQuant::FillTilingPageAttenParams()

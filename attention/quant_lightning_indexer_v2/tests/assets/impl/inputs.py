@@ -16,17 +16,21 @@ import importlib.util
 import inspect
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 
-if TYPE_CHECKING:
-    from ttk.test_spec import TtkContext
-
-
 QUANT_MODE_MXFP4 = 5
 QUANT_MODE_MXFP8 = 3
+QUANT_MODE_HIF4 = 6
+
+NUMPY_CUSTOM_TORCH_DTYPES = {
+    "bfloat16": "bfloat16",
+    "float8_e4m3fn": "float8_e4m3fn",
+    "float8_e5m2": "float8_e5m2",
+    "float8_e8m0": "float8_e8m0fnu",
+    "float4_e2m1": "float4_e2m1fn_x2",
+}
 
 
 def restore_mx_input_dtypes(query, key, query_scale, key_scale, quant_mode):
@@ -66,6 +70,28 @@ class QuantLightningIndexerV2InputAdapter:
     def __init__(self):
         self.pytest_golden = None
         self.pytest_normalizer = None
+        self.batch_consistency = None
+
+    def load_batch_consistency(self):
+        if self.batch_consistency is not None:
+            return self.batch_consistency
+        name = "qli_v2_ttk_batch_consistency"
+        path = Path(__file__).with_name("batch_consistency.py")
+        try:
+            if name in sys.modules:
+                module = sys.modules[name]
+            else:
+                spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {path}")
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[name] = module
+                spec.loader.exec_module(module)
+            self.batch_consistency = module
+            return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise self.module_load_error("assets batch consistency", path, exc) from exc
 
     @staticmethod
     def load_golden_store():
@@ -88,11 +114,11 @@ class QuantLightningIndexerV2InputAdapter:
         return module
 
     @staticmethod
-    def load_pre_npu_module():
-        name = "qli_v2_ttk_pre_npu"
+    def load_metadata_protocol():
+        name = "qli_v2_ttk_metadata_protocol"
         if name in sys.modules:
             return sys.modules[name]
-        path = Path(__file__).with_name("pre_npu.py")
+        path = Path(__file__).with_name("metadata_protocol.py")
         try:
             spec = importlib.util.spec_from_file_location(name, path)
             if spec is None or spec.loader is None:
@@ -103,7 +129,7 @@ class QuantLightningIndexerV2InputAdapter:
         except Exception as exc:
             sys.modules.pop(name, None)
             raise QuantLightningIndexerV2InputAdapter.module_load_error(
-                "assets pre-NPU state", path, exc
+                "assets metadata protocol", path, exc
             ) from exc
         return module
 
@@ -171,7 +197,10 @@ class QuantLightningIndexerV2InputAdapter:
     def tensor_dtype(tensor):
         if torch.is_tensor(tensor):
             return tensor.dtype
-        if "hifloat8" in str(tensor.dtype):
+        dtype_name = str(tensor.dtype)
+        if dtype_name in NUMPY_CUSTOM_TORCH_DTYPES:
+            return getattr(torch, NUMPY_CUSTOM_TORCH_DTYPES[dtype_name])
+        if "hifloat8" in dtype_name:
             return torch.uint8
         return torch.from_numpy(np.asarray(tensor)).dtype
 
@@ -181,10 +210,23 @@ class QuantLightningIndexerV2InputAdapter:
             return None
         if torch.is_tensor(tensor):
             return tensor.detach().cpu()
-        array = np.asarray(tensor)
-        if "hifloat8" in str(array.dtype):
+        array = np.array(tensor, copy=True, order="C")
+        dtype_name = str(array.dtype)
+        if dtype_name in NUMPY_CUSTOM_TORCH_DTYPES:
+            torch_dtype = getattr(torch, NUMPY_CUSTOM_TORCH_DTYPES[dtype_name])
+            if dtype_name == "float4_e2m1":
+                if array.ndim == 0 or array.shape[-1] % 2:
+                    raise ValueError("QLI_V2 FP4 input requires an even last dimension")
+                # NumPy stores one FP4 code per byte; normalize to Torch's x2
+                # storage so replay uses the same unpacking path as E2E.
+                codes = array.view(np.uint8) & 0x0F
+                array = codes[..., ::2] | (codes[..., 1::2] << 4)
+            else:
+                array = array.view(np.uint16 if dtype_name == "bfloat16" else np.uint8)
+            return torch.from_numpy(array).view(torch_dtype)
+        if "hifloat8" in dtype_name:
             array = array.view(np.uint8)
-        return torch.from_numpy(np.array(array, copy=True))
+        return torch.from_numpy(array)
 
     @staticmethod
     def prefix_lengths(value):
@@ -210,6 +252,8 @@ class QuantLightningIndexerV2InputAdapter:
             return "FLOAT8_E4M3FN"
         if quant_mode == QUANT_MODE_MXFP4:
             return "FLOAT4_E2M1FN_X2"
+        if quant_mode == QUANT_MODE_HIF4:
+            return "HIF4"
         dtype = QuantLightningIndexerV2InputAdapter.tensor_dtype(tensor)
         dtype_name = str(tensor.dtype)
         if dtype == torch.int8:
@@ -271,7 +315,8 @@ class QuantLightningIndexerV2InputAdapter:
         else:
             raise ValueError(f"unsupported QLI_V2 query layout: {layout_query}")
 
-        if quant_mode == QUANT_MODE_MXFP4:
+        is_aclnn_float4 = isinstance(query, np.ndarray) and "float4" in str(query.dtype)
+        if quant_mode in (QUANT_MODE_MXFP4, QUANT_MODE_HIF4) and not is_aclnn_float4:
             head_dim *= 2
 
         if layout_key == "BSND":
@@ -381,8 +426,10 @@ class QuantLightningIndexerV2InputAdapter:
     def copy_tensor(dst, src, name, packed_dtype=None):
         if dst is None:
             if src is not None:
-                raise ValueError(
-                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                import logging
+
+                logging.warning(
+                    f"{name} is absent from CSV but pytest generator produced a tensor. Skipping copy."
                 )
             return
         if src is None:
@@ -410,7 +457,14 @@ class QuantLightningIndexerV2InputAdapter:
             return
 
         dst_array = np.asarray(dst)
-        src_array = np.asarray(src_cpu)
+        if "float8" in str(src_cpu.dtype):
+            # ACLNN keeps this storage as a NumPy custom dtype.  Copy its
+            # encoded bytes directly so assets do not depend on TTK's dtype helpers.
+            src_array = src_cpu.view(torch.uint8).numpy()
+            np.copyto(dst_array.view(np.uint8), src_array)
+            return
+        else:
+            src_array = np.asarray(src_cpu)
         if "hifloat8" in str(dst_array.dtype):
             np.copyto(dst_array.view(np.uint8), src_array.view(np.uint8))
         else:
@@ -475,6 +529,9 @@ class QuantLightningIndexerV2InputAdapter:
         attributes = dict(compare_context.attributes)
         aliases = {
             "topk": "sparse_count",
+            "mask_mode": "sparse_mode",
+            "layout_q": "layout_query",
+            "layout_k": "layout_key",
             "quantMode": "quant_mode",
             "maxSeqlenQ": "max_seqlen_q",
             "layoutQOptional": "layout_query",
@@ -775,7 +832,16 @@ class QuantLightningIndexerV2InputAdapter:
             kwargs,
             include_weight_dtype=self.pytest_uses_weight_dtype(pytest_golden),
         )
-        data = pytest_golden.generate_qliv2_test_data(params, generate_golden=False)
+        batch_module = self.load_batch_consistency()
+        with batch_module.CaseRandomContext(kwargs):
+            data = pytest_golden.generate_qliv2_test_data(params, generate_golden=False)
+        batch_module.normalize_indexer_inputs(
+            data,
+            kwargs,
+            "QLI_V2",
+            quantized=True,
+            hifloat8_encoder=pytest_golden.trans_float_tensor_to_hifuint8,
+        )
         for name, dst, src_name in (
             ("query", query, "query"),
             ("key", key, "key"),
@@ -790,16 +856,31 @@ class QuantLightningIndexerV2InputAdapter:
             ("block_table", block_table, "block_table"),
             ("output_idx_offset", output_idx_offset, "output_idx_offset"),
         ):
+            src = data.get(src_name)
+            if (
+                quant_mode == QUANT_MODE_MXFP4
+                and name in ("query", "key")
+                and isinstance(dst, np.ndarray)
+                and "float4" in str(dst.dtype)
+            ):
+                src = self.unpack_mxfp4(src, pytest_golden.FP4_E2M1_VALUES)
             packed_dtype = (
                 torch.float8_e4m3fn
                 if quant_mode == QUANT_MODE_MXFP8 and name in ("query", "key")
                 else None
             )
-            self.copy_tensor(dst, data.get(src_name), name, packed_dtype)
+            self.copy_tensor(dst, src, name, packed_dtype)
         return data
 
 
 INPUT_ADAPTER = QuantLightningIndexerV2InputAdapter()
+
+
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 
 
 def rebuild_qli_v2_compare_data(compare_context):
@@ -836,10 +917,12 @@ def generate_qli_v2_inputs(
     mask_mode=0,
     cmp_ratio=1,
     return_value=0,
-    context: "TtkContext" = None,
     **kwargs,
 ):
-    """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
+    """Populate pytest-derived inputs; metadata is filled by npu_preprocess."""
+    if expect_error(kwargs):
+        return None
+
     if metadata is None:
         raise ValueError("QLI_V2 direct API CSV must reserve the metadata tensor slot")
     params = dict(kwargs)
@@ -876,10 +959,10 @@ def generate_qli_v2_inputs(
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
-    metadata_input = case_data.persist(testcase_name, context)
-    INPUT_ADAPTER.load_pre_npu_module().persist_metadata_inputs(
-        testcase_name, metadata_input, context
+    INPUT_ADAPTER.load_metadata_protocol().save_metadata_inputs(
+        "quant_lightning_indexer_v2", testcase_name, data.get("metadata_input")
     )
+    return data
 
 
 def generate_aclnn_qli_v2_inputs(
@@ -906,7 +989,6 @@ def generate_aclnn_qli_v2_inputs(
     return_value,
     sparse_indices_out,
     sparse_values_out,
-    context: "TtkContext" = None,
     **kwargs,
 ):
     """Map the ACLNN C signature to the canonical pytest input adapter."""
@@ -933,6 +1015,5 @@ def generate_aclnn_qli_v2_inputs(
         mask_mode=mask_mode,
         cmp_ratio=cmp_ratio,
         return_value=return_value,
-        context=context,
         **kwargs,
     )

@@ -5,22 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -278,12 +278,12 @@ aclnnStatus aclnnGroupedMatmul(
     </tbody></table>
 
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - x、weight支持FLOAT16、BFLOAT16、INT8
     - y支持FLOAT16、BFLOAT16、INT8、FLOAT32
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - x支持FLOAT16、BFLOAT16、FLOAT32
     - weight支持FLOAT16、BFLOAT16、FLOAT32、INT8
     - y支持FLOAT16、BFLOAT16、FLOAT32
@@ -359,17 +359,18 @@ aclnnStatus aclnnGroupedMatmul(
   - aclnnGroupedMatmul默认确定性实现。
 
 <!-- npu="A3,910b" id9 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
   - 量化场景支持的输入类型为：
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为UINT64、 offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为INT8；
+    - x为INT8、weight为INT8、biasOptional为INT32或空、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为INT32；
   - 伪量化场景支持的输入类型为：
     - x为FLOAT16、weight为INT8、biasOptional为FLOAT16、scaleOptional为空，  offsetOptional为空，antiquantScaleOptional为FLOAT16、 antiquantOffsetOptional为FLOAT16、y为FLOAT16；
     - x为BFLOAT16、weight为INT8、biasOptional为FLOAT32、scaleOptional为空，offsetOptional为空，antiquantScaleOptional为BFLOAT16、 antiquantOffsetOptional为BFLOAT16、y为BFLOAT16；
-  - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1。
+  - 如果传入groupListOptional，groupListOptional必须为非负单调非递减数列，groupListOptional长度不能为1。
   - 当前支持的场景：
       支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，y，例，单多单表示支持x为单tensor，weight多tensor，y单tensor的场景。
 
@@ -385,14 +386,14 @@ aclnnStatus aclnnGroupedMatmul(
 
 <!-- end id9 -->
 <!-- npu="950" id10 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
     <details>
     <summary>非量化场景约束</summary>
       <a id="非量化场景约束"></a>
 
     - 非量化场景支持的数据类型为：
-      - 如果传入groupListOptional，groupListOptional必须为非负递增数列，groupListOptional长度不能为1
+      - 如果传入groupListOptional，groupListOptional必须为非负单调非递减数列，groupListOptional长度不能为1
       - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional
       - 不为空的参数支持的数据类型组合要满足下表：
 
@@ -412,15 +413,14 @@ aclnnStatus aclnnGroupedMatmul(
       - 以下入参为空：scaleOptional、offsetOptional
       - 不为空的参数支持的数据类型组合要满足下表：
 
-          | x       | weight  | biasOptional | antiquantScaleOptional | antiquantOffsetOptional | y     |
-          |:-------:|:-------:| :------      |:------ |:------ |:------ |
-          |BFLOAT16    |INT8     |BFLOAT16/FLOAT32/null    | BFLOAT16 | BFLOAT16 | BFLOAT16 |
-          |FLOAT16     |INT8     |FLOAT16/null             | FLOAT16  | FLOAT16  | FLOAT16  |
+        | x       | weight  | biasOptional | antiquantScaleOptional | antiquantOffsetOptional | y     |
+        |:-------:|:-------:| :------      |:------ |:------ |:------ |
+        |BFLOAT16    |INT8     |BFLOAT16/FLOAT32/null    | BFLOAT16 | BFLOAT16 | BFLOAT16 |
+        |FLOAT16     |INT8     |FLOAT16/null             | FLOAT16  | FLOAT16  | FLOAT16  |
 
       - antiquantScaleOptional和非空的biasOptional、antiquantOffsetOptional要满足下表：
 
         | 使用场景 | shape限制 |
-
         |:---------:| :------ |
         |weight多tensor|每个tensor 1维，shape为（$n_i$），不允许存在一个tensorList中部分tensor的shape为（$n_i$）部分tensor为空的情况 |
 

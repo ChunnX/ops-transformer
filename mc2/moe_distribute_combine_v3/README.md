@@ -4,12 +4,12 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950DT</term>                             |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                               |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Ascend 950DT系列产品</term>                             |    ×    |
+| <term>Atlas A3系列产品</term>       |    √    |
+| <term>Atlas A2系列产品</term> |    ×    |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×    |
+| <term>Atlas推理系列产品</term>                               |    ×    |
+| <term>Atlas训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
@@ -100,7 +100,7 @@
   <tr>
    <td>x_active_mask_optional</td>
    <td>可选输入</td>
-   <td>表示token是否参与通信，可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效。</td>
+   <td>表示token是否参与通信，可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -247,7 +247,7 @@
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡BS最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -310,7 +310,7 @@
  </tbody>
 </table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+- <term>Atlas A3系列产品</term>  ：
     * 不支持`expand_scales_optional`。
     * 不支持`comm_alg`。
 
@@ -336,8 +336,8 @@
     - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
     - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
     - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`BS`, `H`)，数据类型需与`expand_x`保持一致。
-    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
-    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`,)，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`,)，数据类型需与`expand_x`保持一致。
     - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
 
 - 本文公式中的"/"表示整除。
@@ -345,7 +345,7 @@
     - 一个模型中的`MoeDistributeCombineV3`和`MoeDistributeDispatchV3`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 当前不支持TP域通信。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+- <term>Atlas A3系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
@@ -358,10 +358,10 @@
         - `shared_expert_num`：当前取值范围[0, 4]。
         - `comm_quant_mode`：int8量化支持。
         - `performance_info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../common/torch_extension/moe_distribute_buffer.py)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+| low_latency_combine接口 | [moe_distribute_buffer.py](../common/torch_extension/moe_distribute_buffer.py) | 通过[low_latency_combine](../common/docs/torchapi_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |

@@ -4,65 +4,65 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Kirin X90 处理器系列产品</term> | √ |
-|  <term>Kirin 9030 处理器系列产品</term> | √ |
+|  <term>Ascend 950PR&950DT系列产品</term>   |     √    |
+|  <term>Atlas A3系列产品</term>   |     √    |
+|  <term>Atlas A2系列产品</term>     |     √    |
+|  <term>Atlas 200I/500 A2推理产品</term>    |     ×    |
+|  <term>Atlas推理系列产品</term>    |     ×    |
+|  <term>Atlas训练系列产品</term>    |     ×    |
+|  <term>Kirin X90处理器系列产品</term> | √ |
+|  <term>Kirin 9030处理器系列产品</term> | √ |
 
 ## 功能说明
 
 - 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
 
 - 计算公式：
-  
+
   $$
   dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
   $$
-  
+
   $$
   q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
   $$
-  
+
   $$
   qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
   $$
-  
+
   $$
   quantK = Quant(kOut,scaleK,offsetKOptional)
   $$
-  
+
   $$
   quantV = Quant(vOut,scaleV,offsetVOptional)
   $$
-  
+
   如果cacheModeOptional为contiguous则：
-  
+
   $$
   kCacheRef[i][indices[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRef[i][indices[i]]=quantV[i]
   $$
-  
+
   如果cacheModeOptional为page则：
-  
+
   $$
   kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
   $$
-  
+
   $$
   vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
   $$
-  
+
   $$
   kCacheRefView[indices[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRefView[indices[i]]=quantV[i]
   $$
@@ -97,7 +97,7 @@
       <td style="white-space: nowrap">sin</td>
       <td style="white-space: nowrap">输入</td>
       <td style="white-space: nowrap">公式中的用于位置编码的输入`sin`，Device侧的aclTensor。</td>
-      <td style="white-space: nowrap">BFLOAT16、FLOAT16、FLOAT32</td>
+      <td style="white-space: nowrap">BFLOAT16、FLOAT16</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -145,14 +145,14 @@
     <tr>
       <td style="white-space: nowrap">offsetVOptional</td>
       <td style="white-space: nowrap">可选输入</td>
-      <td style="white-space: nowrap">公式中的输入`offsetVoptional`用于量化的offset因子，Device侧的aclTensor。</td>
+      <td style="white-space: nowrap">公式中的输入`offsetVOptional`用于量化v的offset因子，Device侧的aclTensor。</td>
       <td style="white-space: nowrap">FLOAT</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">weightScaleOptional</td>
       <td style="white-space: nowrap">可选输入</td>
-      <td style="white-space: nowrap">公式中的输入`weightScaleoptional`用于反量化的权重scale因子，Device侧的aclTensor。</td>
+      <td style="white-space: nowrap">公式中的输入`weightScaleOptional`用于反量化的权重scale因子，Device侧的aclTensor。</td>
       <td style="white-space: nowrap">FLOAT</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
@@ -228,11 +228,11 @@
     </tr>
   </tbody></table>
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+- Kirin X90/Kirin 9030处理器系列产品: 不支持BFLOAT16。
 
 ## 约束说明
 
-- cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维；cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
+- cacheModeOptional为contiguous时：kCacheRef的第0维大于等于x的第0维；x为3维时，indices数据值大于等于0且小于等于kCacheRef的第1维减x的第1维；x为2维时，indices数据值大于等于0且小于等于kCacheRef的第1维减1。cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
 - x的尾轴小于等于4096，且按64对齐。
 - 输入x不为int32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效；x为int32时，cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时weightScaleOptional必选，activationScaleOptional、biasOptional可选（biasOptional不需要与其他输入类型一致）。
 

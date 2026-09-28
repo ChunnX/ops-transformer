@@ -25,13 +25,16 @@ using namespace op;
 
 namespace {
 
+static const int64_t MAX_DRAFT_TOKENS_DEFAULT = 7;
+
 aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
     const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t residualConnection, int64_t blockSize, int64_t convMode, int64_t maxDraftTokens, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     // Mandatory tensors must be checked before any dereference (CreateView / Contiguous).
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
@@ -56,8 +59,8 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
 
     // Optional tensors: contiguous if non-null.
     // CHECK_COND at each call site distinguishes "not provided" (t == nullptr, legal) from
-    // "provided but Contiguous failed" (final == nullptr), so a genuine conversion failure is
-    // never silently degraded into "input not provided".
+    // "provided but Contiguous failed" (final == nullptr), so a genuine conversion failure is never silently degraded
+    // into "input not provided".
     auto ensureContiguous = [&](const aclTensor *t) -> const aclTensor * {
         if (t == nullptr) {
             return nullptr;
@@ -103,7 +106,8 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     bool ok = l0op::InplaceFusedCausalConv1d(
         xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal, initialStateModeFinal, biasFinal,
         numAcceptedTokensFinal, numComputedTokensFinal, blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal,
-        activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, uniqueExecutor.get());
+        activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens,
+        uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -127,12 +131,14 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnInplaceFusedCausalConv1d,
                    DFX_IN(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-                          numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
+                          numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx,
+                          activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode),
                    DFX_OUT(convStates, x));
     return InplaceFusedCausalConv1dCommonProcess(
         x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
         numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, workspaceSize, executor);
+        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, MAX_DRAFT_TOKENS_DEFAULT,
+        workspaceSize, executor);
 }
 
 ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

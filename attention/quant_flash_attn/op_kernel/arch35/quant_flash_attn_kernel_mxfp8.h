@@ -20,12 +20,8 @@
 #include "quant_flash_attn_block_cube_mxfp8.h"
 #include "quant_flash_attn_block_vec_mxfp8.h"
 #include "quant_flash_attn_block_vec_flashdecode.h"
-#include "memory_copy_arch35.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
+#include "memory_copy_arch35_quant_flash_attn.h"
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/op_kernel/vector_common.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -56,6 +52,15 @@ public:
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
     static constexpr uint32_t s2SplitSize = (dBaseSize == 256) ? 128U : 256U;
+
+    // kernel侧ubBufferManager_(跨核bmm1/bmm2)占用的UB字节数, 与InitMMResBuf的分配公式一致,
+    // 作为FD静态Tensor业务区(FD InitBuffers)的起始基准偏移
+    static constexpr uint32_t GetMmUbTotalSize()
+    {
+        constexpr uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T) / 2;
+        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
+        return mm1ResultSize * 2 + mm2ResultSize;
+    }
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
@@ -95,8 +100,6 @@ public:
     __gm__ uint8_t *valuePtr_ = nullptr;
 
     ConstInfoX constInfo_;
-
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -118,6 +121,8 @@ public:
 
     // metadata
     uint32_t sectionNum_;
+    uint32_t metadataAicNum_;
+    uint32_t metadataAivNum_;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -151,12 +156,13 @@ public:
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                const QuantFlashAttnTilingData &tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
-        this->tilingData_ = tiling;
 
-        InitConstInfo();
+        InitConstInfo(tiling);
+        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)metadata)[1]);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -173,10 +179,12 @@ public:
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         }
-        sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+        sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
-                                      QFA_AIC_CORE_NUM * 16U * sectionNum_);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
+                                      sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
 
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
@@ -205,22 +213,26 @@ public:
             }
         }
         if constexpr (FLASH_DECODE) {
-            if ASCEND_IS_AIV {
-                fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET +
-                                        QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-                    QFA_AIV_CORE_NUM * 16U * sectionNum_);
-                vecFdBlock_.InitParams();
-                vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
-                if (constInfo_.isSoftmaxLseEnable) {
-                    softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
-                }
-                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
-                } else {
-                    vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+            if (constInfo_.enableFlashDecode) {
+                if ASCEND_IS_AIV {
+                    fdMetaDataGm_.SetGlobalBuffer(
+                        (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
+                                            METADATA_STRIDE * metadataAicNum_ * sectionNum_ * sizeof(uint32_t)),
+                        sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
+                    vecFdBlock_.InitParams();
+                    vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
+                                                 this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_,
+                                                 keyPtr_);
+                    vecFdBlock_.InitPScaleValue(this->vecFaBlock_.pScaleValue_);
+                    if (constInfo_.isSoftmaxLseEnable) {
+                        softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                        vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
+                    }
+                    if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                        vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_, kvCuSeqLensParser_);
+                    } else {
+                        vecFdBlock_.SetCuSeqLensParsers(qSeqUsedParser_, kvSeqUsedParser_);
+                    }
                 }
             }
         }
@@ -242,7 +254,7 @@ public:
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo(const QuantFlashAttnTilingData &tiling)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -252,10 +264,10 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
-        const auto &qfaAttenMaskParams = this->tilingData_->baseTiling.quantFlashAttnAttenMaskParams;
-        const auto &qfaPageAttentionParams = this->tilingData_->baseTiling.quantFlashAttnPageAttentionParams;
-        const auto &qfaWorkspaceParams = this->tilingData_->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = tiling.baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = tiling.baseTiling.quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = tiling.baseTiling.quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = tiling.baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
@@ -278,9 +290,7 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
-        constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         constInfo_.sparseMode =
             qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
@@ -292,6 +302,16 @@ public:
 
         constInfo_.accumOutSize = qfaWorkspaceParams.accumOutSize;
         constInfo_.logSumExpSize = qfaWorkspaceParams.logSumExpSize;
+
+        // strides
+        constInfo_.keyStrides.bnStride = qfaBaseParams.keyStrides.bnStride;
+        constInfo_.keyStrides.n2Stride = qfaBaseParams.keyStrides.n2Stride;
+        constInfo_.valueStrides.bnStride = qfaBaseParams.valueStrides.bnStride;
+        constInfo_.valueStrides.n2Stride = qfaBaseParams.valueStrides.n2Stride;
+        constInfo_.kDescaleStrides.bnStride = qfaBaseParams.kDescaleStrides.bnStride;
+        constInfo_.kDescaleStrides.n2Stride = qfaBaseParams.kDescaleStrides.n2Stride;
+        constInfo_.vDescaleStrides.bnStride = qfaBaseParams.vDescaleStrides.bnStride;
+        constInfo_.vDescaleStrides.n2Stride = qfaBaseParams.vDescaleStrides.n2Stride;
 
         // pageAttention
         if constexpr (PAGE_ATTENTION) {
@@ -328,12 +348,12 @@ public:
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAicNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_FD_METADATA_SIZE * QFA_AIV_CORE_NUM * sectionIdx + QFA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAivNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -740,16 +760,19 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        GetFDSectionInfo(sectionIdx);
-        if (!fdParams_.fdCoreEnable) {
+        // FD静态Tensor业务区必须完全落在FA瞬态区内, 编译期校验布局容量
+        static_assert(VecFdBlockType::GetFdTotalUbSize() <= VecFaBlockType::GetTransientUbSize(),
+                      "FD static UB region exceeds FA transient region");
+        if (!constInfo_.enableFlashDecode) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        GetFDSectionInfo(sectionIdx);
+        // FD静态Tensor业务区起始偏移: 跨核bmm区 + FA保留区, 落在FA瞬态区内分时复用
+        vecFdBlock_.template InitBuffers<GetMmUbTotalSize() + VecFaBlockType::GetPersistUbSize()>();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
         SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
-        vecFdBlock_.FreeEventID();
+        SyncAll(); // 多section场景: 保证所有核FD读workspace完成后, 才能进入下一section FA覆写
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)

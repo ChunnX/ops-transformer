@@ -16,7 +16,6 @@
 #define QUANT_MATMUL_ALL_REDUCE_TILING_310_GENERAL_H
 
 #include "../matmul_all_reduce_tiling_base.h"
-#include "../arch22/quant_matmul_all_reduce_tiling.h"
 namespace optiling {
 class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase {
     class QuantTilingTransferHelper : public Mc2QuantBatchMatmulV3Tiling {
@@ -25,8 +24,7 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase {
                                   Mc2QuantBatchMatmulV3TilingData &data)
             : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(quantMatmulAllReduceTiling)
-        {
-        }
+        {}
 
         ge::graphStatus CheckInputInfo()
         {
@@ -120,9 +118,9 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase {
     };
 
 public:
-    explicit QuantMatmulAllReduceTiling310General(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
-    {
-    }
+    explicit QuantMatmulAllReduceTiling310General(gert::TilingContext *context)
+        : MatmulAllReduceTilingBase(context)
+    {}
     ~QuantMatmulAllReduceTiling310General() override = default;
 
 protected:

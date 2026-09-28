@@ -258,14 +258,14 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiScaleShapes() co
 
     const int64_t kBlocks = static_cast<int64_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, MX_SCALE_K_ALIGN));
     if (xScaleShape.GetDim(0) != static_cast<int64_t>(inputParams_.mSize) || xScaleShape.GetDim(1) != kBlocks ||
-        xScaleShape.GetDim(2) != SHAPE_DIM_TWO) {
+        xScaleShape.GetDim(2) != SHAPE_DIM_TWO) { // xScale 的最后一维（索引 2，即第 3 维）也必须等于 2
         return false;
     }
     const int64_t weightScaleN = inputParams_.transB ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
     const int64_t weightScaleK = inputParams_.transB ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     return weightScaleShape.GetDim(0) == static_cast<int64_t>(inputParams_.groupNum) &&
            weightScaleN == static_cast<int64_t>(inputParams_.nSize) && weightScaleK == kBlocks &&
-           weightScaleShape.GetDim(3) == SHAPE_DIM_TWO;
+           weightScaleShape.GetDim(3) == SHAPE_DIM_TWO; // 3：weightScale 最后一维索引（4维），该维固定为 2
 }
 
 bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
@@ -292,7 +292,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool checkKSize = inputParams_.kSize > 64;
-    const bool checkKSizeAlign = inputParams_.kSize % MX_SCALE_K_ALIGN == 0;
+    const bool checkKSizeAlign = inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0;
     const bool capable = dtypeSupported && quantDtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
                          checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes &&
                          checkBNoTransMLimlit && checkKSize && checkKSizeAlign;

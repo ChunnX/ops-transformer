@@ -31,7 +31,12 @@ __aicore__ inline T CeilDivT(T num1, T num2)
     if (num2 == 0) {
         return static_cast<T>(0);
     }
-    return (num1 + num2 - 1) / num2;
+    T quotient = num1 / num2;
+    T remainder = num1 % num2;
+    if (remainder != 0 && ((num1 > 0 && num2 > 0) || (num1 < 0 && num2 < 0))) {
+        return quotient + 1;
+    }
+    return quotient;
 }
 
 template <typename T>
@@ -70,20 +75,34 @@ __aicore__ inline T CeilPow2(T num)
     return num;
 }
 
-enum class X_LAYOUT : std::uint8_t { BSH = static_cast<std::uint8_t>(0), TH = static_cast<std::uint8_t>(1) };
+enum class X_LAYOUT : std::uint8_t {
+    BSH = static_cast<std::uint8_t>(0),
+    TH = static_cast<std::uint8_t>(1)
+};
 
-enum class X_DTYPE : std::uint8_t { HIFP8 = static_cast<std::uint8_t>(0) };
+enum class X_DTYPE : std::uint8_t {
+    HIFP8 = static_cast<std::uint8_t>(0)
+};
 
-enum class COFF : std::uint8_t { DISABLE = static_cast<std::uint8_t>(1), OVERLAP = static_cast<std::uint8_t>(2) };
+enum class COFF : std::uint8_t {
+    DISABLE = static_cast<std::uint8_t>(1),
+    OVERLAP = static_cast<std::uint8_t>(2)
+};
 
 enum class CACHE_MODE : std::uint8_t {
     LINEAR_BUFFER = static_cast<std::uint8_t>(1),
     RING_BUFFER = static_cast<std::uint8_t>(2)
 };
 
-enum class QUANT_MODE : std::uint8_t { A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = static_cast<std::uint8_t>(1) };
+enum class QUANT_MODE : std::uint8_t {
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = static_cast<std::uint8_t>(1)
+};
 
-enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TEMPLATE_ID : uint8_t {
+    EMPTY_X = 0,
+    NORMAL = 1,
+    FULL_LOAD = 2
+};
 
 template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, CACHE_MODE Cache_Mode, QUANT_MODE Quant_Mode, typename... Args>
 struct COMPType {
@@ -97,7 +116,9 @@ struct COMPType {
 struct CmpBlockInfo {
     __aicore__ inline CmpBlockInfo(){};
     __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false)
-        : bIdx(bIdx), sIdx(sIdx), needReset(needReset){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          needReset(needReset){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -186,15 +207,16 @@ struct ConstInfo {
 
     // workSpace
     uint32_t dbWorkspaceRatio = 1;
-    uint32_t mm1KvResSize = 0;
-    uint32_t mm1ScoreResSize = 0;
+    uint64_t mm1KvResSize = 0;
+    uint64_t mm1ScoreResSize = 0;
+    uint64_t vec1ResSize = 0;
     uint32_t vec1TailCacheSize = 0;
-    uint32_t mm1ResSize = 0; // 所有cube输出kv/score结果的总大小
+    uint64_t mm1ResSize = 0; // 所有cube输出kv/score结果的总大小
 
     uint32_t aiCoreIdx = 0;
     uint32_t nSize = 0;
 
-    uint32_t dbSize = 0;
+    uint64_t dbSize = 0;
 };
 
 struct RunInfo {
@@ -253,7 +275,9 @@ struct MSplitInfo {
 
 struct BlockInfo {
     __aicore__ inline BlockInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealSeqSize)
-        : bIdx(bIdx), sIdx(sIdx), dealSeqSize(dealSeqSize){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          dealSeqSize(dealSeqSize){};
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t dealSeqSize = 0;
@@ -348,6 +372,11 @@ inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;   
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
+
+inline constexpr uint32_t NZ_FRACTAL_DIM = 16;
+inline constexpr uint32_t WEIGHT_MATRIX_NUM = 2;
+inline constexpr uint32_t STATE_INTERLEAVE_FACTOR = 2;
+inline constexpr float SOFTMAX_MIN_VALUE = -2e38f;
 
 template <typename T>
 __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,

@@ -82,10 +82,14 @@ constexpr uint32_t MIN_BLOCK_SIZE = 1;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 constexpr uint32_t MAX_CMPRATIO_SIZE = 128;
 constexpr uint32_t MIN_CMPRATIO_SIZE = 2;
+constexpr uint32_t DB_WORKSPACE_RATIO = 2;
+constexpr uint32_t COFF_VALUE_2 = 2;
+constexpr uint32_t FULL_LOAD_MAX_SEQ_SIZE = 4;
+constexpr uint32_t FULL_LOAD_MAX_TOKEN_SIZE = 256;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
-static const std::string X_NAME = "query";
+static const std::string X_NAME = "x";
 static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
 static const std::string STATE_CACHE_NAME = "state_cache";
@@ -95,7 +99,7 @@ static const std::string WKV_DESCALE_NAME = "wkv_descale";
 static const std::string WGATE_DESCALE_NAME = "wgate_descale";
 static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
 static const std::string CU_SEQLENS_NAME = "cu_seqlens";
-static const std::string SEQUSED_NAME = "seq_used";
+static const std::string SEQUSED_NAME = "seqused";
 static const std::string START_POS_NAME = "start_pos";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
@@ -183,9 +187,16 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
+enum class LayoutType {
+    LAYOUT_BSH,
+    LAYOUT_TH
+};
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t {
+    EMPTY_X = 0,
+    NORMAL = 1,
+    FULL_LOAD = 2
+};
 
 CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context);
 struct QuantCompressorBaseShapeInfo {
@@ -206,9 +217,14 @@ const std::vector<int> COFF{1, 2};
 const std::vector<uint32_t> HEAD_DIM{128, 512};
 const std::vector<int> CACHE_MODE{1, 2};
 
-enum class CACHE_MODE : uint8_t { LINEAR_BUFFER = 1, RING_BUFFER = 2 };
+enum class CACHE_MODE : uint8_t {
+    LINEAR_BUFFER = 1,
+    RING_BUFFER = 2
+};
 
-enum class QUANT_MODE : uint8_t { A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1 };
+enum class QUANT_MODE : uint8_t {
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1
+};
 
 struct QuantCompressorContext {
     const char *opName;
@@ -247,23 +263,28 @@ struct QuantCompressorContext {
 
 class QuantCompressorTiling {
 public:
-    explicit QuantCompressorTiling(QuantCompressorContext *context) : context_(context) {}
+    explicit QuantCompressorTiling(QuantCompressorContext *context)
+        : context_(context)
+    {}
     ~QuantCompressorTiling() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &quantCompressorContext);
     ge::graphStatus RunBigKernelTiling(QuantCompressorTilingData *tilingData);
 
 private:
-    static void ConvertRequiredParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
+                                                 QuantCompressorContext &quantCompressorContext);
 
-    static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &quantCompressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
-    ge::graphStatus SetPageAttentionInfo();
-    ge::graphStatus SetWorkSpaceInfo();
-    ge::graphStatus SetScenarioInfo();
-    ge::graphStatus SetTemplateId();
-    ge::graphStatus SetInnerSplitInfo();
+    ge::graphStatus SetPageAttentionInfo() const;
+    ge::graphStatus SetWorkSpaceInfo() const;
+    ge::graphStatus SetScenarioInfo() const;
+    ge::graphStatus SetTemplateId() const;
+    ge::graphStatus SetInnerSplitInfo() const;
+    ge::graphStatus SetFullLoadSplitInfo() const;
+    ge::graphStatus SetNormalSplitInfo() const;
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
     // ================================通用检查辅助函数==================================
@@ -332,6 +353,7 @@ private:
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
     uint8_t coff = 1;

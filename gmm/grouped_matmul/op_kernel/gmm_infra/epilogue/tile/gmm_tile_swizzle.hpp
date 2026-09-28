@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 #define GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 #include "../../../gmm_infra/detail/gmm_alignment.hpp"
 #include "../../../gmm_infra/gmm_matrix_coord.hpp"
 
@@ -26,9 +26,9 @@ struct EpilogueIdentityTileSwizzle {
     EpilogueIdentityTileSwizzle() = default;
 
     CATLASS_DEVICE
-    EpilogueIdentityTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape) :
-        blockShape(blockShape),
-        tileShape(tileShape)
+    EpilogueIdentityTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape)
+        : blockShape(blockShape),
+          tileShape(tileShape)
     {
         loopsMN = CeilDiv(blockShape, tileShape);
     }
@@ -42,7 +42,7 @@ struct EpilogueIdentityTileSwizzle {
     CATLASS_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
     {
-        return MatrixCoord{ loopIdx / loopsMN.column(), loopIdx % loopsMN.column() };
+        return MatrixCoord{loopIdx / loopsMN.column(), loopIdx % loopsMN.column()};
     }
 
     CATLASS_DEVICE
@@ -61,9 +61,9 @@ struct EpilogueHorizontalTileSwizzle {
     EpilogueHorizontalTileSwizzle() = default;
 
     CATLASS_DEVICE
-    EpilogueHorizontalTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape) :
-        blockShape(blockShape),
-        tileShape(tileShape)
+    EpilogueHorizontalTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape)
+        : blockShape(blockShape),
+          tileShape(tileShape)
     {
         loopsMN = CeilDiv(blockShape, tileShape);
     }
@@ -77,7 +77,7 @@ struct EpilogueHorizontalTileSwizzle {
     CATLASS_DEVICE
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
     {
-        return MatrixCoord{ loopIdx % loopsMN.row(), loopIdx / loopsMN.row() };
+        return MatrixCoord{loopIdx % loopsMN.row(), loopIdx / loopsMN.row()};
     }
 
     CATLASS_DEVICE
@@ -87,6 +87,6 @@ struct EpilogueHorizontalTileSwizzle {
     }
 };
 
-}
+} // namespace Catlass::Epilogue::Tile
 
-#endif  // GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP
+#endif // GMM_EPILOGUE_TILE_TILE_SWIZZLE_HPP

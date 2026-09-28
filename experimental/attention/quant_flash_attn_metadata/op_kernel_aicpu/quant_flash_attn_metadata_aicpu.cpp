@@ -41,7 +41,6 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
-    dequantScaleV_ = ctx.Input(static_cast<uint32_t>(ParamId::dequantScaleV));
     // output
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -53,7 +52,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
         return false;
     }
     // attributes optional
-    GetAttrValueOpt(ctx, "quant_mode", quantMode_);
+    GetAttrValueOpt(ctx, "quant_compute_mode", quantMode_);
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
@@ -64,6 +63,8 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q_descale", layoutQDescale_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
+    GetAttrValueOpt(ctx, "is_grad_enabled", isGradEnabled_);
+    GetAttrValueOpt(ctx, "head_dim_v", headDimV_);
     return ParamsInit();
     // return true;
 }
@@ -79,54 +80,48 @@ std::vector<int64_t> QuantFlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tenso
     void *data = tensor->GetData();
 
     switch (dataType) {
-        case DT_INT32:
-            {
-                int32_t *ptr = static_cast<int32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+        case DT_INT32: {
+            int32_t *ptr = static_cast<int32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_INT64:
-            {
-                int64_t *ptr = static_cast<int64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = ptr[i];
-                }
-                break;
+            break;
+        }
+        case DT_INT64: {
+            int64_t *ptr = static_cast<int64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = ptr[i];
             }
-        case DT_INT16:
-            {
-                int16_t *ptr = static_cast<int16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_INT16: {
+            int16_t *ptr = static_cast<int16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT32:
-            {
-                uint32_t *ptr = static_cast<uint32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT32: {
+            uint32_t *ptr = static_cast<uint32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT64:
-            {
-                uint64_t *ptr = static_cast<uint64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT64: {
+            uint64_t *ptr = static_cast<uint64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT16:
-            {
-                uint16_t *ptr = static_cast<uint16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT16: {
+            uint16_t *ptr = static_cast<uint16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
+            break;
+        }
         default:
             break;
     }
@@ -198,8 +193,9 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
-    baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = maskMode_ = true; // todo
+    baseInfo.headDimQk = headDim_;
+    baseInfo.headDimV = (headDimV_ > 0) ? headDimV_ : headDim_;
+    baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = maskMode_;
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
@@ -223,37 +219,6 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.s2BaseSize = s2BaseSize_;
     param.l2Byte = 0U; // sectionNum = 1
     param.fdOn = false;
-
-    // 校验 dequant_scale_v: BNSD layout 下, shape 应为 (B, N, ceil(S/64), D, 2)
-    if (dequantScaleV_ != nullptr && dequantScaleV_->GetTensorShape() != nullptr) {
-        const int64_t DEQUANT_SCALE_V_GROUP_SIZE = 64;
-        bool isBnsdLayout = layoutKv_ == "BNSD";
-        if (isBnsdLayout) {
-            int64_t maxActualKvSeq = 0;
-            for (int32_t i = 0; i < batchSize_; ++i) {
-                if (i < static_cast<int32_t>(baseInfo.actualKvSeqSize.size())) {
-                    maxActualKvSeq = std::max(maxActualKvSeq, static_cast<int64_t>(baseInfo.actualKvSeqSize[i]));
-                }
-            }
-            // seqused_kv 未传入时, actualKvSeqSize 为空或由 max_seqlen_kv 填充
-            if (maxActualKvSeq <= 0) {
-                maxActualKvSeq = maxSeqlenKv_;
-            }
-            int64_t expectedSGroup = (maxActualKvSeq + DEQUANT_SCALE_V_GROUP_SIZE - 1) / DEQUANT_SCALE_V_GROUP_SIZE;
-            int64_t actualSGroup = dequantScaleV_->GetTensorShape()->GetDimSize(0);
-            int64_t actualBND2 = batchSize_ * numHeadsKv_ * headDim_ * 2;
-            if (actualBND2 == 0) {
-                return true;
-            }
-            actualSGroup = actualSGroup / actualBND2;
-            if (expectedSGroup > 0 && expectedSGroup != actualSGroup) {
-                KERNEL_LOG_ERROR(
-                    "dequant_scale_v dim2 should be ceil(max(seqused_kv)/64) = %ld when layout is BNSD, but got %ld",
-                    expectedSGroup, actualSGroup);
-                return false;
-            }
-        }
-    }
     return true;
 }
 
@@ -295,36 +260,37 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             // faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_CORE_ENABLE_INDEX, 1U);
             // QFA start
             if (i > 0) {
-                faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
-                faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
+                faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_BN2_START_INDEX, faSplitRes.bNEnd[i - 1]);
+                faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_M_START_INDEX, faSplitRes.mEnd[i - 1]);
                 faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
             } else if (sectionId > 0) {
                 auto preQFaSplitRes = splitRes.sectionFaResult[sectionId - 1];
                 faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_BN2_START_INDEX,
-                                         preQFaSplitRes.bN2End[preQFaSplitRes.usedCoreNum - 1]);
+                                          preQFaSplitRes.bNEnd[preQFaSplitRes.usedCoreNum - 1]);
                 faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_M_START_INDEX,
-                                         preQFaSplitRes.gS1End[preQFaSplitRes.usedCoreNum - 1]);
+                                          preQFaSplitRes.mEnd[preQFaSplitRes.usedCoreNum - 1]);
                 faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_S2_START_INDEX,
-                                         preQFaSplitRes.s2End[preQFaSplitRes.usedCoreNum - 1]);
+                                          preQFaSplitRes.s2End[preQFaSplitRes.usedCoreNum - 1]);
             }
             // QFA end
-            faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_BN2_END_INDEX, faSplitRes.bN2End[i]);
-            faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_M_END_INDEX, faSplitRes.gS1End[i]);
+            faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_BN2_END_INDEX, faSplitRes.bNEnd[i]);
+            faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_M_END_INDEX, faSplitRes.mEnd[i]);
             faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_S2_END_INDEX, faSplitRes.s2End[i]);
             // QFA idx
             faMetadata.setQFaMetadata(sectionId, i, optiling::QFA_FIRST_QFD_DATA_WORKSPACE_IDX_INDEX,
-                                     faSplitRes.firstFdDataWorkspaceIdx[i]);
+                                      faSplitRes.firstFdDataWorkspaceIdx[i]);
         }
         // QFD Metadata Generate
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
             // faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_CORE_ENABLE_INDEX, 1U);
             uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
-            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);
-            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_M_IDX_INDEX, fdSplitRes.gS1Idx[curTaskIdx]);
+            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_BN2_IDX_INDEX, fdSplitRes.bNIdx[curTaskIdx]);
+            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_M_IDX_INDEX, fdSplitRes.mIdx[curTaskIdx]);
             faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_WORKSPACE_IDX_INDEX,
-                                     fdSplitRes.workspaceIdx[curTaskIdx]);
-            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_WORKSPACE_NUM_INDEX, fdSplitRes.s2SplitNum[curTaskIdx]);
+                                      fdSplitRes.workspaceIdx[curTaskIdx]);
+            faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_WORKSPACE_NUM_INDEX,
+                                      fdSplitRes.s2SplitNum[curTaskIdx]);
             faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_M_START_INDEX, fdSplitRes.mStart[i]);
             faMetadata.setQFdMetadata(sectionId, i, optiling::QFD_M_NUM_INDEX, fdSplitRes.mLen[i]);
         }

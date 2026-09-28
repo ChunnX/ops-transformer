@@ -32,7 +32,7 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo {
+struct QLITilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
@@ -114,9 +114,9 @@ struct QLIParaInfo {
     TilingRequiredParaInfo weights = {nullptr, nullptr};
     TilingRequiredParaInfo query_dequant_scale = {nullptr, nullptr};
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
-    TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    QLITilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
+    QLITilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
+    QLITilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
 
     const int32_t *queryQuantMode = nullptr;
@@ -146,8 +146,8 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
+    uint32_t qkHeadDim = 0;
     // PageAttention
     bool pageAttentionFlag = false;
     int32_t blockSize = 0;
@@ -172,38 +172,40 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QLIInfoParser {
 public:
-    explicit QLIInfoParser(gert::TilingContext *context) : context_(context) {}
+    explicit QLIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~QLIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+    ge::graphStatus CheckQliRequiredParameters() const;
+    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                         const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
-    ge::graphStatus GetAttrParaInfo();
     ge::graphStatus CheckAttrParaInfo();
+    ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus CheckScaleShape();
     ge::graphStatus GetAndCheckInOutDataType();
     ge::graphStatus GetBatchSize();
-    ge::graphStatus GetHeadDim();
     ge::graphStatus GetS1Size();
+    ge::graphStatus GetHeadDim();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetAndCheckBlockSize();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2Size();
-    ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
+    ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetAndCheckN2Size();
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
@@ -218,23 +220,23 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    QLIParaInfo opParamInfo_;
+    QLIParaInfo qliParams_;
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t tSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t tSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t headDim_ = 0;
+    int64_t headDim_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BSND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
-    int32_t blockSize_ = 0;
+    int64_t blockSize_ = 0;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
@@ -249,7 +251,8 @@ public:
 // ---------------算子Tiling类---------------
 class QuantLightningIndexerTiling {
 public:
-    explicit QuantLightningIndexerTiling(gert::TilingContext *context) : context_(context) {};
+    explicit QuantLightningIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(QLITilingInfo *tilingInfo);
 
 private:
@@ -257,5 +260,5 @@ private:
     QLITilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // quant_lightning_indexer_TILING_H_
+} // namespace optiling
+#endif // quant_lightning_indexer_TILING_H_

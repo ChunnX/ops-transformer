@@ -262,9 +262,9 @@ private:
             pipe_->InitBuffer(ScaleBuf_, BYTE_SIZE_PER_BLOCK * 2); // pre: tileCoreBS_ * n
             pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             pipe_->InitBuffer(inputGradQueue, 1, tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
-            pipe_->InitBuffer(SKInQueue, 2,
-                              tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK * 2) *
-                                  sizeof(float));
+            pipe_->InitBuffer(
+                SKInQueue, 2,
+                tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK * 2) * sizeof(float));
             pipe_->InitBuffer(OutQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 8);
             auto ubSizeRemain = Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
                                     ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
@@ -411,7 +411,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
 
         Adds(skColSumLocal_, skColSumLocal_, eps_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
-
 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
             Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
@@ -1118,6 +1117,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<false>(gradXCubeGlobal_[taskOffset * (n_ * c_)]);
+    mm1_.SetHF32(false);
     mm1_.End();
 }
 
@@ -1139,6 +1139,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul
     } else {
         mm2_.template IterateAll<false>(gradWeightGlobal_, 1);
     }
+    mm2_.SetHF32(false);
     mm2_.End();
 }
 

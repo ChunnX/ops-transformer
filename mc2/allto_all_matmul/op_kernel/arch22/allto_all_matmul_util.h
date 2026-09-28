@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file allto_all_matmul_util.h
  * \brief
@@ -16,9 +15,11 @@
 #ifndef ALL_TO_ALL_MATMUL_UTIL
 #define ALL_TO_ALL_MATMUL_UTIL
 
+#include "../../../common/op_kernel/mc2_aiv_data_copy_common.h"
+#include "../../../common/op_kernel/mc2_aiv_sync_common.h"
 #include "allto_all_matmul_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp"
 #include <cstdint>
 
 #define MC2_NON_QUANT 0
@@ -31,6 +32,7 @@ using namespace AscendC;
 namespace {
 constexpr static uint32_t BUFFER_NUM = 2U;
 constexpr static uint32_t BLOCK_SIZE = 512U;
+constexpr static uint32_t HALF_BLOCK_SIZE = 256U;
 constexpr static int32_t MAX_BLOCK_COUNT = 2;
 constexpr static int32_t FLAG_ZERO_IDX = 0;
 constexpr static int32_t FLAG_ONE_IDX = 1;
@@ -70,13 +72,13 @@ struct BaseBlock {
 };
 
 template <typename T>
-using Block32B = BaseBlock<T, 32>;
+using Block32B = BaseBlock<T, BLOCK_ALIGN_BYTES>;
 
 template <typename T>
-using Block256B = BaseBlock<T, 256>;
+using Block256B = BaseBlock<T, HALF_BLOCK_SIZE>;
 
 template <typename T>
-using Block512B = BaseBlock<T, 512>;
+using Block512B = BaseBlock<T, BLOCK_SIZE>;
 
 class CommBase {
 public:
@@ -95,7 +97,7 @@ public:
         auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         winContext_ = (__gm__ HcclCombineOpParam *)contextGM0;
 
-        for (int i = 0; i < rankSize; i++) {
+        for (int i = 0; i < rankSize && i < static_cast<int32_t>(sizeof(buff) / sizeof(buff[0])); i++) {
             buff[i] = (GM_ADDR)winContext_->windowsIn[i];
         }
 
@@ -145,7 +147,7 @@ public:
         swizzlDirect = info.cocTiling.swizzlDirect;
         pValue = info.cocTiling.pValue;
 
-        ubPingPongSize = info.cocTiling.ubMoveNum / 2;
+        ubPingPongSize = info.cocTiling.ubMoveNum / BUFFER_NUM;
         quantCoreNum = info.allToAllMatmulInfo.quantCoreNum;
     }
 
@@ -153,29 +155,14 @@ public:
     __aicore__ inline void CopyGmToUbufAlignB16(LocalTensor<T> ubTensor, __gm__ T *src, uint16_t nBurst,
                                                 uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyExtParams dataCopyParams(nBurst,    // blockCount
-                                         lenBurst,  // blockLen
-                                         srcStride, // srcStride
-                                         dstStride, // dstStride
-                                         0);
-        GlobalTensor<T> gmTensor;
-        gmTensor.SetGlobalBuffer(src);
-        DataCopyPadExtParams<T> padParams;
-        DataCopyPad(ubTensor, gmTensor, dataCopyParams, padParams);
+        Mc2AivDataCopy::CopyGmToUbufAlignB16(ubTensor, src, nBurst, lenBurst, srcStride, dstStride);
     }
 
     template <typename T>
     __aicore__ inline void CopyUbufToGmAlignB16(__gm__ T *dst, LocalTensor<T> ubTensor, uint16_t nBurst,
                                                 uint32_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
-        DataCopyExtParams dataCopyParams(nBurst,    // blockCount
-                                         lenBurst,  // blockLen
-                                         srcStride, // srcStride
-                                         dstStride, // dstStride
-                                         0);
-        GlobalTensor<T> gmTensor;
-        gmTensor.SetGlobalBuffer(dst);
-        DataCopyPad(gmTensor, ubTensor, dataCopyParams);
+        Mc2AivDataCopy::CopyUbufToGmAlignB16(dst, ubTensor, nBurst, lenBurst, srcStride, dstStride);
     }
 
     __aicore__ inline void CheckBuffFlag(__gm__ int32_t *buff, int32_t flag)
@@ -319,7 +306,7 @@ __aicore__ inline void SetAndWaitAivSync(uint64_t flagIdx, int32_t pipeDepth = 2
 
 __aicore__ inline void SetAicSync(uint64_t flagIdx)
 {
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagIdx);
+    Mc2AivSync::SetAicSync(flagIdx);
 }
 
 template <typename T>

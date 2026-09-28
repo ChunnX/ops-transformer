@@ -21,15 +21,15 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
-#include "memory_copy_arch35.h"
+#include "memory_copy_arch35_fused_infer.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -60,7 +60,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
-    static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT =
@@ -75,7 +75,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
-    using ConstInfoNoQuant = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoNoQuant = ConstInfo_t;
     using OUT_T = OUTPUT_T;
 
     // gm
@@ -175,14 +175,26 @@ public:
              * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
              * 就认为可能存在无效行
              */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
+            bool isExistRowInvalid =
+                FLASH_DECODE ? (HAS_MASK || constInfo.isExistRowInvalid) : constInfo.isExistRowInvalid;
             if (!isExistRowInvalid) {
                 return false;
             }
+            return true;
         }
-        return true;
+        // FD(flash decode)场景: sparse 下部分 decode 行"有效kv范围为空"时任务被整体SKIP(见
+        // CalcCurS2StartEndWithSparse), 不会写回也不会被 RowInvalid 覆盖, 只能靠启动预清兜底, 故默认预清
+        if constexpr (FLASH_DECODE) {
+            return true;
+        }
+        // 非 TND/NTD、非 FD: 短序列或 sparse 无效行可能导致任务整体跳过，
+        // 需要预初始化 attentionOut 和 LSE，避免未写回的行保留旧值。
+        return constInfo.needInit || constInfo.isExistRowInvalid;
     }
 
+    // [MTE3] ClearOutput: 按 IsInitAttentionOutGm() 决定是否 MTE3(UB->GM) 预写 attentionOut(=0)/softmaxLse(=3e+99)。
+    // 非 TND/NTD(BSH/BNSD)布局: FD 默认预写，非 FD 由 host 下发的 needInit 或 isExistRowInvalid 门控。
+    // 整块无有效 KV 时任务会跳过，无法依赖 RowInvalid 或 LSE 写回，必须由预初始化兜底。
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
@@ -211,6 +223,7 @@ public:
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // [MTE3] matmul::InitOutput: 把 attentionOut 分片整片写 0 的 MTE3 预写(与后续结果写回内容重复)
             matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
@@ -231,12 +244,14 @@ public:
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            // [MTE3] matmul::InitOutput: 把 softmaxLse 分片整片预写 3e+99(inf) 的 MTE3 预写
             matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
+    // [MTE3] SoftmaxDataCopyOut: 每个 S2 循环结束把本块 softmaxLse 写回 GM(内部调用 SoftmaxLseCopyOut)
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if constexpr (FLASH_DECODE) {
@@ -256,6 +271,8 @@ public:
         }
     }
 
+    // [MTE3] SoftmaxLseCopyOut: 由 ComputeLseOutputVF 生成 lse 后, 按 layout 分发到
+    // DataCopySoftmaxLseNTD/TND/BSND/BNSDArch35 逐行写回 GM(4B 粒度小写, 每块一次)
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfoX &runInfo)
     {
@@ -273,23 +290,27 @@ public:
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
+            // [MTE3] DataCopySoftmaxLseNTDArch35: MTE3 写回本块 lse 到 GM (NTD 布局)
             DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                              runInfo.actVecMSize, constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
+            // [MTE3] DataCopySoftmaxLseTNDArch35: MTE3 写回本块 lse 到 GM (TND 布局)
             DataCopySoftmaxLseTNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                              runInfo.actVecMSize, constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            // [MTE3] DataCopySoftmaxLseBSNDArch35: MTE3 写回本块 lse 到 GM (BSND 布局)
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                               runInfo.actVecMSize, constInfo, 0);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            // [MTE3] DataCopySoftmaxLseBNSDArch35: MTE3 写回本块 lse 到 GM (BNSD 布局, 本用例实际走此分支)
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                               runInfo.actVecMSize, constInfo, qActSeqLens, 0);
         }
@@ -434,6 +455,7 @@ public:
         int64_t vec2CalcSize = runInfo.actVecMSize * dVTemplateAlign64;
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
+        // [MTE3] WaitFlag<MTE3_V>: 块首等上一块结果的 MTE3(UB->GM) 写回完成, 才能重用 stage2OutBuf
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -460,6 +482,7 @@ public:
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
+        // [MTE3] SetFlag<MTE3_V>: 本块结果 MTE3(UB->GM) 写回完成后置位, 供下一块 WaitFlag 等待
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
@@ -487,8 +510,10 @@ public:
 
         RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
+        // [MTE3] SetFlag/WaitFlag<V_MTE3>: 强制 Cast(vector) 与后续 MTE3 写回串行(先算完才允许搬出)
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        // [MTE3] Bmm2DataCopyOutTrans: 发起本块 attentionOut 的 MTE3(UB->GM) 写回
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
@@ -548,21 +573,23 @@ public:
         }
     }
 
+    // [MTE3] Bmm2DataCopyOutTrans: 按 outputLayout 构造 gmCoord/ubTensor, 实际 MTE3(UB->GM) 写回入口
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
+                                .n2Idx = info.n2Idx,
+                                .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dVTemplateAlign64)};
+        // [MTE3] CopyAttentionOut: 按 outputLayout 分支(B 本用例 BNSD)走 CopyAttenOutUbToGm 执行 MTE3(UB->GM) 写回
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -659,7 +686,8 @@ public:
     {
         // SOFTMAX的VF中max/sum/exp读写按256B对齐的, 实际使用需按256B向上对齐分配
         static constexpr uint32_t REG_BYTES = 256U;
-        static constexpr uint32_t SOFTMAX_BUF_BYTES = (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
+        static constexpr uint32_t SOFTMAX_BUF_BYTES =
+            (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
         static constexpr uint32_t ACT_BYTES = (SOFTMAX_BUF_BYTES + REG_BYTES - 1) / REG_BYTES * REG_BYTES;
 
         tPipe->InitBuffer(softmaxSumBuf[0], ACT_BYTES);
@@ -807,7 +835,7 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
-    using ConstInfoNoQuant = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoNoQuant = ConstInfo_t;
     __aicore__ inline FANoQuantMlaBlockVecDummy(ConstInfoNoQuant &constInfo){};
 };
 

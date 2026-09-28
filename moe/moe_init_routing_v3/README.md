@@ -4,18 +4,18 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+|  <term>Ascend 950PR&950DT系列产品</term>   |     √    |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                             |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做了如下功能变更，请根据实际情况选择合适的接口：
+- 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做了如下功能变更，请根据实际情况选择合适的接口：
 
-    1.增加动态量化功能，支持输出expendX的int8动态量化输出。
+    1.增加动态与静态量化功能，支持输出expandX的int8量化模式输出，并新增多种FP8/FP4/INT4/HIFLOAT8量化模式。
 
     2.增加参数activeExpertRangeOptional，支持筛选有效范围内的expertId。
 
@@ -30,18 +30,31 @@
     $$
 
   2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
+    - rowIdxType等于1时，输出scatter索引
 
-    $$
-    expandedRowIdxOut[sortedRowIdx[i]]=i
-    $$
+      $$
+      expandedRowIdxOut[i]=sortedRowIdx[i]
+      $$
 
-  3.在drop模式下，对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
+    - rowIdxType等于0时，输出gather索引
+
+      $$
+      expandedRowIdxOut[sortedRowIdx[i]]=i
+      $$
+
+  3.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
 
     $$
     expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
     $$
 
-  4.计算quant结果：
+  4.如果quantMode不等于-1，计算quant结果：
+    - 静态quant
+
+      $$
+      quantResult=round((x∗scaleOptional)+offsetOptional)
+      $$
+
     - 动态quant：
         - 若不输入scale：
             $$
@@ -62,13 +75,34 @@
 
         - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
 
-  5.对quantResult取前NUM\_ROWS个sortedRowIdx的对应位置的值，得出expandedXOut：
+  5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
+    - 非量化场景
+      - 按照Scatter索引搬运
 
-    $$
-    expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
-    $$
+        $$
+        expandedXOut[i]=x[scatterRowIdx[i] // K]
+        $$
 
-  6.expandedRowIdxOut的有效元素数量availableIdxNum计算方式为，expertIdx中activeExpertRangeOptional范围内的元素的个数
+      - 按照Gather索引搬运
+
+        $$
+        expandedXOut[gatherRowIdx[i]]=x[i // K]
+        $$
+
+    - 量化场景
+      - 按照Scatter索引搬运
+
+        $$
+        expandedXOut[i]=quantResult[scatterRowIdx[i] // K]
+        $$
+
+      - 按照Gather索引搬运
+
+        $$
+        expandedXOut[gatherRowIdx[i]]=quantResult[i // K]
+        $$
+
+  6.expandedRowIdxOut的有效元素数量availableIdxNum计算方式为，expertIdx中activeExpertRangeOptional范围内的元素的个数，-1也不在该范围内，表示无效专家，不参与路由计算：
     $$
     availableIdxNum = |\{x\in expertIdx| expert\_start \le x<expert\_end \ \}|
     $$
@@ -94,63 +128,69 @@
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>MOE的输入，即token特征输入，对应公式中x。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2。</td>
+        <td>MOE的输入，即token特征输入，对应公式中x。shape为(NUM_ROWS, H)；quantMode为9或13的MXFP4/INT4动态量化场景，以及quantMode为-1且x数据类型为FLOAT4_E2M1的非量化透传场景，H要求为偶数。</td>
+        <td><ul>
+          <li>quantMode=-1：支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2;</li>
+          <li>quantMode=0、1：支持FLOAT16、BFLOAT16、FLOAT32;</li>
+          <li>quantMode=2、3、4、5、6、7、8、9、11、12、14、15、16、17：支持FLOAT16、BFLOAT16;</li>
+          <li>quantMode=13：支持FLOAT32、BFLOAT16;</li>
+          <li>以上类型需同时满足下文的产品支持限制：A2/A3仅支持quantMode=-1、0、1，且非量化输入仅支持FLOAT16、BFLOAT16、FLOAT32、INT8；其余列出的类型和量化模式仅950支持。</li>
+          </ul></td>
         <td>ND</td>
       </tr>
       <tr>
         <td>expertIdx</td>
         <td>输入</td>
-        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数。对应公式中expertIdx。</td>
+        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数，-1表示无效专家（该位置不参与路由，会被过滤）。对应公式中expertIdx。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• quantMode为1的INT8动态量化场景下，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)。<br>• quantMode为13的INT4动态量化场景下，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0。</td>
+        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• 非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2)，类型为FLOAT8_E8M0。<br>• 静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]。<br>• quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)。<br>• quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。<br>• HIF8 PERTENSOR量化场景下（quantMode为7）必须输入，输入要求为1D的Tensor，shape为[1, ]。<br>• MXFP8量化场景下（quantMode为2、3、16、17）不输入。<br>• HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。<br>• MXFP4量化场景下（quantMode为9）不输入。<br>• FP8 PerGroup量化场景下（quantMode为4、5、14、15）不输入。<br>• FP8 PerBlock量化场景下（quantMode为11、12）不输入。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>offsetOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的偏移值。在非量化场景下和动态quant场景下不输入，对应公式中offsetOptional。</td>
+        <td>表示用于计算quant结果的偏移值，对应公式中offsetOptional。<br>• 静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]。<br>• 非量化场景、动态量化（quantMode为1）、MXFP8量化（quantMode为2、3、16、17）、HIF8量化（quantMode为6、7、8）、MXFP4量化（quantMode为9）、FP8 PerGroup量化（quantMode为4、5、14、15）、FP8 PerBlock量化（quantMode为11、12）、INT4动态量化（quantMode为13）。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>activeNum</td>
         <td>属性</td>
-        <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的。</td>
+        <td><term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：dropPadMode=0时，activeNum支持大于等于-1的值；-1、0表示不限制处理行数，大于0时最多处理min(activeNum, NUM_ROWS*K)行。<term>Ascend 950PR&950DT系列产品</term>：该属性不用于限制处理行数，仅接受-1、0或NUM_ROWS*K。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertCapacity</td>
         <td>属性</td>
-        <td>表示每个专家能够处理的tokens数，取值范围大于等于0。</td>
+        <td>表示每个专家能够处理的tokens数。在Dropless场景下不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertNum</td>
         <td>属性</td>
-        <td>表示专家数，expertTokensNumType为key\_value模式时，取值范围为[0, 5120],其它模式取值范围[0, 10240]。</td>
+        <td>表示专家数，expertTokensNumType为key\_value模式时，取值范围为[1, 5120],其它模式取值范围[1, 10240]。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>dropPadMode</td>
         <td>属性</td>
-        <td>表示是否为DropPad场景，取值为0 和1。<br>• 0：表示Dropless场景，该场景下不校验expertCapacity。<br>• 1：表示DropPad场景。</td>
+        <td>表示是否为DropPad场景，取值为0 和1。<br>• 0：表示Dropless场景。<br>• 1：表示DropPad场景。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertTokensNumType</td>
         <td>属性</td>
-        <td>取值为0、1和2 。<br>• 0：表示comsum模式。<br>• 1：表示count模式，即输出的值为各个专家处理的token数量的累计值。<br>• 2：表示key\_value模式，即输出的值为专家和对应专家处理token数量的累计值。</td>
+        <td>取值为0、1和2 。<br>• 0：表示cumsum模式。<br>• 1：表示count模式，即输出的值为各个专家处理的token数量的累计值。<br>• 2：表示key\_value模式，即输出的值为专家和对应专家处理token数量的累计值。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -171,7 +211,7 @@
       <tr>
         <td>activeExpertRangeOptional</td>
         <td>可选属性</td>
-        <td>长度为2，数组内的值为[expertStart, expertEnd],表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum。</td>
+        <td>长度为2，数组内的值为[expertStart, expertEnd],表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0，expertEnd等于expertNum。</td>
         <td>ListInt</td>
         <td>-</td>
       </tr>
@@ -193,21 +233,21 @@
       <tr>
         <td>expandedRowIdxOut</td>
         <td>输出</td>
-        <td>expandedXOut和x的索引映射关系，前availableIdxNum\*H个元素为有效数据，其余无效数据，当rowIdxType为0时，无效数据由-1填充；当rowIdxType为1时，无效数据未初始化。</td>
+        <td>expandedXOut和x的索引映射关系，输出shape为(NUM_ROWS*K, )，前availableIdxNum个元素为有效数据，其余无效数据，当rowIdxType为0时，无效数据由-1填充；当rowIdxType为1时，无效数据未初始化。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>expertTokensCountOrCumsumOut</td>
         <td>输出</td>
-        <td>• 在expertTokensNumType为1的场景下，表示activeExpertRangeOptional范围内expert对应的处理token的总数。<br>• 在expertTokensNumType为2的场景下，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。<br>• expertTokensNumType为0或1时，输出shape为[expertEnd-expertStart]；expertTokensNumType为2时，输出shape为[expertNum, 2]。</td>
+        <td>• 在expertTokensNumType为0的场景下，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和。<br>• 在expertTokensNumType为1的场景下，表示activeExpertRangeOptional范围内expert对应的处理token的总数。<br>• 在expertTokensNumType为2的场景下，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。<br>• expertTokensNumType为0或1时，输出shape为[expertEnd-expertStart]；expertTokensNumType为2时，输出shape为[expertNum, 2]。</td>
         <td>INT64</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入，如果输入则要求为1D的Tensor,类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时,如果输入则要求3D的Tensor,类型为FLOAT8_E8M0。当DropPad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，类型为FLOAT32。<br>• quantMode为2、3、9时,数据类型支持FLOAT8_E8M0。<br>• quantMode为16、17时,数据类型支持FLOAT8_E8M0，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)。<br>• quantMode为4、5、14、15时，数据类型支持FLOAT32，且要求为2D的Tensor，shape为[NUM_ROWS*K, CeilDiv(H, 128)]。<br>• quantMode为11、12时,数据类型支持FLOAT32,且要求为3D的Tensor。<br>• 其余场景数据类型支持FLOAT32。</td>
+        <td>输出量化计算过程中scaleOptional的中间值，输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。<br>• 非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。当Drop/Pad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，输出FLOAT32类型。<br>• 动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。<br>• 静态量化场景下不输出。<br>• MXFP8量化场景下（quantMode为2、3），输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。<br>• MXFP8 RoundScale+Amax量化场景下（quantMode为16、17），输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。<br>• 按照直转方式量化到HIFLOAT8场景下，expandedScaleOut不输出。<br>• 按照PERTENSOR模式量化到HIFLOAT8场景下，expandedScaleOut不输出。<br>• 按照PERTOKEN模式量化到HIFLOAT8场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K]。<br>• MXFP4量化场景下（quantMode为9），输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilDiv(H, 64)，NUM_ROWS*K的前availableIdxNum行为有效数据。<br>• FP8 PerGroup量化场景下（quantMode为4、5、14、15），输出FLOAT32类型，Shape为[NUM_ROWS*K, CeilDiv(H,128)]，NUM_ROWS*K的前availableIdxNum行为有效数据。<br>• FP8 PerBlock量化场景下（quantMode为11、12），输出FLOAT32类型，Shape为[NUM_ROWS*K, CeilDiv(H,256), 2]，NUM_ROWS*K的前availableIdxNum行为有效数据。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
@@ -217,32 +257,32 @@
 ## 约束说明
 
 - 输入值域限制：
-  - activeNum当前未使用，校验需等于NUM_ROWS*K。
-  - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
+  - activeNum：<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：dropPadMode=0时，activeNum支持大于等于-1的值；-1、0表示不限制处理行数，大于0时最多处理min(activeNum, NUM_ROWS*K)行。<term>Ascend 950PR&950DT系列产品</term>：该属性不用于限制处理行数，仅接受-1、0或NUM_ROWS*K。
+  - expertCapacity在Dropless场景下不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
   - dropPadMode支持取值为0和1，分别代表Dropless场景和DropPad场景。
   - expertTokensNumType当前只支持0、1 和2，分别代表cumsum模式、count模式和key\_value模式。
   - expertTokensNumFlag只支持true，代表输出expertTokensCountOrCumsumOut。
   - quantMode:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - 支持-1、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17，分别表示不量化、动态量化到INT8、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、FP8 PerGroup量化到FLOAT8_E5M2、FP8 PerGroup量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1，FP8 PerBlock量化到FLOAT8_E5M2，FP8 PerBlock量化到FLOAT8_E4M3FN，FP8 PerGroup量化到FLOAT8_E5M2并启用Amax下限，FP8 PerGroup量化到FLOAT8_E4M3FN并启用Amax下限，INT4动态量化，MXFP8 RoundScale+Amax量化到FLOAT8_E5M2，MXFP8 RoundScale+Amax量化到FLOAT8_E4M3FN。
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：支持1、0、-1，分别代表动态量化、静态量化和不量化场景。quantMode=-1时x仅支持FLOAT16、BFLOAT16、FLOAT32、INT8。
+    - <term>Ascend 950PR&950DT系列产品</term>：
+      - 支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17，分别表示不量化、静态量化到INT8、动态量化到INT8、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、FP8 PerGroup量化到FLOAT8_E5M2、FP8 PerGroup量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1，FP8 PerBlock量化到FLOAT8_E5M2，FP8 PerBlock量化到FLOAT8_E4M3FN，INT4动态量化，FP8 PerGroup量化到FLOAT8_E5M2并启用Amax下限，FP8 PerGroup量化到FLOAT8_E4M3FN并启用Amax下限，MXFP8 RoundScale+Amax量化到FLOAT8_E5M2，MXFP8 RoundScale+Amax量化到FLOAT8_E4M3FN。
       - 支持quantMode为13的INT4动态量化场景，需同时满足：
         - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
-        - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
+        - H为偶数，用于沿H维每两个INT4值打包为1个字节。
         - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
         - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
 
-- <term>Ascend 950PR/Ascend 950DT</term> DropPad模式特殊约束（dropPadMode=1时）：
+- <term>Ascend 950PR&950DT系列产品</term> DropPad模式特殊约束（dropPadMode=1时）：
   - rowIdxType仅支持取值为0（gather索引）。
   - activeExpertRangeOptional必须为[0, expertNum]。
   - expertTokensNumType仅支持取值为1（count模式）。
   - quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。
   - expandedXOut必须是3D Tensor，shape为[expertNum, expertCapacity, H]。
 
-- 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
+- 其他限制：该算子部分产品支持多种性能模板，进入各性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
   - 支持性能模板的产品：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品。</term>
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品。</term>
+    - <term>Atlas A2系列产品。</term>
+    - <term>Atlas A3系列产品。</term>
 
   - 进入低时延性能模板需要同时满足以下条件：
     - x、expertIdx、scaleOptional输入Shape要求分别为：(1, 7168)、(1, 8)、(256, 7168)。
@@ -257,3 +297,23 @@
     - quantMode=-1
     - rowIdxType=1
     - expertTokensNumType=1
+
+  - 支持计数排序性能模板的产品：
+    - <term>Ascend 950PR&950DT系列产品</term>。
+
+  - 进入计数排序FullLoad性能模板需要同时满足以下条件：
+    - x数据类型为BFLOAT16、FLOAT16、FLOAT32、INT8
+    - expertNum<=1024
+    - expertEnd-expertStart<=32
+    - quantMode=-1
+    - dropPadMode=0
+    - UB空间满足该模板各缓冲区叠加后的全载需求
+
+  - 进入计数排序CutOrigin性能模板需要同时满足以下条件（不满足FullLoad条件时才尝试该模板）：
+    - expertNum<=1024
+    - expertEnd-expertStart<=128
+    - quantMode为-1或0
+    - NUM_ROWS * H * x.dtype >= 1.5 * totalUbSize
+    - NUM_ROWS * K >= 8192
+    - dropPadMode=1（DropPad场景）时还需NUM_ROWS>=512
+    - UB空间满足该模板各缓冲区叠加后的需求

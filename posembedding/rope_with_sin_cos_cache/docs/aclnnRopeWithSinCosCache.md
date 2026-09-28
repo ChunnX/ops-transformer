@@ -5,22 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -404,23 +404,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <tr>
         <td> ACLNN_ERR_PARAM_INVALID </td>
         <td> 161002 </td>
-        <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
-        </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="2"> 561002 </td>
-        <td>多个输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td>输入属性和输入tensor之间的shape信息不匹配。</td>
-        </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="2"> 361001 </td>
-        <td>query或者key非64B对齐。</td>
-        </tr>
-        <tr>
-        <td>rotaryDim>headSize。</td>
+        <td>输入和输出的数据类型、数据格式或shape，以及输入属性不满足约束。</td>
         </tr>
     </tbody></table>
 
@@ -470,17 +454,19 @@ aclnnStatus aclnnRopeWithSinCosCache(
 - 确定性计算：
   - aclnnRopeWithSinCosCache默认确定性实现。
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
+- queryIn和keyIn的1维大小必须是headSize的整数倍。
 - queryIn、keyIn、cosSinCache输入的数据类型需要保持一致。
 - headSize：数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数。
 - rotaryDim：始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足mropeSection所有元素累加为rotaryDim值的一半。
 - 输入tensor positions的取值应小于cosSinCache的0维maxSeqLen。
 - mrope模式下，mropeSection：取值当前仅支持[16, 24, 24]、[24, 20, 20]、[8, 12, 12]和[16, 16, 16, 16]。
+- Atlas A5系列产品不支持mropeSection取值为[8, 12, 12]和[16, 16, 16, 16]。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```Cpp
+```cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"

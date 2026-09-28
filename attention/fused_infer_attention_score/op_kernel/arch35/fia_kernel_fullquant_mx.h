@@ -19,8 +19,8 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
 #include "fia_block_vec_fullquant_mx.h"
-#include "memory_copy_arch35.h"
-#include "fia_block_vec_flashdecode_fullquant.h"
+#include "memory_copy_arch35_fused_infer.h"
+#include "fia_block_vec_flashdecode_arch35.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -48,8 +48,7 @@ public:
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_N = 3; // C1 C1 C1 C2
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -108,7 +107,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionFullQuantMxKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
@@ -166,8 +167,8 @@ public:
     {
         uint32_t mm1OutDtype = sizeof(T);
 
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
+        uint32_t mm1ResultSize = mBaseSize / ArchInfo::CV_RATIO * s2BaseSize * mm1OutDtype / 2;
+        constexpr uint32_t mm2ResultSize = mBaseSize / ArchInfo::CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
@@ -235,7 +236,6 @@ public:
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = true; // 不支持tensorlist
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
         // constInfo.strides从fiaBaseParams赋值
@@ -325,7 +325,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_N];
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
@@ -372,9 +372,9 @@ public:
         return s2Cur < constInfo.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
     {
-        for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
+        for (uint32_t i = 0; i < PRELOAD_N; i++) {
             if (taskRunInfo[i].isValid) {
                 return true;
             }
@@ -529,10 +529,10 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_N];                        // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - (PRELOAD_N - 1)) % PRELOAD_N]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
@@ -544,7 +544,7 @@ public:
             }
         }
 
-        if (loop >= PRELOAD_N) {
+        if (loop >= (PRELOAD_N - 1)) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -589,9 +589,9 @@ public:
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_N]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -641,16 +641,20 @@ public:
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+        info.actMSizeAlign = (info.actMSize + 15) >> 4 << 4; // CV 1:1 对齐16
+        info.actVecMSize = info.actMSize;                    // 1:1 不拆分,处理完整 M
+#else
+        info.actMSizeAlign = (info.actMSize + 31) >> 5 << 5; // CV 1:2 对齐32
         if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign >> 1);
         } else {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
+#endif
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
+            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign >> 1);
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 

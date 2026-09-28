@@ -27,8 +27,8 @@
 #include "../epilogue/block_epilogue_dequant_swiglu.h"
 #include "../epilogue/block_epilogue_pertoken_quant.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
@@ -76,13 +76,12 @@ private:
     TPipe *pPipe_ = nullptr;
 
 public:
-    __aicore__ inline KernelGmmSwiGluPertokenQuant(TPipe *pipe) : pPipe_(pipe), epiloguePertokenQuantOp_(pipe)
-    {
-    }
+    __aicore__ inline KernelGmmSwiGluPertokenQuant(TPipe *pipe)
+        : pPipe_(pipe),
+          epiloguePertokenQuantOp_(pipe)
+    {}
 
-    __aicore__ inline ~KernelGmmSwiGluPertokenQuant()
-    {
-    }
+    __aicore__ inline ~KernelGmmSwiGluPertokenQuant() {}
 
     using BlockEpilogueDequantAndSwiglu = BlockEpilogueDequantAndSwiglu_;
     using BlockEpiloguePertokenQuant = BlockEpiloguePertokenQuant_;
@@ -93,6 +92,7 @@ public:
     using DataTypeX1Scale = DataTypeX1Scale_;
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr auto formatB = BlockMmadBuilder::formatB;
     static constexpr int64_t l1M = BlockMmadBuilder::l1M;
     static constexpr int64_t l1N = BlockMmadBuilder::l1N;
     static constexpr int64_t l1K = BlockMmadBuilder::l1K;
@@ -131,12 +131,15 @@ public:
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0UL;
     uint32_t realM_ = 0UL;
+    int64_t perGroupBOffset_ = 0L;
+    int64_t bRightOffsetStep_ = 0L;
     BlockMmadOp mmadOp_;
     BlockEpiloguePertokenQuant epiloguePertokenQuantOp_;
     BlockEpilogueDequantAndSwiglu epilogueDequantAndSwigluOp_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
+    uint32_t curBaseM_ = 0U;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -145,13 +148,14 @@ public:
         int32_t baseN;
         int32_t baseK;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling()
-        {
-        }
+        __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_)
-            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_)
-        {
-        }
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_)
+        {}
     };
 
     struct Arguments {
@@ -240,8 +244,7 @@ public:
         uint64_t k = Get<K_VALUES>(problemShape_);
         // aBaseOffset += m * k
         Get<INDEX_A_OFFSET>(baseOffset_) = Get<INDEX_A_OFFSET>(baseOffset_) + m * k;
-        // bBaseOffset += n * k
-        Get<INDEX_B_OFFSET>(baseOffset_) = Get<INDEX_B_OFFSET>(baseOffset_) + n * k;
+        Get<INDEX_B_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * perGroupBOffset_;
         // K-C
         // scaleAAxisBaseOffset = m
         Get<INDEX_X1SCALE_OFFSET>(baseOffset_) += m;
@@ -267,17 +270,34 @@ public:
     {
         Get<N_VALUES>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<K_VALUES>(problemShape_) = params.gmmParams.matmulTiling->Ka;
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                perGroupBOffset_ = Align16(Get<N_VALUES>(problemShape_)) * Align32(Get<K_VALUES>(problemShape_));
+                bRightOffsetStep_ = (Get<N_VALUES>(problemShape_) >> 1) * MATMUL_MNK_ALIGN_INT8;
+            } else {
+                perGroupBOffset_ = Align32(Get<N_VALUES>(problemShape_)) * Align16(Get<K_VALUES>(problemShape_));
+                bRightOffsetStep_ = (Get<N_VALUES>(problemShape_) >> 1) * Align16(Get<K_VALUES>(problemShape_));
+            }
+        } else {
+            perGroupBOffset_ = Get<N_VALUES>(problemShape_) * Get<K_VALUES>(problemShape_);
+            bRightOffsetStep_ = transB ? (Get<N_VALUES>(problemShape_) >> 1) * Get<K_VALUES>(problemShape_) :
+                                         (Get<N_VALUES>(problemShape_) >> 1);
+        }
         groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
     }
 
-    __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t n, int64_t k)
+    __aicore__ inline void ComputeOffset(int64_t &bRightOffset)
     {
-        int64_t resN = n >> 1; // 2: glu, n->n/2
-        if constexpr (transB) {
-            bRightOffset += resN * k;
-        } else {
-            bRightOffset += resN;
-        }
+        bRightOffset += bRightOffsetStep_;
+    }
+
+    __aicore__ inline void BaseMBalance(BlockSchedulerOp &bs, int64_t m, int64_t baseM)
+    {
+        const int64_t safeBaseM = baseM > 0 ? baseM : static_cast<int64_t>(AscendC::BLOCK_CUBE);
+        const int64_t mCnt = CeilDiv(m, safeBaseM);
+        const int64_t balancedBaseM = CeilDiv(m, mCnt);
+        curBaseM_ = static_cast<uint32_t>(CeilAlign(balancedBaseM, static_cast<int64_t>(AscendC::BLOCK_CUBE)));
+        bs.UpdateBaseM(curBaseM_);
     }
 
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
@@ -287,13 +307,15 @@ public:
         int64_t k = Get<K_VALUES>(problemShape_);
         TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
                                    Get<K_VALUES>(problemShape_)};
-        bs.UpdateNextProblem(resProblemShape);
         epilogueDequantAndSwigluOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        CoordClass coord(m, n, k, curBaseM_, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
+            if (Get<M_VALUES>(singleShape) <= 0 || Get<N_VALUES>(singleShape) <= 0) {
+                continue;
+            }
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
                 Get<INDEX_M_TILEIDX>(tileIdx), Get<INDEX_N_TILEIDX>(tileIdx),
@@ -309,7 +331,7 @@ public:
                         l0cOutUbFirst_, mmSingleShape, transA, transB);
                 // right block
                 int64_t bRightOffset = Get<INDEX_B_OFFSET>(blockOffset_);
-                ComputeOffset(bRightOffset, n, k);
+                ComputeOffset(bRightOffset);
                 mmadOp_(aGlobal_[Get<INDEX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset], l0cOutUbSecond_,
                         mmSingleShape, transA, transB);
                 NotifyVector();
@@ -339,6 +361,11 @@ public:
         }
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (transB) {
+            bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+        } else {
+            bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+        }
         if ASCEND_IS_AIV {
             epilogueDequantAndSwigluOp_.Init(params.epilogueDequantSwigluParams);
         }
@@ -346,6 +373,23 @@ public:
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
+            }
+            int64_t m = Get<M_VALUES>(problemShape_);
+            TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
+                                       Get<K_VALUES>(problemShape_)};
+            if constexpr (formatB == CubeFormat::NZ) {
+                BaseMBalance(bs, m, params.gmmParams.baseM);
+            } else {
+                curBaseM_ = static_cast<uint32_t>(params.gmmParams.baseM);
+            }
+            bs.UpdateNextProblem(resProblemShape);
+            if constexpr (!transA) {
+                // Match QGMM MX: split only the final group's tail round when
+                // at least half of the cores are available after its last tile.
+                if (groupIdx + 1 == groupNum && m > 0 && Get<K_VALUES>(problemShape_) > 0 &&
+                    (bs.GetEndBlockIdx() + 1) <= (AscendC::GetBlockNum() >> 1)) {
+                    bs.UpdateTailTile();
+                }
             }
             ProcessSingleGroup(params, bs, groupIdx);
         }

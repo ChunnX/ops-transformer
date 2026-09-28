@@ -5,22 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -187,7 +187,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>yRef（aclTensor）</td>
       <td>输入/输出</td>
-      <td>表示原地累加的输入输出矩阵，Device侧的aclTensor类型，公式中的yRef。</td>
+      <td>表示原地累加的输入输出矩阵，Device侧的aclTensor类型，公式中的y/yRef。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -275,7 +275,6 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 
 - 确定性说明：aclnnGroupedMatmulAddV2默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
-- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型组合为：
   - x为FLOAT16、weight为FLOAT16、yRef为FLOAT32。
   - x为BFLOAT16、weight为BFLOAT16、yRef为FLOAT32。
@@ -283,6 +282,12 @@ aclnnStatus aclnnGroupedMatmulAddV2(
   - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以K=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
 - groupList第1维最大支持1024，即最多支持1024个group。
+
+<!-- npu="A3,910b" id7 -->
+### Atlas A3/A2 系列产品
+
+- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
+<!-- end id7 -->
 
 ## 调用示例
 
@@ -463,12 +468,12 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
 
     // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
     auto size = GetShapeSize(yShape);
-    std::vector<uint16_t> resultData(size, 0);
+    std::vector<float> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
-        LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+        LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
     }
     return ACL_SUCCESS;
 }

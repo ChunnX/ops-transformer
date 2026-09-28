@@ -24,7 +24,8 @@ namespace optiling {
 class MoeDistributeDispatchTeardownTilingBase : public MoeTilingBase {
 public:
     explicit MoeDistributeDispatchTeardownTilingBase(gert::TilingContext *context)
-        : MoeTilingBase(context), nodeName_(context->GetNodeName()) {};
+        : MoeTilingBase(context),
+          nodeName_(context->GetNodeName()) {};
 
 protected:
     const char *socTilingName_;
@@ -32,10 +33,12 @@ protected:
     MoeDistributeDispatchTeardownTilingData *tilingData_ = nullptr;
     std::string groupEp_;
 
-    uint64_t GetTilingKey() const;
+    uint64_t GetTilingKey() const override;
 
-    const ge::graphStatus CheckRequiredAttrValue();
+    const ge::graphStatus CheckRequiredAttrValue() const;
     ge::graphStatus GetRequiredAttrAndSetTilingData();
+    ge::graphStatus CheckSharedExpertAttributes(const int64_t *expertShardTypePtr, const int64_t *sharedExpertNumPtr,
+                                                const int64_t *sharedExpertRankNumPtr, const int64_t *epWorldSizePtr);
     const ge::graphStatus CheckOptionalAttrValue();
     ge::graphStatus GetOptionalAttrAndSetTilingData();
 
@@ -49,12 +52,12 @@ protected:
     const void PrintTilingDataInfo();
 
     const bool CheckInputTensorShapeDim();
-    const bool CheckOutputTensorShapeDim();
+    const bool CheckOutputTensorShapeDim() const;
     const bool CheckTensorShapeRelation();
     const bool CheckTensorShapeSize();
     const bool CheckInputTensorDataType();
-    const bool CheckOutputTensorDataType();
-    const bool CheckRelationTensorDataType();
+    const bool CheckOutputTensorDataType() const;
+    const bool CheckRelationTensorDataType() const;
 
     ge::graphStatus MoeDistributeDispatchTeardownTilingFuncImpl();
 };

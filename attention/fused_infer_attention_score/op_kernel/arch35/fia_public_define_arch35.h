@@ -3,7 +3,8 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES
+ OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -68,17 +69,18 @@ struct RunInfoX {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
-    uint32_t realN2Idx = 0;   // GS1合轴时为n2Idx，不合轴时为n1Idx
-    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
-    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
-    uint32_t actMSize = 0;    // GS1方向上的长度
-    uint32_t actMSizeAlign32; // GS1 方向上长度对齐
-    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
-    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t s2LocalIdx = 0; // 每核本地 S2 索引，从0开始累加，用于判断本核内 S2 的第几个 base 块
+    uint32_t realN2Idx = 0; // GS1合轴时为n2Idx，不合轴时为n1Idx
+    uint64_t actS1Size = 1; // 当前处理head的S1轴实际大小
+    uint64_t actS2Size = 1; // 当前处理head的S2轴实际大小
+    uint32_t actMSize = 0;  // GS1方向上的长度
+    uint32_t actMSizeAlign; // GS1 方向上长度对齐
+    uint32_t actVecMSize;   // VEC 视角, 基本块GS1方向长度
+    uint32_t vecMbaseIdx;   // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
 
     uint32_t actSingleLoopS2Size = 0; // S2方向长度
     uint32_t actSingleLoopS2SizeAlign;
-    // uint32_t curS2LoopTimes = 0;
+
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
 
@@ -205,14 +207,11 @@ struct SysPrefixConstInfo {
     int64_t prefixLoopCount;    /* 保存prefix参与的S2方向循环次数 */
 };
 
-template <FiaKernelType>
-struct ConstInfo_t;
-
-template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo {};
-
-template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
+struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo {
+    bool needInit =
+        false; /* 启动时是否需要预清输出(attentionOut写0/lse写3e+99), 由host下发fiaEmptyTensorParams.needInit */
+    uint8_t l2CacheOffFlag = 0; /* gSize*s1Size<=64 场景关闭K/V的L2 Cache, 由host下发fiaBaseParams.l2CacheOffFlag */
+};
 
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {

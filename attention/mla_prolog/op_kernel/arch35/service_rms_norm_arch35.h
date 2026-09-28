@@ -122,12 +122,13 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
  * @param enableSmoothScalesCq 表示是否有smoothGm的需求
  */
 template <typename T, typename GammaType, typename SmoothType, typename C, typename O, typename U>
-__aicore__ inline void
-RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &outputScales,
-                    const GlobalTensor<T> &inputGm, const LocalTensor<GammaType> &gammaLocal,
-                    const LocalTensor<SmoothType> &smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
-                    const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
-                    RmsNormParam &rmsNormParams, bool enableSmoothScalesCq = true)
+__aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &outputScales,
+                                           const GlobalTensor<T> &inputGm, const LocalTensor<GammaType> &gammaLocal,
+                                           const LocalTensor<SmoothType> &smoothLocal,
+                                           const LocalTensor<float> &dequantScaleWDqLocal,
+                                           const LocalTensor<float> &dequantScaleXLocal,
+                                           const LocalTensor<uint8_t> &shareTmpUb, RmsNormParam &rmsNormParams,
+                                           bool enableSmoothScalesCq = true)
 {
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
@@ -148,6 +149,7 @@ RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &out
     } else {
         if (enableSmoothScalesCq) {
             Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
+            PipeBarrier<PIPE_V>();
         }
         DynamicQuantPerTokenVf(outputLocal, outputScales, xFp32Local, rmsNormParams.row, rmsNormParams.col);
         PipeBarrier<PIPE_V>();

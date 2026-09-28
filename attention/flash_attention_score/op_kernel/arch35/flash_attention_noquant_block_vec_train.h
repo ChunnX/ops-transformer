@@ -15,19 +15,11 @@
 #ifndef FLASH_ATTENTION_NOQUANT_BLOCK_VEC_TRAIN_H_
 #define FLASH_ATTENTION_NOQUANT_BLOCK_VEC_TRAIN_H_
 #include "flash_attention_noquant_block_vec_base.h"
-#if __has_include("../../../common/op_kernel/arch35/util_regbase.h")
 #include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "../../../common/op_kernel/arch35/dropmask.h"
-#else
-#include "../../common/arch35/util_regbase.h"
-#include "../../common/arch35/infer_flash_attention_comm.h"
-#include "../../common/arch35/flash_attention_score_common_regbase.h"
-#include "kernel_operator_list_tensor_intf.h"
-#include "../../common/arch35/dropmask.h"
-#endif
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -40,13 +32,12 @@ public:
 
 public:
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace);
-    __aicore__ inline void
-    InitGlobalBuffer(__gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                     __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale,
-                     __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-                     __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
-                     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-                     uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void InitGlobalBuffer(
+        __gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+        __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
+        __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo);
     /* =====================GM变量==================== */
     GlobalTensor<uint8_t> dropMaskGm;
     GlobalTensor<float> softmaxMaxGm;
@@ -84,7 +75,6 @@ public:
 private:
 };
 
-
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitDropOut(__gm__ uint8_t *dropMask,
                                                                           __gm__ uint8_t *workspace)
@@ -114,8 +104,8 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitGlobalBuffer(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitUniqueLocalBuffer(
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (hasDrop) {
         if constexpr (!IsSameType<INPUT_T, float>::value || !BaseClass::containAllOptionalInput) {
@@ -132,9 +122,8 @@ FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo<isInfer, 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isInfer, isPa> &sharedParams,
-                                                               int32_t aicIdx, uint8_t subBlockIdx)
+__aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitCubeVecSharedParams(
+    CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     sharedParams.bSize = inputParamsRegbase.bSize;
@@ -189,9 +178,8 @@ FANoQuantBlockVecTrain<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<is
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FANoQuantBlockVecTrain<TEMPLATE_ARGS>::GetS1LoopRange(CVSharedParams<isInfer, isPa> &sharedParams,
-                                                      const int64_t &aicIdx)
+__aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::GetS1LoopRange(
+    CVSharedParams<isInfer, isPa> &sharedParams, const int64_t &aicIdx)
 {
     if constexpr (layout != LayOutTypeEnum::LAYOUT_TND) {
         if constexpr (!hasAtten) {
@@ -274,10 +262,9 @@ __aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOut
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOutFp8(RunInfo<isInfer> &runInfo,
-                                                             ConstInfo<isInfer, hasRope> &constInfo,
-                                                             LocalTensor<half> &sumUb, LocalTensor<half> &maxUb)
+__aicore__ inline void FANoQuantBlockVecTrain<TEMPLATE_ARGS>::SoftmaxDataCopyOutFp8(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<half> &sumUb,
+    LocalTensor<half> &maxUb)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;

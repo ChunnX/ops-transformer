@@ -4,12 +4,12 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+|  <term>Ascend 950PR&950DT系列产品</term>   |     √    |
+|  <term>Atlas A3系列产品</term>   |     √    |
+|  <term>Atlas A2系列产品</term>     |     √    |
+|  <term>Atlas 200I/500 A2推理产品</term>    |     ×    |
+|  <term>Atlas推理系列产品</term>    |     ×    |
+|  <term>Atlas训练系列产品</term>    |     ×    |
 
 ## 功能说明
 
@@ -103,8 +103,8 @@
 - 调用`aclnnMoeTokenPermute`时，tokens必须为2D，indices必须为1D或2D。
 - 调用`aclnnMoeTokenPermuteV2`时，tokens必须为2D，indices必须为1D或2D。
 - 不支持paddedMode为`true`。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：topK小于等于512。
+- <term>Ascend 950PR&950DT系列产品</term>：
   在调用本接口时，框架内部会转调用[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
   - token输入等同于aclnnMoeInitRoutingV2接口的x输入。
   - indices输入等同于aclnnMoeInitRoutingV2接口的expertIdx输入。
@@ -118,3 +118,4 @@
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_moe_token_permute](examples/test_aclnn_moe_token_permute.cpp) | 通过[aclnnMoeTokenPermute](docs/aclnnMoeTokenPermute.md)接口方式调用MoeTokenPermute算子。 |
+| PyTorch API | - | 通过[moe_token_permute](../../moe/moe_token_permute/docs/torchapi_moe_token_permute.md)接口调用moe_token_permute算子。 |

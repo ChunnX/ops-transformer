@@ -1,8 +1,8 @@
 /**
  * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
 BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -25,16 +25,16 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 
 int ndev = 2;
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -83,7 +83,7 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     char hcom_name[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcom_name);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
-    LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream, args.context);
+    LOG_PRINT("[INFO] rank %u hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream, args.context);
 
     std::vector<int64_t> x1Shape = {32, 64};
     std::vector<int64_t> x2Shape = {64 * ndev, 128};
@@ -145,7 +145,7 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-    LOG_PRINT("device%d aclnnAlltoAllMatmul execute success \n", args.rankId);
+    LOG_PRINT("device%u aclnnAlltoAllMatmul execute success \n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
         aclDestroyTensor(x1);

@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -94,7 +94,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *softmaxMax,
     const aclTensor     *softmaxSum,
     const aclTensor     *actualSeqLengthsQueryOptional,
-    const aclTensor     *actualSeqLengthskvOptional,
+    const aclTensor     *actualSeqLengthsKvOptional,
     const aclTensor     *queryRopeOptional,
     const aclTensor     *keyRopeOptional,
     double               scaleValue,
@@ -159,7 +159,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)<br>
             B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
-            <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
+            <term>Ascend 950PR&950DT系列产品</term>的N1额外还支持48、24、12、6、3
             </td>
             <td>√</td>
         </tr>
@@ -251,7 +251,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             </td>
             <td>√</td>
         </tr>
-  <tr>
+        <tr>
             <td>actualSeqLengthsQueryOptional</td>
             <td>输入</td>
             <td>每个Batch中，Query的有效token数。</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>actualSeqLengthskvOptional</td>
+            <td>actualSeqLengthsKvOptional</td>
             <td>输入</td>
             <td>每个Batch中，Key、value的有效token数。</td>
             <td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>MLA rope部分：Query位置编码的输出。</td>
             <td>
-            -
+            可选项。queryRopeOptional和keyRopeOptional必须同时传入或同时为空指针。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>MLA rope部分：Key位置编码的输出。</td>
             <td>
-            -
+            可选项。queryRopeOptional和keyRopeOptional必须同时传入或同时为空指针。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -326,8 +326,8 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>选择的块的大小。</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、8、16、32、64<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持1
+            <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>支持1、8、16、32、64<br>
+            <term>Ascend 950PR&950DT系列产品</term>支持1
             </td>
             <td>INT64</td>
             <td>-</td>
@@ -662,7 +662,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>N1</td>
             <td>1、2、4、8、16、32、64、128<br>
-            <term>Ascend 950PR/Ascend 950DT</term>额外还支持48、24、12、6、3
+            <term>Ascend 950PR&950DT系列产品</term>额外还支持48、24、12、6、3
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -683,7 +683,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>K</td>
-            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
+            <td>1024、2048、2051、3072、4096、5120、6144、7168、8192</td>
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
@@ -696,7 +696,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+调用示例代码如下（以<term>Atlas A2系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -900,9 +900,9 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnSparseFlashAttentionGrad第一段接口
-  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, actSeqQLen, actSeqKvLen,
-            qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope,
-            &workspaceSize, &executor);
+  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum,
+            actSeqQLen, actSeqKvLen, qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens,
+            deterministic, dq, dk, dv, dqRope, dkRope, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存

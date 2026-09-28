@@ -24,10 +24,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
-#include "memory_copy_arch35.h"
+#include "memory_copy_arch35_fused_infer.h"
 
 namespace BaseApi {
 struct TaskInfoMla {
@@ -74,7 +74,7 @@ private:
     uint32_t preLoadNum = 2U;
     uint32_t dSizeV_Align;
     static constexpr bool attenMaskFlag = hasAtten;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
 
@@ -272,12 +272,12 @@ protected:
             .rowCount = dealRowCount,
             .colCount = columnCount,
         };
-        GmCoord gmCoord{.bIdx = taskInfo.bIdx,
-                        .n2Idx = taskInfo.n2Idx,
-                        .gS1Idx = taskInfo.gS1Idx + startRow,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = taskInfo.bIdx,
+                                .n2Idx = taskInfo.n2Idx,
+                                .gS1Idx = taskInfo.gS1Idx + startRow,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
 
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -530,7 +530,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0>
 class FiaBlockVecFlashDecodeMlaDummy {
 public:
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     __aicore__ inline FiaBlockVecFlashDecodeMlaDummy(ConstInfoX &constInfo){};
 };
 

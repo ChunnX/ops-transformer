@@ -13,13 +13,15 @@
  * \brief
  */
 
+#include <algorithm>
 #include <map>
 #include <numeric>
+#include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "paged_attention_checker.h"
+#include "paged_attention_checker_fused_infer.h"
 
 namespace optiling {
 using std::map;
@@ -28,6 +30,65 @@ using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
+
+namespace {
+bool HasNonContiguousCache(const FiaTilingInfo &fiaInfo)
+{
+    return fiaInfo.keyNonContigDim != -1 || fiaInfo.valueNonContigDim != -1 || fiaInfo.keyRopeNonContigDim != -1;
+}
+
+bool IsArch22MlaD512Dim0StrideCapable(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.npuArch != NpuArch::DAV_2201 || fiaInfo.emptyTensorFlag ||
+        fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION || !fiaInfo.pageAttentionFlag ||
+        fiaInfo.quantMode != FiaQuantMode::NO_QUANT || fiaInfo.ropeMode != RopeMode::ROPE_SPLIT ||
+        fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
+        return false;
+    }
+    if ((fiaInfo.inputQType != ge::DT_FLOAT16 && fiaInfo.inputQType != ge::DT_BF16) ||
+        fiaInfo.inputQType != fiaInfo.inputKvType || fiaInfo.outputType == ge::DT_INT8) {
+        return false;
+    }
+    if (fiaInfo.qkHeadDim != 512U || fiaInfo.vHeadDim != 512U || fiaInfo.ropeHeadDim != 64U || fiaInfo.n2Size != 1U) {
+        return false;
+    }
+    if (fiaInfo.learnableSinkFlag || fiaInfo.sysPrefixFlag || fiaInfo.pseShiftFlag || fiaInfo.qPaddingSizeFlag ||
+        fiaInfo.kvPaddingSizeFlag) {
+        return false;
+    }
+    if (fiaInfo.opParamInfo.layOut == nullptr) {
+        return false;
+    }
+    const std::string layout = fiaInfo.opParamInfo.layOut;
+    const std::vector<std::string> supportedLayouts = {"BSH",      "BSND",      "BNSD",      "TND",
+                                                       "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"};
+    if (std::find(supportedLayouts.begin(), supportedLayouts.end(), layout) == supportedLayouts.end()) {
+        return false;
+    }
+    return fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN ||
+           fiaInfo.sparseMode == SPARSE_MODE_BAND || fiaInfo.sparseMode == SPARSE_MODE_TREE;
+}
+
+ge::graphStatus CheckArch22Dim0Stride(const FiaTilingInfo &fiaInfo, const char *inputName, int32_t nonContigDim,
+                                      uint64_t bnStride)
+{
+    OP_CHECK_IF(nonContigDim > 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    fiaInfo.opName, inputName,
+                    ("On arch22, the FiaTilingNonQuantMla D512 template supports non-contiguous " +
+                     std::string(inputName) + " only in dimension 0, but the first non-contiguous dimension is index " +
+                     std::to_string(nonContigDim) + ".")
+                        .c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(nonContigDim == 0 && bnStride == 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, inputName,
+                                                         ("The forwarded dim0 stride of non-contiguous " +
+                                                          std::string(inputName) + " must be greater than 0 on arch22.")
+                                                             .c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace
 
 // 公共校验函数
 // check blocktable dtype
@@ -77,11 +138,11 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
                                                       "When page attention enable, block_size cannot be null"),
                 return ge::GRAPH_FAILED);
     // blockSize 需要大于0
-    OP_CHECK_IF(fiaInfo.blockSize <= 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
-                                                      std::to_string(fiaInfo.blockSize).c_str(),
-                                                      "When page attention enable, block_size must be positive"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        fiaInfo.blockSize <= 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              "When page attention enable, block_size must be positive"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -185,7 +246,7 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
 }
 
 // check pse shape
-ge::graphStatus PagedAttentionChecker::CheckPseShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PagedAttentionChecker::CheckPseShape(const FiaTilingInfo &fiaInfo) const
 {
     if (!fiaInfo.pseShiftFlag) {
         // 若不使能pse，则放弃后续校验
@@ -217,11 +278,11 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape3D(const FiaTilingInfo &
     int64_t tempBlockSize = tempShape.GetDim(DIM_NUM_1);
     int64_t tempH = tempShape.GetDim(DIM_NUM_2);
     if (tempBlockSize != fiaInfo.blockSize) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                                              ("When page attention is enabled, blockSize of " + inputName +
-                                               " must be equal to block_size(" + std::to_string(fiaInfo.blockSize) +
-                                               ")")
-                                                  .c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+            ("When page attention is enabled, blockSize of " + inputName + " must be equal to block_size(" +
+             std::to_string(fiaInfo.blockSize) + ")")
+                .c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -295,11 +356,11 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape4D(const FiaTilingInfo &
     }
 
     OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                                                      ("When page attention is enabled, blockSize of " + inputName +
-                                                       " must be equal to block_size(" +
-                                                       std::to_string(fiaInfo.blockSize) + ")")
-                                                          .c_str()),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+                    ("When page attention is enabled, blockSize of " + inputName + " must be equal to block_size(" +
+                     std::to_string(fiaInfo.blockSize) + ")")
+                        .c_str()),
                 return ge::GRAPH_FAILED);
 
     if (tempD != compareD) {
@@ -317,28 +378,13 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTil
                                                                     const std::string &shapeStr, uint32_t compareD,
                                                                     int64_t tempD0, int64_t tempD1) const
 {
-    uint32_t d0Size = NUM_16;
-    if (fiaInfo.inputKvType == ge::DT_INT4) {
-        if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of " + inputName + " must be " +
-                 std::to_string(d0Size / NUM8) + "; if input kv dataType is INT4, the last dim of " + inputName +
-                 " must be " + std::to_string(d0Size))
-                    .c_str());
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of " + inputName + " must be " +
-                 std::to_string(d0Size / NUM8) + "; if input kv dataType is INT4, the last dim of " + inputName +
-                 " must be " + std::to_string(d0Size))
-                    .c_str());
-            return ge::GRAPH_FAILED;
-        }
+    if (tempD0 != NUM_16 && !(tempD0 == NUM_32 && fiaInfo.inputKvType == ge::DT_INT8)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+            (inputName + " last dim must be 16, or 32 when kv dtype is INT8, when PA_NZ is enabled").c_str());
+        return ge::GRAPH_FAILED;
     }
+    uint32_t d0Size = static_cast<uint32_t>(tempD0);
     if (tempD1 != compareD / d0Size) {
         std::string reasonMsg = "When PA_NZ is enabled, in " + std::string(QuantModeToSerialString(fiaInfo.quantMode)) +
                                 " " + std::string(SituationToSerialString(fiaInfo.ropeMode)) +
@@ -370,7 +416,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZNonAntiquant(const Fia
         dataTypeSizeValue = static_cast<float>(BFLOAT16SIZE);
     }
 
-    uint32_t d0Size = BYTE_BLOCK / dataTypeSizeValue;
+    uint32_t d0Size = static_cast<uint32_t>(BYTE_BLOCK / dataTypeSizeValue);
     if (tempD0 != d0Size) {
         std::string reasonMsg = "When PA_NZ is enabled, in " + std::string(QuantModeToSerialString(fiaInfo.quantMode)) +
                                 " " + std::string(SituationToSerialString(fiaInfo.ropeMode)) +
@@ -427,11 +473,11 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         }
 
         if (tempBlockSize != fiaInfo.blockSize) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                                                  ("When page attention is enabled, blockSize of " + inputName +
-                                                   " must be equal to block_size(" + std::to_string(fiaInfo.blockSize) +
-                                                   ")")
-                                                      .c_str());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+                ("When page attention is enabled, blockSize of " + inputName + " must be equal to block_size(" +
+                 std::to_string(fiaInfo.blockSize) + ")")
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
 
@@ -501,7 +547,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
 }
 
 // check blocksize
-ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
         if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
@@ -550,7 +596,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.ropeMode != RopeMode::NO_ROPE) { // MLA场景 [16, 1024]且16对齐
         if (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
@@ -595,7 +641,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuantOther(const FiaTili
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingInfo &fiaInfo) const
 {
     std::unordered_map<ge::DataType, float> typeSizeMap = {{ge::DT_FLOAT16, static_cast<float>(FLOAT16SIZE)},
                                                            {ge::DT_BF16, static_cast<float>(BFLOAT16SIZE)},
@@ -647,63 +693,96 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         // mxfp8 仅支持blocksize等于64、128、256、512或1024
         if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
             (fiaInfo.blockSize != BLOCK_SIZE_64_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_128_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                "In MXFP8 fullquant scenario, when page attention is enabled, "
-                "block_size must be in [64, 128, 256, 512, 1024]");
+             fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
+             fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
+                                                  std::to_string(fiaInfo.blockSize).c_str(),
+                                                  "In MXFP8 fullquant scenario, when page attention is enabled, "
+                                                  "block_size must be in [64, 128, 256, 512, 1024]");
             return ge::GRAPH_FAILED;
         }
 
         // fp8 gqa 仅支持blocksize等于128
-        OP_CHECK_IF(fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD &&
-                        fiaInfo.blockSize != NUM_128,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                        "In FP8 GQA fullquant scenario, when page attention is enabled, block_size must be 128"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD && fiaInfo.blockSize != NUM_128,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                "In FP8 GQA fullquant scenario, when page attention is enabled, block_size must be 128"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo) const
 {
-    if (!fiaInfo.hasViewStride) {
+    if (!fiaInfo.hasViewStride || !HasNonContiguousCache(fiaInfo)) {
         return ge::GRAPH_SUCCESS;
     }
 
     int32_t keyDim = fiaInfo.keyNonContigDim;
     int32_t valueDim = fiaInfo.valueNonContigDim;
     int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
-
-    if (enableAntiQuant_ || fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
-        OP_CHECK_IF(keyDim != -1,
+    const string inputLayout = fiaInfo.opParamInfo.layOut;
+    if (fiaInfo.npuArch == NpuArch::DAV_2201) {
+        OP_CHECK_IF(!IsArch22MlaD512Dim0StrideCapable(fiaInfo),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        fiaInfo.opName, "key",
-                        ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous key tensors, "
-                         "but the first non-contiguous dimension is index " +
-                         std::to_string(keyDim) + ".")
-                            .c_str()),
+                        fiaInfo.opName, "key/value/keyRope",
+                        "On arch22, non-contiguous cache is supported only by PageAttention nonquant split-RoPE D512 "
+                        "FiaTilingNonQuantMla with qkHeadDim=512, vHeadDim=512, ropeHeadDim=64 and n2Size=1; all other "
+                        "FIA and legacy templates require contiguous cache inputs."),
+                    return ge::GRAPH_FAILED);
+        if (CheckArch22Dim0Stride(fiaInfo, "key", keyDim, fiaInfo.keyBnStride) != ge::GRAPH_SUCCESS ||
+            CheckArch22Dim0Stride(fiaInfo, "value", valueDim, fiaInfo.valueBnStride) != ge::GRAPH_SUCCESS ||
+            CheckArch22Dim0Stride(fiaInfo, "keyRope", keyRopeDim, fiaInfo.kRopeBnStride) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(
+        fiaInfo.npuArch != NpuArch::DAV_3510,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key/value/keyRope",
+                                                 "Non-contiguous cache is not supported on the current architecture."),
+        return ge::GRAPH_FAILED);
+
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT &&
+        !(inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN)) {
+        OP_CHECK_IF(keyDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                                                             ("In non-FP8 TND mla fullquant scenarios, "
+                                                              "PA does not support non-contiguous key tensors, "
+                                                              "but the first non-contiguous dimension is index " +
+                                                              std::to_string(keyDim))
+                                                                 .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                                                             ("In non-FP8 TND mla fullquant scenarios, "
+                                                              "PA does not support non-contiguous value tensors, "
+                                                              "but the first non-contiguous dimension is index " +
+                                                              std::to_string(valueDim))
+                                                                 .c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                                                             ("In non-FP8 TND mla fullquant scenarios, "
+                                                              "PA does not support non-contiguous keyRope tensors, "
+                                                              "but the first non-contiguous dimension is index " +
+                                                              std::to_string(keyRopeDim))
+                                                                 .c_str()),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    // antiquant 不支持 keyRope 非连续（kRopeStrides 不处理），key/value 放行到下方布局级检查
+    if (enableAntiQuant_) {
+        OP_CHECK_IF(keyRopeDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        fiaInfo.opName, "value",
-                        ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous value tensors, "
+                        fiaInfo.opName, "keyRope",
+                        ("In anti-quant scenarios, PA does not support non-contiguous keyRope tensors, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(valueDim) + ".")
+                         std::to_string(keyRopeDim) + ".")
                             .c_str()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            keyRopeDim != -1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                fiaInfo.opName, "keyRope",
-                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
-                 "but the first non-contiguous dimension is index " +
-                 std::to_string(keyRopeDim) + ".")
-                    .c_str()),
-            return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
     }
 
     if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
@@ -712,7 +791,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "key",
                         ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyDim) + ".")
+                         std::to_string(keyDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim > 0,
@@ -720,7 +799,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "value",
                         ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(valueDim) + ".")
+                         std::to_string(valueDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(keyRopeDim > 0,
@@ -728,7 +807,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "keyRope",
                         ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyRopeDim) + ".")
+                         std::to_string(keyRopeDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
     } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
@@ -737,7 +816,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "key",
                         ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyDim) + ".")
+                         std::to_string(keyDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim > 1,
@@ -745,7 +824,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "value",
                         ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(valueDim) + ".")
+                         std::to_string(valueDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(keyRopeDim > 1,
@@ -753,14 +832,13 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "keyRope",
                         ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyRopeDim) + ".")
+                         std::to_string(keyRopeDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInfo) const
 {
@@ -792,41 +870,41 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         }
     }
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
-        OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnBsH &&
-                        (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
-                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
-                         fiaInfo.qLayout != FiaLayout::NTD),
-                    OP_LOGE(fiaInfo.opName,
-                            "In %s %s situation, the key/value's layout is BnBsH, query layout must be BSH, BSND, BNSD "
-                            "TND and TND in page attention scene, but got %s",
-                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
-                            SituationToSerialString(fiaInfo.ropeMode).c_str(),
-                            LayoutToSerialString(fiaInfo.qLayout).c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.kvLayout == FiaLayout::BnBsH &&
+                (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
+                 fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
+                 fiaInfo.qLayout != FiaLayout::NTD),
+            OP_LOGE(fiaInfo.opName,
+                    "In %s %s situation, the key/value's layout is BnBsH, query layout must be BSH, BSND, BNSD "
+                    "TND and TND in page attention scene, but got %s",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()),
+            return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnNBsD &&
-                        (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
-                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
-                         fiaInfo.qLayout != FiaLayout::NTD),
-                    OP_LOGE(fiaInfo.opName,
-                            "In %s %s situation, the key/value's layout is BnNBsD, "
-                            "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
-                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
-                            SituationToSerialString(fiaInfo.ropeMode).c_str(),
-                            LayoutToSerialString(fiaInfo.qLayout).c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.kvLayout == FiaLayout::BnNBsD &&
+                (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
+                 fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
+                 fiaInfo.qLayout != FiaLayout::NTD),
+            OP_LOGE(fiaInfo.opName,
+                    "In %s %s situation, the key/value's layout is BnNBsD, "
+                    "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()),
+            return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::NZ &&
-                        (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
-                         fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
-                         fiaInfo.qLayout != FiaLayout::NTD),
-                    OP_LOGE(fiaInfo.opName,
-                            "In %s %s situation, the key/value's layout is PA_NZ, "
-                            "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
-                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
-                            SituationToSerialString(fiaInfo.ropeMode).c_str(),
-                            LayoutToSerialString(fiaInfo.qLayout).c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.kvLayout == FiaLayout::NZ &&
+                (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&
+                 fiaInfo.qLayout != FiaLayout::BNSD && fiaInfo.qLayout != FiaLayout::TND &&
+                 fiaInfo.qLayout != FiaLayout::NTD),
+            OP_LOGE(fiaInfo.opName,
+                    "In %s %s situation, the key/value's layout is PA_NZ, "
+                    "query layout must be BSH, BSND, BNSD TND and NTD in page attention scene, but got %s",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), LayoutToSerialString(fiaInfo.qLayout).c_str()),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -834,7 +912,8 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
 ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const
 {
     // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, page attention is not supported.
-    if (fiaInfo.s1Size > 1) {
+    // D0=32 (INT8 PA_NZ) antiquant path supports s1>1, skip this check.
+    if (fiaInfo.s1Size > 1 && fiaInfo.kvCacheNzD0 != NUM_32) {
         int64_t keyAntiquantMode = 0;
         if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
             keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
@@ -912,11 +991,17 @@ ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTiling
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(fiaInfo.keyNonContigDim != -1,
-                    OP_LOGE(fiaInfo.opName, "In non-PA scenarios, key tensors must be contiguous."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                                                             "In non-PA scenarios, key tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
-                    OP_LOGE(fiaInfo.opName, "In non-PA scenarios, value tensors must be contiguous."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                                                             "In non-PA scenarios, value tensors must be contiguous"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fiaInfo.keyRopeNonContigDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                                                             "In non-PA scenarios, keyRope tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }

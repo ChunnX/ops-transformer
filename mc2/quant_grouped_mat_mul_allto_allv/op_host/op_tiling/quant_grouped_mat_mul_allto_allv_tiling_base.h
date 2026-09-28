@@ -18,7 +18,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace Mc2Tiling {
@@ -97,7 +96,6 @@ constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
 constexpr uint32_t DIM_FOUR = 4;
 
-
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8;
 
@@ -149,7 +147,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     ge::graphStatus PostTiling() override;
-    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName);
+    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName) const;
     const char *opName_{nullptr};
 
     NpuArch npuArch_;

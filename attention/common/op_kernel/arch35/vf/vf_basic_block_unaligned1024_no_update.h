@@ -17,7 +17,7 @@
 
 #include "vf_basic_block_utils.h"
 #include "vf_basic_block_unaligned1024_common.h"
-#include "../pse.h"
+#include "../pse_arch35.h"
 
 using namespace regbaseutil;
 
@@ -101,14 +101,14 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
         maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16, minValue, m, slopes, scale, posShift, pseStride,
         nPadding, ureg_max);
 
-    StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
+    StoreUnAlignPost<T, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
     if constexpr (hasDrop == 1) {
-        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_zero, 0.0f, preg_all);
+        Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_zero, 0.0f, preg_all);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
 
         LoadInputDinterleave8<T>(ARG_FLOAT_INPUT_X_16);
 
@@ -130,7 +130,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
             CastStoreExpF16_1024<T2>(ARG_FLOAT_CAST_STORE_EXP_1024);
         }
     }
-    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+    StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
 }
 
 // no update, 512 < originN <= 1024
@@ -145,15 +145,15 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl1024(
     const T minValue, float keepProb)
 {
     const uint32_t repeatStride = 1;
-    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
+    const uint32_t blockStride = (s1BaseSize / ArchInfo::CV_RATIO) | 0x1;
     __ubuf__ T2 *expUb1 = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T2 *expUb2 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb3 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 2 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb4 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 3 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb5 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 4 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb6 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 5 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb7 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 6 * ((s1BaseSize >> 1) + 1) * (128);
-    __ubuf__ T2 *expUb8 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 7 * ((s1BaseSize >> 1) + 1) * (128);
+    __ubuf__ T2 *expUb2 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb3 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 2 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb4 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 3 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb5 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 4 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb6 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 5 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb7 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 6 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
+    __ubuf__ T2 *expUb8 = (__ubuf__ T2 *)dstTensor.GetPhyAddr() + 7 * ((s1BaseSize / ArchInfo::CV_RATIO) + 1) * (128);
 
     __ubuf__ OUTPUT_T *pseUb = (__ubuf__ OUTPUT_T *)pseTensor.GetPhyAddr();
     __ubuf__ T *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();

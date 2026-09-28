@@ -16,30 +16,43 @@ import re
 import argparse
 
 
+OP_DEF_PATTERN = re.compile(
+    r"(?P<comment>[ \t]*/\*\*?(?:[^*]|\*(?!/))*?\*/[ \t]*\n\s*)?"
+    r"(?P<guard>[ \t]*#\s*ifndef\s+\w+[^\n]*\n"
+    r"[ \t]*#\s*define\s+\w+[^\n]*\n\s*)?"
+    r"^\s*REG_OP\((?P<opname>.+?)\)"
+    r".*?OP_END_FACTORY_REG\((?P=opname)\)"
+    r"(?(guard)[^\n]*\n[ \t]*#\s*endif[^\n]*)",
+    re.DOTALL | re.MULTILINE,
+)
+
+
 def match_op_proto(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)", re.DOTALL)
-    match = op_def_pattern.search(content)
-
-    if match:
-        op_name = match.group(1)
+    op_defs = []
+    for match in OP_DEF_PATTERN.finditer(content):
+        op_name = match.group("opname")
         op_def = match.group(0)
-        return op_name, op_def
-    else:
-        return None, None
+        op_defs.append((op_name, op_def))
+
+    return op_defs
 
 
 def merge_op_proto(protos_path, output_file):
     op_defs = []
+    seen = set()
     for proto_path in protos_path:
-        if not proto_path.endswith("_proto.h"):
+        if not (
+            proto_path.endswith("_proto.h") or proto_path.endswith("_proto_extend.h")
+        ):
             continue
         print(f"proto_path: {proto_path}")
-        op_name, op_def = match_op_proto(proto_path)
-        if op_def:
-            op_defs.append(op_def)
+        for op_name, op_def in match_op_proto(proto_path):
+            if op_name not in seen:
+                seen.add(op_name)
+                op_defs.append(op_def)
 
     # merge op_proto
     merged_content = f"""#ifndef OP_TRANSFORMER_PROTO_H_
@@ -72,6 +85,6 @@ def parse_args(argv):
 if __name__ == "__main__":
     args = parse_args(sys.argv)
 
-    protos_path = args.protos[1:]
+    protos_path = list(dict.fromkeys(args.protos[1:]))
     output_file = args.output_file[0]
     merge_op_proto(protos_path, output_file)

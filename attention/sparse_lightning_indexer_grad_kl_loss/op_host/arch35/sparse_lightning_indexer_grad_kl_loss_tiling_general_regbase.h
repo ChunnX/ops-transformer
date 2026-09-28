@@ -32,7 +32,8 @@ namespace optiling {
 
 class SparseLightningIndexerGradKLLossTilingBaseRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseLightningIndexerGradKLLossTilingBaseRegbase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit SparseLightningIndexerGradKLLossTilingBaseRegbase(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
         Reset();
     }
@@ -45,7 +46,8 @@ public:
     }
 
 protected:
-    void Reset() {
+    void Reset()
+    {
         bSize = 0;
         gSizeQuery = 0;
         gSizeQueryIndex = 0;
@@ -59,6 +61,9 @@ protected:
         accumS2 = 0;
         sparseMode = 3;
         scaleValue = 1.0f;
+        t1Size = 0;
+        t2Size = 0;
+        totalAivNum = 40;
         dQueryRopeSize = 0;
         dKeyRopeSize = 0;
 
@@ -95,20 +100,20 @@ protected:
     ge::graphStatus CheckContext();
     bool AnalyzeAttrs();
     bool CrossShapeVerify(const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShap);
-    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &queryIndexShape,
-                         const gert::Shape &topKShape, size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
+    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
+                          const gert::Shape &queryIndexShape, const gert::Shape &topKShape, size_t layoutLen,
+                          const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-                            const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
-    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, 
-                    const int64_t balanceNum);
-    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
-                       int64_t maxCoreNum);
+                              const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
+    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &localValue,
+                     std::vector<int64_t> &sparseStartIdx);
+    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
+                       const int64_t balanceNum);
+    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum, uint32_t syKTotalSize, uint32_t pkTotalSize);
@@ -137,6 +142,9 @@ protected:
     uint64_t l2CacheSize;
 
     int64_t realT1Size;
+    int64_t t1Size;
+    int64_t t2Size;
+    int32_t totalAivNum;
     int64_t dQueryRopeSize;
     int64_t dKeyRopeSize;
     int64_t accumS1;
@@ -147,6 +155,7 @@ protected:
     platform_ascendc::SocVersion socVersion;
     bool deterministic;
     bool hasRope = false;
+    bool hasSink = false;
 
     const char *opName;
     const char *inputLayout;
@@ -154,10 +163,11 @@ protected:
     std::vector<int64_t> actualSeqLenData;
     std::vector<int64_t> actualSeqLenKData;
 
-    SparseLightningIndexerGradKLLossRegBaseTilingData *tilingData = context_->GetTilingData<SparseLightningIndexerGradKLLossRegBaseTilingData>();
+    SparseLightningIndexerGradKLLossRegBaseTilingData *tilingData =
+        context_->GetTilingData<SparseLightningIndexerGradKLLossRegBaseTilingData>();
     SLIGradKLLossBaseParamsRegbase *sliGradkllossBaseParams_ = &tilingData->baseParams;
     SLIGradKLLossMultiCoreParamsRegbase *sliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 
-} // optiling
+} // namespace optiling
 #endif

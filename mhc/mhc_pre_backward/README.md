@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Ascend 950PR&950DT系列产品</term>                             |    √     |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                             |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -172,11 +172,16 @@
 
 ## 约束说明
 
-- `N`当前仅支持`4`、`6`、`8`三种取值。
-- `D`支持`1~16384`，且需满足`64`元素对齐。
+- <term>Ascend 950PR&950DT系列产品</term>：
+  - N目前支持4、6、8。
+  - D支持1~16384，需满足64元素对齐。
+- <term>Atlas A2系列产品</term>：
+  - N目前支持4。
+  - D支持1~100000，需满足128元素对齐。
 
 ## 调用说明
 
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
 | aclnn调用 | [test_aclnn_mhc_pre_backward.cpp](examples/test_aclnn_mhc_pre_backward.cpp) | 通过[aclnnMhcPreBackward](docs/aclnnMhcPreBackward.md)接口方式调用MhcPreBackward算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre_backward_v2.cpp](examples/test_aclnn_mhc_pre_backward_v2.cpp) | 通过[aclnnMhcPreBackwardV2](docs/aclnnMhcPreBackwardV2.md)接口指定Cube计算模式并调用MhcPreBackward算子。 |

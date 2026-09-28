@@ -1,13 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_stream_k_tiling.cc
@@ -17,7 +16,7 @@
 #include "matmul_v3_stream_k_tiling.h"
 #include "matmul_tiling_registry.h"
 #include "matmul_v3_tiling_strategy.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using Ops::Transformer::MathUtil;
 namespace {
@@ -57,7 +56,7 @@ bool CheckStreamKSKTiling91095(const Mc2MatmulV3CompileInfo &compileInfo, const 
 using CheckStreamKSKTilingFunc = bool (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &);
 
 const static std::map<NpuArch, CheckStreamKSKTilingFunc> CheckStreamKSKTilingFuncMap = {
-    {NpuArch::DAV_3510, CheckStreamKSKTiling91095},
+    {Ops::Base::DAV_3510, CheckStreamKSKTiling91095},
 };
 
 // ------------------------------ CheckStreamKDPSKTiling -------------------------------------------//
@@ -87,7 +86,7 @@ bool CheckStreamKDPSKTiling91095(const Mc2MatmulV3CompileInfo &compileInfo, cons
 using CheckStreamKDPSKTilingFunc = bool (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3Args &);
 
 const static std::map<NpuArch, CheckStreamKDPSKTilingFunc> CheckStreamKDPSKTilingFuncMap = {
-    {NpuArch::DAV_3510, CheckStreamKDPSKTiling91095},
+    {Ops::Base::DAV_3510, CheckStreamKDPSKTiling91095},
 };
 
 // ------------------------------ GetL0C2OutFlag -------------------------------------------//
@@ -108,7 +107,7 @@ Mc2MatMulV3L0C2Out GetL0C2OutFlag91095(const Mc2MatMulV3Args &args)
 using GetL0C2OutFlagFunc = Mc2MatMulV3L0C2Out (*)(const Mc2MatMulV3Args &);
 
 const static std::map<NpuArch, GetL0C2OutFlagFunc> GetL0C2OutFlagFuncMap = {
-    {NpuArch::DAV_3510, GetL0C2OutFlag91095},
+    {Ops::Base::DAV_3510, GetL0C2OutFlag91095},
 };
 } // namespace
 

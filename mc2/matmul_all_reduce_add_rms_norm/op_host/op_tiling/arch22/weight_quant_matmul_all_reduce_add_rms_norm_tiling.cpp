@@ -27,8 +27,7 @@ WeightQuantMMNTilingTransferHelper::WeightQuantMMNTilingTransferHelper(
     : WeightQuantMatmulAllReduceTiling(weightQuantMatmulAllReduceAddRmsNormTiling.context_,
                                        &weightQuantMatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo, &data),
       tilingProcesser_(weightQuantMatmulAllReduceAddRmsNormTiling)
-{
-}
+{}
 ge::graphStatus WeightQuantMMNTilingTransferHelper::GetShapeAttrsInfo()
 {
     return MatmulAllReduceTilingBase::AnalyzeShapeAttr();
@@ -137,7 +136,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
     MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
     const auto arn_workspace = tilingOutAddRmsNormTile_.workSpaceSize - SYS_WORKSPACE_SIZE;
     const auto my_workspace = mc2_workspace + arn_workspace;
-    OP_LOGI(helper_->opName_, " Workspace %lu with detail: mc2: %lu arn：%u", my_workspace, mc2_workspace,
+    OP_LOGI(helper_->opName_, " Workspace %lu with detail: mc2: %lu arn: %u", my_workspace, mc2_workspace,
             arn_workspace);
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = my_workspace;
@@ -183,7 +182,7 @@ uint64_t WeightQuantMatmulAllReduceAddRmsNormTiling::GetTilingKey() const
 {
     const auto mc2_key = helper_->GetTilingKey();
     const auto my_key = mc2_key; // use mc2 key as mrn key
-    OP_LOGI(helper_->opName_, " tilingKey %lu with detail: mc2_key: %lu arn_key tile：%u arn_key tail: %u", my_key,
+    OP_LOGI(helper_->opName_, " tilingKey %lu with detail: mc2_key: %lu arn_key tile: %u arn_key tail: %u", my_key,
             mc2_key, tilingOutAddRmsNormTile_.tilingKey, tilingOutAddRmsNormTail_.tilingKey);
     return my_key;
 }

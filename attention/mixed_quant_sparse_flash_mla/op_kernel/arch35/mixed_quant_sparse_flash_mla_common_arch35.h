@@ -16,53 +16,65 @@
 #define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../mixed_quant_sparse_flash_mla_common.h"
+#include "mixed_quant_sparse_flash_mla_common.h"
+#include "../../../sparse_flash_mla/op_kernel/arch35/common/static_buffer.h"
+#include "../../../sparse_flash_mla/op_kernel/arch35/common/smla_common_defs.h"
 
-constexpr uint64_t BLOCK_BYTE = 32;
-constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+// ===== V 侧主流程 buffer slot id (MTE2_V/V_MTE2/MTE3_V/V_MTE3 各自独立) =====
+#define INNERCORE_STAGE0_IN(s) (s)        // 0,1: stage0In, MTE2_V / V_MTE2
+#define INNERCORE_STAGE0_OUT(s) (2 + (s)) // 2,3: stage0Out, MTE3_V / V_MTE3
+#define INNERCORE_STAGE1(s) (4 + (s))     // 4,5: stage1, MTE3_V / V_MTE3
+#define INNERCORE_STAGE2 (6)              // 6:   stage2, MTE3_V / V_MTE3
+#define INNERCORE_SINKS_SYNC (7)          // 7:   sinks,  MTE2_V / V_MTE2
 
-constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536;  // 65536表示64*1024
-constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
+// ===== GetKVPhyAddr 独立阶段, 保留原 flag 值 =====
+#define INNERCORE_PHYADDR_BLKTABLE_FREE (3)   // V_MTE2, blkTable 空闲
+#define INNERCORE_PHYADDR_BLKTABLE_READY (8)  // MTE2_V, blkTable 就绪
+#define INNERCORE_PHYADDR_SPARSEIDX_FREE (4)  // V_MTE2, sparseIdx 空闲
+#define INNERCORE_PHYADDR_SPARSEIDX_READY (6) // MTE2_V, sparseIdx 就绪
+#define INNERCORE_PHYADDR_KVADDR_READY (5)    // V_MTE3, kvPhyAddr 就绪
+#define INNERCORE_PHYADDR_KVADDR_FREE (7)     // MTE3_V, kvPhyAddr 空闲
 
-constexpr uint32_t BUFFER_SIZE_16K = 16384;   // 16384表示16 * 1024
-constexpr uint32_t BUFFER_SIZE_32K = 32768;   // 32768表示32 * 1024
-constexpr uint32_t BUFFER_SIZE_96K = 98304;   // 98304表示96 * 1024
-constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
+// ===== V 侧其余核内 flag id (FD / batch-consistency / LSE / init) =====
+// 各 HardEvent 命名空间独立; 主流程 stage 槽位 id 已占 0~6/7, 其余事件在其命名空间内取不冲突值。
+// V_MTE2: STAGE0_IN 0,1
+#define INNERCORE_REDUCE_MAXSUM_V_MTE2 (2) // batch-consistency reduce max/sum
+#define INNERCORE_INTRAPARTIALO_V_MTE2 (3) // batch-consistency partial O
+#define INNERCORE_FD_V_MTE2(s) (4 + (s))   // 4,5: flash decode
 
-constexpr uint32_t CV_RATIO = 2;
-constexpr uint64_t SYNC_MODE = 4;
-constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U; // 同token最大规约块数
+// MTE2_V: STAGE0_IN 0,1; SINKS 7
+#define INNERCORE_REDUCE_MTE2_V (2) // batch-consistency reduce
+#define INNERCORE_FD_MTE2_V (3)     // flash decode
+
+// V_MTE3: STAGE0_OUT 2,3; STAGE1 4,5; STAGE2 6
+#define INNERCORE_LSE_V_MTE3 (1) // LSE out (条件阶段)
+
+// MTE3_V: STAGE0_OUT 2,3; STAGE1 4,5; STAGE2 6
+#define INNERCORE_STAGE_FD_MTE3_V (7) // FD/BC staging (StageVec1Lse)
+#define INNERCORE_LSE_MTE3_V (0)      // LSE out (条件阶段)
+#define INNERCORE_FD_MTE3_V (1)       // FD mte3ToV (SyncAll 之后阶段)
+#define INNERCORE_INITOUT_MTE3_V (0)  // init 阶段 (CleanOutput)
+
+// MTE3_MTE2 (batch consistency + fd)
+#define INNERCORE_INTRALSE_MTE3_MTE2(s) (s)        // 0,1
+#define INNERCORE_INTRAATTN_MTE3_MTE2(s) (2 + (s)) // 2,3
+#define INNERCORE_FD_MTE3_MTE2 (4)
 
 namespace BaseApi {
-__aicore__ constexpr uint64_t Align2Func(uint64_t data)
-{
-    return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2
-}
-
-__aicore__ constexpr uint64_t Align8Func(uint64_t data)
-{
-    return (data + 7UL) >> 3UL << 3UL; // 向上8对齐, +7移位3
-}
-
-__aicore__ constexpr uint64_t Align16Func(uint64_t data)
-{
-    return (data + 15UL) >> 4UL << 4UL; // 向上16对齐, +15移位4
-}
-
-__aicore__ constexpr uint64_t Align64Func(uint64_t data)
-{
-    return (data + 63UL) >> 6UL << 6UL; // 向上64对齐, +63移位6
-}
+using AttentionCommon::Align2Func;
+using AttentionCommon::Align8Func;
+using AttentionCommon::Align16Func;
+using AttentionCommon::Align64Func;
 } // namespace BaseApi
 
 #define TEMPLATE_INTF \
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSMLA_LAYOUT LAYOUT_T, \
               QSMLA_LAYOUT KV_LAYOUT_T, QSMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, \
-              SCALE_CONTIGUOUS_MODE QUANT_MODE, bool IS_BATCH_CONSISTENCY, bool IS_VEC_S2PHYADDR>
+              SCALE_CONTIGUOUS_MODE QUANT_MODE, bool IS_BATCH_CONSISTENCY, bool IS_VEC_S2PHYADDR, bool HIGH_PERF>
 
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, QUANT_MODE, \
-        IS_BATCH_CONSISTENCY, IS_VEC_S2PHYADDR
+        IS_BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
@@ -79,7 +91,8 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(IS_SPLIT_G, bool, false) \
     X(QUANT_MODE, SCALE_CONTIGUOUS_MODE, SCALE_CONTIGUOUS_MODE::CONTIGUOUS) \
     X(IS_BATCH_CONSISTENCY, bool, false) \
-    X(IS_VEC_S2PHYADDR, bool, false)
+    X(IS_VEC_S2PHYADDR, bool, false) \
+    X(HIGH_PERF, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

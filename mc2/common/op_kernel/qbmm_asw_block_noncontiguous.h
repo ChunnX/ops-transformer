@@ -15,7 +15,7 @@
 #ifndef QBMM_ASW_BLOCK_NONCONTIGUOUS_H
 #define QBMM_ASW_BLOCK_NONCONTIGUOUS_H
 
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
+#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmv3_arch35_tiling_data.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_asw_block.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_base.h"
 
@@ -23,9 +23,7 @@ namespace Mc2QuantBatchMatmulV3 {
 
 class Mc2QuantBmmAswBlockNonContiguous : public Mc2QuantBmmAswBlock {
 public:
-    __aicore__ inline Mc2QuantBmmAswBlockNonContiguous()
-    {
-    }
+    __aicore__ inline Mc2QuantBmmAswBlockNonContiguous() {}
     template <bool aTrans, bool bTrans, class x1Type, class scaleType, CubeFormat formatX2>
     __aicore__ inline void CalcGMOffset(const uint32_t strideCount, const uint32_t *batchWeight);
 };

@@ -19,7 +19,7 @@
 #include "lib/matmul/tiling.h"
 #include "lib/matmul/constant_tiling.h"
 
-#include "../policy/dispatch_policy.h"
+#include "../policy/cgmct_dispatch_policy.h"
 #include "./matmul_impl_traits.h"
 #include "./block_mmad_with_params.h"
 
@@ -110,7 +110,9 @@ public:
     }
 
 private:
-    MM matmul_;
+    // Value-initialize the matmul implementation so its runtime state is defined
+    // before Init/Iterate perform any read-modify-write updates.
+    MM matmul_{};
 };
 } // namespace Block
 } // namespace Gemm

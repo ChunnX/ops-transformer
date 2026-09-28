@@ -17,16 +17,16 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
-#include "arch35/sparse_flash_mla_csa_kernel.h"
-#include "arch35/sparse_flash_mla_swa_kernel.h"
-#include "sparse_flash_mla_metadata.h"
+#include "arch35/sparse_flash_mla_csa_kernel_arch35.h"
+#include "arch35/sparse_flash_mla_swa_kernel_arch35.h"
+#include "sparse_flash_mla_kernel_metadata.h"
 #else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
 #include "arch22/sparse_flash_mla_csa_kernel.h"
 #include "arch22/sparse_flash_mla_swa_kernel.h"
-#include "arch22/sparse_flash_mla_metadata.h"
+#include "arch22/sparse_flash_mla_arch22_metadata.h"
 #endif
 
 using namespace AscendC;
@@ -47,7 +47,7 @@ using namespace SMLAKernel;
         const tilingdataClass *__restrict tilingData = &tilingDataIn; \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, \
                 cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, oriTopkLength, \
-                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData, &tPipe); \
+                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData); \
         op.Process(); \
     } while (0)
 #else
@@ -64,19 +64,16 @@ using namespace SMLAKernel;
 #endif
 
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int HEAD_RATIO_ONE,
-          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR>
-__global__ __aicore__ void
-sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
-                 __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
-                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
-                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
-                 __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
-                 __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR, int IS_DSPARK>
+__global__ __aicore__ void sparse_flash_mla(
+    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
+    __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
+    __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV,
+    __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
-    TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
 #if (__CCE_AICORE__ == 310)
@@ -107,26 +104,27 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
         }
     }
 #else
+    TPipe tPipe;
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaCsa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         } else {
             SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         }
     }
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_ATTN_OUT == DT_BF16) {
         if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaCsa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         } else {
             SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t, FLASH_DECODE,
                          static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
-                         static_cast<bool>(HEAD_RATIO_ONE));
+                         static_cast<bool>(HEAD_RATIO_ONE), static_cast<bool>(IS_DSPARK));
         }
     }
 #endif

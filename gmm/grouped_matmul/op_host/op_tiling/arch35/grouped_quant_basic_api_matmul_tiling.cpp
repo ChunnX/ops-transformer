@@ -13,6 +13,8 @@
  * \brief
  */
 #include <algorithm>
+#include <limits>
+#include "acl/acl_rt.h"
 #include "err/ops_err.h"
 #include "grouped_quant_basic_api_matmul_tiling.h"
 #include "../../grouped_matmul_host_util.h"
@@ -22,13 +24,134 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
-GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
+namespace {
+constexpr uint64_t THREE_BUFFER_MIN_LOAD_SIZE = MTE2_MIN_LOAD_SIZE_V120 * 3UL / 4UL; // 48 KiB
+}
+
+GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
+    : GroupedQmmTiling(context)
 {
     Reset();
 }
 
+bool GroupedQmmBasicApiTiling::IsCubeBasicApi() const
+{
+    const bool isInt8 = inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8;
+    // Match KernelGroupedMmadFixpipeQuant's input type assertions.
+    const bool isHiFloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8 && inputParams_.bDtype == ge::DT_HIFLOAT8;
+    const auto isFp8 = [](ge::DataType dtype) { return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2; };
+    const bool outputSupported = inputParams_.cDtype == ge::DT_FLOAT16 || inputParams_.cDtype == ge::DT_BF16 ||
+                                 (isInt8 ? (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) :
+                                           inputParams_.cDtype == ge::DT_FLOAT);
+    const bool scaleSupported = inputParams_.cDtype == ge::DT_INT32 || inputParams_.scaleDtype == ge::DT_UINT64 ||
+                                inputParams_.scaleDtype == ge::DT_INT64 || inputParams_.scaleDtype == ge::DT_BF16 ||
+                                inputParams_.scaleDtype == ge::DT_FLOAT;
+    const bool biasSupported =
+        !inputParams_.hasBias || inputParams_.biasDtype == (isInt8 ? ge::DT_INT32 : ge::DT_FLOAT);
+    const bool supportedInput = !IsMicroScaling() && !inputParams_.transA &&
+                                inputParams_.kernelType == GMM_DEQUANT_FIXP &&
+                                (isInt8 || isHiFloat8 || (isFp8(inputParams_.aDtype) && isFp8(inputParams_.bDtype))) &&
+                                biasSupported && outputSupported && scaleSupported;
+    if (!supportedInput) {
+        return false;
+    }
+    char packageName[] = "asc-devkit";
+    int32_t version = 0;
+    if (aclsysGetVersionNum(packageName, &version) != ACL_SUCCESS || version <= 0) {
+        return false;
+    }
+    // Version encoding: major * 10000000 + minor * 100000 + patch * 1000 + suffix.
+    // Match the existing kernel IS_BLAZE predicate, including the 10.0 exclusion.
+    constexpr int32_t majorUnit = 10000000;
+    constexpr int32_t minorUnit = 100000;
+    const int32_t major = version / majorUnit;
+    const int32_t minor = version % majorUnit / minorUnit;
+    return major >= 9 && minor > 0;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::CalCubeL1Tiling()
+{
+    // Validate before divisions and narrowing to the uint32_t wire format.
+    constexpr uint64_t maxDim = std::numeric_limits<uint32_t>::max();
+    OP_CHECK_IF(inputParams_.mSize == 0 || inputParams_.nSize == 0 || inputParams_.kSize == 0 ||
+                    inputParams_.mSize > maxDim || inputParams_.nSize > maxDim || inputParams_.kSize > maxDim,
+                OP_LOGE(inputParams_.opName, "Cube basic API requires positive uint32 dimensions."),
+                return ge::GRAPH_FAILED);
+    CalBasicBlock();
+    InitCommonL1TilingFields();
+    // Match BlockMmad::GetAL1Bytes/GetBL1Bytes for the supported 8-bit input types.
+    const uint64_t aBytes = ge::GetSizeByDataType(inputParams_.aDtype);
+    const uint64_t bBytes = ge::GetSizeByDataType(inputParams_.bDtype);
+    const uint64_t c0 = GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype);
+    const auto aSize = [&](uint64_t k) {
+        return CeilAlign(basicTiling_.baseM, CUBE_BLOCK) * CeilAlign(k, c0) * aBytes;
+    };
+    const auto bSize = [&](uint64_t k) {
+        return inputParams_.transB ? CeilAlign(k, c0) * CeilAlign(basicTiling_.baseN, CUBE_BLOCK) * bBytes :
+                                     CeilAlign(k, CUBE_BLOCK) * CeilAlign(basicTiling_.baseN, c0) * bBytes;
+    };
+    // BlockMmad alternates L0A/L0B at half-L0A offsets.
+    const uint64_t halfL0 = aicoreParams_.l0aSize / DB_SIZE;
+    OP_CHECK_IF(aicoreParams_.l0bSize < aicoreParams_.l0aSize,
+                OP_LOGE(inputParams_.opName, "Cube requires L0B to accommodate both L0A-sized stages."),
+                return ge::GRAPH_FAILED);
+    while ((aSize(basicTiling_.baseK) > halfL0 || bSize(basicTiling_.baseK) > halfL0) && basicTiling_.baseK > c0) {
+        basicTiling_.baseK = CeilAlign(CeilDiv(basicTiling_.baseK, POWER_OF_TWO), c0);
+    }
+    const uint64_t cSize = basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C;
+    OP_CHECK_IF(
+        aSize(basicTiling_.baseK) > halfL0 || bSize(basicTiling_.baseK) > halfL0 || cSize > aicoreParams_.l0cSize,
+        OP_LOGE(inputParams_.opName, "Cube basic block exceeds L0 capacity."), return ge::GRAPH_FAILED);
+    // The grouped fixpipe block reserves scale and bias separately in EACH half of L1.
+    const uint64_t scaleBytes =
+        inputParams_.bQuantMode == QuantMode::PERCHANNEL_MODE || inputParams_.bQuantMode == QuantMode::PERGROUP_MODE ?
+            CeilAlign(basicTiling_.baseN * sizeof(uint64_t), L1_ALIGN_SIZE) :
+            0UL;
+    const uint64_t biasBytes =
+        inputParams_.hasBias ? CeilAlign(basicTiling_.baseN * sizeof(uint32_t), L1_ALIGN_SIZE) : 0UL;
+    const uint64_t halfL1 = aicoreParams_.l1Size / DB_SIZE;
+    OP_CHECK_IF(aSize(basicTiling_.baseK) + bSize(basicTiling_.baseK) + scaleBytes + biasBytes > halfL1,
+                OP_LOGE(inputParams_.opName, "Minimum Cube stage exceeds half of L1."), return ge::GRAPH_FAILED);
+    basicTiling_.depthA1 = GetDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    while (true) {
+        CalStepKs();
+        const uint64_t aStage = aSize(basicTiling_.stepKa * basicTiling_.baseK);
+        const uint64_t bStage = bSize(basicTiling_.stepKb * basicTiling_.baseK);
+        if (aStage + bStage + scaleBytes + biasBytes <= halfL1) {
+            break;
+        }
+        if (basicTiling_.stepKa > 1 && (aStage >= bStage || basicTiling_.stepKb == 1)) {
+            basicTiling_.depthA1 = std::max(1UL, basicTiling_.stepKa / POWER_OF_TWO) * DB_SIZE;
+        } else {
+            basicTiling_.depthB1 = std::max(1UL, basicTiling_.stepKb / POWER_OF_TWO) * DB_SIZE;
+        }
+    }
+    const uint64_t kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    OP_CHECK_IF(kAL1 > maxDim || kBL1 > maxDim, OP_LOGE(inputParams_.opName, "Cube L1 K exceeds uint32 tiling range."),
+                return ge::GRAPH_FAILED);
+    auto &mm = cubeTilingData_.mmTilingData;
+    mm.m = static_cast<uint32_t>(inputParams_.mSize);
+    mm.n = static_cast<uint32_t>(inputParams_.nSize);
+    mm.k = static_cast<uint32_t>(inputParams_.kSize);
+    mm.baseM = static_cast<uint32_t>(basicTiling_.baseM);
+    mm.baseN = static_cast<uint32_t>(basicTiling_.baseN);
+    mm.baseK = static_cast<uint32_t>(basicTiling_.baseK);
+    mm.kAL1 = static_cast<uint32_t>(kAL1);
+    mm.kBL1 = static_cast<uint32_t>(kBL1);
+    mm.isBias = static_cast<uint8_t>(inputParams_.hasBias);
+    mm.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
+    mm.l1BufferStage = DB_SIZE;
+    return ge::GRAPH_SUCCESS;
+}
+
 bool GroupedQmmBasicApiTiling::IsCapable()
 {
+    useCubeBasicApi_ = IsCubeBasicApi();
+    if (useCubeBasicApi_) {
+        return true;
+    }
     // MX 量化：scale 为 FLOAT8_E8M0（IsMicroScaling）；支持 mxfp8 与 mxfp4
     if (!IsMicroScaling()) {
         return false;
@@ -40,7 +163,9 @@ bool GroupedQmmBasicApiTiling::IsCapable()
 
 void GroupedQmmBasicApiTiling::Reset()
 {
+    useCubeBasicApi_ = false;
     tilingData_ = GMMQuantBasicApiTilingData();
+    cubeTilingData_ = GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData();
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::GetShapeAttrsInfo()
@@ -61,12 +186,19 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
+    if (useCubeBasicApi_) {
+        cubeTilingData_.gmmQuantParams = tilingData_.gmmQuantParams;
+        return FillGmmArray(cubeTilingData_.gmmArray);
+    }
     OP_LOGD(inputParams_.opName, "%ld", LogQuantParams(tilingData_.gmmQuantParams));
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 {
+    if (useCubeBasicApi_) {
+        return CalCubeL1Tiling();
+    }
     GroupedQmmTiling::CalBasicBlock();
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
@@ -97,9 +229,12 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
         return false;
     }
 
-    const uint64_t kAL1 = tilingData_.mmTilingData.kAL1;
-    const uint64_t kBL1 = tilingData_.mmTilingData.kBL1;
-    const uint64_t scaleKL1 = tilingData_.mmTilingData.scaleKAL1;
+    const uint64_t kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    const uint64_t scaleKL1 = std::min(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+            basicTiling_.baseK,
+        inputParams_.kSize);
     if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
         return false;
     }
@@ -121,6 +256,9 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
 
 ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 {
+    if (useCubeBasicApi_) {
+        return SaveTilingDataToContext(cubeTilingData_);
+    }
     return SaveTilingDataToContext(tilingData_);
 }
 
@@ -159,8 +297,151 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
         basicTiling_.depthA1 = depthInit;
         basicTiling_.depthB1 = depthInit;
     }
-    // 用剩余L1空间对内轴ND非对齐场景进行调整depth
+
+    // 仅 NZ weight 通过调整 tiling 优先使能 3-buffer；ND weight 保持原有 tiling 和使能判断逻辑。
+    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
+    const uint64_t initialDepthA1 = basicTiling_.depthA1;
+    const uint64_t initialDepthB1 = basicTiling_.depthB1;
+
+    // 先使用初始 stepK 判断是否可以开启 3-buffer。初始值不满足时，搜索 depthA1 和 depthB1 的缩小组合。
+    OP_CHECK_IF(FinalizeStepAndScale() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "Finalize initial stepK and scale factor failed"),
+                return ge::GRAPH_FAILED);
+    if (!CanEnableThreeL1Buffer()) {
+        L1SearchResult result;
+        if (SearchReducedThreeBufferTiling(initialDepthA1, initialDepthB1, baseASize, baseBSize, result)) {
+            ApplyThreeBufferSearchResult(result);
+            return ge::GRAPH_SUCCESS;
+        }
+        basicTiling_.depthA1 = initialDepthA1;
+        basicTiling_.depthB1 = initialDepthB1;
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
+    basicTiling_.depthA1 = initialDepthA1;
+    basicTiling_.depthB1 = initialDepthB1;
     ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    const uint64_t maxDepthA1 = std::max(basicTiling_.depthA1, initialDepthA1);
+    const uint64_t maxDepthB1 = std::max(basicTiling_.depthB1, initialDepthB1);
+    L1SearchResult result;
+    SearchExpandedThreeBufferTiling(initialDepthA1, initialDepthB1, maxDepthA1, maxDepthB1, baseASize, baseBSize,
+                                    result);
+    ApplyThreeBufferSearchResult(result);
+    return ge::GRAPH_SUCCESS;
+}
+
+bool GroupedQmmBasicApiTiling::SearchReducedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
+                                                              uint64_t baseASize, uint64_t baseBSize,
+                                                              L1SearchResult &result)
+{
+    if (!IsMicroScaling() || inputParams_.transA) {
+        return false;
+    }
+
+    uint64_t candidateDepthA1 = initialDepthA1;
+    while (true) {
+        uint64_t candidateDepthB1 = initialDepthB1;
+        while (true) {
+            TryUpdateThreeBufferCandidate(candidateDepthA1, candidateDepthB1, baseASize, baseBSize, true, result);
+            if (candidateDepthB1 <= DB_SIZE) {
+                break;
+            }
+            candidateDepthB1 = std::max(candidateDepthB1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+        }
+
+        if (candidateDepthA1 <= DB_SIZE) {
+            break;
+        }
+        candidateDepthA1 = std::max(candidateDepthA1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+    }
+
+    return result.found;
+}
+
+void GroupedQmmBasicApiTiling::SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
+                                                               uint64_t maxDepthA1, uint64_t maxDepthB1,
+                                                               uint64_t baseASize, uint64_t baseBSize,
+                                                               L1SearchResult &result)
+{
+    uint64_t candidateDepthA1 = initialDepthA1;
+    while (true) {
+        uint64_t candidateDepthB1 = initialDepthB1;
+        while (true) {
+            TryUpdateThreeBufferCandidate(candidateDepthA1, candidateDepthB1, baseASize, baseBSize, false, result);
+            if (candidateDepthB1 >= maxDepthB1) {
+                break;
+            }
+            candidateDepthB1 = std::min(candidateDepthB1 * POWER_OF_TWO, maxDepthB1);
+        }
+
+        if (candidateDepthA1 >= maxDepthA1) {
+            break;
+        }
+        candidateDepthA1 = std::min(candidateDepthA1 * POWER_OF_TWO, maxDepthA1);
+    }
+}
+
+void GroupedQmmBasicApiTiling::TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1,
+                                                             uint64_t baseASize, uint64_t baseBSize,
+                                                             bool requireMinLoadSize, L1SearchResult &result)
+{
+    basicTiling_.depthA1 = candidateDepthA1;
+    basicTiling_.depthB1 = candidateDepthB1;
+    if (FinalizeStepAndScale() != ge::GRAPH_SUCCESS) {
+        return;
+    }
+    if (!CanEnableThreeL1Buffer()) {
+        return;
+    }
+
+    const uint64_t aPayload = basicTiling_.stepKa * baseASize;
+    const uint64_t bPayload = basicTiling_.stepKb * baseBSize;
+    // 缩小 depth 以开启 3-buffer 时，避免过小的单次 GM->L1 搬运导致带宽下降。
+    if (requireMinLoadSize && (aPayload < THREE_BUFFER_MIN_LOAD_SIZE || bPayload < THREE_BUFFER_MIN_LOAD_SIZE)) {
+        return;
+    }
+    const uint64_t highBwPayload = std::min(aPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120)) +
+                                   std::min(bPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120));
+    const uint64_t totalPayload = aPayload + bPayload;
+    if (!IsBetterThreeBufferCandidate(highBwPayload, totalPayload, result)) {
+        return;
+    }
+
+    result.depthA1 = basicTiling_.depthA1;
+    result.depthB1 = basicTiling_.depthB1;
+    result.stepKa = basicTiling_.stepKa;
+    result.stepKb = basicTiling_.stepKb;
+    result.scaleFactorA = basicTiling_.scaleFactorA;
+    result.scaleFactorB = basicTiling_.scaleFactorB;
+    result.highBwPayload = highBwPayload;
+    result.totalPayload = totalPayload;
+    result.found = true;
+}
+
+bool GroupedQmmBasicApiTiling::IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
+                                                            const L1SearchResult &result) const
+{
+    return !result.found || highBwPayload > result.highBwPayload ||
+           (highBwPayload == result.highBwPayload && totalPayload > result.totalPayload);
+}
+
+void GroupedQmmBasicApiTiling::ApplyThreeBufferSearchResult(const L1SearchResult &result)
+{
+    basicTiling_.depthA1 = result.depthA1;
+    basicTiling_.depthB1 = result.depthB1;
+    basicTiling_.stepKa = result.stepKa;
+    basicTiling_.stepKb = result.stepKb;
+    basicTiling_.scaleFactorA = result.scaleFactorA;
+    basicTiling_.scaleFactorB = result.scaleFactorB;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::FinalizeStepAndScale()
+{
     CalStepKs();
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         return CalScaleFactors();
@@ -285,8 +566,14 @@ constexpr size_t LAST_FIRST_DIM_INDEX = 1U;
 constexpr size_t LAST_SECOND_DIM_INDEX = 2U;
 constexpr float EFFECTIVE_TASK_RATIO = 0.95f;
 
-inline uint64_t CeilDiv(uint64_t a, uint64_t b) { return (a + b - 1UL) / b; }
-inline uint64_t CeilAlign(uint64_t a, uint64_t b) { return CeilDiv(a, b) * b; }
+inline uint64_t CeilDiv(uint64_t a, uint64_t b)
+{
+    return (a + b - 1UL) / b;
+}
+inline uint64_t CeilAlign(uint64_t a, uint64_t b)
+{
+    return CeilDiv(a, b) * b;
+}
 inline uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
 {
     return shapeSize * static_cast<uint64_t>(ge::GetSizeByDataType(dtype));
@@ -295,14 +582,19 @@ inline uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
 template <typename T>
 static inline auto AlignUp(T num1, T num2) -> T
 {
-    if (num2 == 0) { return 0; }
-    if (num1 < 0) { return -(-num1 / num2) * num2; }
+    if (num2 == 0) {
+        return 0;
+    }
+    if (num1 < 0) {
+        return -(-num1 / num2) * num2;
+    }
     return (num1 + num2 - 1) / num2 * num2;
 }
-}  // namespace
+} // namespace
 
 GroupedS4S4IntQuantTiling::GroupedS4S4IntQuantTiling(gert::TilingContext *context)
-    : GroupedQmmBasicApiTiling(context) {}
+    : GroupedQmmBasicApiTiling(context)
+{}
 
 void GroupedS4S4IntQuantTiling::Reset()
 {
@@ -332,8 +624,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetPlatformInfo()
                 OP_LOGE(context_->GetNodeName(), "S4S4 mix-core needs aic:aiv=1:2, got aic=%lu aiv=%u",
                         aicoreParams_.aicNum, aivNum),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(aicoreParams_.ubSize == 0,
-                OP_LOGE(context_->GetNodeName(), "ubSize is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicoreParams_.ubSize == 0, OP_LOGE(context_->GetNodeName(), "ubSize is 0."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -367,8 +658,8 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_ACT_TYPE + 1,
-                OP_LOGE(context_->GetNodeName(), "S4S4: attr num < %lu, got %zu.",
-                        ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
+                OP_LOGE(context_->GetNodeName(), "S4S4: attr num < %lu, got %zu.", ATTR_INDEX_ACT_TYPE + 1,
+                        attrs->GetAttrNum()),
                 return ge::GRAPH_FAILED);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
@@ -378,11 +669,10 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     inputParams_.transB = (transposeWeightPtr != nullptr) && *transposeWeightPtr;
     inputParams_.transA = (transposeXPtr != nullptr) && *transposeXPtr;
     inputParams_.groupType = (groupTypePtr != nullptr) ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
-    inputParams_.groupListType = (groupListTypePtr != nullptr)
-        ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
+    inputParams_.groupListType =
+        (groupListTypePtr != nullptr) ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
     int64_t actTypeVal = (actTypePtr != nullptr) ? *actTypePtr : 0L;
-    OP_CHECK_IF(actTypeVal != 0L,
-                OP_LOGE(context_->GetNodeName(), "S4S4: actType must be 0, got %ld.", actTypeVal),
+    OP_CHECK_IF(actTypeVal != 0L, OP_LOGE(context_->GetNodeName(), "S4S4: actType must be 0, got %ld.", actTypeVal),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputParams_.groupType != GroupedMatmul::SPLIT_M,
                 OP_LOGE(context_->GetNodeName(), "S4S4: groupType must be 0(SPLIT_M), got %d.",
@@ -398,17 +688,14 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShapePtr);
     const auto &weightStorageShape = wShapePtr->GetStorageShape();
-    weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
-                    weightStorageShape.GetDimNum() > 0U &&
-                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == 32;
-    OP_CHECK_IF(!SetMKN(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetMKN failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+    weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && weightStorageShape.GetDimNum() > 0U &&
+                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == INT8_NZ_C0;
+    OP_CHECK_IF(!SetMKNForS4S4(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetMKN failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!SetGroupNumForS4S4(GROUPLIST_INDEX),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetGroupNum failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!AnalyzeS4S4(),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 AnalyzeS4S4 failed."),
+    OP_CHECK_IF(!AnalyzeS4S4(), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 AnalyzeS4S4 failed."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!CheckS4S4Params(),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 CheckS4S4Params failed."),
@@ -416,15 +703,14 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedS4S4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
+bool GroupedS4S4IntQuantTiling::SetMKNForS4S4(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     OP_CHECK_IF(xDimNum < MIN_ND_DIM || wDimNum < MIN_ND_DIM,
                 OP_LOGE(context_->GetNodeName(), "S4S4: x/weight dim must be >= 2."), return false);
     OP_CHECK_IF(!GroupedQmmBasicApiTiling::SetMKN(xShape, wShape),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetMKN failed."),
-                return false);
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetMKN failed."), return false);
     s4s4Tiling_.m = inputParams_.mSize;
     s4s4Tiling_.n = inputParams_.nSize;
     s4s4Tiling_.k = inputParams_.kSize;
@@ -433,21 +719,20 @@ bool GroupedS4S4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Sh
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::SetGroupNum(uint32_t groupListIndex)
+bool GroupedS4S4IntQuantTiling::SetGroupNumForS4S4(uint32_t groupListIndex)
 {
     OP_CHECK_IF(!GroupedQmmBasicApiTiling::SetGroupNum(groupListIndex),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetGroupNum failed."),
-                return false);
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetGroupNum failed."), return false);
     s4s4Tiling_.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::SetMKNList()
+bool GroupedS4S4IntQuantTiling::SetMKNListForS4S4()
 {
     // Base's mList_/kList_/nList_ is private (inaccessible to derived).
     // Write to our own shadow arrays (mimic base GroupedQmmTiling::SetMKNList).
     if (inputParams_.groupType == GroupedMatmul::SPLIT_M) {
-        mList_[0] = -1;  // M 动态
+        mList_[0] = -1; // M 动态
         kList_[0] = static_cast<int32_t>(inputParams_.kSize);
         nList_[0] = static_cast<int32_t>(inputParams_.nSize);
     } else {
@@ -486,7 +771,7 @@ bool GroupedS4S4IntQuantTiling::AnalyzeS4S4()
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::CheckS4S4Params()
+bool GroupedS4S4IntQuantTiling::CheckS4S4Params() const
 {
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT4 || inputParams_.bDtype != ge::DT_INT4,
                 OP_LOGE(context_->GetNodeName(), "S4S4: x/weight must be INT4."), return false);
@@ -501,12 +786,12 @@ bool GroupedS4S4IntQuantTiling::CheckS4S4Params()
     OP_CHECK_IF(inputParams_.nSize % S4S4_N_ALIGN != 0,
                 OP_LOGE(context_->GetNodeName(), "S4S4: n(%lu) must be multiple of 8.", inputParams_.nSize),
                 return false);
-    OP_CHECK_IF(!inputParams_.isSingleX,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single x."), return false);
-    OP_CHECK_IF(!inputParams_.isSingleW,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single weight."), return false);
-    OP_CHECK_IF(!inputParams_.isSingleY,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single y."), return false);
+    OP_CHECK_IF(!inputParams_.isSingleX, OP_LOGE(context_->GetNodeName(), "S4S4 only supports single x."),
+                return false);
+    OP_CHECK_IF(!inputParams_.isSingleW, OP_LOGE(context_->GetNodeName(), "S4S4 only supports single weight."),
+                return false);
+    OP_CHECK_IF(!inputParams_.isSingleY, OP_LOGE(context_->GetNodeName(), "S4S4 only supports single y."),
+                return false);
     return true;
 }
 
@@ -551,8 +836,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::DoOpTiling()
     OP_CHECK_IF(CalUbDivideS4S4() != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CalUbDivideS4S4 failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetMKNList(), OP_LOGE(context_->GetNodeName(), "SetMKNList failed."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!SetMKNListForS4S4(), OP_LOGE(context_->GetNodeName(), "SetMKNList failed."), return ge::GRAPH_FAILED);
     s4s4Tiling_.singleN = FindBestSingleN();
     return ge::GRAPH_SUCCESS;
 }
@@ -579,25 +863,24 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalUbDivideS4S4()
     uint32_t ubCalSize = S4S4_VEC_BASE_M_950 * alignBaseN;
     s4s4Tiling_.ubCalSize = ubCalSize;
 
-    uint32_t epilogueBytes = S4S4_EPILOGUE_UB_COEFF * ubCalSize +
-                             S4S4_PER_TOKEN_QUEUE_BYTES_PER_M * s4s4Tiling_.baseM;
+    uint32_t epilogueBytes = S4S4_EPILOGUE_UB_COEFF * ubCalSize + S4S4_PER_TOKEN_QUEUE_BYTES_PER_M * s4s4Tiling_.baseM;
     OP_CHECK_IF(epilogueBytes >= ubSize,
                 OP_LOGE(context_->GetNodeName(), "S4S4 epilogue UB overflow: %u >= %u.", epilogueBytes, ubSize),
                 return ge::GRAPH_FAILED);
 
     // ubRestBytes 给 prologue（32B 对齐）
-    uint32_t ubRestBytes = ubSize - epilogueBytes;                              // 154624
-    ubRestBytes = ubRestBytes / UB_BLOCK_UNIT_SIZE * UB_BLOCK_UNIT_SIZE;        // 154592（32B 对齐）
+    uint32_t ubRestBytes = ubSize - epilogueBytes;                       // 154624
+    ubRestBytes = ubRestBytes / UB_BLOCK_UNIT_SIZE * UB_BLOCK_UNIT_SIZE; // 154592（32B 对齐）
     OP_CHECK_IF(ubRestBytes < PROLOGUE_MIN_BYTES_950,
                 OP_LOGE(context_->GetNodeName(),
-                        "S4S4 UB not enough for prologue: ubRestBytes=%u < %u. Consider smaller baseN.",
-                        ubRestBytes, PROLOGUE_MIN_BYTES_950),
+                        "S4S4 UB not enough for prologue: ubRestBytes=%u < %u. Consider smaller baseN.", ubRestBytes,
+                        PROLOGUE_MIN_BYTES_950),
                 return ge::GRAPH_FAILED);
     s4s4Tiling_.ubRestBytes = ubRestBytes;
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedS4S4IntQuantTiling::InitCommonL1TilingFields()
+void GroupedS4S4IntQuantTiling::InitS4S4CommonL1TilingFields()
 {
     s4s4Tiling_.stepM = 1UL;
     s4s4Tiling_.stepN = 1UL;
@@ -605,11 +888,13 @@ void GroupedS4S4IntQuantTiling::InitCommonL1TilingFields()
     s4s4Tiling_.singleCoreN = std::min(inputParams_.nSize, static_cast<uint64_t>(s4s4Tiling_.baseN));
     s4s4Tiling_.singleCoreK = inputParams_.kSize;
     s4s4Tiling_.iterateOrder = 0U;
-    s4s4Tiling_.dbL0c = (static_cast<uint64_t>(s4s4Tiling_.baseM) * s4s4Tiling_.baseN *
-                         DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) ? DB_SIZE : 1U;
+    s4s4Tiling_.dbL0c = (static_cast<uint64_t>(s4s4Tiling_.baseM) * s4s4Tiling_.baseN * DATA_SIZE_L0C * DB_SIZE <=
+                         aicoreParams_.l0cSize) ?
+                            DB_SIZE :
+                            1U;
 }
 
-ge::graphStatus GroupedS4S4IntQuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
+ge::graphStatus GroupedS4S4IntQuantTiling::CalcS4S4LeftL1Size(uint64_t &leftL1Size) const
 {
     leftL1Size = aicoreParams_.l1Size;
     return ge::GRAPH_SUCCESS;
@@ -617,11 +902,13 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) 
 
 ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Tiling()
 {
-    InitCommonL1TilingFields();
-    if (inputParams_.kSize == 0UL) { return ge::GRAPH_SUCCESS; }
+    InitS4S4CommonL1TilingFields();
+    if (inputParams_.kSize == 0UL) {
+        return ge::GRAPH_SUCCESS;
+    }
     uint64_t leftL1Size = 0UL;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcS4S4LeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CalcS4S4LeftL1Size failed."), return ge::GRAPH_FAILED);
     return CalL1Depth(leftL1Size);
 }
 
@@ -644,18 +931,19 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
     constexpr uint64_t elemBytes = 1UL;
     constexpr uint64_t scaleElemBytes = sizeof(uint64_t);
     auto AlignUpL = [](uint64_t v, uint64_t a) -> uint64_t { return (v + a - 1UL) / a * a; };
-    auto GetAL1Bytes = [&](uint64_t kAL1) -> uint64_t {
+    auto GetAL1Bytes = [this, &AlignUpL](uint64_t kAL1) -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes;
     };
-    auto GetBL1Bytes = [&](uint64_t kBL1) -> uint64_t {
+    auto GetBL1Bytes = [this, &AlignUpL](uint64_t kBL1) -> uint64_t {
         return AlignUpL(kBL1, INT8_C0) * AlignUpL(s4s4Tiling_.baseN, CUBE_BLOCK) * elemBytes;
     };
-    auto GetScaleL1Bytes = [&]() -> uint64_t {
+    auto GetScaleL1Bytes = [this, &AlignUpL]() -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES);
     };
-    auto GetL1StageBytes = [&](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
-        return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) +
-               AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes();
+    auto GetL1StageBytes = [this, &AlignUpL, &GetAL1Bytes, &GetBL1Bytes, &GetScaleL1Bytes](uint64_t kAL1,
+                                                                                           uint64_t kBL1) -> uint64_t {
+        return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) + AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) +
+               GetScaleL1Bytes();
     };
 
     const uint64_t halfL1 = leftL1Size / L1_BUFFER_NUM;
@@ -692,8 +980,8 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
 
 ge::graphStatus GroupedS4S4IntQuantTiling::DoLibApiTiling()
 {
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -707,13 +995,13 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalWorkspaceS4S4()
     const uint64_t weightK = weightIsNz ? CeilAlign(s4s4Tiling_.k, CUBE_BLOCK) : s4s4Tiling_.k;
     const uint64_t weightN = weightIsNz ? CeilAlign(s4s4Tiling_.n, INT8_NZ_C0) : s4s4Tiling_.n;
     int8WeightWs_ = static_cast<uint64_t>(s4s4Tiling_.groupNum) * weightK * weightN * sizeof(int8_t);
-    int8XWs_ = static_cast<uint64_t>(s4s4Tiling_.m) * s4s4Tiling_.k * sizeof(int8_t);  // m=totalM (single x)
+    int8XWs_ = static_cast<uint64_t>(s4s4Tiling_.m) * s4s4Tiling_.k * sizeof(int8_t); // m=totalM (single x)
     mmOutWs_ = static_cast<uint64_t>(S4S4_MMOUT_PIPELINE) * s4s4Tiling_.baseM * s4s4Tiling_.baseN *
                s4s4Tiling_.usedCoreNum * sizeof(uint16_t);
     // F3: perTokenScale 可选兜底。isPerTokenQuant=0 (无 perTokenScale 输入) 时构造全 1 段 (totalM·float),
     //     epilogue 正常 mul (乘 1 等价跳过), 保持 S8S4 epilogue 逐字同步不改。
-    perTokenScaleFillWs_ = (s4s4Tiling_.isPerTokenQuant == 0U)
-        ? static_cast<uint64_t>(s4s4Tiling_.m) * sizeof(float) : 0UL;
+    perTokenScaleFillWs_ =
+        (s4s4Tiling_.isPerTokenQuant == 0U) ? static_cast<uint64_t>(s4s4Tiling_.m) * sizeof(float) : 0UL;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -736,7 +1024,7 @@ uint64_t GroupedS4S4IntQuantTiling::GetTilingKey() const
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB ? 1 : 0), 0UL, S4S4_KERNEL_TYPE_MIX);
 }
 
-ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
+void GroupedS4S4IntQuantTiling::SetS4S4Params()
 {
     using namespace GroupedMatmulTilingData;
     auto &p = tilingData_.gmmS4S4Params;
@@ -758,7 +1046,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     p.groupListType = s4s4Tiling_.groupListType;
     p.reserved = ((inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) ? S4S4_WEIGHT_NZ_FLAG : 0ULL) |
                  (inputParams_.transB ? S4S4_TRANSPOSE_WEIGHT_FLAG : 0ULL) |
-                  (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
+                 (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
+}
+
+ge::graphStatus GroupedS4S4IntQuantTiling::SetArrayParams()
+{
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
                 return ge::GRAPH_FAILED);
@@ -768,6 +1060,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     errno_t retN = memcpy_s(tilingData_.gmmArray.nList, sizeof(tilingData_.gmmArray.nList), nList_, sizeof(nList_));
     OP_CHECK_IF(retN != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s nList failed, ret=%d", retN),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+void GroupedS4S4IntQuantTiling::SetMmTilingData()
+{
     // mmTilingData(TCubeTiling)
     auto &mm = tilingData_.mmTilingData;
     mm.M = inputParams_.mSize;
@@ -792,11 +1089,23 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     mm.dbL0A = DB_SIZE;
     mm.dbL0B = DB_SIZE;
     mm.dbL0C = s4s4Tiling_.dbL0c;
+}
+
+ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
+{
+    SetS4S4Params();
+    if (SetArrayParams() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    SetMmTilingData();
+    auto &p = tilingData_.gmmS4S4Params;
     OP_LOGI(context_->GetNodeName(),
             "S4S4 tiling: baseM=%u baseN=%u baseK=%u ubCalSize=%u ubRestBytes=%u quantGroupNum=%u isPerToken=%u "
             "depthA1=%lu depthB1=%lu",
             p.baseM, p.baseN, p.baseK, p.ubCalSize, p.ubRestBytes, p.quantGroupNum, p.isPerTokenQuant,
             s4s4Tiling_.depthA1, s4s4Tiling_.depthB1);
+    // Int4->Int8 preprocess synchronizes all vector cores, so all participating cores must be resident.
+    context_->SetScheduleMode(1);
     return SaveTilingDataToContext(tilingData_);
 }
 

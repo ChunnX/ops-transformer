@@ -50,7 +50,7 @@ constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 3;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
-//Outputs Index
+// Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
 // Attributes Index
@@ -71,7 +71,9 @@ constexpr uint32_t DIM_NUM_THREE = 3;
 constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t SPARSE_2K = 2048;
+constexpr uint32_t TOPK_MAX = 8192;
+constexpr uint32_t TOPK_MULTIPLE = 1024;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT = 64;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_64 = 64;
@@ -79,6 +81,7 @@ constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_32 = 32;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_24 = 24;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_16 = 16;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_8 = 8;
+constexpr int64_t MAX_SEQ_LEN_LIMIT = 8 * 1024 * 1024;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(LITilingData)
@@ -137,8 +140,8 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
+    uint32_t qkHeadDim = 0;
     // Mask
     int32_t sparseMode = 0;
     // PageAttention
@@ -165,31 +168,31 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckTensorDescriptions() const;
+    ge::graphStatus CheckTensorShapes() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
+    ge::graphStatus CheckLiRequiredParameters() const;
+    ge::graphStatus GetActualSeqLenSize(int64_t &liSize, const gert::Tensor *liTensor,
                                         const std::string &liSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
-    void GetOptionalInputParaInfo();
     void GetInputParaInfo();
+    void GetOptionalInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAndCheckAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
-    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatchQtnd();
+    ge::graphStatus ValidateInputShapesMatchQbsnd();
     ge::graphStatus ValidateInputShapesMatch();
     ge::graphStatus GetAndCheckInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetHeadDim();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
@@ -197,6 +200,7 @@ public:
     ge::graphStatus CheckBlockCount();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
+    ge::graphStatus CheckSeqLenLimit() const;
     ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetAndCheckN2Size();
@@ -212,22 +216,22 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    LiParaInfo opParamInfo_;
+    LiParaInfo liParams_;
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t headDim_ = 0;
+    int64_t headDim_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::BnBsND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
-    int32_t blockSize_ = 0;
+    int64_t blockSize_ = 0;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
@@ -244,7 +248,8 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
 
 private:

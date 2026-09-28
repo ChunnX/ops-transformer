@@ -5,22 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -317,7 +317,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMoeTokenPermuteWithRoutingMapGrad默认非确定性实现，支持通过alcrtCtxSetSysParamOpt开启确定性。
+  - aclnnMoeTokenPermuteWithRoutingMapGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 非dropPaddedMode场景topK_num <= 512
 
@@ -328,15 +328,11 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 ```Cpp
 #include "aclnnop/aclnn_moe_token_permute_with_routing_map_grad.h"
 #include <iostream>
+#include <numeric>
 #include <vector>
-#include <sys/stat.h>
-#include <fstream>
-#include <fcntl.h>
-#include <unistd.h>
 #include <cstdio>
 #include <cassert>
 #include <iomanip>
-#include <unistd.h>
 #include "acl/acl.h"
 #include "aclnn/acl_meta.h"
 
@@ -361,24 +357,6 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-template <typename T>
-bool WriteFile(const std::string &filePath, int64_t size, std::vector<T>& hostData)
-{
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (fd < 0) {
-        LOG_PRINT("Open file failed. path = %s", filePath.c_str());
-        return false;
-    }
-
-    size_t writeSize = write(fd, reinterpret_cast<char*>(hostData.data()), size * sizeof(T));
-    (void)close(fd);
-    if (writeSize != size * sizeof(T)) {
-        LOG_PRINT("Write file Failed.");
-        return false;
-    }
-
-    return true;
-}
 void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
@@ -461,7 +439,9 @@ int main()
                           &permutedProbsOutputGrad_Addr, aclDataType::ACL_FLOAT, &ppermutedProbsOutputGrad);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    std::vector<int> sortedIndicesData(num_expert * num_capacity, 0);
+    // Keep each (token, expert) scatter destination unique.
+    std::vector<int> sortedIndicesData(num_expert * num_capacity);
+    std::iota(sortedIndicesData.begin(), sortedIndicesData.end(), 0);
     std::vector<int64_t> sortedIndicesShape = {num_expert * num_capacity};
     void* sortedIndicesAddr = nullptr;
     aclTensor* sortedIndices = nullptr;

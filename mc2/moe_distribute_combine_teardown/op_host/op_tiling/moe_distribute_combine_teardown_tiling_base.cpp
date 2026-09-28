@@ -80,7 +80,7 @@ constexpr uint32_t COMM_TYPE_NUM = 2;
 } // namespace
 namespace MC2Tiling {
 
-void MoeDistributeCombineTeardownTilingBase::PrintTilingDataInfo()
+void MoeDistributeCombineTeardownTilingBase::PrintTilingDataInfo() const
 {
     const MoeDistributeCombineTeardownInfo &info = tilingData_->moeDistributeCombineTeardownInfo;
     OP_LOGD(nodeName_, "epWorldSize is %u.", info.epWorldSize);
@@ -293,9 +293,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckInputTensorDim()
 ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckOptionalInputTensorDim()
 {
     if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
-        OP_TILING_CHECK(CheckOneTensorDim("xActiveMask", OPTIONINPUT, X_ACTIVE_MASK_INDEX, ONE_DIM) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "xActiveMask"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CheckOneTensorDim("xActiveMask", OPTIONINPUT, X_ACTIVE_MASK_INDEX, ONE_DIM) != ge::GRAPH_SUCCESS,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName_, "xActiveMask"), return ge::GRAPH_FAILED);
     }
 
     if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
@@ -341,19 +341,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation()
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTokenMessageAndOutputWidth(
+    const gert::StorageShape *quantExpandXStorageShape, const gert::StorageShape *xOutStorageShape, int64_t H) const
 {
-    auto expandXStorageShape = context_->GetInputShape(EXPAND_X_INDEX);            // A, H
-    auto quantExpandXStorageShape = context_->GetInputShape(QUANT_EXPAND_X_INDEX); // A, tokenMsgSize
-    auto expertIdsStorageShape = context_->GetInputShape(EXPERT_IDS_INDEX);        // Bs, K
-    auto expandIdxStorageShape = context_->GetInputShape(EXPAND_IDX_INDEX);        // Bs * K
-    auto expertScalesStorageShape = context_->GetInputShape(EXPERT_SCALES_INDEX);  // Bs, K
-    auto xOutStorageShape = context_->GetOutputShape(X_OUT_INDEX);                 // Bs, H
-
-    const int64_t H = expandXStorageShape->GetStorageShape().GetDim(1);
-    const int64_t Bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t K = expertIdsStorageShape->GetStorageShape().GetDim(1);
-
     // 校验tokenMsgSize
     const int64_t tempTokenMsgSize = ops::CeilAlign(
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
@@ -372,6 +362,26 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
             nodeName_, "xOut",
             (std::string("dim1=") + std::to_string(xOutStorageShape->GetStorageShape().GetDim(1))).c_str(),
             "xOut dim1 should be equal to H");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation()
+{
+    auto expandXStorageShape = context_->GetInputShape(EXPAND_X_INDEX);            // A, H
+    auto quantExpandXStorageShape = context_->GetInputShape(QUANT_EXPAND_X_INDEX); // A, tokenMsgSize
+    auto expertIdsStorageShape = context_->GetInputShape(EXPERT_IDS_INDEX);        // Bs, K
+    auto expandIdxStorageShape = context_->GetInputShape(EXPAND_IDX_INDEX);        // Bs * K
+    auto expertScalesStorageShape = context_->GetInputShape(EXPERT_SCALES_INDEX);  // Bs, K
+    auto xOutStorageShape = context_->GetOutputShape(X_OUT_INDEX);                 // Bs, H
+
+    const int64_t H = expandXStorageShape->GetStorageShape().GetDim(1);
+    const int64_t Bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t K = expertIdsStorageShape->GetStorageShape().GetDim(1);
+
+    if (CheckTokenMessageAndOutputWidth(quantExpandXStorageShape, xOutStorageShape, H) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -470,37 +480,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     return CheckTensorShapeRelationThirdPart();
 }
 
-ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelationThirdPart()
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckSharedExpertInputShape(int64_t Bs, int64_t H) const
 {
-    auto expandXStorageShape = context_->GetInputShape(EXPAND_X_INDEX);     // A, H
-    auto expertIdsStorageShape = context_->GetInputShape(EXPERT_IDS_INDEX); // Bs, K
-    auto commCmdInfoShape = context_->GetInputShape(COMM_CMD_INFO_INDEX);   // 一维
-
-    const int64_t Bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t H = expandXStorageShape->GetStorageShape().GetDim(1);
-    const int64_t A = expandXStorageShape->GetStorageShape().GetDim(0);
-    const int64_t commCmdInfoSize = commCmdInfoShape->GetStorageShape().GetDim(0);
-    const auto epWorldSize = tilingData_->moeDistributeCombineTeardownInfo.epWorldSize;
-
-    // 校验commCmdInfoSize的取值约束
-    if (commCmdInfoSize != (A + epWorldSize) * COMM_CMD_INFO_SIZE) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfo",
-                                              (std::string("dim0=") + std::to_string(commCmdInfoSize)).c_str(),
-                                              "commCmdInfoSize should be (A + epWorldSize) * 16");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
-        auto xActiveMaskStorageShape = context_->GetOptionalInputShape(X_ACTIVE_MASK_INDEX); // Bs
-        if (xActiveMaskStorageShape->GetStorageShape().GetDim(0) != Bs) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName_, "xActiveMask",
-                (std::string("dim0=") + std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(0))).c_str(),
-                "xActiveMask dim0 should be equal to Bs");
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
         auto sharedExpertXStorageShape =
             context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);                 // Bs, H 或 a, b, H (a * b = Bs)
@@ -547,6 +528,44 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelationThirdPart() const
+{
+    auto expandXStorageShape = context_->GetInputShape(EXPAND_X_INDEX);     // A, H
+    auto expertIdsStorageShape = context_->GetInputShape(EXPERT_IDS_INDEX); // Bs, K
+    auto commCmdInfoShape = context_->GetInputShape(COMM_CMD_INFO_INDEX);   // 一维
+
+    const int64_t Bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t H = expandXStorageShape->GetStorageShape().GetDim(1);
+    const int64_t A = expandXStorageShape->GetStorageShape().GetDim(0);
+    const int64_t commCmdInfoSize = commCmdInfoShape->GetStorageShape().GetDim(0);
+    const auto epWorldSize = tilingData_->moeDistributeCombineTeardownInfo.epWorldSize;
+
+    // 校验commCmdInfoSize的取值约束
+    if (commCmdInfoSize != (A + epWorldSize) * COMM_CMD_INFO_SIZE) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfo",
+                                              (std::string("dim0=") + std::to_string(commCmdInfoSize)).c_str(),
+                                              "commCmdInfoSize should be (A + epWorldSize) * 16");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
+        auto xActiveMaskStorageShape = context_->GetOptionalInputShape(X_ACTIVE_MASK_INDEX); // Bs
+        if (xActiveMaskStorageShape->GetStorageShape().GetDim(0) != Bs) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName_, "xActiveMask",
+                (std::string("dim0=") + std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(0))).c_str(),
+                "xActiveMask dim0 should be equal to Bs");
+            return ge::GRAPH_FAILED;
+        }
+    }
+
+    if (CheckSharedExpertInputShape(Bs, H) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckBsHKSize(int64_t bs, int64_t h, int64_t k)
 {
     return ge::GRAPH_SUCCESS;
@@ -581,11 +600,11 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataType()
     auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandXDesc"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expandX",
-                                              Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
-                                              "bf16 or float16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expandX", Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
+                                  "bf16 or float16"),
+        return ge::GRAPH_FAILED);
 
     auto quantExpandXDesc = context_->GetInputDesc(QUANT_EXPAND_X_INDEX);
     OP_TILING_CHECK(quantExpandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "quantExpandXDesc"),
@@ -630,7 +649,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataType()
     return CheckTensorDataTypeSecondPart();
 }
 
-ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecondPart()
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecondPart() const
 {
     if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
         auto xActiveMaskDesc = context_->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
@@ -659,16 +678,16 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecon
 
     auto xOutDesc = context_->GetOutputDesc(X_OUT_INDEX);
     OP_TILING_CHECK(xOutDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "xOutDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((xOutDesc->GetDataType() != expandXDesc->GetDataType()),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "xOut",
-                                                          Ops::Base::ToString(xOutDesc->GetDataType()).c_str(),
-                                                          "The dtype of xOut must be the same as that of expandX."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (xOutDesc->GetDataType() != expandXDesc->GetDataType()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "xOut", Ops::Base::ToString(xOutDesc->GetDataType()).c_str(),
+                                              "The dtype of xOut must be the same as that of expandX."),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorFormat()
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckPrimaryTensorFormats() const
 {
     auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandXDesc"),
@@ -702,6 +721,15 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorFormat()
                                                Ops::Base::ToString(expandIdxDesc->GetStorageFormat()).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorFormat() const
+{
+    if (CheckPrimaryTensorFormats() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     auto expertScalesDesc = context_->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertScalesDesc"),
                     return ge::GRAPH_FAILED);
@@ -722,22 +750,22 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorFormat()
         auto xActiveMaskDesc = context_->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
         OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "xActiveMaskDesc"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(xActiveMaskDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "xActiveMask",
-                                                   Ops::Base::ToString(xActiveMaskDesc->GetStorageFormat()).c_str(),
-                                                   "ND"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            xActiveMaskDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "xActiveMask",
+                                       Ops::Base::ToString(xActiveMaskDesc->GetStorageFormat()).c_str(), "ND"),
+            return ge::GRAPH_FAILED);
     }
 
     if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
         auto sharedExpertXDesc = context_->GetOptionalInputDesc(SHARED_EXPERT_X_INDEX);
         OP_TILING_CHECK(sharedExpertXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertXDesc"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(sharedExpertXDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "sharedExpertX",
-                                                   Ops::Base::ToString(sharedExpertXDesc->GetStorageFormat()).c_str(),
-                                                   "ND"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            sharedExpertXDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName_, "sharedExpertX",
+                                       Ops::Base::ToString(sharedExpertXDesc->GetStorageFormat()).c_str(), "ND"),
+            return ge::GRAPH_FAILED);
     }
 
     auto xOutDesc = context_->GetOutputDesc(X_OUT_INDEX);
@@ -811,7 +839,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::SetWorkspace()
     size_t *workspace = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, OP_LOGE(nodeName_, "get workspace failed"), return ge::GRAPH_FAILED);
     workspace[0] = static_cast<size_t>(SYSTEM_NEED_WORKSPACE) + SDMA_NEED_WORKSPACE; // 可能的URMA适配点
-    OP_LOGD(nodeName_, "workspce[0] size is %ld", workspace[0]);
+    OP_LOGD(nodeName_, "workspace[0] size is %lu", workspace[0]);
     return ge::GRAPH_SUCCESS;
 }
 

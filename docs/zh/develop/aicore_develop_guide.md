@@ -23,9 +23,9 @@
 
 2. [算子定义](#算子定义)：确定算子功能与原型定义。
 
-3. [Tiling实现](#Tiling实现)：实现Host侧算子Tiling函数。
+3. [Tiling实现](#tiling实现)：实现Host侧算子Tiling函数。
 
-4. [Kernel实现](#Kernel实现)：实现Device侧算子核函数。
+4. [Kernel实现](#kernel实现)：实现Device侧算子核函数。
 
 5. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 
@@ -428,7 +428,7 @@ __aicore__ inline void AddExample<T>::Process()
     bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} [--experimental]
     ```
 
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR&950DT系列产品使用"ascend950"。
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
     - --experimental（可选）：若编译的算子为贡献算子，需配置--experimental。
@@ -456,7 +456,7 @@ __aicore__ inline void AddExample<T>::Process()
 
 算子开发过程中，可通过如下方式进行验证：
 
-1. [UT验证](#UT验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
+1. [UT验证](#ut验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
 
 2. [aclnn调用验证](#aclnn调用验证): 验证算子在NPU环境上的功能。aclnn调用验证需要NPU环境。
 

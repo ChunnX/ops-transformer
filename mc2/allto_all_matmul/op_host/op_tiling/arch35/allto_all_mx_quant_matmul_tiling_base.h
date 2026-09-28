@@ -73,6 +73,10 @@ protected:
     ge::graphStatus CheckGroupSize(const gert::TilingContext *context, const char *opName,
                                    const OpAttrIndexSchema &indexSchema);
     void SetUserWorkSpace();
+#if MC2_DFX_ENABLE
+    void BuildWorkspaceLayout();
+    void BuildWorkspaceLayoutApace();
+#endif
     ge::graphStatus CheckMxTensorFormat(const gert::TilingContext *context, const char *opName);
     ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                       TilingContextInfo &contextInfo);
@@ -84,7 +88,7 @@ protected:
 
 private:
     AlltoAllQuantMatmulTilingData localTilingData_;
-    hcommAllToAllMatmulTilingData hcommTilingData_;
+    Apace::hcommAllToAllMatmulTilingData hcommTilingData_;
     bool isMxFp4_ = false;
     bool usingApaceImpl_ = false;
     uint64_t mmMvalueLen_ = 0;

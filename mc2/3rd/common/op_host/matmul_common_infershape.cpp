@@ -35,9 +35,12 @@ class InferShapeBatchMatMul {
 public:
     InferShapeBatchMatMul(gert::InferShapeContext *context, const InferShapeBatchTensor &inferShapeTensor,
                           size_t batch_matmul_bias_index = BATCH_MATMUL_BIAS_IDX)
-        : op_name(context->GetNodeName()), shape_a(inferShapeTensor.input_shape_a),
-          shape_b(inferShapeTensor.input_shape_b), trans_a(inferShapeTensor.input_trans_a),
-          trans_b(inferShapeTensor.input_trans_b), shape_out(*(context->GetOutputShape(0))),
+        : op_name(context->GetNodeName()),
+          shape_a(inferShapeTensor.input_shape_a),
+          shape_b(inferShapeTensor.input_shape_b),
+          trans_a(inferShapeTensor.input_trans_a),
+          trans_b(inferShapeTensor.input_trans_b),
+          shape_out(*(context->GetOutputShape(0))),
           shape_bias(context->GetOptionalInputShape(batch_matmul_bias_index))
     {
         num_dima = shape_a.GetDimNum();
@@ -52,7 +55,9 @@ public:
     };
 
     InferShapeBatchMatMul(gert::InferShapeContext *context, const Shape &input_shape_a, const Shape &input_shape_b)
-        : op_name(context->GetNodeName()), shape_a(input_shape_a), shape_b(input_shape_b),
+        : op_name(context->GetNodeName()),
+          shape_a(input_shape_a),
+          shape_b(input_shape_b),
           shape_out(*(context->GetOutputShape(0)))
     {
         shape_bias = context->GetOptionalInputShape(BATCH_MATMUL_FIXPIPE_BIAS_IDX);
@@ -233,7 +238,7 @@ bool InferShapeBatchMatMul::InferBias()
     return true;
 }
 
-bool InferShapeBatchMatMul::InferShape()
+static bool CheckBatchMatMulInputDimensions(const char *op_name, const Shape &shape_a, const Shape &shape_b)
 {
     if (shape_a.GetDimNum() < BATCH_MATMUL_MIN_SHAPE_SIZE || shape_b.GetDimNum() < BATCH_MATMUL_MIN_SHAPE_SIZE) {
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(op_name, "x1 and x2", "less than 2D",
@@ -257,6 +262,14 @@ bool InferShapeBatchMatMul::InferShape()
                 (std::to_string(static_cast<int64_t>(shape_b.GetDim(i))) + " at dim " + std::to_string(i)).c_str(),
                 "The value of x2 dimension must be at least -2"),
             return false);
+    }
+    return true;
+}
+
+bool InferShapeBatchMatMul::InferShape()
+{
+    if (!CheckBatchMatMulInputDimensions(op_name, shape_a, shape_b)) {
+        return false;
     }
     // using index - 2 to get m_dim
     size_t idx_m = num_dima - 2;
@@ -386,14 +399,14 @@ ge::graphStatus InferShapeForBatchMatMul(gert::InferShapeContext *context, const
     auto shape_out = context->GetOutputShape(0);
     auto attrs = context->GetAttrs();
     auto op_name = context->GetNodeName();
+    OP_CHECK_IF(shape_x1 == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x1"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(shape_x2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x2"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(shape_out == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "output shape"), return ge::GRAPH_FAILED);
     if (CheckIsUnknownDimNum(*shape_x1) || CheckIsUnknownDimNum(*shape_x2)) {
         shape_out->SetDimNum(1);
         shape_out->SetDim(0, UNKNOWN_DIM_NUM);
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(shape_x1 == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x1"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(shape_x2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "x2"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(shape_out == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "output shape"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"), return ge::GRAPH_FAILED);
 
     const bool *adj_x1 = attrs->GetAttrPointer<bool>(attr_adj_idx);
@@ -617,14 +630,19 @@ class InferShapeRangeBatchMatMul {
 public:
     InferShapeRangeBatchMatMul(gert::InferShapeRangeContext *in_context, int32_t in_attr_adj_idx,
                                size_t input_bias_index)
-        : context(in_context), op_name(in_context->GetNodeName()), attr_adj_idx(in_attr_adj_idx),
-          x1_shape_range(in_context->GetInputShapeRange(0)), x2_shape_range(in_context->GetInputShapeRange(1)),
+        : context(in_context),
+          op_name(in_context->GetNodeName()),
+          attr_adj_idx(in_attr_adj_idx),
+          x1_shape_range(in_context->GetInputShapeRange(0)),
+          x2_shape_range(in_context->GetInputShapeRange(1)),
           bias_shape_range(in_context->GetOptionalInputShapeRange(input_bias_index)),
           out_shape_range(in_context->GetOutputShapeRange(0)) {};
     bool Init();
     bool InferShapeRange();
 
 protected:
+    bool InitializeBroadcastRanges(std::vector<std::pair<int64_t, int64_t>> &new_shape_range_x1,
+                                   std::vector<std::pair<int64_t, int64_t>> &new_shape_range_x2);
     void SetOutput();
     gert::InferShapeRangeContext *context;
     const char *op_name;
@@ -667,9 +685,9 @@ bool InferShapeRangeBatchMatMul::Init()
     x1_max_shape = x1_shape_range->GetMax();
     x2_min_shape = x2_shape_range->GetMin();
     x2_max_shape = x2_shape_range->GetMax();
-    OP_CHECK_IF(x1_min_shape == nullptr || x1_max_shape == nullptr || x2_min_shape == nullptr ||
-                    x2_max_shape == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(op_name, "x1/x2 min/max shape"), return false);
+    OP_CHECK_IF(
+        x1_min_shape == nullptr || x1_max_shape == nullptr || x2_min_shape == nullptr || x2_max_shape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(op_name, "x1/x2 min/max shape"), return false);
     num_dim_x1 = x1_min_shape->GetDimNum();
     num_dim_x2 = x2_min_shape->GetDimNum();
     // 初始化x1和x2，转为vector的形式
@@ -684,7 +702,8 @@ bool InferShapeRangeBatchMatMul::Init()
     return true;
 }
 
-bool InferShapeRangeBatchMatMul::InferShapeRange()
+bool InferShapeRangeBatchMatMul::InitializeBroadcastRanges(std::vector<std::pair<int64_t, int64_t>> &new_shape_range_x1,
+                                                           std::vector<std::pair<int64_t, int64_t>> &new_shape_range_x2)
 {
     // bmmv3支持x1和x2为1维，输入的都为k轴
     ExpendOneDimRange(num_dim_x1, num_dim_x2, src_shape_range_x1, src_shape_range_x2);
@@ -695,14 +714,22 @@ bool InferShapeRangeBatchMatMul::InferShapeRange()
         num_dim_out = std::max(num_dim_out, num_dim_bias);
     }
     // 扩充x1和x2到一样的维度，用1在前面补充
-    std::vector<std::pair<int64_t, int64_t>> new_shape_range_x1;
     OP_CHECK_IF(!InitializeRange(num_dim_out, src_shape_range_x1, new_shape_range_x1),
                 OP_LOGE(op_name, "[InferShapeRange] InitializeRange x1 failed."), return false);
-    std::vector<std::pair<int64_t, int64_t>> new_shape_range_x2;
     OP_CHECK_IF(!InitializeRange(num_dim_out, src_shape_range_x2, new_shape_range_x2),
                 OP_LOGE(op_name, "[InferShapeRange] InitializeRange x2 failed."), return false);
     for (size_t i = 0; i < num_dim_out; ++i) {
         new_shape_range_out.emplace_back(NORMALIZE_FULL_RANGE);
+    }
+    return true;
+}
+
+bool InferShapeRangeBatchMatMul::InferShapeRange()
+{
+    std::vector<std::pair<int64_t, int64_t>> new_shape_range_x1;
+    std::vector<std::pair<int64_t, int64_t>> new_shape_range_x2;
+    if (!InitializeBroadcastRanges(new_shape_range_x1, new_shape_range_x2)) {
+        return false;
     }
     // using index - 2 to get m_dim
     size_t idx_m = num_dim_out - 2;

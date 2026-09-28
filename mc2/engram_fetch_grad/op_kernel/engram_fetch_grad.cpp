@@ -32,7 +32,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_grad_tiling_data.h"
 #include "engram_fetch_grad_tiling_key.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/engram_fetch_grad_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 #include "engram_fetch_grad_utils.h"
 
 using namespace Mc2Kernel;
@@ -50,8 +52,8 @@ __global__ __aicore__ void engram_fetch_grad(GM_ADDR commContext, GM_ADDR gradFe
 #if defined(ENABLE_ENGRAM_FETCH_GRAD_KERNEL)
     TPipe pipe;
     EngramFetchGradArch35 op;
-    op.Init(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
-            gradUniqueOut, uniqueLocalEntryOut, numUniqueOut, workspaceGM, &pipe, &tilingData);
+    op.Init(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv, gradUniqueOut,
+            uniqueLocalEntryOut, numUniqueOut, workspaceGM, &pipe, &tilingData);
     op.Process();
 #endif
 }

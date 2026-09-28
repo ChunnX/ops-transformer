@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
+|<term>Atlas A3系列产品</term>|      ×     |
+|<term>Atlas A2系列产品</term>|      ×     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -161,6 +161,10 @@
 - mask_mode当前仅支持0和3，所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 - layout_q必须为BSND或TND，layout_k必须与layout_q保持一致。
 - num_heads_q取值范围为[1, 128]，必须能被num_heads_k整除，num_heads_k当前仅支持1，head_dim当前仅支持128。
+
+## 问题定位说明
+
+- 关于AI CPU算子Kernel常见执行问题或异常错误，问题定位方法请参考《故障处理》中“[故障案例集>算子执行问题>AI CPU算子Kernel执行报错](https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html)”。
 
 ## 调用说明
 

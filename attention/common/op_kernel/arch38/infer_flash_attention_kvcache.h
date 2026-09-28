@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "infer_flash_attention_comm.h"
+#include "infer_flash_attention_comm_arch38.h"
 #include "infer_flash_attention_sparse.h"
 
 using namespace matmul;
@@ -422,7 +422,6 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer> &runParam,
     }
 }
 
-
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer> &runParam, const ConstInfo<isInfer, hasRope> &constInfo,
                                       uint32_t sOuterLoopIdx, __gm__ int64_t *actualSeqQlenAddr, PseInfo &pseInfo)
@@ -488,11 +487,9 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer> &runParam, const
         }
     }
 
-    if (!constInfo.isGqa) {
-        runInfo.vecCoreOffset = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
-    } else {
-        runInfo.vecCoreOffset = 0;
-    }
+    // arch38一个cube对应一个vector，没有subblock再分块，vec从S1基本块起始处算完整的一块，
+    // 因此mask/pse的S1方向不需要偏移
+    runInfo.vecCoreOffset = 0;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
         runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
         if constexpr (isFd) {

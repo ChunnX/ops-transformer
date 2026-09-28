@@ -1,15 +1,15 @@
-# AttentionWorkScheduler
+# AttentionWorkerScheduler
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    √     |
-| <term>Atlas 训练系列产品</term>                              |    √     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                              |    √     |
+| <term>Atlas训练系列产品</term>                              |    √     |
 
 ## 功能说明
 
@@ -69,25 +69,18 @@ $$
     </tr></thead>
   <tbody>
     <tr>
-      <td>scheduleContextRef</td>
-      <td>输入/输出</td>
-      <td>Attention侧接收的待处理数据，表示输入scheduleContext信息，详细结构见调用示例。不支持空Tensor，shape固定为(1024)。</td>
+      <td>schedule_context</td>
+      <td>输入</td>
+      <td>Attention侧接收的待处理数据，表示输入ScheduleContext信息。不支持空Tensor，shape固定为(1024)。</td>
       <td>INT8</td>
       <td>ND</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
-      <td rowspan="1">输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td rowspan="1">输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
+      <td>schedule_context</td>
+      <td>输出</td>
+      <td>处理后的ScheduleContext信息，shape、dtype和format与输入一致。</td>
+      <td>INT8</td>
+      <td>ND</td>
     </tr>
   </tbody>
   </table>

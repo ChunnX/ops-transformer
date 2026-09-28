@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
+/*!
  * \file quant_grouped_matmul_inplace_add_param.h
  * \brief QuantGroupedMatmulInplaceAdd 参数信息.
  */
@@ -17,6 +17,7 @@
 #define UTEST_QUANT_GROUPED_MATMUL_INPLACE_ADD_PARAM_H
 
 #include <register/op_impl_registry.h>
+#include <vector>
 #include "tests/utils/tensor.h"
 #include "tests/utils/tensor_list.h"
 #include "tests/utils/aclnn_tensor.h"
@@ -37,15 +38,15 @@ public:
 
 public:
     Param() = default;
-    Param(std::vector<TensorList> inputs, Tensor perTokenScale, Tensor groupList,
-          std::vector<int64_t> groupListData, int32_t groupListType, int32_t groupSize);
+    Param(std::vector<TensorList> inputs, Tensor perTokenScale, Tensor groupList, std::vector<int64_t> groupListData,
+          int32_t groupListType, int32_t groupSize);
 };
 
-Tensor GenTensor(const char *name, const std::initializer_list<int64_t> &shape, ge::DataType dType,
+Tensor GenTensor(const char *name, const std::vector<int64_t> &shape, ge::DataType dType,
                  ge::Format format = ge::FORMAT_ND);
 
 TensorList GenTensorList(const char *name, const std::vector<std::vector<int64_t>> &shapes, ge::DataType dType,
                          ge::Format format = ge::FORMAT_ND);
 
-}
+} // namespace ops::adv::tests::quant_grouped_matmul_inplace_add
 #endif // UTEST_GROUPED_MATMUL_PARAM_H

@@ -19,6 +19,13 @@ import math
 import logging
 
 
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
+
+
 def infer_template_run_mode(
     K,
     cmp_ratio,
@@ -140,37 +147,12 @@ def gen_cu_seqlens_from_seqused(seqused):
     return cu_seqlens
 
 
-def gen_cu_seqlens_cmp_kv(
-    cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, layout_kv="TND"
-):
-    """Generate compressed prefixes for TND storage or PA actual lengths."""
-    if layout_kv == "PA_BBND":
-        return gen_cu_seqlens_from_seqused(seqused_cmp_kv)
-
-    capacities = [
-        math.floor(
-            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index])
-            / cmp_ratio
-        )
-        for index in range(len(cu_seqlens_ori_kv) - 1)
-    ]
-    inferred = gen_cu_seqlens_from_seqused(capacities)
-    if all(capacity >= actual for capacity, actual in zip(capacities, seqused_cmp_kv)):
-        return inferred
-
-    required = sum(seqused_cmp_kv)
-    total = inferred[-1]
-    if required > total:
-        raise ValueError(
-            f"compressed actual lengths require {required} elements, "
-            f"but inferred T3 capacity is {total}"
-        )
-    adjusted = list(seqused_cmp_kv)
-    adjusted[-1] += total - required
-    return gen_cu_seqlens_from_seqused(adjusted)
+def gen_cu_seqlens_cmp_kv(seqused_cmp_kv):
+    """Generate CMP prefixes from CMP lengths without consulting ORI lengths."""
+    return gen_cu_seqlens_from_seqused(seqused_cmp_kv)
 
 
-def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio):
+def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2):
     """
     计算block_num1和block_num2
 
@@ -179,8 +161,6 @@ def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp
         seqused_cmp_kv: cmp_kv真实长度列表
         block_size1: ori block大小
         block_size2: cmp block大小
-        cmp_ratio: 压缩率
-
     返回:
         tuple: (block_num1, block_num2)
     """
@@ -191,7 +171,7 @@ def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp
         cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
         ori_block_num_sum += cur_ori_kv_block_num
 
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+    for cur_cmp_act_kv in seqused_cmp_kv:
         cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
         cmp_block_num_sum += cur_cmp_kv_block_num
 
@@ -359,13 +339,11 @@ def fill_none_params(params_dict):
         if seqused_cmp_kv is None:
             seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
         if cu_seqlens_cmp_kv is None:
-            cu_seqlens_cmp_kv = gen_cu_seqlens_cmp_kv(
-                cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, params_dict["layout_kv"]
-            )
-        if cmp_residual_kv is None:
-            cmp_residual_kv = (
-                [s % cmp_ratio for s in seqused_ori_kv] if cmp_mask_mode != 0 else None
-            )
+            cu_seqlens_cmp_kv = gen_cu_seqlens_cmp_kv(seqused_cmp_kv)
+        if cmp_mask_mode == 0 or cmp_ratio == 1:
+            cmp_residual_kv = None
+        elif cmp_residual_kv is None:
+            cmp_residual_kv = [0] * B
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
             if slot_len < seqused_cmp_kv[i]:
@@ -383,7 +361,6 @@ def fill_none_params(params_dict):
             seqused_cmp_kv if seqused_cmp_kv is not None else [0] * B,
             block_size1,
             block_size2,
-            cmp_ratio,
         )
         block_num1 = ori_block_num
     if block_num2 is None:
@@ -391,7 +368,7 @@ def fill_none_params(params_dict):
             block_num2 = 0
         else:
             _, cmp_block_num = calc_block_num(
-                seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio
+                seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2
             )
             block_num2 = cmp_block_num
 
@@ -412,10 +389,10 @@ def fill_none_params(params_dict):
         cmp_kv_datarange = [-5, 5]
 
     ori_mask_mode = params_dict.get("ori_mask_mode")
-    ori_kv_topk_mode = params_dict.get("ori_kv_topk_mode")
+    ori_kv_topk_mode = normalize_topk_mode(params_dict.get("ori_kv_topk_mode"))
     if ori_kv_topk_mode is None:
         ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
-    cmp_kv_topk_mode = params_dict.get("cmp_kv_topk_mode")
+    cmp_kv_topk_mode = normalize_topk_mode(params_dict.get("cmp_kv_topk_mode"))
     if cmp_kv_topk_mode is None:
         cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
 
@@ -467,6 +444,23 @@ def fill_none_params(params_dict):
         "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
         "ori_topk_length": params_dict.get("ori_topk_length", None),
         "cmp_topk_length": params_dict.get("cmp_topk_length", None),
+        "batch_consistency": params_dict.get("batch_consistency"),
+        "fd_mode": params_dict.get("fd_mode"),
+        "fd_aic_core_num": params_dict.get("fd_aic_core_num"),
+        "fd_aiv_core_num": params_dict.get("fd_aiv_core_num"),
+        "fd_require_split": params_dict.get("fd_require_split"),
+        "batch_consistency_seed": params_dict.get("batch_consistency_seed"),
+        "batch_consistency_order": params_dict.get("batch_consistency_order"),
+        "batch_consistency_batch_split": params_dict.get(
+            "batch_consistency_batch_split"
+        ),
+        "batch_consistency_mode_batch": params_dict.get("batch_consistency_mode_batch"),
+        "batch_consistency_token_split": params_dict.get(
+            "batch_consistency_token_split"
+        ),
+        "batch_consistency_shape_change": params_dict.get(
+            "batch_consistency_shape_change"
+        ),
     }
 
     return filled_params

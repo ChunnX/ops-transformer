@@ -62,7 +62,8 @@ REGISTER_TILING_DATA_CLASS(GroupedMatmulActivationQuant_1, GMMActivationQuantTil
 
 class GroupedMatmulActivationQuantTiling950 : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedMatmulActivationQuantTiling950(gert::TilingContext *context) : GroupedQmmBasicApiTiling(context)
+    explicit GroupedMatmulActivationQuantTiling950(gert::TilingContext *context)
+        : GroupedQmmBasicApiTiling(context)
     {
         Reset();
     }
@@ -96,7 +97,11 @@ private:
     bool CheckDtype() const;
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
+    bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
+    uint64_t CalcEpilogueUbBytes(uint64_t baseM, uint64_t baseN, uint32_t bufferCount) const;
+    bool CanEnableEpilogueDoubleBuffer(uint64_t baseM, uint64_t baseN) const;
+    void AdjustBasicBlockForEpilogueDoubleBuffer();
 
     GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams tilingData_;
     uint8_t roundMode_ = DEFAULT_ROUND_MODE_RINT;

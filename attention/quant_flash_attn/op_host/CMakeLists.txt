@@ -10,7 +10,6 @@
 add_op_to_compiled_list()
 
 set(QUANT_FLASH_ATTN_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for quant_flash_attn")
-set(QUANT_FLASH_ATTN_INNER_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging inner header for quant_flash_attn")
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
@@ -26,6 +25,8 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
+elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
+    set(quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
 endif()
 
 file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES

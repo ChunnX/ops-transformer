@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -317,13 +317,11 @@ int main() {
   void* output_device_addr = nullptr;
   aclTensor* output_tensor = nullptr;
 
-  // 可选输出：norm_out（out_flag=1时有效）
-  std::vector<int64_t> norm_out_shape = {40, 4, 8, 1024};  // 2*num_iters=40, n=4, n_align=8, T=1024
+  std::vector<int64_t> norm_out_shape = {40 * 4 * 8 * 1024};  // 2*num_iters=40, n=4, n_align=8, T=1024
   void* norm_out_device_addr = nullptr;
   aclTensor* norm_out_tensor = nullptr;
 
-  // 可选输出：sum_out（out_flag=1时有效）
-  std::vector<int64_t> sum_out_shape = {40, 8, 1024};  // 2*num_iters=40, n_align=8, T=1024
+  std::vector<int64_t> sum_out_shape = {40 * 8 * 1024};  // 2*num_iters=40, n_align=8, T=1024
   void* sum_out_device_addr = nullptr;
   aclTensor* sum_out_tensor = nullptr;
 
@@ -347,7 +345,6 @@ int main() {
       output_device_addr
   );
 
-  // 可选输出norm_out/sum_out的Tensor（out_flag=1）
   ret = aclrtMalloc(&norm_out_device_addr, GetShapeSize(norm_out_shape)*sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("Malloc norm_out failed, error: %d\n", ret);

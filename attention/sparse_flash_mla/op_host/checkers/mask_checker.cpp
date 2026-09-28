@@ -8,23 +8,27 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "mask_checker.h"
+#include "mask_checker_sparse_flash_mla.h"
 #include "log/log.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
-const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
+const char *Op(const CheckContext &context)
+{
+    return context.opName == nullptr ? "SparseMla" : context.opName;
+}
 } // namespace
 
 ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
 {
-    OP_CHECK_IF(context.oriMaskMode != 0 && context.oriMaskMode != 3 && context.oriMaskMode != 4,
+    OP_CHECK_IF(context.oriMaskMode != 0 && context.oriMaskMode != 3 &&
+                    context.oriMaskMode != 4, // 3: RightDownCausal模式 4: Band模式
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "ori_mask_mode", std::to_string(context.oriMaskMode).c_str(),
                                           "0, 3 or 4"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        context.cmpMaskMode != 0 && context.cmpMaskMode != 3,
+        context.cmpMaskMode != 0 && context.cmpMaskMode != 3, // 3: RightDownCausal模式
         OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_mask_mode", std::to_string(context.cmpMaskMode).c_str(), "0 or 3"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriWinLeft < -1 || context.oriWinRight < -1,
@@ -38,12 +42,12 @@ ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
 
 ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
 {
-    if (context.oriMaskMode != 4) {
+    if (context.oriMaskMode != 4) { // 4: Band模式
         OP_CHECK_IF(context.oriWinLeft != -1 || context.oriWinRight != -1,
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                         Op(context), "ori_win_left and ori_win_right",
                         (std::to_string(context.oriWinLeft) + ", " + std::to_string(context.oriWinRight)).c_str(),
-                        "Non-sliding-window modes require ori_win_left=ori_win_right=-1"),
+                        "Ori_win_left and ori_win_right must be -1 when ori_mask_mode is not 4"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -51,23 +55,7 @@ ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
         OP_CHECK_IF(context.cmpMaskMode != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_mask_mode",
                                                           std::to_string(context.cmpMaskMode).c_str(),
-                                                          "SWA mode requires cmp_mask_mode=0"),
-                    return ge::GRAPH_FAILED);
-    } else if (IsOriCmpSparse(context)) {
-        OP_CHECK_IF(context.oriMaskMode != 0 || context.cmpMaskMode != 0,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                        Op(context), "ori_mask_mode and cmp_mask_mode",
-                        (std::to_string(context.oriMaskMode) + ", " + std::to_string(context.cmpMaskMode)).c_str(),
-                        "Sparse ori_kv mode requires ori_mask_mode=cmp_mask_mode=0"),
-                    return ge::GRAPH_FAILED);
-    }
-
-    if (context.oriSparseIndices.present && !context.cmpKv.present) {
-        OP_CHECK_IF(context.oriMaskMode != 0 || context.cmpMaskMode != 0,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                        Op(context), "ori_mask_mode and cmp_mask_mode",
-                        (std::to_string(context.oriMaskMode) + ", " + std::to_string(context.cmpMaskMode)).c_str(),
-                        "Ori-only sparse mode requires both mask modes to be 0"),
+                                                          "Cmp_mask_mode must be 0 when cmp_kv is absent"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -36,7 +36,8 @@ public:
     [[nodiscard]] virtual uint32_t GetGroupSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQueryHeadNum() const = 0;
     [[nodiscard]] virtual uint32_t GetKvHeadNum() const = 0;
-    [[nodiscard]] virtual uint32_t GetHeadDim() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDimQk() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDimV() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize(uint32_t batchIdx) const = 0;
     [[nodiscard]] virtual uint32_t GetKvSeqSize() const = 0;
@@ -79,9 +80,14 @@ public:
         return kvHeadNum;
     }
 
-    [[nodiscard]] uint32_t GetHeadDim() const override
+    [[nodiscard]] uint32_t GetHeadDimQk() const override
     {
-        return headDim;
+        return headDimQk;
+    }
+
+    [[nodiscard]] uint32_t GetHeadDimV() const override
+    {
+        return headDimV;
     }
 
     [[nodiscard]] uint32_t GetQuerySeqSize() const override
@@ -150,7 +156,7 @@ public:
             case SparseMode::BAND:
                 return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq) + preToken;
             default:
-                return preToken;
+                return querySeq;
         }
     }
 
@@ -159,15 +165,17 @@ public:
         auto mode = GetSparseMode();
         switch (mode) {
             case SparseMode::DEFAULT_MASK:
-            case SparseMode::ALL_MASK:
-            case SparseMode::LEFT_UP_CAUSAL:
                 return nextToken;
+            case SparseMode::ALL_MASK:
+                return kvSeq;
+            case SparseMode::LEFT_UP_CAUSAL:
+                return 0L;
             case SparseMode::RIGHT_DOWN_CAUSAL:
                 return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq);
             case SparseMode::BAND:
                 return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq) + nextToken;
             default:
-                return nextToken;
+                return kvSeq;
         }
     }
 
@@ -202,11 +210,12 @@ public:
     uint32_t querySeqSize{0U};
     uint32_t kvHeadNum{0U};
     uint32_t kvSeqSize{0U};
-    uint32_t headDim{64U};
+    uint32_t headDimQk{64U};
+    uint32_t headDimV{64U};
     bool attenMaskFlag{false};
     uint32_t sparseMode{0U};
-    uint32_t preToken{0U};
-    uint32_t nextToken{0U};
+    int64_t preToken{0U};
+    int64_t nextToken{0U};
     bool isCumulativeQuerySeq{false};
     bool isCumulativeKvSeq{false};
     std::vector<int64_t> actualQuerySeqSize{};

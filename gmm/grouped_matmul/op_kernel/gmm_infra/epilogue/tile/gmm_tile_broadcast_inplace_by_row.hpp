@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
 #define GMM_EPILOGUE_TILE_TILE_BROADCAST_INPLACE_BY_ROW_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
@@ -21,8 +21,7 @@ template <
     /// Compute data type
     class ComputeType_,
     /// Length of the compute buffer
-    class TileShape_
->
+    class TileShape_>
 struct TileBroadcastInplaceByRow {
     using ArchTag = ArchTag_;
     using ElementCompute = typename ComputeType_::Element;
@@ -32,9 +31,7 @@ struct TileBroadcastInplaceByRow {
     TileBroadcastInplaceByRow() {}
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<ElementCompute> const &ubInOut
-    )
+    void operator()(AscendC::LocalTensor<ElementCompute> const &ubInOut)
     {
         constexpr uint32_t eleNumPerVectorFractal = BYTE_PER_VECTOR_FRACTAL / sizeof(ElementCompute);
 

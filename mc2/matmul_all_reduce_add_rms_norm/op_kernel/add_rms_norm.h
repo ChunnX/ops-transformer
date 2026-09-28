@@ -15,15 +15,13 @@
 
 #ifndef ADD_RMS_NORM_H
 #define ADD_RMS_NORM_H
-#include "rms_norm_base.h"
+#include "mararn_rms_norm_base.h"
 using namespace AscendC;
 
 template <typename T>
 class KernelAddRmsNorm {
 public:
-    __aicore__ inline KernelAddRmsNorm()
-    {
-    }
+    __aicore__ inline KernelAddRmsNorm() {}
     __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData &tilingData, TPipe *Ppipe,
                                 uint32_t numBlocks)
     {

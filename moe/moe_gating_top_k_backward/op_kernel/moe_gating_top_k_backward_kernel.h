@@ -15,7 +15,7 @@
 #ifndef MOE_GATING_TOP_K_BACKWARD_KERNEL_H
 #define MOE_GATING_TOP_K_BACKWARD_KERNEL_H
 #include "kernel_operator.h"
-#include "common.h"
+#include "moe_gating_top_k_backward_common.h"
 #include "basic_api/kernel_operator_utils_intf.h"
 namespace MoeGatingTopKBackward {
 using namespace AscendC;
@@ -79,9 +79,10 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void
-MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
-                                     const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx,
+                                                            GM_ADDR gradX,
+                                                            const MoeGatingTopKBackwardTilingData *tilingData,
+                                                            TPipe *tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;

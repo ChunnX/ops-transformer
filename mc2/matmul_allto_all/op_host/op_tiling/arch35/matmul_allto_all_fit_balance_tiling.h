@@ -24,24 +24,25 @@
 namespace MC2Tiling {
 
 // AICPU通信场景下，受限于通信展开开销，需要限制切分上限
-constexpr uint64_t AICPU_MAX_TILE_CNT = 6U;
+constexpr uint64_t AICPU_MAX_TILE_CNT = 8U;
 
 class MatmulAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MatmulAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                             TopoType topoType = TopoType::STANDARD_CARD,
-                                            SocVersion socVersion = SocVersion::SOC950,
                                             QuantMode quantMode = QuantMode::NON_QUANT,
                                             uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
-        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion), quantMode_(quantMode)
+        : Mc2FitBasedBalanceTiling(args, kernelType, topoType),
+          quantMode_(quantMode)
     {
         commPerf_.SetCommShapeLen(args.nValue);
         commPerf_.SetCommDTypeSize(mmInfo_.outMatrixCDtypeSize);
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
         isQuantMatmul_ = (mmInfo_.inMatrixADtypeSize == 1) && (mmInfo_.inMatrixBDtypeSize == 1);
-        // AICPU通信场景下，受限于通信资源，最大切分轮次限制为6
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        // AICPU通信场景下，受限于通信资源，最大切分轮次限制为8
+        isAicpuMode_ = (commMode == Mc2Comm::COMM_MODE_AICPU);
+        if (isAicpuMode_) {
             tilingM_.SetMaxTileCnt(AICPU_MAX_TILE_CNT);
         }
     }
@@ -52,15 +53,16 @@ public:
     void AdjustLongShortTileLen() override;
 
 private:
-    void AdjustLongShortTileLenWhenCalcBound();
+    void AlignLongTileLen();
 
     bool isLargerThanL2Cache_ = false;
     bool isQuantMatmul_ = false;
+    bool isAicpuMode_ = false;
     QuantMode quantMode_;
 };
 
-inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType, SocVersion socVersion,
-                                       NpuArch npuArch, QuantMode quantMode, uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
+inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType, NpuArch npuArch,
+                                       QuantMode quantMode, uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
 {
     // 标卡4P 与 8P 均走 Fit Balance tiling，仅拓扑类型不同；统一判定并构造，消除重复逻辑
     const bool isStandardCard4P = mc2tiling::IsStandardCard4P(args.rankDim, npuArch);
@@ -68,12 +70,12 @@ inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, Kernel
     if (isStandardCard4P || is8P) {
         const TopoType topoType = is8P ? TopoType::EIGHT_P : TopoType::STANDARD_CARD;
         OP_LOGD("Arch35TilingResult", "Using fit balance tiling for arch35, topoType=%d", static_cast<int>(topoType));
-        MatmulAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, topoType, socVersion, quantMode, commMode);
+        MatmulAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, topoType, quantMode, commMode);
         return fitBalanceTiling.GetTiling();
     }
 
     OP_LOGD("Arch35TilingResult", "Falling back to formulaic tiling");
-    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, socVersion);
+    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, Ops::Base::DAV_3510, false);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         OP_LOGD("Arch35TilingResult", "AICPU mode, limit maxTileCnt to %lu", AICPU_MAX_TILE_CNT);
         formulaicTiling.tilingM_.SetMaxTileCnt(AICPU_MAX_TILE_CNT);

@@ -266,18 +266,7 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
             weightDqAxisSize_ * context_->weightDq.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
     }
     baseShapeInfo_.nSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
-    if (context_->doRope != nullptr && !(*(context_->doRope))) {
-        // do_rope=false 时 ropeSin/ropeCos 为空 tensor，dr 由 weightDkvKr 的 (Hckv+Dr) 与 weightUk 的 Hckv 推导
-        const auto &weightDkvKrShape = context_->weightDkvKr.shape->GetStorageShape();
-        uint32_t hckvPlusDr =
-            (weightDkvKrShape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) ?
-                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_0) * weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_3) :
-                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
-        baseShapeInfo_.drSize = hckvPlusDr - context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_2);
-    } else {
-        baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
-            context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
-    }
+    SetShapeInfoDrSize(); // 为DrSize赋值
     baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
     baseShapeInfo_.headSizeQr = baseShapeInfo_.drSize * baseShapeInfo_.nSize;
@@ -302,6 +291,22 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
     }
     baseShapeInfo_.s2Size = baseShapeInfo_.nkvSize;
     return ge::GRAPH_SUCCESS;
+}
+
+void MlaPrologTiling::SetShapeInfoDrSize()
+{
+    if (context_->doRope != nullptr && !(*(context_->doRope))) {
+        // do_rope=false 时 ropeSin/ropeCos 为空 tensor，dr 由 weightDkvKr 的 (Hckv+Dr) 与 weightUk 的 Hckv 推导
+        const auto &weightDkvKrShape = context_->weightDkvKr.shape->GetStorageShape();
+        uint32_t hckvPlusDr =
+            (weightDkvKrShape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) ?
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_0) * weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_3) :
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
+        baseShapeInfo_.drSize = hckvPlusDr - context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_2);
+    } else {
+        baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
+            context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+    }
 }
 
 ge::graphStatus MlaPrologTiling::SetScenarioInfo()
@@ -345,8 +350,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192 &&
-        cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && cvRatio == 2 &&
+        baseShapeInfo_.tSize >= 8192) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -372,7 +377,7 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
         qcQrScale_ = *(context_->qcQrScale);
         kcScale_ = *(context_->kcScale);
     }
-    // rope 开关由 do_rope attr 控制（默认 true），未设置时强制开启
+    // rope 开关由 do_rope attr 控制（V1/V2 无该 attr，默认开启），缺省视为开启
     enableRope_ = true;
     if (context_->doRope != nullptr) {
         enableRope_ = *(context_->doRope);
@@ -785,6 +790,19 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
                     ge::GRAPH_SUCCESS,
                 OP_LOGE(context.GetNodeName(), "Failed to get or validate krCache strides."), return ge::GRAPH_FAILED);
 
+    if (ConvertContextAttrs(context, mlaPrologContext) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
+                return ge::GRAPH_FAILED);
+    mlaPrologContext.workSpaces = context.GetWorkspaceSizes(1);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTiling::ConvertContextAttrs(gert::TilingContext &context, MlaPrologContext &mlaPrologContext)
+{
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context.GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     mlaPrologContext.rmsNormEspilonCq = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CQ_ATTR_INDEX);
@@ -800,8 +818,11 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
-        // RoPE 开关：由 do_rope attr 控制；默认开启
-        mlaPrologContext.doRope = attrs->GetAttrPointer<bool>(DO_ROPE_ATTR_INDEX);
+        // RoPE 开关：由 do_rope attr 控制（aclnnV3 默认 true，aclnnV4 透传用户开关）；默认开启
+        // 入图场景下旧图不携带 do_rope，attr 数组可能不足 13 个，先判越界再取值，避免 GetAttrPointer 越界报错
+        if (attrs->GetAttrNum() > DO_ROPE_ATTR_INDEX) {
+            mlaPrologContext.doRope = attrs->GetAttrPointer<bool>(DO_ROPE_ATTR_INDEX);
+        }
         if (mlaPrologContext.doRope == nullptr) {
             mlaPrologContext.doRopeValue = true;
             mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
@@ -819,11 +840,6 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.doRopeValue = true;
         mlaPrologContext.doRope = nullptr;
     }
-
-    OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
-                return ge::GRAPH_FAILED);
-    mlaPrologContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
 }
 

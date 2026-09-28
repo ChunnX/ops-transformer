@@ -10,7 +10,7 @@
 
 /*!
  * \file test_moe_distribute_dispatch_v3_tiling.cpp
- * \brief Arch35(Ascend950) tiling UT。CMake 通过 test_*_tiling.cpp 收录源文件；场景与 arch22 对齐，SOC 使用 Ascend950。
+ * \brief Arch35(A5) tiling UT。CMake 通过 test_*_tiling.cpp 收录源文件；场景与 arch22 对齐，soc 输入为 arch 串 3510。
  */
 
 #include <iostream>
@@ -39,7 +39,7 @@ protected:
     }
 };
 
-// 共享专家 + TP，与 arch22 Test0 参数一致，仅 SOC 切换为 Ascend950（走 A5 tiling）
+// 共享专家 + TP，与 arch22 Test0 参数一致，仅 soc 切换为 3510（走 A5 tiling）
 TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test0_SharedExpertWithTp)
 {
     struct MoeDistributeDispatchV3CompileInfo {};
@@ -78,7 +78,7 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test0_SharedExpertWithTp)
          {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -123,7 +123,7 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test1_SharedExpertWithTp_
          {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);

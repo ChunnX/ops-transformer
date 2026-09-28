@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Ascend 950PR&950DT系列产品</term>                             |    √     |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                             |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -103,10 +103,10 @@
 - xRef的shape为BSND。
 - cos/sin的shape必须与xRef满足广播关系，且存在如下约束：
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
     cos/sin的shape当前只支持BS1D、B11D排布。
 
 ## 调用说明
@@ -114,5 +114,5 @@
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_inplace_partial_rotary_mul](./examples/test_aclnn_inplace_partial_rotary_mul.cpp) | 通过[aclnnInplacePartialRotaryMul](./docs/aclnnInplacePartialRotaryMul.md)接口方式调用InplacePartialRotaryMul算子。             |
-| PyTorch API | [inplace_partial_rotary_mul](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul.md) | 通过[cann_ops_transformer.inplace_partial_rotary_mul](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul.md)接口方式调用InplacePartialRotaryMul算子。 |
+| PyTorch API | [inplace_partial_rotary_mul](../../posembedding/inplace_partial_rotary_mul/docs/torchapi_inplace_partial_rotary_mul.md) | 通过[cann_ops_transformer.inplace_partial_rotary_mul](../../posembedding/inplace_partial_rotary_mul/docs/torchapi_inplace_partial_rotary_mul.md)接口方式调用InplacePartialRotaryMul算子。 |
 | 图模式调用 | [test_geir_inplace_partial_rotary_mul](./examples/test_geir_inplace_partial_rotary_mul.cpp) | 通过[算子IR](./op_graph/inplace_partial_rotary_mul_proto.h)构图方式调用InplacePartialRotaryMul算子。 |

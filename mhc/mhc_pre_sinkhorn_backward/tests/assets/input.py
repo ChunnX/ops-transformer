@@ -15,9 +15,8 @@ __input__ = {
 }
 
 
-def _sigmoid_grad(z, dy, is_pre=False, hc_eps=1e-6):
-    y = torch.sigmoid(z)
-    sigma = y - hc_eps if is_pre else y
+def _sigmoid_grad(z, dy):
+    sigma = torch.sigmoid(z)
     return dy * sigma * (1 - sigma)
 
 
@@ -36,7 +35,7 @@ def _exp_grad(x, y_grad):
     return y * y_grad - is_max * sum_all
 
 
-def _sinkhorn_grad(grad_h_res, sum_out, norm_out):
+def _sinkhorn_grad(grad_h_res, sum_out, norm_out, hc_eps=1e-6):
     bs, seq_len, n, _ = grad_h_res.shape
     x_grad = grad_h_res
     it2, B_, S_, n_ = sum_out.shape
@@ -50,6 +49,9 @@ def _sinkhorn_grad(grad_h_res, sum_out, norm_out):
         gxrn = x_grad / col_sum - (x_grad * xrn / (col_sum**2)).sum(
             dim=-2, keepdim=True
         )
+        if i == 0:
+            row_sum = row_sum - hc_eps
+            xrn = xrn - hc_eps
         x_grad = gxrn / row_sum - (gxrn * xrn / row_sum).sum(dim=-1, keepdim=True)
     return x_grad
 
@@ -87,7 +89,8 @@ def mhc_pre_sinkhorn_backward_input(
     bias.copy_(torch.randn(hm, dtype=torch.float32, device=x.device))
 
     x_fp32 = x.float()
-    x_flat = x_fp32.reshape(*x_fp32.shape[:-2], -1)
+    prod_nd = n * c
+    x_flat = x_fp32.reshape(*x_fp32.shape[:-2], prod_nd)
 
     hcbn = torch.nn.functional.linear(x_flat, phi) + bias
     inv_rms_val = torch.rsqrt(x_flat.square().mean(-1, keepdim=True) + hc_eps_val)
@@ -97,7 +100,7 @@ def mhc_pre_sinkhorn_backward_input(
     z_post = nf[..., n : 2 * n] * alpha[1] + bias[n : 2 * n]
     z_res = nf[..., 2 * n :] * alpha[2] + bias[2 * n :]
 
-    h_pre_val = torch.sigmoid(z_pre + hc_eps_val)
+    h_pre_val = torch.sigmoid(z_pre) + hc_eps_val
     h_post = 2 * torch.sigmoid(z_post)
 
     comb = z_res.reshape(*z_res.shape[:-1], n, n)
@@ -105,9 +108,12 @@ def mhc_pre_sinkhorn_backward_input(
 
     sum_out_list = []
     norm_out_list = []
-    for _ in range(sinkhorn_iters):
+    for it in range(sinkhorn_iters):
         row_sum = comb.sum(dim=-1, keepdim=True)
-        comb = comb / (row_sum + hc_eps_val)
+        if it == 0:
+            comb = comb / row_sum + hc_eps_val
+        else:
+            comb = comb / (row_sum + hc_eps_val)
         norm_out_list.append(comb)
         sum_out_list.append(row_sum.squeeze(-1) + hc_eps_val)
         col_sum = comb.sum(dim=-2, keepdim=True)
@@ -158,9 +164,11 @@ def mhc_pre_sinkhorn_backward_input(
     zpost4 = nf4[..., n4 : 2 * n4] * alpha[1] + bias[n4 : 2 * n4]
     zres4 = (nf4[..., 2 * n4 :] * alpha[2] + bias[2 * n4 :]).reshape(B4, S4, n4, n4)
 
-    gzp4 = _sigmoid_grad(zp4, g_hpre, is_pre=True, hc_eps=hc_eps_val)
-    gzpost4 = 2 * _sigmoid_grad(zpost4, gp4, is_pre=False, hc_eps=hc_eps_val)
-    skg4 = _sinkhorn_grad(ghres4, suma, norm4)
+    gzp4 = _sigmoid_grad(zp4, g_hpre)
+    gzpost4 = 2 * _sigmoid_grad(zpost4, gp4)
+    # ghres4可能为(B,S,N*N)或(B,S,N,N), 统一reshape为(B,S,N,N)供_sinkhorn_grad处理
+    ghres4_4d = ghres4.reshape(B4, S4, n4, n4) if ghres4.dim() == 3 else ghres4
+    skg4 = _sinkhorn_grad(ghres4_4d, suma, norm4, hc_eps_val)
     gzres4 = _exp_grad(zres4, skg4).flatten(2)
 
     gold_bias = torch.cat([gzp4.sum((0, 1)), gzpost4.sum((0, 1)), gzres4.sum((0, 1))])
@@ -180,7 +188,7 @@ def mhc_pre_sinkhorn_backward_input(
     gold_x = grad_x_hin + gx_rms4.view(x4.shape) + gx_mm4.view(x4.shape)
 
     if is_3d:
-        gold_x = gold_x.view(-1, n4, d4)
+        gold_x = gold_x.view(x.shape[0], n4, d4)
 
     grad_x_out.copy_(gold_x.to(x.dtype))
     grad_phi_out.copy_(gold_phi)

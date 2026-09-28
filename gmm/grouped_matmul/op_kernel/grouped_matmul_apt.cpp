@@ -31,6 +31,9 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
+#if IS_BLAZE
+#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_tensor_api_kernel.h"
+#endif
 #endif
 #if defined(V310_GMM_QUANT_MX) && IS_BLAZE
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
@@ -56,6 +59,9 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
+#if IS_BLAZE
+#include "arch35/quant_adaptive_sliding_window_templates/gmm_weight_quant_tensor_api_mx_kernel.h"
+#endif
 #if defined(V310_GMM_S8S4_UINT64_SCALE)
 #include "arch35/weight_quant_basic_block/gmm_s8s4_perchannel_tensor_api.h"
 #endif
@@ -84,7 +90,7 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #define ORIG_DTYPE_WEIGHT DT_INT4
 #endif
 #else
-#include "arch35/non_quant/grouped_matmul_basic_kernel.h"
+#include "arch35/non_quant/grouped_matmul_kernel_arch35.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
 #endif
 
@@ -102,6 +108,12 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 #else
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
+#if defined(FORMAT_SCALE) && defined(FORMAT_WEIGHT) && defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E8M0) && \
+    FORMAT_SCALE == FORMAT_FRACTAL_NZ && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ && ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0
+constexpr bool scaleNz = true;
+#else
+constexpr bool scaleNz = false;
+#endif
 
 } // namespace
 
@@ -115,127 +127,129 @@ using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, MM_DTYPE_Y>;
 
 using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
-#define INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(templateClass, ...)                                           \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);                 \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \
-        GET_TILING_DATA_MEMBER_ADDR(GMMWeightQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                        \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_Y, __VA_ARGS__> op;                                     \
-        op.Init(x, weight, antiquantScale, antiquantOffset, bias, groupList, y, &gmmBaseParams_, &mmTilingData_,       \
-                tiling, gmmArrayAddr_, &tPipe);                                                                        \
-        op.Process();                                                                                                  \
+#define INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(templateClass, ...) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GET_TILING_DATA_MEMBER_ADDR(GMMWeightQuantTilingData, gmmArray, gmmArrayAddr_, tiling); \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_Y, __VA_ARGS__> op; \
+        op.Init(x, weight, antiquantScale, antiquantOffset, bias, groupList, y, &gmmBaseParams_, &mmTilingData_, \
+                tiling, gmmArrayAddr_, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(templateClass, ...)                                         \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);                 \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, float, DTYPE_BIAS, DTYPE_Y,           \
-                      WeightQuantMatmulBasicBlock, __VA_ARGS__, false>                                                 \
-            op;                                                                                                        \
+#define INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(templateClass, ...) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, float, DTYPE_BIAS, DTYPE_Y, \
+                      WeightQuantMatmulBasicBlock, __VA_ARGS__, false> \
+            op; \
         op.Init(x, weight, scale, antiquantScale, antiquantOffset, bias, groupList, perTokenScale, y, &gmmBaseParams_, \
-                &mmTilingData_, tiling, &tPipe);                                                                       \
-        op.Process();                                                                                                  \
+                &mmTilingData_, tiling, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(templateClass, ...)                                          \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);                 \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, DTYPE_PER_TOKEN_SCALE, DTYPE_BIAS,    \
-                      DTYPE_Y, WeightQuantMatmulBasicBlock, __VA_ARGS__, IS_SINGLE_MULTI_SINGLE>                       \
-            op;                                                                                                        \
+#define INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(templateClass, ...) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, DTYPE_PER_TOKEN_SCALE, DTYPE_BIAS, \
+                      DTYPE_Y, WeightQuantMatmulBasicBlock, __VA_ARGS__, IS_SINGLE_MULTI_SINGLE> \
+            op; \
         op.Init(x, weight, scale, antiquantScale, antiquantOffset, bias, groupList, perTokenScale, y, &gmmBaseParams_, \
-                &mmTilingData_, tiling, &tPipe);                                                                       \
-        op.Process();                                                                                                  \
+                &mmTilingData_, tiling, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(templateClass, ...)                                             \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);                 \
-        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, DTYPE_PER_TOKEN_SCALE, DTYPE_BIAS,    \
-                      DTYPE_Y, WeightQuantVcvMatmulBasicBlock, __VA_ARGS__, false>                                     \
-            op;                                                                                                        \
+#define INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(templateClass, ...) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_SCALE, DTYPE_PER_TOKEN_SCALE, DTYPE_BIAS, \
+                      DTYPE_Y, WeightQuantVcvMatmulBasicBlock, __VA_ARGS__, false> \
+            op; \
         op.Init(x, weight, scale, antiquantScale, antiquantOffset, bias, groupList, perTokenScale, y, &gmmBaseParams_, \
-                &mmTilingData_, tiling, &tPipe);                                                                       \
-        op.Process();                                                                                                  \
+                &mmTilingData_, tiling, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                                  \
-    do {                                                                                                               \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2> op;  \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
-        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
-        op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_,          \
-                gmmArrayAddr_, &tPipe);                                                                                \
-        op.Process();                                                                                                  \
+#define GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, templateClass) \
+    do { \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2> op; \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling); \
+        op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, \
+                gmmArrayAddr_, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define GMM_QUANT_MIX_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                              \
-    do {                                                                                                               \
-        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, wFormat, transposeX1,            \
-                      transposeX2, DTYPE_L0C_LOCAL>                                                                    \
-            op;                                                                                                        \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
-        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
-        op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_,          \
-                gmmArrayAddr_, &tPipe);                                                                                \
-        op.Process();                                                                                                  \
+#define GMM_QUANT_MIX_IMPL_CLASS(transposeX1, transposeX2, templateClass) \
+    do { \
+        templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, wFormat, transposeX1, \
+                      transposeX2, DTYPE_L0C_LOCAL> \
+            op; \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling); \
+        op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, \
+                gmmArrayAddr_, &tPipe); \
+        op.Process(); \
     } while (0)
 
-#define GMM_QUANT_WITH_EMPTY_TENSOR_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
-        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
-        if ASCEND_IS_AIC {                                                                                             \
-            templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2>  \
-                op;                                                                                                    \
-            op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_,      \
-                    gmmArrayAddr_, &tPipe);                                                                            \
-            op.Process();                                                                                              \
-        }                                                                                                              \
-        if ASCEND_IS_AIV {                                                                                             \
-            GQmmEmptyTensor<DTYPE_Y>(groupList, y, &gmmQuantParams_, mmTilingData_.M, mmTilingData_.N);                \
-        }                                                                                                              \
+#define GMM_QUANT_WITH_EMPTY_TENSOR_IMPL_CLASS(transposeX1, transposeX2, templateClass) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling); \
+        if ASCEND_IS_AIC { \
+            templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2> \
+                op; \
+            op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, \
+                    gmmArrayAddr_, &tPipe); \
+            op.Process(); \
+        } \
+        if ASCEND_IS_AIV { \
+            GQmmEmptyTensor<DTYPE_Y>(groupList, y, &gmmQuantParams_, mmTilingData_.M, mmTilingData_.N); \
+        } \
     } while (0)
 
-#define GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS()                                                     \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GQmmEmptyTensor<DTYPE_Y>(groupList, y, &gmmQuantParams_, mmTilingData_.m, mmTilingData_.n);                    \
+#define GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS() \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling); \
+        GQmmEmptyTensor<DTYPE_Y>(groupList, y, &gmmQuantParams_, mmTilingData_.m, mmTilingData_.n); \
     } while (0)
 
-#define GMM_QUANT_GB_IMPL_CLASS(xLayout, wLayout, yLayout)                                                             \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
-        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
-        GmmCgmctPerTileKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,        \
-                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,    \
-                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
+#define GMM_QUANT_GB_IMPL_CLASS(xLayout, wLayout, yLayout) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GmmCgmctPerTileKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
+                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1, \
+                                                        &gmmQuantParams_, &mmTilingData_, &tPipe); \
     } while (0)
 
 #if IS_BLAZE
-#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
-                             yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
-                                                       &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
+#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling); \
+        using wLayoutWithScale = \
+            AscendC::Std::conditional_t<scaleNz, AscendC::Std::tuple<wLayout, asc::te::nn_layout_ptn>, wLayout>; \
+        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, \
+                             wLayoutWithScale, yLayout, DTYPE_L0C_LOCAL>( \
+            x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe); \
     } while (0)
 #else
-#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
-    do {                                                                                                               \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
-        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,   \
-                         cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,    \
-                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
+#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling); \
+        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout, \
+                         cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1, \
+                                                        &gmmQuantParams_, &mmTilingData_, &tPipe); \
     } while (0)
 #endif
 
@@ -244,9 +258,9 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     do { \
         GET_TILING_DATA_MEMBER(GMMS4S4IntQuantTilingData, gmmS4S4Params, gmmS4S4Params_, tiling); \
         GET_TILING_DATA_MEMBER(GMMS4S4IntQuantTilingData, mmTilingData, mmTilingData_, tiling); \
-        GmmS4S4Kernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
-                      yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1, \
-                                                &gmmS4S4Params_, &mmTilingData_, &tPipe); \
+        GmmS4S4Kernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, yLayout, \
+                      DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmS4S4Params_, \
+                                       &mmTilingData_, &tPipe); \
     } while (0)
 #endif
 
@@ -257,13 +271,16 @@ template <int8_t W_TYPE, int8_t OFFSET_OR_BIAS_EXIT, int8_t C_QUANT_TYPE, int8_t
           int8_t WQ_A_TRANS, int8_t TEMPLATE_CUSTOM_SC, bool IS_SINGLE_MULTI_SINGLE, int8_t ALGORITHM_SUB_CATEGORY,
           int8_t ALGORITHM_CATEGORY>
 #else
-template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS>
+template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS, int8_t NO_QUANT_ACT>
 #endif
 __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
                                           GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
 {
+#if !defined(V310_GMM_ANTI_QUANT) || !defined(ORIG_DTYPE_X) || !defined(DT_FLOAT8_E4M3FN) || \
+    ORIG_DTYPE_X != DT_FLOAT8_E4M3FN || !IS_BLAZE
     TPipe tPipe;
+#endif
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     GM_ADDR user1 = GetUserWorkspace(workspace);
@@ -281,14 +298,14 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                       KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
-                                    Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
-                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+                                    Cgmct::Gemm::layout::RowMajorAlign, asc::te::nd_ext_layout_ptn,
+                                    asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn);
         } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
-                                    Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
-                                    AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+                                    Cgmct::Gemm::layout::RowMajorAlign, asc::te::nd_ext_layout_ptn,
+                                    asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn);
         } else if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
@@ -297,8 +314,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             }
             if ASCEND_IS_AIC {
                 GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
-                                        Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::DNExtLayoutPtn,
-                                        AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+                                        Cgmct::Gemm::layout::RowMajorAlign, asc::te::dn_ext_layout_ptn,
+                                        asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn);
             }
         }
     } else {
@@ -306,19 +323,56 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                       KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz,
-                                    Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
-                                    AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+                                    Cgmct::Gemm::layout::RowMajorAlign, asc::te::nd_ext_layout_ptn,
+                                    asc::te::nz_layout_ptn, asc::te::nd_ext_layout_ptn);
         } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn,
-                                    Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
-                                    AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+                                    Cgmct::Gemm::layout::RowMajorAlign, asc::te::nd_ext_layout_ptn,
+                                    asc::te::zn_layout_ptn, asc::te::nd_ext_layout_ptn);
         }
     }
 #endif
 
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
+#if IS_BLAZE
+    if constexpr (QUANT_A_TRANS == GMM_NO_TRANS && (QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) &&
+                  KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+        // Keep this predicate in sync with GroupedQmmBasicApiTiling::IsCubeBasicApi().
+        constexpr bool isInt8 =
+            AscendC::IsSameType<DTYPE_X, int8_t>::value && AscendC::IsSameType<DTYPE_WEIGHT, int8_t>::value;
+        constexpr bool isHiFloat8 = ORIG_DTYPE_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT == DT_HIFLOAT8;
+        constexpr bool isFp8X = ORIG_DTYPE_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_X == DT_FLOAT8_E5M2;
+        constexpr bool isFp8W = ORIG_DTYPE_WEIGHT == DT_FLOAT8_E4M3FN || ORIG_DTYPE_WEIGHT == DT_FLOAT8_E5M2;
+        constexpr bool outputSupported =
+            AscendC::IsSameType<DTYPE_Y, half>::value || AscendC::IsSameType<DTYPE_Y, bfloat16_t>::value ||
+            (isInt8 ? (AscendC::IsSameType<DTYPE_Y, int8_t>::value || AscendC::IsSameType<DTYPE_Y, int32_t>::value) :
+                      AscendC::IsSameType<DTYPE_Y, float>::value);
+        constexpr bool scaleSupported =
+            AscendC::IsSameType<DTYPE_Y, int32_t>::value || AscendC::IsSameType<DTYPE_SCALE, uint64_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, int64_t>::value || AscendC::IsSameType<DTYPE_SCALE, bfloat16_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, float>::value;
+        if constexpr ((isInt8 || isHiFloat8 || (isFp8X && isFp8W)) && outputSupported && scaleSupported) {
+            // Both layouts start with GMMQuantParams. Do not read mmTilingData before selecting the layout.
+            GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, cubeRouteParams, tiling);
+            using NativeBiasType = AscendC::Std::conditional_t<isInt8, int32_t, float>;
+            constexpr bool biasSupported = AscendC::IsSameType<DTYPE_BIAS, NativeBiasType>::value;
+            if (!cubeRouteParams.hasBias || biasSupported) {
+                using CubeWLayout = AscendC::Std::conditional_t<
+                    wFormat == CubeFormat::NZ,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::ZNLayoutPtn,
+                                                AscendC::Te::NZLayoutPtn>,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::DNExtLayoutPtn,
+                                                AscendC::Te::NDExtLayoutPtn>>;
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                       AscendC::Te::NDExtLayoutPtn, CubeWLayout, AscendC::Te::NDExtLayoutPtn>(
+                    x, weight, bias, scale, groupList, perTokenScale, y, user1, tiling);
+                return;
+            }
+        }
+    }
+#endif
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
@@ -367,20 +421,17 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     }
 #endif
 #if defined(V310_GMM_QUANT_S4S4) && IS_BLAZE
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);   // S4S4 需 1:2 AIC:AIV
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // S4S4 需 1:2 AIC:AIV
     if constexpr (wFormat == CubeFormat::ND) {
-        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
-                      KERNEL_TYPE == GMM_S4S4_MIX) {
+        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_S4S4_MIX) {
             GET_TILING_DATA_WITH_STRUCT(GMMS4S4IntQuantTilingData, tilingData, tiling);
-            GMM_S4S4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
-                                AscendC::Te::NDExtLayoutPtn);
+            GMM_S4S4_IMPL_CLASS(asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn);
         }
     } else {
-        if constexpr ((QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) &&
-                      QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_S4S4_MIX) {
+        if constexpr ((QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) && QUANT_A_TRANS == GMM_NO_TRANS &&
+                      KERNEL_TYPE == GMM_S4S4_MIX) {
             GET_TILING_DATA_WITH_STRUCT(GMMS4S4IntQuantTilingData, tilingData, tiling);
-            GMM_S4S4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
-                                AscendC::Te::NDExtLayoutPtn);
+            GMM_S4S4_IMPL_CLASS(asc::te::nd_ext_layout_ptn, asc::te::nz_layout_ptn, asc::te::nd_ext_layout_ptn);
         }
     }
 #endif
@@ -389,15 +440,13 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #if defined(V310_GMM_S8S4_UINT64_SCALE)
     constexpr bool IS_S8S4_V5_COMMON =
         (W_TYPE == WQGMM_ND || W_TYPE == WQGMM_FRACTAL_NZ) &&
-        OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-        W_QUANT_TYPE == WQGMM_NONE && WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
-        TEMPLATE_CUSTOM_SC == WQGMM_S8S4_FIXED_TEMPLATE &&
-        IS_SINGLE_MULTI_SINGLE == WQGMM_NOT_SINGLE_MULTI_SINGLE &&
+        OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST && W_QUANT_TYPE == WQGMM_NONE &&
+        WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+        TEMPLATE_CUSTOM_SC == WQGMM_S8S4_FIXED_TEMPLATE && IS_SINGLE_MULTI_SINGLE == WQGMM_NOT_SINGLE_MULTI_SINGLE &&
         ALGORITHM_SUB_CATEGORY == WQGMM_VDEFAULT && ALGORITHM_CATEGORY == WQGMM_MULTI_SCALE_DEQUANT;
     constexpr bool IS_S8S4_V5_PER_GROUP = IS_S8S4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_GROUP;
     constexpr bool IS_S8S4_V5_PER_CHANNEL =
-        IS_S8S4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_CHANNEL &&
-        AscendC::IsSameType<DTYPE_Y, half>::value;
+        IS_S8S4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_CHANNEL && AscendC::IsSameType<DTYPE_Y, half>::value;
     REGISTER_TILING_DEFAULT(GMMS8S4BasicApiTilingData);
     if constexpr (IS_S8S4_V5_PER_GROUP || IS_S8S4_V5_PER_CHANNEL) {
         GET_TILING_DATA_WITH_STRUCT(GMMS8S4BasicApiTilingData, s8s4TilingData, tiling);
@@ -408,145 +457,163 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
     {
 #if ORIG_DTYPE_X == DT_INT8
-    if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
-                  OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                  C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_NO_TRANS &&
-                  WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT &&
-                  ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                  ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, S8S4_NZKN_G,
-                                                       VEC_ANTIQUANT_CONFIG_4);
-    } else if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
-                         OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
-                         WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
-                         TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_384_BUF_NUM_3 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, S8S4_NZKN_G,
-                                                       VEC_ANTIQUANT_CONFIG_5);
-    }
+        if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
+                      OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                      C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_NO_TRANS &&
+                      WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT &&
+                      ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                      ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, S8S4_NZKN_G,
+                                                           VEC_ANTIQUANT_CONFIG_4);
+        } else if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
+                             OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_384_BUF_NUM_3 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, S8S4_NZKN_G,
+                                                           VEC_ANTIQUANT_CONFIG_5);
+        }
 #elif ORIG_DTYPE_X == DT_FLOAT8_E4M3FN
-    if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
-                  OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                  C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_MX && WQ_B_TRANS == WQGMM_TRANS &&
-                  WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 &&
-                  ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                  ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
-                                                          VEC_ANTIQUANT_CONFIG_DYNAMIC);
-    }
-#elif ORIG_DTYPE_ANTIQUANT_SCALE == DT_FLOAT8_E8M0
-    if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
-                  OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                  C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_MX && WQ_B_TRANS == WQGMM_NO_TRANS &&
-                  WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                  ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                  ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, A16MXF4_NZKN,
-                                                           VEC_ANTIQUANT_CONFIG_3);
-    }
+        if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
+                      OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                      C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_MX && WQ_B_TRANS == WQGMM_TRANS &&
+                      WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 &&
+                      ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                      ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+#if IS_BLAZE
+            GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
+            GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
+            GROUPED_MATMUL::GmmWeightQuantTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS,
+                                                            DTYPE_Y, IS_SINGLE_MULTI_SINGLE>(
+                x, weight, antiquantScale, bias, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
 #else
-    if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                  C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_TRANS &&
-                  WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                  ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                  ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, false,
-                                               QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, wqmmCfg,
-                                                           VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_TRANS &&
-                         WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, true,
-                                               QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, wqmmCfg,
-                                                           VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_TRANS &&
-                         WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, false,
-                                               QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
-                                                         VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_TRANS &&
-                         WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, true,
-                                               QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
-                                                         VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
-                         WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
-                         TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false, false,           QuantType::PER_CHANNEL,
-                                               false, QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
-                                                         VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
-                         WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
-                         TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false, false,           QuantType::PER_CHANNEL,
-                                               true,  QuantType::NONE, CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
-                                                         VEC_ANTIQUANT_CONFIG_3);
-    } else if constexpr (W_TYPE == WQGMM_ND &&
-                         (OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST ||
-                          OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST) &&
-                         C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_GROUP &&
-                         (WQ_B_TRANS == WQGMM_NO_TRANS || WQ_B_TRANS == WQGMM_TRANS) && WQ_A_TRANS == WQGMM_NO_TRANS &&
-                         TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_2 &&
-                         ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
-                         ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
-        static constexpr WqmmConfig wqmmCfg = {false,
-                                               WQ_B_TRANS == WQGMM_TRANS,
-                                               QuantType::PER_GROUP,
-                                               OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST,
-                                               QuantType::NONE,
-                                               CubeFormat::ND};
-        INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
-                                                         VEC_ANTIQUANT_CONFIG_6);
-    }
+            INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
+                                                              VEC_ANTIQUANT_CONFIG_DYNAMIC);
+#endif
+        }
+#elif ORIG_DTYPE_ANTIQUANT_SCALE == DT_FLOAT8_E8M0
+        if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
+                      OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                      C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_MX && WQ_B_TRANS == WQGMM_NO_TRANS &&
+                      WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                      ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                      ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, A16MXF4_NZKN,
+                                                               VEC_ANTIQUANT_CONFIG_3);
+        }
+#else
+        if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                      C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL && WQ_B_TRANS == WQGMM_TRANS &&
+                      WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                      ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                      ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, false,
+                                                   QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, wqmmCfg,
+                                                               VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, true,
+                                                   QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_RESPLIT_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, wqmmCfg,
+                                                               VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND &&
+                             OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, false,
+                                                   QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
+                                                             VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false,           true,          QuantType::PER_CHANNEL, true,
+                                                   QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
+                                                             VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND &&
+                             OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false, false,           QuantType::PER_CHANNEL,
+                                                   false, QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
+                                                             VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND && OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+                             WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_4 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false, false,           QuantType::PER_CHANNEL,
+                                                   true,  QuantType::NONE, CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
+                                                             VEC_ANTIQUANT_CONFIG_3);
+        } else if constexpr (W_TYPE == WQGMM_ND &&
+                             (OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST ||
+                              OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST) &&
+                             C_QUANT_TYPE == WQGMM_NONE && W_QUANT_TYPE == WQGMM_PER_GROUP &&
+                             (WQ_B_TRANS == WQGMM_NO_TRANS || WQ_B_TRANS == WQGMM_TRANS) &&
+                             WQ_A_TRANS == WQGMM_NO_TRANS &&
+                             TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_256_BUF_NUM_2 &&
+                             ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_BASIC_BLOCK &&
+                             ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+            static constexpr WqmmConfig wqmmCfg = {false,
+                                                   WQ_B_TRANS == WQGMM_TRANS,
+                                                   QuantType::PER_GROUP,
+                                                   OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST,
+                                                   QuantType::NONE,
+                                                   CubeFormat::ND};
+            INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(GMMWeightQuantBasicController, wqmmCfg,
+                                                             VEC_ANTIQUANT_CONFIG_6);
+        }
 #endif
     }
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+    if constexpr (NO_QUANT_ACT == GMM_ACT_GELU_TANH) {
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // GELU epilogue 需 1:2 AIC:AIV
+    }
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nz_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
         } else {
-            GmmNoQuantAswt<layout::RowMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
-        if ASCEND_IS_AIV {
-            EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
-        }
-        if ASCEND_IS_AIC {
-            if constexpr (wFormat == CubeFormat::NZ) {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
-            } else {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
-            }
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nz_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
+        } else {
+            GroupedMatMulKernel<asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantAswt<layout::RowMajor, layout::Zn>(x, weight, bias, groupList, y, tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::zn_layout_ptn, NO_QUANT_ACT == GMM_ACT_GELU_TANH>(
+                x, weight, bias, groupList, y, tiling);
         } else {
-            GmmNoQuantAswt<layout::RowMajor, layout::ColumnMajor>(x, weight, bias, groupList, y, tiling);
+            GroupedMatMulKernel<asc::te::nd_ext_layout_ptn, asc::te::dn_ext_layout_ptn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     }
 #endif

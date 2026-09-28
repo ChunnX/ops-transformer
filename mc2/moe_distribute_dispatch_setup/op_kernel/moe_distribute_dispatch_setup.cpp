@@ -19,7 +19,9 @@
 #include "kernel_operator.h"
 #endif
 #include "moe_distribute_dispatch_setup_tiling.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_setup_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -31,6 +33,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchSetupTilingData);
     TPipe pipe;
     auto tiling = (__gm__ MoeDistributeDispatchSetupTilingData *)tilingGM;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #if (ORIG_DTYPE_Y == DT_BF16 || ORIG_DTYPE_Y == DT_FLOAT16)
     if (TILING_KEY_IS(1000)) {
@@ -39,7 +42,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-#elif ((ORIG_DTYPE_Y == DT_INT8) || (ORIG_DTYPE_Y == DT_FLOAT8_E5M2) || (ORIG_DTYPE_Y == DT_FLOAT8_E4M3FN) ||          \
+#elif ((ORIG_DTYPE_Y == DT_INT8) || (ORIG_DTYPE_Y == DT_FLOAT8_E5M2) || (ORIG_DTYPE_Y == DT_FLOAT8_E4M3FN) || \
        (ORIG_DTYPE_Y == DT_HIFLOAT8))
     if (TILING_KEY_IS(1011)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
@@ -75,4 +78,5 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
 
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif // __NPU_ARCH__ == 3510
 }

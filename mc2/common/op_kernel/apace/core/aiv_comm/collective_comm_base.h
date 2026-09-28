@@ -38,15 +38,9 @@ public:
     __aicore__ inline CollectiveCommBase() {}
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Init(
-        __gm__ CommUdmaContext *udmaCtx,
-        Barrier &barrier,
-        const CommTilingData &tilingData,
-        GM_ADDR localAddr,
-        __ubuf__ uint8_t *commbuf,
-        uint32_t totalJobs,
-        uint32_t jobIndex,
-        uint64_t winOffset = 0)
+    __aicore__ inline void Init(__gm__ CommUdmaContext *udmaCtx, Barrier &barrier, const CommTilingData &tilingData,
+                                GM_ADDR localAddr, __ubuf__ uint8_t *commbuf, uint32_t totalJobs, uint32_t jobIndex,
+                                uint64_t winOffset = 0)
     {
         if (jobIndex >= totalJobs) {
             return;
@@ -81,10 +75,11 @@ public:
         uint64_t nonSplitAxisBytes = tilingData.nonSplitAxisSize * sizeof(Dtype);
 
         chunkBytes_ = chunkSize * nonSplitAxisBytes;
-        tileMaxByteSize_ = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
-                                tilingData_->splitAxisTileSize :
-                                tilingData_->splitAxisTailSize) *
-                           nonSplitAxisBytes;
+        tileMaxByteSize_ =
+            (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ? tilingData_->splitAxisTileSize :
+                                                                               tilingData_->splitAxisTailSize) *
+            nonSplitAxisBytes;
+
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
@@ -94,7 +89,7 @@ public:
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Commit()
+    __aicore__ inline void Commit(uint64_t bufferOffset = 0)
     {
         if (remainingChunkSize_ <= 0) {
             return;
@@ -119,8 +114,8 @@ public:
 
             for (uint32_t i = 0; i < targetRankCnt; i++) {
                 uint32_t targetRankId = targetRankStart + i;
-                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(
-                    targetRankId, currentTileByteSize);
+                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize,
+                                                                          bufferOffset);
             }
         }
 
@@ -135,18 +130,13 @@ public:
     __aicore__ inline void Wait(bool waitLast = false)
     {
         uint64_t totalTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
-        if (waitLast && currentTileIdx_ != totalTiles - 1) {
+        if (waitLast && currentTileIdx_ != totalTiles) {
             return;
         }
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
             uint32_t targetRankId = targetRankStart_ + i;
             static_cast<Impl *>(this)->template DoWait<BarrierMode>(targetRankId);
         }
-    }
-
-    __aicore__ inline uint64_t GetCommByteSize() const
-    {
-        return chunkBytes_ * udmaCtx_->rankSize;
     }
 
     __aicore__ inline uint64_t GetCommTurn() const

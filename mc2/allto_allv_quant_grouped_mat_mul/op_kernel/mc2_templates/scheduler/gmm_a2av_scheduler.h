@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
 /* !
  * \file gmm_a2av_scheduler.h
@@ -29,36 +29,56 @@ class GmmA2avScheduler {
 public:
     __aicore__ inline GmmA2avScheduler(CommOpType &hcclOp, ComputationOpType &computeOp,
                                        SharedComputationOpType &shareComputeOp, TaskTilingInfo *taskTilingInfo)
-        : hcclOp_(hcclOp), computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
+        : hcclOp_(hcclOp),
+          computeOp_(computeOp),
+          shareComputeOp_(shareComputeOp),
+          taskTilingInfo_(taskTilingInfo){};
 
     __aicore__ inline void Process()
     {
-        uint32_t e = taskTilingInfo_->e;
-        uint32_t expertNum = taskTilingInfo_->expertNum;
+        ProcessAic(computeOp_, shareComputeOp_, taskTilingInfo_);
+        ProcessAiv(hcclOp_, taskTilingInfo_);
+    }
 
-        for (uint32_t start = 0; start < e; start += expertNum) {
-            uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
-            if ASCEND_IS_AIC {
-                computeOp_.Process(start, actualExpertNum);
+    static __aicore__ inline void ProcessAic(ComputationOpType &computeOp, SharedComputationOpType &shareComputeOp,
+                                             const TaskTilingInfo *taskTilingInfo)
+    {
+        if ASCEND_IS_AIC {
+            uint32_t e = taskTilingInfo->e;
+            uint32_t expertNum = taskTilingInfo->expertNum;
+
+            for (uint32_t start = 0; start < e; start += expertNum) {
+                uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+                computeOp.Process(start, actualExpertNum);
                 AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
                 AscendC::CrossCoreWaitFlag(8);
                 AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
             }
-            if ASCEND_IS_AIV {
-                AscendC::CrossCoreWaitFlag(9);
-                hcclOp_.LaunchCommData(start, actualExpertNum);
+
+            if constexpr (IsNeedMM) {
+                shareComputeOp.Process(0, 1);
             }
+            SyncAll<false>();
         }
+    }
 
-        if (IsNeedMM) {
-            shareComputeOp_.Process(0, 1);
+    static __aicore__ inline void ProcessAiv(CommOpType &hcclOp, const TaskTilingInfo *taskTilingInfo)
+    {
+        if ASCEND_IS_AIV {
+            uint32_t e = taskTilingInfo->e;
+            uint32_t expertNum = taskTilingInfo->expertNum;
+
+            for (uint32_t start = 0; start < e; start += expertNum) {
+                uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+                AscendC::CrossCoreWaitFlag(9);
+                hcclOp.LaunchCommData(start, actualExpertNum);
+            }
+
+            for (uint32_t start = 0; start < e; start += expertNum) {
+                hcclOp.Wait(start);
+            }
+            hcclOp.End();
         }
-
-        for (uint32_t start = 0; start < e; start += expertNum) {
-            hcclOp_.Wait(start);
-        }
-
-        this->End();
     }
 
     __aicore__ inline void End()

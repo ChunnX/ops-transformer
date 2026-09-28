@@ -72,8 +72,11 @@ struct ScheduleContextInfo {
     uint32_t Y = 0;               // A*BS*K
     uint64_t curMicroBatchID = 0; // RECV:当前 expert id 已就绪的 micro batch
     uint32_t outNum = 0;          // NORM:FfnArea 中有效的 session 数
-    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 + dynamic scale 连续排布
+    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 3:E5M2 4:E4M3 5:E2M1；scale 紧跟 token
     uint32_t expertNum = 0;
+    uint32_t layerNum = 0;
+    uint32_t expertsPerLayer = 0;
+    bool asyncRecv = false; // 本次是否启用快照接收；只有 RECV 且 syncFlag=true 才为 true
     int64_t coreNum = 0;
     int64_t ubSize = 0;
     int64_t validGatherIdxLength = 0; // 排序后剔除无效值的有效长度,≤ A*BS*K
@@ -126,6 +129,28 @@ __aicore__ inline T Max(T a, T b)
     return (a > b) ? a : b;
 }
 
+// DAV_3510 的公共 AscendC API 已在 AIV 上把 GetBlockIdx() 展平为：
+//
+//   rawBlockIdx * GetTaskRation() + GetSubBlockIdx()
+//
+// 该语义可直接见 CANN 的 dav_3510/kernel_operator_sys_var_impl.h：AIV 分支返回
+// get_block_idx() * get_subblockdim() + get_subblockid()。所以 CV 1:2 时两个 sibling
+// AIV 通过 GetBlockIdx() 已分别得到 0/1；调用点若再乘 taskRatio 并加 subBlockIdx，才会
+// 跳过任务编号并造成重复/遗漏。统一封装为本函数，防止各 phase 对 API 语义作出不同假设。
+__aicore__ inline int64_t GetFlatAivIdx()
+{
+    return GetBlockIdx();
+}
+
+// GetBlockNum() 仍是 launch 的原始 block 数，故总 AIV 数需乘 CV 比率，与上面的已展平索引
+// 位于同一个 [0, flatAivNum) 坐标系。taskRatio 异常为 0 时按 1 防御，合法 DAV_3510 启动
+// 的 taskRatio 始终为正。
+__aicore__ inline int64_t GetFlatAivNum()
+{
+    const int64_t taskRatio = GetTaskRation();
+    return GetBlockNum() * ((taskRatio > 0) ? taskRatio : 1);
+}
+
 // proposal 对表示下,count 个元素占用的 T 元素个数。
 template <typename T>
 __aicore__ inline int64_t GetSortLen(int64_t count)
@@ -159,6 +184,13 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     ctx.Y = tilingData->Y;
     ctx.tokenDtype = tilingData->tokenDtype;
     ctx.expertNum = tilingData->expertNum;
+    // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=true 也不进入 flag 轮询。
+    ctx.asyncRecv = isRecv && tilingData->syncFlag;
+    if (ctx.asyncRecv) {
+        // Host has validated nonzero layer count and exact divisibility.
+        ctx.layerNum = static_cast<uint32_t>(tilingData->layerNum);
+        ctx.expertsPerLayer = ctx.expertNum / ctx.layerNum;
+    }
     ctx.coreNum = tilingData->coreNum;
     ctx.ubSize = tilingData->ubSize;
 

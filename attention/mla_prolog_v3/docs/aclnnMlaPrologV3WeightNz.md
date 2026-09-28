@@ -5,13 +5,13 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 
 ## 功能说明
@@ -20,12 +20,14 @@
     - 新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
     - 新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
     - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
-- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
+- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为七路:
     - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
     - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
     - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
     - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
-    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
+    - 第六路是queryNormFlag=true时，输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后得到压缩结果$c^Q$，作为queryNormOutOptional输出。
+    - 第七路是queryNormFlag=true且量化场景（weightQuantMode≠0）下，对$c^Q$做DynamicQuant，最终得到量化后的queryNormOutOptional和对应量化参数dequantScaleQNormOutOptional。
+    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入。
 
 - **计算公式**：
 
@@ -52,6 +54,7 @@
     $$
     q^N = q^C \cdot W^{UK}
     $$
+    其中 $\alpha_q$ 是Query的尺度矫正参数。
 
     对Query进行ROPE旋转位置编码
 
@@ -68,6 +71,7 @@
     $$
     k^C = \mathrm{Cache}(c^{KV})
     $$
+    其中 $\alpha_{kv}$ 是Key的尺度矫正参数。
 
     对Key进行ROPE旋转位置编码，并将结果存入cache
 
@@ -78,12 +82,48 @@
     Dequant Scale Query Nope计算公式
 
     $$
-    \mathrm{dequantScaleQNope} = {\mathrm{RowMax}(\mathrm{abs}(q^{N})) / 127}
+    \mathrm{dequantScaleQNope} = {\mathrm{RowMax}(\mathrm{abs}(q^{N})) / Q_{max}}
     $$
 
     $$
     q^{N} = {\mathrm{round}(q^{N} / \mathrm{dequantScaleQNope})}
     $$
+
+    Query Norm及Dequant Scale Query Norm计算公式（queryNormFlag=true时输出）
+
+    非量化场景（weightQuantMode=0）：
+
+    $$
+    queryNorm = c^Q = \alpha_q\cdot\mathrm{RmsNorm}(x \cdot W^{DQ})
+    $$
+
+    此时queryNorm为BFLOAT16类型，dequantScaleQNorm不输出（为nullptr）。
+
+    量化场景（weightQuantMode=1/2/4/5，per-token动态量化），smoothScaleCq可选传入，未传入时视为1：
+
+    $$
+    \tilde{c}^Q = c^Q \cdot smoothScale
+    $$
+
+    $$
+    \mathrm{dequantScaleQNorm} = {\mathrm{RowMax}(\mathrm{abs}(\tilde{c}^Q)) / Q_{max}}
+    $$
+
+    $$
+    queryNorm = {\mathrm{round}(\tilde{c}^Q / \mathrm{dequantScaleQNorm})}
+    $$
+
+    mxfp8量化场景（weightQuantMode=3，每32个元素一组pergroup动态量化，量化参数为FLOAT8_E8M0类型）：
+
+    $$
+    \mathrm{dequantScaleQNorm} = 2^{\lfloor \mathrm{log}_2(\mathrm{GroupMax}(\mathrm{abs}(c^Q))) \rfloor - 8}
+    $$
+
+    $$
+    queryNorm = {\mathrm{cast\_to\_fp8}(c^Q / \mathrm{dequantScaleQNorm})}
+    $$
+
+    其中$Q_{max}$为量化输出类型的最大值：INT8取127，FLOAT8_E4M3FN取448，HIFLOAT8取32768，8为FLOAT8_E4M3FN指数位的最大值emax。
 
 ## 函数原型
 
@@ -290,7 +330,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>CacheMode="TND": (T,Nkv,Dtile)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>krCacheRef</td>
@@ -312,7 +352,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>当ckvkrRepoMode=1时: 维度应包含0，支持shape为(0)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>cacheIndexOptional</td>
@@ -466,7 +506,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <td>kNopeClipAlphaOptional</td>
         <td>输入</td>
         <td>表示对kvCache做clip操作时的缩放因子。</td>
-        <td>在部分量化pertoken-pergroup场景和int8全量化pertoken-pergroup场景下shape为1，其余场景可不填，不支持空Tensor</td>
+        <td>在部分量化pertoken-pergroup场景和int8全量化pertoken-pergroup场景下shape为1，其余场景不支持，不支持空Tensor</td>
         <td>FLOAT</td>
         <td>ND</td>
         <td>(1)</td>
@@ -726,7 +766,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   </table>
 
 <!-- npu="A3,910b" id4 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - tokenX、weightDq、weightUqQr、weightDkvKr、kvCacheRef、queryOut、queryNormOutOptional不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequantScaleXOptional、dequantScaleWDqOptional、dequantScaleWUqQrOptional、dequantScaleWDkvKrOptional、dequantScaleQNormOutOptional不支持FLOAT8_E8M0数据类型。
 
@@ -820,7 +860,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMlaPrologV3WeightNz默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnMlaPrologV3WeightNz默认确定性实现。
 
 <details>
   <summary><a id="shapeDesc"></a>shape格式字段含义说明</summary>
@@ -860,7 +900,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>N</td>
         <td>Head-Num（多头数）</td>
-        <td>取值范围：1、2、4、8、16、32、64、128</td>
+        <td>取值范围：1-128</td>
       </tr>
       <tr>
         <td>Hckv</td>
@@ -934,7 +974,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
     - queryOut的shape为(T, N, Hckv)
     - queryRopeOut的shape为(T, N, Dr)
-    - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
+    - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
   - 若tokenX的维度不采用BS合轴，即(B, S, He)
       - ropeSin和ropeCos的shape为(B, S, Dr)
       - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
@@ -942,7 +982,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
       - queryOut的shape为(B, S, N, Hckv)
       - queryRopeOut的shape为(B, S, N, Dr)
-      - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
+      - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
   - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
       - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
       - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
@@ -971,8 +1011,8 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   <details>
   <summary><a id="SupportScenes"></a>aclnnMlaPrologV3WeightNz接口支持场景</summary>
   <ul>
-    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景</li>
-    <li><term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景</li>
+    <li><term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景</li>
+    <li><term>Ascend 950PR&950DT系列产品</term>：当前支持所有量化场景</li>
   </ul>
   <table style="table-layout: auto;" border="1">
     <tr>
@@ -982,7 +1022,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td colspan="2">非量化</td>
       <td>
-          weight_quant_mode=0，kv_cache_quant_mode=0，query_quant_mode=0<br>
+          weight_quant_mode=0,kv_cache_quant_mode=0,query_quant_mode=0<br>
           入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
@@ -991,7 +1031,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td rowspan="3">部分量化</td>
       <td>kvCache非量化 </td>
       <td>
-          weight_quant_mode=1，kv_cache_quant_mode=0，query_quant_mode=0<br>
+          weight_quant_mode=1,kv_cache_quant_mode=0,query_quant_mode=0<br>
           入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：所有出参返回非量化数据
       </td>
@@ -999,7 +1039,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td>kvCache perchannel量化 </td>
       <td>
-          weight_quant_mode=1，kv_cache_quant_mode=2，query_quant_mode=0<br>
+          weight_quant_mode=1,kv_cache_quant_mode=2,query_quant_mode=0<br>
           入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleWUqQr、quantScaleCkv、quant_scale_ckr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据
       </td>
@@ -1007,7 +1047,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td>kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=1, kv_cache_quant_mode=3, query_quant_mode=0<br>
+          weight_quant_mode=1,kv_cache_quant_mode=3,query_quant_mode=0<br>
           入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：kvCacheRef返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
@@ -1016,7 +1056,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td rowspan="3">int8/fp8/hif8全量化</td>
       <td> kvCache非量化</td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=0，query_quant_mode=0<br>
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=0,query_quant_mode=0<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：所有出参返回非量化数据
       </td>
@@ -1024,7 +1064,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td> kvCache pertensor量化 </td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=1，query_quant_mode=1<br>
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=1,query_quant_mode=1<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，kvCacheRef传入pertensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
@@ -1032,7 +1072,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td> kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=3，query_quant_mode=0<br>
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=3,query_quant_mode=0<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：kvCacheRef出参返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
@@ -1041,7 +1081,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td rowspan="3">mxfp8全量化</td>
       <td> kvCache非量化</td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=0，query_quant_mode=0<br>
+          weight_quant_mode=3,kv_cache_quant_mode=0,query_quant_mode=0<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
           出参：所有出参返回非量化数据
       </td>
@@ -1049,7 +1089,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td> kvCache pertensor量化 </td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=1，query_quant_mode=1<br>
+          weight_quant_mode=3,kv_cache_quant_mode=1,query_quant_mode=1<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，kvCacheRef传入pertensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入 <br>
           出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
@@ -1057,7 +1097,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td> kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=3，query_quant_mode=0<br>
+          weight_quant_mode=3,kv_cache_quant_mode=3,query_quant_mode=0<br>
           入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
           出参：kvCacheRef出参返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
@@ -1489,10 +1529,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td>NULLPTR</td>
       <td>NULLPTR</td>
       <td>NULLPTR</td>
-      <td>FLOAT</td>
       <td>NULLPTR</td>
       <td>NULLPTR</td>
-      <td>FLOAT</td>
+      <td>NULLPTR</td>
+      <td>NULLPTR</td>
     </tr>
     <tr>
       <td> queryOut </td>
@@ -1595,7 +1635,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 ## 调用示例
 
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>
@@ -1989,7 +2029,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   }
   ```
 
-<term>Ascend 950PR/Ascend 950DT</term>示例代码如下，仅供参考。
+<term>Ascend 950PR&950DT系列产品</term>示例代码如下，仅供参考。
 
   ```Cpp
 #include <iostream>

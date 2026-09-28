@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_tiling_v2.cpp
@@ -25,10 +25,12 @@
 #include <vector>
 
 #include "all_gather_matmul_tiling_v2.h"
+#include "all_gather_comm_algo_table.h"
 #include "all_gather_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
+#include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
@@ -44,12 +46,12 @@ static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) && inputIsBf16Fp16_) {
+    if ((npuArch_ == Ops::Base::DAV_3510) && inputIsBf16Fp16_) {
         OP_LOGI(opName_, "Start with AllGatherMatmulTilingV2 tiling.");
         return true;
     }
 
-    OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when inutDatatype is not fp16 or bf16.");
+    OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when input datatype is not fp16 or bf16.");
     return false;
 }
 
@@ -67,10 +69,11 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
-    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
-                    return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
+    // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
+    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
+                    return ge::GRAPH_FAILED);
     MC2_CHECK_LOG_RET(opName_, DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
@@ -85,8 +88,8 @@ void Mc2PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &ti
     OP_LOGD(opName, " tiling.nTailCnt %d", tiling.nTailCnt);
     OP_LOGD(opName, " tiling.kTailCnt %d", tiling.kTailCnt);
     OP_LOGD(opName, " tiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, " tiling.mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, " tiling.nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
     OP_LOGD(opName, " tiling.mTailMain %d", tiling.mTailMain);
     OP_LOGD(opName, " tiling.nTailMain %d", tiling.nTailMain);
     OP_LOGD(opName, " tiling.aswWindowLen %d", tiling.aswWindowLen);
@@ -109,6 +112,9 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    allGatherMatmulTilingDataV2_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
             context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
@@ -207,13 +213,6 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 
 ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
 {
-    int index = 0;
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
-    std::string algConfig = "AllGather=level0:fullmesh";
-    Mc2CcTilingConfig mc2CcTilingConfig(
-        group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
-        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
-        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
@@ -221,6 +220,20 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
+    // 单轮通信量 = 每轮切分的 tileM × K × dtypeSize（对齐 alltoall 口径），算法表为空时回退默认算法
+    uint64_t commDataBytes = tileMValue_ * args_.kValue * args_.inputDtypeSize;
+    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, kValue=%llu, rankDim=%u, commEngine=%u",
+            commDataBytes, tileMValue_, args_.kValue, args_.rankDim, commEngine);
+    uint32_t algoCount = 0;
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    std::string algConfig =
+        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group_, commEngine, commDataBytes, args_.rankDim,
+                                                     algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
+    OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group_);
+    Mc2CcTilingConfig mc2CcTilingConfig(
+        group_, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
+        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
+        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
                                        static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
@@ -234,7 +247,6 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
@@ -254,10 +266,10 @@ ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 }
 
 AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
-{
-}
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
+{}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2, static_cast<int32_t>(NpuArch::DAV_3510),
-                                   0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2,
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling

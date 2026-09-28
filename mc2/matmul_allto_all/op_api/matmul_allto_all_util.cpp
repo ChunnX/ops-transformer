@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "matmul_allto_all_util.h"
 #include "securec.h"
@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 
@@ -39,32 +40,27 @@ bool CheckAlltoAllAxes(const char *opName, const aclIntArray *alltoAllAxesOption
     uint64_t alltoallAxesSize = 0U; // alltoallAxes的大小
     aclGetIntArraySize(alltoAllAxesOptional, &alltoallAxesSize);
     if (alltoallAxesSize != TWO_DIMS) {
-        OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional.size()",
-                                  std::to_string(alltoallAxesSize).c_str(), "2");
+        OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional.size()", std::to_string(alltoallAxesSize).c_str(), "2");
         return false;
     }
     int64_t data1 = (*alltoAllAxesOptional)[0];
     int64_t data2 = (*alltoAllAxesOptional)[1];
     if (isMatmulAlltoAll) {
         OP_API_CHECK((data1 != NEG_ONE), {
-            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[0]", std::to_string(data1).c_str(),
-                                      "-1");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[0]", std::to_string(data1).c_str(), "-1");
             return false;
         });
         OP_API_CHECK((data2 != NEG_TWO), {
-            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[1]", std::to_string(data2).c_str(),
-                                      "-2");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[1]", std::to_string(data2).c_str(), "-2");
             return false;
         });
     } else {
         OP_API_CHECK((data1 != NEG_TWO), {
-            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[0]", std::to_string(data1).c_str(),
-                                      "-2");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[0]", std::to_string(data1).c_str(), "-2");
             return false;
         });
         OP_API_CHECK((data2 != NEG_ONE), {
-            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[1]", std::to_string(data2).c_str(),
-                                      "-1");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllAxesOptional[1]", std::to_string(data2).c_str(), "-1");
             return false;
         });
     }
@@ -90,8 +86,7 @@ bool CheckGroupLength(const char *opName, const char *group)
     }
     auto len = strnlen(group, MAX_GROUP_LEN);
     if ((len >= MAX_GROUP_LEN) || (len == ZERO)) {
-        OP_LOGE_FOR_INVALID_VALUE(opName, "group.length()", std::to_string(len).c_str(),
-                                  "in range (0, 128)");
+        OP_LOGE_FOR_INVALID_VALUE(opName, "group.length()", std::to_string(len).c_str(), "in range (0, 128)");
         return false;
     }
     return true;
@@ -137,14 +132,13 @@ bool CheckBiasShape(const char *opName, const aclTensor *biasOptional, int64_t n
     if (biasOptional != nullptr) {
         if (biasOptional->GetViewShape().GetDimNum() != ONE_DIM) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName, "biasOptional",
-                (std::to_string(biasOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                opName, "biasOptional", (std::to_string(biasOptional->GetViewShape().GetDimNum()) + "D").c_str(),
                 "The shape of biasOptional must be 1D.");
             return false;
         }
         auto biasDim = biasOptional->GetViewShape().GetDim(0);
         if (biasDim != nVal) {
-            OP_LOGE_FOR_INVALID_VALUE(opName, "group.length()", std::to_string(biasDim).c_str(),
+            OP_LOGE_FOR_INVALID_VALUE(opName, "biasDim", std::to_string(biasDim).c_str(),
                                       ("should equal x2.n-axis " + std::to_string(nVal)).c_str());
             return false;
         }
@@ -167,13 +161,12 @@ bool CheckShapeMMAA(const char *opName, const aclTensor *x1, const aclTensor *x2
             x2->GetViewShape().GetDim(1));
 
     if (kdimX1 != kdimX2) {
-        OP_LOGE_FOR_INVALID_VALUE(opName, "group.length()", std::to_string(kdimX1).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE(opName, "kdimX1", std::to_string(kdimX1).c_str(),
                                   ("should equal x2.dimK " + std::to_string(kdimX2)).c_str());
         return false;
     }
     if (kdimX1 < KVALUE_MIN || kdimX1 > KVALUE_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE(opName, "group.length()", std::to_string(kdimX1).c_str(),
-                                  "in range [1, 65535]");
+        OP_LOGE_FOR_INVALID_VALUE(opName, "kdimX1", std::to_string(kdimX1).c_str(), "in range [1, 65535]");
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -196,7 +189,7 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
-        OP_LOGD("The view_shape dim is: %ld", tensor->GetViewShape().GetDimNum());
+        OP_LOGD("The view_shape dim is: %zu", static_cast<size_t>(tensor->GetViewShape().GetDimNum()));
         return false;
     }
 
@@ -238,9 +231,10 @@ aclnnStatus CheckX2Valid(const char *opName, const aclTensor *x2)
 aclnnStatus CheckAndHandleCommMode(const char *opName, const char *group, const char *commModeStr,
                                    uint8_t &commModeEnum)
 {
+    (void)group;
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
@@ -271,7 +265,7 @@ bool IsAll2AllOut(const char *opName, const aclTensor *alltoAllOut)
     if (alltoAllOut == nullptr) {
         return false;
     }
-    if (alltoAllOut->IsEmpty() && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (alltoAllOut->IsEmpty() && op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         OP_LOGE_FOR_INVALID_VALUE(opName, "alltoAllOutOptional", "empty tensor", "non-empty tensor");
         return false;
     }

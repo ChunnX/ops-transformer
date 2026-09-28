@@ -17,27 +17,27 @@
 #define SCATTER_PA_KV_CACHE_ROPE_NOT_FULLY_LOAD_H_
 
 #include "kernel_operator.h"
-#include "common.h"
+#include "scatter_pa_kv_cache_arch35_common.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
 template <typename T, typename U>
-__simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* dstAddr,
-    uint32_t dataLen, uint16_t loopTimes)
+__simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *dstAddr, uint32_t dataLen,
+                                               uint16_t loopTimes)
 {
-    MicroAPI::RegTensor<U> srcValue;
-    MicroAPI::MaskReg preg;
+    Reg::RegTensor<U> srcValue;
+    Reg::MaskReg preg;
     uint32_t sregMask = dataLen;
     for (uint16_t j = 0; j < loopTimes; j++) {
-        preg = MicroAPI::UpdateMask<uint32_t>(sregMask);
-        MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
+        preg = Reg::UpdateMask<uint32_t>(sregMask);
+        Reg::LoadAlign<U, Reg::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
         if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
-                                                                      (MicroAPI::RegTensor<T> &)srcValue, preg);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)srcValue,
+                                                              preg);
         } else {
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
-                                                                       (MicroAPI::RegTensor<T> &)srcValue, preg);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)srcValue,
+                                                               preg);
         }
     }
 }
@@ -46,7 +46,8 @@ template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheRopeNotFullyLoad {
 public:
     __aicore__ inline ScatterPaKvCacheRopeNotFullyLoad(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict tiling)
-        : pipe_(pipe), tilingData_(tiling){};
+        : pipe_(pipe),
+          tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
                                 GM_ADDR value_cache_in, GM_ADDR compress_lens, GM_ADDR compress_seq_offset,
                                 GM_ADDR seq_lens, GM_ADDR key_cache_out, GM_ADDR value_cache_out);
@@ -105,7 +106,8 @@ private:
     static constexpr bool isNeedCast_ =
         (IsSameType<T, bfloat16_t>::value || IsSameType<T, half>::value || IsSameType<T, hifloat8_t>::value ||
          IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value);
-    static constexpr bool isInteger8or16_ = (IsSameType<T, uint8_t>::value || IsSameType<T, int8_t>::value || IsSameType<T, uint16_t>::value || IsSameType<T, int16_t>::value);
+    static constexpr bool isInteger8or16_ = (IsSameType<T, uint8_t>::value || IsSameType<T, int8_t>::value ||
+                                             IsSameType<T, uint16_t>::value || IsSameType<T, int16_t>::value);
 };
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -160,16 +162,15 @@ __aicore__ inline uint32_t ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOut
 }
 template <typename T, typename IndexDtype, int64_t InOutMode>
 template <typename U>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CastToOrigin(LocalTensor<T> &dstLocal,
-                                                                         LocalTensor<U> &srcLocal, uint32_t dataLen)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CastToOrigin(
+    LocalTensor<T> &dstLocal, LocalTensor<U> &srcLocal, uint32_t dataLen)
 {
-    __local_mem__ U *srcAddr = (__local_mem__ U *)srcLocal.GetPhyAddr();
-    __local_mem__ T *dstAddr = (__local_mem__ T *)dstLocal.GetPhyAddr();
+    __ubuf__ U *srcAddr = (__ubuf__ U *)srcLocal.GetPhyAddr();
+    __ubuf__ T *dstAddr = (__ubuf__ T *)dstLocal.GetPhyAddr();
 
     uint16_t loopTimes = CeilDiv(dataLen, VL_B32);
 
-    CastToOriginNotFullyVf<T, U>((__ubuf__ U*)srcAddr, (__ubuf__ T*)dstAddr, dataLen, loopTimes);
+    CastToOriginNotFullyVf<T, U>((__ubuf__ U *)srcAddr, (__ubuf__ T *)dstAddr, dataLen, loopTimes);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -316,9 +317,10 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t kStartIdx, int64_t keyOffset,
-                                                                          int64_t startIdx, int64_t endIdx)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t kStartIdx,
+                                                                                                 int64_t keyOffset,
+                                                                                                 int64_t startIdx,
+                                                                                                 int64_t endIdx)
 {
     if constexpr (isNeedCast_) {
         for (int64_t i = 0; i < tilingData_->kLoopNum; ++i) {
@@ -332,7 +334,7 @@ ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_
         }
         ReduceMeanKeyPart<int32_t>(tilingData_->kLoopNum, kStartIdx, startIdx, endIdx, keyOffset,
                                    tilingData_->kTailHandleNum);
-    } else if constexpr (IsSameType<T, uint8_t>::value|| IsSameType<T, uint16_t>::value) {
+    } else if constexpr (IsSameType<T, uint8_t>::value || IsSameType<T, uint16_t>::value) {
         for (int64_t i = 0; i < tilingData_->kLoopNum; ++i) {
             ReduceMeanKeyPart<uint32_t>(i, kStartIdx, startIdx, endIdx, keyOffset, tilingData_->kHandleNumPerLoop);
         }
@@ -348,9 +350,10 @@ ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t kStartIdx, int64_t valueOffset,
-                                                                            int64_t startIdx, int64_t endIdx)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t kStartIdx,
+                                                                                                   int64_t valueOffset,
+                                                                                                   int64_t startIdx,
+                                                                                                   int64_t endIdx)
 {
     if constexpr (isNeedCast_) {
         for (int64_t i = 0; i < tilingData_->vLoopNum; ++i) {
@@ -380,9 +383,10 @@ ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int6
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::KVReduceMean(int64_t iter, int64_t startIdx, int64_t endIdx,
-                                                                         int64_t curBlockFactor)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::KVReduceMean(int64_t iter,
+                                                                                                int64_t startIdx,
+                                                                                                int64_t endIdx,
+                                                                                                int64_t curBlockFactor)
 {
     if (endIdx - startIdx <= 0) {
         return;
@@ -421,22 +425,22 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t loopIdx, int64_t k, int64_t startIdx,
-                                                                      int64_t keyOffset, int64_t handleNum)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t loopIdx, int64_t k,
+                                                                                             int64_t startIdx,
+                                                                                             int64_t keyOffset,
+                                                                                             int64_t handleNum)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams inKeyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(handleNum * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inKeyParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(handleNum * sizeof(T)),
+                                     static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
     padParams.rightPadding = 0;
     padParams.paddingValue = 0;
     DataCopyPad(inputKeyLocal,
-             inputKeyGm_[keyOffset + k * tilingData_->keyStride1 + loopIdx * tilingData_->kHandleNumPerLoop],
-             inKeyParams, padParams);
+                inputKeyGm_[keyOffset + k * tilingData_->keyStride1 + loopIdx * tilingData_->kHandleNumPerLoop],
+                inKeyParams, padParams);
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
 
@@ -457,22 +461,20 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void
-ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t loopIdx, int64_t k, int64_t startIdx,
-                                                                        int64_t valueOffset, int64_t handleNum)
+__aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(
+    int64_t loopIdx, int64_t k, int64_t startIdx, int64_t valueOffset, int64_t handleNum)
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-    DataCopyExtParams inValueParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(handleNum * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyExtParams inValueParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(handleNum * sizeof(T)),
+                                       static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = 0;
     padParams.leftPadding = 0;
     padParams.rightPadding = 0;
     padParams.paddingValue = 0;
     DataCopyPad(inputValueLocal,
-             inputValueGm_[valueOffset + k * tilingData_->valueStride1 + loopIdx * tilingData_->vHandleNumPerLoop],
-             inValueParams, padParams);
+                inputValueGm_[valueOffset + k * tilingData_->valueStride1 + loopIdx * tilingData_->vHandleNumPerLoop],
+                inValueParams, padParams);
     inputValueQueue_.EnQue(inputValueLocal);
 }
 

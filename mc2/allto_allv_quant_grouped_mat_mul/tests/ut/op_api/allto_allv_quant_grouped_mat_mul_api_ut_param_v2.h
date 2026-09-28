@@ -1,15 +1,15 @@
-/* *
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_H
-#define ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_H
+#ifndef ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_V2_H
+#define ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_V2_H
 
 #include <sstream>
 #include "op_api_csv_case_loader.h"
@@ -89,4 +89,4 @@ inline std::ostream &operator<<(std::ostream &os, const AlltoAllvQuantGroupedMat
 
 } // namespace AlltoAllvQuantGroupedMatMulV2UT
 
-#endif // ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_H
+#endif // ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_API_UT_PARAM_V2_H

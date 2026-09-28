@@ -22,92 +22,22 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "log/log.h"
-#include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
 #include "op_host/tiling_util.h"
+#include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
 
 const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
 const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
-const std::string SINKS_NAME = "sinks";
-
-const std::string QUERY_NAME = "query";
-const std::string KEY_NAME = "key";
-const std::string VALUE_NAME = "value";
-
-const std::string ORI_KV_NAME = "ori_kv";
-const std::string CMP_KV_NAME = "cmp_kv";
-const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
-const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
-const std::string ATTEN_OUT_NAME = "attention_out";
-const std::string SOFTMAX_LSE_NAME = "softmax_lse";
-
-const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
-const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
-const std::string SEQUSED_Q_NAME = "seqused_q";
-const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
-const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
-const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
-const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
-const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
-const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
-struct MQSMLATilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-};
-
-struct MQSMLATilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
-    const gert::StorageShape *shape;
-};
-
-enum class MQSMLALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
-
-enum class MQSMLAAxis : uint32_t {
-    B = 0,
-    S = 1,
-    N = 2,
-    D = 3,
-    K = 3, // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
-    T = 5,
-    Bn = 6, // block number
-    Bs = 7  // block size
-};
-
-enum class QSMLATemplateMode : uint32_t {
-    SWA_TEMPLATE_MODE = 0,
-    HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2,
-    ORI_SPARSE_TEMPLATE_MODE = 3,
-    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
-};
-
-enum class KvStorageMode : uint32_t {
-    BATCH_CONTINUOUS = 0,
-    TENSOR_LIST = 1,
-    PAGE_ATTENTION = 2
-};
-
-struct QSMLATilingShapeCompareParam {
-    int64_t B = 1;
-    int64_t S = 1;
-    int64_t N = 1;
-    int64_t D = 1;
-    int64_t T = 1;
-    // PA
-    int64_t Bs = 1;
-    int64_t Bn = 1;
-};
+using MQSMLATilingRequiredParaInfo = SMLATilingRequiredParaInfo;
+using MQSMLATilingOptionalParaInfo = SMLATilingOptionalParaInfo;
+using MQSMLALayout = SMLALayout;
+using MQSMLAAxis = SMLAAxis;
+using QSMLATemplateMode = SMLATemplateMode;
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -129,9 +59,6 @@ constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 14;
 constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 15;
 constexpr uint32_t SINKS_INDEX = 16;
 constexpr uint32_t METADATA_INDEX = 17;
-// Outputs Index
-constexpr uint32_t ATTN_OUT_INDEX = 0;
-constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_SCALE_INDEX = 0;
@@ -147,96 +74,6 @@ constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
-// Dim Index
-constexpr uint32_t DIM_IDX_ZERO = 0;
-constexpr uint32_t DIM_IDX_ONE = 1;
-constexpr uint32_t DIM_IDX_TWO = 2;
-constexpr uint32_t DIM_IDX_THREE = 3;
-constexpr uint32_t DIM_IDX_FOUR = 4;
-
-// Dim Num
-constexpr uint32_t DIM_NUM_ONE = 1;
-constexpr uint32_t DIM_NUM_TWO = 2;
-constexpr uint32_t DIM_NUM_THREE = 3;
-constexpr uint32_t DIM_NUM_FOUR = 4;
-
-// 入参限制常量
-constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE = 608;
-constexpr uint32_t KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO = 584;
-constexpr uint32_t SPARSE_LIMIT = 2048;
-constexpr uint32_t SPARSE_MODE_LOWER = 3;
-constexpr uint32_t MAX_BLOCK_SIZE = 1024;
-constexpr uint32_t METADATA_SIZE = 1024;
-constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;
-constexpr uint32_t NUM_BYTES_FLOAT = 4;
-constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
-constexpr uint32_t NUM_BYTES_BF16 = 2;
-constexpr uint32_t BYTE_BLOCK = 32;
-const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
-
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
-{
-    size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> shapeVec(shapeSize, 0);
-
-    for (size_t i = 0; i < shapeSize; i++) {
-        shapeVec[i] = shape.GetDim(i);
-    }
-    return shapeVec;
-}
-
-static std::string ToStringRaw(const gert::Shape &shape)
-{
-    std::ostringstream oss;
-    auto v = ToVector(shape);
-    if (v.size() > 0) {
-        for (size_t i = 0; i < v.size() - 1; ++i) {
-            oss << v[i] << ", ";
-        }
-        oss << v[v.size() - 1];
-    }
-    return oss.str();
-}
-
-const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
-    {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
-    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
-    {ge::DT_INT8, "DT_INT8"},                     // int8 type
-    {ge::DT_INT16, "DT_INT16"},                   // int16 type
-    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
-    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
-    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
-    {ge::DT_INT64, "DT_INT64"},                   // int64 type
-    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
-    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
-    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
-    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
-    {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
-    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
-    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
-    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
-    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
-    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
-    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
-    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
-    {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
-    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
-    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
-    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
-    {ge::DT_STRING, "DT_STRING"},                 // string type
-    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
-    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
-    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // dt_variant type
-    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // dt_variant type
-};
-
 const std::map<MQSMLALayout, std::vector<MQSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
     {MQSMLALayout::BSND, {MQSMLAAxis::B, MQSMLAAxis::S, MQSMLAAxis::N, MQSMLAAxis::D}},
     {MQSMLALayout::TND, {MQSMLAAxis::T, MQSMLAAxis::N, MQSMLAAxis::D}},
@@ -248,10 +85,9 @@ const std::map<MQSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
     {MQSMLALayout::TND, DIM_NUM_THREE},
     {MQSMLALayout::PA_BBND, DIM_NUM_FOUR},
 };
-
-std::string MQSMLADataTypeToSerialString(ge::DataType type);
+std::vector<int64_t> ToVector(const gert::Shape &shape);
+std::string ToStringRaw(const gert::Shape &shape);
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout);
-std::string GetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
@@ -315,6 +151,8 @@ public:
     uint32_t qTSize = 0; // 仅TND时生效
 
     uint32_t maxActualseq = 0;
+    uint32_t actualLenDimsQ = 0;
+    uint32_t actualLenDimsKV = 0;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
 
@@ -379,9 +217,9 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
+    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, MQSMLALayout &layout,
                                         const std::string &name) const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenQSize(int64_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -422,30 +260,32 @@ public:
 
     bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
+    int64_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     int64_t cmpS2Size_ = 0;
-    uint32_t headDim_ = 0;
-    uint32_t qTSize_ = 0;
-    uint32_t qkHeadDim_ = 0;
+    int64_t headDim_ = 0;
+    int64_t qTSize_ = 0;
+    int64_t qkHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
     int64_t oriSparseBlockCount_ = 0;
     int64_t cmpSparseBlockCount_ = 0;
-    uint32_t maxActualseq_ = 0;
+    int64_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     bool batchConsistency_ = false;
-    uint32_t dSizeQ_ = 0;
-    uint32_t dSizeKV_ = 0;
-    uint32_t oriKvStride_ = 0;
-    uint32_t cmpKvStride_ = 0;
+    int64_t dSizeQ_ = 0;
+    int64_t dSizeKV_ = 0;
+    int64_t oriKvStride_ = 0;
+    int64_t cmpKvStride_ = 0;
+    uint32_t actualLenDimsQ_ = 0;
+    uint32_t actualLenDimsKV_ = 0;
     std::vector<int64_t> oriKvStridesVec_;
     std::vector<int64_t> cmpKvStridesVec_;
     // Layout
@@ -455,8 +295,8 @@ public:
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
-    int32_t oriBlockSize_ = 0;
-    int32_t cmpBlockSize_ = 0;
+    int64_t oriBlockSize_ = 0;
+    int64_t cmpBlockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
@@ -478,193 +318,5 @@ public:
     gert::Shape cmpSparseIndicesShape_{};
 };
 
-class MQSMLATilingCheck {
-public:
-    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo)
-        : qsmlaInfo_(qsmlaInfo) {};
-    ~MQSMLATilingCheck() = default;
-    virtual ge::graphStatus Process();
-
-private:
-    void Init();
-    bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
-
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
-                              const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
-    template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
-                               const std::string subName) const;
-    template <typename T>
-    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                               const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &expectDimNumList,
-                                       const std::string &name) const;
-    ge::graphStatus CheckShapeNumSupport(const gert::StorageShape *shape,
-                                         const std::vector<int64_t> &expectShapeNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const MQSMLALayout &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<MQSMLALayout> &expectLayoutList, const MQSMLALayout &actualLayout,
-                               const std::string &name) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QSMLATilingShapeCompareParam &param,
-                                     const MQSMLALayout &layout) const;
-    ge::graphStatus CompareShape(QSMLATilingShapeCompareParam &param, const gert::Shape &shape,
-                                 const MQSMLALayout &layout, const std::string &name) const;
-    ge::graphStatus CheckLayoutSupport(const MQSMLALayout &actualLayout, const std::string &name) const;
-    ge::graphStatus CheckSingleParaQuery() const;
-    ge::graphStatus CheckSingleParaKey() const;
-    ge::graphStatus CheckSingleParaNumHeads() const;
-    ge::graphStatus CheckSingleParaKvHeadNums() const;
-    ge::graphStatus CheckSingleParaSparseMode() const;
-    ge::graphStatus CheckSingleParaSparseBlockSize() const;
-    ge::graphStatus CheckSingleParaOriSparseIndices() const;
-    ge::graphStatus CheckSingleParaCmpSparseIndices() const;
-    ge::graphStatus CheckSingleParaCmpResidualKv() const;
-    ge::graphStatus CheckSingleParaBlockTable() const;
-    ge::graphStatus CheckSingleParaCuSeqLensQ() const;
-    ge::graphStatus CheckSingleParaSequsedKv() const;
-    ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
-    ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
-    ge::graphStatus CheckSingleParaSequsedQ() const;
-    ge::graphStatus CheckSingleParaSequsedCmpKv() const;
-    ge::graphStatus CheckSingleParaOriTopkLength() const;
-    ge::graphStatus CheckSingleParaCmpTopkLength() const;
-    ge::graphStatus CheckSingleParaSinks() const;
-    ge::graphStatus CheckSingleParaMetadata() const;
-    ge::graphStatus CheckSingleParaTopkValueMode() const;
-
-    ge::graphStatus CheckSinglePara() const;
-    ge::graphStatus CheckParaExistenceAntiquant() const;
-    ge::graphStatus CheckCmpSparseIndicesExistence();
-    ge::graphStatus CheckParaExistence();
-    ge::graphStatus CheckCmpRatioExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const MQSMLALayout &layout,
-                                        const std::string &name) const;
-    ge::graphStatus CheckSWAExistence();
-    ge::graphStatus CheckHCAExistence();
-    ge::graphStatus CheckCSAExistence();
-
-    ge::graphStatus CheckKVShapeForBatchContinuous();
-    uint32_t GetTypeSize(ge::DataType dtype) const;
-    ge::graphStatus CheckKVShapeForPageAttention();
-    ge::graphStatus CheckKVShape();
-    ge::graphStatus CheckKV();
-    ge::graphStatus CheckTopK();
-    ge::graphStatus CheckTopkShape();
-    ge::graphStatus CheckBlockTable() const;
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                          const std::string &name) const;
-
-    ge::graphStatus CheckAttenOut();
-    ge::graphStatus CheckAttenOutShape();
-    ge::graphStatus CheckSoftmaxLse() const;
-    ge::graphStatus CheckActualSeqLensQ();
-    ge::graphStatus CheckActualSeqLensQShape();
-    ge::graphStatus CheckActualSeqLensQDType();
-    ge::graphStatus CheckActualSeqLens();
-    ge::graphStatus CheckActualSeqLensDType();
-    ge::graphStatus CheckActualSeqLensShape();
-    ge::graphStatus CheckMultiParaConsistency();
-
-    ge::graphStatus CheckConsistency() const;
-    ge::graphStatus CheckLayoutQKvConsistency() const;
-    ge::graphStatus CheckSparseIndicesShapeMatchQ() const;
-    ge::graphStatus CheckTopkLengthConsistency() const;
-    ge::graphStatus CheckN2Consistency() const;
-    ge::graphStatus CheckBConsistency() const;
-    ge::graphStatus CheckFeatureWinKV() const;
-    ge::graphStatus CheckFeatureAntiquantShape() const;
-    ge::graphStatus CheckFeatureAntiquantLayout() const;
-    ge::graphStatus CheckFeatureAntiquantDtype() const;
-    ge::graphStatus CheckFeatureAntiquantAttr() const;
-    ge::graphStatus CheckFeatureAntiquantPa() const;
-    ge::graphStatus CheckFeatureAntiquant() const;
-    ge::graphStatus CheckFeature() const;
-    ge::graphStatus CheckKvContiguous() const;
-    void SetQSMLAShapeCompare();
-
-private:
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
-    MQSMLAParaInfo opParamInfo_;
-    const MQSMLATilingInfo &qsmlaInfo_;
-
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
-    int64_t cmpS2Size_ = 0;
-    uint32_t qkHeadDim_ = 0;
-    uint32_t vHeadDim_ = 0;
-    int64_t ropeHeadDim_ = 0;
-    uint32_t qTSize_ = 0;  // 仅TND时生效
-    uint32_t kvTSize_ = 0; // 仅TND时生效
-    KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
-    uint32_t oriSparseBlockCount_ = 0;
-    uint32_t cmpSparseBlockCount_ = 0;
-    uint32_t sparseBlockSize_ = 0;
-    uint32_t oriKvStride_ = 0;
-    uint32_t cmpKvStride_ = 0;
-    int64_t topkValueMode_ = 0;
-    uint32_t oriBlockNum_ = 0;
-    uint32_t cmpBlockNum_ = 0;
-
-    uint32_t oriBlockSize_ = 0;
-    uint32_t cmpBlockSize_ = 0;
-    uint32_t oriBlockTable_ = 0;
-    uint32_t cmpBlockTable_ = 0;
-    int64_t quant_mode_ = 0;
-    int64_t tileSize_ = 0;
-
-    int64_t oriWinLeft_ = 0;
-    int64_t oriWinRight_ = 0;
-
-    int64_t cmpRatio_ = 0;
-
-    uint32_t dSize_ = qsmlaInfo_.dSize;
-    uint32_t dSizeV_ = qsmlaInfo_.dSizeV;
-    uint32_t dSizeVInput_ = qsmlaInfo_.dSizeVInput;
-
-    uint32_t dSizeOriKvInput_ = 0;
-    uint32_t dSizeCmpKvInput_ = 0;
-
-    uint32_t oriMaskMode_ = 0;
-    uint32_t cmpMaskMode_ = 0;
-
-    MQSMLALayout qLayout_ = MQSMLALayout::BSND;
-    MQSMLALayout outLayout_ = MQSMLALayout::BSND;
-    MQSMLALayout kvLayout_ = MQSMLALayout::PA_BBND;
-
-    uint32_t oriMaxBlockNumPerBatch_ = 0;
-    uint32_t cmpMaxBlockNumPerBatch_ = 0;
-
-    uint32_t aicNum_ = 0;
-    uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
-    NpuArch npuArch_ = NpuArch::DAV_2201;
-    uint64_t l2CacheSize_ = 0;
-
-    bool isSameSeqAllKVTensor_ = true;
-    bool isSameActualseq_ = true;
-    uint32_t maxActualseq_ = 0;
-
-    ge::DataType qType_ = ge::DT_FLOAT16;
-    ge::DataType oriKvType_ = ge::DT_FLOAT16;
-    ge::DataType cmpKvType_ = ge::DT_FLOAT16;
-    ge::DataType outputType_ = ge::DT_FLOAT16;
-
-    QSMLATemplateMode perfMode_;
-
-    gert::Shape queryShapeCmp_{};
-    gert::Shape keyShapeCmp_{};
-    gert::Shape valueShapeCmp_{};
-    gert::Shape topkShapeCmp_{};
-    gert::Shape attenOutShapeCmp_{};
-};
 } // namespace optiling
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_CHECK_H

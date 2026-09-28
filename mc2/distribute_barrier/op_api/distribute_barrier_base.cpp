@@ -23,6 +23,7 @@
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_distribute_barrier.h"
 #include "distribute_barrier_base.h"
+#include "op_host/util/op_const_def.h"
 
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if __has_include("version/hcomm_version.h")
@@ -79,7 +80,6 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
                                                        int64_t worldSize, uint64_t *workspaceSize,
                                                        aclOpExecutor **executor)
 {
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclTensor *mc2Context = nullptr;
@@ -91,7 +91,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
         (void)strncpy_s(groupBuf, HCCL_GROUP_NAME_MAX, group, HCCL_GROUP_NAME_MAX - 1);
     }
     aclTensor *xRefBuf = const_cast<aclTensor *>(xRef);
-    if (!is950) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_3510) {
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(xRefBuf, timeOut, elasticInfo, groupBuf,
                                                                            worldSize, workspaceSize, executor);
     } else {
@@ -110,13 +110,12 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor *xRef, co
 aclnnStatus aclnnDistributeBarrierBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                        aclrtStream stream)
 {
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    if (is950) {
-        OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        OP_LOGD("aclnn_distribute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
     }
 #endif

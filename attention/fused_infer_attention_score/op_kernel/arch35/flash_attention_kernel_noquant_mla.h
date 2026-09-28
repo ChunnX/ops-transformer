@@ -16,8 +16,8 @@
 #ifndef FLASH_ATTENTION_KERNEL_NOQUANT_MLA_H_
 #define FLASH_ATTENTION_KERNEL_NOQUANT_MLA_H_
 
-#include "../../../common/op_kernel/arch35/attenmask.h"
-#include "../../../common/op_kernel/arch35/pse.h"
+#include "../../../common/op_kernel/arch35/attenmask_arch35.h"
+#include "../../../common/op_kernel/arch35/pse_arch35.h"
 #include "flash_attention_block_cube_noquant_mla.h"
 #include "flash_attention_noquant_block_vec_infer.h"
 
@@ -115,7 +115,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     constInfo.aivIdx = GetBlockIdx();
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIV {
-        this->aicIdx = constInfo.aivIdx >> 1;
+        this->aicIdx = constInfo.aivIdx / CV_RATIO;
     }
     if ASCEND_IS_AIC {
         this->aicIdx = constInfo.aivIdx;
@@ -489,9 +489,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index,
-                                                                          RunParamStr<isInfer> &runParam)
+__aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+    int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer> &runParam)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if (runParam.boIdx == 0) {
@@ -514,10 +513,11 @@ FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FAKernelNoquantMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
-                                                            int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
-                                                            int64_t multiCoreInnerIdx)
+__aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo<isInfer> &runInfo,
+                                                                                   RunParamStr<isInfer> &runParam,
+                                                                                   int64_t taskId, int64_t s2LoopCount,
+                                                                                   int64_t s2LoopLimit,
+                                                                                   int64_t multiCoreInnerIdx)
 {
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;

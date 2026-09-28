@@ -30,16 +30,16 @@ const int VC_MM2RES_EVENT[2] = {10, 15};
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
 
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_operator.h"
 #include "flash_attention_score_antiquant_block_vec.h"
 #include "flash_attention_score_antiquant_block_cube.h"
-#include "infer_flash_attention_kvcache.h"
-#include "infer_flash_attention_sparse.h"
-#include "../../../common/op_kernel/arch35/pse.h"
-#include "../../../common/op_kernel/arch35/attenmask.h"
+#include "infer_flash_attention_kvcache_fused_infer.h"
+#include "infer_flash_attention_sparse_fused_infer.h"
+#include "../../../common/op_kernel/arch35/pse_arch35.h"
+#include "../../../common/op_kernel/arch35/attenmask_arch35.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -67,16 +67,18 @@ public:
     static constexpr bool useDn = false;
     __aicore__ inline FlashAttentionScoreAntiquantKernel(){};
     /*Public Function*/
-    __aicore__ inline void
-    Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-         __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
-         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
-         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe, __gm__ uint8_t *antiquantScale,
-         __gm__ uint8_t *antiquantOffset, __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
-         __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *postQuantScale,
-         __gm__ uint8_t *postQuantOffset);
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
+                                __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                                __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+                                __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe,
+                                __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+                                __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
+                                __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset,
+                                __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset);
     __aicore__ inline void InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -286,7 +288,7 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
                 if constexpr (isInfer) {
                     if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
                         constInfo.attentionOutStride =
-                            (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+                            (constInfo.n2G - constInfo.gSize) * sizeof(OUTPUT_T) * constInfo.dSizeV;
                     } else if (inputParamsRegbase.isGqa) {
                         constInfo.attentionOutStride = 0;
                     }
@@ -375,14 +377,26 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
         this->constInfo.blockSize = inputParamsRegbase.blockSize;
         this->constInfo.paLayoutType = inputParamsRegbase.paLayoutType;
         this->constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+        this->constInfo.kvCacheNzD0 = inputParamsRegbase.kvCacheNzD0;
     }
+    this->constInfo.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
+    this->constInfo.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
+    this->constInfo.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
+    this->constInfo.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
+    this->constInfo.kScaleBnStride = inputParamsRegbase.kScaleStrides.bnStride;
+    this->constInfo.kScaleN2Stride = inputParamsRegbase.kScaleStrides.n2Stride;
+    this->constInfo.vScaleBnStride = inputParamsRegbase.vScaleStrides.bnStride;
+    this->constInfo.vScaleN2Stride = inputParamsRegbase.vScaleStrides.n2Stride;
+    this->constInfo.kOffsetBnStride = inputParamsRegbase.kOffsetStrides.bnStride;
+    this->constInfo.kOffsetN2Stride = inputParamsRegbase.kOffsetStrides.n2Stride;
+    this->constInfo.vOffsetBnStride = inputParamsRegbase.vOffsetStrides.bnStride;
+    this->constInfo.vOffsetN2Stride = inputParamsRegbase.vOffsetStrides.n2Stride;
 
     this->constInfo.transposeLayout = inputParamsRegbase.transposeLayout;
     if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {
         this->constInfo.attentionOutStride = (this->constInfo.n2GDv - this->constInfo.dSizeV) * sizeof(OUTPUT_T);
     }
 }
-
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::InitInput(

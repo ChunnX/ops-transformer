@@ -19,12 +19,18 @@
 #include "../../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
+#if defined(ASCEND_OPTILING_UT)
+#define FIA_PARSER_UT_VISIBLE __attribute__((visibility("default")))
+#else
+#define FIA_PARSER_UT_VISIBLE
+#endif
+
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 class FiaInfoParser {
 public:
-    explicit FiaInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FiaInfoParser(const gert::TilingContext *context)
+        : context_(context)
+    {}
     ~FiaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -50,8 +56,7 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache,
-                                       std::vector<gert::Stride *> &strides);
+                                       std::vector<gert::StorageShape *> &cache, std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -68,8 +73,8 @@ public:
     void GetKvStorageMode();
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
-    void GetKvIsContiguous();
-    void GetKvStrideValues();
+    FIA_PARSER_UT_VISIBLE void GetKvIsContiguous();
+    FIA_PARSER_UT_VISIBLE ge::graphStatus GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -143,9 +148,18 @@ public:
     // 增加strides参数，预计5个，k/v/krope/kscale/vscale
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
+    gert::Stride keyContiguousStrides_;
+    gert::Stride valueContiguousStrides_;
+    gert::Stride keyRopeContiguousStrides_;
     const gert::Stride *kRopeStrides_ = nullptr;
+    gert::Stride keyScaleContiguousStrides_;
+    gert::Stride valueScaleContiguousStrides_;
+    gert::Stride keyOffsetContiguousStrides_;
+    gert::Stride valueOffsetContiguousStrides_;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
+    const gert::Stride *kOffsetStrides_ = nullptr;
+    const gert::Stride *vOffsetStrides_ = nullptr;
     bool hasViewStride_ = true;
     uint64_t keyBnStride_ = 0;
     uint64_t keyN2Stride_ = 0;
@@ -153,6 +167,14 @@ public:
     uint64_t valueN2Stride_ = 0;
     uint64_t kRopeBnStride_ = 0;
     uint64_t kRopeN2Stride_ = 0;
+    uint64_t kScaleBnStride_ = 0;
+    uint64_t kScaleN2Stride_ = 0;
+    uint64_t vScaleBnStride_ = 0;
+    uint64_t vScaleN2Stride_ = 0;
+    uint64_t kOffsetBnStride_ = 0;
+    uint64_t kOffsetN2Stride_ = 0;
+    uint64_t vOffsetBnStride_ = 0;
+    uint64_t vOffsetN2Stride_ = 0;
     int32_t keyNonContigDim_ = -1;
     int32_t valueNonContigDim_ = -1;
     int32_t keyRopeNonContigDim_ = -1;
@@ -235,4 +257,5 @@ public:
     std::shared_ptr<FiaTilingShape> keyRopeShape_ = nullptr;
     std::shared_ptr<FiaTilingShape> keyPrefixShape_ = nullptr;
 };
+#undef FIA_PARSER_UT_VISIBLE
 } // namespace optiling

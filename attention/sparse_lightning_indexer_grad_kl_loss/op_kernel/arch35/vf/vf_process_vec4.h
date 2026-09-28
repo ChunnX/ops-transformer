@@ -18,11 +18,11 @@
 #include "kernel_tensor.h"
 
 namespace AscendC {
-using namespace MicroAPI;
+using namespace Reg;
 
 template <typename T>
-__simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcUb, __ubuf__ T * maxUb, __ubuf__ T * sumUb,
-    float scaleValue, float pScaler, uint32_t m, const uint32_t nBaseSize)
+__simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb, __ubuf__ T *maxUb, __ubuf__ T *sumUb,
+                                           float scaleValue, float pScaler, uint32_t m, const uint32_t nBaseSize)
 {
     RegTensor<float> vreg_input_x1;
     RegTensor<float> vreg_input_x2;
@@ -42,8 +42,8 @@ __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
         LoadAlign(vreg_input_x2, srcUb + i * nBaseSize + floatRepSize);
         Muls(vreg_input_x1, vreg_input_x1, scaleValue, preg_all_b32);
         Muls(vreg_input_x2, vreg_input_x2, scaleValue, preg_all_b32);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_sum, sumUb + i);
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_sum, sumUb + i);
         ExpSub(vreg_tmp1, vreg_input_x1, vreg_max, preg_all_b32);
         ExpSub(vreg_tmp2, vreg_input_x2, vreg_max, preg_all_b32);
         Div(vreg_input_x1, vreg_tmp1, vreg_sum, preg_all_b32);
@@ -58,16 +58,18 @@ __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T * dstUb, __ubuf__ T * srcU
 }
 
 template <typename T>
-__aicore__ inline void ProcessVec4Vf(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& sumTensor, const float scaleValue, const float pScaler, const uint32_t m, const uint32_t nBaseSize)
+__aicore__ inline void ProcessVec4Vf(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
+                                     const LocalTensor<T> &maxTensor, const LocalTensor<T> &sumTensor,
+                                     const float scaleValue, const float pScaler, const uint32_t m,
+                                     const uint32_t nBaseSize)
 {
-    __ubuf__ T * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
+    __ubuf__ T *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
 
     ProcessVec4BasicVF<T>(dstUb, srcUb, maxUb, sumUb, scaleValue, pScaler, m, nBaseSize);
 }
-} // namespace
+} // namespace AscendC
 
 #endif // VF_PROCESS_VEC4_H

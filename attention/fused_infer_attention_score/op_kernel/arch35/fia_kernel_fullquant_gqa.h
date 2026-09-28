@@ -19,8 +19,8 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_gqa.h"
 #include "fia_block_vec_fullquant_gqa.h"
-#include "memory_copy_arch35.h"
-#include "fia_block_vec_flashdecode_fullquant.h"
+#include "memory_copy_arch35_fused_infer.h"
+#include "fia_block_vec_flashdecode_arch35.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -48,8 +48,7 @@ public:
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_N = 3; // C1 C1 C1 C2
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -108,7 +107,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionFullQuantGqaKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery,
@@ -231,7 +232,6 @@ public:
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
         // constInfo.strides从fiaBaseParams赋值
@@ -322,7 +322,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_N];
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
@@ -369,9 +369,9 @@ public:
         return s2Cur < constInfo.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
     {
-        for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
+        for (uint32_t i = 0; i < PRELOAD_N; i++) {
             if (taskRunInfo[i].isValid) {
                 return true;
             }
@@ -386,11 +386,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
-            } else {
-                actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
-            }
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
@@ -524,10 +520,10 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_N];                        // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - (PRELOAD_N - 1)) % PRELOAD_N]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -536,7 +532,7 @@ public:
             }
         }
 
-        if (loop >= PRELOAD_N) {
+        if (loop >= (PRELOAD_N - 1)) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -577,9 +573,9 @@ public:
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_N]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -616,17 +612,7 @@ public:
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
-        }
-
+        info.isChangeBatch = false;
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
@@ -639,8 +625,8 @@ public:
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
         if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            info.actMSizeAlign = (info.actMSize + 31) >> 5 << 5;
+            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign >> 1);
         } else {
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }

@@ -4,12 +4,12 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950DT</term>                             |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                               |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Ascend 950DT系列产品</term>                             |    √    |
+| <term>Atlas A3系列产品</term>       |    √    |
+| <term>Atlas A2系列产品</term> |    ×    |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×    |
+| <term>Atlas推理系列产品</term>                               |    ×    |
+| <term>Atlas训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
@@ -36,7 +36,7 @@ $$
 
 其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该算子必须与`MoeDistributeCombineV3`一起使用。
+- <term>Atlas A3系列产品</term>  ：该算子必须与`MoeDistributeCombineV3`一起使用。
 
 相较于`MoeDistributeDispatchV3`算子，该算子变更如下：
 
@@ -96,7 +96,7 @@ $$
   <tr>
    <td>x_active_mask_optional</td>
    <td>可选输入</td>
-   <td>表示token是否参与通信，可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信；各卡BS不一致时所有token需有效。</td>
+   <td>表示token是否参与通信，可传有效数据或空指针；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信；默认所有token参与通信。</td>
    <td>BOOL</td>
    <td>ND</td>
   </tr>
@@ -285,7 +285,7 @@ $$
  </tbody>
 </table>
 
-* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+* <term>Atlas A3系列产品</term>  ：
     * 不支持`expand_scales_out`。
 
 ## 约束说明
@@ -316,9 +316,9 @@ $$
     - 当前不支持TP域通信。
 
 - 通信方式约束：
-    - <term>Ascend 950DT</term>：仅支持UB Memory通信。
+    - <term>Ascend 950DT系列产品</term>：仅支持UB Memory通信。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+- <term>Atlas A3系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
         - `elastic_info_optional`：当前版本不支持，传空指针即可。
@@ -329,9 +329,9 @@ $$
             - ""：默认值，开启fullmesh_v1模板。
             - "fullmesh_v1"：开启fullmesh_v1模板。
             - "fullmesh_v2"：开启fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
-        - `ep_recv_count_out`：要求shape为(`ep_world_size` * `local_expert_num`, )。
+        - `ep_recv_count_out`：要求shape为(`ep_world_size` * `local_expert_num`,)。
         - `performance_Info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../common/torch_extension/moe_distribute_buffer.py)。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
@@ -340,4 +340,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| low_latency_dispatch接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[low_latency_dispatch](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |
+| low_latency_dispatch接口 | [moe_distribute_buffer.py](../common/torch_extension/moe_distribute_buffer.py) | 通过[low_latency_dispatch](../common/docs/torchapi_low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |

@@ -12,7 +12,7 @@
 
 1. [工程创建](#工程创建)：开发算子前，需完成环境部署并创建算子目录，方便后续算子编译和部署。
 2. [算子定义](#算子定义)：确定算子功能与原型定义。
-3. [Kernel实现](#Kernel实现)：实现Device侧算子核函数。
+3. [Kernel实现](#kernel实现)：实现Device侧算子核函数。
 4. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 5. [编译部署](#编译部署)：通过工程编译脚本完成自定义算子的编译和安装。
 6. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子功能。
@@ -208,7 +208,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} --opkernel_aicpu [--experimental] [-j${n}]
    ```
 
-   - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+   - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR&950DT系列产品使用"ascend950"。
    - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
    - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
    - --opkernel_aicpu：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu

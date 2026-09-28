@@ -38,6 +38,12 @@ enum class SocVersion : uint32_t {
     BUTT
 };
 
+enum class OutputLayout : uint8_t {
+    BN2_S1G = 0,
+    BN1_S1,
+    BUTT
+};
+
 struct DeviceInfo {
     uint32_t aicCoreMaxNum{0U}; // At most amount of aic core would be turned on, this is not final used number
     uint32_t aicCoreMinNum{0U}; // At least amount of aic core would be turned on, this is not final used number
@@ -51,10 +57,11 @@ struct GeneralBalanceParam {
     uint32_t s2BaseSize{1U};      // At least one
     int64_t faToleranceRatio{2U}; // Larger the value, the smaller the tolerance is
     bool fdOn{true};              // Turn on to activate FD
-    int64_t fdTolerance{0U};      // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+    int64_t fdTolerance{0U};      // if nofd - fd <= full_block_cost * {val}, then choose no fd,
                                   // full_block_cost is costFunc(mBaseSize, s2BaseSize)
-    int64_t fdLeastBlock{0U};     // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
+    int64_t fdLeastBlock{0U};     // if noFd <= full_block_cost * {val}, then choose no fd
     CostFunc costFunc{nullptr};   // Customize cost func. Set nullptr to use default cost func
+    OutputLayout outputLayout{OutputLayout::BN2_S1G};
 };
 
 enum class SparseMode : uint8_t {
@@ -82,9 +89,11 @@ enum class Layout : uint8_t {
 enum class DataType : uint8_t {
     FP32 = 0,
     FP16,
+    BF16,
     INT4,
     INT8,
     INT32,
+    FP8_E4M3FN,
     BUTT
 };
 
@@ -192,8 +201,10 @@ static inline uint32_t GetDataTypeByteSize(DataType type)
         case (DataType::INT32):
             return 4U;
         case (DataType::FP16):
+        case (DataType::BF16):
             return 2U;
         case (DataType::INT8):
+        case (DataType::FP8_E4M3FN):
             return 1U;
         default:
             return 2U;

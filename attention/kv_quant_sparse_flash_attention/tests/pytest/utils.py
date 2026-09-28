@@ -260,7 +260,6 @@ def combin_params(enabled_params, pytest_paramset=True):
         "block_num",
         "actual_seq_q",
         "actual_seq_kv",
-        "enable_sinks",
     ]
     range_param_names = [
         "range_query",
@@ -268,7 +267,6 @@ def combin_params(enabled_params, pytest_paramset=True):
         "range_query_rope",
         "range_key_rope",
         "range_dequant_scale",
-        "range_sinks",
     ]
 
     for params in enabled_params:
@@ -313,8 +311,7 @@ def convert_param_combination_to_cs_format(param_combination):
     quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
-    enable_sinks = param_combination.get("enable_sinks", False)
-    
+
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
         if T1 > B * S1:
@@ -367,6 +364,12 @@ def convert_param_combination_to_cs_format(param_combination):
         kv_dtype_str = "float8_e4m3fn"
     else:
         kv_dtype_str = str(kv_type)
+    # TQ4 stores two signed 4-bit values per byte, followed by packed RoPE
+    # and one FP16 scale.  Its physical cache slot is therefore different
+    # from the legacy INT8 slot.  Keep the shape conversion in sync with the
+    # kernel-side discriminator (quant mode 3).
+    tq4_slot_dim = D // 2 + rope_head_dim * 2 + 2
+    int8_slot_dim = D + rope_head_dim * 2 + D // tile_size * 4
     if layout_kv == "PA_BSND":
         if layout_query == "BSND":
             shape_input = {
@@ -380,13 +383,13 @@ def convert_param_combination_to_cs_format(param_combination):
                     block_num,
                     block_size,
                     N2,
-                    D + rope_head_dim * 2 + D // tile_size * 4,
+                    tq4_slot_dim if key_quant_mode == 3 else int8_slot_dim,
                 ],
                 "value_cache": [
                     block_num,
                     block_size,
                     N2,
-                    D + rope_head_dim * 2 + D // tile_size * 4,
+                    tq4_slot_dim if value_quant_mode == 3 else int8_slot_dim,
                 ],
                 "query_rope": [B, S1, N1, rope_head_dim],
                 "key_rope": [B, S2, N2, rope_head_dim],
@@ -405,13 +408,13 @@ def convert_param_combination_to_cs_format(param_combination):
                     block_num,
                     block_size,
                     N2,
-                    D + rope_head_dim * 2 + D // tile_size * 4,
+                    tq4_slot_dim if key_quant_mode == 3 else int8_slot_dim,
                 ],
                 "value_cache": [
                     block_num,
                     block_size,
                     N2,
-                    D + rope_head_dim * 2 + D // tile_size * 4,
+                    tq4_slot_dim if value_quant_mode == 3 else int8_slot_dim,
                 ],
                 "query_rope": [T1, N1, rope_head_dim],
                 "key_rope": [B, S2, N2, rope_head_dim],
@@ -428,8 +431,16 @@ def convert_param_combination_to_cs_format(param_combination):
             "sparse_indices": [T1, N2, sparse_blockcount],
             "block_table": [B],
             "query_cache": [T1, N1, D + rope_head_dim],
-            "key_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            "value_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            "key_cache": [
+                T2,
+                N2,
+                tq4_slot_dim if key_quant_mode == 3 else int8_slot_dim,
+            ],
+            "value_cache": [
+                T2,
+                N2,
+                tq4_slot_dim if value_quant_mode == 3 else int8_slot_dim,
+            ],
             "query_rope": [T1, N1, rope_head_dim],
             "key_rope": [T2, N2, rope_head_dim],
             "dequant_scale": [T2, N2, D // tile_size],
@@ -467,10 +478,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_dequant_scale": "fp32",
     }
 
-    if enable_sinks == True:
-        shape_input["sinks"] = [N1]
-        dtype_input["sinks"] = "fp32"
-    
     default_range_input = {
         "query": [2, 10],
         "key": [-100, 100.0],
@@ -480,10 +487,9 @@ def convert_param_combination_to_cs_format(param_combination):
         "key_rope": [-10.0, -2],
         "dequant_scale": [0, 1],
         "v_dequant_scale": [0, 1],
-        "sinks": [-0.2, 0.2],
     }
     range_input = {}
-    for key in ["query", "key", "query_rope", "key_rope", "dequant_scale", "sinks"]:
+    for key in ["query", "key", "query_rope", "key_rope", "dequant_scale"]:
         range_key = f"range_{key}"
         if range_key in param_combination and param_combination[range_key] is not None:
             range_input[key] = param_combination[range_key]
@@ -534,14 +540,12 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_num": block_num,
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
-        "enable_sinks": enable_sinks,
         # range 参数，保存实际使用的值
         "range_query": range_input["query"],
         "range_key": range_input["key"],
         "range_query_rope": range_input["query_rope"],
         "range_key_rope": range_input["key_rope"],
         "range_dequant_scale": range_input["dequant_scale"],
-        "range_sinks": range_input["sinks"],
     }
 
     return params

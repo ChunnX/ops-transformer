@@ -22,16 +22,16 @@
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_ffn_to_attention.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 struct Args {
@@ -72,18 +72,17 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-int LaunchOneProcessFFN2Attention(Args &args)
-{
-    int ret = aclrtSetCurrentContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed, ret %d\n", ret); return ret);
+class FFNToAttentionExample {
+public:
+    void InitHostData();
+    int CreateInputTensors();
+    int PrepareWorkspace(const char *hcomName);
+    int Execute(const Args &args);
+    void Release();
 
-    char hcomName[128] = {0};
-    ret = HcclGetCommName(args.hcclComm, hcomName);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
-    LOG_PRINT("[INFO] rank = %d, hcomName = %s, FFN2AttentionStream = %p, \
-                context = %p\n",
-              args.rankId, hcomName, args.FFN2AttentionStream, args.context);
-
+private:
+    void DestroyTensors();
+    void FreeDeviceMemory();
     int64_t micro_batch_num = 1;
     int64_t Y = 8;
     int64_t H = 7168;
@@ -91,8 +90,8 @@ int LaunchOneProcessFFN2Attention(Args &args)
     int64_t attention_worker_num = ATTN_NUM;
     int64_t sharedExpertNum = 1;
     int64_t expert_num_per_token = K + sharedExpertNum;
-    int64_t Token_info_shape[] = {micro_batch_num, Y, expert_num_per_token};
-    int64_t Token_data_shape[] = {micro_batch_num, Y, expert_num_per_token, H};
+    int64_t Token_info_shape[3] = {micro_batch_num, Y, expert_num_per_token};
+    int64_t Token_data_shape[4] = {micro_batch_num, Y, expert_num_per_token, H};
 
     void *xDeviceAddr = nullptr;
     void *sessionIdsDeviceAddr = nullptr;
@@ -112,7 +111,6 @@ int LaunchOneProcessFFN2Attention(Args &args)
     aclIntArray *tokenInfoTableShape = aclCreateIntArray(Token_info_shape, 3);
     aclIntArray *tokenDataShape = aclCreateIntArray(Token_data_shape, 4);
 
-
     // 定义当前场景下各变量维度
     std::vector<int64_t> xShape{Y, H};
     std::vector<int64_t> sessionIdsShape{Y};
@@ -122,7 +120,6 @@ int LaunchOneProcessFFN2Attention(Args &args)
     std::vector<int64_t> actualTokenNumShape{1};
     std::vector<int64_t> attnRankTableShape{attention_worker_num};
 
-
     int64_t xShapeSize = GetShapeSize(xShape);
     int64_t sessionIdsShapeSize = GetShapeSize(sessionIdsShape);
     int64_t microBatchIdsShapeSize = GetShapeSize(microBatchIdsShape);
@@ -131,14 +128,21 @@ int LaunchOneProcessFFN2Attention(Args &args)
     int64_t actualTokenNumShapeSize = GetShapeSize(actualTokenNumShape);
     int64_t attnRankTableShapeSize = GetShapeSize(attnRankTableShape);
 
+    std::vector<int16_t> xHostData = std::vector<int16_t>(xShapeSize, 1);
+    std::vector<int32_t> sessionIdsHostData = std::vector<int32_t>(sessionIdsShapeSize, 0);
+    std::vector<int32_t> microBatchIdsHostData = std::vector<int32_t>(microBatchIdsShapeSize, 0);
+    std::vector<int32_t> tokenIdsHostData = std::vector<int32_t>(tokenIdsShapeSize, 0);
+    std::vector<int32_t> expertOffsetsHostData = std::vector<int32_t>(expertOffsetsShapeSize, 0);
+    std::vector<int64_t> actualTokenNumHostData = std::vector<int64_t>(actualTokenNumShapeSize, 8);
+    std::vector<int32_t> attnRankTableHostData = std::vector<int32_t>(attnRankTableShapeSize);
 
-    std::vector<int16_t> xHostData(xShapeSize, 1);
-    std::vector<int32_t> sessionIdsHostData(sessionIdsShapeSize, 0);
-    std::vector<int32_t> microBatchIdsHostData(microBatchIdsShapeSize, 0);
-    std::vector<int32_t> tokenIdsHostData(tokenIdsShapeSize, 0);
-    std::vector<int32_t> expertOffsetsHostData(expertOffsetsShapeSize, 0);
-    std::vector<int64_t> actualTokenNumHostData(actualTokenNumShapeSize, 8);
-    std::vector<int32_t> attnRankTableHostData(attnRankTableShapeSize);
+    uint64_t FFN2AttentionWorkspaceSize = 0;
+    aclOpExecutor *FFN2AttentionExecutor = nullptr;
+    void *FFN2AttentionWorkspaceAddr = nullptr;
+};
+
+void FFNToAttentionExample::InitHostData()
+{
     for (int32_t i = 0; i < Y; i++) {
         sessionIdsHostData[i] = i % attention_worker_num;
         tokenIdsHostData[i] = i % Y;
@@ -147,9 +151,11 @@ int LaunchOneProcessFFN2Attention(Args &args)
     for (int32_t i = 0; i < attention_worker_num; i++) {
         attnRankTableHostData[i] = static_cast<int32_t>(i);
     }
+}
 
-
-    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
+int FFNToAttentionExample::CreateInputTensors()
+{
+    int ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sessionIdsHostData, sessionIdsShape, &sessionIdsDeviceAddr, aclDataType::ACL_INT32,
                           &sessionIds);
@@ -168,17 +174,16 @@ int LaunchOneProcessFFN2Attention(Args &args)
     ret = CreateAclTensor(attnRankTableHostData, attnRankTableShape, &attnRankTableDeviceAddr, aclDataType::ACL_INT32,
                           &attnRankTable);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    return 0;
+}
 
-
-    uint64_t FFN2AttentionWorkspaceSize = 0;
-    aclOpExecutor *FFN2AttentionExecutor = nullptr;
-    void *FFN2AttentionWorkspaceAddr = nullptr;
-
+int FFNToAttentionExample::PrepareWorkspace(const char *hcomName)
+{
     /**************************************** 调用FFN2Attention ********************************************/
     // 调用第一阶段接口
-    ret = aclnnFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
-                                              attnRankTable, hcomName, WORLD_SIZE, tokenInfoTableShape, tokenDataShape,
-                                              &FFN2AttentionWorkspaceSize, &FFN2AttentionExecutor);
+    int ret = aclnnFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
+                                                  attnRankTable, hcomName, WORLD_SIZE, tokenInfoTableShape,
+                                                  tokenDataShape, &FFN2AttentionWorkspaceSize, &FFN2AttentionExecutor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnFFNToAttentionGetWorkspaceSize failed. ret = %d \n", ret);
               return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
@@ -186,6 +191,12 @@ int LaunchOneProcessFFN2Attention(Args &args)
         ret = aclrtMalloc(&FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
+    return 0;
+}
+
+int FFNToAttentionExample::Execute(const Args &args)
+{
+    int ret = 0;
     // 调用第二阶段接口
     ret = aclnnFFNToAttention(FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, FFN2AttentionExecutor,
                               args.FFN2AttentionStream);
@@ -200,12 +211,11 @@ int LaunchOneProcessFFN2Attention(Args &args)
         std::this_thread::sleep_for(std::chrono::seconds(10));
         LOG_PRINT("[INFO] device_%d is AttentionWorker, sleeping 10 seconds...\n", args.rankId);
     }
+    return 0;
+}
 
-
-    // 释放device资源
-    if (FFN2AttentionWorkspaceSize > 0) {
-        aclrtFree(FFN2AttentionWorkspaceAddr);
-    }
+void FFNToAttentionExample::DestroyTensors()
+{
     if (x != nullptr) {
         aclDestroyTensor(x);
     }
@@ -234,8 +244,10 @@ int LaunchOneProcessFFN2Attention(Args &args)
     if (tokenDataShape != nullptr) {
         aclDestroyIntArray(tokenDataShape);
     }
+}
 
-
+void FFNToAttentionExample::FreeDeviceMemory()
+{
     if (xDeviceAddr != nullptr) {
         aclrtFree(xDeviceAddr);
     }
@@ -257,6 +269,39 @@ int LaunchOneProcessFFN2Attention(Args &args)
     if (attnRankTableDeviceAddr != nullptr) {
         aclrtFree(attnRankTableDeviceAddr);
     }
+}
+
+void FFNToAttentionExample::Release()
+{
+    // 释放device资源
+    if (FFN2AttentionWorkspaceSize > 0) {
+        aclrtFree(FFN2AttentionWorkspaceAddr);
+    }
+    DestroyTensors();
+    FreeDeviceMemory();
+}
+
+int LaunchOneProcessFFN2Attention(Args &args)
+{
+    int ret = aclrtSetCurrentContext(args.context);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed, ret %d\n", ret); return ret);
+
+    char hcomName[128] = {0};
+    ret = HcclGetCommName(args.hcclComm, hcomName);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
+    LOG_PRINT("[INFO] rank = %d, hcomName = %s, FFN2AttentionStream = %p, \
+                context = %p\n",
+              args.rankId, hcomName, args.FFN2AttentionStream, args.context);
+
+    FFNToAttentionExample example;
+    example.InitHostData();
+    ret = example.CreateInputTensors();
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = example.PrepareWorkspace(hcomName);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = example.Execute(args);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    example.Release();
 
     HcclCommDestroy(args.hcclComm);
     aclrtDestroyStream(args.FFN2AttentionStream);
@@ -290,7 +335,6 @@ int main(int argc, char *argv[])
     HcclComm comms[WORLD_SIZE];
     ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
-
 
     Args args[DEV_NUM];
     std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);

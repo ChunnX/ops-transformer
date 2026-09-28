@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_v3_infershape.cpp
@@ -16,7 +16,7 @@
 #include "mc2_log.h"
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 #include "mc2_log_compat.h"
 
 using namespace ge;
@@ -70,7 +70,7 @@ static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 16;
 
 static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
-const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
+const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510))};
 
 static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
@@ -132,6 +132,100 @@ static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType s
         dynamicScalesDtype = scalesType;
     }
     return dynamicScalesDtype;
+}
+
+static ge::graphStatus GetAndCheckDispatchShapeV3(const char *nodeName, const gert::Shape *xShape,
+                                                  const gert::Shape *expertIdsShape, int64_t &bs, int64_t &h,
+                                                  int64_t &k)
+{
+    bs = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(0));
+    h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
+    int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
+    k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
+
+    OP_CHECK_IF((bs <= 0) || (h <= 0),
+                OP_LOGE_FOR_INVALID_SHAPE(
+                    nodeName, "x", (std::string("[") + std::to_string(bs) + ", " + std::to_string(h) + "]").c_str(),
+                    "positive dimensions"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (bsTmp <= 0) || (k <= 0),
+        OP_LOGE_FOR_INVALID_SHAPE(nodeName, "expertIds",
+                                  (std::string("[") + std::to_string(bsTmp) + ", " + std::to_string(k) + "]").c_str(),
+                                  "positive dimensions"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckSharedExpertAttr(const char *nodeName, int64_t epRankId, int64_t epWorldSize,
+                                             int64_t sharedExpertRankNum, int64_t sharedExpertNum, int64_t &moeRankNum,
+                                             bool &isSharedDefault, bool &isNoShared)
+{
+    OP_CHECK_IF((epRankId < 0) || (epRankId >= epWorldSize),
+                OP_LOGE_WITH_INVALID_ATTR(nodeName, "epRankId", std::to_string(epRankId).c_str(),
+                                          (std::string("[0, ") + std::to_string(epWorldSize) + ")").c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
+                OP_LOGE_WITH_INVALID_ATTR(nodeName, "sharedExpertRankNum", std::to_string(sharedExpertRankNum).c_str(),
+                                          (std::string("[0, ") + std::to_string(epWorldSize) + ")").c_str()),
+                return ge::GRAPH_FAILED);
+    isSharedDefault = ((sharedExpertNum == 1) && (sharedExpertRankNum == 0));
+    isNoShared = ((sharedExpertNum == 0) && (sharedExpertRankNum == 0));
+    bool isValidShared = ((sharedExpertNum > 0) && ((sharedExpertRankNum / sharedExpertNum) > 0) &&
+                          ((sharedExpertRankNum % sharedExpertNum) == 0));
+    bool isSharedSettingValid = (isSharedDefault || isNoShared || isValidShared);
+    OP_CHECK_IF(!isSharedSettingValid,
+                OP_LOGE_WITH_INVALID_ATTR(nodeName, "sharedExpertRankNum",
+                                          (std::string("sharedExpertRankNum=") + std::to_string(sharedExpertRankNum) +
+                                           ", sharedExpertNum=" + std::to_string(sharedExpertNum))
+                                              .c_str(),
+                                          "valid shared expert setting (default, no-shared, or divisible)"),
+                return ge::GRAPH_FAILED);
+    moeRankNum = epWorldSize - sharedExpertRankNum;
+    OP_CHECK_IF(moeRankNum <= 0,
+                OP_LOGE_WITH_INVALID_ATTR(nodeName, "sharedExpertRankNum", std::to_string(sharedExpertRankNum).c_str(),
+                                          (std::string("< ") + std::to_string(epWorldSize)).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+struct ExpandXAndExpertNumResult {
+    int64_t a = 0;
+    int64_t localExpertNum = 0;
+};
+
+static ExpandXAndExpertNumResult CalcExpandXAndExpertNum(const char *nodeName, int64_t epRankId,
+                                                         int64_t sharedExpertRankNum, int64_t sharedExpertNum,
+                                                         int64_t epWorldSize, int64_t localMoeExpertNum, int64_t k,
+                                                         int64_t globalBsReal, bool isSharedDefault, bool isNoShared,
+                                                         const gert::Shape *elasticInfoShape)
+{
+    ExpandXAndExpertNumResult result;
+    if (epRankId < sharedExpertRankNum) {
+        result.localExpertNum = 1;
+        int64_t maxBs = globalBsReal / epWorldSize;
+        int64_t rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
+        int64_t maxSharedGroupNum = (epWorldSize + rankNumPerSharedExpert - 1) / rankNumPerSharedExpert;
+        result.a = maxBs * maxSharedGroupNum;
+    } else {
+        result.localExpertNum = localMoeExpertNum;
+        result.a = globalBsReal * std::min(result.localExpertNum, k);
+    }
+    if (!IsTargetSocVersionInfershape(nodeName, PLATFORM_A2) && elasticInfoShape != nullptr) {
+        result.localExpertNum = std::max(static_cast<int64_t>(1), localMoeExpertNum);
+        if ((isSharedDefault) || (isNoShared)) {
+            result.a = globalBsReal * std::min(result.localExpertNum, k);
+        } else { // 除零保护
+            int64_t maxBs = globalBsReal / epWorldSize;
+            int64_t rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
+            int64_t maxSharedGroupNum = (epWorldSize + rankNumPerSharedExpert - 1) / rankNumPerSharedExpert;
+            result.a = std::max(maxBs * maxSharedGroupNum, globalBsReal * std::min(localMoeExpertNum, k));
+        }
+    }
+    if (globalBsReal < 0) {
+        result.a = -1;
+    }
+    return result;
 }
 
 static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext *context)
@@ -198,84 +292,31 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
     const auto globalBs = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, globalBs);
 
-    OP_CHECK_IF((*epRankId < 0) || (*epRankId >= *epWorldSize),
-                OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "epRankId", std::to_string(*epRankId).c_str(),
-                                          (std::string("[0, ") + std::to_string(*epWorldSize) + ")").c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*sharedExpertRankNum < 0) || (*sharedExpertRankNum >= *epWorldSize),
-                OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "sharedExpertRankNum",
-                                          std::to_string(*sharedExpertRankNum).c_str(),
-                                          (std::string("[0, ") + std::to_string(*epWorldSize) + ")").c_str()),
-                return ge::GRAPH_FAILED);
-    bool isSharedDefault = ((*sharedExpertNum == 1) && (*sharedExpertRankNum == 0));
-    bool isNoShared = ((*sharedExpertNum == 0) && (*sharedExpertRankNum == 0));
-    bool isValidShared = ((*sharedExpertNum > 0) && ((*sharedExpertRankNum / *sharedExpertNum) > 0) &&
-                          ((*sharedExpertRankNum % *sharedExpertNum) == 0));
-    bool isSharedSettingValid = (isSharedDefault || isNoShared || isValidShared);
-    OP_CHECK_IF(!isSharedSettingValid,
-                OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "sharedExpertRankNum",
-                                          (std::string("sharedExpertRankNum=") + std::to_string(*sharedExpertRankNum) +
-                                           ", sharedExpertNum=" + std::to_string(*sharedExpertNum))
-                                              .c_str(),
-                                          "valid shared expert setting (default, no-shared, or divisible)"),
-                return ge::GRAPH_FAILED);
-    int64_t moeRankNum = *epWorldSize - *sharedExpertRankNum;
-    OP_CHECK_IF(moeRankNum <= 0,
-                OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "sharedExpertRankNum",
-                                          std::to_string(*sharedExpertRankNum).c_str(),
-                                          (std::string("< ") + std::to_string(*epWorldSize)).c_str()),
-                return ge::GRAPH_FAILED);
+    bool isSharedDefault = false;
+    bool isNoShared = false;
+    int64_t moeRankNum = 0;
+    if (CheckSharedExpertAttr(context->GetNodeName(), *epRankId, *epWorldSize, *sharedExpertRankNum, *sharedExpertNum,
+                              moeRankNum, isSharedDefault, isNoShared) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    int64_t bs = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(0));
-    int64_t h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
-    int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
-    int64_t k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
+    int64_t bs = 0;
+    int64_t h = 0;
+    int64_t k = 0;
+    if (GetAndCheckDispatchShapeV3(context->GetNodeName(), xShape, expertIdsShape, bs, h, k) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF(
-        (bs <= 0) || (h <= 0),
-        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "x",
-                                  (std::string("[") + std::to_string(bs) + ", " + std::to_string(h) + "]").c_str(),
-                                  "positive dimensions"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (bsTmp <= 0) || (k <= 0),
-        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "expertIds",
-                                  (std::string("[") + std::to_string(bsTmp) + ", " + std::to_string(k) + "]").c_str(),
-                                  "positive dimensions"),
-        return ge::GRAPH_FAILED);
-
-    int64_t a;
-    int64_t localExpertNum;
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
     int64_t globalBsReal = ((*globalBs == 0) ? (bs * *epWorldSize) : *globalBs);
     if (globalBsReal < 0) {
         globalBsReal = -1;
     }
-
-    if (*epRankId < *sharedExpertRankNum) {
-        localExpertNum = 1;
-        int64_t maxBs = globalBsReal / *epWorldSize;
-        int64_t rankNumPerSharedExpert = *sharedExpertRankNum / *sharedExpertNum;
-        int64_t maxSharedGroupNum = (*epWorldSize + rankNumPerSharedExpert - 1) / rankNumPerSharedExpert;
-        a = maxBs * maxSharedGroupNum;
-    } else {
-        localExpertNum = localMoeExpertNum;
-        a = globalBsReal * std::min(localExpertNum, k);
-    }
-    if (!IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2) && elasticInfoShape != nullptr) {
-        localExpertNum = std::max(static_cast<int64_t>(1), localMoeExpertNum);
-        if ((isSharedDefault) || (isNoShared)) {
-            a = globalBsReal * std::min(localExpertNum, k);
-        } else { // 除零保护
-            int64_t maxBs = globalBsReal / *epWorldSize;
-            int64_t rankNumPerSharedExpert = *sharedExpertRankNum / *sharedExpertNum;
-            int64_t maxSharedGroupNum = (*epWorldSize + rankNumPerSharedExpert - 1) / rankNumPerSharedExpert;
-            a = std::max(maxBs * maxSharedGroupNum, globalBsReal * std::min(localMoeExpertNum, k));
-        }
-    }
-    if (globalBsReal < 0) {
-        a = -1;
-    }
+    ExpandXAndExpertNumResult expandXAndExpertNum =
+        CalcExpandXAndExpertNum(context->GetNodeName(), *epRankId, *sharedExpertRankNum, *sharedExpertNum, *epWorldSize,
+                                localMoeExpertNum, k, globalBsReal, isSharedDefault, isNoShared, elasticInfoShape);
+    int64_t a = expandXAndExpertNum.a;
+    int64_t localExpertNum = expandXAndExpertNum.localExpertNum;
 
     expandXShape->SetDimNum(DIM_TWO);
     expandXShape->SetDim(0U, a);
@@ -314,11 +355,11 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
+        if (*tpWorldSize == DIM_TWO) {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
         } else if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum +
-                globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
+                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -346,19 +387,19 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
                                       int64_t yDtype)
 {
     if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_STATIC) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
-                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
-                                              Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                              "INT8, HIFLOAT8"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
+            OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
+                                      Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(), "INT8, HIFLOAT8"),
+            return ge::GRAPH_FAILED);
     } else if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERTOKEN) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
                     OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
                                               Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                               "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
-                     return ge::GRAPH_FAILED);
+                                              "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
+                    return ge::GRAPH_FAILED);
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) || IsMxQuantMode(*quantMode)) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
@@ -387,7 +428,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeC
         yDtypePtr = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
     }
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
-    OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
+    OP_LOGD(context->GetNodeName(), "quantFlag is %d.", quantFlag);
     ge::DataType expandXDtype = ge::DT_INT8;
     if (!quantFlag && (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT)) {
         expandXDtype = xDtype;

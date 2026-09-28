@@ -28,12 +28,12 @@
 #include "hccl/hccl_types.h"
 #include "hccl/hccl_rank_graph.h"
 #include <cstdlib>
-#include "utils.h"
+#include "apace_st_utils.h"
 #include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "kernel_launcher.h"
+#include "apace_a2a_kernel_launcher.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
 
 #define HCCL_CHECK(status) \
@@ -54,7 +54,7 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize] [bufferCount]" << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (total K, distributed across ranks)" << std::endl;
@@ -62,11 +62,14 @@ void printUsage(const std::string &programName)
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
+    std::cerr << "  bufferCount: optional, win buffer slot reuse count, 0=no reuse (default 0)" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
     std::cerr << "         " << programName << " 2048 8192 3584 4 perf 512" << std::endl;
+    std::cerr << "         " << programName << " 2048 8192 3584 4 perf 512 4" << std::endl;
 }
 
-void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize)
+void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum, std::string &mode, int &headMSize,
+                    int &bufferCount)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -94,6 +97,11 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
         throw std::invalid_argument("ERROR: headMSize must be positive");
     }
 
+    bufferCount = (argc >= 8) ? std::stoi(argv[7]) : 0;
+    if (bufferCount < 0) {
+        throw std::invalid_argument("ERROR: bufferCount must be >= 0");
+    }
+
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
@@ -108,17 +116,20 @@ void parseArguments(int argc, char *argv[], int &m, int &k, int &n, int &rankNum
     }
 }
 
-int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg)
+int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::string &mode, int headMSizeArg,
+                      int bufferCountArg)
 {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d",
-             rankNum, rankId, ipport, mode.c_str(), headMSizeArg);
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d, bufferCount=%d", rankNum, rankId, ipport,
+             mode.c_str(), headMSizeArg, bufferCountArg);
 
     uint32_t ka = k / rankNum;
 
     allToAllMatmulTilingData tilingData;
 
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+
+    tilingEngine.SetOptimizeEnable(false);
     tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
 
     auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
@@ -138,9 +149,11 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
     tilingData.scaleCommTilingData = tilingData.commTilingData;
     tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;
+    tilingData.commTilingData.slotNum = static_cast<uint64_t>(bufferCountArg);
 
-    INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u",
-             tileCnt, headTileCnt, headMSize, tailTileCnt, tailMSize);
+    tilingData.scaleCommTilingData.slotNum = 0;
+    INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u, bufferCount=%u", tileCnt,
+             headTileCnt, headMSize, tailTileCnt, tailMSize, bufferCountArg);
 
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -159,8 +172,8 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     HcclCommConfigInit(&config);
     config.hcclWorldRankID = static_cast<uint32_t>(rankId);
     HcclComm comm = nullptr;
-    HCCL_CHECK(HcclCommInitRootInfoConfig(static_cast<uint32_t>(rankNum), &rootInfo,
-                                          static_cast<uint32_t>(rankId), &config, &comm));
+    HCCL_CHECK(HcclCommInitRootInfoConfig(static_cast<uint32_t>(rankNum), &rootInfo, static_cast<uint32_t>(rankId),
+                                          &config, &comm));
     if (comm == nullptr) {
         ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed", rankId);
         return -1;
@@ -171,8 +184,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     const char *ctxTag = "all_to_all_quant_matmul";
 
     CommContext *devContext = reinterpret_cast<CommContext *>(
-        builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag,
-                                    &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
+        builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
     if (devContext == nullptr) {
         ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
         return -1;
@@ -184,8 +196,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     std::vector<uint8_t> hostA(m * k, 0);
     std::vector<uint8_t> hostB(k * n, 0);
     std::vector<uint8_t> hostScaleA(m * CeilDiv(k, 64) * 2, 0);
-    std::vector<uint8_t> hostScaleB(
-        CeilDiv(k, 64) * 2 * n, 0);
+    std::vector<uint8_t> hostScaleB(CeilDiv(k, 64) * 2 * n, 0);
     std::vector<uint16_t> hostOutput(m * n, 0);
 
     auto sizeA = static_cast<size_t>(1) * hostA.size() * sizeof(uint8_t);
@@ -230,8 +241,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
 
     if (mode == "precision") {
-        AllToAllQuantMatmulKernelE4M3E4M3_Udma<<<
-            tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
+        AllToAllQuantMatmulKernelE4M3E4M3_Udma<<<tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
             devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
 
         ACL_CHECK(aclrtSynchronizeStream(stream));
@@ -255,15 +265,14 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
         GM_ADDR cacheFlush = nullptr;
         ACL_CHECK(aclrtMalloc((void **)&cacheFlush, cacheFlushSize, ACL_MEM_MALLOC_HUGE_ONLY));
         std::vector<uint16_t> cacheFlushHost(CACHE_FLUSH_ELEM_COUNT, 0x0000);
-        ACL_CHECK(aclrtMemcpy(
-            cacheFlush, cacheFlushSize, cacheFlushHost.data(), cacheFlushSize, ACL_MEMCPY_HOST_TO_DEVICE));
+        ACL_CHECK(
+            aclrtMemcpy(cacheFlush, cacheFlushSize, cacheFlushHost.data(), cacheFlushSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
         constexpr int PERF_LOOP_COUNT = 10;
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            AllToAllQuantMatmulKernelE4M3E4M3_Udma<<<
-                tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
+            AllToAllQuantMatmulKernelE4M3E4M3_Udma<<<tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
                 devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
             auto t1 = std::chrono::steady_clock::now();
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -276,8 +285,8 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
             maxv = std::max(maxv, durations[i]);
         }
         double avg = sum / (PERF_LOOP_COUNT - 1);
-        INFO_LOG("[Rank %d] headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
-                 rankId, headMSize, tileCnt, avg, minv, maxv);
+        INFO_LOG("[Rank %d] headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)", rankId,
+                 headMSize, tileCnt, avg, minv, maxv);
 
         ACL_CHECK(aclrtSynchronizeStream(stream));
         ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
@@ -305,17 +314,18 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
 int main(int argc, char *argv[])
 {
-    int m, k, n, rankNum, headMSize;
+    int m, k, n, rankNum, headMSize, bufferCount;
     std::string mode;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize);
+        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize, bufferCount);
     } catch (const std::invalid_argument &e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d)", getpid(), rankNum, mode.c_str(), headMSize);
+    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d, bufferCount=%d)", getpid(), rankNum,
+             mode.c_str(), headMSize, bufferCount);
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -325,7 +335,7 @@ int main(int argc, char *argv[])
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, mode, headMSize);
+            int ret = runAllToAllMatmul(rankNum, rankId, m, k, n, mode, headMSize, bufferCount);
             exit(ret);
         } else {
             pids[rankId] = pid;

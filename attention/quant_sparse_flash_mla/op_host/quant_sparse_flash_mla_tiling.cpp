@@ -27,6 +27,8 @@ using std::pair;
 using std::string;
 namespace optiling {
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 std::string QSMLALayoutToSerialString(QSMLALayout layout)
 {
     switch (layout) {
@@ -54,7 +56,10 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
 {
@@ -91,8 +96,8 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    OP_LOGD(opName_, "deterministic_level=%d", context_->GetDeterministicLevel());
-
+    int64_t deterministicLevel = context_->GetDeterministicLevel();
+    batchConsistency_ = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -103,18 +108,14 @@ void QSMLAInfoParser::GetOptionalInputParaInfo()
     sparse_mla_checker::PopulateOptionalTensorParam(context_, Q_DESCALE, opParamInfo_.qDescale);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_KV_DESCALE, opParamInfo_.oriKvDescale);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_KV_DESCALE, opParamInfo_.cmpKvDescale);
-    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_SPARSE_INDICES_INDEX,
-                                                    opParamInfo_.oriSparseIndices);
-    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_SPARSE_INDICES_INDEX,
-                                                    opParamInfo_.cmpSparseIndices);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_SPARSE_INDICES_INDEX, opParamInfo_.oriSparseIndices);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_SPARSE_INDICES_INDEX, opParamInfo_.cmpSparseIndices);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_BLOCK_TABLE_INDEX, opParamInfo_.oriBlockTable);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_BLOCK_TABLE_INDEX, opParamInfo_.cmpBlockTable);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, SINKS_INDEX, opParamInfo_.sinks);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_Q_INDEX, opParamInfo_.cuSeqLensQ);
-    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_ORI_KV_INDEX,
-                                                    opParamInfo_.cuSeqLensOriKv);
-    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_CMP_KV_INDEX,
-                                                    opParamInfo_.cuSeqLensCmpKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_ORI_KV_INDEX, opParamInfo_.cuSeqLensOriKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_CMP_KV_INDEX, opParamInfo_.cuSeqLensCmpKv);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_Q_INDEX, opParamInfo_.seqUsedQ);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_ORI_KV_INDEX, opParamInfo_.sequsedOriKv);
     sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_CMP_KV_INDEX, opParamInfo_.sequsedCmpKv);
@@ -253,7 +254,7 @@ size_t QSMLAInfoParser::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &lay
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t QSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
+int64_t QSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -299,7 +300,7 @@ ge::graphStatus QSMLAInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
+ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
                                                      const std::string &name) const
 {
     if ((tensor == nullptr)) {
@@ -307,16 +308,15 @@ ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert:
                 name.c_str());
         return ge::GRAPH_FAILED;
     }
-    int64_t shapeSize = tensor->GetShapeSize();
-    if (shapeSize <= 0) {
-        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.", name.c_str(), shapeSize);
+    size = tensor->GetShapeSize();
+    if (size <= 0) {
+        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.", name.c_str(), size);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         int64_t shapeSize = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize();
@@ -324,7 +324,7 @@ ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
             OP_LOGE(opName_, "the shape size of cuSeqLensQ is %ld, it should be greater than 1.", shapeSize);
             return ge::GRAPH_FAILED;
         }
-        size = static_cast<uint32_t>(shapeSize - 1);
+        size = shapeSize - 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -468,7 +468,7 @@ ge::graphStatus QSMLAInfoParser::GetSparseBlockCount()
 
 ge::graphStatus QSMLAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -495,6 +495,8 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
         if (kvLayout_ == QSMLALayout::PA_BBND) {
             oriKvStride_ = oriKvStrides->GetStride(0);
         }
+    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+        oriKvStride_ = oriBlockSize_ * n2Size_ * dSizeKV_;
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
@@ -503,6 +505,8 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
         if (kvLayout_ == QSMLALayout::PA_BBND) {
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
+    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+        cmpKvStride_ = cmpBlockSize_ * n2Size_ * dSizeKV_;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -532,7 +536,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.cmpKvType = cmpKvType_;
     qsmlaInfo.outputType = outputType_;
     qsmlaInfo.dSize = dSizeQ_;
-    qsmlaInfo.dSizeV = 512;
+    qsmlaInfo.dSizeV = 512; // 512：V张量的维度大小
     qsmlaInfo.dSizeVInput = dSizeKV_;
 
     qsmlaInfo.totalBlockNum =
@@ -545,6 +549,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
+    qsmlaInfo.batchConsistency = batchConsistency_;
 
     qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
@@ -585,11 +590,11 @@ ge::graphStatus QSMLAInfoParser::Parse(QSMLATilingInfo &qsmlaInfo)
     }
 
     SetQSMLAShape();
-    if (ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size() || ge::GRAPH_SUCCESS != GetGSize() ||
-        ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
+    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size() ||
+        ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
         ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetQkHeadDim() ||
         ge::GRAPH_SUCCESS != GetSparseBlockCount() || ge::GRAPH_SUCCESS != GetDSizeQ() ||
-        ge::GRAPH_SUCCESS != GetKvstride() || ge::GRAPH_SUCCESS != GetDSizeKV()) {
+        ge::GRAPH_SUCCESS != GetDSizeKV() || ge::GRAPH_SUCCESS != GetKvstride()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -645,6 +650,11 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     constexpr uint32_t TOPK_MAX_SIZE = 2048;         // TopK选取个数
     constexpr uint32_t UB_SIZE = 248 * 1024;         // UB大小共256KB,预留8k
     constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128; // VF向量化处理的元素对齐粒度
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;         // 普通FD每核最多S2切分次数
+    constexpr uint32_t FLOAT_ELEM_SIZE = 4;          // sizeof(float)
+    constexpr uint32_t FD_BLOCK_ELEM = 8;            // FD广播份数
+    constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2;    // max和sum两个区域
+    constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33;
     uint32_t alignedOriSparseBlockCount = (tilingInfo->oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
@@ -652,11 +662,13 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t totalBS1 =
         (tilingInfo->qLayout == QSMLALayout::TND) ? tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
 
-    uint32_t oriBlocksizeFlag = static_cast<uint32_t>((tilingInfo->oriBlockSize & (tilingInfo->oriBlockSize - 1)) == 0);
-    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>((tilingInfo->cmpBlockSize & (tilingInfo->cmpBlockSize - 1)) == 0);
+    uint32_t oriBlockSize = static_cast<uint32_t>(tilingInfo->oriBlockSize);
+    uint32_t cmpBlockSize = static_cast<uint32_t>(tilingInfo->cmpBlockSize);
+    uint32_t oriBlocksizeFlag = static_cast<uint32_t>((oriBlockSize & (oriBlockSize - 1)) == 0);
+    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>((cmpBlockSize & (cmpBlockSize - 1)) == 0);
     uint32_t blocksizeFlag = (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                  oriBlocksizeFlag :
-                                 (oriBlocksizeFlag && cmpBlocksizeFlag);
+                                 (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0);
 
     uint64_t cmpUbSize = static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedCmpSparseBlockCount) * sizeof(int32_t) +
@@ -669,15 +681,15 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                                                     perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                                                     perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                                   (vectorizeUbSize <= UB_SIZE) && blocksizeFlag &&
+                                                   (vectorizeUbSize <= UB_SIZE) && blocksizeFlag != 0 &&
                                                    (tilingInfo->kvLayout == QSMLALayout::PA_BBND));
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    if (tilingInfo->gSize > 64) {
+    if (tilingInfo->gSize > 64) { // 64：当前gSize大于64时，使用半精度计算，需要将aic数量减半
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     } else {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * aicNum);
     }
-    if (vectorizeFlag) {
+    if (vectorizeFlag != 0) {
         uint64_t oriPhyAddrSize = 0;
         if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
             perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -685,6 +697,18 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         }
         uint64_t cmpPhyAddrSize = static_cast<uint64_t>(totalBS1) * alignedCmpSparseBlockCount * sizeof(int64_t);
         workspaceSize += oriPhyAddrSize + cmpPhyAddrSize;
+    }
+    bool isSplitG = tilingInfo->gSize > 64;
+    uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1U) : aicNum;
+    uint64_t fdStagingMSize = static_cast<uint64_t>(tilingInfo->gSize);
+    uint64_t combineElemSize =
+        fdStagingMSize * D_SIZE + static_cast<uint64_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
+    if (tilingInfo->batchConsistency) {
+        workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
+        workspaceSize +=
+            static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * FLOAT_ELEM_SIZE;
+    } else {
+        workspaceSize += static_cast<uint64_t>(fdStagingSlotNum) * MAX_S2_SPLIT_NUM * combineElemSize * FLOAT_ELEM_SIZE;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);
@@ -726,8 +750,9 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
     uint32_t qLayout = static_cast<uint32_t>(tilingInfo->qLayout);
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
-    uint32_t tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
+                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag,
+                                            static_cast<uint32_t>(tilingInfo->batchConsistency));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 

@@ -64,6 +64,12 @@ def _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse):
     return [attention_out, softmax_lse if return_softmax_lse else None]
 
 
+def _as_bool(value):
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
 def cpu_quant_block_sparse_attn(
     query,
     key,
@@ -93,6 +99,7 @@ def cpu_quant_block_sparse_attn(
     layout_out="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
+    quant_matmul=False,
     **kwargs,
 ):
     """Map the shared 16-input CSV signature to the existing pytest golden."""
@@ -135,6 +142,7 @@ def cpu_quant_block_sparse_attn(
             softmax_scale,
             sparse_block_size_q,
             sparse_block_size_kv,
+            quant_matmul=quant_matmul,
             **common_kwargs,
         )
 
@@ -204,8 +212,13 @@ def _mxfp8_normalize_data_range(data_range):
                 f"data_range must be a scalar or [min, max], got: {data_range}"
             )
         low, high = float(data_range[0]), float(data_range[1])
-        if not math.isfinite(low) or not math.isfinite(high):
-            raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
+        if math.isnan(low) or math.isnan(high):
+            if not (math.isnan(low) and math.isnan(high)):
+                raise ValueError(
+                    "nan data_range bounds must describe a constant nan value, "
+                    f"got: [{low}, {high}]"
+                )
+            return [low, high]
         if low > high:
             raise ValueError(
                 f"data_range min must not exceed max, got: [{low}, {high}]"
@@ -213,7 +226,9 @@ def _mxfp8_normalize_data_range(data_range):
         return [low, high]
 
     radius = float(data_range)
-    if not math.isfinite(radius) or radius < 0:
+    if not math.isfinite(radius):
+        return radius
+    if radius < 0:
         raise ValueError(
             f"scalar data_range must be finite and non-negative, got: {radius}"
         )
@@ -248,6 +263,7 @@ def _mxfp8_cpu_golden(
     return_softmax_lse=False,
     sparse_mode="dense",
     seed=0,
+    quant_matmul=False,
     **kwargs,
 ):
     """Run the original pytest CPU reference on the exact customized inputs."""
@@ -260,17 +276,25 @@ def _mxfp8_cpu_golden(
         batch = int(sparse_indices.shape[0])
         q_prefix = to_list(cu_seqlens_q)
         q_lengths = lengths_from_prefix(cu_seqlens_q)
+        sq = (
+            int(query.shape[1 if layout_q == "BSND" else 2])
+            if layout_q in ("BSND", "BNSD")
+            else None
+        )
+        if sq is not None:
+            q_lengths = [sq] * batch
         kv_lengths = to_list(seqused_kv)
         case = {
             "B": batch,
-            "N1": int(query.shape[1]),
+            "N1": int(query.shape[2] if layout_q == "BSND" else query.shape[1]),
             "N2": int(key.shape[1]),
             "D": int(query.shape[-1]),
+            "S1_max": sq,
             "cu_seqlens_q": q_prefix,
             "cu_seqlens_kv": to_list(cu_seqlens_kv),
             "seqused_q": to_list(seqused_q),
             "seqused_kv": kv_lengths,
-            "s2_base_size": int(kwargs.get("s2_base_size", 512)),
+            "s2_base_size": 256 if int(query.shape[-1]) == 256 else 512,
             "blocknum": int(key.shape[0]),
             "max_block_per_batch": int(block_table.shape[1]),
             "block_size": int(key.shape[2]),
@@ -309,10 +333,12 @@ def _mxfp8_cpu_golden(
         module.validate_mxfp8_case(case)
         module.set_active_case(case)
         data = {
-            "query": to_cpu(query),
+            "query": module.unpack_padded_query(to_cpu(query), q_lengths, layout_q),
             "key": to_cpu(key),
             "value": to_cpu(value),
-            "q_descale": to_cpu(q_descale),
+            "q_descale": module.unpack_padded_query(
+                to_cpu(q_descale), q_lengths, layout_q
+            ),
             "k_descale": to_cpu(k_descale),
             "v_descale": to_cpu(v_descale),
             "p_scale": None if p_scale is None else to_cpu(p_scale),
@@ -321,7 +347,10 @@ def _mxfp8_cpu_golden(
             "block_table": to_cpu(block_table),
             "q_lengths": q_lengths,
             "kv_lengths": kv_lengths,
-            "cu_seqlens_q": torch.tensor(q_prefix, dtype=torch.int32),
+            "cu_seqlens_q": torch.tensor(
+                [b * sq for b in range(batch + 1)] if sq is not None else q_prefix,
+                dtype=torch.int32,
+            ),
         }
     else:
         case = cached["case"]
@@ -342,8 +371,19 @@ def _mxfp8_cpu_golden(
         data["sparse_indices"],
         data["sparse_seq_len"],
         data["block_table"],
+        use_quant_matmul=_as_bool(quant_matmul),
     )
     attention_out = attention_out.to(torch.bfloat16)
+    if layout_q in ("BSND", "BNSD"):
+        sq = int(query.shape[1 if layout_q == "BSND" else 2])
+        attention_out = module.pack_padded_query(
+            attention_out, data["q_lengths"], layout_q, sq
+        )
+        if return_softmax_lse:
+            # pack_padded_query operates on token/head tensors too: BNSD -> BNS here.
+            softmax_lse = module.pack_padded_query(
+                softmax_lse, data["q_lengths"], "BNSD", sq
+            )
     return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)
 
 

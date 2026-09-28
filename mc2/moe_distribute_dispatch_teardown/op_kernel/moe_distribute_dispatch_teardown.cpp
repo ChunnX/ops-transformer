@@ -19,18 +19,20 @@
 #include "kernel_operator.h"
 #endif
 #include "moe_distribute_dispatch_teardown_tiling.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_teardown_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 
 using namespace AscendC;
 using namespace Mc2Kernel;
 
-extern "C" __global__ __aicore__ void
-moe_distribute_dispatch_teardown(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut,
-                                 GM_ADDR dynamicScalesOut, GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut,
-                                 GM_ADDR workspaceGM, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void moe_distribute_dispatch_teardown(
+    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+    GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchTeardownTilingData);
     TPipe pipe;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     if (TILING_KEY_IS(10000)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchTeardownTilingData, tilingData, tilingGM);
@@ -45,7 +47,7 @@ moe_distribute_dispatch_teardown(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADD
                 workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||                                  \
+#elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) || \
        (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if (TILING_KEY_IS(10011)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchTeardownTilingData, tilingData, tilingGM);
@@ -113,7 +115,7 @@ moe_distribute_dispatch_teardown(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADD
         op.Init(x, y, expertIds, commCmdInfo, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut,
                 workspaceGM, &pipe, &tilingData);
         op.Process();
-        op.Process();
     }
 #endif
+#endif // __NPU_ARCH__ == 3510
 }

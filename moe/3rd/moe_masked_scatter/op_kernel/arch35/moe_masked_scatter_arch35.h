@@ -29,9 +29,9 @@ constexpr uint32_t USED_THREAD_NUMS = 1024;
 constexpr int64_t CUSTOM_OFFSET = 32;
 
 template <typename T, typename U>
-__simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) inline void MoeMaskedScatterSimt(int64_t curCoreHandleData,
-    U preCoreMaskSum, __gm__ T* xGm, __gm__ bool* maskGm, __gm__ T* updatesGm,
-    __gm__ T* yGm, __gm__ U* prefixSumGm)
+__simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) inline void MoeMaskedScatterSimt(
+    int64_t curCoreHandleData, U preCoreMaskSum, __gm__ T *xGm, __gm__ bool *maskGm, __gm__ T *updatesGm, __gm__ T *yGm,
+    __gm__ U *prefixSumGm)
 {
     for (int64_t i = threadIdx.x; i < curCoreHandleData; i += blockDim.x) {
         if (maskGm[i] == 0) {
@@ -43,9 +43,9 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) inline void MoeMaskedScatt
 }
 
 template <typename T, typename U>
-__simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) void MoeMaskedScatterToUBSimt(int64_t curLoopHandleData,
-    U preCoreMaskSum, __local_mem__ T* x, __local_mem__ bool* mask, __gm__ T* updatesGm,
-    __local_mem__ T* y, __gm__ U* prefixSumGm)
+__simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) void MoeMaskedScatterToUBSimt(
+    int64_t curLoopHandleData, U preCoreMaskSum, __local_mem__ T *x, __local_mem__ bool *mask, __gm__ T *updatesGm,
+    __local_mem__ T *y, __gm__ U *prefixSumGm)
 {
     for (int64_t i = threadIdx.x; i < curLoopHandleData; i += blockDim.x) {
         if (mask[i] == 0) {
@@ -56,22 +56,23 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(USED_THREAD_NUMS) void MoeMaskedScatterToUBS
     }
 }
 
-template<typename T, typename U>
+template <typename T, typename U>
 class MoeMaskedScatterImpl {
 public:
-    __aicore__ inline MoeMaskedScatterImpl(const MoeMaskedScatterTilingData& tilingData, TPipe &pipe) :
-        tilingData_(tilingData), pipe_(pipe) {};
+    __aicore__ inline MoeMaskedScatterImpl(const MoeMaskedScatterTilingData &tilingData, TPipe &pipe)
+        : tilingData_(tilingData),
+          pipe_(pipe){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR mask, GM_ADDR updates, GM_ADDR y, GM_ADDR workspace);
     __aicore__ inline void CopyInMask(int64_t offset, int64_t dataLen);
     __aicore__ inline void CopyInX(int64_t offset, int64_t dataLen);
     __aicore__ inline void ComputePrefixSum(int64_t dataLen);
-    __aicore__ inline void ComputeSingleLoopPrefixSum(uint32_t dataLen,
-        __ubuf__ int32_t *prefixSumAddr, __ubuf__ int32_t *tmpAddr);
+    __aicore__ inline void ComputeSingleLoopPrefixSum(uint32_t dataLen, __ubuf__ int32_t *prefixSumAddr,
+                                                      __ubuf__ int32_t *tmpAddr);
     template <bool isCopyOutMaskSum = false, bool notNeedCopyPrefixSum = false>
     __aicore__ inline void CopyOutMask(int64_t offset, int64_t dataLen);
     __aicore__ inline void CopyOutY(int64_t offset, int64_t dataLen);
     __aicore__ inline void ComputePreCoreMaskSum();
-    __aicore__ inline void CustomReduceSum(const LocalTensor<U>& dst, const LocalTensor<U>& src, uint16_t dataLen);
+    __aicore__ inline void CustomReduceSum(const LocalTensor<U> &dst, const LocalTensor<U> &src, uint16_t dataLen);
     __aicore__ inline void MoeMaskedScatterToUB(int64_t offset, int64_t dataLen);
     __aicore__ inline void ProcessLowBit(int64_t curCoreHandleData);
     __aicore__ inline void Process();
@@ -90,14 +91,14 @@ private:
     TQue<QuePosition::VECOUT, 1> prefixSumQueue_;
     TQue<QuePosition::VECOUT, 1> yQueue_;
     TPipe &pipe_;
-    const MoeMaskedScatterTilingData& tilingData_;
-    U curMaskSum_{ 0 };
-    U preCoreMaskSum_{ 0 };
+    const MoeMaskedScatterTilingData &tilingData_;
+    U curMaskSum_{0};
+    U preCoreMaskSum_{0};
 };
 
 template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::Init(GM_ADDR x, GM_ADDR mask, GM_ADDR updates, GM_ADDR y,
-    GM_ADDR workspace)
+                                                        GM_ADDR workspace)
 {
     xGm_.SetGlobalBuffer((__gm__ T *)(x) + GetBlockIdx() * tilingData_.normalCoreData);
     updatesGm_.SetGlobalBuffer((__gm__ T *)(updates));
@@ -114,8 +115,8 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::Init(GM_ADDR x, GM_ADDR mask,
 template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::CopyInMask(int64_t offset, int64_t dataLen)
 {
-    DataCopyExtParams inParams = { 1, static_cast<uint32_t>(dataLen), 0, 0, 0 };
-    DataCopyPadExtParams<bool> padParams = { false, 0, 0, false };
+    DataCopyExtParams inParams = {1, static_cast<uint32_t>(dataLen), 0, 0, 0};
+    DataCopyPadExtParams<bool> padParams = {false, 0, 0, false};
     LocalTensor<bool> maskLocal = maskQueue_.AllocTensor<bool>();
     DataCopyPad(maskLocal, maskGm_[offset], inParams, padParams);
     maskQueue_.EnQue(maskLocal);
@@ -125,13 +126,13 @@ template <typename T, typename U>
 template <bool isCopyOutMaskSum, bool notNeedCopyPrefixSum>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::CopyOutMask(int64_t offset, int64_t dataLen)
 {
-    DataCopyExtParams outParams = { 1, static_cast<uint32_t>(dataLen * sizeof(U)), 0, 0, 0 };
+    DataCopyExtParams outParams = {1, static_cast<uint32_t>(dataLen * sizeof(U)), 0, 0, 0};
     LocalTensor<U> prefixSumLocal = prefixSumQueue_.DeQue<U>();
     if constexpr (!notNeedCopyPrefixSum) {
         DataCopyPad(prefixSumGmTmp_[offset], prefixSumLocal, outParams);
     }
     if constexpr (isCopyOutMaskSum) {
-        outParams = { 1, static_cast<uint32_t>(1 * sizeof(U)), 0, 0, 0 };
+        outParams = {1, static_cast<uint32_t>(1 * sizeof(U)), 0, 0, 0};
         LocalTensor<U> maskSumLocal = tmpBuf_.Get<U>();
         maskSumLocal.SetValue(0, curMaskSum_);
         maskSumLocal.SetValue(CUSTOM_OFFSET, 0);
@@ -167,7 +168,8 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputePrefixSum(int64_t data
 
 template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputeSingleLoopPrefixSum(uint32_t dataLen,
-    __ubuf__ int32_t *prefixSumAddr, __ubuf__ int32_t *tmpAddr)
+                                                                              __ubuf__ int32_t *prefixSumAddr,
+                                                                              __ubuf__ int32_t *tmpAddr)
 {
     LocalTensor<bool> maskLocal = maskQueue_.DeQue<bool>();
     auto maskAddr = (__ubuf__ uint8_t *)maskLocal.GetPhyAddr();
@@ -185,73 +187,72 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputeSingleLoopPrefixSum(ui
     __VEC_SCOPE__
     {
         uint32_t main = rows;
-        AscendC::MicroAPI::MaskReg p0 = AscendC::MicroAPI::UpdateMask<int32_t>(main); // vfLen的mask
-        AscendC::MicroAPI::RegTensor<uint8_t> mask;
+        AscendC::Reg::MaskReg p0 = AscendC::Reg::UpdateMask<int32_t>(main); // vfLen的mask
+        AscendC::Reg::RegTensor<uint8_t> mask;
         auto prefixSumTmpAddr = prefixSumAddr;
         for (uint16_t i = 0; i < size0; ++i) {
-            AscendC::MicroAPI::DataCopy<uint8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                MicroAPI::LoadDist::DIST_UNPACK4_B8>(mask, maskAddr, vfLen);
-            AscendC::MicroAPI::DataCopy<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(prefixSumTmpAddr,
-                (AscendC::MicroAPI::RegTensor<int32_t>&)mask, vfLen, p0);
+            AscendC::Reg::DataCopy<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
+                mask, maskAddr, vfLen);
+            AscendC::Reg::DataCopy<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+                prefixSumTmpAddr, (AscendC::Reg::RegTensor<int32_t> &)mask, vfLen, p0);
         }
-        AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         uint32_t stride = rows;
-        AscendC::MicroAPI::RegTensor<int32_t> tmp;
-        AscendC::MicroAPI::RegTensor<uint32_t> sequence;
-        AscendC::MicroAPI::RegTensor<uint32_t> index;
-        AscendC::MicroAPI::Arange(tmp, 0);
-        sequence = (AscendC::MicroAPI::RegTensor<uint32_t>&)tmp; // 以0开始的序列
-        AscendC::MicroAPI::RegTensor<int32_t> v0;
-        AscendC::MicroAPI::RegTensor<int32_t> v1;
-        AscendC::MicroAPI::RegTensor<int32_t> v2;
-        AscendC::MicroAPI::UnalignReg u1;
+        AscendC::Reg::RegTensor<int32_t> tmp;
+        AscendC::Reg::RegTensor<uint32_t> sequence;
+        AscendC::Reg::RegTensor<uint32_t> index;
+        AscendC::Reg::Arange(tmp, 0);
+        sequence = (AscendC::Reg::RegTensor<uint32_t> &)tmp; // 以0开始的序列
+        AscendC::Reg::RegTensor<int32_t> v0;
+        AscendC::Reg::RegTensor<int32_t> v1;
+        AscendC::Reg::RegTensor<int32_t> v2;
+        AscendC::Reg::UnalignReg u1;
 
-        AscendC::MicroAPI::Duplicate(v1, 0, p0); // 构造全为0的寄存器v1
-        AscendC::MicroAPI::Muls(sequence, sequence, cols, p0); // 构造以0开始，以cols为步长的序列
+        AscendC::Reg::Duplicate(v1, 0, p0);               // 构造全为0的寄存器v1
+        AscendC::Reg::Muls(sequence, sequence, cols, p0); // 构造以0开始，以cols为步长的序列
         prefixSumTmpAddr = prefixSumAddr;
         auto tempAddr = tmpAddr;
         for (uint16_t i = 0; i < size0; ++i) {
-            AscendC::MicroAPI::Adds(index, sequence, (uint32_t)i, p0); // 构造以i开始，以cols为步长的序列
-            AscendC::MicroAPI::DataCopyGather(v0, prefixSumTmpAddr, index, p0);
-            AscendC::MicroAPI::Add(v2, v0, v1, p0);
-            AscendC::MicroAPI::Copy(v1, v2, p0);
-            AscendC::MicroAPI::AddrReg offset = AscendC::MicroAPI::CreateAddrReg<int32_t>(i, stride);
-            AscendC::MicroAPI::DataCopy(tempAddr, v2, offset, p0);
+            AscendC::Reg::Adds(index, sequence, (uint32_t)i, p0); // 构造以i开始，以cols为步长的序列
+            AscendC::Reg::DataCopyGather(v0, prefixSumTmpAddr, index, p0);
+            AscendC::Reg::Add(v2, v0, v1, p0);
+            AscendC::Reg::Copy(v1, v2, p0);
+            AscendC::Reg::AddrReg offset = AscendC::Reg::CreateAddrReg<int32_t>(i, stride);
+            AscendC::Reg::DataCopy(tempAddr, v2, offset, p0);
         }
-        AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
-        AscendC::MicroAPI::Arange(tmp, 0);
-        sequence = (AscendC::MicroAPI::RegTensor<uint32_t>&)tmp;
-        AscendC::MicroAPI::MaskReg pregFull = AscendC::MicroAPI::CreateMask<int32_t,
-            AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::Muls(sequence, sequence, rows, pregFull);
+        AscendC::Reg::Arange(tmp, 0);
+        sequence = (AscendC::Reg::RegTensor<uint32_t> &)tmp;
+        AscendC::Reg::MaskReg pregFull = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::Muls(sequence, sequence, rows, pregFull);
         uint32_t spReg1 = tailSize1 - 1;
-        AscendC::MicroAPI::MaskReg sp1 = AscendC::MicroAPI::UpdateMask<int32_t>(spReg1);
-        AscendC::MicroAPI::RegTensor<int32_t> v3;
-        AscendC::MicroAPI::RegTensor<int32_t> v4;
-        AscendC::MicroAPI::RegTensor<uint32_t> vdSque;
-        AscendC::MicroAPI::Duplicate(v1, 0, pregFull);
+        AscendC::Reg::MaskReg sp1 = AscendC::Reg::UpdateMask<int32_t>(spReg1);
+        AscendC::Reg::RegTensor<int32_t> v3;
+        AscendC::Reg::RegTensor<int32_t> v4;
+        AscendC::Reg::RegTensor<uint32_t> vdSque;
+        AscendC::Reg::Duplicate(v1, 0, pregFull);
         for (uint16_t i = 0; i < static_cast<uint16_t>(rows); i++) {
             uint32_t mainCols = cols;
-            AscendC::MicroAPI::Adds(vdSque, sequence, (uint32_t)i, pregFull);
+            AscendC::Reg::Adds(vdSque, sequence, (uint32_t)i, pregFull);
             for (uint16_t j = 0; j < size1; j++) {
-                AscendC::MicroAPI::MaskReg p1 = AscendC::MicroAPI::UpdateMask<int32_t>(mainCols);
-                AscendC::MicroAPI::Adds(index, vdSque, (uint32_t)(j * vfLen * vfLen), p1);
-                AscendC::MicroAPI::DataCopyGather(v0, tmpAddr, index, p1);
-                AscendC::MicroAPI::Add(v2, v0, v1, p1);
-                AscendC::MicroAPI::DataCopyUnAlign(prefixSumAddr, v2, u1, rows);
+                AscendC::Reg::MaskReg p1 = AscendC::Reg::UpdateMask<int32_t>(mainCols);
+                AscendC::Reg::Adds(index, vdSque, (uint32_t)(j * vfLen * vfLen), p1);
+                AscendC::Reg::DataCopyGather(v0, tmpAddr, index, p1);
+                AscendC::Reg::Add(v2, v0, v1, p1);
+                AscendC::Reg::DataCopyUnAlign(prefixSumAddr, v2, u1, rows);
             }
-            AscendC::MicroAPI::DataCopyUnAlignPost(prefixSumAddr, u1, 0);
-            AscendC::MicroAPI::MaskReg p1 = AscendC::MicroAPI::UpdateMask<int32_t>(mainCols);
-            AscendC::MicroAPI::Adds(index, vdSque, (uint32_t)(size1 * vfLen * vfLen), p1);
-            AscendC::MicroAPI::DataCopyGather(v0, tmpAddr, index, p1);
-            AscendC::MicroAPI::Add(v2, v0, v1, p1);
-            AscendC::MicroAPI::DataCopyUnAlign(prefixSumAddr, v2, u1, tailSize1);
-            AscendC::MicroAPI::Duplicate(v4, 0, sp1);
-            AscendC::MicroAPI::Copy<int32_t, AscendC::MicroAPI::MaskMergeMode::MERGING>(v2, v4, sp1);
-            AscendC::MicroAPI::ReduceSum(v3, v2, p1);
-            AscendC::MicroAPI::Duplicate(v1, v3, pregFull);
-            AscendC::MicroAPI::DataCopyUnAlignPost(prefixSumAddr, u1, 0);
+            AscendC::Reg::DataCopyUnAlignPost(prefixSumAddr, u1, 0);
+            AscendC::Reg::MaskReg p1 = AscendC::Reg::UpdateMask<int32_t>(mainCols);
+            AscendC::Reg::Adds(index, vdSque, (uint32_t)(size1 * vfLen * vfLen), p1);
+            AscendC::Reg::DataCopyGather(v0, tmpAddr, index, p1);
+            AscendC::Reg::Add(v2, v0, v1, p1);
+            AscendC::Reg::DataCopyUnAlign(prefixSumAddr, v2, u1, tailSize1);
+            AscendC::Reg::Duplicate(v4, 0, sp1);
+            AscendC::Reg::Copy<int32_t, AscendC::Reg::MaskMergeMode::MERGING>(v2, v4, sp1);
+            AscendC::Reg::ReduceSum(v3, v2, p1);
+            AscendC::Reg::Duplicate(v1, v3, pregFull);
+            AscendC::Reg::DataCopyUnAlignPost(prefixSumAddr, u1, 0);
         }
     }
     maskQueue_.FreeTensor(maskLocal);
@@ -261,8 +262,8 @@ template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputePreCoreMaskSum()
 {
     LocalTensor<U> tmpLocal = tmpBuf_.Get<U>();
-    DataCopyExtParams inParams = { 1, static_cast<uint32_t>(GetBlockNum() * sizeof(U)), 0, 0, 0 };
-    DataCopyPadExtParams<U> padParams = { false, 0, 0, 0 };
+    DataCopyExtParams inParams = {1, static_cast<uint32_t>(GetBlockNum() * sizeof(U)), 0, 0, 0};
+    DataCopyPadExtParams<U> padParams = {false, 0, 0, 0};
     DataCopyPad(tmpLocal, maskSumGm_, inParams, padParams);
     if (GetBlockIdx() == 1) {
         auto sWiatVEventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
@@ -280,12 +281,12 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputePreCoreMaskSum()
         preCoreMaskSum_ = tmpLocal.GetValue(0);
     }
     assert(preCoreMaskSum_ + curMaskSum_ <= tilingData_.updateEleNums,
-        "The num of true in mask is larger than the num of elements in update.");
+           "The num of true in mask is larger than the num of elements in update.");
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeMaskedScatterImpl<T, U>::CustomReduceSum(const LocalTensor<U>& dst, const LocalTensor<U>& src,
-    uint16_t dataLen)
+__aicore__ inline void MoeMaskedScatterImpl<T, U>::CustomReduceSum(const LocalTensor<U> &dst, const LocalTensor<U> &src,
+                                                                   uint16_t dataLen)
 {
     uint16_t vfLen = Ops::Base::GetVRegSize() / sizeof(U);
     uint16_t loopSize = (dataLen + vfLen - 1) / vfLen;
@@ -293,28 +294,28 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::CustomReduceSum(const LocalTe
     auto dstAddr = (__ubuf__ U *)dst.GetPhyAddr();
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<U> src;
-        AscendC::MicroAPI::RegTensor<U> dst;
-        AscendC::MicroAPI::RegTensor<U> tmpSum;
+        AscendC::Reg::RegTensor<U> src;
+        AscendC::Reg::RegTensor<U> dst;
+        AscendC::Reg::RegTensor<U> tmpSum;
         uint32_t pnum = static_cast<uint32_t>(dataLen);
         uint32_t sumMask = 1;
-        AscendC::MicroAPI::MaskReg oneMask = AscendC::MicroAPI::UpdateMask<U>(sumMask);
-        AscendC::MicroAPI::Duplicate(dst, 0, oneMask);
-        for (uint16_t i = 0; i< loopSize; i++) {
-            AscendC::MicroAPI::MaskReg pMask = AscendC::MicroAPI::UpdateMask<U>(pnum);
-            AscendC::MicroAPI::DataCopy<U, MicroAPI::PostLiteral::POST_MODE_UPDATE>(src, srcAddr, vfLen);
-            AscendC::MicroAPI::ReduceSum(tmpSum, src, pMask);
-            AscendC::MicroAPI::Add(dst, dst, tmpSum, oneMask);
+        AscendC::Reg::MaskReg oneMask = AscendC::Reg::UpdateMask<U>(sumMask);
+        AscendC::Reg::Duplicate(dst, 0, oneMask);
+        for (uint16_t i = 0; i < loopSize; i++) {
+            AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<U>(pnum);
+            AscendC::Reg::DataCopy<U, Reg::PostLiteral::POST_MODE_UPDATE>(src, srcAddr, vfLen);
+            AscendC::Reg::ReduceSum(tmpSum, src, pMask);
+            AscendC::Reg::Add(dst, dst, tmpSum, oneMask);
         }
-        AscendC::MicroAPI::DataCopy<U, MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr, dst, 0, oneMask);
+        AscendC::Reg::DataCopy<U, Reg::PostLiteral::POST_MODE_UPDATE>(dstAddr, dst, 0, oneMask);
     }
 }
 
 template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::CopyInX(int64_t offset, int64_t dataLen)
 {
-    DataCopyExtParams inParams = { 1, static_cast<uint32_t>(dataLen * sizeof(T)), 0, 0, 0 };
-    DataCopyPadExtParams<T> padParams = { false, 0, 0, 0 };
+    DataCopyExtParams inParams = {1, static_cast<uint32_t>(dataLen * sizeof(T)), 0, 0, 0};
+    DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
     LocalTensor<T> xLocal = xQueue_.AllocTensor<T>();
     DataCopyPad(xLocal, xGm_[offset], inParams, padParams);
     xQueue_.EnQue(xLocal);
@@ -323,7 +324,7 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::CopyInX(int64_t offset, int64
 template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::CopyOutY(int64_t offset, int64_t dataLen)
 {
-    DataCopyExtParams outParams = { 1, static_cast<uint32_t>(dataLen * sizeof(T)), 0, 0, 0 };
+    DataCopyExtParams outParams = {1, static_cast<uint32_t>(dataLen * sizeof(T)), 0, 0, 0};
     LocalTensor<T> yLocal = yQueue_.DeQue<T>();
     DataCopyPad(yGm_[offset], yLocal, outParams);
     yQueue_.FreeTensor(yLocal);
@@ -336,9 +337,10 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::MoeMaskedScatterToUB(int64_t 
     LocalTensor<bool> maskLocal = maskQueue_.DeQue<bool>();
     LocalTensor<T> yLocal = yQueue_.AllocTensor<T>();
     auto curLoopPrefixSumGm = prefixSumGm_[offset];
-    asc_vf_call<MoeMaskedScatterToUBSimt<T, U>>(dim3(USED_THREAD_NUMS), dataLen, preCoreMaskSum_,
-        (__local_mem__ T*)(xLocal.GetPhyAddr()), (__local_mem__ bool*)(maskLocal.GetPhyAddr()), (__gm__ T*)(updatesGm_.GetPhyAddr()),
-        (__local_mem__ T*)(yLocal.GetPhyAddr()), (__gm__ U*)(curLoopPrefixSumGm.GetPhyAddr()));
+    asc_vf_call<MoeMaskedScatterToUBSimt<T, U>>(
+        dim3(USED_THREAD_NUMS), dataLen, preCoreMaskSum_, (__local_mem__ T *)(xLocal.GetPhyAddr()),
+        (__local_mem__ bool *)(maskLocal.GetPhyAddr()), (__gm__ T *)(updatesGm_.GetPhyAddr()),
+        (__local_mem__ T *)(yLocal.GetPhyAddr()), (__gm__ U *)(curLoopPrefixSumGm.GetPhyAddr()));
     yQueue_.EnQue(yLocal);
     xQueue_.FreeTensor(xLocal);
     maskQueue_.FreeTensor(maskLocal);
@@ -374,7 +376,7 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ProcessLowBit(int64_t curCore
     CopyOutY(offset, tailLen);
 }
 
-template <typename T, typename U> 
+template <typename T, typename U>
 __aicore__ inline void MoeMaskedScatterImpl<T, U>::Process()
 {
     if (GetBlockIdx() >= GetBlockNum()) {
@@ -411,10 +413,11 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::Process()
     } else {
         ComputePreCoreMaskSum();
         asc_vf_call<MoeMaskedScatterSimt<T, U>>(dim3(USED_THREAD_NUMS), curCoreHandleData, preCoreMaskSum_,
-            (__gm__ T*)(xGm_.GetPhyAddr()), (__gm__ bool*)(maskGm_.GetPhyAddr()), (__gm__ T*)(updatesGm_.GetPhyAddr()),
-            (__gm__ T*)(yGm_.GetPhyAddr()), (__gm__ U*)(prefixSumGm_.GetPhyAddr()));
+                                                (__gm__ T *)(xGm_.GetPhyAddr()), (__gm__ bool *)(maskGm_.GetPhyAddr()),
+                                                (__gm__ T *)(updatesGm_.GetPhyAddr()), (__gm__ T *)(yGm_.GetPhyAddr()),
+                                                (__gm__ U *)(prefixSumGm_.GetPhyAddr()));
     }
 }
-}  // namespace MASKED_SCATTER_IMPL_H
+} // namespace MoeMaskedScatter
 
 #endif // MASKED_SCATTER_ARCH35_H
