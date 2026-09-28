@@ -75,6 +75,7 @@ public:
             .AttrType(OPTIONAL)
             .Float(0.0000001f);
         this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("kirinx90");
         this->AICore().AddConfig("kirin9030");
     }
