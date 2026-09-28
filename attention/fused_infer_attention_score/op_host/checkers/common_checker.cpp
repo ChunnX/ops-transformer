@@ -1272,13 +1272,14 @@ ge::graphStatus CommonChecker::ValidateNoRopeLayoutDim(const FiaTilingInfo &fiaI
 
     if (std::find(noRopeLayoutSupportListD.begin(), noRopeLayoutSupportListD.end(), inputLayout) !=
         noRopeLayoutSupportListD.end()) {
-        OP_CHECK_IF(fiaInfo.vHeadDim != 64 && fiaInfo.vHeadDim != 128 && fiaInfo.vHeadDim != 192,
-                    OP_LOGE(fiaInfo.opName,
-                            "In %s %s situation, when input_layout is TND, only query|key|value headDim = "
-                            "64/128/192 are supported, but got %u",
-                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
-                            SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.vHeadDim),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            fiaInfo.vHeadDim != 64 && fiaInfo.vHeadDim != 128 && fiaInfo.vHeadDim != 192 && fiaInfo.vHeadDim != 256,
+            OP_LOGE(fiaInfo.opName,
+                    "In %s %s situation, when input_layout is TND, only query|key|value headDim = "
+                    "64/128/192/256 are supported, but got %u",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.vHeadDim),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
