@@ -27,6 +27,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/attenmask_gs1_arch35.h"
+#include "../../../common/op_kernel/arch_info.h"
 #else
 #include "../../common/arch35/util_regbase.h"
 #include "../../common/arch35/infer_flash_attention_comm_arch35.h"
@@ -424,22 +425,30 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     LocalTensor<uint8_t> attenMaskUb;
     LocalTensor<uint8_t> apiTmpBuffer;
     bool needAtten = false;
+    uint32_t s1CopyRows = 0;
     if constexpr (optionalDn) {
         // s1=s2时s2方向末尾一轮需要处理atten，s1!=s2且有尾块时s2方向末尾两轮需要处理atten
+#if (__NPU_ARCH__ == 3510)
         needAtten = hasAtten &&
                     ((runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
                      ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
                       (runInfo.s2LoopCount == runInfo.s2LoopLimit || runInfo.s2LoopCount == runInfo.s2LoopLimit - 1)));
+        s1CopyRows = runInfo.s1RealSizeAlign64 >> 1;
+#else
+        needAtten = true;
+        s1CopyRows = constInfo.s1BaseSize;
+#endif
         AttenMaskCopyInDn<hasAtten, hasRope, isInfer, false, optionalDn>(this->attenMaskInQue[runInfo.taskIdMod2],
                                                                          this->attenMaskGmInt, runInfo, constInfo,
-                                                                         *attenMaskInfoPtr, needAtten);
+                                                                         *attenMaskInfoPtr, needAtten, s1CopyRows);
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
         apiTmpBuffer = this->commonTBuf.template Get<uint8_t>();
     } else if constexpr (isFp8 && hasAtten) {
         AttenMaskCopyInDn<hasAtten>(
             this->attenMaskInQue[0], this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr,
             (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
-                ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) && (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
+                ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) && (runInfo.s2LoopCount == runInfo.s2LoopLimit)),
+            constInfo.s1BaseSize / ArchInfo::CV_RATIO);
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];

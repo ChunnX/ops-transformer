@@ -30,8 +30,6 @@ namespace FfnWbBatching {
 using namespace AscendC;
 
 constexpr int64_t STRUCT_LENGTH = 1024;
-constexpr int64_t TEST_MAGIC_OFFSET = 640;
-constexpr int64_t TEST_MAGIC = 0x54455354;
 template <bool isScanMode = false>
 __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
                                                   const FfnWorkerBatchingTilingData *tilingData,
@@ -80,35 +78,27 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
     contextInfo.sortLoopMaxElement = tilingData->sortLoopMaxElement;
     contextInfo.sortNumWorkSpace = tilingData->sortNumWorkSpace;
 
-    LocalTensor<uint32_t> magicField = valLocal[TEST_MAGIC_OFFSET].template ReinterpretCast<uint32_t>();
-    uint32_t magicValue = magicField.GetValue(0);
-    uint64_t scBase = (magicValue == TEST_MAGIC) ? reinterpret_cast<uint64_t>(schedule_context) : 0;
-
     // token_data_buf: offset = 272  // 400
     LocalTensor<uint64_t> localTokenDataBuf = valLocal[400].template ReinterpretCast<uint64_t>();
     uint64_t tokenDataBufValue = localTokenDataBuf.GetValue(0);
-    contextInfo.bufferPtr.tokenDataBuf = scBase + tokenDataBufValue;
-    // 验证 contextInfo.bufferPtr.tokenDataBuf = reinterpret_cast<uint64_t>(tokenDataBufValue + schedule_context);
+    contextInfo.bufferPtr.tokenDataBuf = tokenDataBufValue;
+
     // 不扫描数据的逻辑
     if constexpr (isScanMode == false) {
         // session_ids_buf: offset = 400  // 528
         LocalTensor<uint64_t> localSessionIdsBuf = valLocal[528].template ReinterpretCast<uint64_t>();
         uint64_t sessionIdsBufValue = localSessionIdsBuf.GetValue(0);
-        contextInfo.bufferPtr.sessionIdsBuf = scBase + sessionIdsBufValue;
-        // 验证 contextInfo.bufferPtr.sessionIdsBuf = reinterpret_cast<uint64_t>(sessionIdsBufValue + schedule_context);
+        contextInfo.bufferPtr.sessionIdsBuf = sessionIdsBufValue;
 
         // micro_batch_ids_buf: offset = 416  // 544
         LocalTensor<uint64_t> localMicroBatchIdsBuf = valLocal[544].template ReinterpretCast<uint64_t>();
         uint64_t microBatchIdsBufValue = localMicroBatchIdsBuf.GetValue(0);
-        contextInfo.bufferPtr.microBatchIdsBuf = scBase + microBatchIdsBufValue;
-        // 验证 contextInfo.bufferPtr.microBatchIdsBuf = reinterpret_cast<uint64_t>(microBatchIdsBufValue +
-        // schedule_context);
+        contextInfo.bufferPtr.microBatchIdsBuf = microBatchIdsBufValue;
 
         // expert_ids_buf: offset = 432  // 560
         LocalTensor<uint64_t> localExpertIdsBuf = valLocal[560].template ReinterpretCast<uint64_t>();
         uint64_t expertIdsBufValue = localExpertIdsBuf.GetValue(0);
-        contextInfo.bufferPtr.expertIdsBuf = scBase + expertIdsBufValue;
-        // 验证 contextInfo.bufferPtr.expertIdsBuf = reinterpret_cast<uint64_t>(expertIdsBufValue + schedule_context);
+        contextInfo.bufferPtr.expertIdsBuf = expertIdsBufValue;
 
         // 读取 out_num (uint32_t)  // 576
         LocalTensor<uint32_t> localOutNum = valLocal[576].template ReinterpretCast<uint32_t>();
@@ -116,8 +106,7 @@ __aicore__ inline void ScheduleContextInfoCompute(GM_ADDR schedule_context,
     } else {
         LocalTensor<uint64_t> tokenInfoTensor = valLocal[384].template ReinterpretCast<uint64_t>();
         uint64_t tokenInfoValue = tokenInfoTensor.GetValue(0);
-        contextInfo.bufferPtr.tokenInfoBuf = scBase + tokenInfoValue;
-        // 验证 contextInfo.bufferPtr.tokenInfoBuf = reinterpret_cast<uint64_t>(tokenInfoValue + schedule_context);
+        contextInfo.bufferPtr.tokenInfoBuf = tokenInfoValue;
 
         LocalTensor<uint64_t> pollIdxBuf = valLocal[416].template ReinterpretCast<uint64_t>();
         contextInfo.curMicroBatchID = (uint64_t)(pollIdxBuf.GetValue(0));

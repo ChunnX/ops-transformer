@@ -17,8 +17,13 @@
 
 namespace EngramFetchGradUnique {
 
+constexpr uint32_t ENTRY_BATCH_CAP_HALF = 2U;
+constexpr uint32_t RUN_START_UB_OFFSET = 2U;
+constexpr uint32_t RUN_LEN_UB_OFFSET = 2U;
+constexpr uint32_t ACCUM_LIST_UB_OFFSET = 4U;
 constexpr uint32_t COMPACT_INDEX_UB_OFFSET = 3U;
 constexpr uint32_t DIRECT_FLAG_UB_OFFSET = 4U;
+constexpr uint32_t UNIQUE_DIFF_UB_OFFSET = 2U;
 
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc(AscendC::TPipe &pipe)
@@ -113,15 +118,16 @@ public:
     }
     __aicore__ inline AscendC::LocalTensor<int32_t> RunStartUb()
     {
-        return entryBuf_->Get<int32_t>()[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+        return entryBuf_->Get<int32_t>()[RUN_START_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
     }
     __aicore__ inline AscendC::LocalTensor<int32_t> RunLenUb()
     {
-        return entryBuf_->Get<int32_t>()[2 * Mc2Kernel::ENTRY_BATCH_CAP + Mc2Kernel::ENTRY_BATCH_CAP / 2U];
+        return entryBuf_->Get<int32_t>()[RUN_LEN_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP +
+                                         Mc2Kernel::ENTRY_BATCH_CAP / ENTRY_BATCH_CAP_HALF];
     }
     __aicore__ inline AscendC::LocalTensor<int32_t> AccumListUb()
     {
-        return entryBuf_->Get<int32_t>()[4 * Mc2Kernel::ENTRY_BATCH_CAP];
+        return entryBuf_->Get<int32_t>()[ACCUM_LIST_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
     }
 
 private:
@@ -402,7 +408,7 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
     if (start < rawEnd) {
         AscendC::LocalTensor<int32_t> xUb = gradBuf_->Get<int32_t>();
         AscendC::LocalTensor<int32_t> yUb = xUb[Mc2Kernel::ENTRY_BATCH_CAP];
-        AscendC::LocalTensor<int32_t> fUb = xUb[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+        AscendC::LocalTensor<int32_t> fUb = xUb[UNIQUE_DIFF_UB_OFFSET * Mc2Kernel::ENTRY_BATCH_CAP];
         AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         uint32_t cur = start;
         while (cur < rawEnd) {

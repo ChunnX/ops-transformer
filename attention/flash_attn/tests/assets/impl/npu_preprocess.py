@@ -280,6 +280,8 @@ def run(
     generated = run_metadata(arguments, q if metadata is None else metadata)
     if metadata is None:
         return {"metadata": generated}
+    if tuple(metadata.shape) == (0,):
+        metadata.resize_(generated.shape)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "FlashAttn metadata shape mismatch: "

@@ -32,6 +32,8 @@ constexpr uint32_t QBSA_MAX_CORE_NUM = 36U;
 constexpr uint32_t QBSA_CORE_SPLIT_NUM = QBSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t QBSA_BLOCK_SIZE = 128U;
 constexpr uint32_t QBSA_D_SIZE = 128U;
+constexpr uint32_t QBSA_MXFP8_D_SIZE_64 = 64U;
+constexpr uint32_t QBSA_MXFP8_D_SIZE_256 = 256U;
 constexpr uint32_t QBSA_QUANT_MODE_FP8 = 1U;
 constexpr uint32_t QBSA_QUANT_MODE_MXFP8_FULL_QUANT = 2U;
 constexpr uint32_t QBSA_MASK_MODE_NONE = 0U;
@@ -48,6 +50,11 @@ constexpr uint32_t QBSA_MXFP8_PER_CHANNEL_GROUP_MODE = 8U;
 constexpr uint32_t QBSA_MAX_BATCH_SIZE = 65536U;
 constexpr uint32_t QBSA_MAX_N2_SIZE = 8U;
 constexpr uint32_t QBSA_MAX_G_SIZE = 16U;
+
+inline bool QBSAIsSupportedMxHeadDim(uint32_t dSize)
+{
+    return dSize == QBSA_MXFP8_D_SIZE_64 || dSize == QBSA_D_SIZE || dSize == QBSA_MXFP8_D_SIZE_256;
+}
 
 inline uint32_t QBSACeilDiv(uint32_t value, uint32_t divisor)
 {

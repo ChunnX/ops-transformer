@@ -27,7 +27,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "mc2_log.h"
-#include "../../op_kernel/quant_batch_matmul_v3_tiling_key.h"
+#include "../../op_kernel/mc2_quant_batch_matmul_v3_tiling_key.h"
 
 using AscendC::BLOCK_CUBE;   // uint32_t 16
 using AscendC::ONE_BLK_SIZE; // uint32_t 32
