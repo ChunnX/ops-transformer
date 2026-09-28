@@ -41,15 +41,15 @@
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
-constexpr int64_t ONE_REPEAT_COMPARE_NUM = Arch35Config::COMPARE_FP32_ELEMENTS; // CompareScalar 的 repeat 粒度(ISA)
-constexpr int64_t ONE_REPEAT_BLOCKS = Arch35Config::VECTOR_REPEAT_BLOCKS; // 一个 repeat 覆盖 8 个 32B 块(ISA)
-constexpr int64_t ONE_BYTE_BITS = Arch35Config::BITS_PER_BYTE;
+constexpr int64_t ONE_REPEAT_COMPARE_NUM = 64; // CompareScalar 的 repeat 粒度(ISA)
+constexpr int64_t ONE_REPEAT_BLOCKS = 8;       // 一个 repeat 覆盖 8 个 32B 块(ISA)
+constexpr int64_t ONE_BYTE_BITS = 8;
 constexpr int32_t SENTINEL_ID = -1; // 哨兵:有效 expert_id 恒 >= 0,故它与谁都不等
 
 // 单元素在 UB 上的占用:cur/prev/next/idx/diff/diffF/outStart/outEnd/outId/cnt 十路 int32,
 // 外加首尾两张比较掩码(各 1 bit/元素)。分块大小由 UB 除以它得到,不是拍出来的常数。
-constexpr int64_t CHUNK_VEC_NUM = Arch35Config::GROUP_VECTOR_BUFFERS;
-constexpr int64_t CHUNK_MASK_NUM = Arch35Config::GROUP_MASK_BUFFERS;
+constexpr int64_t CHUNK_VEC_NUM = 10;
+constexpr int64_t CHUNK_MASK_NUM = 2;
 constexpr int64_t CHUNK_BUF_NUM = CHUNK_VEC_NUM + CHUNK_MASK_NUM + 1; // +1:行拼装区
 
 struct A5GroupListParam {
@@ -187,17 +187,13 @@ private:
 
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyExtParams cpLen{static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(int32_t)), 0, 0, 0};
-        const int64_t curPadElements = (blockElements - len % blockElements) % blockElements;
-        DataCopyPadExtParams<int32_t> curPad{true, 0, static_cast<uint8_t>(curPadElements), SENTINEL_ID};
-        DataCopyPad(ln.cur, idsGm_[begin], cpLen, curPad);
-        DataCopyPad(ln.prev, idsGm_[begin - 1], cpLen, curPad);
+        DataCopyPad(ln.cur, idsGm_[begin], cpLen, pad);
+        DataCopyPad(ln.prev, idsGm_[begin - 1], cpLen, pad);
         const int64_t nextLen = Min(len, totalLen_ - begin - 1);
         if (nextLen > 0) {
             DataCopyExtParams cpNext{static_cast<uint16_t>(1), static_cast<uint32_t>(nextLen * sizeof(int32_t)), 0, 0,
                                      0};
-            const int64_t nextPadElements = (blockElements - nextLen % blockElements) % blockElements;
-            DataCopyPadExtParams<int32_t> nextPad{true, 0, static_cast<uint8_t>(nextPadElements), SENTINEL_ID};
-            DataCopyPad(ln.next, idsGm_[begin + 1], cpNext, nextPad);
+            DataCopyPad(ln.next, idsGm_[begin + 1], cpNext, pad);
         }
         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         // 块首一律记为游程起点:它若处在游程中间,缺的那一段正由 pendingCnt 承接。
@@ -218,15 +214,14 @@ private:
         // 有效 expert_id 与边界哨兵的差值可精确转成 FP32，再与 0 比较。
         Sub(ln.diff, ln.cur, ln.prev, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
-        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(cmpLen));
+        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
         CompareScalar(ln.maskS.template ReinterpretCast<uint8_t>(), ln.diffF, static_cast<float>(0), CMPMODE::NE,
                       static_cast<int32_t>(cmpLen));
         PipeBarrier<PIPE_V>();
-        // 同理，末尾掩码的输入也必须完整初始化到 CompareScalar 的实际读取长度。
-        Sub(ln.diff, ln.next, ln.cur, static_cast<int32_t>(cmpLen));
+        Sub(ln.diff, ln.next, ln.cur, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
-        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(cmpLen));
+        Cast(ln.diffF, ln.diff, RoundMode::CAST_ROUND, static_cast<int32_t>(len));
         PipeBarrier<PIPE_V>();
         CompareScalar(ln.maskE.template ReinterpretCast<uint8_t>(), ln.diffF, static_cast<float>(0), CMPMODE::NE,
                       static_cast<int32_t>(cmpLen));

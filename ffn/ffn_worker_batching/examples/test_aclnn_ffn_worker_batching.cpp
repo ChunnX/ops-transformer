@@ -172,22 +172,14 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    // HS 是 ScheduleContext 中每个 token 的物理字节步长，而非任意的固定 512B。
-    // 对 FP16，它至少容纳 H*sizeof(int16_t)，再按 ABI 规定向上补齐到 512B；后续 token
-    // 必须以 HS 为间隔排布，否则 gather 会用正确的 H 读取错误的相邻 token 数据。
-    constexpr int64_t H = 4096;
-    constexpr uint64_t HS = AlignUp(static_cast<uint64_t>(H) * sizeof(int16_t), kBufAlignSize);
     ScheduleContext scheduleContext = {};
     scheduleContext.common.session_num = 1;
     scheduleContext.common.micro_batch_num = 1;
     scheduleContext.common.micro_batch_size = 8;
-    scheduleContext.common.selected_expert_num = 9; // K：已包含共享专家
+    scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
-    // NORM 路径的实际工作量由 out_num 决定。零初始化会让 kernel 合法地处理 0 个 session，
-    // 因此示例必须明确声明本次 A 个 session 都有效。
-    scheduleContext.ffn.out_num = scheduleContext.common.session_num;
     scheduleContext.ffn.polling_index = 0;
 
     // 属性参数
@@ -231,21 +223,14 @@ int main()
     ret = aclrtMemcpy(tokenInfoBuf, tokenInfoSize, hostTokenInfo.data(), tokenInfoSize, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy token info buf failed. ERROR: %d\n", ret); return ret);
 
-    // token_data_buf 的布局是 [A, M, BS, K, HS]。本例 M=1，因此容量为 Y*HS；不能按
-    // 逻辑 H 紧密排布，否则当 H 不是 512B 对齐时，下一 token 的物理起点会与 kernel 计算不一致。
-    uint64_t tokenDataSize = static_cast<uint64_t>(Y) * HS;
+    // 初始化Ffn token_data_buf
+    uint64_t tokenDataSize = static_cast<uint64_t>(Y) * H * sizeof(int16_t);
     scheduleContext.ffn.token_data_buf_size = tokenDataSize;
     void *tokenDataBuf = nullptr;
     ret = aclrtMalloc(&tokenDataBuf, tokenDataSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc token data buf failed. ERROR: %d\n", ret); return ret);
     scheduleContext.ffn.token_data_buf = reinterpret_cast<uint64_t>(tokenDataBuf);
-    // padding 区保持 0，仅写入每个 token 的 H 个有效 FP16 值，便于直观看出 HS 是行步长而不是 H。
-    std::vector<int16_t> hostTokenData(Y * (HS / sizeof(int16_t)), 0);
-    for (int64_t token = 0; token < Y; ++token) {
-        for (int64_t hidden = 0; hidden < H; ++hidden) {
-            hostTokenData[token * (HS / sizeof(int16_t)) + hidden] = 1;
-        }
-    }
+    std::vector<int16_t> hostTokenData(Y * H, 1);
     ret = aclrtMemcpy(tokenDataBuf, tokenDataSize, hostTokenData.data(), tokenDataSize, ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy token data buf failed. ERROR: %d\n", ret); return ret);
 

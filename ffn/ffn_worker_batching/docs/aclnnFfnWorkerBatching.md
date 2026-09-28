@@ -27,7 +27,7 @@
 
 - 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。需要设置`syncFlag`时，请使用[aclnnFfnWorkerBatchingV2](aclnnFfnWorkerBatchingV2.md)。
 
-- 计算步骤：
+  **该算子不建议单独使用，建议与FfnWorkerScheduler等算子配合使用，形成完整的工作流。**
 
     1. 接收Attention侧发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea、ControlArea、AttentionArea、FfnArea域。本接口从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息，并获取layer_id、session_id、micro_batch_id、expert_ids等路由信息。
 
@@ -119,10 +119,10 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>scheduleContext</td>
       <td>输入</td>
       <td>FFN侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息。</td>
-      <td>包含的缓冲区地址必须为有效Device地址，生命周期见约束说明。</td>
+      <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>1维，长度至少1024字节</td>
+      <td>1维，shape固定为(1024)</td>
       <td>×</td>
     </tr>
     <tr>
@@ -182,13 +182,13 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>数据类型由tokenDtype决定；FP4的逻辑shape仍为(Y, H)，两个元素打包为一个字节。</td>
       <td>FP16、BF16、INT8、支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
-      <td>2维，(Y, H)，其中Y = A × BS × K</td>
+      <td>2维，(Y, H)，其中Y = A × BS × (topK+1)</td>
       <td>×</td>
     </tr>
     <tr>
       <td>groupList</td>
       <td>输出</td>
-      <td>各非空专家的token数，按专家ID升序紧凑存放。每行为 [expert_id, expert_token_num]，剩余行填 [0, 0]。</td>
+      <td>每个专家处理的token范围。每行格式为 [expert_id, expert_token_num]，未使用的专家填 [0, 0]。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -228,7 +228,7 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>expertOffsets</td>
       <td>输出</td>
-      <td>每个输出token在原始topK加共享专家选择中的位置索引。</td>
+      <td>每个输出token在其所属专家分组内的偏移。</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
@@ -646,8 +646,6 @@ int main()
     scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
     scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
     scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
-    // NORM只消费前out_num个session；本例全部A个session有效。
-    scheduleContext.ffn.out_num = static_cast<uint32_t>(A);
 
     std::vector<int8_t> hostCtxData(1024, 0);
     std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));

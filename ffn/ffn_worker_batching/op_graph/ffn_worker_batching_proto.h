@@ -46,8 +46,6 @@ namespace ge {
  * @li layer_num: A scalar, the number of layers.
  * @li sync_flag: A bool scalar, default false. On Ascend950 with need_schedule=1,
  *                false waits for all sessions; true consumes the ready sessions.
- * @li sync_flag: A scalar, default 0. On Ascend950 with need_schedule=1,
- *                0 waits for all sessions; 1 consumes the ready sessions.
  *
  * @par Restrictions:
  * token_dtype 3/4/5 and E8M0 scale are supported only on Ascend950.

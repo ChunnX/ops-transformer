@@ -223,12 +223,12 @@ private:
 
 private:
     // 一个向量寄存器容纳的 fp32 个数,以及一次 repeat 覆盖的数据块数/比较元素数。
-    static constexpr int64_t FLOAT_REG_ELEMENTS = Arch35Config::COMPARE_FP32_ELEMENTS;
-    static constexpr int64_t BLOCKS_PER_REPEAT = Arch35Config::VECTOR_REPEAT_BLOCKS;
-    static constexpr int64_t ONE_REPEAT_COMPARE_NUM = Arch35Config::COMPARE_FP32_ELEMENTS;
+    static constexpr int64_t FLOAT_REG_ELEMENTS = 64;
+    static constexpr int64_t BLOCKS_PER_REPEAT = 8;
+    static constexpr int64_t ONE_REPEAT_COMPARE_NUM = 64;
     // Duplicate 的目的地块内步长与 repeat 间步长(按数据块计),取同仓 arch35 算子同款配置。
     static constexpr int64_t DST_BLK_STRIDE = 1;
-    static constexpr int64_t DST_REP_STRIDE = Arch35Config::VECTOR_REPEAT_BLOCKS;
+    static constexpr int64_t DST_REP_STRIDE = 8;
 
     A5SortSegParam param_;
     const ScheduleContextInfo *ctx_ = nullptr;
