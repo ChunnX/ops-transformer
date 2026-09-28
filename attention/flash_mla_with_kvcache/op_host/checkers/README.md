@@ -44,7 +44,7 @@ metadata 算子的 Host 参数校验位于
 只覆盖需要的阶段，并在 `RegisterCheckers()` 注册。错误信息应包含参数名、实际值和期望范围。
 
 每次调整应覆盖正常输入、边界值、越界值、缺失输入和相关组合。
-Host 回归入口：`tests/assets/run_checker_tests.py`，用法见 `tests/assets/README.md`。
+Host 回归已接入正式 GTest：`tests/ut`，用法见 [UT 说明](../../tests/ut/README.md)。
 
 序列元素值、分页索引、mask 内容和 metadata 调度内容不属于当前 Host checker 的已执行检查。
 校验放行不能替代内核或 NPU 端到端验证。
