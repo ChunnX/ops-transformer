@@ -171,5 +171,5 @@ def mhc_norm_post_preonly(
         hc_eps,
         return_h_in_f32,
     )
-    # h_pre 为接口预留的可选输出，当前版本暂不支持，返回形式保持不变。
+    # h_pre 为接口预留的可选输出，当前暂不支持，返回形式保持不变。
     return outputs[:3] if return_h_in_f32 else outputs[:2]

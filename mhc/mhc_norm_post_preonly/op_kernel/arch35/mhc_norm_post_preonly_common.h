@@ -8,18 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// ========================================================================
-// mhc_norm_post_preonly_common.h — 常量、类型萃取、workspace layout 定义
-// ========================================================================
 #ifndef MHC_NORM_POST_PREONLY_COMMON_H_
 #define MHC_NORM_POST_PREONLY_COMMON_H_
 
 #include "kernel_operator.h"
 using namespace AscendC;
 
-// ---------------------------------------------------------------------------
-// 全局常量
-// ---------------------------------------------------------------------------
 constexpr uint32_t N_MAX = 4;
 constexpr uint32_t ALIGN8 = 8;
 constexpr uint32_t BUFFER_NUM_ONE = 1;
@@ -34,7 +28,6 @@ constexpr uint16_t PAIR_READY_FLAG = 1;       // R4/R5 partial交换完成标志
 
 // ---------------------------------------------------------------------------
 // Type trait: fp32->half uses CAST_NONE, fp32->bfloat16_t uses CAST_RINT
-// (per CANN RmsNorm reference)
 // ---------------------------------------------------------------------------
 template <typename A, typename B>
 struct IsSameT {
