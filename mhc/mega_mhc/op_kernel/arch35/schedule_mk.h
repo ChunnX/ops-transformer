@@ -16,20 +16,56 @@
 namespace MegaMhc::Schedule {
 using namespace AscendC;
 
+// Modes 0/2 share flags: use distinct IDs and avoid SyncAll's reserved IDs 11..14.
+// Existing transfer credits use the independent mode-4 flag space.
+constexpr uint16_t kMkRowsReadyFlag = 8;
+constexpr uint16_t kMkCubeReadyFlag = 9;
+constexpr uint16_t kMkProjectionReadyFlag = 10;
+
+/** Publish all AIV stores, then gate subsequent loads on their visibility.
+ * Mode 0 collects AIV arrivals only; AIC proceeds independently through paired READY flags.
+ * Complete-token redistribution still requires every AIV producer to arrive.
+ */
+__aicore__ inline void WaitMkRowsReady()
+{
+    if ASCEND_IS_AIV {
+        CrossCoreSetFlag<0, PIPE_MTE3>(kMkRowsReadyFlag);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(kMkRowsReadyFlag);
+    }
+}
+
+/** Publish completed Cube partials to both paired AIVs, then collect all K-shard completions.
+ * FIX completion protects partialMm; AIV MTE3 completion protects partialRms.
+ * The current epilogue redistributes tokens, so its MTE2 loads need all AIV arrivals.
+ */
+__aicore__ inline void WaitMkProjectionReady()
+{
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<2, PIPE_FIX>(kMkCubeReadyFlag);
+    }
+    if ASCEND_IS_AIV {
+        // Order the MTE3 notification after both local stores and paired Cube completion.
+        CrossCoreWaitFlag<2, PIPE_MTE3>(kMkCubeReadyFlag);
+        CrossCoreSetFlag<0, PIPE_MTE3>(kMkProjectionReadyFlag);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(kMkProjectionReadyFlag);
+    }
+}
+
 /** Initialize the four-op completion epochs to zero before any group starts producing.
  * Each AIV owns one 128-byte region in otherwise unused RMS0 workspace.
  */
 template <typename T>
-__aicore__ inline void InitWaveEpochs(Kernel::Tensors<T> &tensors, TPipe *pipe)
+__aicore__ inline void InitWaveEpochs(Kernel::Tensors<T> &tensors)
 {
+    TPipe pipe;
     if ASCEND_IS_AIV {
         TBuf<TPosition::VECCALC> buffer;
-        Kernel::InitUbBuffer(pipe, buffer, 128U);
+        Kernel::InitUbBuffer(&pipe, buffer, 128U);
         auto scratch = buffer.Get<float>();
         Kernel::ZeroFp32Values(reinterpret_cast<__ubuf__ float *>(scratch.GetPhyAddr()), 32U);
         Kernel::CopyUbToGlobal(tensors.invRms0, static_cast<uint64_t>(GetBlockIdx()) * 32U, scratch, 32U);
     }
-    SyncAll<false>();
+    WaitMkRowsReady();
 }
 
 /** Stateful row producer used only by the outer projection schedule.
@@ -200,46 +236,69 @@ private:
     uint32_t produced_, slot_, nextTick_, rows_;
 };
 
+/** Materialize x2=Post(RMS0(hOut),residual), optionally followed by RMSMid.
+ * Phase-local resources are released on return, before projection reuses UB.
+ */
+template <typename T, bool WITH_MID>
+__aicore__ inline void RunMkProducerPhase(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling)
+{
+    TPipe pipe;
+    if constexpr (WITH_MID) {
+        RunPrefetchedFiveProducer<T>(tensors, tiling, &pipe);
+    } else {
+        RunFourStagedProducer<T>(tensors, tiling, &pipe);
+    }
+}
+
+/** Compute partialMm[m,q]=sum_k(float(x2[m,k])*phi[q,k]) and partialRms=sum_k(x2*x2) over each K shard.
+ * The wave variant also produces the next Post batch; both share this phase's pipe.
+ */
+template <typename T, typename StageTransfer, bool USE_HF32, bool WAVE_PRODUCER = false>
+__aicore__ inline void RunMkProjectionPhase(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling)
+{
+    TPipe pipe;
+    if constexpr (WAVE_PRODUCER) {
+        RunProjectionSchedule<T, StageTransfer, USE_HF32, true, WavePostProducer<T>>(tensors, tiling, &pipe);
+    } else {
+        RunProjectionSchedule<T, StageTransfer, USE_HF32>(tensors, tiling, &pipe);
+    }
+}
+
+/** Reduce projection partials, compute Pre weights and finish hInPrime=RMS1(weighted_sum(x2)).
+ * The final phase owns its pipe until all output work has completed on return.
+ */
+template <typename T>
+__aicore__ inline void RunMkEpiloguePhase(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling)
+{
+    TPipe pipe;
+    RunEpilogue<T>(tensors, tiling, &pipe);
+}
+
 /** M-K owns a token tile and K shard; four-op may overlap the next Post batch.
  * Formula: x2=Post(RMS0(hOut),residual), optionally RMSMid(x2); y=RMS1(Pre(x2)).
- * Host owns all tile sizes. This entry owns stage lifetimes, synchronization and finalization.
+ * Host owns all tile sizes. Phase functions own pipe lifetimes; this entry owns ordering and cross-core
+ * synchronization.
  */
 template <typename T, bool WITH_MID, bool USE_HF32>
 __aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcTilingData &tiling)
 {
     using StageTransfer = Transfer::StagePolicyT<WITH_MID ? kFiveProjectionTransport : kFourProjectionTransport>;
-    TPipe producerPipe;
     if constexpr (!WITH_MID) {
         if (tiling.wavePipeline != 0U) {
-            TPipe initPipe;
-            InitWaveEpochs(tensors, &initPipe);
-            initPipe.Destroy();
-            RunProjectionSchedule<T, StageTransfer, USE_HF32, true, WavePostProducer<T>>(tensors, tiling,
-                                                                                         &producerPipe);
-            producerPipe.Destroy();
-            SyncAll<false>();
-            TPipe epiloguePipe;
-            RunEpilogue<T>(tensors, tiling, &epiloguePipe);
-            epiloguePipe.Destroy();
+            InitWaveEpochs(tensors);
+            RunMkProjectionPhase<T, StageTransfer, USE_HF32, true>(tensors, tiling);
+            WaitMkProjectionReady();
+            RunMkEpiloguePhase<T>(tensors, tiling);
             return;
         }
     }
-    if constexpr (WITH_MID) {
-        RunPrefetchedFiveProducer<T>(tensors, tiling, &producerPipe);
-    } else {
-        RunFourStagedProducer<T>(tensors, tiling, &producerPipe);
-    }
-    producerPipe.Destroy();
-    SyncAll<false>();
+    RunMkProducerPhase<T, WITH_MID>(tensors, tiling);
+    WaitMkRowsReady();
 
-    TPipe projectionPipe;
-    RunProjectionSchedule<T, StageTransfer, USE_HF32>(tensors, tiling, &projectionPipe);
-    projectionPipe.Destroy();
-    SyncAll<false>();
+    RunMkProjectionPhase<T, StageTransfer, USE_HF32>(tensors, tiling);
+    WaitMkProjectionReady();
 
-    TPipe epiloguePipe;
-    RunEpilogue<T>(tensors, tiling, &epiloguePipe);
-    epiloguePipe.Destroy();
+    RunMkEpiloguePhase<T>(tensors, tiling);
 }
 
 } // namespace MegaMhc::Schedule
