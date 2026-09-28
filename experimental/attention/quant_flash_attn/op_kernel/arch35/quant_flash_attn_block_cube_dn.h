@@ -760,8 +760,7 @@ private:
         load2DMxParamsA.yStartPosition = info.prefetched ? (s2BaseSize / 64) : 0;
         load2DMxParamsA.xStep = (constInfo.dSize + 15) / 16;
         load2DMxParamsA.yStep =
-            (info.actSingleLoopS2SizeAlign64 + GetBlockElemCnt<QUANT_T>() - 1) /
-            GetBlockElemCnt<QUANT_T>();
+            (info.actSingleLoopS2SizeAlign64 + GetBlockElemCnt<QUANT_T>() - 1) / GetBlockElemCnt<QUANT_T>();
         load2DMxParamsA.srcStride = s2BaseSize * 2 / 64;
         load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
 
