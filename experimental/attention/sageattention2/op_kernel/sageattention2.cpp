@@ -26,14 +26,14 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
         // Quant stride by 2 * p.cores, including AIVs with no assigned work.
         Stats<T>(k, work + t.mean, p);
         SyncAll<true>();
-        Quant<T, WIDE>(q, k, v, work + t.mean, work + t.vMxScale, work + t.q8, work + t.k8, work + t.v8,
-                       work + t.qScale, work + t.kScale, p);
+        Quant<T, WIDE>(k, v, work + t.mean, work + t.vMxScale, work + t.k8, work + t.v8,
+                       work + t.kScale, p);
     }
     // Drain preprocessing pipes and publish GM writes to every AIC/AIV.
     // Idle cores also reach this barrier. Its flags (11..14) do not overlap
     // attention's MODE4 flags (0..3).
     SyncAll<false>();
-    Attention<T, WIDE>(work + t.q8, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
+    Attention<T, WIDE>(q, work + t.k8, work + t.v8, work + t.kScale,
                        work + t.vMxScale, out, lse, p);
 }
 } // namespace Sage

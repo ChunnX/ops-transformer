@@ -115,17 +115,15 @@ public:
             }
         }
     }
-    __aicore__ inline __attribute__((always_inline)) void SelectStreamQuery(uint32_t ordinal, uint64_t qb,
-                                                                            uint32_t qstart, bool first)
+    __aicore__ inline __attribute__((always_inline)) void SelectStreamQuery(uint32_t ordinal, uint32_t b,
+                                                                            uint32_t h, uint32_t qstart, bool first)
     {
         // MAX_UB already reserves 512 bytes: two independent 256-byte slots.
         maxima_ = resource_->ubBuf.template GetBufferByByte<half>(Base::MAX_UB + (ordinal & 1) * 256);
         if (first) {
-            Sync<HardEvent::V_MTE2>();
-            DataCopy(qsu_, Base::qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
-            Sync<HardEvent::MTE2_V>();
             Duplicate(maxima_, half(FP16_MIN), 128);
             PipeBarrier<PIPE_V>();
+            Base::QuantizeAndStreamQ(b, h, qstart);
         }
     }
     __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first, bool last)

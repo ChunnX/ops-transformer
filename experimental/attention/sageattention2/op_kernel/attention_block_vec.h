@@ -12,6 +12,7 @@
 #include "attention_common.h"
 #include "softmax.h"
 #include "output_update.h"
+#include "quant.h"
 namespace Sage {
 struct DefaultVectorLayout {
     static constexpr uint32_t ACCUM_UB = Sage::ACCUM_UB;
@@ -31,33 +32,85 @@ struct DefaultVectorLayout {
 template <class T, uint32_t DP, class Layout = DefaultVectorLayout>
 class AttentionBlockVec {
 public:
-    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR qs,
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q,
                                                                GM_ADDR ks, GM_ADDR out, GM_ADDR lse, SageParams params)
     {
         resource_ = &resource;
         params_ = params;
         subBlockIdx_ = GetSubBlockIdx();
-        qsg_.SetGlobalBuffer((__gm__ half *)qs);
+        qg_.SetGlobalBuffer((__gm__ T *)q);
         ksg_.SetGlobalBuffer((__gm__ half *)ks);
         lg_.SetGlobalBuffer((__gm__ float *)lse);
         og_.SetGlobalBuffer((__gm__ T *)out);
 
-        accum_ = resource_->ubBuf.GetBufferByByte<float>(ACCUM_UB);
-        qo_ = resource_->ubBuf.GetBufferByByte<T>(P_UB);
-        qsu_ = resource_->ubBuf.GetBufferByByte<half>(QS_UB);
-        maxima_ = resource_->ubBuf.GetBufferByByte<half>(MAX_UB);
-        denom_ = resource_->ubBuf.GetBufferByByte<float>(DEN_UB);
+        accum_ = resource_->ubBuf.template GetBufferByByte<float>(ACCUM_UB);
+        qo_ = resource_->ubBuf.template GetBufferByByte<T>(P_UB);
+        qsu_ = resource_->ubBuf.template GetBufferByByte<half>(QS_UB);
+        maxima_ = resource_->ubBuf.template GetBufferByByte<half>(MAX_UB);
+        denom_ = resource_->ubBuf.template GetBufferByByte<float>(DEN_UB);
+
+        auto factors = resource_->ubBuf.template GetBufferByByte<float>(FACTORS_UB);
+        FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
     }
-    __aicore__ inline __attribute__((always_inline)) void BeginTile(uint32_t b, uint32_t kh, uint64_t qb,
+    __aicore__ inline __attribute__((always_inline)) void QuantizeAndStreamQ(
+        uint32_t b, uint32_t h, uint32_t qstart)
+    {
+        const uint32_t token = qstart + subBlockIdx_ * HALF;
+        const uint32_t valid = token < params_.sq ? Min(uint32_t(HALF), params_.sq - token) : 0;
+
+        auto input = resource_->ubBuf.template GetBufferByByte<T>(SCORE_UB);
+        auto x = resource_->ubBuf.template GetBufferByByte<float>(SCORE_UB + 16384);
+        auto out = resource_->ubBuf.template GetBufferByByte<int8_t>(SCORE_UB + 49152);
+        auto scales = resource_->ubBuf.template GetBufferByByte<float>(SCORE_UB + 57344);
+        auto invScales = resource_->ubBuf.template GetBufferByByte<float>(SCORE_UB + 57600);
+        auto factors = resource_->ubBuf.template GetBufferByByte<float>(FACTORS_UB);
+
+        Sync<HardEvent::V_MTE2>();
+        if (params_.d == params_.dp && valid) {
+            DataCopy(input, qg_[Offset(params_.qs, b, h, token)], valid * params_.dp);
+        } else {
+            for (uint32_t r = 0; r < valid; ++r) {
+                ReadRow(input[r * params_.dp], qg_, Offset(params_.qs, b, h, token + r), params_.d, params_.dp);
+            }
+        }
+        Sync<HardEvent::MTE2_V>();
+        if (valid < HALF) {
+            Duplicate(input[valid * params_.dp], T(0), (HALF - valid) * params_.dp);
+            PipeBarrier<PIPE_V>();
+        }
+
+        Cast(x, input, RoundMode::CAST_NONE, HALF * params_.dp);
+        PipeBarrier<PIPE_V>();
+
+        QuantRowsImpl<DP, false>(
+            (__ubuf__ float *)x.GetPhyAddr(), nullptr,
+            (__ubuf__ float *)scales.GetPhyAddr(),
+            (__ubuf__ int8_t *)out.GetPhyAddr(),
+            (__ubuf__ half *)qsu_.GetPhyAddr(),
+            (__ubuf__ float *)factors.GetPhyAddr(),
+            (__ubuf__ float *)invScales.GetPhyAddr(),
+            valid);
+
+        Sync<HardEvent::V_MTE3>();
+        auto l1 = resource_->l1Buf.template GetBufferByByte<int8_t>(0);
+        const uint32_t cols = params_.dp / 32;
+        DataCopyParams cp{HALF, 1, uint16_t(cols - 1), 0};
+        #pragma unroll
+        for (uint32_t c = 0; c < cols; ++c) {
+            DataCopy(l1[c * (M * 32) + subBlockIdx_ * (HALF * 32)], out[c * 32], cp);
+        }
+        Sync<HardEvent::MTE3_V>();
+        CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY);
+    }
+    __aicore__ inline __attribute__((always_inline)) void BeginTile(uint32_t b, uint32_t h,
                                                                     uint32_t qstart)
     {
         Sync<HardEvent::V_MTE2>();
         Duplicate(accum_, 0.0f, HALF * params_.dp);
-        DataCopy(qsu_, qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
-        Sync<HardEvent::MTE2_S>();
         Duplicate(maxima_, half(FP16_MIN), 128);
         Duplicate(denom_, 0.0f, 64);
         PipeBarrier<PIPE_V>();
+        QuantizeAndStreamQ(b, h, qstart);
     }
     __aicore__ inline __attribute__((always_inline)) void PrefetchScales(uint64_t kb, uint32_t count)
     {
@@ -211,7 +264,8 @@ protected:
     FixedResource *resource_;
     SageParams params_;
     uint32_t subBlockIdx_;
-    GlobalTensor<half> qsg_, ksg_;
+    GlobalTensor<T> qg_;
+    GlobalTensor<half> ksg_;
     GlobalTensor<float> lg_;
     GlobalTensor<T> og_;
     LocalTensor<float> accum_, denom_;

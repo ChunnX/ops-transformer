@@ -40,9 +40,10 @@ static_assert(UB_END <= 248 * 1024, "UB exceeds capacity");
 static_assert(HALF * N >= HALF * 128 * 2, "P buffer cannot hold final FP16/BF16 output");
 static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds its 128 KiB slot");
 // MODE4 counted notifications, shared by all Cube/Vector groups.
-constexpr uint32_t QK_READY = 0, P_READY = 1, PV_READY = 2, PV_RELEASE = 3, AIV_FLAG_OFFSET = 16;
+constexpr uint32_t QK_READY = 0, P_READY = 1, PV_READY = 2, PV_RELEASE = 3, Q_READY = 4, AIV_FLAG_OFFSET = 16;
 // Local hard-event ownership. Scale slots use consecutive IDs 4 and 5.
 constexpr uint32_t QK_EVENT = 2, PV_EVENT = 3, SCALE_EVENT_BASE = 4;
+constexpr uint32_t FACTORS_UB = 248 * 1024 - 512;
 
 // IDs SCALE_EVENT_BASE and +1 own the two immutable K-scale slots. Every
 // prefetch consumes a free token and publishes one MTE2->V ready token.

@@ -80,11 +80,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
                               tla::MakeLayout<T, typename Copy::LayoutTagL1B>(k, n), Catlass::Arch::PositionL1{});
     if constexpr (!LocalA) {
         if (loadA) {
-            GlobalTensor<T> ag;
-            ag.SetGlobalBuffer((__gm__ T *)a);
-            auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
-            typename Copy::template CopyGmToL1A<decltype(ga)> ca;
-            ca(la, ga);
+            WaitBothAiv<PIPE_MTE1>(Q_READY);
         }
     }
     if constexpr (!PreloadedB) {

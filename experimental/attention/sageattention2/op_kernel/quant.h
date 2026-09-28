@@ -143,30 +143,26 @@ __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ub
     }
 }
 template <class T, bool PERMUTE_V = false>
-__aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
-                           GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
+__aicore__ void QuantBatch(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR k8,
+                           GM_ADDR v8, GM_ADDR ks, SageParams p)
 {
     FixedResource r;
-    GlobalTensor<T> qg, kg, vg;
-    qg.SetGlobalBuffer((__gm__ T *)q);
+    GlobalTensor<T> kg, vg;
     kg.SetGlobalBuffer((__gm__ T *)k);
     vg.SetGlobalBuffer((__gm__ T *)v);
-    qg.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     vg.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     GlobalTensor<uint16_t> mxg;
     mxg.SetGlobalBuffer((__gm__ uint16_t *)mxScale);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
-    GlobalTensor<half> qsg, ksg;
-    qsg.SetGlobalBuffer((__gm__ half *)qs);
+    GlobalTensor<half> ksg;
     ksg.SetGlobalBuffer((__gm__ half *)ks);
-    GlobalTensor<int8_t> qo, ko;
-    qo.SetGlobalBuffer((__gm__ int8_t *)q8);
+    GlobalTensor<int8_t> ko;
     ko.SetGlobalBuffer((__gm__ int8_t *)k8);
     GlobalTensor<float8_e4m3_t> vo;
     vo.SetGlobalBuffer((__gm__ float8_e4m3_t *)v8);
     // Two independent input/output slots let MTE2(i+1), Vector(i), and
-    // MTE3(i-1) overlap. Q/K and V outputs must not alias: both remain live
+    // MTE3(i-1) overlap. K and V outputs must not alias: both remain live
     // until the slot's output-complete event is consumed on its next use.
     constexpr uint32_t SLOT_BYTES = 96 * 1024;
     constexpr uint32_t V_INPUT = 16384, FLOAT_INPUT = 32768;
@@ -177,8 +173,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     static_assert(2 * SLOT_BYTES + 512 <= 248 * 1024, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
-                                   (__ubuf__ float *)factors[64].GetPhyAddr()};
+    __ubuf__ float *factorPtr = (__ubuf__ float *)factors[64].GetPhyAddr();
 
     // Pre-allocate slot buffers to eliminate per-iteration UB address resolution overhead
     LocalTensor<T> input[2], vInput[2];
@@ -200,20 +195,18 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         inverseScales[s] = r.ubBuf.template GetBufferByByte<float>(b + INVERSE_SCALE);
     }
 
-    const uint64_t nq = uint64_t(p.b) * p.hq * p.qp / 64;
     const uint64_t nk = uint64_t(p.b) * p.hk * p.kp / 64;
     const bool grouped = UseDieGroups(p);
     const uint32_t cores = grouped ? p.cores : 2 * p.cores;
     const uint32_t core = GetBlockIdx() % cores, group = GetBlockIdx() / cores;
-    const uint64_t localNq = nq / (grouped ? 2 : 1), localNk = nk / (grouped ? 2 : 1);
-    if (core >= localNq + localNk)
+    const uint64_t localNk = nk / (grouped ? 2 : 1);
+    if (core >= localNk)
         return;
-    const uint64_t iterations = (localNq + localNk - core + cores - 1) / cores;
+    const uint64_t iterations = (localNk - core + cores - 1) / cores;
     SetFlag<HardEvent::V_MTE2>(1);
     SetFlag<HardEvent::V_MTE2>(2);
     struct BatchInfo {
         uint64_t idx;
-        bool isq;
         uint32_t valid;
     } pending[2];
     for (uint64_t iteration = 0; iteration <= iterations; ++iteration) {
@@ -223,20 +216,17 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         if (iteration < iterations) {
             const uint32_t slot = iteration & 1;
             const uint64_t task = core + iteration * cores;
-            const bool isq = task < localNq;
-            const uint64_t idx = (isq ? group * localNq + task : group * localNk + task - localNq) * 64;
-            const uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
+            const uint64_t idx = (group * localNk + task) * 64;
+            const uint32_t seq = p.kp, heads = p.hk;
             const uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
-            const uint32_t valid = token < (isq ? p.sq : p.sk) ? 64 : 0;
-            pending[slot] = {idx, isq, valid};
+            const uint32_t valid = token < p.sk ? 64 : 0;
+            pending[slot] = {idx, valid};
             WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(1 + slot));
-            if (valid)
-                DataCopy(input[slot], (isq ? qg : kg)[Offset(isq ? p.qs : p.ks, b, h, token)], 64 * p.dp);
-            if (!isq) {
-                if (valid)
-                    DataCopy(vInput[slot], vg[Offset(p.vs, b, h, token)], 64 * p.dp);
-                DataCopy(mu[slot], mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
+            if (valid) {
+                DataCopy(input[slot], kg[Offset(p.ks, b, h, token)], 64 * p.dp);
+                DataCopy(vInput[slot], vg[Offset(p.vs, b, h, token)], 64 * p.dp);
             }
+            DataCopy(mu[slot], mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
             SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(1 + slot));
         }
         if (iteration == 0)
@@ -255,27 +245,23 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         PipeBarrier<PIPE_V>();
         QuantRowsVF((__ubuf__ float *)x[slot].GetPhyAddr(), (__ubuf__ float *)mu[slot].GetPhyAddr(),
                     (__ubuf__ float *)scales[slot].GetPhyAddr(), (__ubuf__ int8_t *)out[slot].GetPhyAddr(),
-                    (__ubuf__ half *)halfScales[slot].GetPhyAddr(), factorPtr[info.isq ? 0 : 1],
-                    (__ubuf__ float *)inverseScales[slot].GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
+                    (__ubuf__ half *)halfScales[slot].GetPhyAddr(), factorPtr,
+                    (__ubuf__ float *)inverseScales[slot].GetPhyAddr(), p.dp, p.smoothK && info.valid,
                     info.valid);
-        if (!info.isq) {
-            PipeBarrier<PIPE_V>();
-            if (info.valid < 64)
-                Duplicate(vInput[slot][info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
-            PipeBarrier<PIPE_V>();
-            QuantVRowsMxVF<T, PERMUTE_V>((__ubuf__ T *)vInput[slot].GetPhyAddr(),
-                                         (__ubuf__ T *)x[slot].GetPhyAddr(),
-                                         (__ubuf__ uint16_t *)vs[slot].GetPhyAddr(),
-                                         (__ubuf__ float8_e4m3_t *)fp8[slot].GetPhyAddr(), p.dp);
-        }
+        PipeBarrier<PIPE_V>();
+        if (info.valid < 64)
+            Duplicate(vInput[slot][info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
+        PipeBarrier<PIPE_V>();
+        QuantVRowsMxVF<T, PERMUTE_V>((__ubuf__ T *)vInput[slot].GetPhyAddr(),
+                                     (__ubuf__ T *)x[slot].GetPhyAddr(),
+                                     (__ubuf__ uint16_t *)vs[slot].GetPhyAddr(),
+                                     (__ubuf__ float8_e4m3_t *)fp8[slot].GetPhyAddr(), p.dp);
         SetFlag<HardEvent::V_MTE2>(event);
         Sync<HardEvent::V_MTE3>();
-        DataCopy((info.isq ? qo : ko)[info.idx * p.dp], out[slot], 64 * p.dp);
-        DataCopy((info.isq ? qsg : ksg)[info.idx], halfScales[slot], 64);
-        if (!info.isq) {
-            DataCopy(vo[info.idx * p.dp], fp8[slot], 64 * p.dp);
-            DataCopy(mxg[info.idx / 64 * p.dp], vs[slot].ReinterpretCast<uint16_t>(), p.dp);
-        }
+        DataCopy(ko[info.idx * p.dp], out[slot], 64 * p.dp);
+        DataCopy(ksg[info.idx], halfScales[slot], 64);
+        DataCopy(vo[info.idx * p.dp], fp8[slot], 64 * p.dp);
+        DataCopy(mxg[info.idx / 64 * p.dp], vs[slot].ReinterpretCast<uint16_t>(), p.dp);
         SetFlag<HardEvent::MTE3_V>(event);
     }
     for (uint32_t slot = 0; slot < Min(uint64_t(2), iterations); ++slot)
@@ -284,25 +270,22 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     WaitFlag<HardEvent::V_MTE2>(2);
 }
 template <class T, bool PERMUTE_V = false>
-__aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR q8, GM_ADDR k8,
-                      GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p)
+__aicore__ void Quant(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxScale, GM_ADDR k8,
+                      GM_ADDR v8, GM_ADDR ks, SageParams p)
 {
-    if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0 && p.qs[2] == p.dp && p.ks[2] == p.dp && p.vs[2] == p.dp) {
-        QuantBatch<T, PERMUTE_V>(q, k, v, mean, mxScale, q8, k8, v8, qs, ks, p);
+    if (p.d == p.dp && p.sq % 64 == 0 && p.sk % 64 == 0 && p.ks[2] == p.dp && p.vs[2] == p.dp) {
+        QuantBatch<T, PERMUTE_V>(k, v, mean, mxScale, k8, v8, ks, p);
         return;
     }
     FixedResource r;
-    GlobalTensor<T> qg, kg, vg;
-    qg.SetGlobalBuffer((__gm__ T *)q);
+    GlobalTensor<T> kg, vg;
     kg.SetGlobalBuffer((__gm__ T *)k);
     vg.SetGlobalBuffer((__gm__ T *)v);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
-    GlobalTensor<half> qsg, ksg;
-    qsg.SetGlobalBuffer((__gm__ half *)qs);
+    GlobalTensor<half> ksg;
     ksg.SetGlobalBuffer((__gm__ half *)ks);
-    GlobalTensor<int8_t> qo, ko;
-    qo.SetGlobalBuffer((__gm__ int8_t *)q8);
+    GlobalTensor<int8_t> ko;
     ko.SetGlobalBuffer((__gm__ int8_t *)k8);
     GlobalTensor<float8_e4m3_t> vo;
     vo.SetGlobalBuffer((__gm__ float8_e4m3_t *)v8);
@@ -316,18 +299,17 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
     auto halfScales = r.ubBuf.GetBufferByByte<half>(4352);
     auto factors = r.ubBuf.GetBufferByByte<float>(4608);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
-    uint64_t nq = uint64_t(p.b) * p.hq * p.qp, nk = uint64_t(p.b) * p.hk * p.kp;
-    for (uint64_t row = GetBlockIdx(); row < nq + nk; row += (2 * p.cores)) {
-        bool isq = row < nq;
-        uint64_t idx = isq ? row : row - nq;
-        uint32_t seq = isq ? p.qp : p.kp, heads = isq ? p.hq : p.hk;
+    uint64_t nk = uint64_t(p.b) * p.hk * p.kp;
+    for (uint64_t row = GetBlockIdx(); row < nk; row += (2 * p.cores)) {
+        uint64_t idx = row;
+        uint32_t seq = p.kp, heads = p.hk;
         uint32_t token = idx % seq, h = (idx / seq) % heads, b = idx / seq / heads;
-        bool valid = token < (isq ? p.sq : p.sk);
+        bool valid = token < p.sk;
         if (valid) {
-            ReadRow(input, isq ? qg : kg, Offset(isq ? p.qs : p.ks, b, h, token), p.d, p.dp);
+            ReadRow(input, kg, Offset(p.ks, b, h, token), p.d, p.dp);
             Cast(x, input, RoundMode::CAST_NONE, p.dp);
             PipeBarrier<PIPE_V>();
-            if (!isq && p.smoothK) {
+            if (p.smoothK) {
                 DataCopy(aux, mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
                 Sync<HardEvent::MTE2_V>();
                 Sub(x, x, aux, p.dp);
@@ -347,12 +329,12 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
         Mul(x, x, aux, p.dp);
         PipeBarrier<PIPE_V>();
         Pack8((__ubuf__ int8_t *)out.GetPhyAddr(), (__ubuf__ float *)x.GetPhyAddr(), p.dp);
-        WriteRow(isq ? qo : ko, idx * p.dp, out, p.dp);
+        WriteRow(ko, idx * p.dp, out, p.dp);
         red.SetValue(0, s);
         Sync<HardEvent::S_V>();
         PackFixedScaleVF((__ubuf__ float *)red.GetPhyAddr(), (__ubuf__ half *)halfScales.GetPhyAddr(),
-                         (__ubuf__ float *)factors[isq ? 0 : 64].GetPhyAddr(), valid ? 1 : 0);
-        WriteRow(isq ? qsg : ksg, idx, halfScales, 1);
+                         (__ubuf__ float *)factors[64].GetPhyAddr(), valid ? 1 : 0);
+        WriteRow(ksg, idx, halfScales, 1);
     }
     // Preserve the scalar Q/K rounding path for padded inputs. V still uses
     // exactly the same 32-token MX quantizer as the aligned batch path.

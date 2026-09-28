@@ -91,14 +91,14 @@ struct CubeFragmentInfo {
 };
 template <uint32_t PHASE>
 __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
-    FixedResource &r, CubeFragmentInfo *pending, uint64_t fragment, bool hasQk, GM_ADDR q,
+    FixedResource &r, CubeFragmentInfo *pending, uint64_t fragment, bool hasQk,
     GM_ADDR k8, GM_ADDR v8, GM_ADDR vsmx, MxScaleCache &mxCache, const SageParams &p,
     uint32_t count, bool prefetchPv = true)
 {
     constexpr uint32_t DP = 128, WIDE_B_L1 = P_L1 + 4 * M * N;
     if (hasQk) {
         const auto &current = pending[fragment & 3];
-        GemmQkSplit<WIDE_B_L1>(r, q, (fragment & 3) * HALF * N * 2,
+        GemmQkSplit<WIDE_B_L1>(r, (fragment & 3) * HALF * N * 2,
                                current.part == 0, PHASE);
     }
         if (fragment >= 3) {
@@ -136,14 +136,14 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
     }
 }
 template <class T, bool CAUSAL = false>
-__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
-                                                                          GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
+__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q, GM_ADDR k8, GM_ADDR v8,
+                                                                          GM_ADDR ks, GM_ADDR mxScale,
                                                                           GM_ADDR out, GM_ADDR lse, SageParams p)
 {
     FixedResource r;
     MxScaleCache mxCache;
     AttentionBlockVecWide<T, 128> vector;
-    vector.Init(r, qs, ks, out, lse, p);
+    vector.Init(r, q, ks, out, lse, p);
     uint32_t core = GetBlockIdx();
     if ASCEND_IS_AIV {
         core /= 2;
@@ -181,13 +181,12 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
             PrefetchWideK<K_L1>(r, k8 + current.kb * 128, 0);
             PrefetchWideK<K_L1>(r, k8 + (current.kb + N) * 128, 1);
         }
-        GM_ADDR qTile = q8 + (current.qb + current.qstart) * 128;
         if ASCEND_IS_AIC {
             for (uint32_t part = 0; part < current.count * 2; part += 2, fragment += 2) {
                 cubePending[fragment & 3] = {current.kb, part};
-                ProcessWideCubeStep<0>(r, cubePending, fragment, true, qTile, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<0>(r, cubePending, fragment, true, k8, v8, mxScale, mxCache, p, current.count);
                 cubePending[(fragment + 1) & 3] = {current.kb, part + 1};
-                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, qTile, k8, v8, mxScale, mxCache, p, current.count);
+                ProcessWideCubeStep<1>(r, cubePending, fragment + 1, true, k8, v8, mxScale, mxCache, p, current.count);
             }
         } else {
             for (uint32_t step = 0; step < current.count; ++step, fragment += 2) {
@@ -209,7 +208,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
                     }
                 }
                 const bool first = step == 0, last = step + 1 == current.count;
-                vector.SelectStreamQuery(current.ordinal, current.qb, current.qstart, first);
+                vector.SelectStreamQuery(current.ordinal, current.b, current.h, current.qstart, first);
                 const uint64_t nextScale = WideScaleAhead<CAUSAL>(p, current, step + 2, totalTasks);
                 vector.template SoftmaxWide<CAUSAL>(step, current.count, current.qstart,
                                                     group, nextScale);
@@ -221,9 +220,9 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         }
     }
     if ASCEND_IS_AIC {
-        ProcessWideCubeStep<0>(r, cubePending, fragment, false, nullptr, k8, v8, mxScale, mxCache, p, 0);
-        ProcessWideCubeStep<1>(r, cubePending, fragment + 1, false, nullptr, k8, v8, mxScale, mxCache, p, 0);
-        ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, nullptr, k8, v8, mxScale, mxCache, p, 0, false);
+        ProcessWideCubeStep<0>(r, cubePending, fragment, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<1>(r, cubePending, fragment + 1, false, k8, v8, mxScale, mxCache, p, 0);
+        ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, k8, v8, mxScale, mxCache, p, 0, false);
     } else {
         const uint64_t groups = fragment / 2;
         while (retired < groups)
