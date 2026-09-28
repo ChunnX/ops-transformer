@@ -37,15 +37,14 @@ __simd_callee__ inline void PackFixedScaleBlock(__ubuf__ float *input, __ubuf__ 
                                                 uint32_t valid)
 {
     using namespace AscendC::MicroAPI;
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto full = CreateMask<float, MaskPattern::ALL>();
     auto validMask = UpdateMask<float>(valid);
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     RegTensor<float> x, f, zero;
     RegTensor<half> h;
+    Duplicate(zero, 0.f);
     LoadAlign(x, input);
     LoadAlign(f, factor);
-    Duplicate(zero, 0.f);
     Mul(x, x, f, full);
     Select(x, x, zero, validMask);
     Cast<half, float, cast>(h, x, full);

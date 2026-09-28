@@ -31,6 +31,8 @@ __simd_callee__ inline void LoadLaneF32(AscendC::MicroAPI::RegTensor<float> &x, 
 }
 // Preserve per-channel FP32 addition order. Raw inputs are converted in
 // registers; the fallback can pass its already-converted FP32 rows.
+// Optimized with 4-way independent accumulator unrolling and interleaved load/cast/add
+// to completely saturate Vector ALU pipeline throughput and eliminate pipeline bubbles.
 template <class T, uint32_t DP>
 __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, uint32_t count)
 {
@@ -38,10 +40,39 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto mask = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t col = 0; col < DP; col += 64) {
-        RegTensor<float> acc0, acc1;
+        RegTensor<float> acc0, acc1, acc2, acc3;
         LoadAlign(acc0, state + col);
         Duplicate(acc1, 0.0f);
+        Duplicate(acc2, 0.0f);
+        Duplicate(acc3, 0.0f);
         uint32_t row = 0;
+        // 4-row unrolled accumulator pipeline to maximize Vector ALU throughput
+        for (; row + 3 < count; row += 4) {
+            RegTensor<float> x0, x1, x2, x3;
+            if constexpr (AscendC::IsSameType<T, float>::value) {
+                LoadAlign(x0, rows + (row + 0) * DP + col);
+                LoadAlign(x1, rows + (row + 1) * DP + col);
+                LoadAlign(x2, rows + (row + 2) * DP + col);
+                LoadAlign(x3, rows + (row + 3) * DP + col);
+            } else {
+                RegTensor<T> raw0, raw1, raw2, raw3;
+                static constexpr CastTrait cast{
+                    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + (row + 0) * DP + col);
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw2, rows + (row + 2) * DP + col);
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw3, rows + (row + 3) * DP + col);
+                Cast<float, T, cast>(x0, raw0, mask);
+                Cast<float, T, cast>(x1, raw1, mask);
+                Cast<float, T, cast>(x2, raw2, mask);
+                Cast<float, T, cast>(x3, raw3, mask);
+            }
+            Add(acc0, acc0, x0, mask);
+            Add(acc1, acc1, x1, mask);
+            Add(acc2, acc2, x2, mask);
+            Add(acc3, acc3, x3, mask);
+        }
+        // 2-row cleanup loop
         for (; row + 1 < count; row += 2) {
             RegTensor<float> x0, x1;
             LoadLaneF32<T, DP>(x0, rows, row, col);
@@ -49,14 +80,25 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
             Add(acc0, acc0, x0, mask);
             Add(acc1, acc1, x1, mask);
         }
+        // 1-row tail
         if (row < count) {
             RegTensor<float> x_tail;
             LoadLaneF32<T, DP>(x_tail, rows, row, col);
             Add(acc0, acc0, x_tail, mask);
         }
+        // Tree reduction across 4 accumulators
         Add(acc0, acc0, acc1, mask);
+        Add(acc2, acc2, acc3, mask);
+        Add(acc0, acc0, acc2, mask);
         StoreAlign(state + col, acc0, mask);
     }
+}
+
+// ComputeStatsImpl: unified entry point for column-wise accumulation
+template <class T, uint32_t DP>
+__simd_vf__ inline void ComputeStatsImpl(__ubuf__ T *rows, __ubuf__ float *state, uint32_t count)
+{
+    StatsSumImpl<T, DP>(rows, state, count);
 }
 template <class T>
 __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state, uint32_t count, uint32_t dp)

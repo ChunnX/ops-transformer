@@ -21,7 +21,7 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto full = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> a, b, ma, mb, ab, bb, m, zero, one, invDivisor;
+    RegTensor<float> ma, mb, zero, one, invDivisor;
     Duplicate(zero, 0.0f);
     Duplicate(one, 1.0f);
     Duplicate(invDivisor, INV_INT8_MAX);
@@ -32,29 +32,48 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     }
     auto dst = scales;
     UnalignReg compact;
-    for (uint16_t row = 0; row < 64; ++row) {
-        LoadAlign(a, x + row * DP);
-        if constexpr (SMOOTH)
-            Sub(a, a, ma, full);
-        Abs(ab, a, full);
-        if constexpr (SMOOTH)
-            StoreAlign(x + row * DP, a, full);
-        if constexpr (DP == 128) {
-            LoadAlign(b, x + row * DP + 64);
-            if constexpr (SMOOTH)
-                Sub(b, b, mb, full);
-            Abs(bb, b, full);
-            Max(ab, ab, bb, full);
-            if constexpr (SMOOTH)
-                StoreAlign(x + row * DP + 64, b, full);
+    // 2-row interleaved reduction pipeline hiding RAW dependency latency
+    for (uint16_t row = 0; row < 64; row += 2) {
+        RegTensor<float> a0, a1, ab0, ab1, m0, m1;
+        LoadAlign(a0, x + row * DP);
+        LoadAlign(a1, x + (row + 1) * DP);
+        if constexpr (SMOOTH) {
+            Sub(a0, a0, ma, full);
+            Sub(a1, a1, ma, full);
         }
-        ReduceMax(m, ab, full);
-        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m, compact, 1);
+        Abs(ab0, a0, full);
+        Abs(ab1, a1, full);
+        if constexpr (SMOOTH) {
+            StoreAlign(x + row * DP, a0, full);
+            StoreAlign(x + (row + 1) * DP, a1, full);
+        }
+        if constexpr (DP == 128) {
+            RegTensor<float> b0, b1, bb0, bb1;
+            LoadAlign(b0, x + row * DP + 64);
+            LoadAlign(b1, x + (row + 1) * DP + 64);
+            if constexpr (SMOOTH) {
+                Sub(b0, b0, mb, full);
+                Sub(b1, b1, mb, full);
+            }
+            Abs(bb0, b0, full);
+            Abs(bb1, b1, full);
+            Max(ab0, ab0, bb0, full);
+            Max(ab1, ab1, bb1, full);
+            if constexpr (SMOOTH) {
+                StoreAlign(x + row * DP + 64, b0, full);
+                StoreAlign(x + (row + 1) * DP + 64, b1, full);
+            }
+        }
+        ReduceMax(m0, ab0, full);
+        ReduceMax(m1, ab1, full);
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m0, compact, 1);
+        StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(dst, m1, compact, 1);
     }
     StoreUnAlignPost(dst, compact, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // All 64 row maxima fit in one FP32 register. Form token scales together
     // with the same division and zero-row rule as the scalar-row schedule.
+    RegTensor<float> m;
     LoadAlign(m, scales);
     Mul(m, m, invDivisor, full);
     MaskReg positive;
@@ -72,18 +91,36 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
         RegTensor<float> m0, m1;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(m0, inverseScales + row);
         LoadAlign<float, LoadDist::DIST_BRC_B32>(m1, inverseScales + row + 1);
-#pragma unroll
-        for (uint16_t col = 0; col < DP; col += 64) {
+        if constexpr (DP == 128) {
+            RegTensor<float> a0_0, a0_1, a1_0, a1_1;
+            RegTensor<int32_t> p0_0, p0_1, p1_0, p1_1;
+            LoadAlign(a0_0, x + row * DP);
+            LoadAlign(a0_1, x + row * DP + 64);
+            LoadAlign(a1_0, x + (row + 1) * DP);
+            LoadAlign(a1_1, x + (row + 1) * DP + 64);
+            Mul(a0_0, a0_0, m0, full);
+            Mul(a0_1, a0_1, m0, full);
+            Mul(a1_0, a1_0, m1, full);
+            Mul(a1_1, a1_1, m1, full);
+            Cast<int32_t, float, trait>(p0_0, a0_0, full);
+            Cast<int32_t, float, trait>(p0_1, a0_1, full);
+            Cast<int32_t, float, trait>(p1_0, a1_0, full);
+            Cast<int32_t, float, trait>(p1_1, a1_1, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP, (RegTensor<int8_t> &)p0_0, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + 64, (RegTensor<int8_t> &)p0_1, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP, (RegTensor<int8_t> &)p1_0, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP + 64, (RegTensor<int8_t> &)p1_1, full);
+        } else {
             RegTensor<float> a0, a1;
-            RegTensor<int32_t> packed0, packed1;
-            LoadAlign(a0, x + row * DP + col);
-            LoadAlign(a1, x + (row + 1) * DP + col);
+            RegTensor<int32_t> p0, p1;
+            LoadAlign(a0, x + row * DP);
+            LoadAlign(a1, x + (row + 1) * DP);
             Mul(a0, a0, m0, full);
             Mul(a1, a1, m1, full);
-            Cast<int32_t, float, trait>(packed0, a0, full);
-            Cast<int32_t, float, trait>(packed1, a1, full);
-            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + col, (RegTensor<int8_t> &)packed0, full);
-            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP + col, (RegTensor<int8_t> &)packed1, full);
+            Cast<int32_t, float, trait>(p0, a0, full);
+            Cast<int32_t, float, trait>(p1, a1, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP, (RegTensor<int8_t> &)p0, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP, (RegTensor<int8_t> &)p1, full);
         }
     }
     PackFixedScaleBlock(scales, halfScales, factor, valid);
@@ -140,6 +177,29 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     static_assert(2 * SLOT_BYTES + 512 <= 248 * 1024, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
     FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), p.smScale);
+    __ubuf__ float *factorPtr[2] = {(__ubuf__ float *)factors[0].GetPhyAddr(),
+                                   (__ubuf__ float *)factors[64].GetPhyAddr()};
+
+    // Pre-allocate slot buffers to eliminate per-iteration UB address resolution overhead
+    LocalTensor<T> input[2], vInput[2];
+    LocalTensor<float> x[2], mu[2], vs[2], scales[2], inverseScales[2];
+    LocalTensor<int8_t> out[2];
+    LocalTensor<float8_e4m3_t> fp8[2];
+    LocalTensor<half> halfScales[2];
+    for (uint32_t s = 0; s < 2; ++s) {
+        const uint32_t b = s * SLOT_BYTES;
+        input[s] = r.ubBuf.template GetBufferByByte<T>(b);
+        vInput[s] = r.ubBuf.template GetBufferByByte<T>(b + V_INPUT);
+        x[s] = r.ubBuf.template GetBufferByByte<float>(b + FLOAT_INPUT);
+        mu[s] = r.ubBuf.template GetBufferByByte<float>(b + MEAN);
+        vs[s] = r.ubBuf.template GetBufferByByte<float>(b + MX_SCALE);
+        out[s] = r.ubBuf.template GetBufferByByte<int8_t>(b + QK_OUTPUT);
+        fp8[s] = r.ubBuf.template GetBufferByByte<float8_e4m3_t>(b + V_OUTPUT);
+        scales[s] = r.ubBuf.template GetBufferByByte<float>(b + RAW_SCALE);
+        halfScales[s] = r.ubBuf.template GetBufferByByte<half>(b + HALF_SCALE);
+        inverseScales[s] = r.ubBuf.template GetBufferByByte<float>(b + INVERSE_SCALE);
+    }
+
     const uint64_t nq = uint64_t(p.b) * p.hq * p.qp / 64;
     const uint64_t nk = uint64_t(p.b) * p.hk * p.kp / 64;
     const bool grouped = UseDieGroups(p);
@@ -161,7 +221,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         // consume this slot's Vector release independently of the MTE3 pipe;
         // the latter only reads the disjoint output regions of this slot.
         if (iteration < iterations) {
-            const uint32_t slot = iteration & 1, base = slot * SLOT_BYTES;
+            const uint32_t slot = iteration & 1;
             const uint64_t task = core + iteration * cores;
             const bool isq = task < localNq;
             const uint64_t idx = (isq ? group * localNq + task : group * localNk + task - localNq) * 64;
@@ -171,60 +231,50 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
             pending[slot] = {idx, isq, valid};
             WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(1 + slot));
             if (valid)
-                DataCopy(r.ubBuf.GetBufferByByte<T>(base), (isq ? qg : kg)[Offset(isq ? p.qs : p.ks, b, h, token)],
-                         64 * p.dp);
+                DataCopy(input[slot], (isq ? qg : kg)[Offset(isq ? p.qs : p.ks, b, h, token)], 64 * p.dp);
             if (!isq) {
                 if (valid)
-                    DataCopy(r.ubBuf.GetBufferByByte<T>(base + V_INPUT), vg[Offset(p.vs, b, h, token)], 64 * p.dp);
-                DataCopy(r.ubBuf.GetBufferByByte<float>(base + MEAN), mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
+                    DataCopy(vInput[slot], vg[Offset(p.vs, b, h, token)], 64 * p.dp);
+                DataCopy(mu[slot], mg[(uint64_t(b) * p.hk + h) * p.dp], p.dp);
             }
             SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(1 + slot));
         }
         if (iteration == 0)
             continue;
-        const uint32_t slot = (iteration - 1) & 1, base = slot * SLOT_BYTES;
+        const uint32_t slot = (iteration - 1) & 1;
         const event_t event = static_cast<event_t>(1 + slot);
         const BatchInfo info = pending[slot];
         WaitFlag<HardEvent::MTE2_V>(event);
         if (iteration > 2)
             WaitFlag<HardEvent::MTE3_V>(event);
-        auto input = r.ubBuf.GetBufferByByte<T>(base);
-        auto x = r.ubBuf.GetBufferByByte<float>(base + FLOAT_INPUT);
-        auto mu = r.ubBuf.GetBufferByByte<float>(base + MEAN);
-        auto vs = r.ubBuf.GetBufferByByte<float>(base + MX_SCALE);
-        auto out = r.ubBuf.GetBufferByByte<int8_t>(base + QK_OUTPUT);
-        auto fp8 = r.ubBuf.GetBufferByByte<float8_e4m3_t>(base + V_OUTPUT);
-        auto scales = r.ubBuf.GetBufferByByte<float>(base + RAW_SCALE);
-        auto halfScales = r.ubBuf.GetBufferByByte<half>(base + HALF_SCALE);
-        auto inverseScales = r.ubBuf.GetBufferByByte<float>(base + INVERSE_SCALE);
         if (info.valid < 64) {
-            Duplicate(input[info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
+            Duplicate(input[slot][info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
             PipeBarrier<PIPE_V>();
         }
-        Cast(x, input, RoundMode::CAST_NONE, 64 * p.dp);
+        Cast(x[slot], input[slot], RoundMode::CAST_NONE, 64 * p.dp);
         PipeBarrier<PIPE_V>();
-        QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)mu.GetPhyAddr(),
-                    (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
-                    (__ubuf__ half *)halfScales.GetPhyAddr(), (__ubuf__ float *)factors[info.isq ? 0 : 64].GetPhyAddr(),
-                    (__ubuf__ float *)inverseScales.GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
+        QuantRowsVF((__ubuf__ float *)x[slot].GetPhyAddr(), (__ubuf__ float *)mu[slot].GetPhyAddr(),
+                    (__ubuf__ float *)scales[slot].GetPhyAddr(), (__ubuf__ int8_t *)out[slot].GetPhyAddr(),
+                    (__ubuf__ half *)halfScales[slot].GetPhyAddr(), factorPtr[info.isq ? 0 : 1],
+                    (__ubuf__ float *)inverseScales[slot].GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
                     info.valid);
         if (!info.isq) {
             PipeBarrier<PIPE_V>();
-            auto vInput = r.ubBuf.GetBufferByByte<T>(base + V_INPUT);
             if (info.valid < 64)
-                Duplicate(vInput[info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
+                Duplicate(vInput[slot][info.valid * p.dp], T(0), (64 - info.valid) * p.dp);
             PipeBarrier<PIPE_V>();
-            QuantVRowsMxVF<T, PERMUTE_V>((__ubuf__ T *)vInput.GetPhyAddr(), (__ubuf__ T *)x.GetPhyAddr(),
-                                         (__ubuf__ uint16_t *)vs.GetPhyAddr(),
-                                         (__ubuf__ float8_e4m3_t *)fp8.GetPhyAddr(), p.dp);
+            QuantVRowsMxVF<T, PERMUTE_V>((__ubuf__ T *)vInput[slot].GetPhyAddr(),
+                                         (__ubuf__ T *)x[slot].GetPhyAddr(),
+                                         (__ubuf__ uint16_t *)vs[slot].GetPhyAddr(),
+                                         (__ubuf__ float8_e4m3_t *)fp8[slot].GetPhyAddr(), p.dp);
         }
         SetFlag<HardEvent::V_MTE2>(event);
         Sync<HardEvent::V_MTE3>();
-        DataCopy((info.isq ? qo : ko)[info.idx * p.dp], out, 64 * p.dp);
-        DataCopy((info.isq ? qsg : ksg)[info.idx], halfScales, 64);
+        DataCopy((info.isq ? qo : ko)[info.idx * p.dp], out[slot], 64 * p.dp);
+        DataCopy((info.isq ? qsg : ksg)[info.idx], halfScales[slot], 64);
         if (!info.isq) {
-            DataCopy(vo[info.idx * p.dp], fp8, 64 * p.dp);
-            DataCopy(mxg[info.idx / 64 * p.dp], vs.ReinterpretCast<uint16_t>(), p.dp);
+            DataCopy(vo[info.idx * p.dp], fp8[slot], 64 * p.dp);
+            DataCopy(mxg[info.idx / 64 * p.dp], vs[slot].ReinterpretCast<uint16_t>(), p.dp);
         }
         SetFlag<HardEvent::MTE3_V>(event);
     }

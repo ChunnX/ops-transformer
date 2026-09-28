@@ -54,7 +54,10 @@ __aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint3
 }
 
 // Newton-Raphson Fast Reciprocal (approx 3 cycles: initial estimate + 2 iterations)
-// Eliminates 32-cycle hardware vector division (vdiv), achieving full IEEE-754 FP32 precision.
+// Eliminates the 32-cycle hardware vector division (vdiv). The magic-number seed's
+// relative error swings with the binade (worst ~2^-4), so after two iterations the
+// envelope is e0^4 ~ 2^-16 -- far below the FP16 rounding (2^-11) and P/V
+// quantization noise (~2^-5) it feeds in normalization and token scales.
 __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
                                            AscendC::MicroAPI::RegTensor<float> &src,
                                            AscendC::MicroAPI::MaskReg &mask)

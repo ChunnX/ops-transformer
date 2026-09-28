@@ -111,6 +111,12 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
+内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（e0^4 包络 2^-16）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 恒等式（含 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 不变性（<= 1e-12）：
+
+```bash
+g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && ./build/numeric_error_test
+```
+
 接入结构、安装与图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
 
 ## 测试说明
