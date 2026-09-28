@@ -582,16 +582,26 @@ private:
                 PipeBarrier<PIPE_V>();
                 sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
+                LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
+                DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+                bufPhiFp32_.EnQue(curPhi0);
                 for (uint32_t o = 0; o < N_MAX; ++o) {
-                    LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
-                    const uint64_t phiBaseOffset = (uint64_t)o * phiCols_ + tOff;
-                    DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
-                    bufPhiFp32_.EnQue(phi0);
-                    phi0 = bufPhiFp32_.DeQue<float>();
-                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi0[dimTile_], tD);
+                    LocalTensor<float> nextPhi0;
+                    if (o + 1U < N_MAX) {
+                        nextPhi0 = bufPhiFp32_.AllocTensor<float>();
+                        const uint64_t nextPhiBaseOffset = (uint64_t)(o + 1U) * phiCols_ + tOff;
+                        DataCopyPad(nextPhi0, phiGm_[nextPhiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
+                        bufPhiFp32_.EnQue(nextPhi0);
+                    }
+                    curPhi0 = bufPhiFp32_.DeQue<float>();
+                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_],
+                                                 curPhi0[dimTile_], tD);
                     PipeBarrier<PIPE_V>();
-                    bufPhiFp32_.FreeTensor(phi0);
+                    bufPhiFp32_.FreeTensor(curPhi0);
                     dotHalf[half][o] += ReduceSumPrecise(out, tD);
+                    if (o + 1U < N_MAX) {
+                        curPhi0 = nextPhi0;
+                    }
                 }
             }
             return;
