@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/tilingdata_base.h>
@@ -24,7 +25,6 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "err/ops_err.h"
 #include "log/log.h"
-#include <type_traits>
 
 namespace optiling {
 namespace sfag {

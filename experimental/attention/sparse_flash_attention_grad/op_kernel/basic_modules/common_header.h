@@ -24,6 +24,8 @@ namespace SFAG_BASIC {
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
 constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
+constexpr static uint64_t PING_PONG_BUFFER = 2;
+constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -69,12 +71,29 @@ struct RunInfo {
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;
     int64_t selectedKGmOffset;
-    int64_t selectedVGmOffset;
     int64_t lastBlockSize;
     bool isLastBasicBlock;
     bool valid = false;
-    bool s2LessThanTopkTotal = false;
+    bool isSmallS2 = false;
     bool noReload = false;
+    event_t gatherMte2WaitMte3;
+    event_t gatherMte2WaitMte3Pong;
+    event_t scatterVWaitMte3;
+    event_t scatterVWaitMte3Pong;
+    event_t scatterTmpKMte2WaitV;
+    event_t scatterTmpVMte2WaitV;
+    event_t scatterTmpKMte2WaitVPong;
+    event_t scatterTmpVMte2WaitVPong;
+    event_t processMte2WaitV;
+};
+
+struct Nz2NdInfo {
+    int64_t ndFirstAxisRealSize = 0;
+    int64_t ndFirstAxisBaseSize = 0;
+    int64_t ndFirstAxisLoopSize = 0;
+    int64_t ndLastAxis = 0;
+    int64_t loopIdx = 0;
+    int64_t vecCoreOffset = 0;
 };
 
 /////////////////////////////////////////////////////

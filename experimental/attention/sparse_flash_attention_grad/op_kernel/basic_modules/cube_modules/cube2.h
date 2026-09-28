@@ -21,9 +21,11 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube2ProcessSp
     const int64_t dyGmOffset, const int64_t valueGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
     const int32_t blkCntOffset, const int32_t mmPingPongIdx, const int32_t lastBlockSize, const bool isLastBasicBlock)
 {
-    uint32_t dLoopTimes = (dimDqk + 127) / K_SPLIT_SIZE;
+    // dp contracts over the value/dy width. The gathered key row may be wider
+    // (e.g. no-RoPE K-split has Dqk=576 and Dv=512); keep dimDqk as its GM stride.
+    uint32_t dLoopTimes = (dimDv + 127) / K_SPLIT_SIZE;
     uint32_t perLoopDSize = K_SPLIT_SIZE;
-    uint32_t tailLoopDSize = dimDqk - (dLoopTimes - 1) * perLoopDSize;
+    uint32_t tailLoopDSize = dimDv - (dLoopTimes - 1) * perLoopDSize;
     uint32_t blockOffset = N_SPLIT_SIZE / selectedBlockSize;
 
     MMParam mmParam;
@@ -49,13 +51,13 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube2ProcessSp
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             mmParam.isOutKFisrt = dIdx == 0;
             mmParam.isFixOut = dIdx == dLoopTimes - 1;
+            mmParam.singleK = mmParam.isFixOut ? tailLoopDSize : perLoopDSize;
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
 
             currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
-            currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * K_SPLIT_SIZE;
-
-            CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            currentVOffset = valueGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
+            CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, mmParam.singleK, dimDqk);
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_dy_tensor, l1_v_tensor, aL0TensorPingPong, bL0TensorPingPong,
@@ -74,13 +76,15 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube2ProcessDe
                                                                                     const RunInfo &runInfo)
 {
     const int64_t dyGmOffset = runInfo.dyGmOffset;
-    const int64_t valueGmOffset = runInfo.valueGmOffset;
+    const int64_t keyGmOffset = runInfo.keyGmOffset;
     const int64_t indicesGmOffset = runInfo.indicesGmOffset;
     const int64_t outGmOffset = runInfo.mm12GmOffset;
 
-    uint32_t dLoopTimes = (dimDqk + 127) / K_SPLIT_SIZE;
+    // Match sparse v=k semantics: V is the first Dv columns of each key row.
+    // Dqk remains the row stride, including the no-RoPE Dqk=576, Dv=512 case.
+    uint32_t dLoopTimes = (dimDv + 127) / K_SPLIT_SIZE;
     uint32_t perLoopDSize = K_SPLIT_SIZE;
-    uint32_t tailLoopDSize = dimDqk - (dLoopTimes - 1) * perLoopDSize;
+    uint32_t tailLoopDSize = dimDv - (dLoopTimes - 1) * perLoopDSize;
     uint32_t blockOffset = N_SPLIT_SIZE / selectedBlockSize;
 
     MMParam mmParam;
@@ -107,15 +111,16 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube2ProcessDe
         for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
             mmParam.isOutKFisrt = dIdx == 0;
             mmParam.isFixOut = dIdx == dLoopTimes - 1;
+            mmParam.singleK = mmParam.isFixOut ? tailLoopDSize : perLoopDSize;
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
 
             currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
-            currentVOffset = valueGmOffset + (blkCntOffset * dimN2 + nIdx - blkCntOffset) * selectedBlockSizeDqk +
-                             dIdx * K_SPLIT_SIZE;
+            currentVOffset =
+                keyGmOffset + (blkCntOffset * dimN2 + nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
 
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
 
-            CopyGmToL1(l1_v_tensor, valueGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDqk);
+            CopyGmToL1(l1_v_tensor, keyGm[currentVOffset], mmParam.singleN, mmParam.singleK, dimDqk);
 
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
@@ -134,7 +139,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube2Process(
     const int64_t dyGmOffset, const int64_t valueGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
     const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo)
 {
-    if (!runInfo.s2LessThanTopkTotal) {
+    if (!runInfo.isSmallS2) {
         cube2ProcessSparse(dyGmOffset, valueGmOffset, indicesGmOffset, outGmOffset, blkCntOffset, mmPingPongIdx,
                            runInfo.lastBlockSize, runInfo.isLastBasicBlock);
     } else {

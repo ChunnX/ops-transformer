@@ -12,7 +12,7 @@
  * \file sparse_flash_attention_grad.cpp
  * \brief
  */
-#include "sparse_flash_attention_grad_bs1_basic.h"
+#include "sparse_flash_attention_grad_ksplit_det.h"
 #include "sparse_flash_attention_grad_post.h"
 #include "kernel_operator.h"
 using namespace AscendC;
@@ -21,13 +21,14 @@ constexpr static uint32_t ND = 0;
 constexpr static uint32_t NZ = 1;
 constexpr static uint32_t TND = 3;
 
-#define INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND) \
+// 切 K 确定性路径（2000 系列，仅 TND）
+#define INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE) \
     do { \
         __gm__ uint8_t *user = GetUserWorkspace(workspace); \
         GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, tiling_data_in, tiling_data); \
         const SparseFlashAttentionGradBasicTilingData *__restrict tilingData = &tiling_data_in; \
-        SFAG_BASIC::SelectedAttentionGradBasic<SFAG_BASIC::SFAG_TYPE< \
-            SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, IS_BSND>> \
+        SFAG_BASIC::SelectedAttentionGradKsplitDet<SFAG_BASIC::SFAG_TYPE< \
+            SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, false>> \
             op; \
         op.Process(query, key, value, out, d_out, softmax_max, softmax_sum, sparse_indices, cur_seq_qlen, \
                    cur_seq_kvlen, query_rope, key_rope, dq, dk, dv, dq_rope, dk_rope, user, tilingData); \
@@ -42,57 +43,33 @@ extern "C" __global__ __aicore__ void sparse_flash_attention_grad(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-    if (TILING_KEY_IS(1000)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, false, false);
+    if (TILING_KEY_IS(2000)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(half, false, false);
         return;
-    } else if (TILING_KEY_IS(1100)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, false, false);
+    } else if (TILING_KEY_IS(2100)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(half, true, false);
         return;
-    } else if (TILING_KEY_IS(1010)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, true, false);
+    } else if (TILING_KEY_IS(2010)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(half, false, true);
         return;
-    } else if (TILING_KEY_IS(1110)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, true, false);
-        return;
-    } else if (TILING_KEY_IS(1001)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, false, true);
-        return;
-    } else if (TILING_KEY_IS(1101)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, false, true);
-        return;
-    } else if (TILING_KEY_IS(1011)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, true, true);
-        return;
-    } else if (TILING_KEY_IS(1111)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, true, true);
+    } else if (TILING_KEY_IS(2110)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(half, true, true);
         return;
     }
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16)
-    if (TILING_KEY_IS(1000)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, false, false);
+    if (TILING_KEY_IS(2000)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(bfloat16_t, false, false);
         return;
-    } else if (TILING_KEY_IS(1100)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, false, false);
+    } else if (TILING_KEY_IS(2100)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(bfloat16_t, true, false);
         return;
-    } else if (TILING_KEY_IS(1010)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, true, false);
+    } else if (TILING_KEY_IS(2010)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(bfloat16_t, false, true);
         return;
-    } else if (TILING_KEY_IS(1110)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, true, false);
-        return;
-    } else if (TILING_KEY_IS(1001)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, false, true);
-        return;
-    } else if (TILING_KEY_IS(1101)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, false, true);
-        return;
-    } else if (TILING_KEY_IS(1011)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, true, true);
-        return;
-    } else if (TILING_KEY_IS(1111)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, true, true);
+    } else if (TILING_KEY_IS(2110)) {
+        INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(bfloat16_t, true, true);
         return;
     }
 #endif

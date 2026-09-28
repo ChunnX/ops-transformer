@@ -46,6 +46,28 @@ public:
                                                                          const int32_t blkCntOffset,
                                                                          const int32_t mmPingPongIdx);
 
+    // ksplit 确定性路径专用（仅声明，定义在 cube_modules/cube3_ksplit.h；不影响既有路径）
+    __aicore__ inline __attribute__((always_inline)) void cube345ProcessKsplit(const RunInfo &runInfo,
+                                                                               const int32_t blkCntOffset,
+                                                                               const int32_t mmPingPongIdx,
+                                                                               const GlobalTensor<float> &dqPartialGm);
+    __aicore__ inline __attribute__((always_inline)) void cube3ProcessKsplit(
+        const int64_t dsGmOffset, const int64_t keyGmOffset, const int32_t blkCntOffset, const int64_t lastBlockSize,
+        const bool isLastBasicBlock, const RunInfo &runInfo, const GlobalTensor<float> &dqPartialGm);
+    __aicore__ inline __attribute__((always_inline)) void cube3ProcessKsplitSparse(
+        const int64_t dsGmOffset, const int64_t keyGmOffset, const int32_t blkCntOffset, const int64_t lastBlockSize,
+        const bool isLastBasicBlock, const GlobalTensor<float> &dqPartialGm);
+    __aicore__ inline __attribute__((always_inline)) void cube3ProcessKsplitDense(
+        const int32_t blkCntOffset, const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo &runInfo,
+        const GlobalTensor<float> &dqPartialGm);
+
+    // ksplit 确定性路径专用：scatter 区槽数从 PING_PONG_BUFFER(2) 扩到 scatterSlotNum(3) 后，
+    // 重定位 mm5Res 基址（InitGMBuffer 按 2 槽布局计算；host 已按 3 槽分配，仅 ksplit 路径调用）
+    __aicore__ inline void RepointMm5ResBase(const int64_t scatterSlotNum)
+    {
+        mm5ResWorkspaceGm = mm4ResWorkspaceGm[scatterSlotNum * MAX_CORE_NUM * scatterTokenCapacity * dimDTotal];
+    }
+
 private:
     __aicore__ inline __attribute__((always_inline)) void cube1Process(
         const int64_t queryGmOffset, const int64_t queryRopeGmOffset, const int64_t keyGmOffset,
@@ -90,27 +112,10 @@ private:
                                                                             const bool isLastBasicBlock,
                                                                             const RunInfo &runInfo);
 
-    __aicore__ inline __attribute__((always_inline)) void cube4ProcessSparse(
-        const int64_t dsGmOffset, const int64_t queryGmOffset, const int64_t queryRopeGmOffset,
-        const int64_t indicesGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset,
-        const int32_t mmPingPongIdx, const RunInfo &runInfo);
-
-    __aicore__ inline __attribute__((always_inline)) void cube4ProcessDense(const int32_t blkCntOffset,
-                                                                            const int32_t mmPingPongIdx,
-                                                                            const RunInfo &runInfo);
-
     __aicore__ inline __attribute__((always_inline)) void cube4Process(
         const int64_t dsGmOffset, const int64_t queryGmOffset, const int64_t queryRopeGmOffset,
         const int64_t indicesGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset,
         const int32_t mmPingPongIdx, const RunInfo &runInfo);
-
-    __aicore__ inline __attribute__((always_inline)) void cube5ProcessSparse(
-        const int64_t pGmOffset, const int64_t dyGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
-        const int32_t blkCntOffset, const int32_t mmPingPongIdx, const RunInfo &runInfo);
-
-    __aicore__ inline __attribute__((always_inline)) void cube5ProcessDense(const int32_t blkCntOffset,
-                                                                            const int32_t mmPingPongIdx,
-                                                                            const RunInfo &runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube5Process(
         const int64_t pGmOffset, const int64_t dyGmOffset, const int64_t indicesGmOffset, const int64_t outGmOffset,
@@ -150,7 +155,6 @@ private:
     GlobalTensor<T1> dvGm;
     // workspace
     GlobalTensor<T1> selectedKWorkspaceGm;
-    GlobalTensor<T1> selectedVWorkspaceGm;
     GlobalTensor<float> mm1WorkspaceGm;
     GlobalTensor<float> mm2WorkspaceGm;
     GlobalTensor<T1> pWorkspaceGm;
@@ -158,15 +162,14 @@ private:
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
     GlobalTensor<float> dvWorkspaceGm;
-    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
-    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
+    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dk
+    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dv
     // workspace
-    uint32_t mm12WorkspaceLen;
+    uint64_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;
     int64_t selectedKWorkspaceLen;
-    int64_t selectedVWorkspaceLen;
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;                     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;                     // n方向切分
@@ -222,7 +225,9 @@ private:
     int64_t selectedBlockSizeDqk;
     int64_t selectedBlockSizeDrope;
     int64_t selectedBlockSizeDtotal;
+    int64_t scatterTokenCapacity;
     int64_t selectedS2;
+    bool enableOptimizedScatter{false};
     int32_t selectedCntOffset;
     int32_t processBS1ByCore;
     uint32_t usedCoreNum;
@@ -246,6 +251,7 @@ __aicore__ inline void CubeOp<SFAGT>::Init(GM_ADDR query, GM_ADDR key, GM_ADDR v
     dimDTotal = HAS_ROPE ? dimDqk + dimRope : dimDqk;
     selectedBlockCount = tilingData->opInfo.selectedBlockCount;
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
+    enableOptimizedScatter = tilingData->opInfo.enableOptimizedScatter;
     selectedS2 = selectedBlockCount * selectedBlockSize;
     dimGAlign = AlignTo<int64_t>(dimG, SIZE_16);
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
@@ -253,17 +259,20 @@ __aicore__ inline void CubeOp<SFAGT>::Init(GM_ADDR query, GM_ADDR key, GM_ADDR v
     dkWorkspaceLen = tilingData->opInfo.dkWorkspaceLen;
     dvWorkspaceLen = tilingData->opInfo.dvWorkspaceLen;
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
-    selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
     selectedBlockSizeDqk = selectedBlockSize * dimDqk;
     selectedBlockSizeDrope = selectedBlockSize * dimRope;
     selectedBlockSizeDtotal = selectedBlockSize * dimDTotal;
+    scatterTokenCapacity =
+        enableOptimizedScatter ? tilingData->splitCoreParams.singleN : selectedBlockCount * selectedBlockSize;
 
     usedCoreNum = tilingData->opInfo.usedCoreNum;
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
     pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
     AscendC::SetLoadDataPaddingValue<uint64_t>(0);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
     uint64_t config = 0x1;
     AscendC::SetNdParaImpl(config);
+#endif
 
     InitGMBuffer(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
                  query_rope, key_rope, workspace);
@@ -278,7 +287,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<SFAGT>::cube12Proce
     selectedCntOffset = runInfo.actualSelCntOffset;
     cube1Process(runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset,
                  runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx, runInfo);
-    cube2Process(runInfo.dyGmOffset, runInfo.selectedVGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset,
+    cube2Process(runInfo.dyGmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset,
                  blkCntOffset, mmPingPongIdx, runInfo);
 }
 
@@ -333,9 +342,6 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     // select
     int64_t selectedKAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedKWorkspaceLen / sizeof(T1);
     usedWorkspaceLen += selectedKWorkspaceLen * usedCoreNum;
-    int64_t selectedVAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedVWorkspaceLen / sizeof(T1);
-    usedWorkspaceLen += selectedVWorkspaceLen * usedCoreNum;
-
     int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
@@ -353,9 +359,10 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     // scatter add
+    uint64_t scatterBufferNum = enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
     int64_t mm4ResAddr = usedWorkspaceLen / sizeof(float);
-    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSizeDtotal * 2;
-    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * 2 * sizeof(float);
+    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * scatterTokenCapacity * dimDTotal * scatterBufferNum;
+    usedWorkspaceLen += MAX_CORE_NUM * scatterTokenCapacity * (dimDTotal + dimDv) * scatterBufferNum * sizeof(float);
 
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);
@@ -365,7 +372,6 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     dkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
     dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
-    selectedVWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedVAddr);
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
 }
@@ -415,6 +421,7 @@ __aicore__ inline void CubeOp<SFAGT>::InitLocalTensor()
 #include "./cube_modules/cube1.h"
 #include "./cube_modules/cube2.h"
 #include "./cube_modules/cube3.h"
+#include "./cube_modules/cube3_ksplit.h"
 #include "./cube_modules/cube4.h"
 #include "./cube_modules/cube5.h"
 } // namespace SFAG_BASIC

@@ -43,6 +43,7 @@ struct TempParams {
     int64_t ropeDim;
     bool ropeEnable = false;
     bool deterministic = false;
+    bool enableOptimizedScatter = false;
 };
 
 struct AiCoreParams {

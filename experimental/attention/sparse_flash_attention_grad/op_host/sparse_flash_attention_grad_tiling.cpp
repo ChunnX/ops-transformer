@@ -15,7 +15,11 @@
 
 #include "sparse_flash_attention_grad_tiling.h"
 #include <register/op_impl_registry.h>
+// #include "tiling/data_copy_transpose_tiling.h"
+// #include "tiling/tiling_templates_registry.h"
 #include "sparse_flash_attention_grad_tiling_bs1_basic.h"
+#include "err/ops_err.h"
+#include "log/log.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -52,6 +56,7 @@ ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingContext *context)
         return ret;
     }
     context->SetTilingKey(sfagTiling.GetTilingKey());
+    context->SetScheduleMode(1); // 1: batchmode模式
 
     return ge::GRAPH_SUCCESS;
 }
@@ -60,11 +65,11 @@ ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContex
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is null."), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE("SparseFlashAttentionGrad", "platformInfoPtr is null."),
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null."),
                 return ge::GRAPH_FAILED);
 
     auto compileInfoPtr = context->GetCompiledInfo<SparseFlashAttentionGradCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE("SparseFlashAttentionGrad", "compileInfoPtr is null."),
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is null."),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -77,7 +82,7 @@ ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContex
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0cSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2CacheSize);
 
-    OP_LOGI("SparseFlashAttentionGrad",
+    OP_LOGI(context->GetNodeName(),
             "parse TilingParseContext succ. aivNum:%u, aicNum:%u, "
             "ubSize:%lu, l1Size:%lu, l0aSize:%lu, l0bSize:%lu, l0cSize:%lu, l2CacheSize:%lu",
             compileInfoPtr->aivNum, compileInfoPtr->aicNum, compileInfoPtr->ubSize, compileInfoPtr->l1Size,
@@ -88,6 +93,6 @@ ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContex
 
 IMPL_OP(SparseFlashAttentionGrad)
     .Tiling(TilingSparseFlashAttentionGrad)
-    .TilingParse<SparseFlashAttentionGradCompileInfo>(TilingPrepareForSparseFlashAttentionGrad);
+    .TilingParse<SparseFlashAttentionGradCompileInfo>(TilingPrepareForSparseFlashAttentionGrad); // 向框架注册入口函数
 } // namespace sfag
 } // namespace optiling

@@ -53,9 +53,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube1ProcessSp
             current_l1_query_tensor = l1_query_tensor[dIdx * dimGAlign * perLoopDSize];
             l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
 
-            currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * K_SPLIT_SIZE;
+            currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
 
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDqk);
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_query_tensor, l1_key_tensor, aL0TensorPingPong,
                                   bL0TensorPingPong, mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_,
@@ -73,10 +73,17 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube1ProcessSp
         current_l1_query_tensor = l1_query_tensor[(dLoopTimes - 1) * dimGAlign * perLoopDSize];
         l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
 
-        currentKeyOffset =
-            keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + (dLoopTimes - 1) * K_SPLIT_SIZE;
-        int64_t srcDstride = HAS_ROPE ? tailLoopDSize : dimDTotal;
-        CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+        int64_t srcDstride;
+        if constexpr (HAS_ROPE) {
+            currentKeyOffset =
+                keyGmOffset + PER_LOOP_BLOCK_SIZE * dimDqk + (nIdx - blkCntOffset) * selectedBlockSizeDrope;
+            srcDstride = dimRope;
+        } else {
+            currentKeyOffset =
+                keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk + (dLoopTimes - 1) * K_SPLIT_SIZE;
+            srcDstride = dimDqk;
+        }
+        CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, srcDstride);
 
         MmadInnerWithSync<T1>(l0cTensor, current_l1_query_tensor, l1_key_tensor, aL0TensorPingPong, bL0TensorPingPong,
                               mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true,
@@ -173,7 +180,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube1Process(
     const int64_t indicesGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx,
     const RunInfo &runInfo)
 {
-    if (!runInfo.s2LessThanTopkTotal) {
+    if (!runInfo.isSmallS2) {
         cube1ProcessSparse(queryGmOffset, queryRopeGmOffset, selectedKGmOffset, indicesGmOffset, outGmOffset,
                            blkCntOffset, mmPingPongIdx, runInfo.lastBlockSize, runInfo.isLastBasicBlock);
     } else {

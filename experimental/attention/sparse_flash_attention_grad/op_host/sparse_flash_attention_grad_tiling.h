@@ -128,6 +128,12 @@ TILING_DATA_FIELD_DEF(int64_t, dvWorkspaceLen);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockCount);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(bool, deterministic);
+TILING_DATA_FIELD_DEF(bool, enableOptimizedScatter);
+// 切 K 确定性路径（2000 系列 key）扩展字段；旧 key 恒 0
+TILING_DATA_FIELD_DEF(uint32_t, kSplitChunkPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, kSplitLastChunk);
+TILING_DATA_FIELD_DEF(uint64_t, dqPartialWorkspaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, dqPartialWorkspaceLen);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGradBaseBasicParamsOp, SparseFlashAttentionGradBaseBasicParams)
 
@@ -149,4 +155,8 @@ REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_1001, SparseFlashAttentionGr
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_1101, SparseFlashAttentionGradBasicTilingData)
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_1011, SparseFlashAttentionGradBasicTilingData)
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_1111, SparseFlashAttentionGradBasicTilingData)
+REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_2000, SparseFlashAttentionGradBasicTilingData)
+REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_2100, SparseFlashAttentionGradBasicTilingData)
+REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_2010, SparseFlashAttentionGradBasicTilingData)
+REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGrad_2110, SparseFlashAttentionGradBasicTilingData)
 } // namespace optiling

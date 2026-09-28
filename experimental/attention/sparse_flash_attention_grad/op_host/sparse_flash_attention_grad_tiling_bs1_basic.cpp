@@ -14,6 +14,7 @@
  */
 
 #include "sparse_flash_attention_grad_tiling_bs1_basic.h"
+#include <algorithm>
 
 namespace optiling {
 namespace sfag {
@@ -24,6 +25,28 @@ constexpr uint32_t B16 = 2;
 constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
+constexpr uint32_t SCATTER_BUFFER_NUM = 3;
+constexpr uint64_t KERNEL_UB_SIZE = 191 * 1024;
+
+constexpr uint32_t KSPLIT_COMPUTE_CORE_NUM = 22;
+constexpr uint32_t KSPLIT_CHUNK_PER_CORE = 96;
+constexpr uint32_t KSPLIT_LAST_CHUNK = 32;
+constexpr uint32_t KSPLIT_USED_CORE_NUM = 24;
+// Scatter retires two windows after gather; partials use five slots.
+constexpr uint32_t KSPLIT_SCATTER_SLOT_NUM = 3;
+constexpr uint32_t KSPLIT_PARTIAL_SLOT_NUM = 5;
+
+// K-split is the only dispatch path. These are structural constraints, not
+// performance gates: neither deterministic nor the S2/S1 ratio selects a fallback.
+bool IsKsplitShapeSupported(const TempParams &params)
+{
+    return params.layout == static_cast<uint32_t>(InputLayout::TND) && params.n2 == 1 &&
+           params.selected_block_size == 1 && params.selected_block_count == 2048 && params.d2 == 512 &&
+           ((params.d == 512 && params.ropeDim == 64) || (params.d == 576 && params.ropeDim == 0)) && params.g > 0 &&
+           params.g <= 128 && params.g % 16 == 0 &&
+           (params.queryType == static_cast<uint32_t>(ge::DT_FLOAT16) ||
+            params.queryType == static_cast<uint32_t>(ge::DT_BF16));
+}
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
 {
@@ -32,7 +55,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
     */
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is nullptr."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->GetAttrs() == nullptr, OP_LOGE("SparseFlashAttentionGrad", "GetAttrs is nullptr."),
+    OP_CHECK_IF(context_->GetAttrs() == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrs is nullptr."),
                 return ge::GRAPH_FAILED);
 
     auto status = GetBaseShapeInfo();
@@ -40,7 +63,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
         return status;
     }
 
-    OP_LOGI("SparseFlashAttentionGrad",
+    OP_LOGI(context_->GetNodeName(),
             "SparseFlashAttentionGrad with shape b[%ld] n2[%ld] g[%ld] s1[%ld] s2[%ld] d[%ld] d2[%ld]!",
             tilingData.opInfo.get_B(), tilingData.opInfo.get_N2(), tilingData.opInfo.get_G(),
             tilingData.opInfo.get_S1(), tilingData.opInfo.get_S2(), tilingData.opInfo.get_D(),
@@ -54,7 +77,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetPlatformInfo()
     uint64_t l2CacheSize;
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseFlashAttentionGradCompileInfo *>(context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE("SparseFlashAttentionGrad", "compile_info is null."),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "compile_info is null."),
                     return ge::GRAPH_FAILED);
         aicoreParams_.blockDim = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
@@ -78,25 +101,25 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetPlatformInfo()
     }
 
     OP_CHECK_IF((aicoreParams_.blockDim == 0) || (aicoreParams_.aicNum == 0),
-                OP_LOGE("SparseFlashAttentionGrad", "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                OP_LOGE(context_->GetNodeName(), "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
                         aicoreParams_.blockDim, aicoreParams_.aicNum),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
-                OP_LOGE("SparseFlashAttentionGrad", "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 bool SparseFlashAttentionGradBasicTiling::IsCapable()
 {
-    OP_LOGI("SparseFlashAttentionGrad", "SparseFlashAttentionGrad basic template hit.");
+    OP_LOGI(context_->GetNodeName(), "SparseFlashAttentionGrad basic template hit.");
     return true;
 }
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::DoOpTiling()
 {
-    OP_LOGI("SparseFlashAttentionGrad", "SparseFlashAttentionGrad DoTiling start");
+    OP_LOGI(context_->GetNodeName(), "SparseFlashAttentionGrad DoTiling start");
 
     // Init
     tmpData.singleM = tilingData.opInfo.get_G();
@@ -105,6 +128,11 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoOpTiling()
     // setTilingData
     tilingData.splitCoreParams.set_singleM(tmpData.singleM);
     tilingData.splitCoreParams.set_singleN(tmpData.singleN);
+
+    tilingData.opInfo.set_kSplitChunkPerCore(KSPLIT_CHUNK_PER_CORE);
+    tilingData.opInfo.set_kSplitLastChunk(KSPLIT_LAST_CHUNK);
+    tilingData.opInfo.set_dqPartialWorkspaceOffset(0);
+    tilingData.opInfo.set_dqPartialWorkspaceLen(0);
 
     auto status = DoSftTiling();
     if (status != ge::GRAPH_SUCCESS) {
@@ -143,19 +171,14 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoLibApiTiling()
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 {
     int64_t currentUseCoreNum = tilingData.opInfo.get_usedCoreNum();
-    int64_t launchBlockDims = aicoreParams_.blockDim;
     int64_t inputDtypeSize = tmpData.queryType == ge::DT_FLOAT ? B32 : B16;
     // int64_t selectedS2 = tmpData.selected_block_count * tmpData.selected_block_size;
     // 每轮做singleN
     int64_t selectedS2 = tmpData.singleN;
 
-    // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
-    auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.blockDim);
-    OP_CHECK_IF(blockdim == 0,
-                OP_LOGE("SparseFlashAttentionGrad", "blockdim is 0, aicNum is %lu, aivNum is %lu.",
-                        aicoreParams_.aicNum, aicoreParams_.blockDim),
-                return ge::GRAPH_FAILED);
-    context_->SetBlockDim(blockdim);
+    // MIX_AIC_1_2: 24 AIC blocks launch exactly 48 AIV participants.
+    // DoBlockTiling checks that the device supplies at least this many cores.
+    context_->SetBlockDim(KSPLIT_USED_CORE_NUM);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;
@@ -168,33 +191,48 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = selectedS2 * (tmpData.d + tmpData.ropeDim) * inputDtypeSize;
-    int64_t selectedVWorkspaceLen = selectedS2 * tmpData.d2 * inputDtypeSize;
-
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN);
-    selectedVWorkspaceLen = AlignData(selectedVWorkspaceLen, GM_ALIGN);
 
     selectedKWorkspaceLen *= 4;
-    selectedVWorkspaceLen *= PING_PONG_BUFFER;
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     // gather ws
-    workspaces[0] += (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
+    workspaces[0] += selectedKWorkspaceLen * currentUseCoreNum;
     workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
     int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
-    // 每个s1做完，做scatter add累加，workspace开DB
-    // vecore 侧做scatter add
-    workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * tmpData.selected_block_size *
-                     (dAlign + d2Align) * sizeof(float);
+    const uint32_t scatterBufferNum = KSPLIT_SCATTER_SLOT_NUM;
+    const int64_t scatterTokenCapacity =
+        static_cast<int64_t>(tmpData.selected_block_count) * tmpData.selected_block_size;
+    workspaces[0] += 24 * scatterBufferNum * scatterTokenCapacity * (dAlign + d2Align) * B32;
+
+    // Append dq partial storage after all three mm4/mm5 scatter slots.
+    {
+        int64_t dqPartialOffset = selectedKWorkspaceLen * currentUseCoreNum + mm12WorkspaceLen * 4 * currentUseCoreNum +
+                                  dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen +
+                                  24 * scatterBufferNum * scatterTokenCapacity * (dAlign + d2Align) * B32;
+        dqPartialOffset = AlignData(dqPartialOffset, GM_ALIGN);
+        int64_t dqPartialLen = static_cast<int64_t>(KSPLIT_COMPUTE_CORE_NUM) * KSPLIT_PARTIAL_SLOT_NUM *
+                               tilingData.opInfo.get_G() * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD()) *
+                               B32;
+        dqPartialLen = AlignData(dqPartialLen, GM_ALIGN);
+        workspaces[0] += dqPartialLen;
+        tilingData.opInfo.set_dqPartialWorkspaceOffset(dqPartialOffset);
+        tilingData.opInfo.set_dqPartialWorkspaceLen(dqPartialLen);
+        OP_LOGI(context_->GetNodeName(),
+                "SparseFlashAttentionGrad ksplit det workspace: dqPartialOffset=%ld dqPartialLen=%ld "
+                "total=%zu.",
+                dqPartialOffset, dqPartialLen, workspaces[0]);
+    }
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
-    tilingData.opInfo.set_selectedVWorkspaceLen(selectedVWorkspaceLen);
+    tilingData.opInfo.set_selectedVWorkspaceLen(0);
 
-    int64_t workspaceOffsets = (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
+    int64_t workspaceOffsets = selectedKWorkspaceLen * currentUseCoreNum;
     workspaceOffsets += mm12WorkspaceLen * 4 * currentUseCoreNum;
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + tilingData.opInfo.get_dqWorkspaceLen();
@@ -207,19 +245,11 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::PostTiling()
 {
-    // 判断如果GetDataSize > GetCapacity的异常情况,其中确定性计算下终止流程，非确定性计算流入下一个模板判断
-    OP_CHECK_IF(
-        (tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) && (context_->GetDeterministic() == 1),
-        OP_LOGE("SparseFlashAttentionGrad",
-                "The size of TilingDataSize[%zu] is larger than the size of MaxDataCapacity[%zu].",
-                tilingData.GetDataSize(), context_->GetRawTilingData()->GetCapacity()),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity()) && (context_->GetDeterministic() != 1),
-        OP_LOGE("SparseFlashAttentionGrad",
-                "The size of TilingDataSize[%zu] is larger than the size of MaxDataCapacity[%zu].",
-                tilingData.GetDataSize(), context_->GetRawTilingData()->GetCapacity()),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingData.GetDataSize() > context_->GetRawTilingData()->GetCapacity(),
+                OP_LOGE(context_->GetNodeName(),
+                        "The size of TilingDataSize[%zu] is larger than the size of MaxDataCapacity[%zu].",
+                        tilingData.GetDataSize(), context_->GetRawTilingData()->GetCapacity()),
+                return ge::GRAPH_FAILED);
 
     tilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
@@ -229,55 +259,104 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::PostTiling()
 
 uint64_t SparseFlashAttentionGradBasicTiling::GetTilingKey() const
 {
-    uint64_t tilingKey = 10;
+    uint64_t tilingKey = 2000;
     if (tmpData.attenEnable) {
-        tilingKey += 1;
+        tilingKey += 100;
     }
-    tilingKey *= 10;
     if (tmpData.ropeDim != 0) {
-        tilingKey += 1;
+        tilingKey += 10;
     }
-    tilingKey *= 10;
-    if (tmpData.layout == static_cast<uint32_t>(InputLayout::BSND)) {
-        tilingKey += 1;
-    }
-
-    OP_LOGI("SparseFlashAttentionGrad",
-            "SparseFlashAttentionGrad DoTiling success, tilingkey is"
-            " %lu.",
-            tilingKey);
+    OP_LOGI(context_->GetNodeName(), "SparseFlashAttentionGrad ksplit tilingkey=%lu.", tilingKey);
     return tilingKey;
 }
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::DoBlockTiling()
 {
-    /*
-     * 分核策略
-     */
-    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
-    int32_t aicNum = aicoreParams_.aicNum;
-    int32_t usedCoreNum = nNums < aicNum ? nNums : aicNum;
-    int64_t formerCoreProcessNNums = CeilCommon(nNums, aicNum);
-    int64_t remainCoreNum = formerCoreProcessNNums * aicNum - nNums;
-
-    tilingData.opInfo.set_usedCoreNum(usedCoreNum);
-    tilingData.opInfo.set_formerCoreNum(aicNum - remainCoreNum);
-    tilingData.opInfo.set_formerCoreProcessNNum(formerCoreProcessNNums);
-    tilingData.opInfo.set_remainCoreProcessNNum(static_cast<uint32_t>(formerCoreProcessNNums - 1));
-    tilingData.opInfo.set_castUsedCoreNum(aicoreParams_.blockDim);
+    // The kernel has 22 compute pairs plus four reduce AIVs. Launch exactly
+    // 24 pairs even on a larger device; fewer pairs cannot implement this schedule.
+    OP_CHECK_IF(aicoreParams_.aicNum < KSPLIT_USED_CORE_NUM || aicoreParams_.blockDim < KSPLIT_USED_CORE_NUM * 2,
+                OP_LOGE(context_->GetNodeName(), "K-split requires at least 24 AICs and 48 AIVs."),
+                return ge::GRAPH_FAILED);
+    tilingData.opInfo.set_usedCoreNum(KSPLIT_USED_CORE_NUM);
+    tilingData.opInfo.set_formerCoreNum(KSPLIT_USED_CORE_NUM);
+    tilingData.opInfo.set_formerCoreProcessNNum(1);
+    tilingData.opInfo.set_remainCoreProcessNNum(0);
+    tilingData.opInfo.set_castUsedCoreNum(KSPLIT_USED_CORE_NUM * 2);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
 {
     /*
-     * softmax tiling切分策略
+     * softmax tiling切分策略：按 UB 预算反推 sftBaseM，与 VecOp::InitUB 的 buffer 布局保持一致
      */
-    constexpr int32_t maxProcessDataSize = 8 * 1024;
+    constexpr uint32_t blockFp32 = BLOCK / B32;
+    constexpr uint32_t optimizedUbRowSize = 4;
+    constexpr uint32_t nonOptimizedUbRowSize = 16;
+    constexpr uint32_t optimizedMaxGatherSize = 32;
+    constexpr uint32_t nonOptimizedMaxGatherSize = 64;
 
-    uint32_t sftBaseN = tmpData.singleN;
-    // uint32_t sftBaseM = maxProcessDataSize / sftBaseN;
-    uint32_t sftBaseM = 16;
+    const uint32_t sftBaseN = tmpData.singleN;
+    const uint64_t availableUbSize = std::min<uint64_t>(KERNEL_UB_SIZE, aicoreParams_.ubSize);
+    const uint64_t inputTypeSize = tmpData.queryType == ge::DT_FLOAT ? B32 : B16;
+    const uint64_t blockT1 = BLOCK / inputTypeSize;
+    const uint64_t dimDAlign = CeilCommon(tmpData.d + tmpData.ropeDim, blockT1) * blockT1;
+    const uint64_t dimD2Align = CeilCommon(tmpData.d2, blockT1) * blockT1;
+
+    // Keep this calculation in the same order as VecOp::InitUB. The optimized
+    // path persists row parameters; the non-optimized path recalculates one
+    // tile and aliases Gather with the Process area.
+    auto calcUbUsed = [&](uint32_t baseM) -> uint64_t {
+        const uint64_t alignedBaseM = CeilCommon(baseM, blockFp32) * blockFp32;
+
+        // attention/dAttention FP16(or FP32) + FP32, p/dp workspaces and
+        // softmax/softmax-grad cast output.
+        const uint64_t softmaxWorkSize = static_cast<uint64_t>(baseM) * (2ULL * tmpData.d2 * (inputTypeSize + B32) +
+                                                                         sftBaseN * (2ULL * B32 + inputTypeSize));
+
+        if (tmpData.enableOptimizedScatter) {
+            // Optimized Process reuses rowSum/max/sum across K blocks, so the
+            // complete aligned [G, 8] parameter area is persistent.
+            const uint64_t alignedSingleM = CeilCommon(tmpData.singleM, blockFp32) * blockFp32;
+            uint64_t persistentSize = 3ULL * alignedSingleM * BLOCK;
+            persistentSize += 2ULL * alignedBaseM * B32; // maxTmp and sumTmp
+            const uint64_t scatterVStride = dimD2Align;
+            const uint64_t scatterSize = 2ULL * optimizedUbRowSize * (dimDAlign + scatterVStride) * B32;
+            const uint64_t scatterTmpSize = (2ULL * optimizedUbRowSize + 1) * (dimDAlign + dimD2Align) * B32;
+            const uint64_t gatherSize = 2ULL * optimizedMaxGatherSize *
+                                        (std::max<int64_t>(tmpData.d, tmpData.d2) + tmpData.ropeDim) * inputTypeSize;
+            return persistentSize + softmaxWorkSize + scatterSize + scatterTmpSize + gatherSize;
+        }
+
+        // Non-optimized Process recalculates rowSum/max/sum for every K block,
+        // so only one aligned tile is needed. Gather starts after topk indices
+        // and aliases the whole Process area, matching the original layout.
+        const uint64_t softmaxParamSize = 3ULL * alignedBaseM * BLOCK + 2ULL * alignedBaseM * B32;
+        const uint64_t scatterSize = 2ULL * nonOptimizedUbRowSize * (dimDAlign + dimD2Align) * B32;
+        const uint64_t gatherSize = 2ULL * nonOptimizedMaxGatherSize * (tmpData.d + tmpData.ropeDim) * inputTypeSize;
+        return std::max(gatherSize, softmaxParamSize + std::max(softmaxWorkSize, scatterSize));
+    };
+
+    uint32_t sftBaseM = tmpData.singleM;
+    // Brcb works on eight FP32 rows per repeat. For G >= 8, keeping baseM a
+    // multiple of eight prevents one tile's broadcast from entering the next.
+    if (sftBaseM >= blockFp32) {
+        sftBaseM = sftBaseM / blockFp32 * blockFp32;
+    }
+    while (sftBaseM > 0 && calcUbUsed(sftBaseM) > availableUbSize) {
+        sftBaseM -= sftBaseM > blockFp32 ? blockFp32 : 1;
+    }
+    OP_CHECK_IF(sftBaseM == 0,
+                OP_LOGE(context_->GetNodeName(),
+                        "No valid sftBaseM fits UB: ubSize=%lu, G=%u, N=%u, D=%ld, D2=%ld, "
+                        "ropeD=%ld, optimized=%d.",
+                        availableUbSize, tmpData.singleM, sftBaseN, tmpData.d, tmpData.d2, tmpData.ropeDim,
+                        static_cast<int32_t>(tmpData.enableOptimizedScatter)),
+                return ge::GRAPH_FAILED);
+
+    OP_LOGI(context_->GetNodeName(),
+            "SparseFlashAttentionGrad sftBaseM=%u, estimated vector UB=%lu/%lu bytes, optimized=%d.", sftBaseM,
+            calcUbUsed(sftBaseM), availableUbSize, static_cast<int32_t>(tmpData.enableOptimizedScatter));
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
@@ -326,9 +405,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
                      BASE_LEN_256 * BASE_LEN_256;
     qPostBaseNum = postUbBaseSize / typeSize / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
 
-    OP_CHECK_IF(qPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(usedCoreNum == 0, OP_LOGE("SparseFlashAttentionGrad", "castUsedCoreNum is 0."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qPostBaseNum == 0, OP_LOGE(context_->GetNodeName(), "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(usedCoreNum == 0, OP_LOGE(context_->GetNodeName(), "castUsedCoreNum is 0."), return ge::GRAPH_FAILED);
     int64_t qPostBlockTotal = allNumQuery / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
     int64_t qSizeAlign = (qPostBlockTotal + BASE_LEN_256 - 1) / GM_ALIGN * GM_ALIGN * typeSize;
     int64_t qPostTailNumTmp = qPostBlockTotal % qPostBaseNum;
@@ -337,7 +415,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
     int64_t qPostBlockFactor = (qPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t kPostBaseNum = qPostBaseNum;
-    OP_CHECK_IF(kPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "kPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kPostBaseNum == 0, OP_LOGE(context_->GetNodeName(), "kPostBaseNum is 0."), return ge::GRAPH_FAILED);
     // int64_t kPostBlockTotal = allNumKey / dAlign * tilingData.opInfo.get_D();
     int64_t kPostBlockTotal = allNumKey / dAlign * (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD());
     int64_t kSizeAlign = (kPostBlockTotal + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN * typeSize;
@@ -347,7 +425,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
     int64_t kPostBlockFactor = (kPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t vPostBaseNum = postUbBaseSize / typeSize / d2Align * tilingData.opInfo.get_D2();
-    OP_CHECK_IF(vPostBaseNum == 0, OP_LOGE("SparseFlashAttentionGrad", "vPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(vPostBaseNum == 0, OP_LOGE(context_->GetNodeName(), "vPostBaseNum is 0."), return ge::GRAPH_FAILED);
     int64_t vPostBlockTotal = allNumValue / d2Align * tilingData.opInfo.get_D2();
     int64_t vSizeAlign = (vPostBlockTotal + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN * typeSize;
     int64_t vPostTailNumTmp = vPostBlockTotal % vPostBaseNum;
@@ -378,9 +456,11 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
     tilingData.postTilingData.set_vPostTailNum(vPostTailNum);
     tilingData.postTilingData.set_vSizeAlign(vSizeAlign);
 
-    tilingData.opInfo.set_dqWorkspaceLen((allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
+    // The reduce AIVs write scaled/cast dq directly to the output.
+    tilingData.opInfo.set_dqWorkspaceLen(0);
     tilingData.opInfo.set_dkWorkspaceLen((allNumKey * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
-    tilingData.opInfo.set_dvWorkspaceLen((allNumValue * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN);
+    // v=k 语义：dv 梯度合入 dk，dv 输出恒 0；AtomicClean 直接清零输出 dvGm，不需要 dv workspace
+    tilingData.opInfo.set_dvWorkspaceLen(0);
 
     tilingData.postTilingData.set_b(tilingData.opInfo.get_B());
     tilingData.postTilingData.set_n2(tilingData.opInfo.get_N2());
@@ -397,12 +477,12 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
                  (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                 (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
-                OP_LOGE("SparseFlashAttentionGrad", "InputShape of query, key or value is nullptr."),
+                 (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr) ||
+                 (context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES)) == nullptr)),
+                OP_LOGE(context_->GetNodeName(), "InputShape of query, key, value or indices is nullptr."),
                 return ge::GRAPH_FAILED);
     // input
     // TND: query [t1, n1, d]   k [t2, n2, d]  v [t2, n2, d2]   dy/attentionIn [t1, n1, d2]
-    // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d2]   dy/attentionIn [b, s1, n1, d2]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
     const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
@@ -411,6 +491,9 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
     uint32_t dimSize = queryShape.GetDimNum();
+    OP_CHECK_IF(
+        dimSize != 3 || keyShape.GetDimNum() != 3 || valueShape.GetDimNum() != 3 || indicesShape.GetDimNum() != 3,
+        OP_LOGE(context_->GetNodeName(), "K-split requires rank-3 TND inputs."), return ge::GRAPH_FAILED);
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
     int64_t dimDk = keyShape.GetDim(dimSize - 1);
     int64_t dimDv = valueShape.GetDim(dimSize - 1);
@@ -424,38 +507,31 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     if (sparse_mode == 0) {
         tmpData.attenEnable = false;
     } else if (sparse_mode == 3) {
-        OP_LOGI("SparseFlashAttentionGrad", "SparseFlashAttentionGrad AttenMask enable.");
+        OP_LOGI(context_->GetNodeName(), "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
     } else {
-        OP_LOGE("SparseFlashAttentionGrad",
+        OP_LOGE(context_->GetNodeName(),
                 "SparseFlashAttentionGrad only support sparse_mode=0 or 3, now sparse_mode=%d.", sparse_mode);
         return ge::GRAPH_FAILED;
     }
 
     if (dimDq != dimDk) {
-        OP_LOGE("SparseFlashAttentionGrad", "head_dim of Query[%ld] should be equal to head_dim of Key[%ld].", dimDq,
+        OP_LOGE(context_->GetNodeName(), "head_dim of Query[%ld] should be equal to head_dim of Key[%ld].", dimDq,
                 dimDk);
         return ge::GRAPH_FAILED;
     }
     if (dimDq < dimDv) {
-        OP_LOGE("SparseFlashAttentionGrad", "head_dim of Query[%ld] can not less than head_dim of Value[%ld].", dimDq,
+        OP_LOGE(context_->GetNodeName(), "head_dim of Query[%ld] can not less than head_dim of Value[%ld].", dimDq,
                 dimDv);
         return ge::GRAPH_FAILED;
     }
-    if (strcmp(inputLayout, TND_STR) != 0 && strcmp(inputLayout, BSND_STR) != 0) {
-        OP_LOGE("SparseFlashAttentionGrad",
-                "SparseFlashAttentionGrad only support TND or BSND layout, now layout is %s.", inputLayout);
-        return ge::GRAPH_FAILED;
-    }
-    if (static_cast<size_t>(dimSize) != strlen(inputLayout)) {
-        OP_LOGE("SparseFlashAttentionGrad",
-                "SparseFlashAttentionGrad layout dims is not equal to the input's dim, now the query of dim is %u.",
-                dimSize);
+    if (inputLayout == nullptr || strcmp(inputLayout, TND_STR) != 0) {
+        OP_LOGE(context_->GetNodeName(), "K-split only supports TND layout.");
         return ge::GRAPH_FAILED;
     }
 
     if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
-        OP_LOGD("SparseFlashAttentionGrad", "qRope and kRope is not nullptr, rope is enabled.");
+        OP_LOGD(context_->GetNodeName(), "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");
         tmpData.ropeEnable = true;
         const gert::Shape &qRopeShape =
             context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE))->GetStorageShape();
@@ -464,7 +540,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         auto qRopeDim = qRopeShape.GetDim(dimSize - 1);
         auto kRopeDim = kRopeShape.GetDim(dimSize - 1);
         if (qRopeDim != kRopeDim) {
-            OP_LOGE("SparseFlashAttentionGrad", "SparseFlashAttentionGrad headDim of qRope and kRope should be equal.");
+            OP_LOGE(context_->GetNodeName(), "SparseFlashAttentionGrad headDim of qRope and kRope should be equal.");
             return ge::GRAPH_FAILED;
         }
         tmpData.ropeDim = kRopeDim;
@@ -473,25 +549,29 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         tmpData.ropeDim = 0;
     }
 
-    if (strcmp(inputLayout, TND_STR) == 0) {
-        const gert::Shape &curSeqQLenShape =
-            context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CUR_SEQ_Q_LEN))->GetStorageShape();
-        tmpData.b = curSeqQLenShape.GetDim(DIM_0) - 1;
-        tmpData.t1 = queryShape.GetDim(DIM_0);
-        tmpData.t2 = keyShape.GetDim(DIM_0);
-        tmpData.s1 = tmpData.t1;
-        tmpData.s2 = tmpData.t2;
-        tmpData.n2 = keyShape.GetDim(DIM_1);
-        tmpData.g = queryShape.GetDim(DIM_1) / tmpData.n2;
-        tmpData.layout = static_cast<uint32_t>(InputLayout::TND);
-    } else { // BSND
-        tmpData.b = queryShape.GetDim(DIM_0);
-        tmpData.s1 = queryShape.GetDim(DIM_1);
-        tmpData.s2 = keyShape.GetDim(DIM_1);
-        tmpData.n2 = keyShape.GetDim(DIM_2);
-        tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
-        tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
-    }
+    auto qSeqShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CUR_SEQ_Q_LEN));
+    auto kSeqShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CUR_SEQ_KV_LEN));
+    OP_CHECK_IF(qSeqShape == nullptr || kSeqShape == nullptr,
+                OP_LOGE(context_->GetNodeName(), "K-split requires query and KV cumulative sequence lengths."),
+                return ge::GRAPH_FAILED);
+    const gert::Shape &qSeq = qSeqShape->GetStorageShape();
+    const gert::Shape &kSeq = kSeqShape->GetStorageShape();
+    OP_CHECK_IF(qSeq.GetDimNum() != 1 || kSeq.GetDimNum() != 1 || qSeq.GetDim(DIM_0) < 2 ||
+                    qSeq.GetDim(DIM_0) != kSeq.GetDim(DIM_0),
+                OP_LOGE(context_->GetNodeName(), "Cumulative sequence lengths must have matching B+1 shapes."),
+                return ge::GRAPH_FAILED);
+    tmpData.b = qSeq.GetDim(DIM_0) - 1;
+    tmpData.t1 = queryShape.GetDim(DIM_0);
+    tmpData.t2 = keyShape.GetDim(DIM_0);
+    tmpData.s1 = tmpData.t1;
+    tmpData.s2 = tmpData.t2;
+    tmpData.n2 = keyShape.GetDim(DIM_1);
+    OP_CHECK_IF(tmpData.n2 != 1 || valueShape.GetDim(DIM_1) != 1 || indicesShape.GetDim(DIM_1) != 1 ||
+                    indicesShape.GetDim(DIM_0) != tmpData.t1,
+                OP_LOGE(context_->GetNodeName(), "K-split requires N2=1 and one indices row per query."),
+                return ge::GRAPH_FAILED);
+    tmpData.g = queryShape.GetDim(DIM_1);
+    tmpData.layout = static_cast<uint32_t>(InputLayout::TND);
 
     tilingData.opInfo.set_B(tmpData.b);
     tilingData.opInfo.set_G(tmpData.g);
@@ -507,7 +587,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     tilingData.opInfo.set_selectedBlockCount(selected_block_count);
     tilingData.opInfo.set_selectedBlockSize(selected_block_size);
 
-    bool deterministic = *context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
+    bool deterministic = *context_->GetAttrs()->GetAttrPointer<bool>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
     deterministic = deterministic || (context_->GetDeterministic() == 1);
     tilingData.opInfo.set_deterministic(deterministic);
 
@@ -520,10 +600,20 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     tmpData.selected_block_size = selected_block_size;
     tmpData.deterministic = deterministic;
 
+    OP_CHECK_IF(
+        !IsKsplitShapeSupported(tmpData),
+        OP_LOGE(context_->GetNodeName(), "K-split requires TND, N2=1, topk=2048, blockSize=1, D2=512, "
+                                         "(D,ropeD)=(512,64) or (576,0), G in [16,128] divisible by 16, fp16/bf16."),
+        return ge::GRAPH_FAILED);
+    // Every accepted input uses the K-split ND scatter/workspace layout,
+    // including calls that do not request deterministic execution.
+    tmpData.enableOptimizedScatter = false;
+    tilingData.opInfo.set_enableOptimizedScatter(false);
+
     auto ret = CheckDtypeValid(context_);
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE("SparseFlashAttentionGrad", "SparseFlashAttentionGrad the dtype of input is invalid.");
+        OP_LOGE(context_->GetNodeName(), "SparseFlashAttentionGrad the dtype of input is invalid.");
         return ge::GRAPH_FAILED;
     }
 
@@ -532,7 +622,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE("SparseFlashAttentionGrad", "SparseFlashAttentionGrad the input shpae of TND Layout is invalid.");
+        OP_LOGE(context_->GetNodeName(), "SparseFlashAttentionGrad the input shpae of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
 
