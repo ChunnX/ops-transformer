@@ -49,9 +49,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
         dq = at::empty(q.sizes(), q.options());
         dk = at::empty(k.sizes(), k.options());
         dv = at::empty(v.sizes(), v.options());
-        // dsink 由 kernel 固定次序归约后全量写出（每 AIV 槽位行写 workspace，
-        // post 阶段 AIV0 按固定行序归约）；at::zeros 仅为双保险。
-        dsink = at::zeros({n1}, q.options().dtype(at::kFloat));
+        // dsink 仅在传入 sinks 时有定义（kernel 归约后全量写出）；
+        // sinks=None 时 kernel 不写，内容未定义。故用 empty 分配、不清零。
+        dsink = at::empty({n1}, q.options().dtype(at::kFloat));
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());

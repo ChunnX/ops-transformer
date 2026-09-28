@@ -40,7 +40,7 @@ class FlashAttnGradOpBuilder(OpBuilder):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         dq shape = q shape, dk shape = k shape, dv shape = v shape.
-        dsink shape = (N1,) fp32.
+        dsink shape = (N1,) fp32; only meaningful when sinks is provided.
         """
 
         @impl(get_as_library(), self.name, "Meta")
@@ -144,7 +144,7 @@ def flash_attn_grad(
 
     Returns:
         A tuple of (dq, dk, dv, dsink) gradient tensors. dsink is fp32 of shape
-        (N1,).
+        (N1,); it is meaningful only when sinks is provided.
     """
     op_module = flash_attn_grad_op_builder.load()
     return op_module.flash_attn_grad(
