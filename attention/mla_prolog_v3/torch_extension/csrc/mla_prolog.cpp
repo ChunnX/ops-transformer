@@ -29,8 +29,8 @@ constexpr int64_t MODE_4 = 4;
 constexpr int64_t MODE_5 = 5;
 constexpr int64_t FP8_E4M3_BLOCK_SIZE = 32;
 // shape 格式字段约束
-constexpr int64_t HE_SUPPORTED[] = {1024, 2048, 3072, 4096, 5120, 6144, 7168, 7680, 8192};
-constexpr int64_t HCQ_SUPPORTED[] = {1536, 2048};
+constexpr int64_t HE_SUPPORTED[] = {1024, 2048, 2816, 3072, 4096, 5120, 6144, 7168, 7680, 8192};
+constexpr int64_t HCQ_SUPPORTED[] = {1024, 1536, 2048};
 constexpr int64_t D_SUPPORTED[] = {128, 192};
 constexpr int64_t HCKV = 512;
 constexpr int64_t DR = 64;
