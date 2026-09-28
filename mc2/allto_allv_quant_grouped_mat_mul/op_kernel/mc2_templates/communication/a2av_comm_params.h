@@ -25,8 +25,8 @@ struct A2avCommParams {
     uint64_t recvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
 
-__aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const uint64_t *rawSendCounts,
-                                                const uint64_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
+__aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const int32_t *rawSendCounts,
+                                                const int32_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
                                                 uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
                                                 uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
@@ -65,8 +65,8 @@ __aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const ui
     }
 }
 
-__aicore__ inline void CalcA2avCommAfterParams(A2avCommParams &params, const uint64_t *rawSendCounts,
-                                               const uint64_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
+__aicore__ inline void CalcA2avCommAfterParams(A2avCommParams &params, const int32_t *rawSendCounts,
+                                               const int32_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
                                                uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {

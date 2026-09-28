@@ -102,8 +102,8 @@ private:
     uint64_t scaleSendOffsetLastSum_ = 0UL;
     uint64_t scaleRecvOffsetLastSum_ = 0UL;
 
-    uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
-    uint64_t sendCounts_[MAX_EXPERT_SIZE] = {0UL};
+    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
+    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
 
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
