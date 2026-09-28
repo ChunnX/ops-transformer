@@ -28,8 +28,7 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateWideDenominator
         RegTensor<float> ratio;
         LoadAlign(den, denom);
         LoadAlign(ratio, alpha);
-        Mul(den, den, ratio, f);
-        Add(den, den, sum, f);
+        MulDstAdd(den, ratio, sum, f);
     }
     StoreAlign(denom, den, f);
     return den;
@@ -48,13 +47,11 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateWidePairDenomin
     } else {
         LoadAlign(den, denom);
         LoadAlign(a, alpha0);
-        Mul(den, den, a, f);
-        Add(den, den, sum, f);
+        MulDstAdd(den, a, sum, f);
     }
     LoadAlign(a, alpha1);
     LoadAlign(sum, alpha1 + 64);
-    Mul(den, den, a, f);
-    Add(den, den, sum, f);
+    MulDstAdd(den, a, sum, f);
     StoreAlign(denom, den, f);
     return den;
 }

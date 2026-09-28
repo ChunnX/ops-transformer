@@ -75,34 +75,59 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
     SetFlag<HardEvent::MTE1_MTE2>(kEvent);
     SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
     Sync<HardEvent::MTE1_M>();
-    for (uint32_t sub = 0; sub < 2; ++sub) {
-        event_t ev = static_cast<event_t>(sub ? QK_SECOND_FIX_EVENT : QK_EVENT);
-        WaitFlag<HardEvent::FIX_M>(ev);
-        auto aa =
-            tla::MakeTensor(r.l0ABuf.template GetBufferByByte<T>(sub * HALF * k),
-                            tla::MakeLayout<T, typename Copy::LayoutTagL0A>(HALF, k), Catlass::Arch::PositionL0A{});
-        auto cc = tla::MakeTensor(r.l0CBuf.template GetBufferByByte<int32_t>(sub * HALF * n * 4),
-                                  tla::MakeLayout<int32_t, layout::L0C>(HALF, n), Catlass::Arch::PositionL0C{});
-        Catlass::Gemm::Tile::TileMmadTla<Arch, T, typename Copy::LayoutTagL1A> mma;
-        mma(cc, aa, bb, HALF, n, k, true);
-        SetFlag<HardEvent::M_FIX>(ev);
-        WaitFlag<HardEvent::M_FIX>(ev);
-        static constexpr FixpipeConfig cfg{CO2Layout::NZ, true};
-        FixpipeParamsArch3510<CO2Layout::NZ> fp;
-        fp.mSize = HALF;
-        fp.nSize = n;
-        fp.srcStride = HALF;
-        fp.dstStride = HALF * 16;
-        fp.quantPre = QuantMode_t::DEQF16;
-        fp.deqScalar = DEQ_SCALAR_DEQF16;
-        fp.dualDstCtl = 0;
-        fp.subBlockId = sub != 0;
-        auto dst = r.ubBuf.template GetBufferByByte<half>(ubOffset);
-        auto src = r.l0CBuf.template GetBufferByByte<int32_t>(sub * HALF * n * 4);
-        Fixpipe<half, int32_t, cfg>(dst, src, fp);
-        SetFlag<HardEvent::FIX_M>(ev);
-        CrossCoreSetFlag<4, PIPE_FIX>(QK_READY + sub * AIV_FLAG_OFFSET);
-    }
+    // Overlap MMAD and Fixpipe: MMAD 0 and MMAD 1 run consecutively on Cube (PIPE_M),
+    // while Fixpipe 0 runs concurrently on Fixpipe (PIPE_FIX) during MMAD 1.
+    WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(QK_EVENT));
+    auto aa0 = tla::MakeTensor(r.l0ABuf.template GetBufferByByte<T>(0),
+                               tla::MakeLayout<T, typename Copy::LayoutTagL0A>(HALF, k), Catlass::Arch::PositionL0A{});
+    auto cc0 = tla::MakeTensor(r.l0CBuf.template GetBufferByByte<int32_t>(0),
+                               tla::MakeLayout<int32_t, layout::L0C>(HALF, n), Catlass::Arch::PositionL0C{});
+    Catlass::Gemm::Tile::TileMmadTla<Arch, T, typename Copy::LayoutTagL1A> mma0;
+    mma0(cc0, aa0, bb, HALF, n, k, true);
+    SetFlag<HardEvent::M_FIX>(static_cast<event_t>(QK_EVENT));
+
+    WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
+    auto aa1 = tla::MakeTensor(r.l0ABuf.template GetBufferByByte<T>(HALF * k),
+                               tla::MakeLayout<T, typename Copy::LayoutTagL0A>(HALF, k), Catlass::Arch::PositionL0A{});
+    auto cc1 = tla::MakeTensor(r.l0CBuf.template GetBufferByByte<int32_t>(HALF * n * 4),
+                               tla::MakeLayout<int32_t, layout::L0C>(HALF, n), Catlass::Arch::PositionL0C{});
+    Catlass::Gemm::Tile::TileMmadTla<Arch, T, typename Copy::LayoutTagL1A> mma1;
+    mma1(cc1, aa1, bb, HALF, n, k, true);
+    SetFlag<HardEvent::M_FIX>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
     SetFlag<HardEvent::M_MTE1>(QK_EVENT);
+
+    // Fixpipe for Sub 0:
+    WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(QK_EVENT));
+    static constexpr FixpipeConfig cfg{CO2Layout::NZ, true};
+    FixpipeParamsArch3510<CO2Layout::NZ> fp0;
+    fp0.mSize = HALF;
+    fp0.nSize = n;
+    fp0.srcStride = HALF;
+    fp0.dstStride = HALF * 16;
+    fp0.quantPre = QuantMode_t::DEQF16;
+    fp0.deqScalar = DEQ_SCALAR_DEQF16;
+    fp0.dualDstCtl = 0;
+    fp0.subBlockId = false;
+    auto dst = r.ubBuf.template GetBufferByByte<half>(ubOffset);
+    auto src0 = r.l0CBuf.template GetBufferByByte<int32_t>(0);
+    Fixpipe<half, int32_t, cfg>(dst, src0, fp0);
+    SetFlag<HardEvent::FIX_M>(static_cast<event_t>(QK_EVENT));
+    CrossCoreSetFlag<4, PIPE_FIX>(QK_READY);
+
+    // Fixpipe for Sub 1:
+    WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
+    FixpipeParamsArch3510<CO2Layout::NZ> fp1;
+    fp1.mSize = HALF;
+    fp1.nSize = n;
+    fp1.srcStride = HALF;
+    fp1.dstStride = HALF * 16;
+    fp1.quantPre = QuantMode_t::DEQF16;
+    fp1.deqScalar = DEQ_SCALAR_DEQF16;
+    fp1.dualDstCtl = 0;
+    fp1.subBlockId = true;
+    auto src1 = r.l0CBuf.template GetBufferByByte<int32_t>(HALF * n * 4);
+    Fixpipe<half, int32_t, cfg>(dst, src1, fp1);
+    SetFlag<HardEvent::FIX_M>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
+    CrossCoreSetFlag<4, PIPE_FIX>(QK_READY + AIV_FLAG_OFFSET);
 }
 } // namespace Sage
