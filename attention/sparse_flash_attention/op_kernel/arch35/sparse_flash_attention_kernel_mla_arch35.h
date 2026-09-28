@@ -492,6 +492,10 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     if ASCEND_IS_AIC {
         cubeBlock.UninitLocalBuffer();
+        // 消费 InitMMResBuf 中 AIV 预置的核间标志（bmm1 x2 + bmm2 x1），保证核间 Set/Wait 配平
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
     if ASCEND_IS_AIV {
         vecBlock.UninitLocalBuffer();
