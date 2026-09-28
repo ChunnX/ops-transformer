@@ -18,72 +18,349 @@
 
 using namespace std;
 
-// 顶层（目录不带 arch）用例：executor 的平台信息全 mock，可在任意 soc 构建中执行。
-// 以 socVersion="Ascend950" 驱动 DAV_3510 路径。
-class MsaIndexScoreTilingCommon : public testing::Test {
+// 平台信息由 TilingContextPara 全量 mock，不依赖 --soc 对应的 arch 目录。
+// Ascend910B / Ascend910_93 走 A2/A3（!DAV_3510）；Ascend950 走 DAV_3510。
+// FP8 仅 950 成功。A2/A3 的 kvChunks 恒为 1；950 在短 M、可见 S-tile 足够时沿 S 切分。
+
+namespace {
+constexpr uint64_t MSA_KEY_BF16 = 0;
+constexpr uint64_t MSA_KEY_FP16 = 1;
+constexpr uint64_t MSA_KEY_FP16_INT8 = 3;
+constexpr uint64_t MSA_KEY_HIFLOAT8 = 4;
+constexpr uint64_t MSA_KEY_FP8_E5M2 = 5;
+constexpr uint64_t MSA_KEY_FP8_E4M3FN = 6;
+constexpr uint64_t MSA_UB_950 = 262144;
+constexpr uint64_t MSA_UB_A2 = 196608;
+constexpr uint64_t MSA_TILING_CAP = 16384;
+
+struct MsaSocParam {
+    const char *name;
+    const char *socVersion;
+    uint64_t coreNum;
+    uint64_t ubSize;
+    bool is950;
+};
+
+const MsaSocParam kSoc910B{"Ascend910B", "Ascend910B", 24, MSA_UB_A2, false};
+const MsaSocParam kSoc91093{"Ascend910_93", "Ascend910_93", 24, MSA_UB_A2, false};
+const MsaSocParam kSoc950{"Ascend950", "Ascend950", 56, MSA_UB_950, true};
+
+gert::StorageShape MakeStorageShape(const std::vector<int64_t> &dims)
+{
+    switch (dims.size()) {
+        case 1:
+            return gert::StorageShape({dims[0]}, {dims[0]});
+        case 2:
+            return gert::StorageShape({dims[0], dims[1]}, {dims[0], dims[1]});
+        case 3:
+            return gert::StorageShape({dims[0], dims[1], dims[2]}, {dims[0], dims[1], dims[2]});
+        case 4:
+            return gert::StorageShape({dims[0], dims[1], dims[2], dims[3]}, {dims[0], dims[1], dims[2], dims[3]});
+        default:
+            return gert::StorageShape({}, {});
+    }
+}
+
+gert::TilingContextPara::TensorDescription Present(const std::vector<int64_t> &shape, ge::DataType dtype)
+{
+    return gert::TilingContextPara::TensorDescription(MakeStorageShape(shape), dtype, ge::FORMAT_ND);
+}
+
+gert::TilingContextPara::TensorDescription Absent(ge::DataType dtype)
+{
+    return gert::TilingContextPara::TensorDescription(gert::StorageShape({}, {}), dtype, ge::FORMAT_ND);
+}
+
+struct MsaTilingSpec {
+    std::vector<int64_t> queryShape{32, 8, 128};
+    std::vector<int64_t> keyShape{2, 128, 1, 128};
+    bool hasBlockTable{true};
+    std::vector<int64_t> blockTableShape{1, 2};
+    bool hasScale{false};
+    std::vector<int64_t> scaleShape{};
+    bool hasMask{false};
+    std::vector<int64_t> qlenShape{2};
+    std::vector<int64_t> klenShape{1};
+    std::vector<int64_t> startLocShape{1};
+    std::vector<int64_t> scoreShape{8, 32, 16};
+    ge::DataType queryDtype{ge::DT_FLOAT16};
+    ge::DataType keyDtype{ge::DT_FLOAT16};
+    std::string layout{"BBND"};
+    int64_t sparseMode{0};
+    int64_t initBlocks{0};
+    int64_t localBlocks{1};
+};
+
+gert::TilingContextPara MakeTilingPara(const MsaTilingSpec &spec, const MsaSocParam &soc, void *compileInfo)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back(Present(spec.queryShape, spec.queryDtype));
+    inputs.push_back(Present(spec.keyShape, spec.keyDtype));
+    inputs.push_back(spec.hasBlockTable ? Present(spec.blockTableShape, ge::DT_INT32) : Absent(ge::DT_INT32));
+    inputs.push_back(spec.hasScale ? Present(spec.scaleShape, ge::DT_FLOAT) : Absent(ge::DT_FLOAT));
+    inputs.push_back(spec.hasMask ? Present({2048, 2048}, ge::DT_INT8) : Absent(ge::DT_INT8));
+    inputs.push_back(spec.qlenShape.empty() ? Absent(ge::DT_INT32) : Present(spec.qlenShape, ge::DT_INT32));
+    inputs.push_back(spec.klenShape.empty() ? Absent(ge::DT_INT32) : Present(spec.klenShape, ge::DT_INT32));
+    inputs.push_back(spec.startLocShape.empty() ? Absent(ge::DT_INT32) : Present(spec.startLocShape, ge::DT_INT32));
+
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.push_back(Present(spec.scoreShape, ge::DT_FLOAT));
+
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {
+        {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>(spec.layout)},
+        {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(spec.sparseMode)},
+        {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(spec.initBlocks)},
+        {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(spec.localBlocks)}};
+
+    return gert::TilingContextPara("MsaIndexScore", inputs, outputs, attrs, compileInfo, soc.socVersion, soc.coreNum,
+                                   soc.ubSize, MSA_TILING_CAP);
+}
+
+void RunTiling(const MsaTilingSpec &spec, const MsaSocParam &soc, ge::graphStatus expect, uint64_t expectKey = 0)
+{
+    struct MsaCompileInfo {
+    } compileInfo;
+    ExecuteTestCase(MakeTilingPara(spec, soc, &compileInfo), expect, expectKey);
+}
+
+// tiling data 按 uint32 字段顺序打包。用 (batch, totalQ, numQHeads, numKvHeads, gqa, headDim) 定位起点。
+bool FindTilingBase(const uint32_t *words, size_t n, uint32_t batch, uint32_t totalQ, uint32_t numQHeads,
+                    uint32_t numKvHeads, uint32_t headDim, size_t &base)
+{
+    const uint32_t gqa = numQHeads / numKvHeads;
+    for (size_t i = 0; i + 26 < n; ++i) {
+        if (words[i] == batch && words[i + 1] == totalQ && words[i + 2] == numQHeads && words[i + 3] == numKvHeads &&
+            words[i + 4] == gqa && words[i + 5] == headDim) {
+            base = i;
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+class MsaIndexScoreTiling : public testing::TestWithParam<MsaSocParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MsaIndexScoreTilingCommon SetUp" << std::endl;
+        std::cout << "MsaIndexScoreTiling SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MsaIndexScoreTilingCommon TearDown" << std::endl;
+        std::cout << "MsaIndexScoreTiling TearDown" << std::endl;
     }
 };
 
-namespace {
-constexpr uint64_t MSA_TILING_KEY_FP16 = 1;
-} // namespace
-
-// mocked Ascend950，BBND fp16 非量化，sparse_mode=0（不传 scale / atten_mask）
-TEST_F(MsaIndexScoreTilingCommon, MsaIndexScore_mocked_950_tiling_bbnd_fp16_success)
+TEST_P(MsaIndexScoreTiling, bbnd_fp16_nonquant_success)
 {
-    struct MsaCompileInfo {
-    } compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "MsaIndexScore",
-        {
-            {{{32, 8, 128}, {32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // query
-            {{{2, 128, 1, 128}, {2, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key BBND
-            {{{1, 2}, {1, 2}}, ge::DT_INT32, ge::FORMAT_ND},                       // block_table
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // scale
-            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                // atten_mask
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},                             // actual_seq_qlen
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},                             // actual_seq_klen
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}                              // start_loc
-        },
-        {
-            {{{8, 32, 16}, {8, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND} // score
-        },
-        {{"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("BBND")},
-         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
-        &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, MSA_TILING_KEY_FP16);
+    RunTiling(MsaTilingSpec{}, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_FP16);
 }
 
-TEST_F(MsaIndexScoreTilingCommon, MsaIndexScore_mocked_950_tiling_missing_qlen_fail)
+TEST_P(MsaIndexScoreTiling, bbnd_bf16_causal_success)
 {
+    MsaTilingSpec spec;
+    spec.queryDtype = ge::DT_BF16;
+    spec.keyDtype = ge::DT_BF16;
+    spec.sparseMode = 3;
+    spec.hasMask = true;
+    RunTiling(spec, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_BF16);
+}
+
+TEST_P(MsaIndexScoreTiling, bbnd_fp16_int8_success)
+{
+    MsaTilingSpec spec;
+    spec.keyDtype = ge::DT_INT8;
+    spec.hasScale = true;
+    spec.scaleShape = {2, 1, 128};
+    RunTiling(spec, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_FP16_INT8);
+}
+
+TEST_P(MsaIndexScoreTiling, bnbd_fp16_success)
+{
+    MsaTilingSpec spec;
+    spec.layout = "BNBD";
+    spec.keyShape = {2, 1, 128, 128};
+    RunTiling(spec, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_FP16);
+}
+
+TEST_P(MsaIndexScoreTiling, tnd_fp16_success)
+{
+    MsaTilingSpec spec;
+    spec.layout = "TND";
+    spec.keyShape = {256, 1, 128};
+    spec.hasBlockTable = false;
+    spec.klenShape = {2};
+    RunTiling(spec, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_FP16);
+}
+
+TEST_P(MsaIndexScoreTiling, empty_query_success)
+{
+    MsaTilingSpec spec;
+    spec.queryShape = {0, 8, 128};
+    spec.scoreShape = {8, 0, 16};
+    RunTiling(spec, GetParam(), ge::GRAPH_SUCCESS, MSA_KEY_FP16);
+}
+
+TEST_P(MsaIndexScoreTiling, missing_qlen_fail)
+{
+    MsaTilingSpec spec;
+    spec.qlenShape = {};
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, layout_invalid_fail)
+{
+    MsaTilingSpec spec;
+    spec.layout = "BSND";
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, causal_without_mask_fail)
+{
+    MsaTilingSpec spec;
+    spec.sparseMode = 3;
+    spec.hasMask = false;
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, default_mask_with_atten_mask_fail)
+{
+    MsaTilingSpec spec;
+    spec.sparseMode = 0;
+    spec.hasMask = true;
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, head_dim_not_aligned_fail)
+{
+    MsaTilingSpec spec;
+    spec.queryShape = {32, 8, 8};
+    spec.keyShape = {2, 128, 1, 8};
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, block_size_invalid_fail)
+{
+    MsaTilingSpec spec;
+    spec.keyShape = {2, 64, 1, 128};
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, non_quant_with_scale_fail)
+{
+    MsaTilingSpec spec;
+    spec.hasScale = true;
+    spec.scaleShape = {2, 1, 128};
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, tnd_with_block_table_fail)
+{
+    MsaTilingSpec spec;
+    spec.layout = "TND";
+    spec.keyShape = {256, 1, 128};
+    spec.hasBlockTable = true;
+    spec.klenShape = {2};
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, init_blocks_too_large_fail)
+{
+    MsaTilingSpec spec;
+    spec.initBlocks = 8; // maxBlocksPerBatch = 2
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, int8_without_scale_fail)
+{
+    MsaTilingSpec spec;
+    spec.keyDtype = ge::DT_INT8;
+    spec.hasScale = false;
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+TEST_P(MsaIndexScoreTiling, pa_missing_block_table_fail)
+{
+    MsaTilingSpec spec;
+    spec.hasBlockTable = false;
+    RunTiling(spec, GetParam(), ge::GRAPH_FAILED);
+}
+
+// packedM=2，可见 block=32 → 4 个 S-tile。950 切 kvChunks=4、launchAic=8；A2/A3 保持 kvChunks=1、launchAic=2。
+TEST_P(MsaIndexScoreTiling, short_m_long_s_kv_chunks)
+{
+    const MsaSocParam &soc = GetParam();
+    MsaTilingSpec spec;
+    spec.keyShape = {32, 128, 1, 128};
+    spec.blockTableShape = {1, 32};
+    spec.scoreShape = {8, 32, 32};
     struct MsaCompileInfo {
     } compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "MsaIndexScore",
-        {{{{32, 8, 128}, {32, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{2, 128, 1, 128}, {2, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{1, 2}, {1, 2}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // actual_seq_qlen absent
-         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{{8, 32, 16}, {8, 32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("BBND")},
-         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"init_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"local_blocks", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
-        &compileInfo, "Ascend950", 56, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(MakeTilingPara(spec, soc, &compileInfo), tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, MSA_KEY_FP16);
+    ASSERT_GE(tilingInfo.tilingDataSize, 27U * sizeof(uint32_t));
+    const auto *words = reinterpret_cast<const uint32_t *>(tilingInfo.tilingData.get());
+    const size_t n = tilingInfo.tilingDataSize / sizeof(uint32_t);
+    size_t base = 0;
+    ASSERT_TRUE(FindTilingBase(words, n, 1, 32, 8, 1, 128, base));
+    const uint32_t expectChunks = soc.is950 ? 4U : 1U;
+    const uint32_t expectLaunch = soc.is950 ? 8U : 2U;
+    EXPECT_EQ(words[base + 9], expectLaunch);
+    EXPECT_EQ(words[base + 26], expectChunks);
+}
+
+INSTANTIATE_TEST_SUITE_P(Soc, MsaIndexScoreTiling, testing::Values(kSoc910B, kSoc91093, kSoc950),
+                         [](const testing::TestParamInfo<MsaSocParam> &info) { return info.param.name; });
+
+class MsaIndexScoreTilingFp8 : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "MsaIndexScoreTilingFp8 SetUp" << std::endl;
+    }
+    static void TearDownTestCase()
+    {
+        std::cout << "MsaIndexScoreTilingFp8 TearDown" << std::endl;
+    }
+};
+
+TEST_F(MsaIndexScoreTilingFp8, ascend950_fp8_e4m3fn_success)
+{
+    MsaTilingSpec spec;
+    spec.queryDtype = ge::DT_FLOAT8_E4M3FN;
+    spec.keyDtype = ge::DT_FLOAT8_E4M3FN;
+    RunTiling(spec, kSoc950, ge::GRAPH_SUCCESS, MSA_KEY_FP8_E4M3FN);
+}
+
+TEST_F(MsaIndexScoreTilingFp8, ascend950_fp8_e5m2_success)
+{
+    MsaTilingSpec spec;
+    spec.queryDtype = ge::DT_FLOAT8_E5M2;
+    spec.keyDtype = ge::DT_FLOAT8_E5M2;
+    RunTiling(spec, kSoc950, ge::GRAPH_SUCCESS, MSA_KEY_FP8_E5M2);
+}
+
+TEST_F(MsaIndexScoreTilingFp8, ascend950_hifloat8_success)
+{
+    MsaTilingSpec spec;
+    spec.queryDtype = ge::DT_HIFLOAT8;
+    spec.keyDtype = ge::DT_HIFLOAT8;
+    RunTiling(spec, kSoc950, ge::GRAPH_SUCCESS, MSA_KEY_HIFLOAT8);
+}
+
+TEST_F(MsaIndexScoreTilingFp8, a2_a3_fp8_rejected)
+{
+    MsaTilingSpec spec;
+    spec.queryDtype = ge::DT_FLOAT8_E4M3FN;
+    spec.keyDtype = ge::DT_FLOAT8_E4M3FN;
+    RunTiling(spec, kSoc910B, ge::GRAPH_FAILED);
+    RunTiling(spec, kSoc91093, ge::GRAPH_FAILED);
+    spec.queryDtype = ge::DT_FLOAT8_E5M2;
+    spec.keyDtype = ge::DT_FLOAT8_E5M2;
+    RunTiling(spec, kSoc910B, ge::GRAPH_FAILED);
+    spec.queryDtype = ge::DT_HIFLOAT8;
+    spec.keyDtype = ge::DT_HIFLOAT8;
+    RunTiling(spec, kSoc910B, ge::GRAPH_FAILED);
 }

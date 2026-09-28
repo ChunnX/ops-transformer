@@ -82,7 +82,16 @@ public:
     static constexpr uint32_t MSA_HALF_PER_MASK_WORD = 64;
 
     // -3.4e38 越界，float→half 按 IEEE 就近舍入得 -inf；归约后由 Maxs 抬回 MSA_FILL_VALUE。
+    // 设备侧 half(float) 可作 constexpr。CPU 仿真的构造函数不是 constexpr，改成调用点现算，数值相同。
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+    static half CpuFillValueHalf()
+    {
+        return static_cast<half>(MSA_FILL_VALUE);
+    }
+#define FILL_VALUE_H CpuFillValueHalf()
+#else
     static constexpr half FILL_VALUE_H = static_cast<half>(MSA_FILL_VALUE);
+#endif
 
     __aicore__ inline MsaSegRowMaxEpilogue() {}
 
@@ -740,5 +749,9 @@ private:
 };
 
 } // namespace MsaIndexScoreNs
+
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+#undef FILL_VALUE_H
+#endif
 
 #endif // MSA_SEG_ROW_MAX_EPILOGUE_ARCH22_H

@@ -53,7 +53,11 @@ struct TileCastInt4ToInt8 {
     CATLASS_DEVICE
     TileCastInt4ToInt8(Arch::Resource<ArchTag> const &resource, Params const &params)
     {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        if (g_coreType == AscendC::AIV) {
+#else
         if constexpr (g_coreType == AscendC::AIV) {
+#endif
             uint32_t ubOffset = 0;
             uint32_t ubInSize = COMPUTE_LEN * sizeof(int8_t) / INT4_PACK_RATIO;
             uint32_t ubOutSize = COMPUTE_LEN * sizeof(ElementDst);
@@ -78,7 +82,11 @@ struct TileCastInt4ToInt8 {
     CATLASS_DEVICE
     ~TileCastInt4ToInt8()
     {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        if (g_coreType == AscendC::AIV) {
+#else
         if constexpr (g_coreType == AscendC::AIV) {
+#endif
             for (uint32_t i = 0; i < STAGES; i++) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ubEventList[i]);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubEventList[i]);

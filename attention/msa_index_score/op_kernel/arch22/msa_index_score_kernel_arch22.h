@@ -109,12 +109,21 @@ public:
 
     __aicore__ inline void Process()
     {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        // CPU 仿真把 AIC/AIV 编进同一个 TU。AIC 构造 BlockMmad 会占 L0/L1，和 AIV 的 UB 叠在一次 Process 里会越界。
+        // 设备编译不定义这两个宏，仍按 MIX 分别进 Cube / Vector。
+        if ASCEND_IS_AIC {
+            return;
+        }
+        ProcessVector();
+#else
         if ASCEND_IS_AIC {
             ProcessCube();
         }
         if ASCEND_IS_AIV {
             ProcessVector();
         }
+#endif
     }
 
 private:

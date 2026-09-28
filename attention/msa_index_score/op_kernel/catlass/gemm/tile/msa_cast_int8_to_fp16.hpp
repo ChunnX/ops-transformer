@@ -60,7 +60,11 @@ struct TileCastInt8ToFp16Dequant {
     TileCastInt8ToFp16Dequant(Arch::Resource<ArchTag> const &resource, Params const &params_)
         : params(params_)
     {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        if (g_coreType == AscendC::AIV) {
+#else
         if constexpr (g_coreType == AscendC::AIV) {
+#endif
             uint32_t ubOffset = 0;
             uint32_t ubInSize = COMPUTE_LEN * sizeof(ElementSrc);
             uint32_t ubOutSize = COMPUTE_LEN * sizeof(ElementDst);
@@ -82,7 +86,11 @@ struct TileCastInt8ToFp16Dequant {
     CATLASS_DEVICE
     ~TileCastInt8ToFp16Dequant()
     {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        if (g_coreType == AscendC::AIV) {
+#else
         if constexpr (g_coreType == AscendC::AIV) {
+#endif
             for (uint32_t i = 0; i < STAGES; i++) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ubEventList[i]);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubEventList[i]);

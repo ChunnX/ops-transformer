@@ -8,6 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if(UT_TEST_ALL OR OP_HOST_UT)
-    add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+if(UT_TEST_ALL OR OP_KERNEL_UT)
+    set(msa_index_score_tiling_files
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/msa_index_score_tiling.cpp)
+    # CPU 调试编译不提供 __forceinline__；Catlass 的 CATLASS_DEVICE 依赖它。仅 UT 编译选项，不改设备编译。
+    # ascend910B1 覆盖 A2/A3 共用的 arch22 kernel（__CCE_AICORE__ != 310）。
+    AddOpTestCase(msa_index_score "ascend910B1"
+        "-D__forceinline__=inline -I${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_kernel"
+        "${msa_index_score_tiling_files}")
 endif()

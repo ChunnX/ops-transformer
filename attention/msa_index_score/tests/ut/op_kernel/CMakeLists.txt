@@ -8,7 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# 950 kernel 在 arch35。cmake/ut.cmake 在 ARCH_DIRECTORY 含 arch35 时跳过 op_kernel 目录本身的用例。
+# cmake/ut.cmake：ARCH_DIRECTORY 含 arch35 时只编 arch35/，否则编 arch22/（A2/A3）。
+# 用例源码相同，见 msa_index_score_kernel_ut.inc。--soc 同时带 910b 和 950 时框架只保留 arch35。
 file(GLOB CURRENT_SOURCE_DIRS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/*)
 foreach(SUB_DIR ${CURRENT_SOURCE_DIRS})
     if(EXISTS "${SUB_DIR}/CMakeLists.txt")
