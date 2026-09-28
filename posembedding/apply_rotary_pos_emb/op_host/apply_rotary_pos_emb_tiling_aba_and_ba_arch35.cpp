@@ -23,6 +23,7 @@ namespace optiling {
 constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 20000;
 constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t MAX_COPY_BLOCK_COUNT = 4095;
+constexpr int32_t DEFAULT_WORKSPACE_SIZE = 0;
 constexpr uint64_t TILING_KEY_ABA = 20010;
 constexpr uint64_t TILING_KEY_BA = 20011;
 constexpr int64_t HALF_INTERLEAVE_COEF = 2;
@@ -248,10 +249,7 @@ uint64_t ApplyRotaryPosEmbTilingABAAndBA::GetTilingKey() const
 
 ge::graphStatus ApplyRotaryPosEmbTilingABAAndBA::GetWorkspaceSize()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+    workspaceSize_ = DEFAULT_WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
