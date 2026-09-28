@@ -17,6 +17,41 @@
 #define VF_MUL_QR_H
 
 namespace MlaProlog {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+// ===== 9201(Ascend A6) 阶段5批次2(5D/V6)优化: 常量 Duplicate 外提到循环外 =====
+// 与索引无关的常量在循环内每次重复生成——官方《VF性能优化》"循环内指令分布优化"反例的原样修复。
+// 每次调用省 repeatTimes-1 条指令。源自恢复版优化(60.48μs 态), 适配主线 Reg:: 命名空间。
+template <typename T>
+__simd_vf__ void MulQrVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *outputBuf, __ubuf__ T *dequantScaleBrcbBuf,
+                             const uint16_t floatRepSize, uint16_t repeatTimes, float quantScaleCkvRope,
+                             uint64_t computeBlockAlign)
+{
+    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+
+    // 常量外提: 与循环索引无关, 每次调用只做一次
+    Reg::RegTensor<T> vregQuantScale;
+    Reg::Duplicate(vregQuantScale, quantScaleCkvRope);
+
+    for (uint16_t i = 0; i < repeatTimes; i++) {
+        Reg::RegTensor<T> vregSrc;
+        Reg::RegTensor<T> vregDequantScaleVrcb;
+        Reg::RegTensor<T> vregMulScale;
+        Reg::RegTensor<T> vregRes;
+        uint16_t loopOffset = i * floatRepSize;             // 计算数据偏移
+        uint16_t dequantLoopOffset = i * computeBlockAlign; // 动态量化参数偏移
+
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregSrc, inputBuf + loopOffset);
+        // broadcast量化系数
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregDequantScaleVrcb, dequantScaleBrcbBuf + dequantLoopOffset);
+
+        Reg::Div(vregMulScale, vregQuantScale, vregDequantScaleVrcb, pregAll);
+
+        Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregRes, vregSrc, vregMulScale, pregAll);
+
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputBuf + loopOffset, vregRes, pregAll);
+    }
+}
+#else
 template <typename T>
 __simd_vf__ void MulQrVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *outputBuf, __ubuf__ T *dequantScaleBrcbBuf,
                              const uint16_t floatRepSize, uint16_t repeatTimes, float quantScaleCkvRope,
@@ -45,6 +80,7 @@ __simd_vf__ void MulQrVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *outputBuf, __ubuf
         Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputBuf + loopOffset, vregRes, pregAll);
     }
 }
+#endif
 
 /**
  * @brief MulQrVF 对于RopeQr输出的结果进行mul系数计算

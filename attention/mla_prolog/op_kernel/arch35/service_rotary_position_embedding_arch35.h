@@ -151,7 +151,6 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     LocalTensor<C> kFp32Local;
     LocalTensor<T> kLocal;
     PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt);
-    // scale参数可以和rope使用的空间复用
     LocalTensor<C> scaleLocal = kFp32Local[cnt];
     LocalTensor<C> kFp32OutputLocal = scaleLocal[ropeParams.col];
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -215,5 +214,91 @@ __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, Loca
     CastFP32ToINT8(outputLocal, inFp32, shareTmpUb, cnt);
     PipeBarrier<PIPE_V>();
 }
+
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+// =================================================================================================
+// ===== 9201(Ascend A6) ③ CV直连: RotaryPosEmbPerHead 的 LocalTensor(UB)输入重载 =====
+// 输入从 UB 波缓冲读取(行距=wavePitch), 先逐行紧凑拷贝到 shareTmpUb 再走原计算管线。
+// 消除该段的 GM 读(③ 的 fixpipe 只写 UB 不写 GM——GM 回退不可用)。
+// =================================================================================================
+
+// UB→UB 带距紧凑化: 逐行 DataCopy(源行距=wavePitch → 目的行距=col 紧凑)
+template <typename T, typename C>
+__aicore__ inline void PreprocessRopeInputUb(const LocalTensor<T> &inputUb, LocalTensor<uint8_t> &shareTmpUb,
+                                             const Rectangle &ropeParams, LocalTensor<C> &kFp32Local,
+                                             LocalTensor<T> &kLocal, int64_t cnt, uint32_t wavePitch)
+{
+    int64_t baseOffset;
+    kLocal = shareTmpUb.ReinterpretCast<T>();
+    if constexpr (std::is_same<T, int32_t>::value) {
+        baseOffset = cnt;
+    } else {
+        baseOffset = cnt >> 1;
+    }
+    kFp32Local = shareTmpUb.ReinterpretCast<C>()[baseOffset];
+    // UB→UB 逐行拷贝: 简单 count 形式的 DataCopy 逐行调用(UB 内拷贝)
+    for (uint32_t r = 0; r < ropeParams.row; r++) {
+        DataCopy(kLocal[static_cast<int64_t>(r) * ropeParams.col],
+                 inputUb[static_cast<int64_t>(r) * wavePitch],
+                 ropeParams.col);
+    }
+}
+
+// RotaryPosEmbPerHead 的 LocalTensor 输入版: 与 GM 版同构, 仅 PreprocessRopeInput → PreprocessRopeInputUb
+template <typename T, typename C, typename O, bool enableDequant, bool doRope>
+__aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const LocalTensor<T> &inputUb,
+                                           const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
+                                           LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
+                                           uint32_t wavePitch,
+                                           GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
+                                           LocalTensor<float> deQuantScale = LocalTensor<float>())
+{
+    if (ropeParams.row == 0) {
+        return;
+    }
+    int64_t cnt = ropeParams.row * ropeParams.col;
+    LocalTensor<C> kFp32Local;
+    LocalTensor<T> kLocal;
+    // ③: UB→UB 紧凑化(源行距=wavePitch)替代 GM→UB 的 PreprocessRopeInput
+    PreprocessRopeInputUb<T, C>(inputUb, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt, wavePitch);
+
+    LocalTensor<C> scaleLocal = kFp32Local[cnt];
+    LocalTensor<C> kFp32OutputLocal = scaleLocal[ropeParams.col];
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    if constexpr (std::is_same<T, int32_t>::value || enableDequant) {
+        DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(ropeParams.col * sizeof(C)),
+                                      static_cast<uint32_t>((strideScale - ropeParams.col) * sizeof(C)), 0, 0};
+        DataCopyPadExtParams<C> padParams1{false, 0, 0, 0};
+        DataCopyPad(scaleLocal, channelDeqScaleGm, copyParams1, padParams1);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col),
+                                  static_cast<uint32_t>(ropeParams.col)};
+        if constexpr (std::is_same<T, float>::value) {
+            Dequant(kFp32Local, kFp32Local, scaleLocal, deQuantScale, rectangleParams);
+        } else {
+            Dequant(kFp32Local, kLocal, scaleLocal, deQuantScale, rectangleParams);
+        }
+    } else if constexpr (std::is_same<T, bfloat16_t>::value) {
+        Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
+    }
+    PipeBarrier<PIPE_V>();
+    // ===== 以下与 GM 版的 doRope/output 段完全一致(拷贝自原函数) =====
+    if constexpr (doRope) {
+        RopeImpl<C, O>(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeParams, outputLocal);
+    } else {
+        DataCopyParams copyParams2{static_cast<uint16_t>(ropeParams.row),
+                                   static_cast<uint16_t>(ropeParams.col * sizeof(O) / ALIGN_BLOCK_SIZE), 0, 0};
+        DataCopy(outputLocal, kFp32Local.ReinterpretCast<O>(), copyParams2);
+    }
+    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    DataCopyParams copyParams3{static_cast<uint16_t>(ropeParams.row),
+                               static_cast<uint16_t>(ropeParams.col * sizeof(O) / ALIGN_BLOCK_SIZE), 0, 0};
+    DataCopy(outputLocal, outputLocal, copyParams3);
+}
+#endif // __NPU_ARCH__ == 9201
+
 } // namespace MlaProlog
 #endif

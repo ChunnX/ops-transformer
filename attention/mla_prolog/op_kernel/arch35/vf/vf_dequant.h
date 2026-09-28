@@ -19,6 +19,86 @@
 
 namespace MlaProlog {
 
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+// ===== 9201(Ascend A6) 阶段5批次2(5D/V3)优化: 循环边界 uint16 局部量 =====
+// uint16 迭代变量与 uint32 参数直接比较会整型提升, 破坏 VLOOPv2 硬件循环模式匹配。
+// 三个循环(dLoops 外层 + 主内层 + 尾块内层)统一改造。源自恢复版优化(60.48μs 态)。
+template <typename T>
+__simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf__ float *scalePerChannelAddr,
+                               __ubuf__ float *scalePerTokenAddr, uint32_t floatRepSize, uint32_t fp32BlockElementNum,
+                               uint32_t dLoops, uint32_t dTail, uint32_t dTailLoop, uint32_t row, uint32_t col,
+                               uint32_t stride)
+{
+    constexpr static AscendC::Reg::CastTrait castTraitInt32ToFp32 = {
+        AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_RINT};
+
+    AscendC::Reg::RegTensor<T> vregInput;
+    AscendC::Reg::RegTensor<float> vregScalePerChannel;
+    AscendC::Reg::RegTensor<float> vregScalePerToken;
+    AscendC::Reg::RegTensor<float> vregInputFp32;
+    AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg tailMask;
+    tailMask = AscendC::Reg::UpdateMask<float>(dTail);
+
+    // uint16 局部量: row≤128/dLoops≤24 域安全
+    const uint16_t dLoopsU16 = static_cast<uint16_t>(dLoops);
+    const uint16_t rowU16 = static_cast<uint16_t>(row);
+
+    uint32_t colOffset = 0;
+    uint32_t rowOffset = 0;
+    uint32_t scaleOffset = 0;
+    for (uint16_t j = 0; j < dLoopsU16; j++) {
+        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_NORM>(vregScalePerChannel,
+                                                                          scalePerChannelAddr + colOffset);
+        rowOffset = 0;
+        scaleOffset = 0;
+        for (uint16_t i = 0; i < rowU16; i++) {
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(vregScalePerToken,
+                                                                                 scalePerTokenAddr + scaleOffset);
+            if constexpr (!std::is_same<T, float>::value) {
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput, xAddr + colOffset + rowOffset);
+                AscendC::Reg::Cast<float, T, castTraitInt32ToFp32>(vregInputFp32, vregInput, fullMask);
+            } else {
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInputFp32,
+                                                                              xAddr + colOffset + rowOffset);
+            }
+            AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, fullMask);
+            AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, fullMask);
+            AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(yAddr + colOffset + rowOffset,
+                                                                                    vregInputFp32, fullMask);
+            rowOffset += stride;
+            scaleOffset += fp32BlockElementNum;
+        }
+        colOffset += floatRepSize;
+    }
+
+    if (dTailLoop > 0) {
+        rowOffset = 0;
+        scaleOffset = 0;
+        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_NORM>(vregScalePerChannel,
+                                                                          scalePerChannelAddr + dLoops * floatRepSize);
+        for (uint16_t i = 0; i < rowU16; i++) {
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(vregScalePerToken,
+                                                                                 scalePerTokenAddr + scaleOffset);
+            if constexpr (!std::is_same<T, float>::value) {
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(
+                    vregInput, xAddr + dLoops * floatRepSize + rowOffset);
+                AscendC::Reg::Cast<float, T, castTraitInt32ToFp32>(vregInputFp32, vregInput, tailMask);
+            } else {
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(
+                    vregInputFp32, xAddr + dLoops * floatRepSize + rowOffset);
+            }
+            AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, tailMask);
+            AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, tailMask);
+            AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(
+                yAddr + dLoops * floatRepSize + rowOffset, vregInputFp32, tailMask);
+            rowOffset += stride;
+            scaleOffset += fp32BlockElementNum;
+        }
+    }
+}
+#else
 template <typename T>
 __simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf__ float *scalePerChannelAddr,
                                __ubuf__ float *scalePerTokenAddr, uint32_t floatRepSize, uint32_t fp32BlockElementNum,
@@ -90,6 +170,7 @@ __simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf_
         }
     }
 }
+#endif // __NPU_ARCH__ == 9201 — DequantVFImpl 双版本隔离结束, DequantVf wrapper 以下为公共代码
 
 /**
  * @brief DequantVf 对输入做per-token叠加per-channel的反量化， INT32 ---> FP32.

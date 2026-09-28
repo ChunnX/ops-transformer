@@ -61,7 +61,17 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, con
         LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
         WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         PipeBarrier<PIPE_V>();
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        // 9201 V1(阶段5批次1): DQ v2 原语——行循环入VF整块单发 + pass1 bf16域满载, −20.8μs/算子。
+        // 门控在 wrapper 内部(T非bf16/col非128倍/NCHUNK>4 自动回退原路径)。
+        if constexpr (MLA_USE_DQ_V2) {
+            DynamicQuantPerTokenVf2(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
+        } else {
+            DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
+        }
+#else
         DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
+#endif
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
         SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
@@ -114,7 +124,12 @@ __aicore__ inline void MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTe
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         PipeBarrier<PIPE_V>();
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal[dequantScaleOffset], quantScaleCkvRope, computeSizeRope,
+                computeBlockAlign);
+#else
         MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
+#endif
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         PipeBarrier<PIPE_V>();
 

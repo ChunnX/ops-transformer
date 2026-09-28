@@ -28,7 +28,6 @@
 #include <unordered_set>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "op_host/data_copy_transpose_tiling.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
@@ -414,6 +413,13 @@ private:
     ge::graphStatus FillMatmul3Tiling();
     ge::graphStatus FillMatmul4Tiling();
     uint32_t CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t alignNum = 16) const;
+
+    // ===== 9201(Ascend A6) 切KN 分组 =====
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    bool IsSplitKnSupported() const;
+    bool CalcSplitKnGroups(uint32_t nSize, uint32_t kSize, uint32_t mSize, uint32_t dtypeSize,
+                           uint16_t &nGroup, uint16_t &kGroup) const;
+#endif
     bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType);
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
@@ -438,6 +444,16 @@ private:
     uint32_t singlecoreHeadSizeQcQr_ = 0;
     uint32_t singlecoreHeadSizeCkvKr_ = 0;
     uint32_t singlecoreNumHeadSize_ = 0;
+
+    // ===== 9201(Ascend A6) 切KN 分组字段(阶段1优化 + L9 修复) =====
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    uint16_t mm1NGroup_ = 1;       // N 分组数(1=未切KN, 走原切N)
+    uint16_t mm1KGroup_ = 1;       // K 分组数
+    uint32_t mm1SingleCoreK_ = 0;  // 每核 K 切片(0=未切KN)
+    uint16_t mm2NGroup_ = 1;
+    uint16_t mm2KGroup_ = 1;
+    uint32_t mm2SingleCoreK_ = 0;
+#endif
 
     float reciprocalCq_ = 0.00001f;
     float epsilonCq_ = 1.0f;

@@ -120,7 +120,11 @@ constexpr uint32_t ROUND_UP_UNIT = 15;       // for round up
 constexpr uint32_t MAX_SYNC_FLAG_COUNT = 15; // 同一个flagId的计数器最多设置15次
 
 constexpr int SYNC_MODE_ALL_CUBE = 0x0;
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+constexpr int SYNC_MODE_CUBE_VEC = 0x4;
+#else
 constexpr int SYNC_MODE_CUBE_VEC = 0x2;
+#endif
 constexpr int SYNC_MODE_ALL_VEC = 0x0;
 
 constexpr int FINISH_MM_CQ = 0x6;
@@ -140,6 +144,13 @@ constexpr int FINISH_MM_QCQR_SPLIT_BATCH = 0x3;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP = 0X1;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
+
+// ===== 9201(Ascend A6) ③/方案二 基础设施: 跨核消费令牌 flag =====
+// ③ CV直连: AIV 消费完 MM3 波后的通知(挂 PIPE_V, AIC 在块 g+2 复用同号 ping 前 Wait)。
+// 恢复版实测: ③+方案二 = 阶段3 的 −17.9μs(148→89.62 的一部分)。值 0xB 与原版 flag 空间一致。
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+constexpr int FINISH_VEC_QCQR_CONSUMED = 0XB;
+#endif
 
 #ifdef ENABLE_DUMP_DATA
 #define DO_DUMP_DATA(srcTensor, id, len) DumpTensor(srcTensor, id, len)
@@ -464,6 +475,27 @@ __aicore__ constexpr bool IsFullQuantMode()
                std::is_same<INPUT_T, HIF8>::value;
     }
 }
+
+// =================================================================================================
+// ===== 9201(Ascend A6) 性能优化开关(恢复版 60.48μs 态的有效项, 仅 9201 生效) ====
+// 迁移自恢复版优化平台, 详见《仿真日志全景分析与完整问题清单_2026-09-24.md》附录。
+// =================================================================================================
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+
+// ③ CV直连: MM3 的 C 走 L0C→UB 共享波缓冲(cvSharedUb_ 96KB ping), 消 GM 往返。
+// 依赖: cvSharedUb_ 波缓冲 + FINISH_VEC_QCQR_CONSUMED 令牌流 + 全局波计数 mm3WaveSeq_。
+constexpr bool MLA_USE_UB_DIRECT = true;
+
+// 方案二 MM4 CV直连: MM4 的 C 复用③基建(cvSharedUb_ ping), M 半块双缓冲 + AIV 尾 DQ 直读零拷贝。
+// 依赖: ③基建(MLA_USE_UB_DIRECT 必须同时为 true)。消除 FIX→GM + AIV GM 读 的 C 往返。
+constexpr bool MLA_USE_MM4_UB = true;
+
+// V1 DQ v2 原语: DynamicQuantPerTokenVf2(行循环入VF整块单发 + pass1 bf16域满载)。
+// 实测恢复版 −20.8μs/算子(最大单项)。门控外(T非bf16/col非128倍/NCHUNK>4)自动回退原路径。
+// 调用侧: service_dynamic_quant_qn_mul_qr_arch35.h ×2 处 if constexpr 路由。
+constexpr bool MLA_USE_DQ_V2 = true;
+
+#endif // __NPU_ARCH__ == 9201
 
 } // namespace MlaProlog
 #endif

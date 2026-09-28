@@ -347,7 +347,13 @@ __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1
         LoadDataL1ToL0<T>(aL0, aL1, mmadParams.m, mmadParams.k);
     }
     SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    // 9201 S级修复②: A 就绪等待从"A 搬完立即等"下沉到 B 也发射完之后——M 管线的两次阻塞等待
+    // 集中在 MTE1 全部装载指令已入队之后, A/B 的 MTE1 装载可连续发射不被 M 的等待打断。
+    // (A 的 Wait 移到 B 的 Set 之后)
+#else
     WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
+#endif
     WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
 
     LocalTensor<T> bL0 = bL0Tensor[(bufParam.bL0BufIter & 1u) * (L0B_PP_SIZE / sizeof(T))];
@@ -361,6 +367,10 @@ __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1
     }
 
     SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    // 9201 S级修复②(续): A 的就绪等待在此处(双装载已入队后)
+    WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
+#endif
     WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
     if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
         LocalTensor<mx_fp8_e4m3_t> aL0Tmp = aL0.template ReinterpretCast<mx_fp8_e4m3_t>();
@@ -369,7 +379,12 @@ __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1
     } else {
         Mmad(cL0Tensor, aL0, bL0, mmadParams);
     }
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     PipeBarrier<PIPE_M>();
+#endif
+    // 9201 S级修复①: 去掉 PipeBarrier<PIPE_M>——M 管线 FIFO 天然保证 Mmad → SetFlag<M_MTE1>
+    // 顺序(释放 L0 ping 在 MMAD 之后), 全冲刷只会把下一轮 MTE1 挡在 MMAD 完成之后(双 buffer 失效)。
+    // 稳态流水 = max(ΣMTE1, ΣMMAD) 而非两者相加(MM1 实测 1.57×)。
     SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
     bufParam.bL0BufIter++;
     SetFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
@@ -401,6 +416,43 @@ __aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalT
     }
     Fixpipe(tensorCGm, cL0, fixParams);
 }
+
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+// ===== 9201(Ascend A6) ③ CV直连基建: L0C→UB 输出函数 =====
+// 与 GetTensorC(GM通路)同构——同样的 M_FIX 标量屏障, 仅目的为 UB 波缓冲(行距=波宽, 紧凑ND)。
+// AIV 侧以行距=nL1Size 带距直读(Dequant/Rope 原生支持 stride), 零拷贝。
+// FixpipeParamsArch3510: CANN 9.2.0 含 9201 分支。quantPre 默认 NoQuant(③ float→float/int32→int32);
+// MM4方案二: F322BF16(float→bf16, 与 GM 通路 GetTensorC 同款 bit 级转换)。
+// 消除: FIX→GM 写 + AIV GM 读 的 C 往返(恢复版实测 ③+方案二 = −17.9μs)。
+constexpr AscendC::FixpipeConfig MLA_CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+
+template <typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToUb(const LocalTensor<O> &tensorCUb, const LocalTensor<O_L0C> &cL0,
+                                      const uint32_t mSize, const uint32_t nSize, const uint32_t srcStride,
+                                      const uint32_t dstStride, MMBufParams &bufParam,
+                                      const QuantMode_t quantPre = QuantMode_t::NoQuant)
+{
+    FixpipeParamsArch3510<AscendC::CO2Layout::ROW_MAJOR> fixParams;
+    fixParams.nSize = nSize;
+    fixParams.mSize = mSize;
+    fixParams.srcStride = srcStride;
+    fixParams.dstStride = dstStride;
+    fixParams.params.ndNum = 1;
+    fixParams.params.srcNdStride = 0;
+    fixParams.params.dstNdStride = 0;
+    fixParams.quantPre = quantPre;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, MLA_CFG_ROW_MAJOR_UB>(tensorCUb, cL0, fixParams);
+}
+#endif // __NPU_ARCH__ == 9201
 
 /**
  * @brief 将AB矩阵从GM加载到L1缓存以进行矩阵乘法运算
@@ -599,7 +651,12 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
                                     const GlobalTensor<T> &tensorBGm, const MMParams &para, MMBufParams &bufParam,
                                     const uint32_t nL1Offset, const uint32_t nL1Size,
                                     const GlobalTensor<S> &tensorAScaleGm = {},
-                                    const GlobalTensor<S> &tensorBScaleGm = {})
+                                    const GlobalTensor<S> &tensorBScaleGm = {},
+                                    // 9201 ③ CV直连附加参数(默认值保持既有调用零影响):
+                                    // ubPath=true 时 C 走 GetTensorCToUb 写入 waveUb(UB 波缓冲),
+                                    // 行距=nL1Size(紧凑ND); false 走原 GetTensorC 写 GM。
+                                    const bool ubPath = false,
+                                    const LocalTensor<O> &waveUb = LocalTensor<O>())
 {
     using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
 
@@ -660,7 +717,17 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
     if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
         SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
     }
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    // 9201 ③ CV直连: ubPath=true 时 C 走 GetTensorCToUb 写入 UB 波缓冲(行距=波宽, 紧凑ND);
+    // false 走原 GetTensorC 写 GM。两种通路共享同一 M_FIX 标量屏障语义(定序 FIX 在全部 MMAD 之后)。
+    if (ubPath) {
+        GetTensorCToUb<O, O_L0C, enUnitFlag>(waveUb, cL0, para.m, nL1Size, mSize, nL1Size, bufParam);
+    } else {
+        GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
+    }
+#else
     GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
+#endif
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
     bufParam.cL0BufIter++;
 }

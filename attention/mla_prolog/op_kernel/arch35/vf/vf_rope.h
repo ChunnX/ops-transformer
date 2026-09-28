@@ -40,7 +40,14 @@ __simd_vf__ inline void RopeVFImpl(__ubuf__ C *outputUb, __ubuf__ C *inputUb, __
     Reg::MaskReg maskHighHalf;
     Reg::Not(maskHighHalf, maskLowHalf, maskAll);
 
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    // 9201(5D/V3): 循环边界 uint16 局部量——uint16 迭代变量与 uint32 参数直接比较会整型提升,
+    // 破坏 VLOOPv2 硬件循环模式匹配。row 域 ≤128 安全。源自恢复版优化(60.48μs 态)。
+    const uint16_t rowU16 = static_cast<uint16_t>(row);
+    for (uint16_t i = 0; i < rowU16; ++i) {
+#else
     for (uint16_t i = 0; i < row; ++i) {
+#endif
         __ubuf__ C *curXUb = inputUb + i * srcStride;
         __ubuf__ C *curResUb = outputUb + i * dstStride;
         __ubuf__ C *curSinUb = sinUb + i * sinCosStride;
