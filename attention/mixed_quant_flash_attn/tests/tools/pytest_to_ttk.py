@@ -132,7 +132,11 @@ def gen_pa_shape(num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is
 
 def calc_block_info(seqused_kv, s2, block_size, batch_size=1):
     """num_blocks = sum(ceil(seqused_kv[i]/block_size)), max_blocks_per_batch = ceil(max/blocks_size)。"""
-    if batch_size == 0:
+    # Empty-query/empty-KV STC cases may deliberately use B=0 or
+    # block_size=0 to construct a zero-element physical cache.  Neither case
+    # owns any PA block, and attempting the ordinary ceil-div calculation
+    # would either invent blocks for B=0 or divide by zero for block_size=0.
+    if batch_size == 0 or block_size <= 0:
         return 0, 0
     if seqused_kv:
         num_blocks = sum(math.ceil(x / block_size) for x in seqused_kv)
@@ -487,6 +491,12 @@ def main():
             skipped.append(name)
             if args.skip_invalid:
                 continue
+        # Keep the same boundary-case policy as the pytest STC runner:
+        # block_size<=0 is an invalid PA contract, not a runnable TTK case.
+        raw_block_size = _val(case, "block_size", 128)
+        if args.skip_invalid and raw_block_size is not None and raw_block_size <= 0:
+            skipped.append(name)
+            continue
         try:
             parsed.append(parse_pytest_case(name, case))
         except Exception as e:

@@ -165,6 +165,7 @@ public:
     LocalTensor<uint8_t> FDResOutputQue;
     LocalTensor<uint8_t> accumOutInputQue;
     LocalTensor<uint8_t> sinkBuf; // AttentionSink
+    LocalTensor<uint8_t> sinkScaleBuf; // exp(oldMax - newMax), one slot per preloaded task
 
     static constexpr TEventID V_MTE3_QTMP_0 = static_cast<TEventID>(0);
     static constexpr TEventID V_MTE3_QTMP_1 = static_cast<TEventID>(1);
@@ -199,6 +200,7 @@ public:
     // Keep aligned source space for sink expansion and a separate 64-float output space.
     static constexpr uint32_t SINK_EXPANDED_OFFSET = 128;
     static constexpr uint32_t SINK_BUF_BYTE = 1024;
+    static constexpr uint32_t SINK_SCALE_BUF_BYTES = (PRELOAD_N + 1) * SOFTMAX_BUF_BYTES;
     static constexpr uint32_t INIT_BUF_BYTE = 8192;
     static constexpr uint32_t VEC1_RES_BYTE = (mBaseSize + 1) * s2BaseSize * sizeof(Q_T);   // +1解bank冲突
     static constexpr uint32_t VEC2_RES_BYTE = mBaseSize * dTemplateAlign64 * sizeof(T);
@@ -475,9 +477,7 @@ public:
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
             }
         } else {
-            if (constInfo.learnableSinkFlag) {
-                this->Vec1SinkComputeGSFused(runInfo, sumUb, maxUb);
-            }
+            this->Vec1SinkComputeGSFused(runInfo, sumUb, maxUb);
             SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
         }
     }
@@ -525,6 +525,9 @@ public:
     __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
+        if (!constInfo.learnableSinkFlag) {
+            return;
+        }
         CopySinkIn(runInfo);
         LocalTensor<float> sinkInput = sinkBuf.template ReinterpretCast<float>();
         LocalTensor<float> sinkExpanded = sinkInput[SINK_EXPANDED_OFFSET];
@@ -537,7 +540,9 @@ public:
                 sinkExpanded, sinkInput, runInfo.gS1Idx + runInfo.vecMbaseIdx, runInfo.actVecMSize,
                 runInfo.actS1Size, constInfo.gSize);
         }
-        SinkSubExpAddGSFusedVF<float, float>(sinkExpanded, sumUb, maxUb, runInfo.actVecMSize);
+        LocalTensor<float> sinkScale = sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES].template ReinterpretCast<float>();
+        MixedQuantFlashAttnSink::SinkMergeStableVF<float, float>(sinkExpanded, sumUb, maxUb, sinkScale,
+                                                                  runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
     }
 
@@ -812,6 +817,14 @@ public:
                 FlashUpdateDiv<T, T, Q_T, T, dTemplateAlign64, QUANT_COMPUTE_MODE == 0>(vec2ResUb, bmm2ResBuf, sumUb, valueScaleUb,
                                                         runInfo.actVecMSize, dTemplateAlign64, deSCaleVValue);
             }
+            // S2-split tasks defer sink handling to FlashDecode.  Vec1 does not
+            // produce a sink scale for those tasks, so applying one here would
+            // read an uninitialized slot and would also double-count the sink.
+            if (constInfo.learnableSinkFlag && !runInfo.isS2SplitCore) {
+                LocalTensor<float> sinkScale = sinkScaleBuf[(runInfo.mloop % (PRELOAD_N + 1)) * SOFTMAX_BUF_BYTES].template ReinterpretCast<float>();
+                MixedQuantFlashAttnSink::SinkScaleRowsVF<float>(vec2ResUb, sinkScale, runInfo.actVecMSize,
+                                                                 dTemplateAlign64);
+            }
         }
          CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0 + bmm2BufId);
  
@@ -1062,8 +1075,15 @@ public:
         }
 
         if (constInfo.learnableSinkFlag) {
+            // DataCopyPad requires the UB destination to be 32-byte aligned.
+            // Keep the sink staging area aligned even when a preceding optional
+            // buffer has a shape-dependent byte size.
+            ubBaseAddr = Align(ubBaseAddr, 32U);
             sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, SINK_BUF_BYTE);
             ubBaseAddr += SINK_BUF_BYTE;
+            ubBaseAddr = Align(ubBaseAddr, 32U);
+            sinkScaleBuf = LocalTensor<uint8_t>(TPosition::VECIN, ubBaseAddr, SINK_SCALE_BUF_BYTES);
+            ubBaseAddr += SINK_SCALE_BUF_BYTES;
         }
 
         SetFlag<HardEvent::MTE3_V>(MTE3_V_VEC2RES);

@@ -103,7 +103,8 @@ def normalize_params(raw):
         else:
             seqused_kv = torch.tensor(c["seqused_kv"], dtype=torch.int32)
             block_size = c["block_size"]
-            min_block_num = sum([math.ceil(x / block_size) for x in seqused_kv])
+            min_block_num = (0 if block_size <= 0 else
+                             sum(math.ceil(x / block_size) for x in seqused_kv))
             c["block_num"] = max(min_block_num, c.get("block_num", 0))
 
     # Resolve max_seqlen_q / max_seqlen_kv defaults (-1 means auto from seqused/s2)

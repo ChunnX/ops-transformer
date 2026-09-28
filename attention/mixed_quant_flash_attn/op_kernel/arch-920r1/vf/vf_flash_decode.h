@@ -271,6 +271,15 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
                                                                 (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         MicroAPI::Max<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
     }
+
+    // The sink is another softmax logit and must participate in the common
+    // maximum.  Adding exp(sink - qkMax) against the QK-only maximum overflows
+    // for a large sink and later makes RV_VDIV consume Inf/NaN.
+    for (i = 0; i < static_cast<uint16_t>(learnableSinkFlag); ++i) {
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseSinkCast,
+                                                               (__ubuf__ float *&)lseSink);
+        MicroAPI::Max<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseSinkCast, pregTailN);
+    }
     MicroAPI::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseMaxReduce, vregLseMax, pregTailN);
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
@@ -286,9 +295,7 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
                                                                     vregLseSumTmp, pregTailN);
     }
 
-    // todo 排查为啥会进入
-    for (i = 0;i < static_cast<uint16_t>(learnableSinkFlag); ++i){
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseSinkCast, (__ubuf__ float *&)lseSink);
+    for (i = 0; i < static_cast<uint16_t>(learnableSinkFlag); ++i) {
         MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, vregLseMax, pregTailN);
         MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, pregTailN);
         MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);

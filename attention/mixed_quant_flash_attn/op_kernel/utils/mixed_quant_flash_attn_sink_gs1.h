@@ -28,8 +28,8 @@
  * 值区跨寄存器时统一宽模式: A/B 双 load(基址 0/64, 后者 256B 天然 32B 对齐) + 双 Gather
  * (B 路索引 = idx - 64) + Compares(idx < 64) Select 拼合 —— 值域 <= 64 时 B 路恒被掩掉。
  * 索引取模/整除用寄存器 Div 实现(无 Mod 指令): k = a - (a / d) * d。
- * 越界语义: Gather 索引越界按 mod (VL/sizeof(T)) 取值, 负数经 uint32 重解释变 huge,
- * 其结果恒被 Select/store mask 掩掉, 不产生有效输出。
+ * Gather 防护: 对不参与当前段的 lane 先把 A/B 段索引夹到合法范围，避免硬件
+ * Gather 读取越界地址；最终结果仍由 Select 和 store mask 决定有效 lane。
  */
 #ifndef MIXED_QUANT_FLASH_ATTN_SINK_GS1_H
 #define MIXED_QUANT_FLASH_ATTN_SINK_GS1_H
@@ -187,13 +187,15 @@ __simd_vf__ inline void SinkGs1DirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inU
     Reg::Duplicate<int32_t>(aszReg, static_cast<int32_t>(actS1Size), pregAll);
     Reg::Div<int32_t>(qReg, aReg, aszReg, pregAll);
     Reg::Adds<int32_t>(qSub, qReg, -64, pregAll); // B 段 lane = idx - 64
-    // 宽模式拼合: idx < 64 取 A 段, 否则取 B 段(负值 huge 越界, 被 Select 掩掉)
+    MaskReg pregA = CreateMask<T, Reg::MaskPattern::ALL>();
+    Reg::Compares<int32_t, CMPMODE::LT>(pregA, qReg, 64, pregAll);
+    Mins<int32_t>(qReg, qReg, static_cast<int32_t>(63), pregAll);
+    Maxs<int32_t>(qSub, qSub, static_cast<int32_t>(0), pregAll);
+    // 宽模式拼合: idx < 64 取 A 段, 否则取 B 段。
     RegTensor<uint32_t> &qU32 = (RegTensor<uint32_t> &)qReg;
     RegTensor<uint32_t> &qSubU32 = (RegTensor<uint32_t> &)qSub;
     Reg::Gather<T>(gRegA, fRegA, qU32);
     Reg::Gather<T>(gRegB, fRegB, qSubU32);
-    MaskReg pregA = CreateMask<T, Reg::MaskPattern::ALL>();
-    Reg::Compares<int32_t, CMPMODE::LT>(pregA, qReg, 64, pregAll);
     Reg::Select<T>(oReg, gRegA, gRegB, pregA);
     uint32_t sreg = m;
     MaskReg pregF = UpdateMask<T>(sreg);
@@ -229,13 +231,15 @@ __simd_vf__ inline void SinkRotDirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inU
     Reg::Muls<int32_t>(kReg, qReg, static_cast<int32_t>(gSize), pregAll);
     Reg::Sub<int32_t>(kReg, aReg, kReg, pregAll);
     Reg::Adds<int32_t>(kSub, kReg, -64, pregAll); // B 段 lane = k - 64
-    // 宽模式拼合: k < 64 取 A 段, 否则取 B 段(负值 huge 越界, 被 Select 掩掉)
+    MaskReg pregA = CreateMask<T, Reg::MaskPattern::ALL>();
+    Reg::Compares<int32_t, CMPMODE::LT>(pregA, kReg, 64, pregAll);
+    Mins<int32_t>(kReg, kReg, static_cast<int32_t>(63), pregAll);
+    Maxs<int32_t>(kSub, kSub, static_cast<int32_t>(0), pregAll);
+    // 宽模式拼合: k < 64 取 A 段, 否则取 B 段。
     RegTensor<uint32_t> &kU32 = (RegTensor<uint32_t> &)kReg;
     RegTensor<uint32_t> &kSubU32 = (RegTensor<uint32_t> &)kSub;
     Reg::Gather<T>(gRegA, fRegA, kU32);
     Reg::Gather<T>(gRegB, fRegB, kSubU32);
-    MaskReg pregA = CreateMask<T, Reg::MaskPattern::ALL>();
-    Reg::Compares<int32_t, CMPMODE::LT>(pregA, kReg, 64, pregAll);
     Reg::Select<T>(oReg, gRegA, gRegB, pregA);
     uint32_t sreg = m;
     MaskReg pregF = UpdateMask<T>(sreg);
@@ -271,6 +275,8 @@ __simd_vf__ inline void SinkGapDirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inU
     Reg::Arange<int32_t>(rReg, 0);
     Reg::Adds<int32_t>(rSub, rReg, -64, pregAll);
     Reg::Adds<int32_t>(idxTail, rReg, -static_cast<int32_t>(headLen), pregAll);
+    Maxs<int32_t>(rSub, rSub, static_cast<int32_t>(0), pregAll);
+    Maxs<int32_t>(idxTail, idxTail, static_cast<int32_t>(0), pregAll);
     // 头段宽模式: r < 64 取 A 段, 否则取 B 段
     RegTensor<uint32_t> &rU32 = (RegTensor<uint32_t> &)rReg;
     RegTensor<uint32_t> &rSubU32 = (RegTensor<uint32_t> &)rSub;
@@ -337,6 +343,93 @@ __aicore__ inline void SinkExpandMaxVf(const LocalTensor<T> &maxUb, const LocalT
     }
     // case2.2/3: 值区回绕(m 跨多个 g 周期)
     SinkRotDirectVF<T, INPUT_T>(maxUbPtr, inUb, gStart, gSize, actVecMSize);
+}
+
+/*
+ * Stable prologue merge for a learnable sink.  The existing QK accumulator is
+ * represented as (sum, max), so the sink must participate in the same max
+ * rescaling step instead of being added directly as exp(sink - max).
+ * scaleUb receives exp(oldMax - newMax), which is applied to the value
+ * numerator after the final S2 block has been accumulated.
+ */
+template <typename T>
+__simd_vf__ inline void SinkMergeStableBlockVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb, __ubuf__ T *scaleUb,
+                                               __ubuf__ T *sinkUb, uint32_t offset, Reg::MaskReg preg)
+{
+    RegTensor<T> sinkReg;
+    RegTensor<T> sumReg;
+    RegTensor<T> maxReg;
+    RegTensor<T> newMaxReg;
+    RegTensor<T> oldScaleReg;
+    RegTensor<T> sinkScaleReg;
+    RegTensor<T> outSumReg;
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sinkReg, sinkUb);
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(sumReg, sumUb + offset);
+    Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(maxReg, maxUb + offset);
+    Reg::Max<T, Reg::MaskMergeMode::ZEROING>(newMaxReg, maxReg, sinkReg, preg);
+    Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(oldScaleReg, maxReg, newMaxReg, preg);
+    Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(oldScaleReg, oldScaleReg, preg);
+    Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(sinkScaleReg, sinkReg, newMaxReg, preg);
+    Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(sinkScaleReg, sinkScaleReg, preg);
+    Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outSumReg, sumReg, oldScaleReg, preg);
+    Reg::Add<T, Reg::MaskMergeMode::ZEROING>(outSumReg, outSumReg, sinkScaleReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(sumUb + offset, outSumReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(maxUb + offset, newMaxReg, preg);
+    Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(scaleUb + offset, oldScaleReg, preg);
+}
+
+template <typename T, typename SINK_T>
+__aicore__ inline void SinkMergeStableVF(const LocalTensor<SINK_T> &sinkTensor,
+                                         const LocalTensor<T> &sumTensor,
+                                         const LocalTensor<T> &maxTensor,
+                                         const LocalTensor<T> &scaleTensor,
+                                         uint32_t dealCount)
+{
+    constexpr uint32_t floatRepSize = 64;
+    uint16_t updateLoops = dealCount / floatRepSize;
+    uint16_t tailSize = dealCount % floatRepSize;
+    uint32_t pltTail = static_cast<uint32_t>(tailSize);
+    __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
+    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T *scaleUb = (__ubuf__ T *)scaleTensor.GetPhyAddr();
+    __ubuf__ T *sinkUb = (__ubuf__ T *)sinkTensor.GetPhyAddr();
+    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+    Reg::MaskReg pregTail = Reg::UpdateMask<T>(pltTail);
+    for (uint16_t i = 0; i < updateLoops; ++i) {
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, i * floatRepSize, pregAll);
+    }
+    if (tailSize != 0) {
+        SinkMergeStableBlockVF<T>(sumUb, maxUb, scaleUb, sinkUb, updateLoops * floatRepSize, pregTail);
+    }
+}
+
+template <typename T>
+__simd_vf__ inline void SinkScaleRowsBlockVF(__ubuf__ T *dstUb, __ubuf__ T *scaleUb, uint32_t rowCount,
+                                             uint32_t rowWidth)
+{
+    constexpr uint32_t floatRepSize = 64;
+    uint16_t loops = rowWidth / floatRepSize;
+    RegTensor<T> dataReg;
+    RegTensor<T> scaleReg;
+    RegTensor<T> outReg;
+    Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
+    for (uint16_t row = 0; row < rowCount; ++row) {
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(scaleReg, scaleUb + row);
+        for (uint16_t j = 0; j < loops; ++j) {
+            uint32_t offset = row * rowWidth + j * floatRepSize;
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(dataReg, dstUb + offset);
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(outReg, dataReg, scaleReg, pregAll);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(dstUb + offset, outReg, pregAll);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void SinkScaleRowsVF(const LocalTensor<T> &dstTensor, const LocalTensor<T> &scaleTensor,
+                                        uint32_t rowCount, uint32_t rowWidth)
+{
+    SinkScaleRowsBlockVF<T>((__ubuf__ T *)dstTensor.GetPhyAddr(), (__ubuf__ T *)scaleTensor.GetPhyAddr(), rowCount,
+                            rowWidth);
 }
 } // namespace MixedQuantFlashAttnSink
 

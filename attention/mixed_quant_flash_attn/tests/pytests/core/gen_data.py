@@ -630,14 +630,22 @@ def generate_inputs(params, seed=42):
         seq_kv_values = seqused_kv.tolist() if isinstance(seqused_kv, torch.Tensor) else list(seqused_kv)
         seq_kv_values = [int(value) for value in seq_kv_values]
         if block_num <= 0:
-            block_num = sum(math.ceil(value / block_size) for value in seq_kv_values)
+            # A zero block size is an invalid/empty physical-cache boundary
+            # case.  Keep the generated PA tensors and block table empty;
+            # never attempt ceil-div by zero while constructing test data.
+            block_num = (0 if block_size <= 0 else
+                         sum(math.ceil(value / block_size) for value in seq_kv_values))
         if block_table is None:
-            max_block_num_per_batch = math.ceil(max(seq_kv_values, default=0) / block_size)
+            max_block_num_per_batch = (
+                0 if block_size <= 0 else
+                math.ceil(max(seq_kv_values, default=0) / block_size)
+            )
             block_table = torch.ones(b, max_block_num_per_batch, dtype=torch.int32) * -1
             global_block_offset = 0
             for bIdx in range(b):
                 kvs_cur_batch = seq_kv_values[bIdx]
-                num_blocks = math.ceil(kvs_cur_batch / block_size)
+                num_blocks = (0 if block_size <= 0 else
+                              math.ceil(kvs_cur_batch / block_size))
                 start_id = global_block_offset
                 end_id = global_block_offset + num_blocks
                 block_id_list = list(range(start_id, end_id))

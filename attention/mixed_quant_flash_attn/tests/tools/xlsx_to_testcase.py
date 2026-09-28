@@ -28,7 +28,7 @@ tensor 顺序（12 个，与算子签名一致）:
   6  cu_seqlens_q  — None（非 TND 场景）或 (B+1,)，int32
   7  seqused_q     — (B,) 或 None，int32
   8  seqused_kv    — (B,) 或 None，int32
-  9  sinks         — None，int32（暂不支持）
+  9  sinks         — None、空 tensor 或 (N1,)，float32
   10 attn_mask     — (2048, 2048) 或 None，int8（mask_mode in [3,4] 时输出）
   11 metadata      — (16384,)，int32（固定）
 
@@ -81,6 +81,8 @@ xlsx 列说明（按列名查找，不依赖列位置）
   win_left / win_right  — 窗口注意力参数
   return_softmax_lse    — True/False
   q_datarange           — Q 数据范围
+  sinks                 — True/False/empty 或逗号分隔的 sink 值
+  sinks_datarange       — sink 数据范围（也接受 sinks_range）
 """
 
 import argparse
@@ -168,6 +170,25 @@ def parse_int_list(s):
     s = str(s).replace("\n", ",")
     vals = [int(x.strip()) for x in s.split(",") if x.strip()]
     return vals if vals else None
+
+
+def parse_sink_spec(s):
+    """解析 sinks 列：布尔值、empty 或逗号分隔的显式值。"""
+    if s is None or str(s).strip() == "":
+        return None
+    text = str(s).strip()
+    lowered = text.lower()
+    if lowered in ("false", "0", "none", "null"):
+        return False
+    if lowered in ("true", "1", "yes"):
+        return True
+    if lowered == "empty":
+        return "empty"
+    try:
+        values = [float(x.strip()) for x in text.replace("\n", ",").split(",") if x.strip()]
+    except ValueError:
+        return None
+    return values if values else None
 
 
 def parse_int(s, default=None):
@@ -258,11 +279,13 @@ def _resolve_pa_shape(xlsx_shape, num_blocks, n, block_size, d, quant_compute_mo
     return tuple(shape)
 
 
-def calc_block_info(seqused_kv, s2, block_size):
+def calc_block_info(seqused_kv, s2, block_size, batch_size=1):
     """
     计算 PA 布局下的 block_num 与 max_blocks_per_batch。
     与 pytest gen_data.py:424-426 一致。
     """
+    if batch_size == 0 or block_size <= 0:
+        return 0, 0
     if seqused_kv:
         num_blocks = sum(math.ceil(x / block_size) for x in seqused_kv)
         max_blocks_per_batch = math.ceil(max(seqused_kv) / block_size)
@@ -333,6 +356,14 @@ class XlsxReader:
             layout_kv = self.get(row_idx, "layout_kv")
             seqused_q = parse_int_list(self.get(row_idx, "seqused_q_value"))
             seqused_kv = parse_int_list(self.get(row_idx, "seqused_kv_value"))
+            sinks = parse_sink_spec(self.get(row_idx, "sinks"))
+            sinks_range = parse_datarange(
+                self.get(row_idx, "sinks_datarange")
+                or self.get(row_idx, "sinks_range")
+                or self.get(row_idx, "sink_datarange")
+            )
+            if sinks is None and sinks_range is not None:
+                sinks = True
 
             case = {
                 "name": name,
@@ -360,6 +391,8 @@ class XlsxReader:
                 "seqused_q": seqused_q,
                 "seqused_kv": seqused_kv,
                 "cu_seqlens_q": parse_int_list(self.get(row_idx, "cu_seqlens_q_value")),
+                "sinks": sinks,
+                "sinks_range": sinks_range,
                 # xlsx PA shape 列（第1维 block_num 是 padding，其余维度可信）
                 "xlsx_k_shape": parse_shape(self.get(row_idx, "k_shape")),
                 "xlsx_v_shape": parse_shape(self.get(row_idx, "v_shape")),
@@ -437,6 +470,10 @@ def gen_pytest(cases, out_path):
             lines.append(f'        "win_right": [{c["win_right"]}],')
         if c["return_softmax_lse"]:
             lines.append(f'        "return_softmax_lse": [True],')
+        if c["sinks"] is not None:
+            lines.append(f'        "sinks": [{c["sinks"]!r}],')
+            if c["sinks_range"] is not None:
+                lines.append(f'        "sinks_datarange": [{c["sinks_range"]!r}],')
 
         # attn_mask: mask_mode in [3,4] 时 pytest 自动生成 (2048,2048) causal mask
         # q_range / kv_range: pytest 默认 (-10, 10)
@@ -499,7 +536,7 @@ def _build_csv_row(c, prefix):
         bs = c["block_size"]
 
     # --- 计算 num_blocks / max_blocks_per_batch ---
-    num_blocks, max_blocks_per_batch = calc_block_info(seqused_kv, S2, bs)
+    num_blocks, max_blocks_per_batch = calc_block_info(seqused_kv, S2, bs, B)
 
     # --- 解析 max_seqlen ---
     max_seqlen_q = resolve_max_seqlen_q(c["max_seqlen_q"], seqused_q, S1)
@@ -511,7 +548,9 @@ def _build_csv_row(c, prefix):
     elif layout_q == "BSND":
         q_shape = (B, S1, N1, D)
     elif layout_q == "TND":
-        q_shape = (S1, N1, D)
+        total_q = (c["cu_seqlens_q"][-1] if c["cu_seqlens_q"] else
+                   sum(seqused_q) if seqused_q else S1)
+        q_shape = (total_q, N1, D)
     else:
         q_shape = (B, S1, N1, D)
 
@@ -549,8 +588,15 @@ def _build_csv_row(c, prefix):
     seqused_q_shape = (B,) if seqused_q is not None else None
     seqused_kv_shape = (B,) if seqused_kv is not None else None
 
-    # --- sinks: 暂不支持 ---
-    sinks_shape = None
+    # --- sinks ---
+    if c["sinks"] is True:
+        sinks_shape = (N1,)
+    elif c["sinks"] == "empty":
+        sinks_shape = (0,)
+    elif isinstance(c["sinks"], (list, tuple)):
+        sinks_shape = (len(c["sinks"]),)
+    else:
+        sinks_shape = None
 
     # --- attn_mask: mask_mode in [3,4] 时输出固定 (2048, 2048) ---
     if c["mask_mode"] in (3, 4):
@@ -573,7 +619,7 @@ def _build_csv_row(c, prefix):
     scale_csv_dtype = CSV_SCALE_DTYPE.get(qm, "float8_e8m0fnu")
     dtypes = [
         q_csv_dtype, "uint8", "uint8", scale_csv_dtype, scale_csv_dtype,
-        "int32", "int32", "int32", "int32", "int32", "int8", "int32",
+        "int32", "int32", "int32", "int32", "float32", "int8", "int32",
     ]
 
     # --- attributes ---
@@ -610,7 +656,7 @@ def _build_csv_row(c, prefix):
     cu_seqlens_q_range = (0, S1) if cu_seqlens_q_shape is not None else (-1, -1)
     seqused_q_range = (0, S1) if seqused_q_shape is not None else (-1, -1)
     seqused_kv_range = (0, S2) if seqused_kv_shape is not None else (-1, -1)
-    sinks_range = (0, 0)
+    sinks_range = c["sinks_range"] if sinks_shape is not None and c["sinks_range"] else (0, 0)
     attn_mask_range = (0, 1) if attn_mask_shape is not None else (0, 0)
     metadata_range = (0, 0)
 
