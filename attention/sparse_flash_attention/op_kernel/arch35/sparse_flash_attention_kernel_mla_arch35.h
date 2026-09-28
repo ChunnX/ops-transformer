@@ -619,8 +619,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                 if (constInfo.splitKVActive) {
                     runParam.s2LineStartIdx = constInfo.s2Start;
                     runParam.s2LineEndIdx = constInfo.s2End;
-                    runParam.kvLoopEndIdx = (constInfo.s2End - constInfo.s2Start + constInfo.s2BaseSize - 1) /
-                                            constInfo.s2BaseSize;
+                    runParam.kvLoopEndIdx =
+                        (constInfo.s2End - constInfo.s2Start + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
                     runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;

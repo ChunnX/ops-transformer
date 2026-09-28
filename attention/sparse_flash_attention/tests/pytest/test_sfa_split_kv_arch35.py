@@ -30,7 +30,9 @@ def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
     generator = torch.Generator().manual_seed(20260928 + query_count + seed)
     kv_length, page_size, heads = 4096, 128, 8
     query = torch.randn(query_count, heads, 512, generator=generator).bfloat16().npu()
-    query_rope = torch.randn(query_count, heads, 64, generator=generator).bfloat16().npu()
+    query_rope = (
+        torch.randn(query_count, heads, 64, generator=generator).bfloat16().npu()
+    )
     key_flat = torch.randn(kv_length, 512, generator=generator).bfloat16().npu()
     rope_flat = torch.randn(kv_length, 64, generator=generator).bfloat16().npu()
     key_pages = key_flat.reshape(-1, page_size, 1, 512)
@@ -39,9 +41,13 @@ def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
     for row in range(query_count):
         row_count = (2048 if row == 0 else 256) if valid_count == "mixed" else seed
         selected = torch.randperm(kv_length, generator=generator)[:row_count].int()
-        index_rows.append(torch.nn.functional.pad(selected, (0, 2048 - row_count), value=-1))
+        index_rows.append(
+            torch.nn.functional.pad(selected, (0, 2048 - row_count), value=-1)
+        )
     indices = torch.stack(index_rows).unsqueeze(1).npu()
-    block_table = torch.arange(kv_length // page_size, dtype=torch.int32).unsqueeze(0).npu()
+    block_table = (
+        torch.arange(kv_length // page_size, dtype=torch.int32).unsqueeze(0).npu()
+    )
     query_lengths = torch.tensor([query_count], dtype=torch.int32).npu()
     kv_lengths = torch.tensor([kv_length], dtype=torch.int32).npu()
     scale = 1.0 / math.sqrt(576)

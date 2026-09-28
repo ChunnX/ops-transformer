@@ -204,15 +204,15 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
-        token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) +
-                    (constInfo.splitKVActive ? 0 : runInfo.s2StartIdx);
+        token0Idx =
+            sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + (constInfo.splitKVActive ? 0 : runInfo.s2StartIdx);
     }
     topkKIdx += 1;
     if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
-        token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) +
-                    (constInfo.splitKVActive ? 0 : runInfo.s2StartIdx);
+        token1Idx =
+            sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + (constInfo.splitKVActive ? 0 : runInfo.s2StartIdx);
     }
 }
 
@@ -515,11 +515,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         CopyFALseToGm(runInfo, constInfo);
     }
     if (constInfo.splitKVActive && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        AttentionCommon::S2SplitFdStagingLayout layout = {
-            constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
-            AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-        const int64_t slot = ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) +
-                             constInfo.splitKVPart;
+        AttentionCommon::S2SplitFdStagingLayout layout = {constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
+                                                          AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                                                          AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+        const int64_t slot =
+            ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
         LocalTensor<float> statsTmp = splitKVStatsTmpBuf.Get<float>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
         AttentionCommon::StageVec1Lse(layout, splitKVStagingBase, slot, 0, runInfo.halfMRealSize, maxUb, sumUb,
@@ -617,10 +617,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
         if (constInfo.splitKVActive) {
             AttentionCommon::S2SplitFdStagingLayout layout = {
-                constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
-                AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-            const int64_t slot = ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) +
-                                 constInfo.splitKVPart;
+                constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount, AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+            const int64_t slot =
+                ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
             AttentionCommon::StageVec2PartialOAndWait<T>(layout, splitKVOutputGm, slot, 0, runInfo.vec2MRealSize,
                                                          constInfo.dSizeV, vec2ResUb, vToMte3AttnOutId,
                                                          mte3ToVAttnOutId);
@@ -756,20 +756,20 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         return;
     }
     constexpr uint32_t STAGING_BLOCKS = 3;
-    const uint64_t kvScratchBytes = static_cast<uint64_t>(GetBlockNum()) * STAGING_BLOCKS * s2BaseSize *
-                                    dVTemplateTypeInput * sizeof(Q_T);
+    const uint64_t kvScratchBytes =
+        static_cast<uint64_t>(GetBlockNum()) * STAGING_BLOCKS * s2BaseSize * dVTemplateTypeInput * sizeof(Q_T);
     splitKVStagingBase = workspace + kvScratchBytes;
     splitKVSlotCount = constInfo.s1Size * constInfo.splitKVNum * 2;
-    AttentionCommon::S2SplitFdStagingLayout layout = {
-        constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
-        AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+    AttentionCommon::S2SplitFdStagingLayout layout = {constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
+                                                      AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                                                      AttentionCommon::FD_REDUCE_CHUNK_ROWS};
     splitKVOutputGm.SetGlobalBuffer((__gm__ float *)layout.AttenOutRegion(splitKVStagingBase));
     splitKVMaxGm.SetGlobalBuffer((__gm__ float *)layout.MaxRegion(splitKVStagingBase));
     splitKVSumGm.SetGlobalBuffer((__gm__ float *)layout.SumRegion(splitKVStagingBase));
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::MergeSplitKV(
-    uint32_t queryIdx, ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::MergeSplitKV(uint32_t queryIdx,
+                                                                                              ConstInfo &constInfo)
 {
     const uint32_t rows = constInfo.gSize / 2;
     constexpr uint32_t kStatsElems = 16 * 16 * 8;
@@ -784,18 +784,18 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     LocalTensor<float> lseExp(TPosition::VECIN, ubOffset, 16 * 8 * sizeof(float));
     ubOffset += 16 * 8 * sizeof(float);
     LocalTensor<T> partial(TPosition::VECIN, ubOffset, kPartialElems * sizeof(T));
-    AttentionCommon::S2SplitFdStagingLayout layout = {
-        rows, sfaDTemplateAlign64, splitKVSlotCount, AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
-        AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+    AttentionCommon::S2SplitFdStagingLayout layout = {rows, sfaDTemplateAlign64, splitKVSlotCount,
+                                                      AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+                                                      AttentionCommon::FD_REDUCE_CHUNK_ROWS};
     const uint32_t subblockIdx = GetSubBlockIdx();
     const uint32_t firstSlot = (queryIdx * 2 + subblockIdx) * constInfo.splitKVNum;
     TEventID vToMte2First = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     TEventID vToMte2Second = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     SetFlag<HardEvent::V_MTE2>(vToMte2First);
     SetFlag<HardEvent::V_MTE2>(vToMte2Second);
-    AttentionCommon::Reduce<T, sfaDTemplateAlign64>(
-        layout, splitKVStagingBase, firstSlot, constInfo.splitKVNum, 0, rows, constInfo.dSizeV, accum,
-        lseExp, blockMax, blockSum, partial, vToMte2First, vToMte2Second, mte2ToV);
+    AttentionCommon::Reduce<T, sfaDTemplateAlign64>(layout, splitKVStagingBase, firstSlot, constInfo.splitKVNum, 0,
+                                                    rows, constInfo.dSizeV, accum, lseExp, blockMax, blockSum, partial,
+                                                    vToMte2First, vToMte2Second, mte2ToV);
     WaitFlag<HardEvent::V_MTE2>(vToMte2First);
     WaitFlag<HardEvent::V_MTE2>(vToMte2Second);
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vToMte2First);
@@ -803,8 +803,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     RunInfo outputRunInfo;
     outputRunInfo.vec2MRealSize = rows;
-    outputRunInfo.attentionOutOffset = queryIdx * constInfo.gSize * constInfo.dSizeV +
-                                       subblockIdx * rows * constInfo.dSizeV;
+    outputRunInfo.attentionOutOffset =
+        queryIdx * constInfo.gSize * constInfo.dSizeV + subblockIdx * rows * constInfo.dSizeV;
     WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
     CopyOutAttentionOut(outputRunInfo, constInfo, accum, 0, rows * sfaDTemplateAlign64);
     SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
