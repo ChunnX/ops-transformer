@@ -257,9 +257,6 @@ private:
     /// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
     __aicore__ inline void StartCacheGamma1()
     {
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            return;
-        }
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
         params.blockLen = D_ * sizeof(float);
@@ -271,9 +268,6 @@ private:
     /// R7读取完整gamma1前回收MTE2到Vector事件。
     __aicore__ inline void WaitCacheGamma1()
     {
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            return;
-        }
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 

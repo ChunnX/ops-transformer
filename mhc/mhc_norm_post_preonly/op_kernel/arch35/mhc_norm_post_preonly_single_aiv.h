@@ -127,28 +127,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         const uint32_t tOff = tile * dimTile_;
         LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
-        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            LoadGammaInto(gamma1, gamma1Gm_, tOff, tD);
-            SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
-            WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        } else {
-            gamma1 = gamma1[tOff];
-        }
+        LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>()[tOff];
         if constexpr (RETURN_H_IN_F32) {
             MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
             PipeBarrier<PIPE_V>();
-            if (D_ > GAMMA1_CACHE_MAX_D) {
-                FenceVToMte2();
-            }
             WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
         } else {
             WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1,
                                        (uint64_t)token * D_ + tOff, tD);
-            if (D_ > GAMMA1_CACHE_MAX_D) {
-                // gamma1已被当前VF消费，允许下一tile的MTE2覆盖gamma缓存。
-                FenceVToMte2();
-            }
         }
     }
 }
