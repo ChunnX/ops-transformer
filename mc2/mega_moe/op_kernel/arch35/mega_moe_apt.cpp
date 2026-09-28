@@ -120,11 +120,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2, scales,
                 sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut, expertTokenNumsOut,
                 workspaceGM, &tilingData, tilingGM);
-#if MEGA_MOE_PROFILE_INPUT
-        if constexpr (g_coreType == AIV) {
-            MarkStamp<PIPE_S, 2>(); // op.Init 返回。
-        }
-#endif
         op.Process();
     } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL) && (ORIG_DTYPE_X == DT_BF16)
