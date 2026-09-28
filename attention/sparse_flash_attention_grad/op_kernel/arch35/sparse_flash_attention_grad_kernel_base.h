@@ -170,6 +170,7 @@ protected:
     int64_t blkCntOffset = 0;
     int64_t actualSelectedBlockCount = 0;
     int64_t curLastBlockSize = 1;
+    int64_t curPartialBlockGmOffset = -1;
     int64_t t1Index = 0;
     int64_t n2Index = 0;
     int64_t lastT1Index = -1;
@@ -495,6 +496,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     runInfo.actualSelectedBlockCount = actualSelectedBlockCount;
     runInfo.isLastBasicBlock = blkCntOffset + constInfo.selectedCountOffset >= actualSelectedBlockCount;
     runInfo.lastBlockSize = curLastBlockSize;
+    runInfo.partialBlockGmOffset = curPartialBlockGmOffset;
+    runInfo.lastBlockGmOffset =
+        (t1Index * constInfo.n2Size + n2Index) * constInfo.selectedBlockCount + actualSelectedBlockCount - 1;
     runInfo.commonRunInfo.s2RealSize =
         runInfo.isLastBasicBlock ?
             (runInfo.actualSelCntOffset - 1) * constInfo.selectedBlockSize + runInfo.lastBlockSize :
@@ -645,17 +649,11 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetLastBlockSize(
     const int64_t t1Idx, const int64_t n2Idx, const int64_t maxS2, const int64_t maxS2Blk, const int64_t actSelBlkCount)
 {
-    // 因果场景下 maxS2Blk-1 号 block 只有 maxS2 - (maxS2Blk-1)*blockSize 行落在下三角内。topk 升序，
-    // 它若被选中必然排在最后一个位置；没被选中时本 tile 全是满块，不能截断。
-    // blockSize=1 时 tailRows 恒等于 blockSize，整段短路，不读 GM。
     int64_t blockSize = constInfo.selectedBlockSize;
     int64_t tailRows = maxS2 - (maxS2Blk - 1) * blockSize;
-    if (actSelBlkCount <= 0 || tailRows == blockSize) {
-        return blockSize;
-    }
-    int64_t topkOffset = t1Idx * constInfo.n2Size * constInfo.selectedBlockCount +
-                         n2Idx * constInfo.selectedBlockCount + actSelBlkCount - 1;
-    return topkIndicesGm.GetValue(topkOffset) == maxS2Blk - 1 ? tailRows : blockSize;
+    int64_t topkOffset = t1Idx * constInfo.n2Size * constInfo.selectedBlockCount + n2Idx * constInfo.selectedBlockCount;
+    curPartialBlockGmOffset = FindSfagPartialBlock(topkIndicesGm, topkOffset, actSelBlkCount, blockSize, maxS2);
+    return curPartialBlockGmOffset >= 0 ? tailRows : blockSize;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

@@ -101,8 +101,6 @@ int CreateAclTensorNoData(const std::vector<int64_t> &shape, void **deviceAddr, 
     return 0;
 }
 
-constexpr uint64_t kBufAlignSize = 512;
-
 inline uint64_t AlignUp(uint64_t num, uint64_t align)
 {
     return ((num + align - 1) / align) * align;
@@ -180,8 +178,6 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
-    scheduleContext.common.attn_to_ffn_token_size = 512;
-    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;
@@ -192,6 +188,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
+    scheduleContext.common.attn_to_ffn_token_size = H * sizeof(int16_t);
+    scheduleContext.common.ffn_to_attn_token_size = H * sizeof(int16_t);
+    scheduleContext.ffn.out_num = A;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -373,6 +372,18 @@ int main()
         LOG_PRINT("group_list[%ld] = [expert_id=%ld, token_num=%ld]\n", i, groupListHost[i * 2],
                   groupListHost[i * 2 + 1]);
     }
+
+    CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
+    for (int64_t i = 0; i < expertNum; ++i) {
+        CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
+                  LOG_PRINT("unexpected expert group\n");
+                  return 1);
+    }
+    std::vector<int16_t> yHost(Y * H);
+    ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray
     aclDestroyTensor(scheduleContextRef);

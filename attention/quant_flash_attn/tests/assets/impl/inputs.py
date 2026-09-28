@@ -491,8 +491,8 @@ def generate_qfa_gqa_fp8_inputs(
       k slot:              PA K cache [Bn,N_kv,block_size+K_SCALE_ROWS,D] FP8 (末 K_SCALE_ROWS 行存 FP32 deq_k)
       v slot:              PA V cache [Bn,N_kv,block_size+K_SCALE_ROWS,D] FP8
       dequant_scale_q slot: NT [N,T] FP32
-      dequant_scale_k slot: PA 块状 [Bn,N_kv,block_size] FP32 (与 K cache 数据部分布局对齐;
-                            NPU/golden 均从 K cache 提取 deq_k, 此 slot 仅形状对齐)
+      dequant_scale_k slot: PA 块状 [Bn,N_kv,K_SCALE_ROWS*D//4] FP32 (kernel 要求 dim2 为 scale
+                            buffer 容量 128, 与 block_size 无关; NPU/golden 均从 K cache 提取 deq_k)
       dequant_scale_v slot: [N_kv] FP32
       p_scale slot:        [1] FP32
       block_table slot:    [B,max_blocks] int32
@@ -542,7 +542,7 @@ def generate_qfa_gqa_fp8_inputs(
         ("ENABLE_PA", enable_pa),
         ("KV_CACHE_LAYOUT", kv_cache_layout),
         ("BLOCK_SIZE", block_size),
-        ("Q_SCALE_LAYOUT", q_scale_layout),
+        ("LAYOUT_Q_DESCALE", layout_q_descale),
         ("INPUT_LAYOUT", input_layout),
         ("SPARSE_MODE", mask_mode),
     ]:
@@ -657,13 +657,15 @@ def generate_qfa_gqa_fp8_inputs(
 
     # deq_k slot: 从 K cache 末 K_SCALE_ROWS 行 (uint8 view → FP32) 直接提取
     # k_fp8_final: [Bn,N_kv,block_size+K_SCALE_ROWS,D] FP8 → uint8 → FP32 reshape
-    # 末 block_size 个 FP32 值 = 嵌入的 K scale, 形状 [Bn,N_kv,block_size] 匹配 slot
+    # kernel 要求 k_descale dim[2] = K_SCALE_ROWS*D//4 (scale buffer 容量, D=128 时为 128),
+    # 与 block_size 无关; 有效 scale 打包在区域前段 (bnsd_to_k_cache_gqa flat_scale[:, :valid])
     k_f32 = (
         k_fp8_final.view(torch.uint8)
         .view(k_fp8_final.shape[0], k_fp8_final.shape[1], -1)
         .view(torch.float32)
     )
-    deq_k_slot = k_f32[:, :, -block_size:].contiguous()
+    _kscale_capacity = fp8_golden_mod.K_SCALE_ROWS * D // 4
+    deq_k_slot = k_f32[:, :, -_kscale_capacity:].contiguous()
 
     # ----- Step 4: in-place 写入 ttk 分配的 slot -----
     # TTK 在 use_torch=True 时把 numpy slot 转成 torch tensor 传给本函数,

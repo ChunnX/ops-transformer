@@ -13,275 +13,168 @@
 import logging
 import os
 import sys
-from typing import List, Optional
 
-import numpy as np
+import numpy
 import torch
 
 _ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
-_TESTS_DIR = os.path.join(_ASSETS_DIR, "..", "ttk", "qfa_mxfp4_test")
-if _TESTS_DIR not in sys.path:
-    sys.path.insert(0, _TESTS_DIR)
-from common import qfa_mxfp4_golden as golden_mod
+_ASSETS_ROOT = os.path.dirname(_ASSETS_DIR)
+if _ASSETS_ROOT not in sys.path:
+    sys.path.insert(0, _ASSETS_ROOT)
+import quant_flash_attn_mxfp4_golden as golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_mxfp4_wrapper.npu_qfa_mxfp4": "generate_qfa_mxfp4_inputs"}}
-
-
-# 环境变量 QFA_PASS_THROUGH=1 时跳过 golden_mod.generate_data() (含 _resolve_s /
-# transpose_qscale / rearrange_by_layout / v_descale.view 等所有会报错的步骤),
-# CSV 框架分配的 tensor 槽位保持原样透传给 wrapper, 由 wrapper 的 _PASS_THROUGH 分支
-# 或 op_host checker 处理. 用于异常用例测试 (s=0 / kv shape 不一致 / D 不支持 /
-# descale 维度异常 / seq 缺失 等), 在 CSV 配异常 shape + 设本开关即可.
-_PASS_THROUGH = os.environ.get("QFA_PASS_THROUGH", "").lower() in ("1", "true", "yes")
-
 
 def _apply_golden_globals(attrs):
-    for k, v in attrs.items():
-        setattr(golden_mod, k, v)
+    golden_mod._apply_golden_globals(attrs)
+    golden_mod._apply_kwargs_globals(attrs)
 
 
-def _inplace_write(dst, src_torch, slot_name):
+def _is_numpy_arr(x):
+    return isinstance(x, numpy.ndarray)
+
+
+def _inplace_write(dst, src, slot_name):
     if dst is None:
-        raise ValueError(f"[INPUTS] {slot_name}: dst is None, CSV 未分配该张量槽位")
-    if hasattr(dst, "numpy"):  # torch tensor
-        dst_t = dst
-        if tuple(dst_t.shape) != tuple(src_torch.shape):
-            logger.warning(
-                "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
-                slot_name,
-                tuple(dst_t.shape),
-                tuple(src_torch.shape),
-            )
-            adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
-            if dst_t.dtype == adapted.dtype:
-                dst_t[...] = adapted
-            else:
-                dst_t[...] = adapted.to(dst_t.dtype)
-            return
-        if dst_t.dtype == src_torch.dtype:
-            dst_t[...] = src_torch
-        elif dst_t.dtype == torch.uint8 and src_torch.dtype == torch.uint8:
-            dst_t[...] = src_torch
+        if src is not None and (not torch.is_tensor(src) or src.numel() > 0):
+            raise ValueError(f"[INPUTS] {slot_name}: dst is None but src is not empty")
+        return
+    if src is None:
+        if _is_numpy_arr(dst):
+            dst[...] = 0
         else:
-            dst_t[...] = src_torch.to(dst_t.dtype)
+            dst.zero_()
         return
-    # numpy array
-    dst_np = np.asarray(dst)
-    if tuple(dst_np.shape) != tuple(src_torch.shape):
-        logger.warning(
-            "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
-            slot_name,
-            tuple(dst_np.shape),
-            tuple(src_torch.shape),
+    src_t = src if torch.is_tensor(src) else torch.as_tensor(src)
+    if tuple(dst.shape) != tuple(src_t.shape):
+        raise ValueError(
+            f"[INPUTS] {slot_name} shape mismatch: slot {tuple(dst.shape)} "
+            f"!= computed {tuple(src_t.shape)}"
         )
-        adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
-        src_np = (
-            adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
-        )
-        if src_np.dtype != dst_np.dtype:
-            src_np = (
-                src_np.view(dst_np.dtype)
-                if src_np.dtype.itemsize == dst_np.dtype.itemsize
-                else src_np.astype(dst_np.dtype)
+    if _is_numpy_arr(dst):
+        src_np = src_t.detach().cpu().contiguous().numpy()
+        dst_str = str(dst.dtype)
+        if "float4" in dst_str or "float8" in dst_str:
+            src_np = src_np.view(dst.dtype)
+        else:
+            src_np = src_np.astype(dst.dtype)
+        dst[...] = src_np
+    else:
+        dst_str = str(dst.dtype)
+        if "float4" in dst_str or "float8" in dst_str:
+            dst.copy_(src_t.view(dst.dtype))
+        else:
+            dst.copy_(src_t.to(dst.dtype))
+
+
+def _write_int32_list(slot, values, slot_name):
+    if slot is None:
+        return
+    if _is_numpy_arr(slot):
+        if values:
+            arr = numpy.array(list(values), dtype=slot.dtype)
+            if tuple(slot.shape) != tuple(arr.shape):
+                raise ValueError(
+                    f"[INPUTS] {slot_name} shape mismatch: slot {tuple(slot.shape)} "
+                    f"!= computed {tuple(arr.shape)}"
+                )
+            slot[...] = arr
+        else:
+            slot[...] = 0
+        return
+    if values:
+        src = torch.tensor(list(values), dtype=torch.int32)
+        if tuple(slot.shape) != tuple(src.shape):
+            raise ValueError(
+                f"[INPUTS] {slot_name} shape mismatch: slot {tuple(slot.shape)} "
+                f"!= computed {tuple(src.shape)}"
             )
-        dst_np[...] = src_np
-        return
-    src_np = (
-        src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
-    )
-    if src_np.dtype != dst_np.dtype:
-        src_np = (
-            src_np.view(dst_np.dtype)
-            if src_np.dtype.itemsize == dst_np.dtype.itemsize
-            else src_np.astype(dst_np.dtype)
-        )
-    dst_np[...] = src_np
+        slot.copy_(src.to(slot.dtype))
+    else:
+        slot.zero_()
 
 
 def generate_qfa_mxfp4_inputs(
-    # ========== Tensor inputs (CSV 框架分配, 原位写入) ==========
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     q_descale: torch.Tensor,
     k_descale: torch.Tensor,
     v_descale: torch.Tensor,
-    block_table: Optional[torch.Tensor],
-    # ========== Scalar / list attrs ==========
-    B: int,
-    N_q: int,
-    N_kv: int,
-    G: int,
-    D: int,
-    V_D: int,
-    Rope_D: int,
-    act_seq_lens_q: List[int],
-    act_seq_lens_kv: List[int],
-    input_layout: str,
-    layout_q_descale: str,
-    layout_kv: str,
-    layout_out: str,
-    kv_storage_mode: str,
-    block_size: int,
-    q_dtype: str,
-    kv_dtype: str,
-    out_dtype: str,
-    q_quant_mode: int,
-    mask_mode: int,
-    pre_tokens: int,
-    next_tokens: int,
-    enable_mask: bool,
-    enable_lse: bool,
-    inner_precise: int,
-    device_id: int,
-    graph_path: int,
-    softmax_scale: Optional[float] = None,
-    data_range_q: str = "1.0",
-    data_range_k: str = "1.0",
-    data_range_v: str = "1.0",
+    quant_mode: int,
+    block_table: torch.Tensor = None,
+    p_scale: torch.Tensor = None,
+    cu_seqlens_q: torch.Tensor = None,
+    cu_seqlens_kv: torch.Tensor = None,
+    seqused_q: torch.Tensor = None,
+    seqused_kv: torch.Tensor = None,
+    sinks: torch.Tensor = None,
+    attn_mask: torch.Tensor = None,
+    metadata: torch.Tensor = None,
+    softmax_scale: float = 1.0,
+    mask_mode: int = 0,
+    win_left: int = -1,
+    win_right: int = -1,
     max_seqlen_q: int = -1,
     max_seqlen_kv: int = -1,
-    cu_seqlens_q: List[int] = None,
-    cu_seqlens_kv: List[int] = None,
-    # 可选 tensor 入参 (shape 为空 -> golden 传 None)
-    block_table_shape: List[int] = None,
-    block_table_dtype: str = None,
-    p_scale_value: Optional[float] = None,
-    p_scale_shape: List[int] = None,
-    p_scale_dtype: str = None,
-    p_scale_datarange: str = None,
-    sinks_shape: List[int] = None,
-    sinks_dtype: str = None,
-    sinks_datarange: str = None,
-    attn_mask_shape: List[int] = None,
-    attn_mask_dtype: str = None,
-    attn_mask_datarange: str = None,
-    # dtype 透传 (表格不传 -> None, golden 侧用默认值)
-    q_descale_dtype: str = None,
-    k_descale_dtype: str = None,
-    v_descale_dtype: str = None,
-    seqused_q_dtype: str = None,
-    seqused_kv_dtype: str = None,
-    cu_seqlens_q_dtype: str = None,
-    cu_seqlens_kv_dtype: str = None,
-    softmax_lse_dtype: str = None,
-    # metadata 伪 tensor 入参 (对齐 run_main 签名, PASS_THROUGH 时按表格构造)
-    metadata_shape: List[int] = None,
-    metadata_dtype: str = None,
+    layout_q: str = "BSND",
+    layout_q_descale: str = "BSND",
+    layout_kv: str = "BSND",
+    layout_out: str = "BSND",
+    return_softmax_lse: bool = False,
     **kwargs,
 ):
-    # 注入 golden 全局变量 (generate_data 读这些配置)
-    _apply_golden_globals(
-        {
-            "B": B,
-            "N_q": N_q,
-            "N_kv": N_kv,
-            "G": G,
-            "D": D,
-            "V_D": V_D if V_D is not None else D,
-            "Rope_D": Rope_D,
-            "INPUT_LAYOUT": input_layout,
-            "LAYOUT_Q_DESCALE": layout_q_descale,
-            "LAYOUT_KV": layout_kv,
-            "LAYOUT_OUT": layout_out,
-            "KV_STORAGE_MODE": kv_storage_mode,
-            "BLOCK_SIZE": block_size,
-            "Q_DTYPE": q_dtype,
-            "KV_DTYPE": kv_dtype,
-            "OUT_DTYPE": out_dtype,
-            "Q_QUANT_MODE": q_quant_mode,
-            "SPARSE_MODE": mask_mode,
-            "PRE_TOKENS": pre_tokens,
-            "NEXT_TOKENS": next_tokens,
-            "ENABLE_MASK": enable_mask,
-            "ENABLE_LSE": enable_lse,
-            "INNER_PRECISE": inner_precise,
-            "DEVICE_ID": device_id,
-            "GRAPH_PATH": graph_path,
-            "SOFTMAX_SCALE": softmax_scale,
-            "DATA_RANGE_Q": data_range_q,
-            "DATA_RANGE_K": data_range_k,
-            "DATA_RANGE_V": data_range_v,
-            "ACT_SEQ_LENS_Q": list(act_seq_lens_q) if act_seq_lens_q else [],
-            "ACT_SEQ_LENS_KV": list(act_seq_lens_kv) if act_seq_lens_kv else [],
-            "MAX_SEQLEN_Q": max_seqlen_q,
-            "MAX_SEQLEN_KV": max_seqlen_kv,
-            "CU_SEQLENS_Q": list(cu_seqlens_q) if cu_seqlens_q else [],
-            "CU_SEQLENS_KV": list(cu_seqlens_kv) if cu_seqlens_kv else [],
-            "BLOCK_TABLE_SHAPE": list(block_table_shape) if block_table_shape else [],
-            "BLOCK_TABLE_DTYPE": block_table_dtype,
-            "P_SCALE_VALUE": p_scale_value,
-            "P_SCALE_SHAPE": list(p_scale_shape) if p_scale_shape else [],
-            "P_SCALE_DTYPE": p_scale_dtype,
-            "P_SCALE_DATARANGE": p_scale_datarange,
-            "SINKS_SHAPE": list(sinks_shape) if sinks_shape else [],
-            "SINKS_DTYPE": sinks_dtype,
-            "SINKS_DATARANGE": sinks_datarange,
-            "ATTN_MASK_SHAPE": list(attn_mask_shape) if attn_mask_shape else [],
-            "ATTN_MASK_DTYPE": attn_mask_dtype,
-            "ATTN_MASK_DATARANGE": attn_mask_datarange,
-            "Q_DESCALE_DTYPE": q_descale_dtype,
-            "K_DESCALE_DTYPE": k_descale_dtype,
-            "V_DESCALE_DTYPE": v_descale_dtype,
-            "SEQUSED_Q_DTYPE": seqused_q_dtype,
-            "SEQUSED_KV_DTYPE": seqused_kv_dtype,
-            "CU_SEQLENS_Q_DTYPE": cu_seqlens_q_dtype,
-            "CU_SEQLENS_KV_DTYPE": cu_seqlens_kv_dtype,
-            "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
-            "METADATA_SHAPE": list(metadata_shape) if metadata_shape else [],
-            "METADATA_DTYPE": metadata_dtype,
-        }
-    )
+    """原位生成 quant_flash_attn (MXFP4) 全部 15 个 tensor slot 的真实数据。
 
-    # 数据准备分两种模式:
-    #   1) QFA_PASS_THROUGH=1: 跳过 generate_data, CSV 框架分配的 tensor 槽位保持原样
-    #      (随机/零初始化) 透传给 wrapper, 由 wrapper 的 _PASS_THROUGH 分支拼 fallback
-    #      data_dict 喂 NPU 算子, op_host 拦截非法输入. 用于异常用例.
-    #   2) 都不设: 走 generate_data 完整流程; 任意异常也跳过原位写 (CSV tensor 保持原样),
-    #      由 wrapper 的 try/except 兜底回退到 fallback data_dict.
-    if _PASS_THROUGH:
-        logger.info(
-            "[INPUTS] QFA_PASS_THROUGH=1, 跳过 generate_data, CSV tensor 保持原样透传给 wrapper"
-        )
-        return
+    Signature 镜像 torch.ops.cann_ops_transformer.quant_flash_attn。
+    """
+    attrs = dict(kwargs)
+    attrs.setdefault("quant_mode", quant_mode)
+    attrs.setdefault("softmax_scale", softmax_scale)
+    attrs.setdefault("mask_mode", mask_mode)
+    attrs.setdefault("win_left", win_left)
+    attrs.setdefault("win_right", win_right)
+    attrs.setdefault("max_seqlen_q", max_seqlen_q)
+    attrs.setdefault("max_seqlen_kv", max_seqlen_kv)
+    attrs.setdefault("layout_q", layout_q)
+    attrs.setdefault("layout_q_descale", layout_q_descale)
+    attrs.setdefault("layout_kv", layout_kv)
+    attrs.setdefault("layout_out", layout_out)
+    attrs.setdefault("return_softmax_lse", return_softmax_lse)
+    _apply_golden_globals(attrs)
 
-    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    golden_mod._inject_physical_s_override(q, v, layout_q, layout_kv)
     try:
         data_dict = golden_mod.generate_data()
-    except Exception as e:
-        logger.warning(
-            "[INPUTS] generate_data 失败: %s, CSV tensor 保持原样透传给 wrapper",
-            str(e),
-        )
-        return
     finally:
         golden_mod._clear_physical_s_override()
 
-    # 原位写 CSV 框架分配的张量 (q/k/v/q_descale/k_descale/v_descale)
     _inplace_write(q, data_dict["q"], "q (slot 0)")
     _inplace_write(k, data_dict["k"], "k (slot 1)")
     _inplace_write(v, data_dict["v"], "v (slot 2)")
     _inplace_write(q_descale, data_dict["q_descale"], "q_descale (slot 3)")
     _inplace_write(k_descale, data_dict["k_descale"], "k_descale (slot 4)")
     _inplace_write(v_descale, data_dict["v_descale"], "v_descale (slot 5)")
-
-    # block_table: CSV 分配了 int32 张量槽位; generate_data 里 continue KV 模式下为 None
-    bt_src = data_dict.get("block_table")
-    if block_table is not None:
-        if bt_src is not None:
-            _inplace_write(block_table, bt_src.to(torch.int32), "block_table (slot 6)")
-        else:
-            # continue KV: block_table 槽位填 0 (算子内部不使用)
-            block_table[...] = 0
+    _inplace_write(block_table, data_dict.get("block_table"), "block_table (slot 6)")
+    _inplace_write(p_scale, data_dict.get("p_scale"), "p_scale (slot 7)")
+    _write_int32_list(
+        cu_seqlens_q, data_dict.get("cu_seqlens_q"), "cu_seqlens_q (slot 8)"
+    )
+    _write_int32_list(
+        cu_seqlens_kv, data_dict.get("cu_seqlens_kv"), "cu_seqlens_kv (slot 9)"
+    )
+    _write_int32_list(seqused_q, data_dict.get("act_seq_lens_q"), "seqused_q (slot 10)")
+    _write_int32_list(
+        seqused_kv, data_dict.get("act_seq_lens_kv"), "seqused_kv (slot 11)"
+    )
+    _inplace_write(sinks, data_dict.get("sinks"), "sinks (slot 12)")
+    _inplace_write(attn_mask, data_dict.get("attn_mask"), "attn_mask (slot 13)")
 
     logger.info(
-        "[INPUTS] in-place wrote MXFP4 q/k/v (q=%s), e8m0 descale (dq=%s, dk=%s, dv=%s), "
-        "block_table (pa=%s)",
+        "[INPUTS] wrote MXFP4 q/k/v (q=%s), descale (dq=%s, dk=%s, dv=%s)",
         tuple(q.shape),
         tuple(q_descale.shape),
         tuple(k_descale.shape),
         tuple(v_descale.shape),
-        bt_src is not None,
     )

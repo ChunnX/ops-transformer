@@ -512,6 +512,17 @@ class FlashMlaWithKvcacheGolden:
                     o, l = self._compute_full_single(
                         flat_q, k_bh, v_bh, selected_mask, scale
                     )
+                if mask_mode == 3:
+                    # Right-aligned causal rows before the first KV have no
+                    # contribution. Explicitly overwrite them: zero weights
+                    # still produce NaN in PV when V contains Inf or NaN.
+                    # Determine visibility from positions, never from outputs,
+                    # so non-finite values in visible rows remain unchanged.
+                    fully_masked = (
+                        torch.arange(sq, device=q.device) + delta < 0
+                    ).repeat(last - first)
+                    o = o.masked_fill(fully_masked[:, None], 0.0)
+                    l = l.masked_fill(fully_masked, float("inf"))
                 o = o.reshape(last - first, sq, dv)
                 l = l.reshape(last - first, sq)
                 if is_tnd_out:

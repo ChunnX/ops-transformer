@@ -342,6 +342,9 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     this->InitBuffer();
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     DropOutBitModeInit(apiTmpBuffer);
+    event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
+    AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     if (this->blockIdx < this->tilingData->multiCoreParams.coreNum) {
         LocalTensor<half> pseHelpBuffer = this->stage1PingBuf.template Get<half>();
         PseInnerAlibiCreate<hasPse>(this->pseAlibiGm, pseHelpBuffer, this->pseInfo);
@@ -859,7 +862,8 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
             event_t eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
             AscendC::SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
             AscendC::WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
-            NzToNd(nz2NdInfo, this->mm2Res[extraInfo.taskIdMod2], bmm2ResPongUb, bmm2ResPingUb);
+            LocalTensor<T> nzTempUb = this->stage1PongBuf.template Get<T>();
+            NzToNd(nz2NdInfo, this->mm2Res[extraInfo.taskIdMod2], nzTempUb, bmm2ResPingUb);
             divCastCalcSize = divCastCalcSize1;
         }
 
@@ -1558,6 +1562,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
         nz2NdInfo.ndFirstAxisBaseSize = extraInfo.vecS1BaseSize;
         nz2NdInfo.ndFirstAxisLoopSize = extraInfo.vecS1TailSize;
         nz2NdInfo.ndLastAxis = extraInfo.s2RealSizeAlign64;
+        nz2NdInfo.ndLastAxisInSlot = extraInfo.s2RealSizeAlign16;
         nz2NdInfo.loopIdx = loopIdx;
         LocalTensor<T> tempUb = this->stage1PongBuf.template Get<T>();
         NzToNd(nz2NdInfo, this->mm1Res[extraInfo.taskIdMod2], tempUb, bmm1ResUb);
@@ -1622,6 +1627,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     uint32_t bmm1ResOriginShape[] = {static_cast<uint32_t>(vecS1TailSize),
                                      static_cast<uint32_t>(extraInfo.s2RealSizeAlign64)};
 
+    AscendC::PipeBarrier<PIPE_V>();
     if constexpr (hasAtten == false) {
         uint64_t mask[2] = {extraInfo.duplicateMask, 0};
         Duplicate<T>(srcTensor[extraInfo.s2RealSizeFloorAlign8], this->negativeFloatScalar, mask, vecS1TailSize, 1,

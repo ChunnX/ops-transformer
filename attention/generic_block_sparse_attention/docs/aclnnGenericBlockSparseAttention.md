@@ -529,7 +529,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>query/key/value/sparseBlockIdx/sparseBlockCount/attentionOut 等必选指针为空。</td>
+      <td>query/key/value/sparseBlockIdx/sparseBlockCount/metadataOptional/attentionOut 等当前必传指针为空。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -539,7 +539,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_INNER_NULLPTR</td>
       <td>561103</td>
-      <td>metadata 为空或 Contiguous/InferShape 失败（如 layout 不支持、缺少 blockTable 等）。</td>
+      <td>Contiguous/InferShape 失败（如 layout 不支持、缺少 blockTable 等）。</td>
     </tr>
   </tbody>
   </table>

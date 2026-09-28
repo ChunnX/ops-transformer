@@ -25,6 +25,16 @@ const static int64_t UNPERMUTE_WITH_EP_ARRT_TOPK = 0;
 const static int64_t UNPERMUTE_WITH_EP_ARRT_RANGE = 1;
 const static int64_t RANGE_SIZE = 2;
 
+static inline ge::graphStatus GetTopKAttr(const gert::TilingContext *context, int64_t &topK)
+{
+    auto attrPtr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
+    const int64_t *topKPtr = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    OP_CHECK_NULL_WITH_CONTEXT(context, topKPtr);
+    topK = *topKPtr;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context);
 
 ge::graphStatus TilingMoeTokenPermuteWithEpGrad(gert::TilingContext *context)
@@ -101,8 +111,10 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     auto dataTensor0 = context->GetInputTensor(0);
     auto dataTensor1 = context->GetInputTensor(1);
     auto nodeName = context->GetNodeName();
-    const int64_t *tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    int inputTopK = *tmpTopK;
+    int64_t inputTopK = 0;
+    if (GetTopKAttr(context, inputTopK) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape == nullptr || indicesShape == nullptr || dataTensor0 == nullptr || dataTensor1 == nullptr,
@@ -154,8 +166,10 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     param.input.isUnpermute = isUnpermute;
 
     auto attrPtr = context->GetAttrs();
-    const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
-    int inputTopK = *tmpTopK;
+    int64_t inputTopK = 0;
+    if (GetTopKAttr(context, inputTopK) != ge::GRAPH_SUCCESS) {
+        return;
+    }
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
@@ -381,8 +395,10 @@ ge::graphStatus PermuteWithEpGradTilingCompute(gert::TilingContext *context, con
 
 static ge::graphStatus Tiling4MoeTokenPermuteWithEpGrad(gert::TilingContext *context)
 {
-    const int64_t *top_k = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    int64_t topk = *top_k;
+    int64_t topk = 0;
+    if (GetTopKAttr(context, topk) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return PermuteWithEpGradTilingCompute(context, topk, false);
 }
 
