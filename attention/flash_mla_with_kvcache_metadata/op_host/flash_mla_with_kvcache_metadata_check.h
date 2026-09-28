@@ -101,6 +101,7 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSe
                                                                    int64_t headDimQk, int64_t headDimV,
                                                                    const char *layoutQ)
 {
+    CHECK_COND(layoutQ != nullptr, ACLNN_ERR_PARAM_NULLPTR, "layoutQ must not be null");
     CHECK_COND((maxSeqlenQ == NONE_VALUE || maxSeqlenQ >= 0), ACLNN_ERR_RUNTIME_ERROR,
                "maxSeqlenQ must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenQ);
     CHECK_COND((maxSeqlenKv == NONE_VALUE || maxSeqlenKv >= 0), ACLNN_ERR_RUNTIME_ERROR,

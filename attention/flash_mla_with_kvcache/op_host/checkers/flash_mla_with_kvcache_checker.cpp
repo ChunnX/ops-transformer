@@ -98,11 +98,11 @@ ge::graphStatus FlashMlaWithKvcacheChecker::Process(const FlashMlaWithKvcacheTil
         OP_LOGE(faInfo.opName, "Empty tensor detected: q, k_cache or attn_out has dimension with size 0");
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != CheckSinglePara(faInfo)) {
+    // Establish required tensors and descriptors before checking their values.
+    if (ge::GRAPH_SUCCESS != CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-
-    if (ge::GRAPH_SUCCESS != CheckParaExistence(faInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
 
