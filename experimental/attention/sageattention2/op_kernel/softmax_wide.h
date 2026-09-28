@@ -24,6 +24,7 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     AscendC::MicroAPI::RegTensor<half> &m0, AscendC::MicroAPI::RegTensor<half> &m1,
     AscendC::MicroAPI::MaskReg &h)
 {
+    using namespace AscendC::MicroAPI;
     RegTensor<half> k0, k1;
     LoadAlign<half, LoadDist::DIST_BLK>(k0, khalf0 + col * 16);
     LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
