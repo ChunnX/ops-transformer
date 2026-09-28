@@ -20,7 +20,7 @@
 
 namespace optiling {
 
-class AntiQuantTilingArch920r1 {
+class AntiQuantTilingArch92 {
 public:
     FiaBaseParams fiaBaseParams;
     FiaAttenMaskParams fiaAttenMaskParams;
@@ -36,7 +36,7 @@ public:
 
 class FusedInferAttentionScoreTilingData {
 public:
-    AntiQuantTilingArch920r1 baseTiling;
+    AntiQuantTilingArch92 baseTiling;
     FiaMetaData fiaMetaData;
 };
 
