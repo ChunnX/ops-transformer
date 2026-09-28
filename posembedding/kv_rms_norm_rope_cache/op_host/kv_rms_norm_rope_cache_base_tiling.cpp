@@ -25,8 +25,8 @@ static const std::vector<std::string> inputNames = {"kv",         "gamma",      
                                                     "index",      "k_cache",       "ckv_cache",   "k_rope_scale",
                                                     "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"};
 using namespace Ops::Base;
-std::tuple<int64_t, int64_t, int64_t, int64_t>
-KvRmsNormRopeCacheTilingBase::GetShapeTuple(const gert::TilingContext *context, const int64_t index)
+std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetShapeTuple(
+    const gert::TilingContext *context, const int64_t index)
 {
     const gert::StorageShape *shapePtr = context->GetInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
@@ -42,8 +42,8 @@ KvRmsNormRopeCacheTilingBase::GetShapeTuple(const gert::TilingContext *context, 
         shapePtr->GetStorageShape().GetDim(SHAPE_IDX_S), shapePtr->GetStorageShape().GetDim(SHAPE_IDX_D));
 }
 
-std::tuple<int64_t, int64_t, int64_t, int64_t>
-KvRmsNormRopeCacheTilingBase::GetOptionalShapeTuple(const gert::TilingContext *context, const int64_t index)
+std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetOptionalShapeTuple(
+    const gert::TilingContext *context, const int64_t index)
 {
     const gert::StorageShape *shapePtr = context->GetOptionalInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
