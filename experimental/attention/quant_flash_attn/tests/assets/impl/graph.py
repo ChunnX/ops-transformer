@@ -218,7 +218,8 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
         )
 
         if not self.return_softmax_lse:
-            lse_out = None
+            if isinstance(lse_out, torch.Tensor):
+                lse_out = lse_out.reshape(0)
         elif isinstance(lse_out, torch.Tensor) and lse_out.ndim == 2:
             lse_out = lse_out.transpose(0, 1).contiguous()
         return atten_out, lse_out
