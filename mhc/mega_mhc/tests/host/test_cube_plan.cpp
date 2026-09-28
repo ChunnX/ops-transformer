@@ -101,6 +101,16 @@ extern "C"
                         request.wavePipeline = false;
                         REQUIRE(BuildCubePlan(request, p));
                     }
+                    // M balancing must preserve K ownership and RMS reduction grain for every tested shape.
+                    if (!request.wavePipeline && request.mode == ProjectionMode::FP32) {
+                        CubePlanRequest referenceRequest = request;
+                        referenceRequest.mode = ProjectionMode::HF32;
+                        CubePlan referencePlan;
+                        REQUIRE(BuildCubePlan(referenceRequest, referencePlan));
+                        REQUIRE(p.kGrid == referencePlan.kGrid && p.partialGroupK == referencePlan.partialGroupK);
+                        REQUIRE(p.l1K == referencePlan.l1K);
+                        REQUIRE(p.activeAic >= referencePlan.activeAic);
+                    }
                     REQUIRE(p.activeAic <= cores && p.activeAic == p.mGrid * p.kGrid);
                     REQUIRE(p.activeAiv == 2 * p.activeAic);
                     if (request.wavePipeline) {

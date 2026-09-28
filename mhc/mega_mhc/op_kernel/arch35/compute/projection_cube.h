@@ -133,7 +133,8 @@ public:
                                   (!USE_HF32 ? tiling_->fullMmadKStep : (l0IsTail ? tailMmadKStep : tiling_->baseK));
                 MmadParams params;
                 params.m = nzM;
-                params.n = tiling_->q;
+                // Compute the allocated NZ width; only the first q columns are logical outputs.
+                params.n = tiling_->nzN;
                 params.k = madK;
                 params.disableGemv = true;
                 params.cmatrixInitVal = firstInPartial && l0Index == 0 && inner == 0;
@@ -142,7 +143,9 @@ public:
                 // than the padded Mmad tile, so it must not leave unit flags occupied.
                 params.unitFlag = 0;
                 Mmad(cL0_[cSlot_], aL0_[l0Slot][innerKOffset * nzM], bL0_[l0Slot][innerKOffset * tiling_->nzN], params);
-                PipeBarrier<PIPE_M>();
+                if (tiling_->mmadNeedsBarrier != 0U) {
+                    PipeBarrier<PIPE_M>();
+                }
                 innerKOffset += madK;
             }
             SetFlag<HardEvent::M_MTE1>(l0Slot + 3);

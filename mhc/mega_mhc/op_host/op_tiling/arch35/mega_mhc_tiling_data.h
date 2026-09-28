@@ -59,6 +59,7 @@ TILING_DATA_FIELD_DEF(uint32_t, lastCoreTailLoadKStep);
 TILING_DATA_FIELD_DEF(uint32_t, baseM);
 TILING_DATA_FIELD_DEF(uint32_t, baseN);
 TILING_DATA_FIELD_DEF(uint32_t, baseK);
+TILING_DATA_FIELD_DEF(uint32_t, mmadNeedsBarrier);
 TILING_DATA_FIELD_DEF(uint32_t, nzM);
 TILING_DATA_FIELD_DEF(uint32_t, nzN);
 TILING_DATA_FIELD_DEF(uint32_t, l1ASlotElements);

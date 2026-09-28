@@ -152,6 +152,19 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
         const uint64_t targetRows = request.schedule == ScheduleMode::ND ? request.rows : CeilDiv(request.rows, active);
         selectedMTile = std::min(mCapacity, AlignUp(targetRows, kMAlign));
     }
+    // Preserve the original L1 K grain so M balancing does not change RMS partial sums.
+    const uint64_t transferMTile = selectedMTile;
+    // FP32 keeps a fixed 32-element Mmad K step while balancing M ownership.
+    // HF32 retains its existing plan because baseK changes its accumulation order.
+    if (!request.wavePipeline && request.schedule == ScheduleMode::MK && request.preferWideTile &&
+        request.mode == ProjectionMode::FP32) {
+        const uint64_t occupiedM = std::min(active, CeilDiv(request.rows, selectedMTile));
+        const uint64_t occupiedK = std::min(active / occupiedM, CeilDiv(request.k, kKAlign));
+        // Rebalance only unsplit K with idle cores; keep existing K ownership and full grids.
+        if (occupiedK == 1U && occupiedM < active) {
+            selectedMTile = std::min(selectedMTile, AlignUp(CeilDiv(request.rows, active), kMAlign));
+        }
+    }
     const uint64_t selectedMGrid =
         request.schedule == ScheduleMode::ND ?
             1U :
@@ -184,7 +197,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
     const uint64_t l1KMax =
         std::min<uint64_t>({request.wavePipeline ? kWaveProjectionElements / (waveRowsPerAiv * waveKGrid) : 1024U,
-                            request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
+                            request.l1ABytes / (2 * transferMTile * kFp32Bytes),
                             request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
     // L1 transfers must not cross an ordered partial boundary. A small unsplit shard may end with an L1 tail.
     uint64_t l1K = AlignDown(std::min(l1KMax, partialGroupK), kL1KAlign);

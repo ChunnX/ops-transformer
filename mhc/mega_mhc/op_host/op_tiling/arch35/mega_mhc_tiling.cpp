@@ -301,6 +301,8 @@ void MegaMhcTiling::CopyCubePlanToTilingData()
     tilingData_.set_baseM(cubePlan_.baseM);
     tilingData_.set_baseN(cubePlan_.baseN);
     tilingData_.set_baseK(cubePlan_.baseK);
+    // Mmad API requires PIPE_M when (m/16)*(n/16)<10; decide once on Host.
+    tilingData_.set_mmadNeedsBarrier((cubePlan_.nzM / 16U) * (cubePlan_.nzN / 16U) < 10U ? 1U : 0U);
     tilingData_.set_nzM(cubePlan_.nzM);
     tilingData_.set_nzN(cubePlan_.nzN);
     tilingData_.set_l1ASlotElements(cubePlan_.l1ASlotElements);
