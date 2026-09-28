@@ -250,12 +250,13 @@ private:
                                          ConstInfo &smla35VecConstInfo);
     __aicore__ inline void GetKVPhyAddrForKvType(
         uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
-        bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
-        GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
-        GlobalTensor<int32_t> topkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, ConstInfo &smla35VecConstInfo,
-        GlobalTensor<int32_t> &blockTableGm, GlobalTensor<int32_t> &sparseIndicesGm, GlobalTensor<uint32_t> &phyAddrGm,
-        uint32_t kvStride, uint32_t blockSize, uint32_t maxBlockNumPerBatch, uint32_t sparseBlockCount,
-        uint32_t alignedSparseBlockCount, bool isOriKv);
+        bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> &actualSeqQlenGm,
+        GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &actualSeqKvlenGm,
+        GlobalTensor<int32_t> &cuSeqlensKvGm, GlobalTensor<int32_t> &topkLengthGm,
+        GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &smla35VecConstInfo, GlobalTensor<int32_t> &blockTableGm,
+        GlobalTensor<int32_t> &sparseIndicesGm, GlobalTensor<uint32_t> &phyAddrGm, uint32_t kvStride,
+        uint32_t blockSize, uint32_t maxBlockNumPerBatch, uint32_t sparseBlockCount, uint32_t alignedSparseBlockCount,
+        bool isOriKv);
     __aicore__ inline int32_t GetSmlaSeqLen(int32_t batchIndex, bool useExplicitLength, bool useCumulativeLength,
                                             GlobalTensor<int32_t> &explicitLengthGm,
                                             GlobalTensor<int32_t> &cumulativeLengthGm, int64_t fallbackLength);
@@ -1631,9 +1632,9 @@ __aicore__ inline int32_t SmlaCsaBlockVector<TEMPLATE_ARGS>::CalcCurValidS2(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
-    bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> actualSeqQlenGm,
-    GlobalTensor<int32_t> cuSeqlensQGm, GlobalTensor<int32_t> actualSeqKvlenGm, GlobalTensor<int32_t> cuSeqlensKvGm,
-    GlobalTensor<int32_t> topkLengthGm, GlobalTensor<int32_t> cmpResidualKvGm, ConstInfo &smla35VecConstInfo,
+    bool hasCuSeqlensQ, bool hasActualSeqKvlen, bool hasCuSeqlensKv, GlobalTensor<int32_t> &actualSeqQlenGm,
+    GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &actualSeqKvlenGm, GlobalTensor<int32_t> &cuSeqlensKvGm,
+    GlobalTensor<int32_t> &topkLengthGm, GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &smla35VecConstInfo,
     GlobalTensor<int32_t> &blockTableGm, GlobalTensor<int32_t> &sparseIndicesGm, GlobalTensor<uint32_t> &phyAddrGm,
     uint32_t kvStride, uint32_t blockSize, uint32_t maxBlockNumPerBatch, uint32_t sparseBlockCount,
     uint32_t alignedSparseBlockCount, bool isOriKv)
@@ -1750,7 +1751,7 @@ __aicore__ inline void SmlaCsaBlockVector<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         uint32_t kvPrefix = 0;
         uint32_t bS2BaseLow = 0;
         uint32_t bS2BaseHigh = 0;
-        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
             kvPrefix = static_cast<uint32_t>(cuSeqlensKvGm.GetValue(bIdx));
         } else {
             uint32_t s2Size = isOriKv ? static_cast<uint32_t>(smla35VecConstInfo.s2Size) :
