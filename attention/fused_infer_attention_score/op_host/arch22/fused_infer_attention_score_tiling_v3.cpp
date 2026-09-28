@@ -1408,6 +1408,13 @@ bool RouteToFia(gert::TilingContext *context)
         return false;
     }
 
+    // TND D=256 with learnable sink keeps the original route: FIA V3 only accepts BFLOAT16 sink on this
+    // platform, so routing the FP16 sink cases (handled by the original route today) into V3 would fail.
+    if (inputLayoutStr == "TND" && queryRopeD == 0 && queryD == valueD && queryD == 256 &&
+        (context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr)) {
+        return false;
+    }
+
     if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD, queryS, inputLayoutStr, isPrefix, isMha,
                                   isPageAttention)) {
         return false;
