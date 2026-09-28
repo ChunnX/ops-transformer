@@ -331,6 +331,56 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         restored_out = F.scaled_dot_product_attention(q, k, v)
         self.assertEqual(restored_out.shape, (b, h, s, d))
 
+    # -------------------------------------------------------------------------
+    # TC-11: 快速通路 (Fast-Path) 与预校验缓存加速验证
+    # -------------------------------------------------------------------------
+    def test_fast_path_and_prevalidation_optimization(self):
+        """TC-11: Verify fast-path static caching, inference loop consistency, and error safety."""
+        b, h, s, d = 2, 4, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+
+        # 1. Warm-up and repeated execution (simulating transformer inference loop)
+        out_first = sageattn(q, k, v, tensor_layout="HND")
+        for _ in range(10):
+            out_fast = sageattn(q, k, v, tensor_layout="HND")
+            self.assertTrue(torch.equal(out_first, out_fast))
+
+        # 2. Dynamic shape transition (e.g. sequence length changes in decode loop)
+        q_dec = torch.randn(b, h, 1, d, dtype=torch.float16)
+        k_dec = torch.randn(b, h, 65, d, dtype=torch.float16)
+        v_dec = torch.randn(b, h, 65, d, dtype=torch.float16)
+        out_dec = sageattn(q_dec, k_dec, v_dec, is_causal=False)
+        self.assertEqual(out_dec.shape, (b, h, 1, d))
+
+        # 3. Switching back to previous cached shape succeeds and hits cache
+        out_rewarm = sageattn(q, k, v, tensor_layout="HND")
+        self.assertTrue(torch.equal(out_first, out_rewarm))
+
+        # 4. Strict error interception remains active even when fast-path is warmed up
+        # Non-contiguous stride(-1) != 1 on same shape
+        q_bad = q.transpose(-2, -1)
+        with self.assertRaises(ValueError):
+            sageattn(q_bad, k, v)
+
+        # Autograd requires_grad on same shape
+        q_grad = q.clone().requires_grad_(True)
+        with self.assertRaises(ValueError):
+            sageattn(q_grad, k, v)
+
+        # 5. Fast-path with GQA LSE return
+        hq, hk = 8, 2
+        q_gqa = torch.randn(b, hq, s, d, dtype=torch.float16)
+        k_gqa = torch.randn(b, hk, s, d, dtype=torch.float16)
+        v_gqa = torch.randn(b, hk, s, d, dtype=torch.float16)
+
+        out_gqa1, lse_gqa1 = sageattn(q_gqa, k_gqa, v_gqa, return_lse=True)
+        for _ in range(5):
+            out_gqa_fast, lse_gqa_fast = sageattn(q_gqa, k_gqa, v_gqa, return_lse=True)
+            self.assertTrue(torch.equal(out_gqa1, out_gqa_fast))
+            self.assertTrue(torch.equal(lse_gqa1, lse_gqa_fast))
+
 
 def main():
     print("=" * 80)

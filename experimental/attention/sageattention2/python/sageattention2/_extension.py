@@ -15,6 +15,13 @@ from pathlib import Path
 
 @functools.lru_cache(None)
 def load_extension():
+    try:
+        import sageattention2_npu_ext
+
+        return sageattention2_npu_ext
+    except ImportError:
+        pass
+
     import torch_npu
     from torch.utils.cpp_extension import load
 
