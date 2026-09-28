@@ -64,7 +64,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    OP_CHECK(uniqueExecutor.get() != nullptr, OP_LOGE(ACLNN_ERR_INNER_CREATE_EXECUTOR, "Failed to create executor"),
+             return ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = 0;
@@ -81,9 +82,9 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     int64_t deterministicLevel = 0;
     aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicLevel);
     if (aclRet != ACL_SUCCESS) {
-        OP_LOGW("aclnnMixedQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
+        OP_LOGW("Unable to get system param batch consistency level.");
     }
-    OP_LOGD("deterministic_level=%lld", deterministicLevel);
+    OP_LOGD("deterministic_level=%lld", static_cast<long long>(deterministicLevel));
     bool isBatchConsistency = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
 
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
@@ -92,7 +93,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
                            maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, ropeHeadDim, cmpRatio, oriMaskMode,
                            cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
                            aicCoreNum, aivCoreNum, socVersion, metaData);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    OP_CHECK(ret == ACLNN_SUCCESS, OP_LOGE(ret, "Parameter check failed: %d", ret), return ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
@@ -174,7 +175,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
         numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk,
         ropeHeadDim, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional,
         hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData, uniqueExecutor.get());
-    CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    OP_CHECK(output != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Metadata output is nullptr"),
+             return ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

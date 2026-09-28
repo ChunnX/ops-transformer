@@ -1,6 +1,6 @@
 # aclnnMixedQuantSparseFlashMlaMetadata
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/mixed_quant_sparse_flash_mla_metadata)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/9.2.0/attention/mixed_quant_sparse_flash_mla_metadata)
 
 ## 产品支持情况
 
@@ -67,7 +67,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     const char        *layoutKvOptional,
     bool               hasOriKv,
     bool               hasCmpKv,
-    const aclTensor   *metadata,
+    const aclTensor   *metaData,
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
@@ -230,7 +230,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td><ul><li>1: BF16 scale量化布局。</li><li>2: FLOAT8_E8M0 scale量化布局。</li><li>3: TurboQuant TQ4配套metadata。Metadata接口接受1、2、3，具体平台约束见约束说明。</li></ul></td>
+      <td>表示量化模式，支持1、2、3，必须与主算子的quantMode一致。quantMode=1表示KV nope采用per-token-group量化、scale类型为BFLOAT16；quantMode=2表示KV nope采用per-token-group量化、scale类型为FLOAT8_E8M0；quantMode=3表示生成TurboQuant TQ4配套分核信息。本接口不执行KV量化或注意力计算；各模式的KV数据类型和存储布局详见<a href="../../mixed_quant_sparse_flash_mla/docs/aclnnMixedQuantSparseFlashMla.md#quantMode">quantMode描述</a>。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>rope_head_dim（int64_t）</td>
+      <td>ropeHeadDim（int64_t）</td>
       <td>输入</td>
       <td>rope头的维度。</td>
       <td><ul><li>当前仅支持64。</li><li>建议值为64。</li></ul></td>
@@ -397,7 +397,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>metadata（aclTensor*）</td>
+      <td>metaData（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>shape固定为(1024, )。</td>
@@ -509,12 +509,20 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
+## A2/A3 TurboQuant 补充说明
+
+- Atlas A2、Atlas A3 支持 TurboQuant TQ4；A5 仍使用原有quantMode=1和quantMode=2。
+- 复用原有接口和量化模式参数，设置quantMode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quantMode=3下生效。
+- Metadata 接口通过原有 `quantMode=3` 生成 A2/A3 TQ4 配套分核信息；本接口不执行 KV 量化或注意力计算。输出仍为 INT32、shape `(1024,)`。
+- 必须与主算子的量化模式、head 数、序列长度、布局、mask、压缩倍率和稀疏长度保持一致；主算子的必传项及quantMode=3限制见[MixedQuantSparseFlashMla 说明](../../mixed_quant_sparse_flash_mla/docs/aclnnMixedQuantSparseFlashMla.md)。
+- 各量化模式的KV数据类型和存储布局详见quantMode描述。
+
 ## 约束说明
 
   - `quantMode`支持1、2、3，具体产品支持的量化模式如下。
 
 <!-- npu="950" id7 -->
-- <term>Ascend 950PR&950DT系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quantMode=1/2`。
+- <term>Ascend 950PR&950DT系列产品</term>：与`aclnnMixedQuantSparseFlashMla`算子配套使用时，仅支持`quantMode=1`或`quantMode=2`。
 <!-- end id7 -->
 
 <!-- npu="A3" id8 -->
