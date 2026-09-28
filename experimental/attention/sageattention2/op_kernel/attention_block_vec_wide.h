@@ -67,19 +67,27 @@ public:
         auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
         // Output scratch is idle until the complete softmax group finishes.
         auto partialSums = resource_->ubBuf.template GetBufferByByte<float>(WideVectorLayout::PARTIAL_SUMS_UB);
-        if (CAUSAL && step * 512 + 512 > qstart + subBlockIdx_ * HALF + 1) {
-            SoftmaxWideFirstVF<true>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                                     (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
-                                     (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
-                                     (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                                     (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr(),
-                                     int32_t(qstart + subBlockIdx_ * HALF) - int32_t(step * 512));
+        if constexpr (CAUSAL) {
+            if (step + 1 == count) {
+                SoftmaxWideFirstVF<true>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
+                                         (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                         (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
+                                         (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
+                                         (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr(),
+                                         int32_t(qstart + subBlockIdx_ * HALF) - int32_t(step * 512));
+            } else {
+                SoftmaxWideFirstVF<false>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
+                                          (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                          (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
+                                          (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
+                                          (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
+            }
         } else {
-            SoftmaxWideFirstVF((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                               (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
-                               (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
-                               (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                               (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
+            SoftmaxWideFirstVF<false>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
+                                      (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                      (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
+                                      (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
+                                      (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
         }
         SetFlag<HardEvent::V_MTE2>(ev);
         if constexpr (STREAM) {

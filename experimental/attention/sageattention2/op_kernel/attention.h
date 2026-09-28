@@ -15,7 +15,7 @@
 namespace Sage {
 // Follow the repository's Init/Process kernel + Cube/Vector block organization.
 // The shared kernel entry must inline architecture-dependent code for both sides.
-template <class T, uint32_t DP>
+template <class T, uint32_t DP, bool CAUSAL = false>
 class AttentionKernel {
 public:
     __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
@@ -62,7 +62,7 @@ public:
             if ASCEND_IS_AIV {
                 vector_.BeginTile(b, kh, qb, qstart);
             }
-            uint32_t limit = p.causal ? Min(p.sk, qstart + M) : p.sk;
+            uint32_t limit = CAUSAL ? Min(p.sk, qstart + M) : p.sk;
             // Two-block QK lookahead. Drain the final two PV/O updates.
             uint32_t count = (limit + N - 1) / N;
             if ASCEND_IS_AIV {
@@ -92,7 +92,7 @@ public:
                     }
                 } else {
                     if (step < count) {
-                        vector_.Softmax(step, qstart, kb, count);
+                        vector_.template Softmax<CAUSAL>(step, qstart, kb, count);
                     }
                     if (step >= LOOKAHEAD) {
                         vector_.UpdateOutput(step - LOOKAHEAD, count);
@@ -129,13 +129,13 @@ private:
     GM_ADDR v8_;
     GM_ADDR vsmx_;
 };
-template <class T, uint32_t DP>
+template <class T, uint32_t DP, bool CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void AttentionImpl(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                     GM_ADDR qs, GM_ADDR ks, GM_ADDR mean,
                                                                     GM_ADDR mxScale, GM_ADDR out, GM_ADDR lse,
                                                                     SageParams params)
 {
-    AttentionKernel<T, DP> kernel;
+    AttentionKernel<T, DP, CAUSAL> kernel;
     kernel.Init(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, params);
     kernel.Process();
 }
@@ -149,13 +149,19 @@ __aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q, GM_AD
         if (p.causal)
             AttentionWideStream<T, true>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
         else
-            AttentionWideStream<T>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+            AttentionWideStream<T, false>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
     } else {
-        // Select a dimension once, before the steady-state Cube/Vector pipeline.
-        if (p.dp == 128)
-            AttentionImpl<T, 128>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
-        else
-            AttentionImpl<T, 64>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+        if (p.causal) {
+            if (p.dp == 128)
+                AttentionImpl<T, 128, true>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+            else
+                AttentionImpl<T, 64, true>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+        } else {
+            if (p.dp == 128)
+                AttentionImpl<T, 128, false>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+            else
+                AttentionImpl<T, 64, false>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
+        }
     }
 }
 } // namespace Sage

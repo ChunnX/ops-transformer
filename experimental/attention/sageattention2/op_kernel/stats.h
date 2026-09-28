@@ -147,6 +147,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
         const uint32_t batches = (end - begin + BATCH_ROWS - 1) / BATCH_ROWS;
         SetFlag<HardEvent::V_MTE2>(1);
         SetFlag<HardEvent::V_MTE2>(2);
+        auto x = r.ubBuf.template GetBufferByByte<float>(65536);
         for (uint32_t batch = 0; batch <= batches; ++batch) {
             if (batch < batches) {
                 const uint32_t slot = batch & 1, start = begin + batch * BATCH_ROWS;
@@ -164,7 +165,6 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
             const event_t event = static_cast<event_t>(1 + slot);
             WaitFlag<HardEvent::MTE2_V>(event);
             auto input = r.ubBuf.template GetBufferByByte<T>(slot * SLOT_BYTES);
-            auto x = r.ubBuf.template GetBufferByByte<float>(65536);
             Cast(x, input, RoundMode::CAST_NONE, rows * p.dp);
             PipeBarrier<PIPE_V>();
             StatsSumVF(x, sum, rows, p.dp);

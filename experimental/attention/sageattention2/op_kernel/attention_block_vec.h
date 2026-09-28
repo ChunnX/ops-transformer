@@ -78,6 +78,7 @@ public:
             SetFlag<HardEvent::MTE2_V>(ev);
         }
     }
+    template <bool CAUSAL = false>
     __aicore__ inline __attribute__((always_inline)) void Softmax(uint32_t step, uint32_t qstart, uint64_t kb,
                                                                   uint32_t count)
     {
@@ -90,7 +91,7 @@ public:
         event_t scaleEvent = static_cast<event_t>(SCALE_EVENT_BASE + (step & 1));
         WaitFlag<HardEvent::MTE2_V>(scaleEvent);
         const bool isFull = (qstart + subBlockIdx_ * HALF + HALF <= params_.sq && start + N <= params_.sk &&
-                             (!params_.causal || start + N <= qstart + subBlockIdx_ * HALF + 1));
+                             (!CAUSAL || start + N <= qstart + subBlockIdx_ * HALF + 1));
         auto scoresPtr = (__ubuf__ half *)scores.GetPhyAddr();
         auto maxPtr = (__ubuf__ half *)maxima_.GetPhyAddr();
         auto denPtr = (__ubuf__ float *)denom_.GetPhyAddr();
@@ -104,11 +105,11 @@ public:
         if (isFull) {
             SoftmaxHalfVF<HALF, N, true, true, P_NZ_PAD_ROWS>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
-                qOffset, params_.sq, start, params_.sk, params_.causal);
+                qOffset, params_.sq, start, params_.sk, CAUSAL);
         } else {
             SoftmaxHalfVF<HALF, N, false, true, P_NZ_PAD_ROWS>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
-                qOffset, params_.sq, start, params_.sk, params_.causal);
+                qOffset, params_.sq, start, params_.sk, CAUSAL);
         }
         SetFlag<HardEvent::V_MTE2>(scaleEvent);
         if (step + 2 < count) {
