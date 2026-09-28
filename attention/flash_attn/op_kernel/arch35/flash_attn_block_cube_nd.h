@@ -346,11 +346,9 @@ public:
                 if constexpr (s2BaseSize == 256) {
                     MatmulN<Q_T, KV_T, MM_T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
                         qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                } else if constexpr (dBaseSize == 192) {
-                    MatmulK<Q_T, KV_T, MM_T, 128, 128, 96, ABLayout::MK, ABLayout::KN>(
-                        qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                 } else {
-                    MatmulK<Q_T, KV_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+                    const static uint8_t splitK = (dBaseSize == 192) ? 96U : 128U;
+                    MatmulK<Q_T, KV_T, MM_T, 128, 128, splitK, ABLayout::MK, ABLayout::KN>(
                         qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                 }
             } else {
