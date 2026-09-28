@@ -99,6 +99,9 @@ TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
 TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0) // A5
 TILING_DATA_FIELD_DEF(uint32_t, hasOriSparseIndices)
 TILING_DATA_FIELD_DEF(uint32_t, oriSparseIndexWidth)
+TILING_DATA_FIELD_DEF(uint32_t, oriP)
+TILING_DATA_FIELD_DEF(uint32_t, oriMLow)
+TILING_DATA_FIELD_DEF(uint32_t, oriMHigh)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
@@ -111,6 +114,9 @@ TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)         // A2/A3
 TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount) // A5
 TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)        // A5
 TILING_DATA_FIELD_DEF(uint32_t, cmpKeyStride0)       // A5
+TILING_DATA_FIELD_DEF(uint32_t, cmpP)
+TILING_DATA_FIELD_DEF(uint32_t, cmpMLow)
+TILING_DATA_FIELD_DEF(uint32_t, cmpMHigh)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaCmpParamsOp, SparseFlashMlaCmpParams)
 
@@ -215,6 +221,12 @@ public:
     int32_t oriBlockSize = 0;
     int32_t cmpBlockSize = 0;
     uint32_t cmpMaxBlockNumPerBatch = 0;
+    uint32_t oriP = 0;
+    uint32_t oriMLow = 0;
+    uint32_t oriMHigh = 0;
+    uint32_t cmpP = 0;
+    uint32_t cmpMLow = 0;
+    uint32_t cmpMHigh = 0;
 
     // DType
     ge::DataType qType = ge::DT_FLOAT16;
@@ -394,6 +406,7 @@ public:
     ge::graphStatus GetS2Size();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
+    ge::graphStatus SmlaGetMagicPM();
     ge::graphStatus GetQHeadDim();
     ge::graphStatus GetValueHeadDim();
     ge::graphStatus GetSparseBlockCount();
@@ -459,6 +472,12 @@ public:
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
     int64_t oriBlockSize_ = 0;
     int64_t cmpBlockSize_ = 0;
+    uint32_t oriP_ = 0;
+    uint32_t oriMLow_ = 0;
+    uint32_t oriMHigh_ = 0;
+    uint32_t cmpP_ = 0;
+    uint32_t cmpMLow_ = 0;
+    uint32_t cmpMHigh_ = 0;
 
     // template mode
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;

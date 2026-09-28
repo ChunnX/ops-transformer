@@ -14,6 +14,9 @@
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
+constexpr int64_t METADATA_SIZE_DEFAULT = 1024;
+constexpr int64_t METADATA_SIZE_A6 = 2048;
+
 const char *Op(const CheckContext &context)
 {
     return context.opName == nullptr ? "SparseMla" : context.opName;
@@ -25,8 +28,12 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const CheckContext &context) co
     if (!context.metadata.present) {
         return ge::GRAPH_SUCCESS;
     }
+    int64_t metadataSize = METADATA_SIZE_DEFAULT;
+    if (context.npuArch == NpuArch::DAV_9201 || context.npuArch == NpuArch::DAV_9202) {
+        metadataSize = METADATA_SIZE_A6;
+    }
     if (CheckTensorDesc(context, context.metadata, "metadata", {ge::DT_INT32}) != ge::GRAPH_SUCCESS ||
-        CheckShape(context, context.metadata, "metadata", {1024}) != ge::GRAPH_SUCCESS) {
+        CheckShape(context, context.metadata, "metadata", {metadataSize}) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -35,8 +42,8 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const CheckContext &context) co
 ge::graphStatus MetadataChecker::CheckParaExistence(const CheckContext &context) const
 {
     OP_CHECK_IF(!context.metadata.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    Op(context), "metadata", "Metadata is required in the current version"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "metadata",
+                                                         "Metadata is required in the current version"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
