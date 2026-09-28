@@ -308,7 +308,10 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     const gert::StorageShape *actualSeqKlenShape = context->GetOptionalInputShape(MSA_IDX_ACTUAL_SEQ_KLEN);
     OP_CHECK_IF(actualSeqKlenShape == nullptr, OP_LOGE(context, "actual_seq_klen is required."),
                 return ge::GRAPH_FAILED);
-    const gert::StorageShape *startLocShape = context->GetInputShape(MSA_IDX_START_LOC);
+    // start_loc 是 REQUIRED，但排在 block_table/scale/atten_mask 等 OPTIONAL 之后。
+    // GetInputShape 使用 compute-node 下标：未实例化的可选输入不占槽，下标会前移，IR 下标 7 取空。
+    // GetRequiredInputShape 按原型下标取值，缺省可选输入时仍指向 start_loc。输入已实例化时与 GetInputShape 相同。
+    const gert::StorageShape *startLocShape = context->GetRequiredInputShape(MSA_IDX_START_LOC);
     OP_CHECK_NULL_WITH_CONTEXT(context, startLocShape);
 
     const gert::Shape &q = queryShape->GetStorageShape();

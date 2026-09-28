@@ -2,11 +2,14 @@
 
 ## 产品支持情况
 
-| 产品                                                      | 是否支持 |
-| --------------------------------------------------------- | :------: |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    √     |
-| <term>Ascend 950PR/Ascend 950DT</term>                    |    √     |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                              |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -33,6 +36,13 @@
     $$
 
     其中 Maxpool 按 sparse block（长度为 $block\_size$）在 KV token 维上取最大值。`start_loc`、`init_blocks`、`local_blocks` 共同生成 $local\_mask$，对序列头部 / 当前 query 附近若干强制保留的 block 写入高分，保证后续 TopK 一定选中它们。与 Triton raw score kernel 对齐时可将 `init_blocks`、`local_blocks` 置 0，关闭 $local\_mask$。
+
+- **主要计算过程**：
+
+    1. 将每个 query token 的 $Q_{idx}$ 与 KV sparse block 内因果可见的 $K_{idx}$ 做矩阵乘，得到 token 级相关性；int8 场景先按 $scale$ 反量化。
+    2. 按 `sparse_mode` 叠加 $atten\_mask$：`sparse_mode=0` 不做因果截断，`sparse_mode=3` 按 rightDownCausal 屏蔽不可见位置。
+    3. 在每个长度为 $block\_size$ 的 sparse block 上做 Maxpool，得到逐 block 的重要性分数。
+    4. 用 `start_loc`、`init_blocks`、`local_blocks` 生成 $local\_mask$，对强制保留的 block 写入高分，得到输出 `score`。本算子不包含 TopK。
 
 ## 参数说明
 
@@ -172,74 +182,9 @@
 - A2/A3 与 Ascend 950：按估计 M-task 数启动 MIX（`B=1` 时为 $\mathrm{CeilDiv}(T1\cdot N1, 128)$；多 batch 用 packed+$B$ 上界），短 decode 不打满 AIC。950 短 M 长 S 再按可见 KV stile 切 `kvChunks`。
 - 本算子输出止于 block score，**不包含** TopK。
 
-## 调用示例
+## 调用说明
 
-<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
-<col style="width: 180px">
-<col style="width: 400px">
-<col style="width: 520px">
-</colgroup>
-<thead>
-  <tr>
-    <th>调用方式</th>
-    <th>样例代码</th>
-    <th>说明</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>aclnn 单算子调用</td>
-    <td><a href="./examples/test_aclnn_msa_index_score.cpp">test_aclnn_msa_index_score.cpp</a></td>
-    <td>内置 CPU golden 的端到端精度自验证</td>
-  </tr>
-  <tr>
-    <td>接口文档</td>
-    <td><a href="./docs/aclnnMsaIndexScore.md">aclnnMsaIndexScore.md</a></td>
-    <td>两段式接口说明</td>
-  </tr>
-  <tr>
-    <td>测试说明</td>
-    <td><a href="./tests/README.md">tests/README.md</a></td>
-    <td>用例矩阵与运行方式</td>
-  </tr>
-  <tr>
-    <td>PyTorch API</td>
-    <td>-</td>
-    <td>通过<a href="./docs/torchapi_msa_index_score.md">msa_index_score</a>接口调用msa_index_score算子。</td>
-  </tr>
-</tbody>
-</table>
-
-编译与运行（Ascend 950，x86 包名为 `linux-x86_64.run`；A2/A3 将 `--soc` 换成对应平台）：
-
-```bash
-cd /path/to/ops-transformer-ar-950
-bash build.sh --pkg --soc=ascend950 --ops=msa_index_score -j32
-bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/path/to/msa_opp/
-source /path/to/msa_opp/vendors/custom_transformer/bin/set_env.bash
-export ASCEND_CUSTOM_OPP_PATH=/path/to/msa_opp/vendors/custom_transformer
-
-# aclnn example 必须带 --soc=ascend950（否则默认 910b）
-bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
-# 通过：末行 [PASS]: 50/50 cases passed
-# 矩阵：40 条 fp16/bf16/int8（BBND/BNBD/TND，含 pad / 空序列 / key dim0 stride / 宽 block_table / 短 decode / q4-kv275）+ 10 条 FP8（D=128，含 e4m3fn/e5m2 decode-kv275）
-# 容差：fp16/bf16/int8 1e-3，FP8 2e-2
-# A2/A3：同上矩阵去掉 FP8，期望 [PASS]: 40/40（skipped 10 FP8）
-```
-
-torch_extension 见 [msa_index_score.md](./docs/torchapi_msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
-
-> **实现备注（A2/A3 / Ascend 950）**
->
-> - key 布局由属性 `layout_key`（aclnn：`layoutKeyOptional`）指定，支持 PageAttention **BBND** / **BNBD**，以及 packed **TND**（无 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）。默认 `"BBND"`。
-> - `sparse_mode=3` 的 `atten_mask[2048,2048]` 在 host 校验必选；device 侧按 rightDownCausal
->   解析可见窗口（与 LightningIndexer 一致），不逐元素加载模板。
-> - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）
->   一起在 Maxpool 之后施加 `local_mask`。
-> - 完整公式：`score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask`。
-> - **950 当前交付**（`op_kernel/arch35/`）：计算骨架与 A2 相同（Q 驻留 × K pingpong × **8-page S GM** + MODE 0x2 握手）。Cube **原生** FP8（TilingKey 4/5/6，`hifloat8_t` / `fp8_e5m2_t` / `fp8_e4m3fn_t`，无 scale，禁止 Cast→fp16）。L0C→AIV UB（C_to_UB）尚未作为主路径。`arch22/` 冻结。
-> - **PA key dim0 stride**（A2/A3 与 950）：key 为 `IgnoreContiguous`；tiling 用 `GetInputStride` / `GetRequiredInputStride` 读首轴元素 stride，写入已有 `strideKvBlock`。从末维到 dim1 按紧凑 stride 校验（对齐 MlaProlog）；size-1 轴不参与寻址故跳过比较。非 size-1 的非首轴不连续则 tiling 失败。TND 不允许非连续。scale 仍按逻辑 page 紧凑布局。
-> - **950 宽 `block_table`**：C2UB score 暂存单窗 256 列；末维 `RoundUp(width,16)>256` 时按窗 flush 并补写后续 `-inf`，不能关掉 stage。
-> - **短 decode**（A2/A3 与 950）：host 按估计 M-task 数 `SetBlockDim`（单请求即 $\mathrm{CeilDiv}(T1\cdot N1,128)$），不再默认打满 AIC；多 M-tile / 大 batch 仍可占满 AIC。Ascend 950 在 M-task 填不满 AIC 且可见 KV stile $>1$ 时，再按 stile 沿 S 切开（`kvChunks`），短 M 长 S 的 decode 打满 MIX；宽表短 KV 仍只起 1 个 MIX。
-> - torch 的 `torch_npu.hifloat8.npu()` 当前会打出非法 device id，脚本跳过；kernel / aclnn 已挂 HIFLOAT8。
-> - 测性能须选 Health=OK 且空闲的卡。
+| 调用方式 | 样例代码 | 说明 |
+|----------|----------|------|
+| aclnn接口 | [test_aclnn_msa_index_score](./examples/test_aclnn_msa_index_score.cpp) | 通过[aclnnMsaIndexScore](./docs/aclnnMsaIndexScore.md)接口方式调用算子 |
+| PyTorch API | - | 通过[msa_index_score](./docs/torchapi_msa_index_score.md)接口调用msa_index_score算子 |

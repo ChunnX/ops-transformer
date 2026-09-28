@@ -92,7 +92,17 @@ public:
     static constexpr uint32_t MSA_HALF_PER_MASK_WORD = 64;
 
     // -3.4e38 越界，float→half 按 IEEE 就近舍入得 -inf；归约后由 Maxs 抬回 MSA_FILL_VALUE。
+    // 设备上保持 constexpr，Duplicate 仍吃编译期常量。CPU 仿真的 half 构造函数不是 constexpr。
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+    __aicore__ inline static half FillValueHalf()
+    {
+        return static_cast<half>(MSA_FILL_VALUE);
+    }
+#define MSA_EPI_FILL_H FillValueHalf()
+#else
     static constexpr half FILL_VALUE_H = static_cast<half>(MSA_FILL_VALUE);
+#define MSA_EPI_FILL_H FILL_VALUE_H
+#endif
 
     __aicore__ inline MsaSegRowMaxEpilogue() {}
 
@@ -257,7 +267,7 @@ public:
         constexpr uint8_t REP_BLK_64 = N_PER_ND / MSA_FP32_PER_BLOCK; // 8
         const uint32_t col = blk % MSA_BLOCKS_PER_STILE;
         if (col == 0U) {
-            AscendC::Duplicate(ubRed16_, FILL_VALUE_H, MSA_A5_S_PING_ROWS * MSA_BLOCKS_PER_STILE);
+            AscendC::Duplicate(ubRed16_, MSA_EPI_FILL_H, MSA_A5_S_PING_ROWS * MSA_BLOCKS_PER_STILE);
             AscendC::PipeBarrier<PIPE_V>();
         }
         const bool invalid = (blk >= task.visibleEndBlk);
@@ -594,7 +604,7 @@ private:
             hi = ~0ULL << (validCount - MSA_HALF_PER_MASK_WORD);
         }
         uint64_t mask[MSA_VEC_MASK_WORDS] = {lo, hi};
-        AscendC::Duplicate<half>(ub[base], FILL_VALUE_H, mask, 1, 1, MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
+        AscendC::Duplicate<half>(ub[base], MSA_EPI_FILL_H, mask, 1, 1, MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
     }
 
     __aicore__ inline void FillBlockTailFp16(uint32_t base, uint32_t validCount)
@@ -842,7 +852,7 @@ private:
         constexpr uint32_t N_PAD = 16;
         auto ubPad = ubStash_;
         auto ubOutH = ubStash_[VA * M_PAD];
-        AscendC::Duplicate(ubPad, FILL_VALUE_H, VA * M_PAD);
+        AscendC::Duplicate(ubPad, MSA_EPI_FILL_H, VA * M_PAD);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::DataCopy(ubPad, ubRed16_, MSA_BLOCKS_PER_STILE * M_PAD);
         AscendC::PipeBarrier<PIPE_V>();

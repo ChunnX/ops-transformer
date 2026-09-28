@@ -121,6 +121,13 @@ public:
     {
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_310R6_CUBE__)
         ProcessCube();
+#elif defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+        // CPU 仿真把 AIC/AIV 编进同一个 TU，Process 只能走 Vector。
+        // AIC 的 VECCALC 只有 64KB，按 Vector 的 UB 布局取 buffer 会越界。设备编译不走这里。
+        if ASCEND_IS_AIC {
+            return;
+        }
+        ProcessVector();
 #else
         ProcessVector();
 #endif

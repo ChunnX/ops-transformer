@@ -4,19 +4,28 @@
 
 ## 产品支持情况
 
-<!-- npu="910b" id1 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
-<!-- npu="950" id3 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- **算子功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8 反量化）的"matmul+maxpool"运算获得逐block的重要性分数score，用作 Index Branch 中后续的 TopK 输入。Prefill 与 Decode 由同一接口承载。
+- **接口功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8 反量化）的"matmul+maxpool"运算获得逐block的重要性分数score，用作 Index Branch 中后续的 TopK 输入。Prefill 与 Decode 由同一接口承载。
 
 - **计算公式**：
 
@@ -39,6 +48,13 @@
     $$
 
     $local\_mask$ 由 `startLoc`、`initBlocks`、`localBlocks` 生成：逻辑 block $[0, initBlocks)$ 写入 $1\mathrm{e}30$；窗口 $[max(0, startLoc+1-localBlocks), startLoc]$ 写入 $1\mathrm{e}29$（覆盖同位置的 init）。两者均为 0 时关闭 $local\_mask$。
+
+- **主要计算过程**：
+
+    1. 将每个 query token 的 $Q_{idx}$ 与 KV sparse block 内因果可见的 $K_{idx}$ 做矩阵乘，得到 token 级相关性；int8 场景先按 $scale$ 反量化。
+    2. 按 `sparseMode` 叠加 $atten\_mask$：`sparseMode=0` 不做因果截断，`sparseMode=3` 按 rightDownCausal 屏蔽不可见位置。
+    3. 在每个长度为 $block\_size$ 的 sparse block 上做 Maxpool，得到逐 block 的重要性分数。
+    4. 用 `startLoc`、`initBlocks`、`localBlocks` 生成 $local\_mask$，对强制保留的 block 写入高分，得到输出 `score`。本接口不包含 TopK。
 
 - **参数介绍**：
 
@@ -367,7 +383,7 @@ aclnnStatus aclnnMsaIndexScore(
 
 ## 调用示例
 
-示例代码如下（BBND PageAttention）。TND：`layoutKeyOptional="TND"`，`key` 为 $[T2, N2, D]$，`blockTableOptional` 传 `nullptr`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。BNBD：`layoutKeyOptional="BNBD"`，`key` 为 $[block\_num, N2, block\_size, D]$。含 TND/BNBD 的精度自验证见 [test_aclnn_msa_index_score.cpp](../examples/test_aclnn_msa_index_score.cpp)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -709,19 +725,4 @@ int main() {
   CleanupResources(resources, workspaceAddr, stream, deviceId);
   return 0;
 }
-```
-
-TND / BNBD 与上面 BBND 示例的差异如下（完整精度用例见 [test_aclnn_msa_index_score.cpp](../examples/test_aclnn_msa_index_score.cpp) 中的 `L1-bnbd*`、`L1-tnd*`、`L0-tnd-tiny`）。
-
-```Cpp
-// BNBD PageAttention：layoutKey="BNBD"，key 为 [block_num, N2, block_size, D]
-char layoutKeyBnbd[] = "BNBD";
-std::vector<int64_t> keyShapeBnbd = {blockNum, N2, blockSize, D};
-
-// TND packed key：layoutKey="TND"，不传 blockTableOptional，actualSeqKlenOptional 为 [B+1] 前缀和
-char layoutKeyTnd[] = "TND";
-constexpr int64_t T2 = 256;
-std::vector<int64_t> keyShapeTnd = {T2, N2, D};
-std::vector<int64_t> actualSeqKlenShapeTnd = {B + 1};  // 例如 {0, T2}
-aclTensor* blockTableTnd = nullptr;
 ```

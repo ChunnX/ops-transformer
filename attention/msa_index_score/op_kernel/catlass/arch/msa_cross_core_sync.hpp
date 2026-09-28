@@ -84,7 +84,12 @@ struct BarrierFlag<0x1, AscendC::AIV> {
 template <uint8_t MODE, pipe_t PIPE>
 CATLASS_DEVICE void CrossCoreBarrier()
 {
+#if defined(ASCENDC_CPU_DEBUG) || defined(__CCE_KT_TEST__)
+    // CPU 仿真里 g_coreType 不是编译期常量，不能做模板参数。设备路径仍用 g_coreType。
+    constexpr FlagID flagId = BarrierFlag<MODE, AscendC::AIV>::ID;
+#else
     constexpr FlagID flagId = BarrierFlag<MODE, g_coreType>::ID;
+#endif
     AscendC::CrossCoreSetFlag<MODE, PIPE>(flagId);
     AscendC::CrossCoreWaitFlag(flagId);
 }
