@@ -1,19 +1,53 @@
 version: 1
 ops:
-  interleave_rope:
-    links:
-    - interleave_rope
-    - rotary_position_embedding
-  rotary_position_embedding_grad:
-    ut: false
+  apply_rotary_pos_emb:
+    examples: true
+    ut: true
+  apply_rotary_pos_emb_grad:
+    examples: true
+    ut: true
+  dequant_rope_quant_kvcache:
+    examples: true
+    ut: true
   inplace_partial_rotary_mul:
     examples: false
     ut: false
+  inplace_partial_rotary_mul_grad:
+    examples: false
+    ut: true
+  interleave_rope:
+    examples: true
+    ut: true
+    links:
+    - interleave_rope
+    - rotary_position_embedding
   kv_rms_norm_rope_cache:
+    examples: true
     ut: false
+  norm_rope_concat:
+    examples: true
+    ut: true
+  norm_rope_concat_grad:
+    examples: true
+    ut: true
   qkv_rms_norm_rope_cache:
+    examples: true
     ut: false
   qkv_rms_norm_rope_cache_with_k_scale:
     examples: false
+    ut: true
+  rope_quant_kvcache:
+    examples: true
+    ut: true
+  rope_with_sin_cos_cache:
+    examples: true
+    ut: true
+  rotary_position_embedding:
+    examples: true
+    ut: true
+  rotary_position_embedding_grad:
+    examples: true
+    ut: false
   und_gen_qkv_rms_norm_rope_cache:
     examples: false
+    ut: true

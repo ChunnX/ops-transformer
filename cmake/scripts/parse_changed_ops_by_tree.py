@@ -146,9 +146,18 @@ def add_with_links(ops, cfg, domain, op_name, mode):
             ops.add(linked)
 
 
+def iter_domain_ops(cfg, domain):
+    configured = cfg.get("ops") or {}
+    if configured:
+        return [
+            op_dir(domain, name) for name in configured if op_dir(domain, name).is_dir()
+        ]
+    return domain_op_dirs(domain)
+
+
 def expand_domain(cfg, domain, mode):
     ops = set()
-    for child in domain_op_dirs(domain):
+    for child in iter_domain_ops(cfg, domain):
         if eligible(cfg, domain, child.name, mode):
             add_with_links(ops, cfg, domain, child.name, mode)
     return ops
@@ -192,6 +201,8 @@ def collect_ops(changed_file, mode):
         watch_ops = collect_from_watch(cfg, domain, path, mode)
         if watch_ops:
             ops.update(watch_ops)
+        if (cfg.get("ops") or {}) and op_name not in (cfg.get("ops") or {}):
+            continue
         if path_dir.is_dir() and eligible(cfg, domain, op_name, mode):
             add_with_links(ops, cfg, domain, op_name, mode)
     return sorted(ops)

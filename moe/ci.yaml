@@ -1,18 +1,104 @@
 version: 1
 ops:
+  moe_compute_expert_tokens:
+    examples: true
+    ut: true
+  moe_finalize_routing:
+    examples: true
+    ut: true
   moe_finalize_routing_v2:
+    examples: true
+    ut: true
     links:
     - moe_finalize_routing_v2
     - moe_token_unpermute
+  moe_finalize_routing_v2_grad:
+    examples: true
+    ut: true
+  moe_fused_topk:
+    examples: true
+    ut: true
+  moe_gating_top_k:
+    examples: true
+    ut: true
+  moe_gating_top_k_backward:
+    examples: true
+    ut: true
+  moe_gating_top_k_softmax:
+    examples: true
+    ut: true
+  moe_gating_top_k_softmax_v2:
+    examples: true
+    ut: true
+  moe_init_routing:
+    examples: true
+    ut: true
+  moe_init_routing_quant:
+    examples: true
+    ut: true
+  moe_init_routing_quant_v2:
+    examples: true
+    ut: true
+  moe_init_routing_v2:
+    examples: true
+    ut: true
   moe_init_routing_v2_grad:
+    examples: true
+    ut: true
     links:
     - moe_init_routing_v2_grad
     - moe_token_permute_grad
+  moe_init_routing_v3:
+    examples: true
+    ut: true
+  moe_init_routing_v4:
+    examples: true
+    ut: true
+  moe_re_routing:
+    examples: true
+    ut: true
+  moe_re_routing_v2:
+    examples: true
+    ut: true
+  moe_token_permute:
+    examples: true
+    ut: true
+  moe_token_permute_grad:
+    examples: true
+    ut: true
+  moe_token_permute_with_ep:
+    examples: true
+    ut: true
+  moe_token_permute_with_ep_grad:
+    examples: true
+    ut: true
+  moe_token_permute_with_routing_map:
+    examples: true
+    ut: true
   moe_token_permute_with_routing_map_grad:
+    examples: true
+    ut: true
     links:
     - moe_token_permute_with_routing_map_grad
     - moe_token_unpermute
   moe_token_unpermute:
+    examples: true
+    ut: true
     links:
-    - moe_token_permute_with_routing_map_grad
     - moe_token_unpermute
+    - moe_token_permute_with_routing_map_grad
+  moe_token_unpermute_grad:
+    examples: true
+    ut: true
+  moe_token_unpermute_with_ep:
+    examples: true
+    ut: true
+  moe_token_unpermute_with_ep_grad:
+    examples: true
+    ut: true
+  moe_token_unpermute_with_routing_map:
+    examples: true
+    ut: true
+  moe_token_unpermute_with_routing_map_grad:
+    examples: true
+    ut: true
