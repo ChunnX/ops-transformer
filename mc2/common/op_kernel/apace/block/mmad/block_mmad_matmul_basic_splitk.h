@@ -188,10 +188,7 @@ public:
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
-            // BT 槽随 tile 序号交替：abL1LoopCnt_ 每 tile += kL1Iter_，除以 kL1Iter_ 得 tile 序号。
-            // 原 abL1LoopCnt_ & 0x1 因步长 14(偶数) 恒 0，所有 tile 共用一个 BT 槽，
-            // 相邻 tile 首 split 写/读同一 BT 槽 → 覆盖/读到垃圾 bias。
-            uint64_t btBufId = (abL1LoopCnt_ / kL1Iter_) & 0x1;
+            uint64_t btBufId = abL1LoopCnt_ & 0x1;
 
             const auto &aL1Slot = bufMgr_.GetL1ASlot(l1BufId);
             const auto &bL1Slot = bufMgr_.GetL1BSlot(l1BufId);
@@ -211,6 +208,7 @@ public:
             for (uint64_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 uint64_t curK0 = (iter1 + 1 == kL0Iter) ? (curKL1 - iter1 * baseK_) : baseK_;
                 const auto &l0Slot = bufMgr_.GetL0Slot(l0PingPong_ & 0x1);
+                dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
 
                 // A L1->L0
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
@@ -433,6 +431,20 @@ private:
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
+            // === DEBUG (temporary): 直接读 BT 内容 ===
+            if (dbgBiasDumpCnt_ < 4) {
+                dbgBiasDumpCnt_++;
+                uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
+                printf("[DBG] bias BT: btAddr=%u nl1Align=%u curN0=%u splitKIdx=%u l1Addr=%u\n",
+                       static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
+                       static_cast<uint32_t>(curN0), static_cast<uint32_t>(dbgSplitKIdx_),
+                       static_cast<uint32_t>(biasL1Slot.Addr()));
+                for (uint64_t d = 0; d < dumpN; ++d) {
+                    float v = static_cast<float>(tensorBiasL0[AscendC::Te::MakeCoord(0, d)]);
+                    printf("[DBG]   bt[%u]=%f\n", static_cast<uint32_t>(d), v);
+                }
+            }
+            // === DEBUG end ===
         }
 
         return AscendC::Std::make_tuple(tensorAL0, tensorBL0, tensorBiasL0);
@@ -482,6 +494,8 @@ private:
     uint64_t baseM_{16};
     uint64_t baseN_{16};
     uint64_t baseK_{16};
+    uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
+    uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
