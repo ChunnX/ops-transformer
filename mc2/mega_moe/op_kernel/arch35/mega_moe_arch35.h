@@ -747,8 +747,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
                             SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
                         }
                     }
-                    combineBufferConfig = InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_,
-                                                                            waveCombineDedupScratch_);
+                    combineBufferConfig =
+                        InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
                     RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                    waveCombineScratch_, waveCombineDedupScratch_, params_, state,
                                                    state.expertIdx, combineRowSequence);

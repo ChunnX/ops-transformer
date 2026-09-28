@@ -472,8 +472,7 @@ __aicore__ inline uint32_t MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Fin
 {
     if constexpr (g_coreType == AIV) {
         // 量化 combine 或运行时开启的非量化 combine 去重都需要选定末专家全核参战。
-        if (CombineQuantMode != COMBINE_NO_QUANT ||
-            IsCombineDedupOn(params_.tilingData->dedupMode)) {
+        if (CombineQuantMode != COMBINE_NO_QUANT || IsCombineDedupOn(params_.tilingData->dedupMode)) {
             for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
                 uint32_t expertIdx = expertEnd - 1U;
                 uint64_t countOffset =

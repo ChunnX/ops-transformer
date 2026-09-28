@@ -91,10 +91,9 @@ __aicore__ inline void FanoutDedupDataAndMeta(DedupDispatchViews<TopkIndexType, 
         views.fanMetaTensor.SetValue(metaBase + RANK_ID, static_cast<int32_t>(remoteRankIdx));
         views.fanMetaTensor.SetValue(metaBase + TOKEN_ID, tokenIndex);
         views.fanMetaTensor.SetValue(metaBase + TOPK_INDEX, topkIndex % topK);
-        views.fanMetaTensor.SetValue(metaBase + WEIGHT_INDEX,
-                                     recordHasWeights ?
-                                         weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % topK)) :
-                                         0);
+        views.fanMetaTensor.SetValue(
+            metaBase + WEIGHT_INDEX,
+            recordHasWeights ? weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % topK)) : 0);
     }
 }
 
@@ -142,7 +141,8 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
     // 与 Fetch 侧事件分叉同条件：记录带权重段（prefetch 或 tkw=0 combine 去重）走 MTE2_S。
-    const bool recordHasWeights = TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode));
+    const bool recordHasWeights = TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 ||
+                                                          IsCombineDedupOn(params.tilingData->dedupMode));
     LocalTensor<int32_t> weightBitsTensor;
     if (recordHasWeights) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
@@ -173,9 +173,10 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
             row = views.descBatchTensor.GetValue(static_cast<uint32_t>(descBase) + DEDUP_ROW_DESC_HEADER_INT32 +
                                                  static_cast<uint32_t>(m) * 3U);
         }
-        DataCopy(views.metaInfoAbsTensor[static_cast<uint64_t>(row) * INT32_PER_256B],
-                 views.fanMetaTensor[fanMetaSlotBase + static_cast<uint32_t>(m) * static_cast<uint32_t>(INT32_PER_256B)],
-                 INT32_PER_256B);
+        DataCopy(
+            views.metaInfoAbsTensor[static_cast<uint64_t>(row) * INT32_PER_256B],
+            views.fanMetaTensor[fanMetaSlotBase + static_cast<uint32_t>(m) * static_cast<uint32_t>(INT32_PER_256B)],
+            INT32_PER_256B);
     }
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
@@ -302,9 +303,9 @@ __aicore__ inline void RunDedupFetchStorePipeline(
 // GMM1 等值判据不变——每个物理行恒被其写入者发布一次。
 template <uint32_t PipelineTileM, typename TopkIndexType, typename ActivationType, typename QuantScaleType>
 __aicore__ inline void PublishDedupTileReadyRuns(
-    DedupDispatchViews<TopkIndexType, ActivationType, QuantScaleType> &views,
-    const MoeSyncWorkspaceLayout &syncLayout, const Params &params, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, int32_t batchRowBegin, uint32_t strideInt32, int32_t batchCount)
+    DedupDispatchViews<TopkIndexType, ActivationType, QuantScaleType> &views, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, uint32_t localExpertId, int32_t expertGlobalRowBegin, int32_t batchRowBegin,
+    uint32_t strideInt32, int32_t batchCount)
 {
     int32_t runBegin = -1;
     for (int32_t batchEntryIdx = 0; batchEntryIdx <= batchCount; ++batchEntryIdx) {
@@ -343,9 +344,9 @@ __aicore__ inline void PublishDedupFanoutMembers(
         }
         int32_t memberCount = flags & DEDUP_ROW_MEMBER_COUNT_MASK;
         for (int32_t memberIdx = 1; memberIdx < memberCount; ++memberIdx) {
-            int32_t flagSlotOffset = views.descBatchTensor.GetValue(
-                static_cast<uint32_t>(batchEntryIdx) * strideInt32 + DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(memberIdx) * 3U +
-                2U);
+            int32_t flagSlotOffset = views.descBatchTensor.GetValue(static_cast<uint32_t>(batchEntryIdx) * strideInt32 +
+                                                                    DEDUP_ROW_DESC_HEADER_INT32 +
+                                                                    static_cast<uint32_t>(memberIdx) * 3U + 2U);
             if (!memberSyncDone) {
                 SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                 memberSyncDone = true;
@@ -469,9 +470,8 @@ __aicore__ inline void DispatchOwnedExpertRowsRouted(const TokenDispatchConfig &
                                                      uint32_t expertIdx, const ExpertDispatchCoreRange &expertRange)
 {
     if (IsDispatchDedupOn(context.dedup.dedupMode)) {
-        DispatchOwnedExpertRowsDedup<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM,
-                                     TopkWeightsPrefetch>(context, common, syncLayout, params, winRankAddr, scratch,
-                                                          expertIdx, expertRange);
+        DispatchOwnedExpertRowsDedup<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+            context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
     } else {
         DispatchOwnedExpertRows<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
             context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
@@ -563,11 +563,10 @@ __aicore__ inline void PrepareDedupPrepassAiv0Local(const DedupConfig &dedup, co
     scratch.cumsumInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0U, cumsumInfoTensorSize / sizeof(int32_t));
     const uint32_t expertTokenNumsOutTensorSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
         static_cast<int64_t>(common.moeExpertPerRank * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32)));
-    scratch.expertTokenNumsOutTensor = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorSize,
-                                                            expertTokenNumsOutTensorSize / sizeof(int32_t));
-    scratch.dedupUbBaseAddr = static_cast<uint32_t>(
-        Ops::Base::CeilAlign(static_cast<uint64_t>(cumsumInfoTensorSize + expertTokenNumsOutTensorSize),
-                             static_cast<uint64_t>(ALIGN_512)));
+    scratch.expertTokenNumsOutTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorSize, expertTokenNumsOutTensorSize / sizeof(int32_t));
+    scratch.dedupUbBaseAddr = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<uint64_t>(cumsumInfoTensorSize + expertTokenNumsOutTensorSize), static_cast<uint64_t>(ALIGN_512)));
     LoadAndComputeExpertCountTable(common, params, scratch);
 }
 

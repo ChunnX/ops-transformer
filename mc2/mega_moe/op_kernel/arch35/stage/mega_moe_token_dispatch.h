@@ -119,7 +119,8 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
         TOPK_INDEX, topkIndex % static_cast<int32_t>(params.tilingData->topK));
     // 事件分叉与 Store 侧的消费条件同式：记录带权重段（prefetch 或 tkw=0 combine 去重）时
     // Store 要标量读权重，走 MTE2_S；否则直接放行 S_MTE3。
-    if (TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
+    if (TopkWeightsPrefetch ||
+        (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
         SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
     } else {
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
@@ -142,7 +143,8 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
-    if (TopkWeightsPrefetch || (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
+    if (TopkWeightsPrefetch ||
+        (params.tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(params.tilingData->dedupMode))) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
@@ -157,11 +159,9 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
             if (IsCombineDedupOn(params.tilingData->dedupMode)) {
                 const uint32_t topK = params.tilingData->topK;
                 const uint32_t weightAlignInt32 =
-                    Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)),
-                                         static_cast<uint32_t>(ALIGN_32)) /
+                    Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32)) /
                     static_cast<uint32_t>(sizeof(int32_t));
-                DataCopyPad(revWeightsGlobalTensor[static_cast<uint64_t>(copyIdx) * weightAlignInt32],
-                            weightBitsTensor,
+                DataCopyPad(revWeightsGlobalTensor[static_cast<uint64_t>(copyIdx) * weightAlignInt32], weightBitsTensor,
                             {1U, topK * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
             }
         }
@@ -183,8 +183,8 @@ __aicore__ inline DispatchCopyTargets<ActivationType, QuantScaleType> CreateDisp
     const TokenDispatchScratch<ActivationType, TopkIndexType> &scratch, int32_t rowDstOffset, int32_t remoteRankIdx)
 {
     DispatchCopyTargets<ActivationType, QuantScaleType> targets;
-    targets.tokenRev.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
-        params.workspaceInfo.dispatchRevDataPtr + rowDstOffset * scratch.revTokenElemCnt));
+    targets.tokenRev.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(params.workspaceInfo.dispatchRevDataPtr +
+                                                                               rowDstOffset * scratch.revTokenElemCnt));
     targets.scaleRev.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType *>(
         params.workspaceInfo.dispatchRevScalePtr + rowDstOffset * scratch.revScaleElemCnt));
     targets.remoteRank.SetGlobalBuffer(
@@ -196,11 +196,10 @@ __aicore__ inline DispatchCopyTargets<ActivationType, QuantScaleType> CreateDisp
     // full 模式走 DispatchOwnedExpertRowsDedup/StoreDedupEntry，由那边写 LAST 槽，与此互斥。
     if constexpr (!TopkWeightsPrefetch) {
         if (IsCombineDedupOn(params.tilingData->dedupMode)) {
-            uint32_t weightAlignInt32 =
-                Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK) *
-                                         static_cast<uint32_t>(sizeof(float)),
-                                     static_cast<uint32_t>(ALIGN_32)) /
-                static_cast<uint32_t>(sizeof(int32_t));
+            uint32_t weightAlignInt32 = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK) *
+                                                                 static_cast<uint32_t>(sizeof(float)),
+                                                             static_cast<uint32_t>(ALIGN_32)) /
+                                        static_cast<uint32_t>(sizeof(int32_t));
             targets.revWeights.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
                 params.workspaceInfo.dispatchRevWeightsPtr +
                 static_cast<uint64_t>(rowDstOffset) * weightAlignInt32 * sizeof(int32_t)));
@@ -485,8 +484,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         // 经 PrepareDedupPrepassAiv0Local -> LoadAndComputeExpertCountTable 已上报，此处不得重复。
         // 条件必须与 PrepareDedupPrepassAiv0Local 的启用门严格互补（含 hiddenDim 档位），
         // 否则计算主导档的 AIV0 无人上报，ExportAndResetExpertCounts 等 read-done 挂死。
-        if (params.tilingData->dedupMode == 0 ||
-            params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
+        if (params.tilingData->dedupMode == 0 || params.tilingData->hiddenDim > DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM) {
             CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_V>(COUNT_TABLE_READ_DONE_FLAG);
         }
         return;

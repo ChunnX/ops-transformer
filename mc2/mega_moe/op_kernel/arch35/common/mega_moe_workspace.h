@@ -74,9 +74,9 @@ struct WorkspaceLayout {
     int64_t sharedExpertActivationScaleOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm1TileStatusOffset{INVALID_WORKSPACE_OFFSET}; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
     int64_t sharedExpertGmm2TileCounterOffset{INVALID_WORKSPACE_OFFSET};
-    int64_t dedupPrepassReadyOffset{INVALID_WORKSPACE_OFFSET};      // 去重 prepass 完成计数（flag 区内，自动清零）
-    int64_t dedupRowDescOffset{INVALID_WORKSPACE_OFFSET};           // 去重 rowDesc 表（仅 MTE 且 dedupMode!=0）
-    int64_t maskSlotOffset{INVALID_WORKSPACE_OFFSET};               // urma发送mask临时GM
+    int64_t dedupPrepassReadyOffset{INVALID_WORKSPACE_OFFSET}; // 去重 prepass 完成计数（flag 区内，自动清零）
+    int64_t dedupRowDescOffset{INVALID_WORKSPACE_OFFSET};      // 去重 rowDesc 表（仅 MTE 且 dedupMode!=0）
+    int64_t maskSlotOffset{INVALID_WORKSPACE_OFFSET};          // urma发送mask临时GM
     int64_t dispatchRelaySendQueueOffset{INVALID_WORKSPACE_OFFSET}; // 按目标 Server 划分的一级中继发送队列
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
         INVALID_WORKSPACE_OFFSET}; // 各逻辑核的固定 256-token 远端就绪标志窗口
@@ -186,8 +186,8 @@ private:
         // dispatch 接收侧权重区，两种场景共用、MTE 与 URMA 两条初始化路径都必须调用：
         // tkw=1 的权重预取；tkw=0 且 combine 去重——dispatch 侧把 LAST 行
         // 整 token 的 topK 权重段落在这里，merge 一次连续读取后按成员 topkIndex 乘权。
-        const bool dedupCombineWeights = tilingData->topkWeightsPrefetch == 0 &&
-                                         IsCombineDedupOn(tilingData->dedupMode);
+        const bool dedupCombineWeights =
+            tilingData->topkWeightsPrefetch == 0 && IsCombineDedupOn(tilingData->dedupMode);
         if (tilingData->topkWeightsPrefetch == 1 || dedupCombineWeights) {
             dispatchRevWeightsOffset = workspaceSize;
             uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
@@ -254,8 +254,7 @@ private:
         }
         // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记；combine 去重下非量化路径的
         // 合并驱动行也要等组内成员所在专家的 GMM2 全部落地，同样需要该 per-expert 标记区。
-        if (tilingData->combineQuantMode != COMBINE_NO_QUANT ||
-            IsCombineDedupOn(tilingData->dedupMode)) {
+        if (tilingData->combineQuantMode != COMBINE_NO_QUANT || IsCombineDedupOn(tilingData->dedupMode)) {
             gmm2ReadyOffset = workspaceSize;
             workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }

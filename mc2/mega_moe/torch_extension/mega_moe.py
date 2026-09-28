@@ -622,7 +622,6 @@ def _get_mega_moe_ccl_buffer_size(
     )
 
 
-
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,

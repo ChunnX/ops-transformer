@@ -93,8 +93,8 @@ __aicore__ inline void LoadMoeExpertInput(const TokenUnpermuteConfig &context, c
 
 // 读回本 token 的 topK 目标卡号（专家→卡 = expertId / moeExpertPerRank）。
 // 结果放函数栈小数组（topK≤32 有 host 校验；unpermute UB 已满载，UB 化需动整段布局，暂保留栈存储）。
-__aicore__ inline void LoadTokenExpertRanks(const MoeStageCommonConfig &common, const Params &params,
-                                            int32_t tokenIdx, int32_t (&expertRanks)[32])
+__aicore__ inline void LoadTokenExpertRanks(const MoeStageCommonConfig &common, const Params &params, int32_t tokenIdx,
+                                            int32_t (&expertRanks)[32])
 {
     __gm__ int32_t *topkIdsBase =
         reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr) + static_cast<uint64_t>(tokenIdx) * common.topK;

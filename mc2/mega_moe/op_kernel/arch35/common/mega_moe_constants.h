@@ -125,12 +125,13 @@ constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;
 // AIV0 参与 prepass 建表只在通信主导档（与收益门的 hiddenDim 分档同轴）开启：该档 prepass 在关键
 // 路径上、AIV0 分担净赢（k16 族/B1025/B1394 实测 -5%~-10%）；计算主导档 prepass 被 GMM 遮住，
 // "发布前等全体 AIV0"的 gate 反而把 dispatch 首发布从"首 chunk 就绪"推迟到"半程建表完成"
-//（B8192 实测劣化 ~200us），保持 AIV1 单方建表。
+// （B8192 实测劣化 ~200us），保持 AIV1 单方建表。
 constexpr uint32_t DEDUP_AIV0_PREPASS_MAX_HIDDEN_DIM = 2048U;
 // prepass UB 三区容量（kernel CalcDedupPrepassChunkTokens 与 host 门 floorChunk 护栏共用，单一真源）。
 constexpr uint32_t DEDUP_ROUTE_LOAD_UB_BYTES = 4U * 1024U;
 constexpr uint32_t DEDUP_COUNT_UB_BYTES = 4U * 1024U;
-constexpr uint32_t DEDUP_MEMBER_UB_BYTES = 54U * 1024U;  // combine 生产卡预加权合并后单发（可选能力，强制 prefetch 语义）
+constexpr uint32_t DEDUP_MEMBER_UB_BYTES =
+    54U * 1024U; // combine 生产卡预加权合并后单发（可选能力，强制 prefetch 语义）
 /*
  * rowDesc：去重 prepass 为每个接收行生成的定长描述符（布局尺寸见 peermem.h CalcDedupRowDescStrideInt32）。
  * [0] flags | memberCount：0 表示该 (srcRank, token) 在本卡只出现一次，走原路径；
@@ -142,7 +143,7 @@ constexpr uint32_t DEDUP_MEMBER_UB_BYTES = 54U * 1024U;  // combine 生产卡预
  */
 constexpr int32_t DEDUP_ROW_FLAG_GROUP = 0x40000000; // 本行属于某个重复组
 constexpr int32_t DEDUP_ROW_FLAG_FIRST = 0x20000000; // 组内首行（dispatch 扇出驱动行：拉一次远端、写全组）
-constexpr int32_t DEDUP_ROW_FLAG_LAST = 0x10000000;  // 组内末行（combine 合并驱动行：读全组、加和、单发）
+constexpr int32_t DEDUP_ROW_FLAG_LAST = 0x10000000; // 组内末行（combine 合并驱动行：读全组、加和、单发）
 constexpr int32_t DEDUP_ROW_MEMBER_COUNT_MASK = 0xFFFF;
 constexpr uint32_t DEDUP_ROW_DESC_HEADER_INT32 = 2U;
 // dispatch 去重的批内 UB 暂存（desc 装载 48K + 扇出 meta 8K + 活跃表 8K）从 dispatch 固定区尾动态起址；

@@ -341,11 +341,11 @@ static int64_t GetDedupMode(const gert::TilingContext *context, const MegaMoeCon
         return 0;
     }
     auto ccmPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCombineCommModeIndex));
-    int64_t combineCommMode = ccmPtr == nullptr ? 0 : *ccmPtr;  // 旧序列化图无该属性时按默认 0
+    int64_t combineCommMode = ccmPtr == nullptr ? 0 : *ccmPtr; // 旧序列化图无该属性时按默认 0
     if (combineCommMode != 0 && combineCommMode != 1) {
         return -1;
     }
-    return combineCommMode == 1 ? 3 : 2;  // dispatch 恒请求：ccm=1 双开(3)，否则仅 dispatch(2)
+    return combineCommMode == 1 ? 3 : 2; // dispatch 恒请求：ccm=1 双开(3)，否则仅 dispatch(2)
 }
 
 /*
@@ -587,13 +587,13 @@ static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context
     auto ccmPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCombineCommModeIndex));
     int64_t combineCommMode = ccmPtr == nullptr ? 0 : *ccmPtr;
     OP_TILING_CHECK(combineCommMode != 0 && combineCommMode != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineCommMode",
-                                              std::to_string(combineCommMode).c_str(), "only support 0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineCommMode", std::to_string(combineCommMode).c_str(),
+                                              "only support 0 or 1"),
                     return ge::GRAPH_FAILED);
     int64_t dedupMode = GetDedupMode(context, config);
     OP_TILING_CHECK(dedupMode < 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineCommMode",
-                                              std::to_string(combineCommMode).c_str(), "only support 0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineCommMode", std::to_string(combineCommMode).c_str(),
+                                              "only support 0 or 1"),
                     return ge::GRAPH_FAILED);
     int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     // ccm=1 显式请求 + 非 MTE = 报错（自动请求的 dispatch 位已由 GetDedupMode 关位回落）。
@@ -612,10 +612,11 @@ static ge::graphStatus CheckDedupRequestAttrs(const gert::TilingContext *context
     // combine 去重要靠记录尾段的权重在发送端乘权，该路径尚未接入——放行会得到权重全 0 的静默错误结果。
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
     const bool isPreQuantizedX = IsPreQuantizedXType(context->GetInputDesc(config.xIndex)->GetDataType());
-    OP_TILING_CHECK(IsCombineDedupOn(dedupMode) && topkWeightsType == 0 && isPreQuantizedX,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "combine_comm_mode", "1",
-                                              "combine dedup with topk_weights_type=0 does not support pre-quantized x"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        IsCombineDedupOn(dedupMode) && topkWeightsType == 0 && isPreQuantizedX,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "combine_comm_mode", "1",
+                                  "combine dedup with topk_weights_type=0 does not support pre-quantized x"),
+        return ge::GRAPH_FAILED);
     // 去重请求位落库。combine 去重两种权重语义并存：tkw=1 沿用 prefetch（激活层乘权、合并与
     // unpermute 纯加）；tkw=0 时合并阶段在发送端按成员权重乘加，权重经记录尾段下发（布局判定
     // 统一按「tkw=1 或 combine 去重开」判定，prefetch 位保持 attr 原值不强拉——强拉会偏离 tkw=0
@@ -992,8 +993,8 @@ static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context
     // （SetDedupModeParams 排在容量属性之后），tilingData->dedupMode 仍是 CheckDedupRequestAttrs
     // 落库的原始请求位，按其算下界偏保守（门只会关位、实际需求只小不大），安全。
     const int64_t dedupModeForLayout = static_cast<int64_t>(tilingData->dedupMode);
-    const bool recordHasWeights = tilingData->topkWeightsPrefetch == 1 ||
-                                  (dedupModeForLayout > 0 && IsCombineDedupOn(dedupModeForLayout));
+    const bool recordHasWeights =
+        tilingData->topkWeightsPrefetch == 1 || (dedupModeForLayout > 0 && IsCombineDedupOn(dedupModeForLayout));
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
                                                         yDtypeSize, tilingData, recordHasWeights);
     int64_t cclBufferSize = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex)));
