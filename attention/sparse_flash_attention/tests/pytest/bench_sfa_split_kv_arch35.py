@@ -17,15 +17,23 @@ import torch
 import torch_npu
 
 
-def measure(query_count, topk_count, calls, repetitions):
-    generator = torch.Generator().manual_seed(20260928 + query_count + topk_count)
+def measure(batch_count, query_count, topk_count, calls, repetitions):
+    generator = torch.Generator().manual_seed(
+        20260928 + query_count + topk_count + (batch_count - 1) * 1000
+    )
     kv_length, page_size, heads = 4096, 128, 8
+    query_counts = [1] * (batch_count - 1) + [query_count - batch_count + 1]
+    query_ends = [sum(query_counts[: index + 1]) for index in range(batch_count)]
     query = torch.randn(query_count, heads, 512, generator=generator).bfloat16().npu()
     query_rope = (
         torch.randn(query_count, heads, 64, generator=generator).bfloat16().npu()
     )
-    key = torch.randn(kv_length, 512, generator=generator).bfloat16().npu()
-    key_rope = torch.randn(kv_length, 64, generator=generator).bfloat16().npu()
+    key = (
+        torch.randn(batch_count * kv_length, 512, generator=generator).bfloat16().npu()
+    )
+    key_rope = (
+        torch.randn(batch_count * kv_length, 64, generator=generator).bfloat16().npu()
+    )
     indices = (
         torch.stack(
             [
@@ -36,11 +44,10 @@ def measure(query_count, topk_count, calls, repetitions):
         .unsqueeze(1)
         .npu()
     )
-    block_table = (
-        torch.arange(kv_length // page_size, dtype=torch.int32).unsqueeze(0).npu()
-    )
-    query_lengths = torch.tensor([query_count], dtype=torch.int32).npu()
-    kv_lengths = torch.tensor([kv_length], dtype=torch.int32).npu()
+    block_table = torch.arange(batch_count * kv_length // page_size, dtype=torch.int32)
+    block_table = block_table.reshape(batch_count, kv_length // page_size).npu()
+    query_lengths = torch.tensor(query_ends, dtype=torch.int32).npu()
+    kv_lengths = torch.full((batch_count,), kv_length, dtype=torch.int32).npu()
 
     def run_operator():
         return torch_npu.npu_sparse_flash_attention(
@@ -83,6 +90,7 @@ def measure(query_count, topk_count, calls, repetitions):
         end.synchronize()
         times_us.append(start.elapsed_time(end) * 1000 / calls)
     return {
+        "b": batch_count,
         "q": query_count,
         "topk": topk_count,
         "median_us": statistics.median(times_us),
@@ -92,6 +100,7 @@ def measure(query_count, topk_count, calls, repetitions):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--batch-counts", nargs="+", type=int, default=[1])
     parser.add_argument("--query-counts", nargs="+", type=int, default=[1, 4])
     parser.add_argument(
         "--topk-counts", nargs="+", type=int, default=[256, 512, 768, 1024, 1536, 2048]
@@ -108,14 +117,23 @@ def main():
             }
         )
     )
-    for query_count in args.query_counts:
-        for topk_count in args.topk_counts:
-            print(
-                json.dumps(
-                    measure(query_count, topk_count, args.calls, args.repetitions)
-                ),
-                flush=True,
-            )
+    for batch_count in args.batch_counts:
+        for query_count in args.query_counts:
+            if query_count < batch_count:
+                continue
+            for topk_count in args.topk_counts:
+                print(
+                    json.dumps(
+                        measure(
+                            batch_count,
+                            query_count,
+                            topk_count,
+                            args.calls,
+                            args.repetitions,
+                        )
+                    ),
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

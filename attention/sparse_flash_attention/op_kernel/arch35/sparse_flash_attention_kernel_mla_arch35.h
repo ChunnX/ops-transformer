@@ -198,9 +198,15 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         sfaConstInfo.splitKVPart = aicIdx % sfaConstInfo.splitKVNum;
         usedCoreNum = sfaConstInfo.s1Size * sfaConstInfo.splitKVNum;
         if (aicIdx < usedCoreNum) {
-            sfaConstInfo.bN2Start = 0;
-            sfaConstInfo.bN2End = 0;
-            sfaConstInfo.gS1Start = aicIdx / sfaConstInfo.splitKVNum;
+            const uint32_t queryIdx = aicIdx / sfaConstInfo.splitKVNum;
+            uint32_t batchIdx = 0;
+            while (batchIdx + 1 < sfaConstInfo.bSize && queryIdx >= actualSeqQlenAddr[batchIdx]) {
+                ++batchIdx;
+            }
+            const uint32_t batchStart = batchIdx == 0 ? 0 : actualSeqQlenAddr[batchIdx - 1];
+            sfaConstInfo.bN2Start = batchIdx;
+            sfaConstInfo.bN2End = batchIdx;
+            sfaConstInfo.gS1Start = queryIdx - batchStart;
             sfaConstInfo.gS1End = sfaConstInfo.gS1Start;
             const uint32_t sparseBlocks = (sfaConstInfo.sparseBlockCount + sfaConstInfo.s2BaseSize - 1) /
                                           sfaConstInfo.s2BaseSize;

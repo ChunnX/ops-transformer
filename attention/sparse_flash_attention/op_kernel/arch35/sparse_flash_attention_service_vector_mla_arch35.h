@@ -518,8 +518,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         AttentionCommon::S2SplitFdStagingLayout layout = {constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount,
                                                           AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                           AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-        const int64_t slot =
-            ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
+        const int64_t queryIdx = runInfo.s1oIdx + (runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1));
+        const int64_t slot = ((queryIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
         LocalTensor<float> statsTmp = splitKVStatsTmpBuf.Get<float>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
         AttentionCommon::StageVec1Lse(layout, splitKVStagingBase, slot, 0, runInfo.halfMRealSize, maxUb, sumUb,
@@ -619,8 +619,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
             AttentionCommon::S2SplitFdStagingLayout layout = {
                 constInfo.gSize / 2, sfaDTemplateAlign64, splitKVSlotCount, AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+            const int64_t queryIdx =
+                runInfo.s1oIdx + (runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1));
             const int64_t slot =
-                ((runInfo.s1oIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
+                ((queryIdx * 2 + constInfo.subBlockIdx) * constInfo.splitKVNum) + constInfo.splitKVPart;
             AttentionCommon::StageVec2PartialOAndWait<T>(layout, splitKVOutputGm, slot, 0, runInfo.vec2MRealSize,
                                                          constInfo.dSizeV, vec2ResUb, vToMte3AttnOutId,
                                                          mte3ToVAttnOutId);

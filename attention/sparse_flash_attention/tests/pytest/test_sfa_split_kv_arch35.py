@@ -18,27 +18,42 @@ torch_npu = pytest.importorskip("torch_npu")
 
 
 @pytest.mark.parametrize(
-    ("query_count", "topk_count", "valid_count"),
-    [(q, 2048, valid) for q in (1, 4) for valid in (256, 2048, "mixed")]
-    + [(q, topk, topk) for q in (1, 4) for topk in (256, 512, 768, 1000, 1024, 1536)]
-    + [(q, topk, topk) for q, topk in ((2, 768), (3, 1024), (8, 2048), (16, 2048))],
+    ("batch_count", "query_count", "topk_count", "valid_count"),
+    [(1, q, 2048, valid) for q in (1, 4) for valid in (256, 2048, "mixed")]
+    + [(1, q, topk, topk) for q in (1, 4) for topk in (256, 512, 768, 1000, 1024, 1536)]
+    + [(1, q, topk, topk) for q, topk in ((2, 768), (3, 1024), (8, 2048), (16, 2048))]
+    + [
+        (b, q, 2048, valid)
+        for b, q, valid in ((2, 2, 2048), (2, 4, 2048), (3, 4, 2048), (2, 4, "mixed"))
+    ]
+    + [(2, 4, 1024, 1024)],
 )
 @pytest.mark.parametrize("replay_graph", [False, True])
-def test_split_kv_pa_bsnd(query_count, topk_count, valid_count, replay_graph):
+def test_split_kv_pa_bsnd(
+    batch_count, query_count, topk_count, valid_count, replay_graph
+):
     if "950" not in torch.npu.get_device_name(0):
         pytest.skip("This tiling is only selected on Ascend 950")
     if valid_count == "mixed" and query_count == 1:
         pytest.skip("Mixed split/fallback requires multiple query rows")
 
     seed = 1536 if valid_count == "mixed" else valid_count
-    generator = torch.Generator().manual_seed(20260928 + query_count + seed)
+    generator = torch.Generator().manual_seed(
+        20260928 + query_count + seed + (batch_count - 1) * 1000
+    )
     kv_length, page_size, heads = 4096, 128, 8
+    query_counts = [1] * (batch_count - 1) + [query_count - batch_count + 1]
+    query_ends = [sum(query_counts[: index + 1]) for index in range(batch_count)]
     query = torch.randn(query_count, heads, 512, generator=generator).bfloat16().npu()
     query_rope = (
         torch.randn(query_count, heads, 64, generator=generator).bfloat16().npu()
     )
-    key_flat = torch.randn(kv_length, 512, generator=generator).bfloat16().npu()
-    rope_flat = torch.randn(kv_length, 64, generator=generator).bfloat16().npu()
+    key_flat = (
+        torch.randn(batch_count * kv_length, 512, generator=generator).bfloat16().npu()
+    )
+    rope_flat = (
+        torch.randn(batch_count * kv_length, 64, generator=generator).bfloat16().npu()
+    )
     key_pages = key_flat.reshape(-1, page_size, 1, 512)
     rope_pages = rope_flat.reshape(-1, page_size, 1, 64)
     index_rows = []
@@ -51,11 +66,10 @@ def test_split_kv_pa_bsnd(query_count, topk_count, valid_count, replay_graph):
             torch.nn.functional.pad(selected, (0, topk_count - row_count), value=-1)
         )
     indices = torch.stack(index_rows).unsqueeze(1).npu()
-    block_table = (
-        torch.arange(kv_length // page_size, dtype=torch.int32).unsqueeze(0).npu()
-    )
-    query_lengths = torch.tensor([query_count], dtype=torch.int32).npu()
-    kv_lengths = torch.tensor([kv_length], dtype=torch.int32).npu()
+    block_table = torch.arange(batch_count * kv_length // page_size, dtype=torch.int32)
+    block_table = block_table.reshape(batch_count, kv_length // page_size).npu()
+    query_lengths = torch.tensor(query_ends, dtype=torch.int32).npu()
+    kv_lengths = torch.full((batch_count,), kv_length, dtype=torch.int32).npu()
     scale = 1.0 / math.sqrt(576)
 
     def run_operator():
@@ -88,7 +102,8 @@ def test_split_kv_pa_bsnd(query_count, topk_count, valid_count, replay_graph):
         actual = run_operator()
 
     torch.npu.synchronize()
-    assert torch.isfinite(actual).all()
+    checked_rows = 1 if valid_count == "mixed" else query_count
+    assert torch.isfinite(actual[:checked_rows]).all()
     if valid_count == 256 and topk_count > 256:
         # The installed operator's padded-index output differs from a naive
         # reference and its Q=4 graph replay differs from eager. This is a
@@ -96,14 +111,17 @@ def test_split_kv_pa_bsnd(query_count, topk_count, valid_count, replay_graph):
         return
 
     expected = []
-    checked_rows = 1 if valid_count == "mixed" else query_count
     for row in range(checked_rows):
+        batch_index = next(index for index, end in enumerate(query_ends) if row < end)
         selected = indices[row, 0, :topk_count].long()
         q = torch.cat((query[row].float(), query_rope[row].float()), dim=-1)
-        k = torch.cat((key_flat[selected].float(), rope_flat[selected].float()), dim=-1)
+        kv_positions = batch_index * kv_length + selected
+        k = torch.cat(
+            (key_flat[kv_positions].float(), rope_flat[kv_positions].float()), dim=-1
+        )
         scores = torch.matmul(q, k.T) * scale
         weights = scores.softmax(dim=-1)
-        expected.append(torch.matmul(weights, key_flat[selected].float()))
+        expected.append(torch.matmul(weights, key_flat[kv_positions].float()))
     reference = torch.stack(expected)
     difference = actual[:checked_rows].float() - reference
     relative_l2 = difference.norm() / reference.norm()
