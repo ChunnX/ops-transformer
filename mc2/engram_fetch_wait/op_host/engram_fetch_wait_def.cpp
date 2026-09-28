@@ -33,8 +33,8 @@ public:
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
             .FormatList({ge::FORMAT_ND});
 
-        OpAICoreConfig aicore_config_950;
-        aicore_config_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicore_config_a5;
+        aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -43,7 +43,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_false")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend950", aicore_config_950);
+        this->AICore().AddConfig("ascend950", aicore_config_a5);
     }
 };
 OP_ADD(EngramFetchWait);

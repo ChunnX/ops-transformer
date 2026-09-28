@@ -82,6 +82,27 @@ def pytest_addoption(parser):
         metavar="PERCENT",
         help="性能劣化阈值（百分比），超过此值标记为 FAILED（默认 8.0）",
     )
+    parser.addoption(
+        "--device",
+        default=0,
+        type=int,
+        metavar="DEVICE_ID",
+        help="控核目标 NPU 设备编号（默认 0，需与用例 device_id 一致）",
+    )
+    parser.addoption(
+        "--cube-cores",
+        default=None,
+        type=int,
+        metavar="N",
+        help="stream 控核：限制 cube 核数。与 --vector-cores 至少传一个即启用控核",
+    )
+    parser.addoption(
+        "--vector-cores",
+        default=None,
+        type=int,
+        metavar="N",
+        help="stream 控核：限制 vector 核数。与 --cube-cores 至少传一个即启用控核",
+    )
 
 
 def _compare_baseline(config, results, tag="perf"):
@@ -168,6 +189,34 @@ def pytest_configure(config):
 
     _compare_baseline(config, results, tag="perf")
     pytest.exit("profiling report complete", returncode=0)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def npu_device_limit(request):
+    """按需启用 stream 控核：--cube-cores/--vector-cores 至少传一个时生效，否则不影响默认行为。
+
+    验证 quant_flash_attn_metadata 适配 stream 控核（issue #5333）：
+    限制后 metadata 分核应与主算子 ACLNN tiling 的有效核数一致，精度不受影响。
+    """
+    cube = request.config.getoption("--cube-cores", default=None)
+    vector = request.config.getoption("--vector-cores", default=None)
+    if cube is None and vector is None:
+        return
+    device = request.config.getoption("--device", default=0)
+    import torch
+    import torch_npu  # noqa: F401 -- 仅在启用控核时依赖 NPU 环境
+
+    kwargs = {}
+    if cube is not None:
+        kwargs["cube_num"] = cube
+    if vector is not None:
+        kwargs["vector_num"] = vector
+    # set_device_limit 内部的 _lazy_init 只完成进程级初始化，_npu_set_device_res_limit
+    # 还要求目标设备已完成设备级初始化，否则报 "NPU device has not been initialized"；
+    # 先 set_device 再设限。后续 golden 内部会再次 set_device 同一设备，幂等无副作用。
+    torch.npu.set_device(int(device))
+    torch.npu.set_device_limit(int(device), **kwargs)
+    print(f"\n[device-limit] device={device} cube_num={cube} vector_num={vector}")
 
 
 @pytest.fixture(scope="session")

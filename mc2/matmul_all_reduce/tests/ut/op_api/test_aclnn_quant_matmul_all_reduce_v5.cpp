@@ -102,7 +102,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, NzFormatWeightX2)
                                 nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Dav3510LaunchCcuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};
@@ -202,7 +202,7 @@ TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend310PPreTransposedWeight)
                                 nullptr, output, "ai_cpu", 0, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Ascend950LaunchAicpuCommMode)
+TEST_F(AclnnQuantMatmulAllReduceV5ExtraTest, Dav3510LaunchAicpuCommMode)
 {
     TensorDesc x1 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND};

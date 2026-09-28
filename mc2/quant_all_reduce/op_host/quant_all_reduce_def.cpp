@@ -62,8 +62,8 @@ public:
         this->Attr("world_size").AttrType(REQUIRED).Int();
 
         // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
-        OpAICoreConfig aicore_config_950;
-        aicore_config_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicore_config_a5;
+        aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -72,7 +72,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape，复用二进制，后续图支持后修改
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-        this->AICore().AddConfig("ascend950", aicore_config_950);
+        this->AICore().AddConfig("ascend950", aicore_config_a5);
     }
 };
 

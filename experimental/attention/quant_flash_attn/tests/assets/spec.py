@@ -16,52 +16,45 @@ from pathlib import Path
 
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
+_impl_cache = {}
+
 
 def load_impl_module(stem):
-    path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"qfa_mxfp4_assets_impl_{stem}_{abs(hash(path))}", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """Lazy-load impl modules to avoid import-time failures."""
+    if stem not in _impl_cache:
+        path = ASSET_IMPL_DIR / f"{stem}.py"
+        spec = importlib.util.spec_from_file_location(
+            f"qfa_mxfp4_assets_impl_{stem}_{abs(hash(path))}", path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _impl_cache[stem] = module
+    return _impl_cache[stem]
 
 
-golden_module = load_impl_module("golden")
-inputs_module = load_impl_module("inputs")
-compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
+def _golden_dispatch(*args, **kwargs):
+    return load_impl_module("golden").cpu_qfa_mxfp4(*args, **kwargs)
 
 
-class QfaMxfp4Spec:
-    """quant_flash_attn (MXFP4) 测试规范."""
-
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
-
-    torch_graph = graph_module.QuantFlashAttnMxfp4AclGraph
-
-    tolerance = {
-        "bfloat16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-        "float16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-    }
+def _inputs_dispatch(*args, **kwargs):
+    return load_impl_module("inputs").generate_qfa_mxfp4_inputs(*args, **kwargs)
 
 
-class QfaMxfp4MetadataSpec:
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
+class QuantFlashAttnMxfp4Spec:
+    """TestSpec for the QuantFlashAttn (MXFP4) operator."""
+
+    golden = staticmethod(_golden_dispatch)
+    customize_inputs = staticmethod(_inputs_dispatch)
+
+    @staticmethod
+    def compare(*outputs, **kwargs):
+        return load_impl_module("compare").compare(*outputs, **kwargs)
+
+    @staticmethod
+    def npu_preprocess(*args, **kwargs):
+        return load_impl_module("npu_preprocess").run(*args, **kwargs)
+
+    torch_graph = load_impl_module("graph").QuantFlashAttnMxfp4AclGraph
 
     tolerance = {
         "bfloat16": {
@@ -79,29 +72,20 @@ class QfaMxfp4MetadataSpec:
     }
 
 
-class QfaMxfp4MainSpec:
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
+class QuantFlashAttnMxfp4MetadataSpec:
+    """TestSpec for the QuantFlashAttn metadata generator.
 
-    tolerance = {
-        "bfloat16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-        "float16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-    }
+    Only customized inputs are provided; there is no standalone test suite.
+    """
+
+    customize_inputs = load_impl_module(
+        "metadata_inputs"
+    ).generate_quant_flash_attn_metadata_inputs
 
 
 __spec__ = {
-    "qfa_mxfp4_wrapper.npu_qfa_mxfp4": "QfaMxfp4Spec",
-    "qfa_mxfp4_metadata_wrapper.run_metadata": "QfaMxfp4MetadataSpec",
-    "qfa_mxfp4_main_wrapper.run_main": "QfaMxfp4MainSpec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnMxfp4Spec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn_metadata": (
+        "QuantFlashAttnMxfp4MetadataSpec"
+    ),
 }

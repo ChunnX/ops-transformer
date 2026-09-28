@@ -123,6 +123,7 @@ public:
 
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(ConstInfo<HIGH_PERF> &constInfo, uint32_t ubBaseAddr);
+    __aicore__ inline void InitSinks(ConstInfo<HIGH_PERF> &constInfo);
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
@@ -203,13 +204,13 @@ private:
     __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(const RunInfo<HIGH_PERF> &runInfo,
                                                         const ConstInfo<HIGH_PERF> &constInfo) const
     {
-        uint32_t coreIdx;
+        uint32_t mqsmlaCoreIdx;
         if constexpr (IS_SPLIT_G) {
-            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
+            mqsmlaCoreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 2U);
         } else {
-            coreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
+            mqsmlaCoreIdx = static_cast<uint32_t>(constInfo.aivIdx >> 1U);
         }
-        return (coreIdx << 1U) + runInfo.multiCoreIdxMod2;
+        return (mqsmlaCoreIdx << 1U) + runInfo.multiCoreIdxMod2;
     }
 
     __aicore__ inline int64_t GetFaStagingMOffset(const RunInfo<HIGH_PERF> &runInfo,
@@ -377,17 +378,17 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
     uint64_t idxBase = topkBS1Idx + runInfo.s2StartIdx + topkKIdx;
     for (uint64_t i = 0; i < KV_COPYIN_UNIT; ++i) {
-        uint64_t idx = idxBase + i;
+        uint64_t mqsmlaIdx = idxBase + i;
         if constexpr (!IS_FULL) {
             // 尾块：保留边界判断，防止越界读取
             if (likely(s2IdxInBase + i < curProcessS2End)) {
-                tokenData[i] = sparseIndicesGm.GetValue(idx);
+                tokenData[i] = sparseIndicesGm.GetValue(mqsmlaIdx);
             } else {
                 break;
             }
         } else {
             // 非尾块：8行均有效，直接读取
-            tokenData[i] = sparseIndicesGm.GetValue(idx);
+            tokenData[i] = sparseIndicesGm.GetValue(mqsmlaIdx);
         }
     }
 }
@@ -568,18 +569,19 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
             }
         }
         uint32_t combineBytes;
-        int64_t keySrcStride;
-        int64_t scaleSrcStride;
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
-            keySrcStride =
-                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - combineBytes;
+        } else {
+            combineBytes = dCombineBytes;
+        }
+        int64_t keySrcStride;
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            // batch一致性场景，token读取顺序只与逻辑顺序有关，为保证确定性不可交换读取顺序
+            keySrcStride = (keyOffset1 - keyOffset0) * sizeof(KV_T) - combineBytes;
         } else {
             keySrcStride =
-                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - dCombineBytes;
-            scaleSrcStride =
-                (scaleOffset0 > scaleOffset1 ? (scaleOffset0 - scaleOffset1) : (scaleOffset1 - scaleOffset0)) -
-                scaleBytes;
+                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) * sizeof(KV_T) -
+                combineBytes;
         }
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
@@ -639,10 +641,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
                 scalePadParams.rightPadding = 0;
                 scalePadParams.paddingValue = 0;
 
-                // feature搬运从较小地址开始，当keyOffset0 > keyOffset1时
-                // feature顺序被交换(token1→row0, token0→row1)，scale需同步交换
+                // batch一致性场景下，feature和scale均保持token逻辑顺序
+                // 非batch一致性场景下，feature从较小地址开始搬运，scale需同步交换
                 // 尾块中keyOffset1可能为-1（仅1条有效），此时不发生交换
-                bool swapOrder = (keyOffset0 > -1 && keyOffset1 > -1 && keyOffset0 > keyOffset1);
+                bool swapOrder = false;
+                if constexpr (!IS_BATCH_CONSISTENCY) {
+                    swapOrder = (keyOffset0 > -1 && keyOffset1 > -1 && keyOffset0 > keyOffset1);
+                }
                 if (scaleOffset0 >= 0) {
                     uint32_t dstRow = swapOrder ? (startRow + 1) : startRow;
                     DataCopyPad(kvInUb[dstRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset0], scaleParams,
@@ -917,14 +922,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> an
                                                              ConstInfo<HIGH_PERF> &constInfo)
 {
     LocalTensor<int8_t> kRopeUb;
-    LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)];
+    LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)]; // V0单次处理16行数据
     if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
         kRopeUb = srcTensor.template ReinterpretCast<int8_t>();
         LocalTensor<Q_T> scaleUb = srcTensor.template ReinterpretCast<bfloat16_t>();
         AntiquantVFFp8D448<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, scaleUb, kRopeUb, dealRow);
     } else {
         LocalTensor<float> floatScale = dequantScaleUb.tensor;
-        kRopeUb = srcTensor[448].template ReinterpretCast<int8_t>();
+        kRopeUb = srcTensor[448].template ReinterpretCast<int8_t>(); // 448：每个分组包含448个元素
         CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
         AntiquantVFFp8D448_FloatScale<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, floatScale, kRopeUb, dealRow);
     }
@@ -1391,7 +1396,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
                                               GetIntraCoreWorkspaceIdx(runInfo, constInfo), stagingMOffset,
                                               runInfo.halfMRealSize, mqsmlaMaxUb, mqsmlaSumUb, tmpUb, INNERCORE_STAGE2,
                                               INNERCORE_STAGE_FD_MTE3_V);
-                SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+                // 空行 AIV 的 Vec2 会提前返回，因此这里不能留下无人等待的同步事件。
+                if (runInfo.halfMRealSize > 0) {
+                    SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+                }
             } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
                     constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false),
@@ -2209,44 +2217,44 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo<HIG
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIGH_PERF> &constInfo, uint32_t ubBaseAddr)
 {
-    uint32_t ubAddr = ubBaseAddr;
+    uint32_t mqsmlaUbAddr = ubBaseAddr;
 
     // {64, 16, 2}：每个向量操作单元处理的元素个数为64，每个处理块包含的向量数量为16，需要处理两个不同的数据流或阶段
-    dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 64 * 16 * 2), 0};
-    ubAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
+    dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 64 * 16 * 2), 0};
+    mqsmlaUbAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
 
-    SoftmaxInitBuffer(ubAddr);
+    SoftmaxInitBuffer(mqsmlaUbAddr);
 
-    commonUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
-    ubAddr += 512;                                                             // 512：同上
-    sinksUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};  // 512：同上
-    ubAddr += 512;                                                             // 512：同上
+    commonUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
+    mqsmlaUbAddr += 512;                                                             // 512：同上
+    sinksUb = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, 512 / sizeof(T)), 0}; // 512：同上
+    mqsmlaUbAddr += 512;                                                            // 512：同上
     if constexpr (!HIGH_PERF) {
         if (constInfo.isSoftmaxLseEnable) {
-            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
+            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 256 / sizeof(float)),
                             0}; // 256：缓冲区大小，单位是字节
-            ubAddr += 256U;
-            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)), 1}; // 256：同上
-            ubAddr += 256U;
+            mqsmlaUbAddr += 256U;
+            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, mqsmlaUbAddr, 256 / sizeof(float)), 1}; // 256：同上
+            mqsmlaUbAddr += 256U;
         }
     }
 
-    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16),
-                       0};                       // 16：每个v0缓冲区块中存储的向量数量
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
-    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16), 1}; // 16：同上
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
-    stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 0};
-    ubAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
-    stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 1};
-    ubAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
+    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16),
+                       0};                             // 16：每个v0缓冲区块中存储的向量数量
+    mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
+    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * 16), 1}; // 16：同上
+    mqsmlaUbAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
+    stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * (16U + 1)), 0};
+    mqsmlaUbAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
+    stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, v0BufferDSize * (16U + 1)), 1};
+    mqsmlaUbAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
 
-    stage1OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 0};
-    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
-    stage1OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 1};
-    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
+    stage1OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, vec1Srcstride * s2BaseSize), 0};
+    mqsmlaUbAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
+    stage1OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, mqsmlaUbAddr, vec1Srcstride * s2BaseSize), 1};
+    mqsmlaUbAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
 
-    stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, ubAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
+    stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, mqsmlaUbAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
 
     // 显式 flag 初始化 (替代 AllocEventID + 初始 SetFlag)
     SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
@@ -2271,9 +2279,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
     if constexpr (IS_BATCH_CONSISTENCY) {
         SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
     }
+}
 
-    if (this->isSinks) {
-        InitSinksBuffer(constInfo);
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinks(ConstInfo<HIGH_PERF> &constInfo)
+{
+    if ASCEND_IS_AIV {
+        if (this->isSinks) {
+            InitSinksBuffer(constInfo);
+        }
     }
 }
 
@@ -2339,6 +2353,7 @@ public:
                                         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv,
                                         __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {};
     __aicore__ inline void InitLocalBuffer(ConstInfo<HIGH_PERF> &constInfo, uint32_t ubBaseAddr) {}
+    __aicore__ inline void InitSinks(ConstInfo<HIGH_PERF> &constInfo) {}
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
     __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf, StaticBuffer<T> &bmm1ResBuf,
                                        RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo)

@@ -226,7 +226,12 @@ aclnnStatus aclnnSparseFlashAttentionV2(
       <td>queryRopeOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的query的rope信息。</td>
-      <td>不支持空tensor。</td>
+      <td>
+          <ul>
+                <li>可选项。须与keyRopeOptional成对为空指针（不使用rope），或成对传入非空tensor（使用rope，Dr为64）。</li>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -241,7 +246,12 @@ aclnnStatus aclnnSparseFlashAttentionV2(
       <td>keyRopeOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的key的rope信息。</td>
-      <td>不支持空tensor。</td>
+      <td>
+          <ul>
+                <li>可选项。须与queryRopeOptional成对为空指针（不使用rope），或成对传入非空tensor（使用rope，Dr为64）。</li>
+                <li>不支持空tensor。</li>
+          </ul>
+      </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -374,7 +384,6 @@ aclnnStatus aclnnSparseFlashAttentionV2(
       <td>
           <ul>
                 <li>True表示返回，False表示不返回；默认值为False。</li>
-                <li>该参数仅在训练且layout_kv不为PA_BSND场景支持。</li>
           </ul>
       </td>
       <td>BOOL</td>
@@ -540,7 +549,8 @@ aclnnStatus aclnnSparseFlashAttentionV2(
 
 - N2仅支持1。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
-- 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
+- 参数query中的D和key、value的D值相等为512。
+- queryRopeOptional与keyRopeOptional须成对为空指针或成对传入非空tensor：均为空指针时表示不使用rope，仅对512维nope部分做注意力计算；均传入非空tensor时Dr相等为64。不支持空tensor。
 - 参数query、key、value的数据类型必须保持一致。
 - 支持sparse_block_size整除block_size。
 
@@ -552,6 +562,17 @@ aclnnStatus aclnnSparseFlashAttentionV2(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
   <!-- end id10 -->
+
+- returnSoftmaxLse为True时，layout_kv约束如下：
+
+  <!-- npu="950" id11 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 支持layout_kv为PA_BSND。
+  <!-- end id11 -->
+  <!-- npu="A3,910b" id12 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - layout_kv不支持PA_BSND。
+  <!-- end id12 -->
 
 - 参数sinks仅支持Ascend 950PR/Ascend 950DT。
 

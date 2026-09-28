@@ -142,7 +142,7 @@ TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, Int64DequantScale)
                                 nullptr, output, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, Ascend950GetWorkspaceSize)
+TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, Dav3510GetWorkspaceSize)
 {
     TensorDesc x1 = {{16, 32}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
@@ -167,9 +167,9 @@ TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, LaunchApiCoverage)
     (void)aclnnQuantMatmulAllReduceV3(nullptr, 0, nullptr, nullptr);
 }
 
-TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, Ascend950LaunchCcuCommMode)
+TEST_F(AclnnQuantMatmulAllReduceV3ExtraTest, Dav3510LaunchCcuCommMode)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
     (void)aclnnQuantMatmulAllReduceV3(nullptr, 0, nullptr, nullptr);
 }
 

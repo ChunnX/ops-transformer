@@ -24,6 +24,7 @@
 #include "stdarg.h"
 #include "pse_arch35.h"
 #include "util_regbase.h"
+#include "../arch_info.h"
 
 using matmul::MatmulType;
 using namespace AscendC;

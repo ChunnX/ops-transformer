@@ -30,24 +30,13 @@ using AscendC::Cast;
 using AscendC::RoundMode;
 
 namespace commondef {
-constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
-constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
-constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
-constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
-constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
-constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
-constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
-constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
-constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
-constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
-constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
-
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
 constexpr uint8_t DK_IDX = 1;
 constexpr uint8_t DV_IDX = 2;
 
-// quant flag
+// Quant kernel keeps its legacy flat event IDs. They are only referenced by
+// FlashAttentionScoreGradKernelQuant and remain independent of EventId below.
 constexpr uint8_t SYNC_COMPUTE_DKV_FLAG = 2;
 constexpr uint8_t SYNC_TRANSFER_DKV_FLAG = 3;
 constexpr uint8_t SYNC_TRANSFER_DQ_FLAG = 4;
@@ -64,8 +53,6 @@ constexpr uint32_t MIN_SWIZZLE_S1 = 16384;
 constexpr uint32_t BASE_SWIZZLE_BLOCK_NUM = 8;
 constexpr uint32_t M_SWIZZLE_SIZE = 32768;
 constexpr uint32_t N_SWIZZLE_SIZE = 32768;
-constexpr uint32_t SWIZZLE_CONTINUOUS_BLOCK_NUM = 16;
-constexpr uint8_t MULTIPLY_COEF = 8;
 
 // shift left by three bits
 constexpr uint8_t kShiftToMultiplyByEight = 3;
@@ -81,6 +68,7 @@ constexpr uint16_t QUANT_UB2L1_SRC_OFFSET = 512;
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
+constexpr uint32_t PRE_INIT_UB_SIZE = 6 * 1024;
 
 constexpr uint32_t RESERVED_WORKSPACE_SIZE = 64 * 1024;
 constexpr bool INPUT_DISABLE = 0;
@@ -135,6 +123,70 @@ constexpr uint8_t DETER_DENSE = 2;
 constexpr uint8_t DETER_CAUSAL = 3;
 constexpr uint8_t DETER_BAND = 4;
 
+template <bool IS_PRELOAD_TWO_TIMES, bool IS_OLD_DETER, bool IS_NEW_DETER, bool IS_NEW_DETER_BN2S2>
+struct FagCrossCoreEventId;
+
+template <>
+struct FagCrossCoreEventId<false, false, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+    static constexpr uint8_t SYNC_MM_RES_REUSE_FLAG = 10;
+};
+
+template <>
+struct FagCrossCoreEventId<true, false, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_UB2L1_DS_FLAG[2] = {4, 5};
+    static constexpr uint8_t SYNC_UB2L1_P_FLAG[2] = {6, 7};
+    static constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {8, 9};
+    static constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {10, 11};
+};
+
+template <>
+struct FagCrossCoreEventId<false, true, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 7;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 8;
+    static constexpr uint8_t SYNC_MM_RES_REUSE_FLAG = 9;
+};
+
+template <>
+struct FagCrossCoreEventId<false, false, true, true> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+    static constexpr uint8_t SYNC_DETER_ROUND_FLAG = 10;
+};
+
+template <>
+struct FagCrossCoreEventId<false, false, true, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 6;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 7;
+    static constexpr uint8_t SYNC_DQ_DETER_FIX_FLAG = 8;
+    static constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 9;
+    static constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 10;
+};
+
 constexpr uint16_t ALIGN_OFFSET_16 = 15;
 constexpr uint16_t ALIGN_OFFSET_32 = 31;
 constexpr uint16_t ALIGN_OFFSET_64 = 63;
@@ -164,6 +216,7 @@ constexpr uint16_t UNROLL_FACTOR = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_FOUR = 4;
+constexpr uint32_t NUM_FIVE = 5;
 constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr static bool end = true;
@@ -231,7 +284,6 @@ struct DqkvResPos {
     using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T> &, GlobalTensor<T> &>::type;
 };
 
-
 template <typename T1>
 __aicore__ constexpr bool GET_IS_L1_PRELOAD(const uint32_t HEAD_DIM_ALIGN, const uint32_t SPLIT_AXIS,
                                             const bool IS_DETER_OLD, const bool IS_TND, const bool FP8_OPEN_TSCM,
@@ -272,74 +324,75 @@ __aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t
 // 判断DK/DV能否驻留在L0C的宏。
 // 计算公式：max(mm1_size, mm2_size, mm3_size) + mm4_size + mm5_size <= L0C_MAX_SIZE
 // 其中 mm*_size 对应不同矩阵乘的中间结果大小。
-#define IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN)                                                    \
-    (((CUBE_BASEN) * (HEAD_DIM_ALIGN) * sizeof(float)) + ((CUBE_BASEN) * (HEAD_DIM_ALIGN) * sizeof(float)) +           \
-     ((CUBE_BASEN) > (HEAD_DIM_ALIGN) ? (CUBE_BASEM) * (CUBE_BASEN) * sizeof(float) :                                  \
+#define IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) \
+    (((CUBE_BASEN) * (HEAD_DIM_ALIGN) * sizeof(float)) + ((CUBE_BASEN) * (HEAD_DIM_ALIGN) * sizeof(float)) + \
+     ((CUBE_BASEN) > (HEAD_DIM_ALIGN) ? (CUBE_BASEM) * (CUBE_BASEN) * sizeof(float) : \
                                         (CUBE_BASEM) * (HEAD_DIM_ALIGN) * sizeof(float))) <= L0C_MAX_SIZE
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
-    X(INPUT_TYPE)                                                                                                      \
-    X(CALC_TYPE)                                                                                                       \
+#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
+    X(INPUT_TYPE) \
+    X(CALC_TYPE) \
     X(OUTDTYPE)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
-    X(IS_ATTEN_MASK, bool, false)                                                                                      \
-    X(IS_PSE, bool, false)                                                                                             \
-    X(IS_DROP, bool, false)                                                                                            \
-    X(IS_TND, bool, false)                                                                                             \
-    X(IS_BN2_MULTIBLK, bool, false)                                                                                    \
-    X(DETER_SPARSE_TYPE, uint8_t, 0)                                                                                   \
-    X(IS_N_EQUAL, bool, false)                                                                                         \
-    X(IS_D_NO_EQUAL, bool, false)                                                                                      \
-    X(IS_ROPE, bool, false)                                                                                            \
-    X(IS_NZ_OUT, bool, false)                                                                                      \
-    X(IS_TND_SWIZZLE, bool, false)                                                                                     \
-    X(SPLIT_AXIS, uint8_t, 0)                                                                                          \
-    X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
-    X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
+    X(IS_ATTEN_MASK, bool, false) \
+    X(IS_PSE, bool, false) \
+    X(IS_DROP, bool, false) \
+    X(IS_TND, bool, false) \
+    X(IS_BN2_MULTIBLK, bool, false) \
+    X(DETER_SPARSE_TYPE, uint8_t, 0) \
+    X(IS_N_EQUAL, bool, false) \
+    X(IS_D_NO_EQUAL, bool, false) \
+    X(IS_ROPE, bool, false) \
+    X(IS_NZ_OUT, bool, false) \
+    X(IS_TND_SWIZZLE, bool, false) \
+    X(SPLIT_AXIS, uint8_t, 0) \
+    X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128) \
+    X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type(name) = (default_val),
-#define TEMPLATES_DEF                                                                                                  \
+#define TEMPLATES_DEF \
     template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
                   true>
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
-#define TEMPLATES_DEF_NO_DEFAULT                                                                                       \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                                                   \
+#define TEMPLATES_DEF_NO_DEFAULT \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 3. 生成有默认值, 不带ChildClass的Args */
 #define GEN_ARG_NAME(name, ...) name,
-#define TEMPLATE_ARGS                                                                                                  \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)                                                                        \
+#define TEMPLATE_ARGS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 /* 4. 生成BASE的有默认值的Template, BASE带ChildClass*/
-#define TEMPLATES_DEF_BASE                                                                                             \
-    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)                                       \
+#define TEMPLATES_DEF_BASE \
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
                                        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
 
 /* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
-#define TEMPLATES_DEF_BASE_NO_DEFAULT                                                                                  \
-    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                              \
+#define TEMPLATES_DEF_BASE_NO_DEFAULT \
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                                        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 6. 生成BASE的BaseArgs, BASE带ChildClass */
-#define TEMPLATE_BASE_ARGS                                                                                             \
+#define TEMPLATE_BASE_ARGS \
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-#define FagOldTilingType                                                                                               \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
-        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
+#define FagOldTilingType \
+    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase< \
+        NEED_DETER(DETER_SPARSE_TYPE), NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
 
-#define FagTilingType                                                                                                  \
+#define FagTilingType \
     const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
-        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, IS_TND_SWIZZLE> *__restrict
+                                                                        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), \
+                                                                        IS_TND, IS_TND_SWIZZLE> *__restrict
 
 struct LoopInfo {
     int64_t bIdx{0};
@@ -391,10 +444,10 @@ struct FagConstInfo {
     float attenMaskMinValue;
 
     // quant
-    float pScale; // 量化参数
-    float dsScale; // 量化参数
-    float pScaleD; // 反量化参数
-    float dsScaleD; // 反量化参数
+    float pScale;    // 量化参数
+    float dsScale;   // 量化参数
+    float pScaleD;   // 反量化参数
+    float dsScaleD;  // 反量化参数
     float pScaleLog; // log(pScale)
     int64_t copyOutDStride;
 
@@ -426,17 +479,7 @@ struct FagConstInfo {
     int64_t dRopeSize = 64;          // rope旋转的维度
     uint32_t continuousBlockNum = 0; // 核内连续块数量
     // swizzle相关
-    int64_t mSwizzleBlockNum = 0;
-    int64_t mSwizzleBlockNumTail = 0;
-    int64_t nSwizzleBlockNum = 0;
-    int64_t nSwizzleBlockNumTail = 0;
-    int64_t leftUpTotalRound = 0;
-    int64_t leftDownTotalRound = 0;
-    int64_t rightUpTotalRound = 0;
-    int64_t rightDownTotalRound = 0;
-    int64_t leftSingleColTotalRound = 0;
-    int64_t leftTotalRound = 0;
-    int64_t batchTotalRound = 0;
+    int64_t swizzleMaxRound = 0;
     int64_t actualS1Outer;         // m
     int64_t actualS2Outer;         // n
     int64_t firstValidColBlockNum; // p
@@ -509,6 +552,7 @@ struct FagRunInfo {
     int32_t halfS2RealSize; // vector侧实际的s2基本块大小，如果Cube基本块=128，那么halfS2RealSize=64
     int32_t
         firstHalfS2RealSize; // 当s2RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s2 size
+    int32_t s1AlignedSize;
     uint8_t isS2IdxNoChange;     // s2Idx是否变化
     uint8_t isNextS2IdxNoChange; // 下一个基本块的s2Idx是否变化（是否切换了列）
     // BN2模板使用

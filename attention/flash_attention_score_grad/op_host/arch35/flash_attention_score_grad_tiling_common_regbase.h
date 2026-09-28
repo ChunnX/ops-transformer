@@ -115,6 +115,7 @@ constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
 constexpr int64_t BN2_MAX_D = 512;
 constexpr int64_t BN2S2_WRITE_UB_D = 128;
 constexpr int64_t ROPE_D_192 = 192;
+constexpr int64_t ROPE_D_128 = 128;
 constexpr int64_t ROPE_D_64 = 64;
 constexpr int64_t NEGATIVE_128 = -128;
 
@@ -134,6 +135,7 @@ constexpr uint32_t UB_RESERVE_SPACE = 26 * 1024;
 constexpr int64_t LARGE_INVALID_NUM = 3072;
 
 constexpr uint32_t CORE_LIST_NUM = 36;
+constexpr uint32_t DETER_PREFIX_ARRAY_SIZE = 132;
 constexpr uint32_t ARRAY_LENGTH = 3;
 constexpr uint32_t DETER_LENGTH = 4;
 // deter swizzle threshold settings
@@ -153,6 +155,8 @@ constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
 constexpr uint32_t FP16_C0_SIZE = 16;
 constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE = 2048;
 constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE_1 = 1024;
+constexpr int64_t TND_NONDETER_SWIZZLE_MAX_LOAD_PERCENT = 80;
+constexpr int64_t TND_NONDETER_SWIZZLE_PERCENT_BASE = 100;
 
 constexpr uint32_t SFMG_DEFAULT_BURST_NUM = 128;
 constexpr uint32_t SFMG_DOUBLE_BUFFER_NUM = 2;
@@ -359,6 +363,7 @@ struct TndBaseInfo {
     uint64_t tndS1S2AlignPrefixSum[CORE_LIST_NUM] = {0};
     uint64_t tndPrefixSum[CORE_LIST_NUM] = {0};
     uint64_t tndPrefixValidSum[CORE_LIST_NUM] = {0};
+    uint64_t normalMaxValidBlockCount = 0;
 
     bool isS1GreaterThanS2 = true;
     bool isS1LessThanS2 = true;
@@ -467,11 +472,11 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     // 小于128b传完整的前缀和，大于128b的，按步长传部分前缀和，在kernel内组装完整的前缀和
     int64_t deterPrefixThreshold = 128;
     int64_t deterPrefixStep = 1;
-    int64_t deterPrefix[132] = {0};
-    int64_t deterPrefixAlign[132] = {0};
-    int64_t deterPrefix0[132] = {0};
-    int64_t deterPrefix1[132] = {0};
-    int64_t deterPrefix2[132] = {0};
+    int64_t deterPrefix[DETER_PREFIX_ARRAY_SIZE] = {0};
+    int64_t deterPrefixAlign[DETER_PREFIX_ARRAY_SIZE] = {0};
+    int64_t deterPrefix0[DETER_PREFIX_ARRAY_SIZE] = {0};
+    int64_t deterPrefix1[DETER_PREFIX_ARRAY_SIZE] = {0};
+    int64_t deterPrefix2[DETER_PREFIX_ARRAY_SIZE] = {0};
     // 确定性计算需要全核同步的轮次
     uint64_t startNeedSyncRound[CORE_LIST_NUM];
     uint64_t endNeedSyncRound[CORE_LIST_NUM];
@@ -560,8 +565,8 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
     }
 
     std::vector<T> result;
-    for (auto it = arr.begin(); it < arr.end(); it += step) {
-        result.push_back(*it);
+    for (size_t i = 0; i < arr.size(); i += static_cast<size_t>(step)) {
+        result.push_back(arr[i]);
     }
     return result;
 }

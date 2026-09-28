@@ -10,6 +10,7 @@
 
 #include "register/op_impl_registry.h"
 #include "log/log.h"
+#include "version/metadef_version.h"
 
 using namespace ge;
 
@@ -62,5 +63,9 @@ ge::graphStatus InferDataType4ScatterPaKvCacheWithKScale(gert::InferDataTypeCont
 
 IMPL_OP_INFERSHAPE(ScatterPaKvCacheWithKScale)
     .InferShape(InferShapeScatterPaKvCacheWithKScale)
-    .InferDataType(InferDataType4ScatterPaKvCacheWithKScale);
+    .InferDataType(InferDataType4ScatterPaKvCacheWithKScale)
+#if defined(METADEF_VERSION_NUM) && METADEF_VERSION_NUM >= 90200000
+    .SetSupportPcieThrough()
+#endif
+    ;
 } // namespace ops

@@ -527,11 +527,16 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckScenarioValid(const gert::
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForGrouplist(const gert::InferShapeContext *context,
                                                                         const gert::Shape *groupListShape) const
 {
-    OP_CHECK_IF(groupListShape->GetDimNum() != 1,
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
+    const size_t expectedDimNum = (*groupListTypePtr == GROUP_LIST_SPARSE) ? GROUP_LIST_SPARSE_DIM_NUM : 1;
+    OP_CHECK_IF(groupListShape->GetDimNum() != expectedDimNum,
                 OP_LOGE(context->GetNodeName(),
-                        "In single-single-single scenario, "
-                        "the groupList only support 1 dim num for now, but the actual dim num is [%zu].",
-                        groupListShape->GetDimNum()),
+                        "When groupListType is [%ld], the groupList dim num should be [%zu], "
+                        "but the actual dim num is [%zu].",
+                        *groupListTypePtr, expectedDimNum, groupListShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(groupListShape->GetDim(0) <= 0,
                 OP_LOGE(context->GetNodeName(),

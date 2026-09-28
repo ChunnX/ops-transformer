@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+using namespace AscendC;
 
 namespace BSA_ARC35 {
 
@@ -43,6 +44,10 @@ struct ConstInfo {
 };
 
 struct RunTimeInfo {
+    int64_t queryGmOffset{0}; // query gm offset
+    int64_t keyGmOffset{0};   // key gm offset
+    int64_t lseGmOffset{0};   // lse gm offset
+    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
     int32_t taskId{0};
     int32_t bIdx{0};  // 当前计算的batch的idx
     int32_t n1Idx{0}; // 当前计算的q_head的idx
@@ -50,21 +55,19 @@ struct RunTimeInfo {
     int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
     int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
-    int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
-    int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计算
-    int32_t need_copy_kv{0};     // 是否需要copy kv
+    int32_t need_compute{0}; // 是否存在任务需要计算
+    int32_t is_kv_end{0};
+    int32_t is_kv_change{0};
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_kv_seq_len{0};
+    int32_t need_copy_kv{0}; // 是否需要copy kv
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};         // 当前计算的q_seq的长度
-    int64_t s2Len{0};         // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
-    int64_t queryGmOffset{0}; // query gm offset
-    int64_t keyGmOffset{0};   // key gm offset
-    int64_t lseGmOffset{0};   // lse gm offset
-    int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t s1Len{0};      // 当前计算的q_seq的长度
+    int64_t s2Len{0};      // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
 };
 
 __aicore__ inline int64_t IMin(int64_t a, int64_t b)

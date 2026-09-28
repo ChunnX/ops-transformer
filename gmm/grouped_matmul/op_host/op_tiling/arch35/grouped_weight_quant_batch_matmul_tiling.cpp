@@ -687,14 +687,25 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensorSingleXMultiWeightSing
 bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingContext *context) const
 {
     if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
-        OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        OP_NAME, "groupListType", std::to_string(groupListType_),
-                        "When the dtype of x-weight is bf16/fp16-int4/int32 and groupType is 0, "
-                        "groupListType only supports values 0 or 1"),
+        const bool isMxSparse = IsMxA8W4() && groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M;
+        OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1 && !isMxSparse,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType_),
+                                                          "When groupType is 0, groupListType supports values 0 or 1; "
+                                                          "MX A8W4 also supports 2(sparse_m)"),
                     return false);
         auto groupListPtr = context->GetOptionalInputShape(GroupedMatmul::GROUPLIST_INDEX);
         OP_CHECK_IF(groupListPtr == nullptr, OP_LOGE(context->GetNodeName(), "GroupList is nullptr."), return false);
+        if (groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M) {
+            const auto &groupListShape = groupListPtr->GetOriginShape();
+            OP_CHECK_IF(groupListShape.GetDimNum() != GmmConstant::GROUP_LIST_SPARSE_DIMS,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(OP_NAME, "groupList", std::to_string(groupListShape.GetDimNum()),
+                                                     std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
+                        return false);
+            OP_CHECK_IF(groupListShape.GetDim(1) != GmmConstant::GROUP_LIST_SPARSE_DIMS,
+                        OP_LOGE_FOR_INVALID_SHAPESIZE(OP_NAME, "groupList", std::to_string(groupListShape.GetDim(1)),
+                                                      std::to_string(GmmConstant::GROUP_LIST_SPARSE_DIMS)),
+                        return false);
+        }
         int32_t groupListSize = static_cast<int32_t>(groupListPtr->GetOriginShape().GetDim(0));
 
         int32_t groupNum = static_cast<int32_t>(numWeight_);

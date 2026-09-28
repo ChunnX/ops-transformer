@@ -32,7 +32,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_grad_tiling_data.h"
 #include "engram_fetch_grad_tiling_key.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/engram_fetch_grad_arch35.h"
+#endif // __NPU_ARCH__ == 3510
 #include "engram_fetch_grad_utils.h"
 
 using namespace Mc2Kernel;

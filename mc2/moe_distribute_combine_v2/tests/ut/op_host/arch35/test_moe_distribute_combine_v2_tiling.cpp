@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -117,7 +117,7 @@ TEST(MoeDistributeCombineV2Arch35ArnTilingTest, BasicSuccess)
          {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 32UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);

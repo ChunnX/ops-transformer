@@ -20,6 +20,7 @@
 #ifndef __CCE_AICORE__
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #endif
 
 namespace optiling {
@@ -36,22 +37,37 @@ constexpr uint32_t QBSA_METADATA_SIZE = 8U;
 constexpr uint32_t FD_METADATA_SIZE = 8U;
 
 // QBSA Metadata Index Definitions
-constexpr uint32_t QBSA_CORE_ENABLE_INDEX = 0U; // 当前AIC核是否有负载需要计算
-constexpr uint32_t QBSA_BN1_START_INDEX = 1U; // 当前AIC核的起始bn1Idx
-constexpr uint32_t QBSA_M_START_INDEX = 2U; // 当前AIC核的起始s1Idx
-constexpr uint32_t QBSA_S2_START_INDEX = 3U; // 当前AIC核的起始s2Idx
-constexpr uint32_t QBSA_BN1_END_INDEX = 4U; // 当前AIC核的终止bn1Idx
-constexpr uint32_t QBSA_M_END_INDEX = 5U; // 当前AIC核的终止s1Idx
-constexpr uint32_t QBSA_S2_END_INDEX = 6U; // 当前AIC核的终止s2Idx
+constexpr uint32_t QBSA_CORE_ENABLE_INDEX = 0U;                 // 当前AIC核是否有负载需要计算
+constexpr uint32_t QBSA_BN1_START_INDEX = 1U;                   // 当前AIC核的起始bn1Idx
+constexpr uint32_t QBSA_M_START_INDEX = 2U;                     // 当前AIC核的起始s1Idx
+constexpr uint32_t QBSA_S2_START_INDEX = 3U;                    // 当前AIC核的起始s2Idx
+constexpr uint32_t QBSA_BN1_END_INDEX = 4U;                     // 当前AIC核的终止bn1Idx
+constexpr uint32_t QBSA_M_END_INDEX = 5U;                       // 当前AIC核的终止s1Idx
+constexpr uint32_t QBSA_S2_END_INDEX = 6U;                      // 当前AIC核的终止s2Idx
 constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核第一份规约任务在FD_DATA_WORKSPACE的idx
 
 #ifndef __CCE_AICORE__
 namespace detail {
+inline bool IsPaddedQueryLayout(const char *layout)
+{
+    return layout != nullptr && (std::strcmp(layout, "BSND") == 0 || std::strcmp(layout, "BNSD") == 0);
+}
+
+inline bool IsSupportedQueryLayout(const char *layout, int64_t quantMode)
+{
+    if (layout == nullptr) {
+        return false;
+    }
+    const bool tnd = std::strcmp(layout, "TND") == 0;
+    return (quantMode == 1 && (tnd || std::strcmp(layout, "NTD") == 0)) ||
+           (quantMode == 2 && (tnd || IsPaddedQueryLayout(layout)));
+}
+
 struct qbsaMetaData {
-    uint32_t sectionNum { 0U };
+    uint32_t sectionNum{0U};
     QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];
     QBSA_METADATA_T *qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];
-    QBSA_METADATA_T *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
+    QBSA_METADATA_T *fdMetadata;   // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
     explicit qbsaMetaData(void *metadataPtr, uint32_t sectionNumVal)
         : sectionNum(sectionNumVal),

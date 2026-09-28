@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class CompressorOpBuilder(OpBuilder):
@@ -24,14 +24,51 @@ class CompressorOpBuilder(OpBuilder):
 
     def schema(self):
         """PyTorch operator signature."""
-        pass
+        return (
+            "compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, Tensor ape, "
+            "int cmp_ratio, *, "
+            "Tensor? state_block_table=None, Tensor? cu_seqlens=None, Tensor? seqused=None, "
+            "Tensor? start_pos=None, int coff=1, int cache_mode=1) -> Tensor"
+        )
 
     def register_meta(self):
         """
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        pass
+
+        @impl(get_as_library(), self.name, "Meta")
+        def compressor_meta(
+            x: torch.Tensor,
+            wkv: torch.Tensor,
+            wgate: torch.Tensor,
+            state_cache: torch.Tensor,
+            ape: torch.Tensor,
+            cmp_ratio: int,
+            *,
+            state_block_table: Optional[torch.Tensor] = None,
+            cu_seqlens: Optional[torch.Tensor] = None,
+            seqused: Optional[torch.Tensor] = None,
+            start_pos: Optional[torch.Tensor] = None,
+            coff: Optional[int] = 1,
+            cache_mode: Optional[int] = 1,
+        ):
+            cmp_kv, _, _ = _compressor_forward_fake(
+                x,
+                wkv,
+                wgate,
+                state_cache,
+                ape,
+                cmp_ratio,
+                state_block_table,
+                cu_seqlens,
+                seqused,
+                start_pos,
+                coff,
+                cache_mode,
+                False,
+            )
+            return cmp_kv
 
 
 compressor_op_builder = CompressorOpBuilder()
@@ -50,11 +87,11 @@ def _compressor_forward(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
+    cmp_ratio: int,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
     grad_enabled: Optional[bool] = False,
@@ -84,11 +121,11 @@ def _compressor_forward_fake(
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
+    cmp_ratio: int,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
     grad_enabled: Optional[bool] = False,
@@ -131,10 +168,10 @@ def _compressor_backward(
     wgate: torch.Tensor,
     softmax_score: torch.Tensor,
     kv: torch.Tensor,
+    cmp_ratio: int,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     op_module = compressor_op_builder.load()
@@ -161,10 +198,10 @@ def _compressor_backward_fake(
     wgate: torch.Tensor,
     softmax_score: torch.Tensor,
     kv: torch.Tensor,
+    cmp_ratio: int,
     cu_seqlens: Optional[torch.Tensor] = None,
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
-    cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     d_x = torch.empty_like(x)
@@ -181,7 +218,9 @@ def _compressor_backward_fake(
 def setup_context(ctx, inputs, output):
     ctx.set_materialize_grads(False)
     x, wkv, wgate = inputs[:3]
-    cu_seqlens, seqused, start_pos, cmp_ratio, coff = inputs[6:11]
+    cmp_ratio = inputs[5]
+    cu_seqlens, seqused, start_pos = inputs[7:10]
+    coff = inputs[10]
 
     cmp_kv, softmax_score, kv = output
     ctx.save_for_backward(
@@ -207,10 +246,10 @@ def backward(ctx, dout, *grads):
         wgate,
         softmax_score,
         kv,
+        cmp_ratio,
         cu_seqlens,
         seqused,
         start_pos,
-        cmp_ratio,
         coff,
     )
     return d_x, d_wkv, d_wgate, None, d_ape, *((None,) * 8)
@@ -219,13 +258,15 @@ def backward(ctx, dout, *grads):
 _compressor_forward.register_autograd(backward, setup_context=setup_context)
 
 
+@impl(get_as_library(), compressor_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), compressor_op_builder.name, "Autograd")
 def compressor(
     x: torch.Tensor,
     wkv: torch.Tensor,
     wgate: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
-    cmp_ratio: int = 4,
+    cmp_ratio: int,
     *,
     state_block_table: Optional[torch.Tensor] = None,
     cu_seqlens: Optional[torch.Tensor] = None,
@@ -238,6 +279,8 @@ def compressor(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    if x is None or not isinstance(x, torch.Tensor):
+        raise ValueError("x must be a torch.Tensor, got {}".format(type(x).__name__))
     grad_enabled = x.requires_grad
     cmp_kv, softmax_score, kv = _compressor_forward(
         x,
@@ -245,11 +288,11 @@ def compressor(
         wgate,
         state_cache,
         ape,
+        cmp_ratio,
         state_block_table,
         cu_seqlens,
         seqused,
         start_pos,
-        cmp_ratio,
         coff,
         cache_mode,
         grad_enabled,

@@ -38,6 +38,15 @@ def convert_npu_quant_block_sparse_attn_metadata(
     layout_sparse_indices: str = "B_N_Qb_Kb",
     meta_outputs: List[TensorSpec] = None,
 ):
+    if layout_q in ("BSND", "BNSD"):
+        if quant_mode != 2 or layout_kv != "PA_BNBD":
+            raise ValueError(
+                "BSND/BNSD metadata requires quant_mode=2 and layout_kv=PA_BNBD"
+            )
+        if cu_seqlens_q is not None or seqused_q is not None:
+            raise ValueError(
+                "BSND/BNSD metadata requires cu_seqlens_q=None and seqused_q=None"
+            )
     stream_info = torch.npu.get_stream_limit(torch.npu.current_stream())
     aic_core_num = stream_info.get("cube_core_num")
     aiv_core_num = stream_info.get("vector_core_num")

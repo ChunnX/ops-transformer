@@ -311,7 +311,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                       <ul>
                           <li>含两个元素[blockShapeX, blockShapeY]。</li>
                           <li>blockShapeX当前仅支持1。</li>
-                          <li>blockShapeY须≥128且按64对齐。Cube/Softmax按baseN=128对每个稀疏块做S2切分（LSE Softmax，与整块数值等价）。</li>
+                          <li>blockShapeY须≥128且按64对齐。</li>
                       </ul>
                   </td>
                   <td>INT64</td>
@@ -551,7 +551,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 - 当layoutQ为TND时，需要传入cuSeqLengthsQOptional；当layoutKv为TND时，需要传入cuSeqLengthsKvOptional。
 - sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。
 - HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 > N2，N1 % N2 == 0。
-- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGQA当前仅支持1；maskType当前仅支持1；softmaxPrecision当前仅支持0。
+- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数；isPackedGQA当前仅支持1；maskType当前仅支持1；softmaxPrecision当前仅支持0。
 - winLeft和winRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 - Softmax LSE的head/seq轴语义须与query布局一致。
 - `sparseBlockIdx`第4维maxS1应≥`sparseBlockCount`中所有元素的最大值。

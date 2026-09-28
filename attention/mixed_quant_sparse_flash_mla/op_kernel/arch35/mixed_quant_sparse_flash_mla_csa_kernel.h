@@ -15,6 +15,7 @@
 
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_CSA_KERNEL_H
+#include "mixed_quant_sparse_flash_mla_tiling_data_arch35.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "mixed_quant_sparse_flash_mla_kvcache.h"
 #include "mixed_quant_sparse_flash_mla_csa_block_cube.h"
@@ -319,14 +320,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     constInfo.needInit = 0;
     if (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE && constInfo.oriMaskMode != 0) {
-        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-            int64_t s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm,
+        for (uint32_t mqsmlaBIdx = 0; mqsmlaBIdx < constInfo.bSize; mqsmlaBIdx++) {
+            int64_t s2Size = GetSeqLen(mqsmlaBIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm,
                                        cuSeqlensOriKvGm, constInfo.s2Size);
             int64_t s1Size =
-                GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                GetSeqLen(mqsmlaBIdx, hasActualSeqQlen, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             int64_t expectQs;
             if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-                expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+                expectQs = GetSeqLen(mqsmlaBIdx, false, hasCuSeqlensQ, actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
             } else {
                 expectQs = constInfo.s1Size;
             }
@@ -497,6 +498,9 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             SyncAll<false>();
         }
     }
+    if ASCEND_IS_AIV {
+        vecBlock.InitSinks(this->constInfo);
+    }
     FdRunInfo fdRunInfo;
     if ASCEND_IS_AIV {
         ParseFdRunInfo(fdRunInfo);
@@ -542,7 +546,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     RunInfo<HIGH_PERF> runInfo[4];
     RunParamStr<HIGH_PERF> runParam;
     runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
-    int64_t multiCoreInnerIdx = 1;
+    int64_t mqsmlaMultiCoreInnerIdx = 1;
     int64_t s2SplitIdxCounter = 0;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
@@ -586,7 +590,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + runParam.s2CmpLineEndIdx;
                     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-                    int64_t s2PerReduceBlock = (s2Load / 32LL + s2BaseSize - 1) >> 7 << 7;
+                    int64_t s2PerReduceBlock = ((s2Load + 31LL) / 32LL + s2BaseSize - 1) >> 7 << 7;
                     int64_t baseBlockNum = s2PerReduceBlock >> 7;
                     runParam.baseBlockNumPerReductionBlock = baseBlockNum > 0 ? baseBlockNum : 1LL;
                 }
@@ -606,6 +610,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if (mqsmlaS1NoNeedCalc || mqsmlaS2NoNeedCalc) {
                     continue;
                 }
+                if constexpr (!IS_BATCH_CONSISTENCY) {
+                    if (runParam.isCrossCoreSplit) {
+                        runParam.s2SplitIdx = s2SplitIdxCounter++;
+                    }
+                }
                 if constexpr (IS_SPLIT_G) {
                     mqsmlaMaxS2LoopCnt -= runParam.s2LoopEndIdx;
                 }
@@ -614,14 +623,21 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                int64_t safeBaseBlockNum =
-                    runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
-                    runParam.s2SplitIdx = s2SplitIdxCounter++;
+                if constexpr (IS_BATCH_CONSISTENCY) {
+                    int64_t safeBaseBlockNum =
+                        runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
+                    int64_t reductionLoopCount = s2LoopCount;
+                    if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+                        reductionLoopCount +=
+                            (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+                    }
+                    if (runParam.isCrossCoreSplit && reductionLoopCount % safeBaseBlockNum == 0) {
+                        runParam.s2SplitIdx = s2SplitIdxCounter++;
+                    }
                 }
                 if (mqsmlaNotLastThreeLoop) {
                     RunInfo<HIGH_PERF> &runInfo1 = runInfo[taskId % 4];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, mqsmlaMultiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
                     if (mqsmlaNotLastThreeLoop) {
@@ -675,7 +691,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 }
                 ++taskId;
             }
-            ++multiCoreInnerIdx;
+            ++mqsmlaMultiCoreInnerIdx;
         }
         gS1StartIdx = 0;
     }
@@ -832,10 +848,20 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
-    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
+    int64_t reductionLoopCount = s2LoopCount;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        // 进入 CMP 时补齐规约计数，不增加实际计算。
+        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+            reductionLoopCount += (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+        }
+    }
+    int64_t baseBlockIdInReduceBlock = reductionLoopCount % safeBaseBlockNum;
+    runInfo.reduceBlockId = reductionLoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = ((safeBaseBlockNum - baseBlockIdInReduceBlock) == 1LL) || (s2LoopCount == s2LoopLimit);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
+    }
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);

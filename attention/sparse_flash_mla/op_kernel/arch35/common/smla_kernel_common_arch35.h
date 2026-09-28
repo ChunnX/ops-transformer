@@ -55,14 +55,15 @@ __aicore__ inline int64_t ConvertS2MetadataBlockToToken(const RunParamStr &runPa
     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
     int64_t oriLen = runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx;
     int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-    int64_t reductionBlockSize = runParam.baseBlockNumPerReductionBlock * s2BaseSize;
+    int64_t safeBaseBlockNum =
+        runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
+    int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
-    int64_t reductionBlockIdx = static_cast<int64_t>(s2BlockIdx);
-    if (reductionBlockIdx < oriReductionBlockNum) {
-        int64_t oriToken = reductionBlockIdx * reductionBlockSize;
+    if (s2BlockIdx <= oriReductionBlockNum) {
+        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
         return oriToken < oriLen ? oriToken : oriLen;
     }
-    int64_t cmpToken = (reductionBlockIdx - oriReductionBlockNum) * reductionBlockSize;
+    int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
     return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
@@ -222,12 +223,12 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
         runInfo.goIdx = runParam.goIdx;
         runInfo.multiCoreInnerIdx = multiCoreInnerIdx;
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
-        runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
+        runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3; // 3：获取大小为3的组内的索引
     }
 
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
-    runInfo.taskIdMod3 = taskId % 3;
+    runInfo.taskIdMod3 = taskId % 3; // 3：同上
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
@@ -239,10 +240,20 @@ __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     int64_t safeBaseBlockNum =
         runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
-    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
+    int64_t reductionLoopCount = s2LoopCount;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        // 进入 CMP 时补齐规约计数，不增加实际计算。
+        if (s2LoopCount >= runParam.oriKvLoopEndIdx) {
+            reductionLoopCount += (safeBaseBlockNum - runParam.oriKvLoopEndIdx % safeBaseBlockNum) % safeBaseBlockNum;
+        }
+    }
+    int64_t baseBlockIdInReduceBlock = reductionLoopCount % safeBaseBlockNum;
+    runInfo.reduceBlockId = reductionLoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = baseBlockIdInReduceBlock == safeBaseBlockNum - 1LL || s2LoopCount == s2LoopLimit;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isLastBase = runInfo.isLastBase || s2LoopCount + 1 == runParam.oriKvLoopEndIdx;
+    }
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     ComputeBmm1Tail(runInfo, runParam, constInfo);
     InitUniqueRunInfo<TEMPLATE_INTF_ARGS>(runParam, runInfo, constInfo);
@@ -257,7 +268,7 @@ __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Inde
     if constexpr (IS_SPLIT_G) {
         int64_t halfG = (constInfo.gSize + 1) / 2; // ceil(gSize/2), 第一个AIC多处理一行
         runParam.goIdx = (aicIdx % 2 == 0) ? 0 : halfG;
-        runParam.gSplitSize = (aicIdx % 2 == 0) ? halfG : (constInfo.gSize - halfG);
+        runParam.gSplitSize = (aicIdx % 2 == 0) ? halfG : (constInfo.gSize - halfG); // 2：AIC切分数量
     } else {
         runParam.goIdx = 0;
         runParam.gSplitSize = constInfo.gSize;

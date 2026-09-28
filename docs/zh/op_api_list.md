@@ -52,7 +52,7 @@
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionV3](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV3.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算，支持MXFP4量化模式。|默认确定性实现|默认确定性实现|
-|[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
+|[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| 默认非确定性实现，支持配置开启 |
 |[aclnnBSASelectBlockMask](../../attention/bsa_select_block_mask/docs/aclnnBSASelectBlockMask.md)|BSASelectBlockMask是BSA（BlockSparseAttention）的前置算子，根据Query和Key的内容动态生成blockSparseMask，使BSA的调用链从"手动提供掩码"变为"根据Q/K内容自适应选择稀疏模式"。|默认确定性实现| - |
 |[aclnnCausalConv1dFn](../../mamba/causal_conv1d/docs/aclnnCausalConv1dFn.md)|完成因果一维卷积（Causal Conv1d）的前向计算（prefill / chunk-prefill）。算子内部支持SiLU激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）等特性。| - | 默认确定性实现 |
 |[aclnnCausalConv1dUpdate](../../mamba/causal_conv1d/docs/aclnnCausalConv1dUpdate.md)|完成因果一维卷积（Causal Conv1d）的状态更新（decode / update）计算。算子内部支持SiLU激活、缓存索引（cacheIndices）、投机解码（numAcceptedTokens）等特性。| - | 默认确定性实现 |
@@ -188,7 +188,7 @@
 |[aclnnMoeTokenPermute](../../moe/moe_token_permute/docs/aclnnMoeTokenPermute.md)|MoE的permute计算，根据索引indices将tokens广播并排序。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenPermuteGrad](../../moe/moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad.md)|[aclnnMoeTokenPermute](../../moe/moe_token_permute/docs/aclnnMoeTokenPermute.md)的反向传播计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenPermuteV2](../../moe/moe_token_permute/docs/aclnnMoeTokenPermuteV2.md)|MoE的permute计算，根据索引indices将tokens广播并排序。相比[aclnnMoeTokenPermute](../../moe/moe_token_permute/docs/aclnnMoeTokenPermute.md)新增quantMode和expandedScaleOut，在Ascend 950平台上支持MXFP8和MXFP4量化输出。|默认确定性实现| 默认确定性实现 |
-|[aclnnMoeTokenPermuteWithEp](../../moe/moe_token_permute_with_ep/docs/aclnnMoeTokenPermuteWithEp.md)|MoE的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。|默认确定性实现| - |
+|[aclnnMoeTokenPermuteWithEp](../../moe/moe_token_permute_with_ep/docs/aclnnMoeTokenPermuteWithEp.md)|MoE的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenPermuteWithEpGrad](../../moe/moe_token_permute_with_ep_grad/docs/aclnnMoeTokenPermuteWithEpGrad.md)|[aclnnMoeTokenPermuteWithEp](../../moe/moe_token_permute_with_ep/docs/aclnnMoeTokenPermuteWithEp.md)的反向传播计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenPermuteWithRoutingMap](../../moe/moe_token_permute_with_routing_map/docs/aclnnMoeTokenPermuteWithRoutingMap.md)|MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMaps将tokens和可选probsOptional广播后排序|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenPermuteWithRoutingMapGrad](../../moe/moe_token_permute_with_routing_map_grad/docs/aclnnMoeTokenPermuteWithRoutingMapGrad.md)|[aclnnMoeTokenPermuteWithRoutingMap](../../moe/moe_token_permute_with_routing_map/docs/aclnnMoeTokenPermuteWithRoutingMap.md)的反向传播。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
@@ -222,7 +222,7 @@
 |[aclnnNsaSelectedAttentionInfer](../../attention/nsa_selected_attention_infer/docs/aclnnNsaSelectedAttentionInfer.md)|Native Sparse Attention推理过程中，Selected Attention的计算。|默认确定性实现| - |
 |[aclnnPoolKeyIndexer](../../attention/pool_key_indexer/docs/aclnnPoolKeyIndexer.md)|将多个连续token打包成一个pool（池），以pool为单位计算注意力相关性分数并选取top-k位置，从而在保持稀疏注意力优势的同时减少索引开销。|默认确定性实现|默认确定性实现|
 |[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)|全量推理场景的FlashAttention算子。|默认确定性实现| - |
-|[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现| - |
+|[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现| 默认确定性实现 |
 |[aclnnQkvRmsNormRopeCacheWithKScale](../../posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/aclnnQkvRmsNormRopeCacheWithKScale.md)|输入Q/K/V融合张量，对Q/K执行RMSNorm、RoPE/M-RoPE及场景对应的量化，并按slotMapping更新KV Cache和K scale Cache，支持M-RoPE MX场景。|-|默认确定性实现|
 |[aclnnQuantCompressor](../../attention/quant_compressor/docs/aclnnQuantCompressor.md)|Compressor的量化版本，将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。|- | 默认确定性实现 |
 |[aclnnQuantGroupedMatmulDequantWeightNZ](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequantWeightNZ.md)|对输入x进行量化，分组矩阵乘以及反量化，输入权重Weight会被强制视为NZ格式。| - | - |
@@ -271,6 +271,7 @@
 |[aclnnWeightQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduceV2.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。兼容[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)支持的功能，在此基础上新增commMode参数，供用户指定通信引擎参数。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnKvRmsNormRopeCache](../../posembedding/kv_rms_norm_rope_cache/docs/aclnnKvRmsNormRopeCache.md)|对输入张量（kv）的尾轴，拆分出左半边用于rms_norm计算，右半边用于RoPE计算，再将计算结果分别scatter到两块cache中。|默认确定性实现|默认确定性实现|
 |[aclnnKvRmsNormRopeCacheV2](../../posembedding/kv_rms_norm_rope_cache/docs/aclnnKvRmsNormRopeCacheV2.md)|融合了MLA（Multi-head Latent Attention）结构中RMSNorm归一化计算（对应$rms\_size$）与RoPE（Rotary Position Embedding）位置编码（对应$rope\_size$)，以及更新KVCache的ScatterUpdate操作。本接口向下兼容aclnnKvRmsNormRopeCache。|默认确定性实现|默认确定性实现|
+|[aclnnKdaInputProj](../../attention/kda_input_proj/docs/aclnnKdaInputProj.md)|推理场景下 Recurrent KDA 的前处理，对输入投影得到 qkv、beta、gate、g。|默认确定性实现| - |
 |[aclnnFusedFloydAttention](../../attention/fused_floyd_attention/docs/aclnnFusedFloydAttention.md)|训练场景下，使用FloydAttention算法实现多维自注意力的计算。|默认确定性实现| - |
 |[aclnnFusedFloydAttentionGrad](../../attention/fused_floyd_attention_grad/docs/aclnnFusedFloydAttentionGrad.md)|训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。|默认非确定性实现，不支持配置开启| - |
 |[aclnnScatterPaKvCacheWithKScale](../../attention/scatter_pa_kv_cache_with_k_scale/docs/aclnnScatterPaKvCacheWithKScale.md)|训练场景下，更新KvCache中指定位置的key和value，同时更新key的scale值。|默认确定性实现| - |

@@ -26,7 +26,7 @@
 #include "arch35/adaptive_sliding_window_tiling.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
-#include "../../op_kernel/quant_batch_matmul_v3_tiling_key.h"
+#include "../../op_kernel/mc2_quant_batch_matmul_v3_tiling_key.h"
 
 using AscendC::BLOCK_CUBE;   // uint32_t 16
 using AscendC::ONE_BLK_SIZE; // uint32_t 32

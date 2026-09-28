@@ -122,6 +122,13 @@ public:
         InitL0C(resource);
     }
 
+    // InitL1 计算出的 L1 真实占用末偏移：权重预取 scratch 在此之上取用，与流水线 stage/scale/F 零地址交集
+    CATLASS_DEVICE uint32_t GetL1EndOffset() const
+    {
+        return l1EndOffset_;
+    }
+    uint32_t l1EndOffset_ = 0U;
+
     CATLASS_DEVICE
     ~BlockMmad()
     {
@@ -293,6 +300,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList[i]);
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(l1ScaleEventList[i]);
         }
+        l1EndOffset_ = l1ScaleOffset + SCALE_KTILE_SIZE * L1_STAGES;
         if (ptrSoftFlagBase_ != nullptr) {
             // 把初始化flag
             // 1 0 0 0 0 0 0 0
@@ -305,6 +313,7 @@ private:
             AscendC::GlobalTensor<int32_t> flagBase;
             flagBase.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(ptrSoftFlagBase_));
             AscendC::DataCopy(l1FTensor, flagBase, expertPerRank_ * FLAGSTRIDE);
+            l1EndOffset_ = l1FOffset + expertPerRank_ * FLAGSTRIDE * sizeof(int32_t);
         }
     }
 

@@ -138,8 +138,11 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
     }
-    const uint16_t maxCount =
-        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    OP_CHECK_IF(!IsMicroScaling(),
+                OP_LOGE(inputParams_.opName,
+                        "WeightNz single-multi-single only supports MX A8W8 or MX A4W4, including a single group."),
+                return false);
+    const uint16_t maxCount = GMM_MAX_GROUP_LIST_SIZE;
     const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
     const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX, maxCount);
     OP_CHECK_IF(weightTensorNum == 0,
@@ -1306,23 +1309,30 @@ ge::graphStatus GroupedQmmTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
+    OP_CHECK_IF(FillGmmArray(tilingData_.gmmArray) != ge::GRAPH_SUCCESS,
+                OP_LOGE(inputParams_.opName, "FillGmmArray failed."), return ge::GRAPH_FAILED);
+    PrintQuantParams();
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedQmmTiling::FillGmmArray(GroupedMatmulTilingData::GMMArray &gmmArray)
+{
     OP_CHECK_IF(!SetMKNList(), OP_LOGE(inputParams_.opName, "SetMKNList failed."), return ge::GRAPH_FAILED);
-    errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
+    errno_t retM = memcpy_s(gmmArray.mList, sizeof(gmmArray.mList), mList_, sizeof(mList_));
     if (retM != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retM);
         return ge::GRAPH_FAILED;
     }
-    errno_t retK = memcpy_s(tilingData_.gmmArray.kList, sizeof(tilingData_.gmmArray.kList), kList_, sizeof(kList_));
+    errno_t retK = memcpy_s(gmmArray.kList, sizeof(gmmArray.kList), kList_, sizeof(kList_));
     if (retK != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retK);
         return ge::GRAPH_FAILED;
     }
-    errno_t retN = memcpy_s(tilingData_.gmmArray.nList, sizeof(tilingData_.gmmArray.nList), nList_, sizeof(nList_));
+    errno_t retN = memcpy_s(gmmArray.nList, sizeof(gmmArray.nList), nList_, sizeof(nList_));
     if (retN != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retN);
         return ge::GRAPH_FAILED;
     }
-    PrintQuantParams();
     return ge::GRAPH_SUCCESS;
 }
 

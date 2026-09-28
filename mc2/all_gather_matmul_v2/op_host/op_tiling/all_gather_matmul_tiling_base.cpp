@@ -526,9 +526,8 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs &args,
 
 CutResult AllGatherMatmulTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = (npuArch_ == Ops::Base::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
     OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
-    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
+    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, npuArch_);
     tileFormulate.GetTiling();
     return tileFormulate.tilingM_.cutRes;
 }
@@ -655,7 +654,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     //   packed - PerBlock 量化 (M | N<<16 | K<<32, FLOAT scale)
     // 仅对非 fp8 输入硬拒非零值; fp8 路径由子类 IsCapable +
     // AllGatherQuantBmmHelper::GetShapeAttrsInfo 区分校验, base 不拒 (否则 MX/PerBlock 不可达)。
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    auto blockSizePtr = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    const int64_t blockSize = blockSizePtr != nullptr ? *blockSizePtr : 0;
     bool x1IsFp8 = CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST);
     OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
