@@ -227,7 +227,7 @@ public:
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
                 bool needBias = NeedProcessBias(iter0, iter1, isFirstSplitK);
                 auto l0TensorTuple = CopyL0FromL1(tensorAL1, tensorBL1, tensorBiasL1, l0Shape, l0Slot, baseK_ * iter1,
-                                                  needBias, l1Slots, btSlot);
+                                                  needBias, l1Slots, btSlot, btBufId);
                 auto tensorAL0 = AscendC::Te::Get<0>(l0TensorTuple);
                 auto tensorBL0 = AscendC::Te::Get<1>(l0TensorTuple);
                 auto tensorBiasL0 = AscendC::Te::Get<2>(l0TensorTuple);
@@ -406,7 +406,7 @@ private:
     __aicore__ inline auto CopyL0FromL1(const TensorA &tensorAL1, const TensorB &tensorBL1,
                                         const TensorBias &tensorBiasL1, const TripleShape &l0Shape,
                                         const BufferSlot &l0Slot, uint64_t kIdx, bool needBias,
-                                        const SlotsTuple &slotsTuple, const BufferSlot &btSlot)
+                                        const SlotsTuple &slotsTuple, const BufferSlot &btSlot, uint64_t btBufId)
     {
         auto curM0 = AscendC::Te::Get<MNK_M>(l0Shape);
         auto curN0 = AscendC::Te::Get<MNK_N>(l0Shape);
