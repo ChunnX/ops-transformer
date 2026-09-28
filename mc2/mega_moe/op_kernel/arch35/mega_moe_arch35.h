@@ -34,6 +34,17 @@
 #include "stage/mega_moe_unpermute.h"
 #include "../../../common/op_kernel/quantize_functions.h"
 
+// 设为 1 或编译时传入 -DMEGA_MOE_PROFILE_INPUT=1：打点并在共享 GMM1 后退出。
+// 仅用于同一用例的局部性能采集；测试脚本在轮间执行 barrier，跳过输出精度检查。
+#ifndef MEGA_MOE_PROFILE_INPUT
+#define MEGA_MOE_PROFILE_INPUT 0
+#endif
+#if MEGA_MOE_PROFILE_INPUT
+#define MEGA_MOE_INPUT_MARK(pipe, index) AscendC::MarkStamp<pipe, index>()
+#else
+#define MEGA_MOE_INPUT_MARK(pipe, index) ((void)0)
+#endif
+
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -903,11 +914,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput(
     }
 
     SendAndQuantBuffInit();
+    if (resetJob.totalJobs > 0U) {
+        MEGA_MOE_INPUT_MARK(PIPE_MTE3, 10); // 本核 reset 搬出区间开始。
+    }
     ResetSyncStatus<TopkWeightsPrefetch>(resetJob, params_, resetBatchElementCount_, resetTensor_);
+    if (resetJob.totalJobs > 0U) {
+        MEGA_MOE_INPUT_MARK(PIPE_MTE3, 11); // 本核 reset 搬出区间结束。
+    }
     // 本核 reset 任务完成后发布通知；空任务核同样参与全 AIV 事件。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
     const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, tokenJob);
     if (tokenRange.count > 0U) {
+        MEGA_MOE_INPUT_MARK(PIPE_MTE2, 20); // quant/pack 输入搬入区间开始。
         if constexpr (Std::IsSame<XType, bfloat16_t>::value) {
             QuantizeInputTokens(tokenRange);
         } else {
@@ -917,6 +935,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput(
             // 预量化共享专家与 MoE 类型一致；64 对齐时直接读取原始输入，
             // 否则复用这里的 MoE 拼接结果，无需独立打包共享输入。
         }
+        MEGA_MOE_INPUT_MARK(PIPE_MTE3, 21); // quant/pack 输出搬出区间结束。
     }
     // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
     IncrementSyncCount(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
@@ -942,14 +961,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
         CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
         if (notifyAicAfterQuantOrPack) {
+            MEGA_MOE_INPUT_MARK(PIPE_MTE3, 60); // INPUT_READY_FLAG 通知下发到 MTE3。
             CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
         }
         if (ownedExpertRange.count > 0U) {
             PipeBarrier<PIPE_MTE3>();
             auto *syncCountAddr = GetSyncCountAddress(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
             const int32_t syncCount = ReadGmBypassDCache(syncCountAddr);
+            MEGA_MOE_INPUT_MARK(PIPE_MTE3, 50); // count 编码及发送区间开始。
             SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, syncCount, g_winRankAddr_, sendMaskConfig_,
                                        sendMaskScratch_);
+            MEGA_MOE_INPUT_MARK(PIPE_MTE3, 51); // count 搬出区间结束。
         }
     };
 
@@ -967,10 +989,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         } else {
             // AIV0 按共享 GMM 的启动条件等待，随后通知 AIC 搬入输入。
             CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
+            MEGA_MOE_INPUT_MARK(PIPE_MTE3, 13); // 对应 MTE3 等待已通过。
             SetFlag<HardEvent::MTE3_S>(SYNC_EVENT_ID3);
             if (sharedGmmStartCondition == SharedGmmStartCondition::QuantOrPackDone) {
                 CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
             }
+            MEGA_MOE_INPUT_MARK(PIPE_MTE3, 60); // INPUT_READY_FLAG 通知下发到 MTE3。
             CrossCoreSetFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE3>(INPUT_READY_FLAG);
         }
     }
@@ -988,6 +1012,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitForInputPreparation()
 {
     CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
+    MEGA_MOE_INPUT_MARK(PIPE_MTE2, 71); // AIC MTE2 已通过输入等待。
     // 除输入搬运外，Scalar 的状态轮询也必须在全 AIV reset 完成之后。
     SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
     // 各路径统一消费 AIV0 的 UB 释放通知，防止 FIX 覆盖尚在发送的数据。
@@ -1047,6 +1072,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         SyncBeforeSharedExpertGmm1();
+        if constexpr (g_coreType == AIC) {
+            MEGA_MOE_INPUT_MARK(PIPE_S, 80); // AIC 共享 GMM1 调用入口。
+        }
         ProcessSharedExpertGmm1(sharedGmm1ActivationSync);
         if constexpr (g_coreType == AIV) {
             if (sharedGmmStartCondition == SharedGmmStartCondition::ResetDone && GetSubBlockIdx() == 0U) {
@@ -1055,6 +1083,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
             }
         }
     }
+
+#if MEGA_MOE_PROFILE_INPUT
+    sharedGmm1ActivationSync.EndSync();
+    PipeBarrier<PIPE_ALL>();
+    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
+    return;
+#endif
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     Gmm1ActivationSync gmm1ActivationSync(MoeQuantConfig::AXW_MODE == AxWMode::A8W4 ? 1U : 0U);
@@ -1087,6 +1123,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 }
 
 } // namespace MegaMoeImpl
+#undef MEGA_MOE_INPUT_MARK
 #undef TemplateMegaMoeTypeClass
 #undef TemplateMegaMoeTypeFunc
 #endif
