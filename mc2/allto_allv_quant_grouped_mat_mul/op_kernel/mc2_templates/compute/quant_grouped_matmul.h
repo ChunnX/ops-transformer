@@ -241,24 +241,31 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
             __gm__ uint64_t *xScaleOffsetTable = reinterpret_cast<__gm__ uint64_t *>(xScaleGroupOffsetTableGm_);
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
                               Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
-            uint64_t batchScaleBaseOffset = expertTokenOffset_ * scaleK;
-            for (uint32_t r = 0; r < epWorldSize_; r++) {
-                rankBatchSize[r] = 0UL;
-                for (uint32_t e = 0; e < expertNum; e++) {
-                    uint32_t absExpertIdx = startExpertIdx + e;
-                    rankBatchSize[r] +=
-                        static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
+            // 镜像AIV侧scaleRecvOffsetLastSum_的对齐累加(无状态重算前序轮次)，保证表基址与通信落位一致
+            uint64_t lastSum = 0UL;
+            for (uint32_t rd = 0U; rd < startExpertIdx; rd += expertNum) {
+                for (uint32_t r = 0; r < epWorldSize_; r++) {
+                    uint64_t seg = 0UL;
+                    for (uint32_t e = 0; e < expertNum; e++) {
+                        seg += static_cast<uint64_t>(opCnt[rd + e + r * expertNumInOneRank_]) * scaleK;
+                    }
+                    lastSum = (lastSum + SCALE_COMM_ALIGN_BYTES - 1) / SCALE_COMM_ALIGN_BYTES * SCALE_COMM_ALIGN_BYTES;
+                    lastSum += seg;
                 }
             }
-            runningBase = batchScaleBaseOffset;
             for (uint32_t r = 0; r < epWorldSize_; r++) {
-                uint64_t groupBase = runningBase;
+                uint64_t rankBase =
+                    (lastSum + SCALE_COMM_ALIGN_BYTES - 1) / SCALE_COMM_ALIGN_BYTES * SCALE_COMM_ALIGN_BYTES;
+                uint64_t groupBase = rankBase;
                 for (uint32_t e = 0; e < expertNum; e++) {
-                    uint32_t absExpertIdx = startExpertIdx + e;
                     xScaleOffsetTable[e * epWorldSize_ + r] = groupBase;
-                    groupBase += static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
+                    groupBase += static_cast<uint64_t>(opCnt[startExpertIdx + e + r * expertNumInOneRank_]) * scaleK;
                 }
-                runningBase += rankBatchSize[r];
+                uint64_t seg = 0UL;
+                for (uint32_t e = 0; e < expertNum; e++) {
+                    seg += static_cast<uint64_t>(opCnt[startExpertIdx + e + r * expertNumInOneRank_]) * scaleK;
+                }
+                lastSum = rankBase + seg;
             }
         }
     } else if (!isLocal) {

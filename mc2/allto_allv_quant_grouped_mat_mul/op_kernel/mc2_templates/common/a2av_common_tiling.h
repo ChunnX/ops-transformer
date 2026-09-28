@@ -34,6 +34,8 @@ static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
+// scale通信axis(2*CeilDiv(H1,64)字节/token)非块对齐，HCCL要求recv段基址按512B对齐放置
+static constexpr uint64_t SCALE_COMM_ALIGN_BYTES = 512U;
 static constexpr uint16_t PERMUTE_BUF_SIZE = 32768U;
 
 // 核间同步常量

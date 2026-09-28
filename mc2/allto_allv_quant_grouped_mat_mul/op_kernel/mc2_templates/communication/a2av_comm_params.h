@@ -28,7 +28,8 @@ struct A2avCommParams {
 __aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const int32_t *rawSendCounts,
                                                 const int32_t *rawRecvCounts, uint32_t rankDim, uint32_t e,
                                                 uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
-                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
+                                                uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum,
+                                                uint64_t recvAlignBytes = 1UL)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;
@@ -54,14 +55,14 @@ __aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams &params, const in
         sendRowPrefixSum += rowSum;
     }
 
+    // HCCL要求recv段基址按块对齐(数据通信axis天然512对齐不受影响)，非1时按recvAlignBytes向上对齐累加
     for (uint32_t i = 0U; i < rankDim; i++) {
-        if ((startExpertIdx == 0U) && (i == 0U)) {
-            params.recvOffset[i] = 0UL;
-            recvOffsetLastSum += params.recvCnt[0];
+        if (recvAlignBytes <= 1UL) {
+            params.recvOffset[i] = ((startExpertIdx == 0U) && (i == 0U)) ? 0UL : recvOffsetLastSum;
         } else {
-            params.recvOffset[i] = recvOffsetLastSum;
-            recvOffsetLastSum += params.recvCnt[i];
+            params.recvOffset[i] = (recvOffsetLastSum + recvAlignBytes - 1) / recvAlignBytes * recvAlignBytes;
         }
+        recvOffsetLastSum = params.recvOffset[i] + params.recvCnt[i];
     }
 }
 
