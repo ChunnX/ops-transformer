@@ -927,6 +927,25 @@ def _run_preload2_vector_bn2(
     nFetched = 0
     roundId = pl.const(0, pl.DT_INT64)
     while True:
+        mm2_res.next()
+        mm1_res.next()
+        lse_ub.next()
+        # Start V1 for task N-1 before scalar scheduling for task N.
+        # V1 only reads row geometry; select vecInfo again after scheduling
+        # so V2-V6 see any updated L0C flush boundary on the previous task.
+        if taskId > 0:
+            prevInfo = runInfos[(taskId + 1) % 2]
+            process_vec1_bn2(
+                constInfo,
+                prevInfo,
+                subIdx,
+                tensor_y,
+                tensor_dy,
+                y_ub.current(),
+                dy_ub.current(),
+                sfmg_ub.current(),
+                dv_align,
+            )
         gIdx = pl.const(-1, pl.DT_INT64)
         fetchedGIdx, fetchedDenseCursor = fetch_work_gidx(
             constInfo,
@@ -946,9 +965,6 @@ def _run_preload2_vector_bn2(
             denseCursor = fetchedDenseCursor
             if gIdx < 0:
                 isLastLoop = 1
-        mm2_res.next()
-        mm1_res.next()
-        lse_ub.next()
         if gIdx >= 0:
             curInfo = runInfos[taskId % 2]
             set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
@@ -972,17 +988,6 @@ def _run_preload2_vector_bn2(
             if taskId > 1:
                 needSyncDkMM = 1
         if doVec == 1:
-            process_vec1_bn2(
-                constInfo,
-                vecInfo,
-                subIdx,
-                tensor_y,
-                tensor_dy,
-                y_ub.current(),
-                dy_ub.current(),
-                sfmg_ub.current(),
-                dv_align,
-            )
             pl.system.wait_cross_core(
                 pipe=pl.PipeType.V, event_id=SYNC_C2_TO_V2_FLAG[c2ev]
             )
