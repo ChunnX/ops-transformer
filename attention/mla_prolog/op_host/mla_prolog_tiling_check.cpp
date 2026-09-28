@@ -227,7 +227,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "B", std::to_string(baseShapeInfo_.bSize),
                                               "B size should not be greater than " + std::to_string(MAX_B_SIZE)),
         return ge::GRAPH_FAILED);
-    const std::set<uint32_t> supportedHeSize{1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
+    const std::set<uint32_t> supportedHeSize{1024U, 2048U, 2816U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
     OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
                 OP_LOGE_FOR_INVALID_VALUE(context_.opName, "He", std::to_string(baseShapeInfo_.heSize),
                                           ConvertContainerToStringV3(supportedHeSize)),
@@ -306,7 +306,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
 ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
 {
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        const std::set<uint32_t> supportedHcqSize{1536U, 2048U};
+        const std::set<uint32_t> supportedHcqSize{1024U, 1536U, 2048U};
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hcq", std::to_string(baseShapeInfo_.hcqSize),
                                               ConvertContainerToStringV3(supportedHcqSize)),
