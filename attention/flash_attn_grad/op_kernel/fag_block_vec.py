@@ -10,11 +10,12 @@
 
 阶段编号与 CV 同步 flag 一致::
 
-    V1  sfmg = rowsum(dy * y)
-    V2  P    = softmax(S*scale - lse) [+mask]
-    V3  dS   = (dP - sfmg) * P -> cast -> L1
-    V4  P    -> cast -> L1
-    V5/V6    dQ/dK 的 muls(scale) + cast
+    V1  sfmg = rowsum(dy * y)              ProcessVec1
+    V2  P    = softmax(S*scale - lse) [+mask]  ProcessVec2
+    V3  dS   = (dP - sfmg) * P -> cast -> L1   ProcessVec3
+    V4  P    -> cast -> L1                     ProcessVec4
+    V5/V6    dQ/dK 的 muls(scale) + cast       ProcessMulsAndCast
+    sink     dsink 部分和 = -Σ (P·dP)*exp(sink-lse)  ProcessSinkPartial（可选，按块内 P·dP）
 
 本文件只做**搬运与编排**：GM->UB 的 load、UB->L1 的 insert、选哪一档 VF；
 真正的寄存器级计算在 :mod:`fag_vector_api` 与 :mod:`attenmask`。
@@ -38,10 +39,14 @@ from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
     broadcast_sub_mul_cast_vf,
     cast_p_vf,
+    dsink_partial_vf,
+    dsink_reduce_add_vf,
     fill_zero_fp16_vf,
     fill_zero_vf,
     muls_cast_vf,
     softmax_grad_front_row192_vf,
+    softmax_grad_front_row256_acc_vf,
+    softmax_grad_front_row256_vf,
     softmax_grad_front_row_vf,
 )
 from fag_schedule import (
@@ -84,6 +89,11 @@ def process_vec1(
     constInfo, runInfo, subIdx, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
 ):
     """softmaxGradFront: sfmg = rowsum(dy * y)。一趟 VECTOR_BASEM 行。"""
+    if dv_align == 768:
+        _process_vec1_d768(
+            constInfo, runInfo, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+        )
+        return
     pl.set_validshape(y_ub, [VECTOR_BASEM, constInfo.dvSize])
     pl.set_validshape(dy_ub, [VECTOR_BASEM, constInfo.dvSize])
     pl.load(
@@ -98,8 +108,25 @@ def process_vec1(
         [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
         order=[1, 3],
     )
-    w0 = pl.min(constInfo.dvSize, 128)
-    if dv_align == 192:
+    # 列宽跟 dv_align：256/192 各一档 VF；64 与 128（含 D=192,Dv=128）共用
+    # 一次 128-lane load，用 even/odd mask 收真实 Dv。
+    if dv_align == 256:
+        w0 = pl.min(constInfo.dvSize, 128)
+        w1 = pl.max(constInfo.dvSize - 128, 0)
+        softmax_grad_front_row256_vf(
+            sfmg_ub,
+            y_ub,
+            dy_ub,
+            runInfo.halfS1RealSize,
+            runInfo.rowShift,
+            rowStride,
+            (w0 + 1) // 2,
+            w0 // 2,
+            (w1 + 1) // 2,
+            w1 // 2,
+        )
+    elif dv_align == 192:
+        w0 = pl.min(constInfo.dvSize, 128)
         w1 = pl.max(constInfo.dvSize - 128, 0)
         softmax_grad_front_row192_vf(
             sfmg_ub,
@@ -121,9 +148,66 @@ def process_vec1(
             runInfo.halfS1RealSize,
             runInfo.rowShift,
             rowStride,
-            (w0 + 1) // 2,
-            w0 // 2,
+            constInfo.dvEvenSize,
+            constInfo.dvOddSize,
         )
+
+
+def _process_vec1_d768(
+    constInfo, runInfo, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+):
+    """768 档 V1：3 趟 VF256，后两趟累加到同一 sfmg。工作列宽 256。"""
+    for k in pl.range(0, 3):
+        colOff = k * 256
+        rem = pl.max(constInfo.dvSize - colOff, 0)
+        winW = pl.min(256, rem)
+        if rem > 0:
+            pl.set_validshape(y_ub, [VECTOR_BASEM, winW])
+            pl.set_validshape(dy_ub, [VECTOR_BASEM, winW])
+            pl.load(
+                y_ub,
+                tensor_y,
+                [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, colOff],
+                order=[1, 3],
+            )
+            pl.load(
+                dy_ub,
+                tensor_dy,
+                [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, colOff],
+                order=[1, 3],
+            )
+            w0 = pl.min(rem, 128)
+            w1 = pl.max(rem - 128, 0)
+            even0 = (w0 + 1) // 2
+            odd0 = w0 // 2
+            even1 = (w1 + 1) // 2
+            odd1 = w1 // 2
+            if k == 0:
+                softmax_grad_front_row256_vf(
+                    sfmg_ub,
+                    y_ub,
+                    dy_ub,
+                    runInfo.halfS1RealSize,
+                    runInfo.rowShift,
+                    rowStride,
+                    even0,
+                    odd0,
+                    even1,
+                    odd1,
+                )
+            else:
+                softmax_grad_front_row256_acc_vf(
+                    sfmg_ub,
+                    y_ub,
+                    dy_ub,
+                    runInfo.halfS1RealSize,
+                    runInfo.rowShift,
+                    rowStride,
+                    even0,
+                    odd0,
+                    even1,
+                    odd1,
+                )
 
 
 # ==================================================================
@@ -174,6 +258,96 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp
     # 只写一次 L1：mm4 通过 ds_t_l1(同地址的 ZN 视图)直接读到 dS^T，
     # 无需再做 transpose/insert
     copy_ub2l1(ds_l1, nzp_ub, rowOff)
+
+
+# ==================================================================
+#  dsink —— sink 的反向（仅 sinks 输入存在时）
+# ==================================================================
+
+
+def process_sink_partial(
+    constInfo,
+    runInfo,
+    tensor_slots,
+    aiv_idx,
+    p_ub,
+    dp_ub,
+    lse_ub,
+    sink_part_ub,
+    sink_val,
+):
+    """本任务（本 s2 块）的 dsink 贡献：
+    -Σ_{m<rows} (Σ_{n<s2RealSize} P[m,n]·dP[m,n])·exp(sink - lse[rowBase+m])。
+
+    P/dP 取本 task 的 mm2/mm1 UB（V2 已把 mm2 覆写成 P），只统计本块的
+    [0, s2RealSize) 列；s2 尾块的 padding 列是 matmul 残留值，必须裁掉。
+    不能改用 V1 的整行 sfmg=rowsum(P·dP)：同一 s1 行会跨多个 s2 块 task，
+    整行量会在每个 task 各加一遍（与 flash_attention_score_grad 的
+    CalculateSink 用块内 P·dP 一致）。
+    本子核 lane m 对应真实行 queryOffset + subIdx*64 + m；lse 直接借主槽位：
+    那里的 lane m+rowShift 正是同一行（与 muls_sel_simple_softmax_vf 的取值
+    口径一致），故不需要额外的 GM 搬运。
+
+    部分和以 fp32 atomicAdd 直接落到槽位区本 AIV 行的 headQ 列
+    （tensor_slots[0, aiv_idx*n1Size + headQ]），post 阶段由 AIV0
+    按固定行序归约出 dsink。槽位区进主循环前已由 pre 清零。
+    rows == 0（尾块里第二个子核无行）时整体跳过，不产生任何写。
+    调用方必须保证此时 mm1/mm2 尚未放行给 cube（本块还没被覆写）。
+    """
+    rows = runInfo.halfS1RealSize
+    if rows <= 0:
+        return
+    s2Real = runInfo.s2RealSize
+    if s2Real <= 0:
+        return
+    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
+    # s2 列按 VF_LANES 分段：loopTimes 个满段 + 尾段 tailCols(1..VF_LANES)
+    loopTimes = (s2Real + VF_LANES - 1) // VF_LANES - 1
+    tailCols = s2Real - loopTimes * VF_LANES
+    dsink_partial_vf(
+        sink_part_ub,
+        p_ub,
+        dp_ub,
+        lse_ub,
+        sink_val,
+        rows,
+        loopTimes,
+        tailCols,
+        runInfo.rowShift,
+    )
+    pl.set_validshape(sink_part_ub, [1, 1])
+    pl.store(
+        tensor_slots,
+        sink_part_ub,
+        [0, aiv_idx * constInfo.n1Size + headQ],
+        atomic=pl.AtomicType.AtomicAdd,
+    )
+    pl.set_validshape(sink_part_ub, [1, VECTOR_BASEN])
+
+
+def process_sink_reduce(
+    constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count
+):
+    """dsink 的固定次序归约：acc = slot[0] + slot[1] + ... + slot[aiv_count-1]。
+
+    由 AIV0 在末尾 sync_all 之后单点执行；行序固定 → 括号结构逐位可复现。
+    head 维按 VECTOR_BASEN 分块，尾部 valid_shape 裁剪；acc 初值取第 0 行。
+    """
+    n1Size = constInfo.n1Size
+    nsegs = VECTOR_BASEN // VF_LANES
+    nChunks = (n1Size + VECTOR_BASEN - 1) // VECTOR_BASEN
+    for c in pl.range(0, nChunks):
+        w = pl.min(VECTOR_BASEN, n1Size - c * VECTOR_BASEN)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.load(acc_ub, tensor_slots, [0, c * VECTOR_BASEN])
+        pl.system.bar_mte2()
+        for r in pl.range(1, aiv_count):
+            pl.set_validshape(row_ub, [1, w])
+            pl.load(row_ub, tensor_slots, [0, r * n1Size + c * VECTOR_BASEN])
+            pl.system.bar_mte2()
+            dsink_reduce_add_vf(acc_ub, row_ub, nsegs)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.store(tensor_dsink, acc_ub, [0, c * VECTOR_BASEN])
 
 
 # ==================================================================
@@ -250,6 +424,16 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     process_pre(tensor_dv, zt, dkvRowStart * dV, dvNElems)
 
 
+def process_sink_zero(tensor_slots, constInfo, zt, aiv_idx):
+    """把 dsink 槽位区本 AIV 行清零，作为主循环 atomicAdd 的前置。
+
+    行号 = AIV 全局序号，空闲 AIV 也清（归约会读所有行）。zt 必须是 fp32
+    视图；清完由调用方用 sync_all 与主循环的 atomicAdd 隔开。
+    """
+    fill_zero_vf(zt, (constInfo.n1Size + VF_LANES - 1) // VF_LANES)
+    process_pre(tensor_slots, zt, aiv_idx * constInfo.n1Size, constInfo.n1Size)
+
+
 # ==================================================================
 #  Post —— dQ/dK/dV 的 scale + cast
 # ==================================================================
@@ -316,8 +500,8 @@ def process_vec1_bn2(
         runInfo.halfS1RealSize,
         runInfo.rowShift,
         rowStride,
-        constInfo.dEvenSize,
-        constInfo.dOddSize,
+        constInfo.dvEvenSize,
+        constInfo.dvOddSize,
     )
 
 

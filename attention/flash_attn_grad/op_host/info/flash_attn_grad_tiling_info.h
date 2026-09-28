@@ -47,6 +47,7 @@ constexpr size_t METADATA_INDEX = 12;
 constexpr size_t DQ_OUT_INDEX = 0;
 constexpr size_t DK_OUT_INDEX = 1;
 constexpr size_t DV_OUT_INDEX = 2;
+constexpr size_t DSINK_OUT_INDEX = 3;
 
 constexpr size_t ATTR_SOFTMAX_SCALE_INDEX = 0;
 constexpr size_t ATTR_MASK_MODE_INDEX = 1;
@@ -80,7 +81,7 @@ constexpr int64_t TMPL_RESERVED_BN2S2 = 3;
 constexpr int64_t LAYOUT_NOT_TND = 0;
 constexpr int64_t LAYOUT_TND = 1;
 
-constexpr int64_t MAX_HEAD_DIM = 192;
+constexpr int64_t MAX_HEAD_DIM = 768;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。
@@ -125,8 +126,10 @@ struct FagParsedInfo {
     // 可选输入是否存在
     bool hasAttenMask = false;
     bool hasSeqused = false;
-    // 已解析但**不参与 tilingkey**。D4 暂定：sinks 是否占位要等 pypto 侧实现
-    // 方式确定后再定，在那之前它只用于日志与将来的判据输入。
+    // sinks 是否提供。不占 tilingkey：kernel 只在主循环里多一个标量分支，
+    // 命中时按 head 在本 AIV 的 UB 累加器里精确累加，循环末尾写成槽位区本
+    // AIV 行，post 阶段由 AIV0 固定次序归约后整行写 dsink
+    // （见 op_kernel/fag_block_vec.py 的 process_sink_partial/reduce）。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需
@@ -174,6 +177,10 @@ struct FagWorkspacePlan {
     FagWorkspaceSegment dq; // B*S1*N1*D  fp32（N1 = N2*G）
     FagWorkspaceSegment dk; // B*S2*N2*D  fp32
     FagWorkspaceSegment dv; // B*S2*N2*Dv fp32
+    // dsink 确定性归约的槽位区：aivNum 行 × N1 列 fp32（每 AIV 独占一行
+    // 写部分和）。行数 = 实际 AIV 数（launch 的 AIV = usedCube*subblock
+    // ≤ aivNum），与 N1 无关；放在 dv 段与 128 行对齐垫之后。
+    FagWorkspaceSegment dsink;
     size_t totalSize = 0;
 };
 

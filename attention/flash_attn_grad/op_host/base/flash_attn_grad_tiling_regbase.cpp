@@ -30,7 +30,7 @@ namespace {
 // 布局钉死：改了 py 侧字段就会在这里断编译，逼着同步改 Tmp 和这些数字。
 // 注意 scaleValue 是唯一的 4 字节字段，它后面有 4 字节填充 —— 框架的
 // CheckAlignAndGenPlaceHolder 也会插同样的填充，两边才对得上。
-static_assert(sizeof(FlashAttnGradTilingData) == 192,
+static_assert(sizeof(FlashAttnGradTilingData) == 200,
               "TilingData layout changed; update FlashAttnGradTilingDataTmp in flash_attn_grad_tiling.h too.");
 static_assert(offsetof(FlashAttnGradTilingData, scaleValue) == 56, "scaleValue moved; re-check the 4-byte padding.");
 static_assert(offsetof(FlashAttnGradTilingData, gSize) == 64, "gSize moved; re-check the padding after scaleValue.");
@@ -38,13 +38,15 @@ static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128,
               "layout-view tail moved; a field was added or removed.");
 static_assert(offsetof(FlashAttnGradTilingData, totalPerBatchNum) == 184,
               "trailing mask field moved; a field was added or removed.");
+static_assert(offsetof(FlashAttnGradTilingData, sinkOptional) == 192,
+              "sinkOptional must stay the last field so earlier offsets keep their values.");
 
 void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan,
              const FagRouteTrace &trace)
 {
     OP_LOGI(context->GetNodeName(),
             "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, "
-            "layoutStr=%s, layout=%ld, maskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, "
+            "layoutStr=%s, layout=%ld, effectiveMaskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, "
             "hasAttenMask=%d, hasSeqused=%d, hasSinks=%d, isEmptyShape=%d, "
             "template=%ld, isBn2MultiBlk=%ld, bn2NeedZero=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, "
             "B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, "
@@ -166,6 +168,11 @@ ge::graphStatus FlashAttnGradTilingRegbase::WriteTilingData(const FagParsedInfo 
     tilingData->s1Token = info.s1Token;
     tilingData->s2Token = info.s2Token;
     tilingData->totalPerBatchNum = info.totalPerBatchNum;
+    // sinks 是否存在只决定 kernel 要不要算 dsink：纯运行期标量分支。
+    // dsink 的槽位区行数 = 实际 AIV 数（workspace 按平台 aivNum 开），与 N1
+    // 无关，故这里不再有行数上限；N1 的上限只在 FagShapeChecker::CheckSinks
+    // 里按 kernel 的 UB 累加器容量校验。
+    tilingData->sinkOptional = info.hasSinks ? 1 : 0;
     return ge::GRAPH_SUCCESS;
 }
 

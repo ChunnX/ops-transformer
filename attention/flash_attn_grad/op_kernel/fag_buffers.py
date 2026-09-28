@@ -12,7 +12,7 @@
 pypto 的 tile 必须在 ``with pl.section_*()`` 里就地声明，而且 tracer
 不接受自定义 Python 类（``CubeBlock(...)`` 会直接报 Unsupported function
 call），所以这里是**一个 buffer 一个工厂函数**：调用点写
-``q_l1 = buf.make_q_l1()``，声明本身连同它的全部理由留在本文件。
+``q_l1 = make_q_l1()``，声明本身连同它的全部理由留在本文件。
 
 这样拆的收益：
 
@@ -57,8 +57,7 @@ from fag_common import (
 def make_mm1_res():
     """mm1(dP = dO@V^T) 的结果 UB，双槽按 taskId % 2 ping-pong。
 
-    cube 侧 fixpipe 写、vector 侧读，
-    故声明在两个 section 之外。
+    cube 侧 fixpipe 写、vector 侧读，故声明在两个 section 之外。
     """
     return pl.make_tile_group(
         type=pl.TileType(
@@ -334,7 +333,7 @@ def make_l0c_acc():
 
 
 # ==================================================================
-#  dK / dV 的常驻 L0C
+#  dK / dV 的常驻 L0C（IS_DKV_RESIDENT_L0C）
 # ==================================================================
 # 这些累加器要在同一 s2 块内跨 s1 轮次持续存在，访问方式是 current() 而非
 # next()，故每个 D 分块**各建一个独立的 tile_group**，不做成多槽位 group。
@@ -406,7 +405,7 @@ def make_dv_l0c_chunk1():
 # ==================================================================
 #  Vector 侧 UB（BN2GS1S2）
 # ==================================================================
-# `v1w` 是 V1 的列宽（d_align=64 档取 64，否则取 dv_align），y/dy 按它分配。
+# `v1w` 是 V1 的列宽：一般等于 `dv_align`，768 档为 256。
 def make_y_ub(v1w):
     """前向输出 y 的 UB（V1 的输入之一）。"""
     return pl.make_tile_group(
@@ -478,6 +477,56 @@ def make_lse_ub(v1w):
         ),
         addrs=[mem.UB_LSE0_A[v1w], mem.UB_LSE1_A[v1w]],
         mutex_ids=mem.MTX_UB_LSE,
+    )
+
+
+def make_sink_part_ub(v1w):
+    """dsink 的单任务部分和缓冲：[1, VECTOR_BASEN] fp32，只写 lane 0。
+
+    本 task 的部分和（lane 0）随即以 fp32 atomicAdd 直落槽位区本 AIV 行的
+    headQ 列。
+    """
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_PART_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_PART,
+    )
+
+
+def make_sink_row_post_ub(v1w):
+    """post 段 dsink 归约的行 tile：[1, VECTOR_BASEN] fp32（post arena 专用）。
+
+    与 post_f32/f16 同属 post arena 且不重叠；不能复用主线的 sink_part
+    （两者地址重叠、mutex 不同，会踩到飞行中的 post cast/store）。
+    """
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_ROW_POST_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_ROW_POST,
+    )
+
+
+def make_sink_red_post_ub(v1w):
+    """post 段 dsink 归约的累加 tile：[1, VECTOR_BASEN] fp32（post arena 专用）。"""
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_RED_POST_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_RED_POST,
     )
 
 
