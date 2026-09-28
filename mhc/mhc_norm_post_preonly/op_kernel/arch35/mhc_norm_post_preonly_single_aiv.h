@@ -135,12 +135,21 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            FenceVToMte2();
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1,
+                                       (uint64_t)token * D_ + tOff, tD);
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                // gamma1已被当前VF消费，允许下一tile的MTE2覆盖gamma缓存。
+                FenceVToMte2();
+            }
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 

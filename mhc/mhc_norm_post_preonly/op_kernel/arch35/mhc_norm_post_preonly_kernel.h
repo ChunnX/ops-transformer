@@ -114,11 +114,13 @@ public:
         // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
-        pipe_.InitBuffer(bufPhiFp32_, BUFFER_NUM_FOUR, dimTile_ * sizeof(float));
+        pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dimTile_ * sizeof(float));
         // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
-        const uint32_t gamma1CacheElems = D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
+        // Dual 5op reuses this allocation for full-D R1/mid/R6 squares.
+        // At D=7168 the dual-path buffers total 253280 bytes (<256 KiB).
+        const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
         pipe_.InitBuffer(bufGamma2Fp32_, gamma1CacheElems * sizeof(float));
 
         evtMte2toV_ = static_cast<int32_t>(pipe_.AllocEventID<HardEvent::MTE2_V>());
@@ -415,6 +417,21 @@ private:
         }
     }
 
+    // RETURN_H_IN_F32关闭时，直接在已消费完的x2低精度缓存上完成R7量化，避免FP32中间区和二次转换。
+    __aicore__ inline void WriteHInPrimeTileFromCache(LocalTensor<T> srcDst,
+                                                       LocalTensor<float> gamma,
+                                                       float scale, uint64_t gmOffset,
+                                                       uint32_t count)
+    {
+        MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(srcDst, srcDst, gamma, scale, count);
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
+        DataCopy(hInPrimeGm_[gmOffset], srcDst, count);
+        // 复用x2缓存前，确保MTE3已读取本轮R7的低精度结果。
+        FenceMte3ToV();
+    }
+
     __aicore__ inline uint32_t GetTileD(uint32_t tile) const
     {
         if (lastDimTile_ != 0 && tile == dimLoop_ - 1) {
@@ -545,8 +562,10 @@ private:
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
 
-        DataCopyExtParams copyParams = {1, 0, 0, 0, 0};
+        DataCopyExtParams copyParams = {2, 0, 0, 0, 0};
         copyParams.blockLen = tD * sizeof(float);
+        copyParams.srcStride = (D_ - tD) * sizeof(float);
+        copyParams.dstStride = (dimTile_ - tD) * sizeof(float) / 32U;
         DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
         // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
@@ -565,18 +584,13 @@ private:
 
                 for (uint32_t o = 0; o < N_MAX; ++o) {
                     LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
-                    LocalTensor<float> phi1 = bufPhiFp32_.AllocTensor<float>();
                     const uint64_t phiBaseOffset = (uint64_t)o * phiCols_ + tOff;
                     DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
-                    DataCopyPad(phi1, phiGm_[phiBaseOffset + (uint64_t)h1 * D_], copyParams, copyPad);
                     bufPhiFp32_.EnQue(phi0);
-                    bufPhiFp32_.EnQue(phi1);
                     phi0 = bufPhiFp32_.DeQue<float>();
-                    phi1 = bufPhiFp32_.DeQue<float>();
-                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi1, tD);
+                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi0[dimTile_], tD);
                     PipeBarrier<PIPE_V>();
                     bufPhiFp32_.FreeTensor(phi0);
-                    bufPhiFp32_.FreeTensor(phi1);
                     dotHalf[half][o] += ReduceSumPrecise(out, tD);
                 }
             }
@@ -593,39 +607,29 @@ private:
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
             MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
 
-            // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
+            // Each queue entry contains two heads. One strided DMA and one
+            // queue event per pair; two entries retain MTE2/Vector overlap.
             LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
-            LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
             DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-            DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
             bufPhiFp32_.EnQue(curPhi0);
-            bufPhiFp32_.EnQue(curPhi1);
 
             for (uint32_t o = 0; o < N_MAX; ++o) {
                 // 预取下一轮o+1的两路phi，与当前dot计算重叠。
                 LocalTensor<float> nextPhi0;
-                LocalTensor<float> nextPhi1;
                 if (o + 1U < N_MAX) {
                     nextPhi0 = bufPhiFp32_.AllocTensor<float>();
-                    nextPhi1 = bufPhiFp32_.AllocTensor<float>();
                     DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
                                 copyPad);
-                    DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
-                                copyPad);
                     bufPhiFp32_.EnQue(nextPhi0);
-                    bufPhiFp32_.EnQue(nextPhi1);
                 }
 
                 LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
                 curPhi0 = bufPhiFp32_.DeQue<float>();
-                curPhi1 = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
+                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi0[dimTile_], tD);
                 bufPhiFp32_.FreeTensor(curPhi0);
-                bufPhiFp32_.FreeTensor(curPhi1);
 
                 if (o + 1U < N_MAX) {
                     curPhi0 = nextPhi0;
-                    curPhi1 = nextPhi1;
                 }
             }
 
@@ -655,7 +659,7 @@ private:
     TQue<TPosition::VECIN, 1> bufResidualBf16_;
     TBuf<TPosition::VECCALC> bufResFp32_;
     TBuf<TPosition::VECCALC> bufPostComb_;
-    TQue<TPosition::VECIN, BUFFER_NUM_FOUR> bufPhiFp32_;
+    TQue<TPosition::VECIN, 2> bufPhiFp32_;
     TQue<TPosition::VECOUT, BUFFER_NUM_ONE> bufHInPrimeBf16_;
     TBuf<TPosition::VECCALC> bufScalar_;
 
