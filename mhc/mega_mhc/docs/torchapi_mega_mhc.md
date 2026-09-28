@@ -2,7 +2,7 @@
 
 ## 产品与状态
 
-目标为 Ascend 950PR/950DT；不支持910。验证状态见[检查报告](design_review.md)。
+目标为 Ascend 950PR/950DT；不支持910。验证状态见[实验与回归记录](generic_d_tiling_experiment.md)。
 提供 eager/Meta 接口，暂不提供 torchair GE Converter 或反向梯度。
 
 ## 功能与公式
@@ -12,7 +12,7 @@
 1. `x1=RMS(h_out,gamma_0)`。
 2. `z[n,d]=Cast<T>(h_post[n]*FP32(x1[d])+sum_j h_res[j,n]*FP32(residual[j,d]))`。
 3. 未提供 gamma_2 时 `x2=z`；否则对完整 `[4D]` 行做 `x2=RMS(z,gamma_2)`。
-4. `p=(FP32(x2.flatten()) @ phi.T)*rsqrt(mean(FP32(x2)^2)+norm_eps)`。
+4. `p=(FP32(x2.flatten()) @ phi.T)*rsqrt(mean(FP32(x2)^2)+mhc_pre_norm_eps)`。
 5. `h_pre=sigmoid(alpha[0]*p[:4]+bias[:4])+hc_eps`；
    `h_post_new=2*sigmoid(alpha[1]*p[4:8]+bias[4:8])`；
    `h_res_new=reshape(alpha[2]*p[8:24]+bias[8:24],[4,4])`。
@@ -23,8 +23,8 @@
 ## 函数原型
 
 ```python
-mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0,
-         *, gamma_2=None, norm_eps=1e-6, hc_eps=1e-6, compute_mode=0, schedule_mode=0)
+mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0=None,
+         *, gamma_2=None, norm_eps=1e-6, mhc_pre_norm_eps=1e-6, hc_eps=1e-6, compute_mode=0)
 ```
 
 ## 参数与输出
@@ -41,19 +41,22 @@ N 固定为4，D 在[2560,7168]内且为256的倍数，前导维度必须为正�
 | h_res | 是 | `[...,4,4]`，FP32，索引为 `[来源head,输出head]` |
 | phi | 是 | `[24,4D]`，FP32，投影权重 |
 | alpha / bias | 是 | `[3]` / `[24]`，FP32 |
-| gamma_1 / gamma_0 | 是 | `[D]`，FP32，最终/初始 RMS scale |
+| gamma_1 | 是 | `[D]`，FP32，最终 RMS scale |
+| gamma_0 | 预留可选 | 默认 None，表示 RMSNorm_0 权重；本版必须传入非空 FP32 `[D]`，尚不支持跳过 RMSNorm_0 |
 | gamma_2 | 否 | `[4D]`，FP32；None 为四算子，否则五算子，不接受空Tensor |
 | norm_eps | 否 | 转为FP32后仍有限且大于0 |
+| mhc_pre_norm_eps | 否 | Pre 投影归一化使用的独立 epsilon，转为FP32后仍有限且大于0 |
 | hc_eps | 否 | 有限非负，转为FP32不溢出 |
 | compute_mode | 否 | 0=FP32，1=HF32；不支持2/3BF16 |
-| schedule_mode | 否 | 0=M-K（默认），1=ND（沿N*D分核），2=BS（沿token分核） |
 
 返回 `(h_in_prime, h_post_new, h_res_new, x_2_out)`，shape 分别同
 `(h_out, h_post, h_res, residual)`，dtype 为 `(T, FP32, FP32, T)`。输出为连续 ND。
 
-Torch 使用 `aclnnAiInfraMegaMhcV2`，在 computeMode 后增加 scheduleMode；旧接口保持签名和默认 M-K 行为。
+Torch 使用 `aclnnAiInfraMegaMhc`，属性顺序为 normEps、mhcPreNormEps、hcEps、computeMode。
+调度模板属于 Host 内部决策，不在算子属性或 Torch/ACLNN 参数中公开。
+接口已更正，旧调用程序须同步重新编译。
 
-ABI 沿用 `aclnnAiInfraMegaMhc` 的 gamma0Optional 参数名；950 合约要求其非空。
+`gamma0Optional` 保留可选指针形式；本次950实现要求其非空。
 同一950配置以确定性为目标；与910按误差阈值验收，不承诺逐位相同或跨batch组成一致。
 
 ## 示例

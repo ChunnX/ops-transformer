@@ -10,7 +10,7 @@
 - op_host/op_api：aclnnAiInfraMegaMhc 参数校验、Contiguous、L0 launch、ViewCopy。
 - op_host/op_tiling：GE总注册与arch35 host分块；memory_plan逐buffer计数，TilingData负责下发。
 - op_kernel/arch35/compute：五阶段RegBase数学函数，公式与舍入点写在函数注释中。
-- op_kernel/arch35/schedule.h、epilogue.h：四/五调度、行归属、同步和最终归约。
+- op_kernel/arch35/schedule_mk.h、schedule_bs.h、schedule_nd.h、epilogue.h：四/五调度、行归属、同步和最终归约。
 - op_kernel/arch35/compute/projection_cube.h：Cube Basic API微流水，读取host给定L1/L0/Mmad/LoadData参数。
 - op_kernel/arch35/transfer.h：GM、UB→L1双槽传输及READY/credit协议。
 - torch_extension：仓内自动收集的mega_mhc Python、Meta、PrivateUse1/JIT C++封装。
@@ -23,9 +23,11 @@ RMS0/RMS1 平方和使用双链累加；Post 内融合的 RMSMid 平方和按 he
 
 ## 模板选择
 
-Torch 可选参数 `schedule_mode=0/1/2` 分别选择 M-K/ND/BS；默认仍为已验证的 M-K。
-三种模板支持四/五算子与 FP32/HF32，复用全部 RegBase/Cube 计算函数和 `schedule.h`。
-旧 ACLNN ABI 保留并选择 M-K；`aclnnAiInfraMegaMhcV2` 增加 `scheduleMode` 参数。
+调度模板由 Host 内部决定，不属于公开属性。本版保持默认 M-K；ND/BS 实现保留，
+自动选择策略尚未启用。三种模板通过 tiling key 区分，公共计算继续复用。
+公开属性严格依次为 `norm_eps`、`mhc_pre_norm_eps`、`hc_eps`、`compute_mode`。
+`mhc_pre_norm_eps` 仅用于 Pre 投影归一化；其余 RMS 阶段使用 `norm_eps`。
+更正后的 ACLNN/Torch 接口需要同步重新编译，不再提供调度参数的 V2 接口。
 
 - ND：`mGrid=1`，沿 `K=N*D` 分核；所有 K 分片共同计算同一批 token，最后按 K 顺序归约。
 - BS：`kGrid=1`，沿 token 分核；每核遍历完整 K，按既有规则输出 1024 长度有序 partial。

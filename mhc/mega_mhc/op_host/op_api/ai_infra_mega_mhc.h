@@ -25,8 +25,8 @@ namespace AiInfraMegaMhcl0op {
 /** Launch RMS0 -> Post -> optional Mid -> Pre -> RMS1 with supplied contiguous output views. */
 bool AiInfraMegaMhc(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
                     const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
-                    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps,
-                    int64_t computeMode, int64_t scheduleMode, const aclTensor *hInPrimeOut,
+                    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps,
+                    double mhcPreNormEps, double hcEps, int64_t computeMode, const aclTensor *hInPrimeOut,
                     const aclTensor *hPostNewOut, const aclTensor *hResNewOut, const aclTensor *x2Out,
                     aclOpExecutor *executor);
 

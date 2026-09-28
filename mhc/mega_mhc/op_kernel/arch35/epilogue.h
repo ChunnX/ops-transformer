@@ -74,7 +74,7 @@ __aicore__ inline void PrepareEpilogueRows(Kernel::Tensors<T> &tensors, const Me
     Compute::NormalizeProjectionRows(
         reinterpret_cast<__ubuf__ float *>(partial.GetPhyAddr()), reinterpret_cast<__ubuf__ float *>(rms.GetPhyAddr()),
         rows, tiling.fixpipeRowStride, tiling.reduceRows * tiling.fixpipeRowStride, tiling.partialGroupCount,
-        tiling.reduceRowsAligned, tiling.kGrid, tiling.k, tiling.normEps);
+        tiling.reduceRowsAligned, tiling.kGrid, tiling.k, tiling.mhcPreNormEps);
     Compute::ComputeGateRows(reinterpret_cast<__ubuf__ float *>(partial.GetPhyAddr()),
                              reinterpret_cast<__ubuf__ float *>(alpha.GetPhyAddr()),
                              reinterpret_cast<__ubuf__ float *>(bias.GetPhyAddr()), tiling.hcEps, rows,

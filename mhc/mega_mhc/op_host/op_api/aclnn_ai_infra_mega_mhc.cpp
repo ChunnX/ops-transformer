@@ -49,7 +49,8 @@ bool CheckTensor(const aclTensor *tensor, const char *name, const std::vector<in
 }
 
 /** Check N=4, aligned D in [2560,7168], optional Mid and four outputs; M is the product of leading axes. */
-aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double normEps, double hcEps, int64_t mode)
+aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double normEps, double mhcPreNormEps,
+                          double hcEps, int64_t mode)
 {
     for (size_t i = 0; i < MID_INDEX; ++i) {
         CHECK_RET(inputs[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -58,8 +59,10 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double n
         CHECK_RET(output != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
     const float norm = static_cast<float>(normEps);
+    const float preNorm = static_cast<float>(mhcPreNormEps);
     const float hc = static_cast<float>(hcEps);
-    CHECK_RET(std::isfinite(norm) && norm > 0 && std::isfinite(hc) && hcEps >= 0 && (mode == 0 || mode == 1),
+    CHECK_RET(std::isfinite(norm) && norm > 0 && std::isfinite(preNorm) && preNorm > 0 && std::isfinite(hc) &&
+                  hcEps >= 0 && (mode == 0 || mode == 1),
               ACLNN_ERR_PARAM_INVALID);
     const auto &shape = inputs[0]->GetViewShape();
     const auto rank = shape.GetDimNum();
@@ -113,12 +116,11 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double n
 }
 
 /** Materialize strided inputs, launch to contiguous outputs, then ViewCopy back to the caller's output views. */
-aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps, double hcEps, int64_t mode,
-                           int64_t scheduleMode, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps, double mhcPreNormEps, double hcEps,
+                           int64_t mode, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(scheduleMode >= 0 && scheduleMode <= 2, ACLNN_ERR_PARAM_INVALID);
-    const auto status = CheckContract(inputs, outputs, normEps, hcEps, mode);
+    const auto status = CheckContract(inputs, outputs, normEps, mhcPreNormEps, hcEps, mode);
     CHECK_RET(status == ACLNN_SUCCESS, status);
     auto owner = CREATE_EXECUTOR();
     CHECK_RET(owner.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -136,7 +138,7 @@ aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps
     }
     const bool launched = AiInfraMegaMhcl0op::AiInfraMegaMhc(
         inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], inputs[6], inputs[7], inputs[8], inputs[9],
-        normEps, hcEps, mode, scheduleMode, contiguousOutputs[0], contiguousOutputs[1], contiguousOutputs[2],
+        normEps, mhcPreNormEps, hcEps, mode, contiguousOutputs[0], contiguousOutputs[1], contiguousOutputs[2],
         contiguousOutputs[3], owner.get());
     CHECK_RET(launched, ACLNN_ERR_INNER_NULLPTR);
     for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
@@ -153,34 +155,17 @@ aclnnStatus aclnnAiInfraMegaMhcGetWorkspaceSize(const aclTensor *hOut, const acl
                                                 const aclTensor *hPost, const aclTensor *hRes, const aclTensor *phi,
                                                 const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
                                                 const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
-                                                double normEps, double hcEps, int64_t computeMode,
+                                                double normEps, double mhcPreNormEps, double hcEps, int64_t computeMode,
                                                 const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut,
                                                 const aclTensor *hResNewOut, const aclTensor *x2Out,
                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnAiInfraMegaMhc,
                    DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
-                          normEps, hcEps, computeMode),
+                          normEps, mhcPreNormEps, hcEps, computeMode),
                    DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out));
     return BuildExecution({hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional},
-                          {hInPrimeOut, hPostNewOut, hResNewOut, x2Out}, normEps, hcEps, computeMode, 0, workspaceSize,
-                          executor);
-}
-
-/** Build the execution graph and report its workspace; no kernel executes in this phase. */
-aclnnStatus aclnnAiInfraMegaMhcV2GetWorkspaceSize(
-    const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
-    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double hcEps, int64_t computeMode,
-    int64_t scheduleMode, const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut, const aclTensor *hResNewOut,
-    const aclTensor *x2Out, uint64_t *workspaceSize, aclOpExecutor **executor)
-{
-    L2_DFX_PHASE_1(aclnnAiInfraMegaMhcV2,
-                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
-                          normEps, hcEps, computeMode, scheduleMode),
-                   DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out));
-    return BuildExecution({hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional},
-                          {hInPrimeOut, hPostNewOut, hResNewOut, x2Out}, normEps, hcEps, computeMode, scheduleMode,
+                          {hInPrimeOut, hPostNewOut, hResNewOut, x2Out}, normEps, mhcPreNormEps, hcEps, computeMode,
                           workspaceSize, executor);
 }
 
@@ -189,10 +174,4 @@ aclnnStatus aclnnAiInfraMegaMhc(void *workspace, uint64_t workspaceSize, aclOpEx
 {
     L2_DFX_PHASE_2(aclnnAiInfraMegaMhc);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
-}
-
-/** Execute a V2 graph with the same executor ownership and stream semantics as the original entry. */
-aclnnStatus aclnnAiInfraMegaMhcV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
-{
-    return aclnnAiInfraMegaMhc(workspace, workspaceSize, executor, stream);
 }

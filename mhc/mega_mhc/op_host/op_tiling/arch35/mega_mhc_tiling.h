@@ -56,6 +56,7 @@ private:
     bool hasMid_ = false;
     ge::DataType inputType_ = ge::DT_UNDEFINED;
     mega_mhc::ProjectionMode projectionMode_ = mega_mhc::ProjectionMode::FP32;
+    float mhcPreNormEps_ = 1.0e-6f;
     float normEps_ = 1.0e-6f;
     float hcEps_ = 1.0e-6f;
     uint64_t workspaceBytes_ = 0;

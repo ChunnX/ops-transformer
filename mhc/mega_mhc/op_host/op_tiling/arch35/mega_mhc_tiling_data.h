@@ -21,6 +21,7 @@ TILING_DATA_FIELD_DEF(uint32_t, d);
 TILING_DATA_FIELD_DEF(uint32_t, k);
 TILING_DATA_FIELD_DEF(uint32_t, q);
 TILING_DATA_FIELD_DEF(float, normEps);
+TILING_DATA_FIELD_DEF(float, mhcPreNormEps);
 TILING_DATA_FIELD_DEF(float, hcEps);
 
 TILING_DATA_FIELD_DEF(uint32_t, activeAic);

@@ -15,6 +15,7 @@ PyTorch dispatcher registration, JIT compilation or NPU execution.
 
 import ast
 import math
+import re
 from pathlib import Path
 import types
 import unittest
@@ -89,6 +90,71 @@ def make_inputs(leading=(33,), d=2560, dtype="float16", mid=False):
 class TestTorchContract(unittest.TestCase):
     meta = staticmethod(load_production_functions())
 
+    def test_registered_prototype_order_and_defaults(self):
+        """Protect the public GE and Torch contract against attribute/index drift."""
+        root = Path(__file__).parents[1]
+        definition = (root / "op_host/ai_infra_mega_mhc_def.cpp").read_text(
+            encoding="utf-8"
+        )
+        inputs = re.findall(r'Input\("([^"]+)"\)\.ParamType\((\w+)\)', definition)
+        names = [
+            "h_out",
+            "residual",
+            "h_post",
+            "h_res",
+            "phi",
+            "alpha",
+            "bias",
+            "gamma_1",
+            "gamma_0",
+            "gamma_2",
+        ]
+        self.assertEqual(inputs, list(zip(names, ["REQUIRED"] * 8 + ["OPTIONAL"] * 2)))
+        self.assertEqual(
+            re.findall(r'Output\("([^"]+)"\)', definition),
+            ["h_in_prime", "h_post_new", "h_res_new", "x_2_out"],
+        )
+        self.assertEqual(
+            re.findall(
+                r'Attr\("([^"]+)"\)\.AttrType\(OPTIONAL\)\.(Float|Int)\(([^)]+)\)',
+                definition,
+            ),
+            [
+                ("norm_eps", "Float", "1e-6f"),
+                ("mhc_pre_norm_eps", "Float", "1e-6f"),
+                ("hc_eps", "Float", "1e-6f"),
+                ("compute_mode", "Int", "0"),
+            ],
+        )
+        tree = ast.parse(
+            (root / "torch_extension/mega_mhc.py").read_text(encoding="utf-8")
+        )
+        schema_method = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "schema"
+        )
+        schema = next(
+            ast.literal_eval(n.value)
+            for n in schema_method.body
+            if isinstance(n, ast.Return)
+        )
+        self.assertIn("Tensor? gamma_0=None", schema)
+        self.assertNotIn("schedule_mode", schema)
+        attrs = ["norm_eps", "mhc_pre_norm_eps", "hc_eps", "compute_mode"]
+        self.assertEqual(
+            [n.arg for n in self._meta_ast(tree).args.kwonlyargs], ["gamma_2"] + attrs
+        )
+
+    @staticmethod
+    def _meta_ast(tree):
+        """Find the production Meta signature without loading the NPU package."""
+        return next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "mega_mhc_meta"
+        )
+
     def test_all_template_families_and_ranks(self):
         """Eight four/five x FP32/HF32 x input-type combinations, both D and ranks."""
         for leading in ((1,), (33,), (2, 17)):
@@ -110,17 +176,15 @@ class TestTorchContract(unittest.TestCase):
                                     [dtype, "float32", "float32", dtype],
                                 )
 
-    def test_schedule_modes_preserve_outputs(self):
-        """ND and BS change ownership only, preserving the four-output contract."""
-        for mode in (0, 1, 2):
-            args, kwargs = make_inputs(mid=True)
-            outputs = self.meta(*args, **kwargs, schedule_mode=mode)
-            self.assertEqual(
-                [x.shape for x in outputs], [args[i].shape for i in (0, 2, 3, 1)]
-            )
+    def test_schedule_is_not_a_public_attribute(self):
+        args, kwargs = make_inputs()
+        with self.assertRaises(TypeError):
+            self.meta(*args, **kwargs, schedule_mode=0)
 
     def test_required_gamma0_and_optional_gamma2(self):
         args, kwargs = make_inputs()
+        with self.assertRaisesRegex(RuntimeError, "gamma_0 is required"):
+            self.meta(*args[:-1], **kwargs)
         args[-1] = None
         with self.assertRaisesRegex(RuntimeError, "gamma_0 is required"):
             self.meta(*args, **kwargs)
@@ -157,7 +221,7 @@ class TestTorchContract(unittest.TestCase):
                 self.meta(*args, **kwargs)
         for key, invalids in {
             "compute_mode": (-1, 2),
-            "schedule_mode": (-1, 3),
+            "mhc_pre_norm_eps": (0, -1, math.inf, math.nan, 1e-50, 1e40),
             "norm_eps": (0, -1, math.inf, math.nan, 1e-50, 1e40),
             "hc_eps": (-1, math.inf, math.nan, 1e40),
         }.items():

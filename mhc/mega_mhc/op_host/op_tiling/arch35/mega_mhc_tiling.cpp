@@ -227,12 +227,16 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         return ge::GRAPH_FAILED;
     }
     const float *normEps = attrs->GetAttrPointer<float>(0);
-    const float *hcEps = attrs->GetAttrPointer<float>(1);
-    const int64_t *computeMode = attrs->GetAttrPointer<int64_t>(2);
+    const float *mhcPreNormEps = attrs->GetAttrPointer<float>(1);
+    const float *hcEps = attrs->GetAttrPointer<float>(2);
+    const int64_t *computeMode = attrs->GetAttrPointer<int64_t>(3);
     normEps_ = normEps == nullptr ? 1.0e-6f : *normEps;
+    mhcPreNormEps_ = mhcPreNormEps == nullptr ? 1.0e-6f : *mhcPreNormEps;
     hcEps_ = hcEps == nullptr ? 1.0e-6f : *hcEps;
-    if (!std::isfinite(normEps_) || normEps_ <= 0.0f || !std::isfinite(hcEps_) || hcEps_ < 0.0f) {
-        OP_LOGE(context_->GetNodeName(), "norm_eps must be positive and hc_eps must be nonnegative");
+    if (!std::isfinite(normEps_) || normEps_ <= 0.0f || !std::isfinite(mhcPreNormEps_) || mhcPreNormEps_ <= 0.0f ||
+        !std::isfinite(hcEps_) || hcEps_ < 0.0f) {
+        OP_LOGE(context_->GetNodeName(),
+                "norm_eps and mhc_pre_norm_eps must be positive and hc_eps must be nonnegative");
         return ge::GRAPH_FAILED;
     }
     const int64_t mode = computeMode == nullptr ? 0 : *computeMode;
@@ -240,13 +244,8 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         OP_LOGE(context_->GetNodeName(), "compute_mode supports only 0 (FP32) and 1 (HF32)");
         return ge::GRAPH_FAILED;
     }
-    const int64_t *schedule = attrs->GetAttrPointer<int64_t>(3);
-    const int64_t scheduleMode = schedule == nullptr ? 0 : *schedule;
-    if (scheduleMode < 0 || scheduleMode > 2) {
-        OP_LOGE(context_->GetNodeName(), "schedule_mode supports 0 (M-K), 1 (ND), 2 (BS)");
-        return ge::GRAPH_FAILED;
-    }
-    scheduleMode_ = static_cast<mega_mhc::ScheduleMode>(scheduleMode);
+    // Scheduling is an internal tiling decision, not a public attribute.
+    scheduleMode_ = mega_mhc::ScheduleMode::MK;
     projectionMode_ = mode == 0 ? mega_mhc::ProjectionMode::FP32 : mega_mhc::ProjectionMode::HF32;
     return ge::GRAPH_SUCCESS;
 }
@@ -366,6 +365,7 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
     tilingData_.set_k(k_);
     tilingData_.set_q(kProjectionQ);
     tilingData_.set_normEps(normEps_);
+    tilingData_.set_mhcPreNormEps(mhcPreNormEps_);
     tilingData_.set_hcEps(hcEps_);
     CopyCubePlanToTilingData();
     const uint32_t waveProducerRows = request.wavePipeline ? cubePlan_.mTile / (cubePlan_.kGrid * 2U) : 0U;

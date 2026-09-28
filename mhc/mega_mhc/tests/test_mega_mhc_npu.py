@@ -42,6 +42,7 @@ def reference(
     gamma_0,
     gamma_2=None,
     norm_eps=1e-6,
+    mhc_pre_norm_eps=1e-6,
     hc_eps=1e-6,
 ):
     """Independent unfused FP32 reference, preserving every stage's input-type cast."""
@@ -65,7 +66,9 @@ def reference(
         flat = rms(flat, gamma_2)
         x2 = flat.reshape_as(x2)
     f = flat.float()
-    projected = (f @ phi.T) * torch.rsqrt(f.square().mean(-1, keepdim=True) + norm_eps)
+    projected = (f @ phi.T) * torch.rsqrt(
+        f.square().mean(-1, keepdim=True) + mhc_pre_norm_eps
+    )
     pre = torch.sigmoid(alpha[0] * projected[..., :4] + bias[:4]) + hc_eps
     post_new = 2 * torch.sigmoid(alpha[1] * projected[..., 4:8] + bias[4:8])
     res_new = (alpha[2] * projected[..., 8:] + bias[8:]).reshape(
@@ -89,9 +92,6 @@ class TestMegaMhcNpu(unittest.TestCase):
             raise unittest.SkipTest("mega_mhc acceptance requires Ascend 950")
         torch.npu.set_device(device)
         torch.set_num_threads(4)
-        cls.schedule_mode = int(os.getenv("MEGA_MHC_TEST_SCHEDULE_MODE", "0"))
-        if cls.schedule_mode not in (0, 1, 2):
-            raise ValueError("MEGA_MHC_TEST_SCHEDULE_MODE must be 0, 1, or 2")
         limit = os.getenv("MEGA_MHC_TEST_AIC_LIMIT")
         if limit is not None:
             # Process-local CANN quota, applied before dispatch; production tiling
@@ -201,7 +201,6 @@ class TestMegaMhcNpu(unittest.TestCase):
                                 kwargs = {
                                     "gamma_2": gamma2.npu() if mid else None,
                                     "compute_mode": mode,
-                                    "schedule_mode": self.schedule_mode,
                                 }
                                 actual = cann_ops_transformer.mega_mhc(
                                     *device_inputs, **kwargs
@@ -229,6 +228,54 @@ class TestMegaMhcNpu(unittest.TestCase):
                                         torch.equal(host_result, repeat.cpu())
                                     )
                                 print("CASE_PASS", flush=True)
+
+    def test_independent_pre_norm_epsilon(self):
+        """A distinct Pre epsilon changes gates but must not change the upstream x2."""
+        torch.manual_seed(71)
+        m, d = 17, 2560
+        for dtype in (torch.float16, torch.bfloat16):
+            for mid in (False, True):
+                inputs = [
+                    torch.randn(m, d, dtype=dtype),
+                    torch.randn(m, 4, d, dtype=dtype),
+                    torch.randn(m, 4) * 0.1,
+                    torch.randn(m, 4, 4) * 0.1,
+                    torch.randn(24, 4 * d) / (4 * d) ** 0.5,
+                    torch.tensor([0.1, 0.2, 0.3]),
+                    torch.randn(24) * 0.1,
+                    0.9 + 0.2 * torch.rand(d),
+                    0.9 + 0.2 * torch.rand(d),
+                ]
+                gamma2 = 0.9 + 0.2 * torch.rand(4 * d) if mid else None
+                expected = reference(
+                    *inputs,
+                    gamma_2=gamma2,
+                    norm_eps=1e-3,
+                    mhc_pre_norm_eps=0.25,
+                    hc_eps=0.01,
+                )
+                device_inputs = [x.npu() for x in inputs]
+                for mode in (0, 1):
+                    kwargs = dict(
+                        gamma_2=gamma2.npu() if mid else None,
+                        norm_eps=1e-3,
+                        hc_eps=0.01,
+                        compute_mode=mode,
+                    )
+                    actual = cann_ops_transformer.mega_mhc(
+                        *device_inputs, mhc_pre_norm_eps=0.25, **kwargs
+                    )
+                    default_pre = cann_ops_transformer.mega_mhc(
+                        *device_inputs, **kwargs
+                    )
+                    torch.npu.synchronize()
+                    tolerance = 0.02 if dtype == torch.bfloat16 or mode == 1 else 0.005
+                    for got, want in zip(actual, expected):
+                        torch.testing.assert_close(
+                            got.cpu(), want, atol=tolerance, rtol=tolerance
+                        )
+                    self.assertTrue(torch.equal(actual[3], default_pre[3]))
+                    self.assertFalse(torch.equal(actual[1], default_pre[1]))
 
     def test_zero_small_large_and_epsilon(self):
         """Exercise RMS scaling and zero hc epsilon across all 16 dtype/D/stage/mode families."""
@@ -280,7 +327,6 @@ class TestMegaMhcNpu(unittest.TestCase):
                                     norm_eps=epsilon,
                                     hc_eps=0.0,
                                     compute_mode=mode,
-                                    schedule_mode=self.schedule_mode,
                                 )
                                 torch.npu.synchronize()
                                 tolerance = (

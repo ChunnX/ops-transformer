@@ -17,8 +17,8 @@ namespace op_api {
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
     const at::Tensor &h_out, const at::Tensor &residual, const at::Tensor &h_post, const at::Tensor &h_res,
     const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias, const at::Tensor &gamma_1,
-    const at::Tensor &gamma_0, const c10::optional<at::Tensor> &gamma_2, double norm_eps, double hc_eps,
-    int64_t compute_mode, int64_t schedule_mode)
+    const c10::optional<at::Tensor> &gamma_0, const c10::optional<at::Tensor> &gamma_2, double norm_eps,
+    double mhc_pre_norm_eps, double hc_eps, int64_t compute_mode)
 {
     constexpr int64_t HEADS = 4;
     constexpr int64_t PROJECTION = 24;
@@ -28,10 +28,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
                 "h_out must have FP16/BF16 dtype");
     const int64_t d = h_out.size(-1);
     TORCH_CHECK(d >= 2560 && d <= 7168 && d % 256 == 0, "D must be in [2560,7168] and aligned to 256; got ", d);
-    TORCH_CHECK(schedule_mode >= 0 && schedule_mode <= 2, "schedule_mode must be M-K(0), ND(1), or BS(2)");
     TORCH_CHECK(compute_mode == 0 || compute_mode == 1, "compute_mode must be FP32(0) or HF32(1)");
     TORCH_CHECK(std::isfinite(static_cast<float>(norm_eps)) && static_cast<float>(norm_eps) > 0,
                 "norm_eps must be positive and finite in FP32");
+    TORCH_CHECK(std::isfinite(static_cast<float>(mhc_pre_norm_eps)) && static_cast<float>(mhc_pre_norm_eps) > 0,
+                "mhc_pre_norm_eps must be positive and finite in FP32");
     TORCH_CHECK(std::isfinite(static_cast<float>(hc_eps)) && hc_eps >= 0, "hc_eps must be nonnegative and finite");
     auto leading = h_out.sizes().vec();
     leading.pop_back();
@@ -62,7 +63,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
     check(alpha, "alpha", {3}, at::kFloat);
     check(bias, "bias", {PROJECTION}, at::kFloat);
     check(gamma_1, "gamma_1", {d}, at::kFloat);
-    check(gamma_0, "gamma_0", {d}, at::kFloat);
+    TORCH_CHECK(gamma_0.has_value(), "gamma_0 is required in the current implementation");
+    check(*gamma_0, "gamma_0", {d}, at::kFloat);
     if (gamma_2.has_value()) {
         check(*gamma_2, "gamma_2", {HEADS * d}, at::kFloat);
     }
@@ -73,8 +75,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
         h_post_new = at::empty(post_shape, h_out.options().dtype(at::kFloat));
         h_res_new = at::empty(res_shape, h_out.options().dtype(at::kFloat));
         x_2_out = at::empty(x2_shape, h_out.options());
-        ACLNN_CMD(aclnnAiInfraMegaMhcV2, h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0, gamma_2,
-                  norm_eps, hc_eps, compute_mode, schedule_mode, h_in_prime, h_post_new, h_res_new, x_2_out);
+        ACLNN_CMD(aclnnAiInfraMegaMhc, h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0, gamma_2,
+                  norm_eps, mhc_pre_norm_eps, hc_eps, compute_mode, h_in_prime, h_post_new, h_res_new, x_2_out);
     }
     return {h_in_prime, h_post_new, h_res_new, x_2_out};
 }

@@ -61,9 +61,9 @@ public:
             .ExtendCfgInfo("opInterface.value", "ai_infra_mega_mhc");
         this->AICore().AddConfig("ascend950", config);
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("mhc_pre_norm_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("compute_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("schedule_mode").AttrType(OPTIONAL).Int(0);
     }
 };
 
