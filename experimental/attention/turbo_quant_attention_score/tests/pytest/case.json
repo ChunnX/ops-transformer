@@ -1,0 +1,807 @@
+[
+  {
+    "case_name": "gqa_decode_kv4k",
+    "op_name": "TurboQuantAttentionScore",
+    "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
+    "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_rotated",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8,
+          48
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_idx",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8,
+          16
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_norm",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_gamma",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1,
+          32
+        ],
+        "value_range": [
+          0,
+          31
+        ],
+        "name": "block_table",
+        "data_path": "data/gqa_decode_kv4k_block_table.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1
+        ],
+        "value_range": [
+          4096,
+          4096
+        ],
+        "name": "seq_lens",
+        "data_path": "data/gqa_decode_kv4k_seq_lens.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          4096
+        ],
+        "name": "attn_scores",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0.001,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_decode_kv32k",
+    "op_name": "TurboQuantAttentionScore",
+    "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
+    "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_rotated",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8,
+          48
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_idx",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8,
+          16
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_norm",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_gamma",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1,
+          256
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "block_table",
+        "data_path": "data/gqa_decode_kv32k_block_table.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1
+        ],
+        "value_range": [
+          32768,
+          32768
+        ],
+        "name": "seq_lens",
+        "data_path": "data/gqa_decode_kv32k_seq_lens.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          32768
+        ],
+        "name": "attn_scores",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0.001,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_decode_kv128k",
+    "op_name": "TurboQuantAttentionScore",
+    "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
+    "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_rotated",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          1024,
+          128,
+          8,
+          48
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_idx",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          1024,
+          128,
+          8,
+          16
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1024,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_norm",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          1024,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_gamma",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1,
+          1024
+        ],
+        "value_range": [
+          0,
+          1023
+        ],
+        "name": "block_table",
+        "data_path": "data/gqa_decode_kv128k_block_table.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1
+        ],
+        "value_range": [
+          131072,
+          131072
+        ],
+        "name": "seq_lens",
+        "data_path": "data/gqa_decode_kv128k_seq_lens.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          1,
+          32,
+          131072
+        ],
+        "name": "attn_scores",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0.001,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_prefill_kv4k",
+    "op_name": "TurboQuantAttentionScore",
+    "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
+    "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_rotated",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8,
+          48
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_idx",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8,
+          16
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_norm",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          32,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_gamma",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1,
+          32
+        ],
+        "value_range": [
+          0,
+          31
+        ],
+        "name": "block_table",
+        "data_path": "data/gqa_prefill_kv4k_block_table.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1
+        ],
+        "value_range": [
+          4096,
+          4096
+        ],
+        "name": "seq_lens",
+        "data_path": "data/gqa_prefill_kv4k_seq_lens.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          4096
+        ],
+        "name": "attn_scores",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0.001,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "case_name": "gqa_prefill_kv32k",
+    "op_name": "TurboQuantAttentionScore",
+    "case_path": "/home/operator/ascendOpTest/turbo_quant_attention_score",
+    "expect_func": "/home/operator/ascendOpTest/turbo_quant_attention_score/golden.py:calc_expect_func",
+    "input_desc": [
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_rotated",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "value_range": [
+          -1,
+          1
+        ],
+        "name": "query_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8,
+          48
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_idx",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "uint8",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8,
+          16
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "key_cache_qjl",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_norm",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "bfloat16",
+        "param_type": "required",
+        "shape": [
+          256,
+          128,
+          8
+        ],
+        "value_range": [
+          0.1,
+          2
+        ],
+        "name": "key_cache_gamma",
+        "data_path": ""
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1,
+          256
+        ],
+        "value_range": [
+          0,
+          255
+        ],
+        "name": "block_table",
+        "data_path": "data/gqa_prefill_kv32k_block_table.bin"
+      },
+      {
+        "format": "ND",
+        "data_type": "int32",
+        "param_type": "required",
+        "shape": [
+          1
+        ],
+        "value_range": [
+          32768,
+          32768
+        ],
+        "name": "seq_lens",
+        "data_path": "data/gqa_prefill_kv32k_seq_lens.bin"
+      }
+    ],
+    "output_desc": [
+      {
+        "format": "ND",
+        "data_type": "float32",
+        "param_type": "required",
+        "shape": [
+          512,
+          32,
+          32768
+        ],
+        "name": "attn_scores",
+        "data_path": "",
+        "golden_path": "",
+        "err_threshold": [
+          0.001,
+          0
+        ]
+      }
+    ],
+    "attr_desc": [
+      {
+        "name": "mse_bits",
+        "type": "int",
+        "value": 3
+      }
+    ]
+  }
+]

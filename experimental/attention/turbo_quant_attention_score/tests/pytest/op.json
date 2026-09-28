@@ -1,0 +1,22 @@
+[
+  {
+    "op": "TurboQuantAttentionScore",
+    "language": "cpp",
+    "input_desc": [
+      {"name": "query_rotated", "param_type": "required", "format": ["ND"], "type": ["bfloat16"]},
+      {"name": "query_qjl", "param_type": "required", "format": ["ND"], "type": ["bfloat16"]},
+      {"name": "key_cache_idx", "param_type": "required", "format": ["ND"], "type": ["uint8"]},
+      {"name": "key_cache_qjl", "param_type": "required", "format": ["ND"], "type": ["uint8"]},
+      {"name": "key_cache_norm", "param_type": "required", "format": ["ND"], "type": ["bfloat16"]},
+      {"name": "key_cache_gamma", "param_type": "required", "format": ["ND"], "type": ["bfloat16"]},
+      {"name": "block_table", "param_type": "required", "format": ["ND"], "type": ["int32"]},
+      {"name": "seq_lens", "param_type": "required", "format": ["ND"], "type": ["int32"]}
+    ],
+    "output_desc": [
+      {"name": "attn_scores", "param_type": "required", "format": ["ND"], "type": ["float32"]}
+    ],
+    "attr": [
+      {"name": "mse_bits", "type": "int", "default_value": 3}
+    ]
+  }
+]

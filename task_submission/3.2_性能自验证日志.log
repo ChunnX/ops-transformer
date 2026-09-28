@@ -1,0 +1,30 @@
+===== msprof_official.csv（官方口径） =====
+case,latency_us,baseline_us,ratio,pass_1p2x,n_launches,sample_min,sample_max,method
+gqa_decode_kv4k,1164.802,1501.634,0.776,True,70,1164.62,1165.48,msprof task_time: warmup10 + sample60 + drop10max
+gqa_decode_kv32k,9153.69,9278.507,0.987,True,70,9153.12,9154.8,msprof task_time: warmup10 + sample60 + drop10max
+gqa_decode_kv128k,36404.275,35681.69,1.02,True,70,36402.82,36406.58,msprof task_time: warmup10 + sample60 + drop10max
+gqa_prefill_kv4k,21917.734,75984.253,0.288,True,70,21885.98,21955.86,msprof task_time: warmup10 + sample60 + drop10max
+gqa_prefill_kv32k,170370.761,607874.024,0.28,True,70,170287.42,170493.64,msprof task_time: warmup10 + sample60 + drop10max
+
+===== perf_bench.log（chrono 对照） =====
+case=gqa_decode_kv4k latency_us=1188.020 baseline_us=1501.634 ratio=0.791 pass_1p2x=YES
+case=gqa_decode_kv32k latency_us=9177.152 baseline_us=9278.507 ratio=0.989 pass_1p2x=YES
+case=gqa_decode_kv128k latency_us=36434.433 baseline_us=35681.690 ratio=1.021 pass_1p2x=YES
+case=gqa_prefill_kv4k latency_us=21922.243 baseline_us=75984.253 ratio=0.289 pass_1p2x=YES
+case=gqa_prefill_kv32k latency_us=170742.223 baseline_us=607874.024 ratio=0.281 pass_1p2x=YES
+
+===== npu_smi.log =====
++------------------------------------------------------------------------------------------------+
+| npu-smi 25.2.0                   Version: 25.2.0                                               |
++---------------------------+---------------+----------------------------------------------------+
+| NPU   Name                | Health        | Power(W)    Temp(C)           Hugepages-Usage(page)|
+| Chip                      | Bus-Id        | AICore(%)   Memory-Usage(MB)  HBM-Usage(MB)        |
++===========================+===============+====================================================+
+| 4     910B3               | OK            | 91.6        46                0    / 0             |
+| 0                         | 0000:01:00.0  | 0           0    / 0          3428 / 65536         |
++===========================+===============+====================================================+
++---------------------------+---------------+----------------------------------------------------+
+| NPU     Chip              | Process id    | Process name             | Process memory(MB)      |
++===========================+===============+====================================================+
+| No running processes found in NPU 4                                                            |
++===========================+===============+====================================================+

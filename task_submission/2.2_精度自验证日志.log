@@ -1,0 +1,28 @@
+===== accuracy_all.log =====
+case=gqa_decode_kv4k shape=[1,32,4096] check=[t=1,h=32,kv=4096] max_abs=1.00583e-07 mae=2.6921e-08 bad=0 checked=131072 PASSED
+case=gqa_decode_kv32k shape=[1,32,32768] check=[t=1,h=32,kv=32768] max_abs=1.00583e-07 mae=2.6921e-08 bad=0 checked=1048576 PASSED
+case=gqa_decode_kv128k shape=[1,32,131072] check=[t=1,h=8,kv=4096] max_abs=5.96046e-08 mae=2.02563e-08 bad=0 checked=32768 PASSED
+case=gqa_prefill_kv4k shape=[512,32,4096] check=[t=8,h=8,kv=512] max_abs=8.9407e-08 mae=2.11658e-08 bad=0 checked=32768 PASSED
+case=gqa_prefill_kv32k shape=[512,32,32768] check=[t=4,h=4,kv=256] max_abs=5.96046e-08 mae=2.03145e-08 bad=0 checked=4096 PASSED
+case=smoke_prefill_t32_kv512 shape=[32,32,512] check=[t=32,h=32,kv=512] max_abs=1.19209e-07 mae=2.54688e-08 bad=0 checked=524288 PASSED
+case=smoke_example_t1_kv4 shape=[1,2,128] check=[t=1,h=2,kv=4] max_abs=5.96046e-08 mae=2.37487e-08 bad=0 checked=8 PASSED
+summary failed=0
+
+===== accuracy_example.log =====
+[2026-09-23 12:39:15] Warning: The current environment is configured for ascend910b, Please use Atlas A2 series hardware for optimal performance.
+[2026-09-23 12:39:16] [2026-09-23 12:39:16] Start to run example,name:turbo_quant_attention_score mode:eager
+[2026-09-23 12:39:16] Start compile and run example file: ../experimental/attention/turbo_quant_attention_score/examples/test_aclnn_turbo_quant_attention_score.cpp
+[2026-09-23 12:39:16] pkg_mode:cust vendor_name:custom
+[2026-09-23 12:39:20] max_abs_error=0.000513673, PASSED
+[2026-09-23 12:39:20] run test_aclnn_turbo_quant_attention_score, execute samples success
+[2026-09-23 12:39:20] Example completed successfully
+
+===== accuracy_summary.csv =====
+case,shape,check,max_abs,mae,bad,checked,result
+gqa_decode_kv4k,"1,32,4096","t=1,h=32,kv=4096",1.00583e-07,2.6921e-08,0,131072,PASSED
+gqa_decode_kv32k,"1,32,32768","t=1,h=32,kv=32768",1.00583e-07,2.6921e-08,0,1048576,PASSED
+gqa_decode_kv128k,"1,32,131072","t=1,h=8,kv=4096",5.96046e-08,2.02563e-08,0,32768,PASSED
+gqa_prefill_kv4k,"512,32,4096","t=8,h=8,kv=512",8.9407e-08,2.11658e-08,0,32768,PASSED
+gqa_prefill_kv32k,"512,32,32768","t=4,h=4,kv=256",5.96046e-08,2.03145e-08,0,4096,PASSED
+smoke_prefill_t32_kv512,"32,32,512","t=32,h=32,kv=512",1.19209e-07,2.54688e-08,0,524288,PASSED
+smoke_example_t1_kv4,"1,2,128","t=1,h=2,kv=4",5.96046e-08,2.37487e-08,0,8,PASSED
