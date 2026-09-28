@@ -57,8 +57,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
-                                                              invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
+                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -189,21 +189,25 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         return;
     }
 
-    // 先发起32B partial1回读，再紧接着发起follower两行x2回读；
-    // 两次MTE2各自设置消费事件，让较长的x2搬运与partial合并和Gate计算重叠。
+    // 发出本核MTE3完成事件，同时读取follower的partial1，用32B搬运隐藏事件等待。
     SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
     const uint64_t followerSlot = ((uint64_t)token * 2U + 1U) * PARTIAL_SLOT_ELEMS;
     DataCopy(partialBuf, partial1Gm_[followerSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
-    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
-    DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
-    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     sumSqHalf[1] = partialBuf.GetValue(0);
     for (uint32_t o = 0; o < N_MAX; ++o) {
         dotHalf[1][o] = partialBuf.GetValue(o + 1U);
+    }
+
+    // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
+    const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
+    if constexpr (USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
     const float totalSumSqPre = sumSqHalf[0] + sumSqHalf[1];
@@ -214,6 +218,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     ComputeGateValues(totalSumSqPre, xHatVals);
 
     // 会合后只有leader继续执行R6、R7和最终输出。
+    if constexpr (!USE_RMS_MID) {
+        DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
+        SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
+    }
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
