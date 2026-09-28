@@ -70,8 +70,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
     p.sk = k[2];
     p.d = q[3];
     p.dp = p.d <= 64 ? 64 : 128;
-    p.qp = (p.sq + 127) / 128 * 128;
-    p.kp = (p.sk + 511) / 512 * 512;
+    p.qp = (p.sq + 127U) & ~127U;
+    p.kp = (p.sk + 511U) & ~511U;
     const auto *attrs = c->GetAttrs();
     auto sm = attrs->GetAttrPointer<float>(0);
     auto smooth = attrs->GetAttrPointer<bool>(1);
@@ -130,6 +130,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
     // SyncAll requires the entire MIX 1:2 grid to be resident together.
     c->SetScheduleMode(1);
     uint64_t bytes = 0;
+    constexpr uint64_t WORKSPACE_ALIGN = 512;
+    constexpr uint64_t DEFAULT_RESERVED_WS = 16ULL * 1024 * 1024;
     auto allocate = [&bytes](uint64_t &offset, std::initializer_list<uint64_t> factors) {
         uint64_t size = 1;
         for (auto factor : factors) {
@@ -138,10 +140,10 @@ ge::graphStatus Tile(gert::TilingContext *c)
             }
             size *= factor;
         }
-        if (size > std::numeric_limits<uint64_t>::max() - 511) {
+        if (size > std::numeric_limits<uint64_t>::max() - (WORKSPACE_ALIGN - 1)) {
             return false;
         }
-        size = (size + 511) / 512 * 512;
+        size = (size + (WORKSPACE_ALIGN - 1)) & ~(WORKSPACE_ALIGN - 1);
         if (bytes > std::numeric_limits<uint64_t>::max() - size) {
             return false;
         }
@@ -156,7 +158,7 @@ ge::graphStatus Tile(gert::TilingContext *c)
         return Failure(__LINE__);
     }
     // dav3510 GetUserWorkspace skips the CANN system workspace prefix.
-    uint64_t reserved = 16ULL * 1024 * 1024;
+    uint64_t reserved = DEFAULT_RESERVED_WS;
     if (c->GetPlatformInfo()) {
         reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
     }

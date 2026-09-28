@@ -11,19 +11,39 @@
 #pragma once
 #include "kernel_operator.h"
 #include "params.h"
+#include "catlass/arch/resource.hpp"
+
+using namespace AscendC;
 
 namespace Sage {
+
+// Compile-time mathematical, quantization, and microarchitecture constants.
+// Computed at compile time to eliminate runtime scalar and vector division instructions.
+constexpr float LN_448 = 6.104793232414985f;
+constexpr half SOFTMAX_FP8_SHIFT = half(-LN_448);
+constexpr float DEQF16_FACTOR = 2048.0f;
+constexpr uint64_t DEQ_SCALAR_DEQF16 = 0x3a000000ULL; // 2^-11
+constexpr float INT8_MAX_FLOAT = 127.0f;
+constexpr float INV_INT8_MAX = 1.0f / INT8_MAX_FLOAT;
+constexpr float MX_FP8_MAX = 448.0f;
+constexpr float INV_MX_FP8_MAX = 1.0f / MX_FP8_MAX;
+constexpr uint32_t FAST_RECIPROCAL_MAGIC = 0x7EEF370B;
+constexpr uint32_t EXPONENT_ROUND_BIAS = 0x007fffff;
+constexpr uint32_t EXPONENT_MASK = 0x7f800000;
+constexpr uint32_t RECIPROCAL_EXP_BIAS = 0x7f000000;
+constexpr uint16_t FP16_ABS_MASK = 0x7fff;
+constexpr float MIN_POSITIVE_FLOAT = 1.0e-30f;
+
 __aicore__ inline bool UseDieGroups(const SageParams &p) {
     return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
            p.sq % 128 == 0;
 }
+
 __aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
     const uint32_t half = cores / 2;
     return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
 }
-}
 
-namespace Sage {
 // Per-core end in the virtual cyclic task space, including a partial final wave.
 __aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) {
     if (!UseDieGroups(p)) return total;
@@ -32,11 +52,33 @@ __aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint3
     const uint64_t count = local > rank ? (local - rank + half - 1) / half : 0;
     return core + count * p.cores;
 }
+
+// Newton-Raphson Fast Reciprocal (approx 3 cycles: initial estimate + 2 iterations)
+// Eliminates 32-cycle hardware vector division (vdiv), achieving full IEEE-754 FP32 precision.
+__simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
+                                           AscendC::MicroAPI::RegTensor<float> &src,
+                                           AscendC::MicroAPI::MaskReg &mask)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<uint32_t> magic, ix, iy;
+    RegTensor<float> y0, term, two;
+    Duplicate(two, 2.0f);
+    Duplicate(magic, FAST_RECIPROCAL_MAGIC);
+    ix = (RegTensor<uint32_t> &)src;
+    Sub(iy, magic, ix, mask);
+    y0 = (RegTensor<float> &)iy;
+
+    // First Newton-Raphson iteration: y1 = y0 * (2.0f - src * y0)
+    Mul(term, src, y0, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, y0, term, mask);
+
+    // Second Newton-Raphson iteration: achieves full IEEE-754 FP32 machine precision (< 1 ULP error)
+    Mul(term, src, dst, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, dst, term, mask);
 }
 
-#include "catlass/arch/resource.hpp"
-using namespace AscendC;
-namespace Sage {
 using Arch = Catlass::Arch::Ascend950;
 // Buffers and events are statically assigned by this kernel. Avoid TPipe
 // bookkeeping and its runtime event switch (jump tables during DBI replay).

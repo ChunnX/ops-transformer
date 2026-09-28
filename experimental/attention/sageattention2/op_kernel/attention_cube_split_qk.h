@@ -95,7 +95,7 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
         fp.srcStride = HALF;
         fp.dstStride = HALF * 16;
         fp.quantPre = QuantMode_t::DEQF16;
-        fp.deqScalar = 0x3a000000ULL;
+        fp.deqScalar = DEQ_SCALAR_DEQF16;
         fp.dualDstCtl = 0;
         fp.subBlockId = sub != 0;
         auto dst = r.ubBuf.template GetBufferByByte<half>(ubOffset);

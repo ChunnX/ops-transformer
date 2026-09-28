@@ -77,6 +77,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
         WriteRow(mg, (firstHead + head) * p.dp, sum, p.dp);
     SyncAll<true>();
 
+    const float invSk = 1.0f / float(p.sk);
     for (uint64_t cursor = first; cursor < last;) {
         const uint64_t head = cursor / headBatches;
         const uint64_t stop = Min(last, (head + 1) * headBatches);
@@ -113,7 +114,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
         WaitFlag<HardEvent::V_MTE2>(2);
 
         PipeBarrier<PIPE_V>();
-        Muls(sum, sum, 1.0f / p.sk, p.dp);
+        Muls(sum, sum, invSk, p.dp);
         if (!exclusive)
             SetAtomicAdd<float>();
         WriteRow(mg, bh * p.dp, sum, p.dp);
@@ -143,6 +144,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
     const uint32_t rank = GetBlockIdx() % workers;
     const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
     const uint64_t firstHead = grouped ? GetBlockIdx() / p.cores * heads : 0;
+    const float invSk = 1.0f / float(p.sk);
     for (uint64_t local = rank; local < heads; local += workers) {
         const uint64_t bh = firstHead + local;
         uint32_t b = bh / p.hk, h = bh % p.hk;
@@ -167,7 +169,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
                 }
             }
             PipeBarrier<PIPE_V>();
-            Muls(sum, sum, 1.0f / p.sk, p.dp);
+            Muls(sum, sum, invSk, p.dp);
         }
         WriteRow(mg, bh * p.dp, sum, p.dp);
     }

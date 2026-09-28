@@ -8,15 +8,14 @@
 #pragma once
 #include "common.h"
 namespace Sage {
-// Production consumes prebalanced FP16 scales (PREPARED=true). Block-local
-// preparation is retained for isolated diagnostics. Scores/max remain FP16.
-template <uint32_t ROWS = 64, uint32_t COLS = 256, bool FULL = false, bool NZ_OUTPUT = false, bool PREPARED = false,
+// Production consumes prebalanced FP16 scales. Scores/max remain FP16.
+template <uint32_t ROWS = 64, uint32_t COLS = 256, bool FULL = false, bool NZ_OUTPUT = false,
           uint32_t NZ_PAD_ROWS = 0>
-__simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ float *ks, __ubuf__ float *qs,
+__simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
                                       __ubuf__ half *maxima, __ubuf__ float *denom, __ubuf__ float *alpha,
                                       __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf, __ubuf__ half *khalf,
                                       __ubuf__ float *scratch, uint32_t qstart, uint32_t sq, uint32_t start,
-                                      uint32_t sk, uint32_t causal, float scale)
+                                      uint32_t sk, uint32_t causal)
 {
     static_assert(ROWS == 64 && COLS == 256, "half softmax requires a 64x256 AIV tile");
     using namespace AscendC::MicroAPI;
@@ -25,57 +24,6 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ float *ks,
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     auto f = CreateMask<float, MaskPattern::ALL>();
     auto h = CreateMask<half, MaskPattern::ALL>();
-    if constexpr (!PREPARED) {
-        uint32_t nr = qstart < sq ? Min(uint32_t(ROWS), sq - qstart) : 0;
-        auto qrMask = UpdateMask<float>(nr);
-        RegTensor<float> qv, kv, qmax, kmax, tmp, zero, one;
-        Duplicate(zero, 0.0f);
-        Duplicate(one, 1.0f);
-        LoadAlign(qv, qs);
-        Select(tmp, qv, zero, qrMask);
-        ReduceMax(qmax, tmp, f);
-        Duplicate(kmax, 0.0f);
-        for (uint16_t col = 0; col < COLS; col += 64) {
-            uint32_t at = start + col, valid = at < sk ? Min(uint32_t(64), sk - at) : 0;
-            auto mask = UpdateMask<float>(valid);
-            LoadAlign(kv, ks + col);
-            Select(kv, kv, zero, mask);
-            Max(kmax, kmax, kv, f);
-        }
-        ReduceMax(kmax, kmax, f);
-        Duplicate(qmax, qmax, f);
-        Duplicate(kmax, kmax, f);
-        // Empty AIV halves have no valid scores; use finite harmless denominators.
-        Maxs(qmax, qmax, 1.0e-30f, f);
-        Maxs(kmax, kmax, 1.0e-30f, f);
-        RegTensor<float> rootQ, rootK, common, qfactor, kfactor;
-        Sqrt(rootQ, qmax, f);
-        Sqrt(rootK, kmax, f);
-        Mul(common, rootQ, rootK, f);
-        Duplicate(tmp, scale);
-        Abs(tmp, tmp, f);
-        Muls(tmp, tmp, 2048.0f, f);
-        Sqrt(tmp, tmp, f);
-        Mul(common, common, tmp, f);
-        Div(qfactor, common, qmax, f);
-        Div(kfactor, common, kmax, f);
-        Duplicate(tmp, scale);
-        MaskReg negScale;
-        Compare<float, CMPMODE::LT>(negScale, tmp, zero, f);
-        Muls(tmp, qfactor, -1.0f, f);
-        Select(qfactor, tmp, qfactor, negScale);
-        RegTensor<half> packed;
-        Mul(qv, qv, qfactor, f);
-        Cast<half, float, toHalf>(packed, qv, f);
-        StoreAlign<half, StoreDist::DIST_PACK_B32>(qhalf, packed, f);
-        for (uint16_t col = 0; col < COLS; col += 64) {
-            LoadAlign(kv, ks + col);
-            Mul(kv, kv, kfactor, f);
-            Cast<half, float, toHalf>(packed, kv, f);
-            StoreAlign<half, StoreDist::DIST_PACK_B32>(khalf + col, packed, f);
-        }
-        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    }
     auto blockMax = (__ubuf__ half *)alpha;
     UnalignReg maxStore;
     RegTensor<half> kh0, kh1, negative;
@@ -121,7 +69,7 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ float *ks,
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
     LoadAlign(oldDen, denom);
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    Adds(newMax, newMax, half(-6.104793232414985f), h);
+    Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
     StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);

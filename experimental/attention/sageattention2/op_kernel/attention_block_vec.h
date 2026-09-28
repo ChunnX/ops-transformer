@@ -97,23 +97,26 @@ public:
         auto ksu = resource_->ubBuf.GetBufferByByte<half>(KS_UB + (step & 1) * N * 2);
         event_t scaleEvent = static_cast<event_t>(SCALE_EVENT_BASE + (step & 1));
         WaitFlag<HardEvent::MTE2_V>(scaleEvent);
-        if (qstart + subBlockIdx_ * HALF + HALF <= params_.sq && start + N <= params_.sk &&
-            (!params_.causal || start + N <= qstart + subBlockIdx_ * HALF + 1)) {
-            SoftmaxHalfVF<HALF, N, true, true, true, P_NZ_PAD_ROWS>(
-                (__ubuf__ half *)scores.GetPhyAddr(), nullptr, nullptr, (__ubuf__ half *)maxima_.GetPhyAddr(),
-                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(), (__ubuf__ half *)qsu_.GetPhyAddr(),
-                (__ubuf__ half *)ksu.GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(SUM_UB).GetPhyAddr(),
-                qstart + subBlockIdx_ * HALF, params_.sq, start, params_.sk, params_.causal, params_.smScale);
+        const bool isFull = (qstart + subBlockIdx_ * HALF + HALF <= params_.sq && start + N <= params_.sk &&
+                             (!params_.causal || start + N <= qstart + subBlockIdx_ * HALF + 1));
+        auto scoresPtr = (__ubuf__ half *)scores.GetPhyAddr();
+        auto maxPtr = (__ubuf__ half *)maxima_.GetPhyAddr();
+        auto denPtr = (__ubuf__ float *)denom_.GetPhyAddr();
+        auto alphaPtr = (__ubuf__ float *)alpha.GetPhyAddr();
+        auto p8Ptr = (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr();
+        auto qsPtr = (__ubuf__ half *)qsu_.GetPhyAddr();
+        auto ksPtr = (__ubuf__ half *)ksu.GetPhyAddr();
+        auto sumPtr = (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr();
+        const uint32_t qOffset = qstart + subBlockIdx_ * HALF;
+
+        if (isFull) {
+            SoftmaxHalfVF<HALF, N, true, true, P_NZ_PAD_ROWS>(
+                scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
+                qOffset, params_.sq, start, params_.sk, params_.causal);
         } else {
-            SoftmaxHalfVF<HALF, N, false, true, true, P_NZ_PAD_ROWS>(
-                (__ubuf__ half *)scores.GetPhyAddr(), nullptr, nullptr, (__ubuf__ half *)maxima_.GetPhyAddr(),
-                (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(), (__ubuf__ half *)qsu_.GetPhyAddr(),
-                (__ubuf__ half *)ksu.GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(SUM_UB).GetPhyAddr(),
-                qstart + subBlockIdx_ * HALF, params_.sq, start, params_.sk, params_.causal, params_.smScale);
+            SoftmaxHalfVF<HALF, N, false, true, P_NZ_PAD_ROWS>(
+                scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
+                qOffset, params_.sq, start, params_.sk, params_.causal);
         }
         SetFlag<HardEvent::V_MTE2>(scaleEvent);
         if (step + 2 < count) {
@@ -164,7 +167,8 @@ public:
                 (__ubuf__ float *)denom_.GetPhyAddr(),
                 (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
         } else {
-            NormalizeVF((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(), params_.dp, HALF);
+            NormalizeVF((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(), params_.dp, HALF,
+                        (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
             PipeBarrier<PIPE_V>();
             Cast(qo_, accum_, RoundMode::CAST_RINT, HALF * params_.dp);
         }

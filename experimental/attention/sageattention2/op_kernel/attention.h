@@ -79,12 +79,10 @@ public:
                         Notify(QK_READY);
                     }
                     if (step >= LOOKAHEAD) {
-                        CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY);
-                        CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY + AIV_FLAG_OFFSET);
+                        WaitBothAiv<PIPE_MTE1>(P_READY);
                         // Before reusing slot i % PV_SLOTS, wait for Vec2(i-PV_SLOTS).
                         if (step >= LOOKAHEAD + PV_SLOTS) {
-                            CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE);
-                            CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE + AIV_FLAG_OFFSET);
+                            WaitBothAiv<PIPE_FIX>(PV_RELEASE);
                         }
                         Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true>(
                             r, v8, v8 + (kb + (step - LOOKAHEAD) * N) * p.dp, N, p.dp,
@@ -104,8 +102,7 @@ public:
             if ASCEND_IS_AIC {
                 // Consume the outstanding release tokens before the next query tile.
                 for (uint32_t drain = 0; drain < Min(count, PV_SLOTS); ++drain) {
-                    CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE);
-                    CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE + AIV_FLAG_OFFSET);
+                    WaitBothAiv<PIPE_FIX>(PV_RELEASE);
                 }
             }
             if ASCEND_IS_AIV {

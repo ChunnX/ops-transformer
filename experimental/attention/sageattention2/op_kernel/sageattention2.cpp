@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "stats.h"
 #include "quant.h"
 #include "attention.h"
 #include "sage_attention2_tiling_data.h"

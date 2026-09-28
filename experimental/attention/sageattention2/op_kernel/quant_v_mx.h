@@ -25,7 +25,7 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
     for (uint16_t group = 0; group < 2; ++group) {
         RegTensor<T> mx, a;
         RegTensor<uint16_t> sign;
-        Duplicate(sign, uint16_t(0x7fff));
+        Duplicate(sign, FP16_ABS_MASK);
         Duplicate(mx, T(0));
         for (uint16_t row = 0; row < 32; ++row) {
             LoadAlign(a, x + (group * 32 + row) * dp);
@@ -47,17 +47,17 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
             Cast<float, T, toFloat>(mx, mx16, f);
             // Round amax / 448 upward to an exact power of two. Construct
             // its reciprocal from exponent bits, without a vector divide.
-            Muls(mx, mx, 1.0f / 448.0f, f);
-            Maxs(mx, mx, 1.0e-30f, f);
+            Muls(mx, mx, INV_MX_FP8_MAX, f);
+            Maxs(mx, mx, MIN_POSITIVE_FLOAT, f);
             RegTensor<uint32_t> bits, rounded, mask, exponent, inverseBits, bias;
-            Adds(bits, (RegTensor<uint32_t> &)mx, uint32_t(0x007fffff), f);
-            Duplicate(mask, uint32_t(0x7f800000));
+            Adds(bits, (RegTensor<uint32_t> &)mx, EXPONENT_ROUND_BIAS, f);
+            Duplicate(mask, EXPONENT_MASK);
             And(rounded, bits, mask, f);
             ShiftRights(exponent, rounded, int16_t(23), f);
             if (group == 1)
                 ShiftLefts(exponent, exponent, int16_t(8), f);
             Or(pair, pair, exponent, f);
-            Duplicate(bias, uint32_t(0x7f000000));
+            Duplicate(bias, RECIPROCAL_EXP_BIAS);
             Sub(inverseBits, bias, rounded, f);
             inv = (RegTensor<float> &)inverseBits;
             for (uint16_t row = 0; row < 16; ++row) {

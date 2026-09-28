@@ -108,14 +108,12 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
         uint64_t previous = fragment - 3;
         const auto &old = pending[previous & 3];
         uint32_t group = previous / 2;
-        CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY);
-        CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY + AIV_FLAG_OFFSET);
+        WaitBothAiv<PIPE_MTE1>(P_READY);
         uint32_t parity = previous & 3;
         uint32_t pvOffset = WideVectorLayout::PV_UB + (group & 1) * WideVectorLayout::PV_SLOT_BYTES;
         if ((1 - PHASE)) {
             if (group >= 2) {
-                CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE);
-                CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE + AIV_FLAG_OFFSET);
+                WaitBothAiv<PIPE_FIX>(PV_RELEASE);
             }
             Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false, true>(
                 r, v8, nullptr, N, DP, pvOffset, parity, true,
@@ -234,8 +232,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
     }
     if ASCEND_IS_AIC {
         for (uint32_t i = 0; i < Min(uint64_t(2), fragment / 2); ++i) {
-            CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE);
-            CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE + AIV_FLAG_OFFSET);
+            WaitBothAiv<PIPE_FIX>(PV_RELEASE);
         }
         WaitFlag<HardEvent::MTE1_MTE2>(4);
         WaitFlag<HardEvent::MTE1_MTE2>(5);

@@ -8,6 +8,8 @@
 
 """SageAttention2 Ascend 950: INT8 QK, FP8 PV."""
 
+__all__ = ["sageattn", "sageattn_qk_int8_pv_fp8_asc"]
+
 
 def sageattn_qk_int8_pv_fp8_asc(
     q,

@@ -107,7 +107,7 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    Adds(newMax, newMax, half(-6.104793232414985f), h);
+    Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
     StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);

@@ -119,23 +119,60 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
         }
     }
 }
-__simd_vf__ inline void NormalizeVF(__ubuf__ float *accum, __ubuf__ float *denom, uint32_t dp, uint32_t rows)
+__simd_vf__ inline void NormalizeVF(__ubuf__ float *accum, __ubuf__ float *denom, uint32_t dp, uint32_t rows,
+                                    __ubuf__ float *scratch = nullptr)
 {
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto full = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> one;
-    Duplicate(one, 1.0f);
-    for (uint32_t i = 0; i < rows; ++i) {
-        RegTensor<float> den, ratio;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(den, denom + i);
-        Div(ratio, one, den, full);
-        for (uint32_t col = 0; col < dp; col += 64) {
-            RegTensor<float> x;
-            LoadAlign(x, accum + i * dp + col);
-            Mul(x, x, ratio, full);
+    if (scratch != nullptr) {
+        RegTensor<float> den, inv;
+        LoadAlign(den, denom);
+        FastReciprocal(inv, den, full);
+        StoreAlign(scratch, inv, full);
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+        for (uint32_t i = 0; i < rows; ++i) {
+            RegTensor<float> ratio;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + i);
+            for (uint32_t col = 0; col < dp; col += 64) {
+                RegTensor<float> x;
+                LoadAlign(x, accum + i * dp + col);
+                Mul(x, x, ratio, full);
+                StoreAlign(accum + i * dp + col, x, full);
+            }
+        }
+    } else {
+        for (uint32_t i = 0; i < rows; ++i) {
+            RegTensor<float> den, ratio;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(den, denom + i);
+            FastReciprocal(ratio, den, full);
+            for (uint32_t col = 0; col < dp; col += 64) {
+                RegTensor<float> x;
+                LoadAlign(x, accum + i * dp + col);
+                Mul(x, x, ratio, full);
+                StoreAlign(accum + i * dp + col, x, full);
+            }
+        }
+    }
+}
 
-            StoreAlign(accum + i * dp + col, x, full);
+// Reusable tile scaler and converter: multiplies source elements by reciprocal denominators
+// and casts directly to the target output format T.
+template <class T, uint32_t DP>
+__simd_callee__ inline void ScaleAndCastTileVF(__ubuf__ T *out, __ubuf__ float *src, __ubuf__ float *invDenom)
+{
+    using namespace AscendC::MicroAPI;
+    static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    auto f = CreateMask<float, MaskPattern::ALL>();
+    for (uint16_t col = 0; col < DP; col += 64) {
+        for (uint16_t row = 0; row < 64; ++row) {
+            RegTensor<float> ratio, x;
+            RegTensor<T> packed;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, invDenom + row);
+            LoadAlign(x, src + row * DP + col);
+            Mul(x, x, ratio, f);
+            Cast<T, float, cast>(packed, x, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
         }
     }
 }
@@ -149,25 +186,14 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto f = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> one, den, inv;
-    Duplicate(one, 1.0f);
+    RegTensor<float> den, inv;
     LoadAlign(den, denom);
-    Div(inv, one, den, f);
+    FastReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t col = 0; col < DP; col += 64) {
-        for (uint16_t row = 0; row < 64; ++row) {
-            RegTensor<float> ratio, x;
-            RegTensor<T> packed;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
-            LoadAlign(x, accum + row * DP + col);
-            Mul(x, x, ratio, f);
-            Cast<T, float, cast>(packed, x, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
-        }
-    }
+    ScaleAndCastTileVF<T, DP>(out, accum, scratch);
 }
+
 // The last PV never needs to store the updated FP32 O back to UB. Keep the
 // FMA -> reciprocal multiply -> cast rounding sequence.
 template <class T, uint32_t DP, bool FIRST>
@@ -177,7 +203,7 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto f = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> den, sum, one, inv;
+    RegTensor<float> den, sum, inv;
     LoadAlign(sum, alpha + 64);
     if constexpr (FIRST) {
         den = sum;
@@ -188,28 +214,26 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
         MulDstAdd(den, ratio, sum, f);
     }
     StoreAlign(denom, den, f); // LSE still uses the final FP32 denominator.
-    Duplicate(one, 1.0f);
-    Div(inv, one, den, f);
+    FastReciprocal(inv, den, f);
     StoreAlign(scratch, inv, f);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t col = 0; col < DP; col += 64) {
-        for (uint16_t row = 0; row < 64; ++row) {
-            RegTensor<float> x, ratio;
-            RegTensor<T> packed;
-            if constexpr (FIRST) {
-                LoadAlign(x, partial + row * DP + col);
-            } else {
-                RegTensor<float> y;
+    if constexpr (FIRST) {
+        ScaleAndCastTileVF<T, DP>(out, partial, scratch);
+    } else {
+        static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        for (uint16_t col = 0; col < DP; col += 64) {
+            for (uint16_t row = 0; row < 64; ++row) {
+                RegTensor<float> x, ratio, y;
+                RegTensor<T> packed;
                 LoadAlign(x, accum + row * DP + col);
                 LoadAlign(y, partial + row * DP + col);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
                 MulDstAdd(x, ratio, y, f);
+                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
+                Mul(x, x, ratio, f);
+                Cast<T, float, cast>(packed, x, f);
+                StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
             }
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + row);
-            Mul(x, x, ratio, f);
-            Cast<T, float, cast>(packed, x, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + col, packed, f);
         }
     }
 }
@@ -238,9 +262,8 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
     MulDstAdd(den, a, sum, f);
     StoreAlign(denom, den, f);
     if constexpr (LAST) {
-        RegTensor<float> one, inv;
-        Duplicate(one, 1.0f);
-        Div(inv, one, den, f);
+        RegTensor<float> inv;
+        FastReciprocal(inv, den, f);
         StoreAlign(scratch, inv, f);
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }

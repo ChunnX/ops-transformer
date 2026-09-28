@@ -9,35 +9,9 @@
  */
 
 #pragma once
-#include "stats.h"
 #include "scale.h"
 #include "quant_v_mx.h"
 namespace Sage {
-__simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
-                                           AscendC::MicroAPI::RegTensor<float> &src,
-                                           AscendC::MicroAPI::MaskReg &mask)
-{
-    using namespace AscendC::MicroAPI;
-    // Newton-Raphson Fast Reciprocal (approx 3 cycles: initial estimate + 1 iteration)
-    // Eliminates 32-cycle hardware vector division (vdiv).
-    RegTensor<uint32_t> magic, ix, iy;
-    RegTensor<float> y0, term, two;
-    Duplicate(two, 2.0f);
-    Duplicate(magic, uint32_t(0x7EEF370B));
-    ix = (RegTensor<uint32_t> &)src;
-    Sub(iy, magic, ix, mask);
-    y0 = (RegTensor<float> &)iy;
-
-    // First Newton-Raphson iteration: y1 = y0 * (2.0f - src * y0)
-    Mul(term, src, y0, mask);
-    Sub(term, two, term, mask);
-    Mul(dst, y0, term, mask);
-
-    // Second Newton-Raphson iteration: achieves full IEEE-754 FP32 machine precision (< 1 ULP error)
-    Mul(term, src, dst, mask);
-    Sub(term, two, term, mask);
-    Mul(dst, dst, term, mask);
-}
 
 template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
@@ -50,7 +24,7 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     RegTensor<float> a, b, ma, mb, ab, bb, m, zero, one, invDivisor;
     Duplicate(zero, 0.0f);
     Duplicate(one, 1.0f);
-    Duplicate(invDivisor, 1.0f / 127.0f);
+    Duplicate(invDivisor, INV_INT8_MAX);
     if constexpr (SMOOTH) {
         LoadAlign(ma, mean);
         if constexpr (DP == 128)
@@ -309,8 +283,8 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR mxS
         PipeBarrier<PIPE_V>();
         ReduceMax(red, ab, work, p.dp, false);
         float a = Scalar(red);
-        float s = a > 0 ? a * (1.0f / 127.0f) : 1.0f;
-        float inv_s = a > 0 ? 127.0f / a : 1.0f;
+        float s = a > 0 ? a * INV_INT8_MAX : 1.0f;
+        float inv_s = a > 0 ? INT8_MAX_FLOAT / a : 1.0f;
         Duplicate(aux, inv_s, p.dp);
         PipeBarrier<PIPE_V>();
         Mul(x, x, aux, p.dp);

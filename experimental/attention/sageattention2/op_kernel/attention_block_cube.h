@@ -17,6 +17,10 @@ namespace Sage {
 // P uses a unit E8M0 scale resident in L0A. V scales occupy the L1 gap
 // above the QK/PV operand slots; oversized heads are copied tile by tile.
 constexpr uint32_t MX_P_L1 = 496 * 1024, MX_V_L1 = 320 * 1024;
+constexpr uint32_t MX_P_BLOCK_NUM = M * N / 32 / 32;
+constexpr uint32_t MX_P_M_BLOCKS = M / 16;
+constexpr uint32_t MX_P_N_BLOCKS = N / 64;
+constexpr uint32_t L0A_MX_P_OFFSET = 32768;
 struct MxScaleCache {
     GM_ADDR base = nullptr;
 };
@@ -24,14 +28,14 @@ __aicore__ inline void InitMxP(FixedResource &r)
 {
     InitConstValueParams<int16_t> cp;
     cp.repeatTimes = 1;
-    cp.blockNum = M * N / 32 / 32;
+    cp.blockNum = MX_P_BLOCK_NUM;
     cp.initValue = 0x7f7f;
     cp.dstGap = 0;
     InitConstValue(r.l1Buf.GetBufferByByte<int16_t>(MX_P_L1), cp);
     Sync<HardEvent::MTE2_MTE1>();
-    const uint64_t mxDst = reinterpret_cast<uint64_t>(r.l0ABuf.GetBufferByByte<float8_e4m3_t>(32768).GetPhyAddr()) / 16;
+    const uint64_t mxDst = reinterpret_cast<uint64_t>(r.l0ABuf.GetBufferByByte<float8_e4m3_t>(L0A_MX_P_OFFSET).GetPhyAddr()) / 16;
     load_cbuf_to_ca_mx(mxDst, (__cbuf__ void *)r.l1Buf.GetBufferByByte<float8_e8m0_t>(MX_P_L1).GetPhyAddr(), 0, 0,
-                       M / 16, N / 64, N / 64, N / 64);
+                       MX_P_M_BLOCKS, MX_P_N_BLOCKS, MX_P_N_BLOCKS, MX_P_N_BLOCKS);
     Sync<HardEvent::MTE1_M>();
 }
 template <uint32_t BOffset>
@@ -155,7 +159,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
         fp.params.srcNdStride = 0;
         fp.params.dstNdStride = 0;
         fp.quantPre = QuantMode_t::DEQF16;
-        fp.deqScalar = 0x3a000000ULL;
+        fp.deqScalar = DEQ_SCALAR_DEQF16;
         fp.dualDstCtl = 0;
         fp.subBlockId = false;
         auto dst = r.ubBuf.template GetBufferByByte<half>(ubOffset);
@@ -176,7 +180,6 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
 }
 __aicore__ inline void Notify(uint32_t flag)
 {
-    CrossCoreSetFlag<4, PIPE_FIX>(flag);
-    CrossCoreSetFlag<4, PIPE_FIX>(flag + AIV_FLAG_OFFSET);
+    SetBothAiv<PIPE_FIX>(flag);
 }
 } // namespace Sage

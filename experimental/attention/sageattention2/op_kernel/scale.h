@@ -20,7 +20,7 @@ __simd_vf__ inline void FixedScaleFactorsVF(__ubuf__ float *factors, float scale
     RegTensor<float> s, magnitude, factor, negative, zero;
     Duplicate(s, scale);
     Abs(magnitude, s, full);
-    Muls(magnitude, magnitude, 2048.f, full);
+    Muls(magnitude, magnitude, DEQF16_FACTOR, full);
     Sqrt(factor, magnitude, full);
     StoreAlign(factors + 64, factor, full);
     Duplicate(zero, 0.f);

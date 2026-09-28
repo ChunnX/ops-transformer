@@ -28,6 +28,8 @@ aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v
 }
 } // namespace l0op
 namespace {
+constexpr int64_t MAX_HEAD_DIM = 128;
+
 const aclTensor *Canonical(const aclTensor *t, bool nhd, aclOpExecutor *executor)
 {
     if (!nhd) {
@@ -67,7 +69,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     const bool perToken = std::strcmp(qkQuantGran, "per_token") == 0;
     if ((!perToken && std::strcmp(qkQuantGran, "per_thread") != 0 && std::strcmp(qkQuantGran, "per_warp") != 0) ||
         !std::isfinite(smScale) ||
-        std::abs(smScale) > 3.4028234663852886e38) {
+        std::abs(smScale) > static_cast<double>(std::numeric_limits<float>::max())) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (!pvAccumDtype || (std::strcmp(pvAccumDtype, "fp32+fp16") != 0 &&
@@ -106,7 +108,7 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     }
     const auto &a = qc->GetViewShape();
     const auto &b = kc->GetViewShape();
-    if (b != vc->GetViewShape() || a[0] != b[0] || a[3] != b[3] || a[3] > 128 || a[1] % b[1] ||
+    if (b != vc->GetViewShape() || a[0] != b[0] || a[3] != b[3] || a[3] > MAX_HEAD_DIM || a[1] % b[1] ||
         uint64_t(b[0]) * b[1] >= UINT32_MAX || (isCausal && a[2] != b[2])) {
         return ACLNN_ERR_PARAM_INVALID;
     }

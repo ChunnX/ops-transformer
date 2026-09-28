@@ -43,4 +43,19 @@ static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds
 constexpr uint32_t QK_READY = 0, P_READY = 1, PV_READY = 2, PV_RELEASE = 3, AIV_FLAG_OFFSET = 16;
 // Local hard-event ownership. Scale slots use consecutive IDs 4 and 5.
 constexpr uint32_t QK_EVENT = 2, PV_EVENT = 3, SCALE_EVENT_BASE = 4;
+
+template <auto PIPE>
+__aicore__ inline void WaitBothAiv(uint32_t flag)
+{
+    CrossCoreWaitFlag<4, PIPE>(flag);
+    CrossCoreWaitFlag<4, PIPE>(flag + AIV_FLAG_OFFSET);
+}
+
+template <auto PIPE>
+__aicore__ inline void SetBothAiv(uint32_t flag)
+{
+    CrossCoreSetFlag<4, PIPE>(flag);
+    CrossCoreSetFlag<4, PIPE>(flag + AIV_FLAG_OFFSET);
+}
+
 } // namespace Sage
