@@ -34,6 +34,9 @@ constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 4LL * MB_SIZE;
 // attnRankTable dim0 = 11 means the window must host all 11 sessions' dispatch receiving area
 // (~23MB) plus the F2A scratch tail; 32MB covers it.
 constexpr int64_t RANK_TABLE_CCL_BUFFER_SIZE = 32LL * MB_SIZE;
+// microBatchNum = 2 doubles the per-session receiving area (~4.4MB for one attention worker);
+// 8MB covers one worker session so the relaxation (dim0 > 1) reaches the layout stage.
+constexpr int64_t MULTI_MICRO_BATCH_CCL_BUFFER_SIZE = 8LL * MB_SIZE;
 
 enum class InvalidInput {
     NONE,
@@ -104,14 +107,11 @@ std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput inva
     return inputs;
 }
 
-std::vector<OpAttr> BuildAttrs(bool invalidBs = false, bool invalidMicroBatchNum = false,
+std::vector<OpAttr> BuildAttrs(bool invalidBs = false, int64_t microBatchNum = 1,
                                int64_t cclBufferSize = DEFAULT_CCL_BUFFER_SIZE)
 {
-    const std::vector<int64_t> tokenInfoTableShape =
-        invalidMicroBatchNum ? std::vector<int64_t>{2, 16, 9} : std::vector<int64_t>{1, invalidBs ? 513 : 16, 9};
-    const std::vector<int64_t> tokenDataShape = invalidMicroBatchNum ?
-                                                    std::vector<int64_t>{2, 16, 9, 7168} :
-                                                    std::vector<int64_t>{1, invalidBs ? 513 : 16, 9, 7168};
+    const std::vector<int64_t> tokenInfoTableShape = {microBatchNum, invalidBs ? 513 : 16, 9};
+    const std::vector<int64_t> tokenDataShape = {microBatchNum, invalidBs ? 513 : 16, 9, 7168};
     return {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
@@ -168,7 +168,7 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, RankTable)
 {
     // attnRankTable dim0 (11) is the exact attention worker count; the buffer must host all
     // sessions' dispatch receiving area plus the F2A scratch tail.
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, false, RANK_TABLE_CCL_BUFFER_SIZE), ge::GRAPH_SUCCESS,
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, 1, RANK_TABLE_CCL_BUFFER_SIZE), ge::GRAPH_SUCCESS,
                       GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
 }
 
@@ -189,12 +189,25 @@ INSTANTIATE_TEST_SUITE_P(InvalidInputs, FFNToAttentionV2InvalidInputTest,
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidBs)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(true, false), ge::GRAPH_FAILED);
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(true), ge::GRAPH_FAILED);
 }
 
-TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidMicroBatchNum)
+TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsZeroMicroBatchNum)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, true), ge::GRAPH_FAILED);
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, 0), ge::GRAPH_FAILED);
+}
+
+TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsMicroBatchNumOverflow)
+{
+    // dim0 beyond uint32 max cannot survive the int64 -> uint32 narrowing in tilingData.
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, 4294967296), ge::GRAPH_FAILED);
+}
+
+TEST_F(FFNToAttentionV2Arch35TilingTest, AcceptsMultiMicroBatchNum)
+{
+    // The multi micro-batch relaxation (tokenInfoTableShape dim0 > 1) only applies to V2.
+    ExecuteTilingCase(BuildInputs(false), BuildAttrs(false, 2, MULTI_MICRO_BATCH_CCL_BUFFER_SIZE), ge::GRAPH_SUCCESS,
+                      GET_TPL_TILING_KEY(false, TILINGKEY_TPL_A5));
 }
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsHsSmallerThanH)
