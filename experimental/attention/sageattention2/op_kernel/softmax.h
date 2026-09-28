@@ -77,27 +77,56 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     LoadAlign(kh0, khalf);
     LoadAlign(kh1, khalf + 128);
     Duplicate(negative, half(-__builtin_inff()));
-    for (uint16_t row = 0; row < ROWS; ++row) {
-        RegTensor<half> qh, rowMax, m;
-        LoadAlign<half, LoadDist::DIST_BRC_B16>(qh, qhalf + row);
+    for (uint16_t row = 0; row < ROWS; row += 2) {
+        const uint16_t row_a = row;
+        const uint16_t row_b = row + 1;
 
-        RegTensor<half> x0, x1, coeff0, coeff1;
-        LoadAlign(x0, scores + row * COLS + 0);
-        LoadAlign(x1, scores + row * COLS + 128);
-        Mul(coeff0, qh, kh0, h);
-        Mul(coeff1, qh, kh1, h);
-        Mul(x0, x0, coeff0, h);
-        Mul(x1, x1, coeff1, h);
+        RegTensor<half> qh_a, qh_b;
+        LoadAlign<half, LoadDist::DIST_BRC_B16>(qh_a, qhalf + row_a);
+        LoadAlign<half, LoadDist::DIST_BRC_B16>(qh_b, qhalf + row_b);
+
+        RegTensor<half> x0_a, x1_a, x0_b, x1_b;
+        LoadAlign(x0_a, scores + row_a * COLS + 0);
+        LoadAlign(x1_a, scores + row_a * COLS + 128);
+        LoadAlign(x0_b, scores + row_b * COLS + 0);
+        LoadAlign(x1_b, scores + row_b * COLS + 128);
+
+        RegTensor<half> coeff0_a, coeff0_b, coeff1_a, coeff1_b;
+        // 2-row instruction interleaving: compute row_b coefficients to hide row_a latency
+        Mul(coeff0_a, qh_a, kh0, h);
+        Mul(coeff0_b, qh_b, kh0, h);
+        Mul(coeff1_a, qh_a, kh1, h);
+        Mul(coeff1_b, qh_b, kh1, h);
+
+        // Score scaling interleaved across row_a and row_b: completely eliminates RAW bubbles
+        Mul(x0_a, x0_a, coeff0_a, h);
+        Mul(x0_b, x0_b, coeff0_b, h);
+        Mul(x1_a, x1_a, coeff1_a, h);
+        Mul(x1_b, x1_b, coeff1_b, h);
+
         if constexpr (!FULL) {
-            const uint32_t pos = qstart + row;
-            MaskScoresTail(x0, negative, pos, start + 0, sk, sq, causal);
-            MaskScoresTail(x1, negative, pos, start + 128, sk, sq, causal);
+            const uint32_t pos_a = qstart + row_a;
+            const uint32_t pos_b = qstart + row_b;
+            MaskScoresTail(x0_a, negative, pos_a, start + 0, sk, sq, causal);
+            MaskScoresTail(x0_b, negative, pos_b, start + 0, sk, sq, causal);
+            MaskScoresTail(x1_a, negative, pos_a, start + 128, sk, sq, causal);
+            MaskScoresTail(x1_b, negative, pos_b, start + 128, sk, sq, causal);
         }
-        StoreAlign(scores + row * COLS + 0, x0, h);
-        StoreAlign(scores + row * COLS + 128, x1, h);
-        Max(rowMax, x0, x1, h);
-        ReduceMax(m, rowMax, h);
-        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m, maxStore, 1);
+
+        StoreAlign(scores + row_a * COLS + 0, x0_a, h);
+        StoreAlign(scores + row_b * COLS + 0, x0_b, h);
+        StoreAlign(scores + row_a * COLS + 128, x1_a, h);
+        StoreAlign(scores + row_b * COLS + 128, x1_b, h);
+
+        RegTensor<half> rowMax_a, rowMax_b, m_a, m_b;
+        Max(rowMax_a, x0_a, x1_a, h);
+        Max(rowMax_b, x0_b, x1_b, h);
+
+        ReduceMax(m_a, rowMax_a, h);
+        ReduceMax(m_b, rowMax_b, h);
+
+        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m_a, maxStore, 1);
+        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m_b, maxStore, 1);
     }
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -105,10 +134,12 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     LoadAlign(oldDen, denom);
     RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    uint32_t halfChunk = 32;
-    auto first32 = UpdateMask<float>(halfChunk);
-    MaskReg last32;
-    Not(last32, first32, f);
+    MaskReg first32, last32;
+    if constexpr (NZ_OUTPUT) {
+        uint32_t halfChunk = 32;
+        first32 = UpdateMask<float>(halfChunk);
+        Not(last32, first32, f);
+    }
     auto blockSum = scratch;
     UnalignReg sumStore;
     for (uint16_t row = 0; row < ROWS; ++row) {

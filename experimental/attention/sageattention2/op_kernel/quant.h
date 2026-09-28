@@ -11,6 +11,7 @@
 #pragma once
 #include "scale.h"
 #include "quant_v_mx.h"
+#include "wht.h"
 namespace Sage {
 
 template <uint32_t DP, bool SMOOTH>

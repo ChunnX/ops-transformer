@@ -34,6 +34,15 @@ constexpr uint32_t RECIPROCAL_EXP_BIAS = 0x7f000000;
 constexpr uint16_t FP16_ABS_MASK = 0x7fff;
 constexpr float MIN_POSITIVE_FLOAT = 1.0e-30f;
 
+__aicore__ inline uint32_t CalcKh(uint32_t h, uint32_t hq, uint32_t hk) {
+    if (hq == hk) return h;
+    const uint32_t ratio = hq / hk;
+    return (ratio == 4) ? (h >> 2) :
+           (ratio == 8) ? (h >> 3) :
+           (ratio == 2) ? (h >> 1) :
+           (ratio == 16) ? (h >> 4) : (h / ratio);
+}
+
 __aicore__ inline bool UseDieGroups(const SageParams &p) {
     return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
            p.sq % 128 == 0;

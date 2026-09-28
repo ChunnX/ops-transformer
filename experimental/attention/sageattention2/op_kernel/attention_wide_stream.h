@@ -30,7 +30,7 @@ __aicore__ inline __attribute__((always_inline)) WideQueryInfo DecodeWideQuery(c
     info.qstart = (task % tiles) * M;
     info.h = (task / tiles) % p.hq;
     info.b = task / tiles / p.hq;
-    info.kh = info.h / (p.hq / p.hk);
+    info.kh = CalcKh(info.h, p.hq, p.hk);
     info.qb = (uint64_t(info.b) * p.hq + info.h) * p.qp;
     info.kb = (uint64_t(info.b) * p.hk + info.kh) * p.kp;
     const uint32_t limit = CAUSAL ? Min(p.sk, info.qstart + M) : p.sk;
