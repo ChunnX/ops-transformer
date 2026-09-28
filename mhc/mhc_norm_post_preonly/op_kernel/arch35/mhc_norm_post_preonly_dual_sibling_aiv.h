@@ -25,6 +25,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
         CacheGamma0();
     }
+    if (token == tokenStart_ && laneId_ == 0U) {
+        alpha0_ = alpha0Gm_.GetValue(0);
+        for (uint32_t i = 0; i < N_MAX; ++i) {
+            biasCache_[i] = biasGm_.GetValue(i);
+        }
+    }
     const uint32_t headBegin = laneId_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
