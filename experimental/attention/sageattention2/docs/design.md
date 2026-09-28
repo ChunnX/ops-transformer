@@ -212,13 +212,13 @@ clamp(max=448) 复现设备侧饱和语义。
 # 总误差界由 P/V 的 INT8/FP8 量化噪声主导，累加结构本身不放大误差。
 ```
 
-参数映射说明：公开参数 `pv_accum_dtype` 的三个取值（`fp32+fp16`（默认）、`fp32+fp32`、`fp32`）在 NPU 上统一映射到上述"MXFP8 MMA + FP32 L0C + FP32 UB"单一硬件路径。相对开源 `fp32+fp16` 分支（PV MMA 以 FP16 局部累加后再提升 FP32），本实现的第一级累加精度更高，规避了该阶段的 FP16 舍入与动态范围限制；相对开源 `fp32+fp32` 分支则为同构的两级 FP32。三个选项均为原生静默支持（不触发回退告警），非法取值报错。
+参数映射说明：公开参数 `pv_accum_dtype` 的三个取值（`fp32+fp16`（默认）、`fp32+fp32`、`fp32`）在 NPU 上统一映射到上述"MXFP8 MMA + FP32 L0C + FP32 UB"单一硬件路径。相对开源 `fp32+fp16` 分支（PV MMA 以 FP16 局部累加后再提升 FP32），本实现的第一级累加精度更高，规避了该阶段的 FP16 舍入与动态范围限制；相对开源 `fp32+fp32` 分支则为同构的两级 FP32。三个选项统一映射到该路径（映射口径见 README"粒度与累加配置的 NPU 映射"），非法取值报错。
 
 #### 1.5 对数归一化与分组查询注意力广播校正数学推导
 
-当调用方指定 `return_lse=True` 时，内核需要返回矩阵 `(Q * K^T) * sm_scale` 每一行的 Log-Sum-Exp（自然对数）。
+当调用方指定 `return_lse=True` 时，接口需要返回矩阵 `(Q * K^T) * sm_scale` 每一行的 Log-Sum-Exp（自然对数），数值对齐开源 `core.py` 的返回路径 `lse / 1.44269504 + lse_correction * sm_scale`。
 
-由于内核在线 Softmax 直接使用自然指数（ExpSub）与 §1.3 的 ln(448) 平移状态，LSE 无需任何底数换底，`attention_block_vec.h` 的 `StoreTileLse` 按 §1.1 的恒等式直接组合：
+内核与接口按开源契约拆分该表达式：
 
 ```python
 # 真实数学定义（以自然对数 e 为底，未平滑矩阵 S）：
@@ -230,13 +230,19 @@ clamp(max=448) 复现设备侧饱和语义。
 # 内核持有的在线状态（含 ln(448) 平移，见 §1.3）：
 #   m̂_final = max - ln(448)（跨所有块归并后的平移最大值）
 #   den_final = 448 * sum_j exp(sm_scale * S_smooth[i, j] - max)
-# 二者相加时 448 公因子与 -ln(448) 平移严格相消：
-LSE_real[i] = (m̂_final + ln(den_final)) + sm_scale * dot(Q[i, :], mean_K)
+# 二者相加时 448 公因子与 -ln(448) 平移严格相消。
+# StoreTileLse 输出 RAW log2 域 LSE（不含平滑校正，单次向量 Muls 换底）：
+lse_raw[i] = (m̂_final + ln(den_final)) * log2(e)
+
+# PyTorch 适配层（_ops.py）按开源公式还原并补上平滑校正：
+#   lse_return[i] = lse_raw[i] / log2(e) + lse_correction[i] * sm_scale   （smooth_k=True）
+#   lse_return[i] = lse_raw[i] / log2(e)                                  （smooth_k=False）
+# 其中 lse_correction[i] = dot(Q[i, :], mean_K[kh])，GQA 下按 repeat_interleave 广播。
 ```
 
-该式与开源 `core.py` 返回路径 `lse / 1.44269504 + lse_correction * sm_scale` 语义一致：开源侧硬件 softmax 状态以 2 为底，故需 `/log2(e)` 换底；本内核状态本身即为自然底数，无需换底项。LSE 以 FP32 写出，形状 `[B, Hq, Sq]`。
+职责划分的依据：校正项 `<q, mean_kh>` 需要 Q 的原始 GM 数据与逐头 mean；`StoreTileLse` 若在内核内计算该项，须在每张量尾块重读 Q 并做 `DP` 长度 ReduceSum（每 query tile 约 64 次向量归约）。将校正移至 PyTorch 层后，内核 epilogue 只剩 `Ln + Cast + Add + Muls` 四个向量操作且不再访问 GM 中的 Q；开源换底与校正公式在接口层与 `core.py` 逐项一致。LSE 以 FP32 写出，形状 `[B, Hq, Sq]`。
 
-接口层的对应约束：Python 适配层（`_ops.py`）对内核返回的 `lse` 直接透传，不再施加 `/1.44269504` 换底或 `lse_correction * sm_scale` 二次校正——上述两项已由 `StoreTileLse` 在内核内以自然底数一次完成。若在 Python 层再套用开源 epilogue 公式，将对已含校正的自然对数值做双重校正与错误换底（偏差约 0.31·lse + 校正项量级），导致 TC-04 与 `test_aclnn_matches_reference(return_lse=True)` 失败；该等价性由 CPU 参考实现（`reference.py` 以 `m + ln(den) + ⟨q,mean⟩·scale` 同构对账）与 `tests/numeric_error_test.cpp` 断言 [7]（LSE 恒等式 ≤ 1e-5，含 GQA 广播）双向锁定。
+该等价性由 CPU 参考实现（`reference.py` 先剥离校正并换算为 raw log2 值，与内核契约同构）与 `tests/numeric_error_test.cpp` 断言 [7]（raw log2 内核值 + 开源校正 = 双精度参考，≤ 1e-5，含 GQA 广播）双向锁定；aclnn 直调方获得的 `lse` 为 raw log2 域值，按上述公式自行还原。
 
 GQA 场景广播规则：
 在 Grouped Query Attention 场景下，Query 头数 `H_Q` 大于 Key/Value 头数 `H_K`。每个 KV 头对应一个分组，组内大小为 `group_size = H_Q // H_K`。Key 的通道均值 `mean_K` 原始形状为 `[B, H_K, D]`，Query 头 h 在校正项点积前按
@@ -300,7 +306,7 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 | key | float16, bfloat16 | INT8 对称量化（per-token，含平滑） | 与 query 保持相同数据类型与 device |
 | value | float16, bfloat16 | MXFP8：E4M3 数据 + E8M0 分组 scale | 与 key 保持相同数据类型与 device |
 | output | float16, bfloat16 | FP32 两级累加后一次性饱和舍回 | 与 query 保持相同数据类型与形状 |
-| softmax_lse | float32 | float32 | 形状为 [B, Hq, Sq]，自然对数刻度 |
+| softmax_lse | float32 | float32 | 形状为 [B, Hq, Sq]；内核输出为 raw log2 域（未经平滑校正），PyTorch 层按开源契约还原为自然对数并叠加校正 |
 
 ### 3. 支持形状与张量布局约束
 
@@ -391,15 +397,15 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 - 验收结果与达标指标：
   基于上述微架构与指令级的深度极致压榨，本算子在 Atlas 950PR（CANN 9.2.0-beta.1 仿真与硬件对齐环境）完成了第一阶段的全面验收：
   1. 性能门禁：全量 7 组基准用例（P-01 至 P-07）加速比全部大幅超越 1.60x 的硬性门禁指标，各用例加速比达到 1.99x 至 4.04x，全用例几何平均加速比达到 2.48x（相比官方基线 FIA），且相对社区竞品单内核方案保持 1.27x 领先优势；
-  2. 精度门禁：L-A 结构一致性与 L-B 浮点误差比值指标 100% 达标通过（P-01 至 P-07 误差比值 Max 0.94~1.73 <= 2.0，Mean/RMSE 约 0.98~1.00 <= 1.2）；C++ 独立单测 15 项断言全部 PASS。第一阶段已形成完整高质量工程闭环。
+  2. 精度门禁：L-A 结构一致性与 L-B 浮点误差比值指标 100% 达标通过（P-01 至 P-07 误差比值 Max 0.94~1.73 <= 2.0，Mean/RMSE 约 0.98~1.00 <= 1.2）；C++ 独立单测 8 大类 14 项断言全部 PASS。第一阶段已形成完整高质量工程闭环。
 
 ### 3. 第二阶段算法级数值增强与拓扑剪枝
 
 第二阶段为当前正在推进演进的核心阶段。在微架构指令已充分压榨的基础上，本阶段立足于算法层面的数学重构与分块拓扑剪枝，进一步挖掘数值精度与计算效率的潜力。
 
-#### 3.1 以二为底归一化编译期尺度折叠
-- 预期收益：
-  Softmax 指数计算与重缩放阶段时延缩减 10% 至 15%，并消除自然底数多项式逼近展开的累积舍入误差。
+#### 3.1 以二为底归一化编译期尺度折叠（评估备选，未启用）
+- 结论：
+  本方案完成了推导与评估，但当前交付路径未启用：Atlas 950PR 的 AIV 原生 `ExpSub` 即为单条自然指数指令，"通用向量处理器需 10~20 周期软件逼近"的前提在该硬件上不成立；内核在线 Softmax 直接使用自然指数（见 §1.5），引入换底反而多一次向量乘。以下推导保留作为备选路径的数学依据。
 - 为什么（原理解析与数学推导）：
   在标准注意力机制中，Softmax 采用以自然常数 `e` 为底的指数函数：
   ```text
@@ -475,7 +481,7 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 2. 惰性归一化动态旁路与多发射交织深度优化：
    进一步深化了 Lazy Softmax 动态旁路判定与 AIV 向量 2 行/4 行多发射交织流水线的协同调度。在长序列迭代中有效旁路了高达 40% 的无效累加带宽与局部寄存器搬移。基准测试用例 P-01 至 P-07 全量用例端到端仿真加速比几何平均值达到 2.65x（相对官方基线 FIA 从第一阶段的 2.48x 提升至 2.65x），相对社区竞品单内核方案的领先优势进一步扩大至 1.36x。
 3. 概率单位分解无偏重构严格数值验证：
-   Smooth-V 算法逻辑与无偏加回数据通路已在独立可移植测试 `tests/numeric_error_test.cpp` 中固化并全绿通过 9 大类 18 项单测断言。实测单位分解恒等误差达到 1.31e-13（远低于 1e-12 的理论断言界），FP8 PV 量化相对误差由原始直接量化的 0.97% 骤降至 0.0667%，量化相对误差降低达 14.5 倍（远超 2.5 倍的门禁要求），全面达成并优于 <0.5% 的设计规范要求。
+   Smooth-V 完成了算法级设计、数学推导与独立数值验证（历史单测固化的单位分解恒等误差 1.31e-13，FP8 PV 量化相对误差由 0.97% 降至 0.0667%，降低 14.5 倍），验证了其数值价值；但最终交付路径改用 MXFP8 V 的细粒度分组量化（每 channel × 每 32 token 独立 scale，见 §1.4），在不引入 V 均值统计与跨核同步的前提下覆盖了同样的离群值抑制目标，因此 Smooth-V 不在当前内核数据通路中（接口仅保留兼容告警语义，见 README）。其推导与验证数据保留作为设计取舍的依据。
 
 ### 4. 第三阶段下一代计算架构长期演进
 
@@ -516,7 +522,7 @@ V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(lo
 | 演进阶段 | 阶段定位 | 核心优化项 | 关键技术原理 | 预期与实测技术收益 | 当前交付状态 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 第一阶段 | 微架构与指令级极致压榨 | 1. 向量多发射交织展开<br>2. 行和两级平衡树规约<br>3. 惰性归一化跳步重缩放<br>4. 片上内存屏障精简<br>5. 计算转换双流并发重叠<br>6. 循环不变量提升与外提 | 消除 Vector ALU 读后写依赖气泡；关键路径依赖深度 3 级削减至 2 级；局部最大未突破时旁路乘法与 UB 读写；双硬件执行单元并发重叠；消除动态地址计算 | 消除 2~3 cycle RAW 冒险停顿；节省 40% 累加带宽；P-01 至 P-07 仿真加速比 1.99x~4.04x（GeoMean 2.48x vs FIA，1.27x vs 竞品）；L-A/L-B 精度 100% 达标 | 已全面完成闭环验收并合入主线 |
-| 第二阶段 | 算法级数值增强与拓扑剪枝 | 1. 以二为底归一化尺度折叠<br>2. 因果注意力严格上三角跳块<br>3. 编译期特化模板分发<br>4. 概率单位分解无偏重构<br>5. 动态旁路与多发射深度优化 | 换底常数编译期折叠入 scale，启用单周期原生指令 Exp2；调度层完全跳过全空上三角分块；编译期特化模板消除跳转气泡；利用概率行和为 1 特性，通道均值量化前剥离、写回时单向量加回 | Softmax 阶段时延缩减 10%~15%；因果场景 P-03 时延自 1070.0us 降至 980.0us，加速比升至 3.59x；P-01 至 P-07 端到端平均加速比达 2.65x（相对竞品达到 1.36x）；Smooth-V 18 项单测断言全绿通过，量化误差降低 14.5 倍，恒等误差达到 1.31e-13 | 核心数值与剪枝算法已完成工程验证并闭环 |
+| 第二阶段 | 算法级数值增强与拓扑剪枝 | 1. 因果注意力严格上三角跳块<br>2. 编译期特化模板分发<br>3. 动态旁路与多发射深度优化<br>4. Smooth-V 探索（被 MXFP8 V 分组量化取代） | 调度层完全跳过全空上三角分块；编译期特化模板消除跳转气泡；以二为底换底折叠经评估未启用（ExpSub 已为单条原生指令，见 §3.1）；Smooth-V 完成数学推导与数值验证后由 MXFP8 V 细粒度分组量化取代（见 §3.3） | 因果场景 P-03 时延自 1070.0us 降至 980.0us，加速比升至 3.59x；P-01 至 P-07 端到端平均加速比达 2.65x（相对竞品达到 1.36x）；Smooth-V 探索项历史验证数据：量化误差降低 14.5 倍、恒等误差 1.31e-13 | 剪枝与流水优化已工程闭环；换底折叠与 Smooth-V 为评估/探索结论 |
 | 第三阶段 | 下一代计算架构长期演进 | 1. 变换域正交非相干处理<br>2. 原生低比特矩阵乘路径 | 随机沃尔什-阿达马正交旋转离线吸收入权重，彻底抹平离群峰值；基于非相干平滑启用原生 INT4 MMAD 矩阵乘指令 | 彻底消除在线均值统计与跨核全局硬同步；释放 Atlas 950PR 芯片 2.0 PFLOPS 双倍理论算力，QK 计算时延降低 40%~50%，显存带宽减半 | 长期架构演进规划 |
 
 ---
@@ -1000,7 +1006,7 @@ def sageattn_qk_int8_pv_fp8_asc(
 | `smooth_k` | True（默认）/ False | 默认开启 K 序列均值平滑与 LSE 补偿（§1.1/§1.5）。 |
 | `smooth_v` | True / False（默认） | 兼容参数：V 采用每 32 token 每 channel 的 MXFP8 分组量化，天然适应局部数值范围，不再执行 V 均值统计/减均值/输出补偿。传 True 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时 warning 并忽略（对齐开源行为）。 |
 
-> 上述映射的完整背景（含与 CUDA 各架构分支默认参数的对照表）见算子仓 `docs/CUDA接口差异说明.md`。
+> 上述映射的 NPU 取舍口径见 README"粒度与累加配置的 NPU 映射"。
 
 ### 2. 底层接口签名与两段式调用
 
@@ -1188,14 +1194,14 @@ OP_ADD(SageAttention2);
 
 ### 3. 当前验证状态与数据来源口径
 
-- CPU 同算法对照（已实现，随仓测试）：`tests/` 套件以 `reference.py`（per-token INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现）为 golden，覆盖 dtype/layout/stride/GQA/causal、smooth K、smooth_v warning/ignore、LSE、长序列、模板选择边界、重复调用、并发流与独立 C++ ACLNN 入路；FP16 rtol/atol=2^-9、BF16=2^-6、匹配率 >= 99%，MXFP8 回归最大绝对误差上限 FP16 0.1 / BF16 1.0。
+- CPU 同算法对照（随仓测试 `python/test_python_api.py`）：以 `reference.py`（per-token INT8 / MXFP8 / FP16 平移 max 的独立 CPU 实现）为 golden，覆盖 dtype/layout/stride/GQA/causal、smooth_k、smooth_v warning/ignore、LSE shape 与数值、head_dim padding、非法参数报错与 SDPA 替换冒烟；FP16 rtol/atol=2^-9、BF16=2^-6、匹配率 >= 99%，MXFP8 回归最大绝对误差上限 FP16 0.1 / BF16 1.0。
 - 浮点精度数值仿真（hwdev `tools/precision_simulator.py`，统计值由仿真计算得出）：以 numpy 位级模拟 NPU 数据通路（per-token INT8 + FP16 平衡 scale + DEQF16 2^-11、FP16 平移最大值、E4M3/E8M0 MXFP8、两级 FP32 累加、末位 RNE 舍出），并以开源 SageAttention2 sm89 FP8 路径数值模拟（per-4/16-token 分组 scale + per-channel FP8 V + ln(448) 平移 + fp16 块部分和）为对照、FP32 SDPA 为真值，按用例抽样（2 头 × 512 行，causal 全序列均匀采样行）计算：
   - L-B 结构误差比（本实现误差 / 开源数值模拟误差，门限 max<=2.0 / mean<=1.2 / RMSE<=1.2）：P-01~P-07 全部 PASS，max 0.94~1.73、mean 0.98~1.00、RMSE 0.98~1.00——两条量化路径误差同量级，本实现不劣于开源数值行为。
   - L-A 口径匹配率（vs 开源数值模拟，混合容差 FP16 2^-9 / BF16 2^-6）：0.815~1.000（信息性参考，非门禁；两条路径量化噪声独立，且 GPU 模拟本身为近似粒度建模；因果与短序列场景因有效列数少、量化误差不被稀释而偏低）。
   - 量化环节相对误差（均值）：Q/K INT8 ≈ 0.7%，V MXFP8 ≈ 2.3%。
   - 该仿真为算法数值口径；正式 L-A（GPU `sageattn_qk_int8_pv_fp8_cuda` 同 `pv_accum_dtype` 对标）与 L-B 验收仍须真机执行。
 - L-A 短板归因（对照实验）：将对照路径切换为与本实现完全相同的量化配置（per-token Q/K + MX V）后，L-A 口径匹配率升至 1.0000、误差比 1.001——证明 NPU 数值路径自洽且误差等价，对开源粒度（per-4/16-token + per-channel V）的匹配率差距（0.82~1.00）全部来自任务书允许的粒度映射差异（本实现粒度更细），内核数值实现无缺陷，无需修改 C++ 代码。
-- C++ 浮点误差一致性测试（`tests/numeric_error_test.cpp`，独立可移植文件）：将内核数值规格固化为可执行断言，在 CANN 容器（g++ -O2 -std=c++17）运行，9 大类 18 项断言全部通过：
+- C++ 浮点误差一致性测试（`tests/numeric_error_test.cpp`，独立可移植文件）：将内核数值规格固化为可执行断言，在 CANN 容器（g++ -O2 -std=c++17）运行，8 大类 14 项断言全部通过：
   | 数值构件 | 实测包络 | 断言界 |
   | --- | --- | --- |
   | FastReciprocal（魔数 0x7EEF370B + 2 次牛顿） | 1.86e-5 | <= 2^-16（e0^4 包络，远小于其下游的 FP16 舍入 2^-11 与量化噪声 ~2^-5） |
@@ -1204,11 +1210,9 @@ OP_ADD(SageAttention2);
   | E8M0 分组 scale | — | 2^ceil(log2(amax/448)) 覆盖（无饱和）且 <= 2× |
   | DEQF16(2^-11)×FP16 平衡 scale 抵消 | 9.08e-4 | <= 2^-9（2048·2^-11 严格抵消） |
   | ln(448) 平移 | — | p_max > 224（满量程）且 <= 448·(1+2^-7)（饱和裕量） |
-  | LSE 恒等式（平移 max + ln(den) + 平滑校正 + GQA 广播） | 6.41e-16 | <= 1e-5（双精度参考） |
+  | LSE 契约（raw log2 内核值 + 开源校正 = 双精度参考，GQA 广播） | 6.41e-16 | <= 1e-5 |
   | smooth-K softmax 不变性 | 3.76e-15 | <= 1e-12 |
-  | Smooth-V 单位分解恒等式 | 1.31e-13 | <= 1e-12（双精度参考严格恒等） |
-  | Smooth-V FP8 相对误差 | 0.0667% | < 0.5%（实测 0.0006536，远优于设计界） |
-  | Smooth-V 量化误差降低倍数 | 14.5x | > 2.5x（实测相对直接量化误差降低 14.5 倍） |
+  （Smooth-V 探索项的历史验证数据：单位分解恒等误差 1.31e-13、FP8 相对误差 0.0667%、量化误差降低 14.5x；该项已由 MXFP8 V 分组量化取代，未纳入交付通路，详见 §3.3 取舍说明。）
   期间修订了 `common.h` 中 FastReciprocal "<1 ULP" 的不准确精度声明（真实包络为 e0^4 ~ 2^-16，对下游无实质影响）。
 - GPU 同配置 L-A 对标：尚未执行（需验收环境 GPU 侧 `sageattn_qk_int8_pv_fp8_cuda` 同 `pv_accum_dtype` 对照），正式 AscendOpTest 验收待真机执行。
 
@@ -1285,6 +1289,6 @@ Speedup = T_FIA / T_Ours >= 1.60
 
 ## 兼容性分析
 
-1. 框架兼容性：兼容 PyTorch 2.x 与 torch_npu 扩展；提供 torch.library dispatcher schema 与 Meta 实现，支持 FakeTensor/Meta 设备推演与 `torch.compile(backend="eager", fullgraph=True)` 图模式（范围详见算子仓 `docs/PyTorch接入说明.md`）。
+1. 框架兼容性：兼容 PyTorch 2.x 与 torch_npu 扩展；提供 torch.library dispatcher schema 与 Meta 实现，支持 FakeTensor/Meta 设备推演与 `torch.compile(backend="eager", fullgraph=True)` 图模式。
 2. 算子无缝平替：可通过 `torch.nn.functional.scaled_dot_product_attention = sageattn` 达成现有模型代码的即插即用（example 级冒烟已覆盖，`tests/test_sdpa_substitution.py`）。
 3. 历史版本平滑迁移：显式参数 `smooth_v=True` 时按开源规范告警并忽略，不发生崩溃；`qk_quant_gran`/`pv_accum_dtype` 的全部开源合法取值均原生接受（§1.3 映射），非法取值明确报错。
