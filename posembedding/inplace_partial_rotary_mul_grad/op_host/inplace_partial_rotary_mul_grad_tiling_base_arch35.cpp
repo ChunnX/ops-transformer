@@ -312,16 +312,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckRotaryModeShapeRe
 {
     auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     int64_t dyD = dyShape.GetDim(DIM_3);
-    if (sliceStart_ < 0 || sliceEnd_ > dyD) {
-        std::string sliceStr = "[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + ")";
-        std::string reasonMsg = "partial_slice [start, end) must satisfy 0 <= start <= end <= D, "
-                                "where D is the last dim of input dy. Got D=" +
-                                std::to_string(dyD);
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), sliceStr.c_str(), std::to_string(dyD).c_str(),
-                                  reasonMsg.c_str());
-        return ge::GRAPH_FAILED;
-    }
-
     if (dyD > D_LIMIT) {
         std::string shapeMsg = ToString(dyShape);
         std::string reasonMsg = "The D axis of input dy can not be greater than " + std::to_string(D_LIMIT) +
@@ -382,7 +372,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckAttr()
     OP_CHECK_NULL_WITH_CONTEXT(context_, partialSlicePtr);
     sliceStart_ = partialSlicePtr->GetData()[0];
     sliceEnd_ = partialSlicePtr->GetData()[1];
-    sliceLength_ = sliceEnd_ - sliceStart_;
 
     // No-op: empty slice (start == end) or any of dy/cos/sin is an empty tensor
     // (some dim is 0). Nothing to compute, the kernel goes through TILING_KEY_EMPTY
@@ -391,6 +380,17 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckAttr()
     auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
+    int64_t dyD = dyShape.GetDim(DIM_3);
+    if (sliceStart_ < 0 || sliceStart_ > sliceEnd_ || sliceEnd_ > dyD) {
+        std::string sliceStr = "[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + ")";
+        std::string reasonMsg = "partial_slice [start, end) must satisfy 0 <= start <= end <= D, "
+                                "where D is the last dim of input dy. Got D=" +
+                                std::to_string(dyD);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), sliceStr.c_str(), std::to_string(dyD).c_str(),
+                                  reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    sliceLength_ = sliceEnd_ - sliceStart_;
     int64_t cosD = cosShape.GetDim(DIM_3);
     int64_t dySize = dyShape.GetShapeSize();
     int64_t cosSize = cosShape.GetShapeSize();
