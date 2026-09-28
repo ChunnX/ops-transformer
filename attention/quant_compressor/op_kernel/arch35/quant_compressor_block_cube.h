@@ -97,8 +97,6 @@ private:
     uint32_t xBufId = 0; // 用于DB计数
     static constexpr uint32_t W_EVENT0 = EVENT_ID4;
     static constexpr uint32_t W_EVENT1 = EVENT_ID5;
-    static constexpr uint32_t W_EVENT2 = EVENT_ID6;
-    static constexpr uint32_t W_EVENT3 = EVENT_ID7;
     uint32_t wBufId = 0; // 用于DB计数
     // mte1 <> mmad EventID
     static constexpr uint32_t L0AB_EVENT0 = EVENT_ID3;
@@ -176,8 +174,6 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::AllocEventI
 
     SetFlag<HardEvent::MTE1_MTE2>(W_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(W_EVENT1);
-    SetFlag<HardEvent::MTE1_MTE2>(W_EVENT2);
-    SetFlag<HardEvent::MTE1_MTE2>(W_EVENT3);
 
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
     SetFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
@@ -196,8 +192,6 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::FreeEventID
 
     WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT1);
-    WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT2);
-    WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT3);
 
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
     WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
@@ -402,8 +396,6 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::ComputeMm1(
         WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
         LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
         CopyXGmToL1(info, xL1Tensor, hStart + hIdx, kSize);
-        SetFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
         for (uint32_t i = nCoff; i > 0; i--) {
             // coffId=0, 计算pre数据; coffId=1, 计算cur数据
             uint32_t coffId = i - 1;

@@ -269,7 +269,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
             PipeBarrier<PIPE_V>();
         }
         LocalTensor<T> comperssoredUb = scoreLocal;
-        PipeBarrier<PIPE_V>();
         this->KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         this->CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt,
@@ -435,10 +434,12 @@ __aicore__ inline bool CompressorBlockVectorFullLoad<COMP>::ProcessSaveStateLoop
         this->SaveState(kvUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset, splitInfo.dBaseSize,
                         splitInfo.dBaseSize, kvStateIdx_);
         AddApeToScore(scoreUb, sliceInfo, splitInfo.dBaseSize, splitInfo.dBaseSize, baseOffset, isApeFullLoad);
+        PipeBarrier<PIPE_V>();
         this->SaveState(scoreUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset,
                         splitInfo.dBaseSize, splitInfo.dBaseSize, scoreStateIdx_);
         sliceIterator.IteratorSlice();
     }
+    PipeBarrier<PIPE_MTE3>();
     if (curLoopCompressedCnt == 0) {
         this->inputQue1.template FreeTensor(scoreUb);
         return true; // 空轮：无压缩块，跳过核心计算
