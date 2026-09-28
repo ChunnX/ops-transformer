@@ -23,8 +23,11 @@
 #include <torch/extension.h>
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
 #include <tuple>
+#include <vector>
 #include "acl/acl.h"
 #include "acl/acl_rt.h"
 #include "hccl_common.h"
@@ -98,12 +101,15 @@ public:
     }
 
     /*!
-     * \brief 创建 quant MTE 算子族公共 context，使用 HCCL 内置 buffer 作为 win 区
+     * \brief 获取或创建 quant MTE 算子族公共 context 的 host 侧内容
      *
-     * 固定 ctxTag 保证 eager/静态图/动态图共享同一份 context。命中时仅查询返回，
-     * 未命中时交换各 rank 内置 buffer 地址并拷贝到 engine context。
+     * 固定 ctxTag 保证 eager/静态图/动态图共享同一份 context。HcclEngineCtxGet 命中时
+     * 直接读进程内 host 缓存；未命中时交换各 rank 内置 buffer 地址（UB_MEM 协议）、
+     * 创建 engine context 并拷贝。全程仅调用 HCCL/ACL C 接口，不经过 PyTorch
+     * dispatcher，可在 FakeTensorMode（torchair GE converter 在 AOT 编译期处于
+     * fake mode）下安全调用。
      */
-    std::tuple<at::Tensor, int64_t> CreateQuantMteContext(const std::string &ctxTag)
+    QuantMteContext BuildOrLookupHostContext(const std::string &ctxTag)
     {
         TORCH_CHECK(builder_ != nullptr, "builder_ is not initialized");
         constexpr uint32_t quantMteMaxRank = 1024U;
@@ -115,14 +121,19 @@ public:
             TORCH_CHECK(ctx != nullptr, "HcclEngineCtxGet returned null context, tag: ", ctxTag);
             TORCH_CHECK(ctxSize >= sizeof(QuantMteContext), "Invalid quant MTE context size, expected at least ",
                         sizeof(QuantMteContext), ", got ", ctxSize);
-            return {WrapQuantMteContext(ctx), static_cast<int64_t>(GetHcclBufferSize())};
+            return LookupHostContext(ctxTag);
         }
 
         TORCH_CHECK(builder_->Init(), "Init CommChannelBuilder failed, tag: ", ctxTag);
 
         uint64_t remoteAddrs[quantMteMaxRank] = {};
         const std::string memTag = ctxTag + "_winbuf";
-        TORCH_CHECK(builder_->AllocRegAndBuildChannels(ChannelMode::URMA, memTag.c_str(), nullptr, remoteAddrs),
+        // quant MTE kernel 以裸 DataCopy 读写各 rank 内置 buffer（不含 URMA channel 句柄），
+        // 远端地址必须为本侧可直接访问的映射地址，因此必须走 UB_MEM 协议（与
+        // Mc2Context/bandwidth_test 及旧 CommContextManager channel 路径一致）。
+        // URMA(UBC_CTP) 的 HcclChannelGetHcclBuffer 返回远端原始 VA，仅可经 WriteNbi
+        // 等 channel API 访问，裸 DataCopy 会触发 device 侧 MTE trap。
+        TORCH_CHECK(builder_->AllocRegAndBuildChannels(ChannelMode::UBMEM, memTag.c_str(), nullptr, remoteAddrs),
                     "Build quant MTE HCCL buffer address table failed, tag: ", ctxTag);
 
         auto hcclRet = HcclEngineCtxCreateFunc(comm_, ctxTag.c_str(), engine, sizeof(QuantMteContext), &ctx);
@@ -155,7 +166,33 @@ public:
         hcclRet = HcclEngineCtxCopyFunc(comm_, engine, ctxTag.c_str(), &hostContext, sizeof(hostContext), 0);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclEngineCtxCopy failed, tag: ", ctxTag, ", ret: ", hcclRet);
 
-        return {WrapQuantMteContext(ctx), static_cast<int64_t>(GetHcclBufferSize())};
+        CacheHostContext(ctxTag, hostContext);
+        return hostContext;
+    }
+
+    /*!
+     * \brief 创建 quant MTE 算子族公共 context 并以 NPU tensor 返回（eager 路径）
+     */
+    std::tuple<at::Tensor, int64_t> CreateQuantMteContext(const std::string &ctxTag)
+    {
+        QuantMteContext hostContext = BuildOrLookupHostContext(ctxTag);
+        return {WrapQuantMteContext(hostContext), static_cast<int64_t>(GetHcclBufferSize())};
+    }
+
+    /*!
+     * \brief 以 host int32 列表返回 context 内容（FakeTensorMode 安全，供 GE converter 使用）
+     *
+     * torchair 的 fx2ge converter 在 AOT 编译期处于 FakeTensorMode，任何经过 PyTorch
+     * dispatcher 的 tensor 创建/拷贝（如 at::empty / copy_ / Tensor.cpu）都会触发
+     * fake mode 断言；converter 只需要 context 的 int32 内容构造 ge.Const，因此
+     * 走本接口直接取 host 内容，不产生任何 tensor op。
+     */
+    std::tuple<std::vector<int32_t>, int64_t> GetQuantMteContextData(const std::string &ctxTag)
+    {
+        QuantMteContext hostContext = BuildOrLookupHostContext(ctxTag);
+        const auto *begin = reinterpret_cast<const int32_t *>(&hostContext);
+        std::vector<int32_t> data(begin, begin + sizeof(QuantMteContext) / sizeof(int32_t));
+        return {std::move(data), static_cast<int64_t>(GetHcclBufferSize())};
     }
 
     /*!
@@ -171,13 +208,64 @@ public:
     }
 
 private:
-    static at::Tensor WrapQuantMteContext(void *ctx)
+    /*!
+     * \brief 将 host 侧 context 内容包装为 NPU tensor 返回
+     *
+     * 必须用 at::empty(PrivateUse1) 走 torch_npu 分配器创建真正的 NPU tensor（NPUTensorImpl，
+     * 携带有效 device index）。at::from_blob(PrivateUse1) 得到的是普通 TensorImpl，aclnn
+     * 转换链（IsOpInputBaseFormat -> NPUBridge::GetNpuTensorImpl）对其 static_cast 后读取
+     * npu 专属字段属于未定义行为，会引发 host 侧段错误。
+     * 与 CommContextManager::CreateContext + CopyContextToTensor 的既有可用实现保持一致。
+     */
+    static at::Tensor WrapQuantMteContext(const QuantMteContext &hostContext)
     {
-        auto options = at::TensorOptions()
-                           .dtype(at::kInt)
-                           .device(c10::DeviceType::PrivateUse1)
-                           .memory_format(c10::MemoryFormat::Contiguous);
-        return at::from_blob(ctx, {sizeof(QuantMteContext) / sizeof(int32_t)}, options);
+        constexpr int64_t contextElemNum = static_cast<int64_t>(sizeof(QuantMteContext) / sizeof(int32_t));
+        at::Tensor context = at::empty({contextElemNum},
+                                       at::TensorOptions()
+                                           .dtype(at::kInt)
+                                           .device(c10::DeviceType::PrivateUse1)
+                                           .memory_format(c10::MemoryFormat::Contiguous));
+        at::Tensor hostTensor = at::from_blob(const_cast<QuantMteContext *>(&hostContext), {contextElemNum}, at::kInt);
+        context.copy_(hostTensor);
+        return context;
+    }
+
+    /*!
+     * \brief 进程内缓存 host 侧 context 内容（key: group + ctxTag）
+     *
+     * 内容（epRankId/rankSizePerServer/各 rank 内置 buffer 地址）在 (group, ctxTag)
+     * 确定后不变，缓存安全；engine ctx 生命周期与进程一致，HcclEngineCtxGet 命中时
+     * 本进程必然已走过创建路径并写入缓存，因此命中路径无需回读 device 内存。
+     */
+    static std::map<std::string, QuantMteContext> &HostContextCache()
+    {
+        static std::map<std::string, QuantMteContext> cache;
+        return cache;
+    }
+
+    static std::mutex &HostContextCacheMutex()
+    {
+        static std::mutex mutex;
+        return mutex;
+    }
+
+    QuantMteContext LookupHostContext(const std::string &ctxTag) const
+    {
+        std::lock_guard<std::mutex> guard(HostContextCacheMutex());
+        auto iter = HostContextCache().find(MakeHostContextKey(ctxTag));
+        TORCH_CHECK(iter != HostContextCache().end(), "Quant MTE host context cache miss, tag: ", ctxTag);
+        return iter->second;
+    }
+
+    void CacheHostContext(const std::string &ctxTag, const QuantMteContext &hostContext) const
+    {
+        std::lock_guard<std::mutex> guard(HostContextCacheMutex());
+        HostContextCache()[MakeHostContextKey(ctxTag)] = hostContext;
+    }
+
+    std::string MakeHostContextKey(const std::string &ctxTag) const
+    {
+        return group_ + "|" + ctxTag;
     }
 
     HcclComm comm_ = nullptr;
@@ -193,6 +281,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("get_rank_size", &CommChannelBuilderManager::GetRankSize)
         .def("create_context", &CommChannelBuilderManager::CreateContext, py::arg("ctx_tag"))
         .def("create_quant_mte_context", &CommChannelBuilderManager::CreateQuantMteContext, py::arg("ctx_tag"))
+        .def("get_quant_mte_context_data", &CommChannelBuilderManager::GetQuantMteContextData, py::arg("ctx_tag"))
         .def("get_hccl_buffer_size", &CommChannelBuilderManager::GetHcclBufferSize);
 }
 

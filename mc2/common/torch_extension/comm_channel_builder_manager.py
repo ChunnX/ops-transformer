@@ -92,3 +92,14 @@ def get_quant_mte_context(group: str):
     module = comm_channel_builder_manager_op_builder.load()
     manager = module.CommChannelBuilderManager(group)
     return manager.create_quant_mte_context(QUANT_MTE_CONTEXT_TAG)
+
+
+def get_quant_mte_context_data(group: str):
+    """Get the idempotent shared context data (host int32 list + buffer size).
+
+    FakeTensorMode-safe (no dispatched tensor ops), for use inside torchair GE
+    converters which run under fake mode during AOT compilation.
+    """
+    module = comm_channel_builder_manager_op_builder.load()
+    manager = module.CommChannelBuilderManager(group)
+    return manager.get_quant_mte_context_data(QUANT_MTE_CONTEXT_TAG)
