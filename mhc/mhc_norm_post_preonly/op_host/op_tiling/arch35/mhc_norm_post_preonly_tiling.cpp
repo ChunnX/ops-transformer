@@ -126,8 +126,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
     auto alphaShape = context_->GetInputShape(5);
     auto biasShape = context_->GetInputShape(6);
     auto gamma0Shape = context_->GetOptionalInputShape(GAMMA_0_INPUT_INDEX);
-    // gamma_1 is required by the interface, but it is located after two optional inputs.
-    // Runtime TilingContext exposes such trailing inputs through the optional-input accessor.
+
     auto gamma1Shape = context_->GetOptionalInputShape(GAMMA_1_INPUT_INDEX);
     auto gamma2Shape = context_->GetOptionalInputShape(GAMMA_2_INPUT_INDEX);
     OP_CHECK_IF(hOutShape == nullptr || residualShape == nullptr || hPostShape == nullptr || phiShape == nullptr ||
@@ -264,8 +263,7 @@ ge::graphStatus MhcNormPostPreonlyTiling::CheckInputShape()
                 OP_LOGE(context_->GetNodeName(), "required output shape is null"), return ge::GRAPH_FAILED);
     const auto &hInPrime = hInPrimeShape->GetOriginShape();
     const auto &x2Out = x2OutShape->GetOriginShape();
-    // Dynamic launch flattens preallocated output shapes before tiling. Validate their element counts here;
-    // ACLNN validates the original ranks/dimensions and rejects the interface-reserved h_pre before launch.
+
     OP_CHECK_IF(hInPrime.GetShapeSize() != hOut.GetShapeSize(),
                 OP_LOGE(context_->GetNodeName(), "h_in_prime element count must match h_out"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(x2Out.GetShapeSize() != residual.GetShapeSize(),

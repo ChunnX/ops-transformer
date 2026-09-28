@@ -8,15 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// ========================================================================
-// mhc_norm_post_preonly_kernel.h — 类定义和共享计算模块
-//
-// 文件结构:
-//   1. 类声明 + Init / Process
-//   2. 共享计算成员实现
-//   3. 成员变量
-//   4. 引入各执行路径的实现头文件
-// ========================================================================
 #ifndef MHC_NORM_POST_PREONLY_KERNEL_H_
 #define MHC_NORM_POST_PREONLY_KERNEL_H_
 
@@ -103,23 +94,15 @@ public:
 
         // UB空间分配
         pipe_.InitBuffer(bufGamma0Fp32_, D_ * sizeof(float));
-        // 双sibling每条lane只恢复并归约自己负责的两个head，使用紧凑两行缓存。
         const uint32_t x2Fp32Rows = DUAL_SIBLING ? 2U : N_;
         pipe_.InitBuffer(bufX2Fp32_, x2Fp32Rows * dimTile_ * sizeof(float));
-        // 完整gamma0复用初始同步；gamma1在D不超过5120时完整缓存。
-        // D=7168时总UB为260448B，小于A5的256KiB上限并保留1696B余量。
         pipe_.InitBuffer(bufX2Cache_, K_ * sizeof(T));
         pipe_.InitBuffer(bufResidualBf16_, 1, N_ * dimTile_ * sizeof(T));
-        // 前四行先保存residual，之后复用为R4/R5的五行归约输入；第五行在前半程保存h_out，
-        // h_out失效后再复用为R6/R7的h_in和通用输出暂存。
         pipe_.InitBuffer(bufResFp32_, (N_ + 1) * dimTile_ * sizeof(float));
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dimTile_ * sizeof(float));
-        // TODO: 后续重新设计流水并单独验证输入、输出双缓冲收益。
         pipe_.InitBuffer(bufHInPrimeBf16_, BUFFER_NUM_ONE, dimTile_ * sizeof(T));
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
-        // Dual 5op reuses this allocation for full-D R1/mid/R6 squares.
-        // At D=7168 the dual-path buffers total 253280 bytes (<256 KiB).
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dimTile_;
         pipe_.InitBuffer(bufGamma2Fp32_, gamma1CacheElems * sizeof(float));
 
@@ -133,9 +116,6 @@ public:
         }
     }
 
-    // =====================================================================
-    //  Process: gamma hoisting + token loop dispatch
-    // =====================================================================
     __aicore__ inline void Process()
     {
         if (tokenStart_ >= tokenEnd_) {
@@ -184,33 +164,11 @@ public:
         }
     }
 
-    // =================================================================
-    //  各执行路径的方法，实现在独立头文件中
-    // =================================================================
 private:
     __aicore__ inline void ProcessTokenSingleAiv(uint32_t token);
     __aicore__ inline void ProcessTokenDualSiblingAiv(uint32_t token);
-    // =================================================================
-    //  共享计算模块
-    // =================================================================
-    /**
-     * Copyright (c) 2026 Huawei Technologies Co., Ltd. All rights reserved.
-     * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-     * CANN Open Software License Agreement Version 2.0 (the "License").
-     * Please refer to the License for details. You may not use this file except in compliance with the License.
-     * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-     * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-     * See LICENSE in the root of the software repository for the full text of the License.
-     */
 
-    // ========================================================================
-    // mhc_norm_post_preonly_kernel_compute.h
-    // 共享计算模块：数据加载、RMSNorm、MHC Post、门控
-    // ========================================================================
-
-    // 数据加载
-
-    /// 加载一个token的h_post[N]和h_res[N*N]。
+    // 加载一个token的h_post[N]和h_res[N*N]。
     __aicore__ inline void LoadTokenWeights(uint32_t token, float (&postVals)[N_MAX], uint32_t headBegin = 0U,
                                             uint32_t headEnd = N_MAX)
     {
@@ -236,14 +194,14 @@ private:
             postVals[i] = hPostUb.GetValue(i);
     }
 
-    /// 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
+    // 提前搬运完整h_out；后续权重加载的全流水等待同时保证该数据对Vector可见。
     __aicore__ inline void CacheHOut(uint64_t gmOffset)
     {
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>();
         DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     }
 
-    /// 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
+    // 多分块路径每个token搬运完整gamma0；D=2560由Process在token循环外仅加载一次。
     __aicore__ inline void CacheGamma0()
     {
         LocalTensor<float> gamma0 = bufGamma0Fp32_.Get<float>();
@@ -253,8 +211,8 @@ private:
         DataCopyPad(gamma0, gamma0Gm_, params, pad);
     }
 
-    /// 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
-    /// bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
+    // 提前发起完整gamma1搬运到bufGamma0Fp32_，使MTE2与R6的Vector计算重叠。
+    // bufGamma0Fp32_在R3完成后即空闲，R6的平方缓存bufGamma2Fp32_不受影响。
     __aicore__ inline void StartCacheGamma1()
     {
         if (D_ > GAMMA1_CACHE_MAX_D) {
@@ -268,7 +226,7 @@ private:
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
-    /// R7读取完整gamma1前回收MTE2到Vector事件。
+    // R7读取完整gamma1前回收MTE2到Vector事件。
     __aicore__ inline void WaitCacheGamma1()
     {
         if (D_ > GAMMA1_CACHE_MAX_D) {
@@ -277,8 +235,8 @@ private:
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
-    /// 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
-    /// 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
+    // 第二遍R1/R2直接从x2缓存恢复h_out，避免再次从GM读取。
+    // 将gamma的[tOff, tOff+tD)分块加载到指定缓存。
     __aicore__ inline void LoadGammaInto(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
     {
         DataCopyExtParams gP = {1, 0, 0, 0, 0};
@@ -288,21 +246,18 @@ private:
     }
 
     // RMSNorm基础计算
-
-    /// 使用二叉树累加模式执行高精度ReduceSum。
+    // 使用二叉树累加模式执行高精度ReduceSum。
     __aicore__ inline float ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
     {
         LocalTensor<float> scBuf = bufScalar_.Get<float>();
         constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
         uint32_t tDAligned = (tD + REDUCE_ALIGN - 1) / REDUCE_ALIGN * REDUCE_ALIGN;
         uint32_t srcShape[2] = {1, tDAligned};
-        // 输入在归约后不再使用，允许归约过程复用输入缓冲，减少内部UB与标量调度开销。
         ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, src, srcShape, true);
         PipeBarrier<PIPE_V>();
         return scBuf.GetValue(0);
     }
 
-    /// 使用ReduceSumPrecise计算平方和。
     __aicore__ inline float ReduceSumSq(LocalTensor<float> src, uint32_t tD)
     {
         // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
@@ -312,7 +267,7 @@ private:
         return ReduceSumPrecise(sqBuf, tD);
     }
 
-    /// R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
+    // R1直接从低精度h_out缓存计算平方和，省去先恢复完整FP32 h_out再平方的中间UB写读。
     __aicore__ inline float ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
     {
         LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
@@ -322,16 +277,15 @@ private:
         return ReduceSumPrecise(sqBuf, tD);
     }
 
-    /// 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
+    // 使用标量精度计算1/sqrt(sumSq * invCount + eps)。
     __aicore__ inline __attribute__((always_inline)) float ComputeInvRms(float sumSq, float invCount)
     {
         return 1.0f / sqrt(sumSq * invCount + normEps_);
     }
 
-    /// 原地依次执行标量缩放和gamma缩放。
+    // 原地依次执行标量缩放和gamma缩放。
     // MHC_Post计算
-
-    /// 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
+    // 批量加载低精度残差，在R2的VF内完成转换并计算全部N个head的x2。
     __aicore__ inline void ComputeX2AllHeadsBatched(const float (&postVals)[N_MAX], uint64_t gmBaseOffset,
                                                     uint32_t tOff, uint32_t tD)
     {
@@ -376,8 +330,6 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    // 输入输出与本核流水同步辅助函数。
-
     __aicore__ inline void CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
     {
         MhcNormRegBase::VFCastFp32ToB16(dst, src, count);
@@ -418,10 +370,8 @@ private:
     }
 
     // RETURN_H_IN_F32关闭时，直接在已消费完的x2低精度缓存上完成R7量化，避免FP32中间区和二次转换。
-    __aicore__ inline void WriteHInPrimeTileFromCache(LocalTensor<T> srcDst,
-                                                       LocalTensor<float> gamma,
-                                                       float scale, uint64_t gmOffset,
-                                                       uint32_t count)
+    __aicore__ inline void WriteHInPrimeTileFromCache(LocalTensor<T> srcDst, LocalTensor<float> gamma, float scale,
+                                                      uint64_t gmOffset, uint32_t count)
     {
         MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(srcDst, srcDst, gamma, scale, count);
         PipeBarrier<PIPE_V>();
@@ -441,9 +391,6 @@ private:
     }
 
     // 单AIV和双sibling AIV路径共用的分块计算。
-
-    // 构造一个低精度x2_post分块。R1使用normEps_，R2保持h_res的[j,n]索引顺序，
-    // 并显式保留设计规定的两处低精度往返边界。
     __aicore__ inline void ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N_MAX])
     {
@@ -486,16 +433,12 @@ private:
         bufResidualBf16_.FreeTensor(residual);
     }
 
-    // 将完整x2以输出dtype常驻UB，同时完成设计要求的低精度往返；写GM仅用于保留x2_out输出语义。
     __aicore__ inline void CacheX2Tile(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
         const uint64_t outBase = (uint64_t)token * N_ * D_ + tOff;
 
-        // R2已在成对VF尾部完成首次量化；这里只负责按需要恢复和写回。
-        // RMS_mid第一遍直接从低精度缓存计算平方和；R3后必须恢复，
-        // 保证后续R4/R5仍使用低精度往返后的x2。
         if (!USE_RMS_MID || writeOutput) {
             for (uint32_t n = 0; n < N_MAX; n += 2U) {
                 MhcNormRegBase::VFCastB16PairToFp32(x2[n * dimTile_], x2[(n + 1U) * dimTile_], x2Cache[n * D_ + tOff],
@@ -505,8 +448,6 @@ private:
         }
 
         if (writeOutput) {
-            // cacheTile已经是x2_out所需的最终低精度位值，直接写GM，
-            // 避免先恢复FP32再重复量化和反复申请输出队列。
             SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
             for (uint32_t n = 0; n < N_MAX; ++n) {
@@ -515,8 +456,6 @@ private:
         }
     }
 
-    // 双sibling的低精度缓存按完整输出布局寻址，但每个lane只有自己负责的两行有效；
-    // 写回x2_out时也只写这两行，leader会合后再从GM恢复follower的两行。
     __aicore__ inline void CacheX2TileForLane(uint32_t token, uint32_t tOff, uint32_t tD, bool writeOutput)
     {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
@@ -525,7 +464,6 @@ private:
         const uint32_t headBegin = laneId_ * 2U;
 
         if (!USE_RMS_MID || writeOutput) {
-            // 双路R4/R5只读取本lane负责的相邻两行，避免恢复另一lane的无效副本。
             MhcNormRegBase::VFCastB16PairToFp32(x2, x2[dimTile_], x2Cache[headBegin * D_ + tOff],
                                                 x2Cache[(headBegin + 1U) * D_ + tOff], tD);
             PipeBarrier<PIPE_V>();
@@ -542,7 +480,6 @@ private:
 
     // R6读取完当前x2分块后，复用首个head缓存保留低精度h_in。
     // 恢复FP32与平方在同一VF内完成，保留量化往返边界并减少UB中间写读。
-    // TODO: 4op可评估寄存器内跨D lane归约；bf4f875d4对4op全shape有收益，但5op全面退化，当前不分流。
     __aicore__ inline float ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf)
     {
@@ -586,8 +523,8 @@ private:
                     bufPhiFp32_.EnQue(phi0);
                     phi0 = bufPhiFp32_.DeQue<float>();
                     LocalTensor<float> dotRow = reduceRows[(o + 1U) * tD];
-                    MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_],
-                                                 phi0[dimTile_], tD);
+                    MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi0[dimTile_],
+                                                 tD);
                     PipeBarrier<PIPE_V>();
                     bufPhiFp32_.FreeTensor(phi0);
                 }
@@ -615,8 +552,6 @@ private:
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
             MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
 
-            // Each queue entry contains two heads. One strided DMA and one
-            // queue event per pair; two entries retain MTE2/Vector overlap.
             LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
             DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
             bufPhiFp32_.EnQue(curPhi0);
@@ -633,7 +568,8 @@ private:
 
                 LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
                 curPhi0 = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi0[dimTile_], tD);
+                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_],
+                                             curPhi0[dimTile_], tD);
                 bufPhiFp32_.FreeTensor(curPhi0);
 
                 if (o + 1U < N_MAX) {
@@ -654,9 +590,6 @@ private:
         }
     }
 
-    // =================================================================
-    //  成员变量
-    // =================================================================
     TPipe pipe_;
 
     // UB缓存

@@ -48,7 +48,7 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const 
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
 
-    // pre_mix、h_pre 为接口预留的可选输入/输出，当前版本暂不支持，先在此拦截。
+    // pre_mix、h_pre 为接口预留的可选输入/输出，当前暂不支持。
     CHECK_COND(preMixOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
                "preMixOptional is an interface-reserved optional input and must be nullptr currently.");
     CHECK_COND(hPreOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
