@@ -1685,7 +1685,7 @@ static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape* tempKShape, co
         return false;
     }
     // BNBD layout: (numBlocks, kvHeads, blockSize, D), where H = N * D
-    // Keep this predicate aligned with IsFAIRoutingCandidate and CheckSpecCondPA4Dim.
+    // Keep this predicate aligned with IsFAIRoutingCandidate.
     // SplitFuse kernel accepts headDim without 16-alignment (e.g. D=37), only blockSize stays 16-aligned.
     int64_t tempKD = tempKShape->GetDim(DIM_3);
     int64_t tempVD = tempVShape->GetDim(DIM_3);

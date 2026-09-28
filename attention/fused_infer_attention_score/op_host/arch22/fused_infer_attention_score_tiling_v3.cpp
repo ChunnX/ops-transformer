@@ -1183,7 +1183,7 @@ bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape, const gert::
     if (kShape.GetDimNum() != 4U || vShape.GetDimNum() != 4U) {
         return false;
     }
-    // Keep BNBD routing aligned with IsFAIRoutingCandidate and CheckFAIDSizePA4Dim.
+    // Keep BNBD spec check aligned with IsFAIRoutingCandidate and CheckFAIDSizePA4Dim.
     // SplitFuse kernel accepts headDim without 16-alignment (e.g. D=37), only blockSize stays 16-aligned.
     int64_t tempKD = kShape.GetDim(DIM_3);
     int64_t tempVD = vShape.GetDim(DIM_3);
@@ -1191,6 +1191,9 @@ bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape, const gert::
     constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
     constexpr int64_t MAX_BLOCKSIZE = 512;
     bool isFAIDSize = tempQD > 0 && tempQD <= 256 && tempQD == tempKD && tempQD == tempVD;
+    // Keep headDim 64/128/192 on the FIA V3 route (same routing as before this branch was added);
+    // only divert the headDim values V3 rejects (e.g. non-16-aligned D=37) to the original FAI route.
+    isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U || tempQD == 192U);
     bool blockSizeSupported = blockSize > 0 && blockSize <= MAX_BLOCKSIZE && blockSize % BLOCKSIZE_ALIGN_16 == 0;
     return isFAIDSize && blockSizeSupported;
 }
