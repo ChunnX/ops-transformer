@@ -46,9 +46,9 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
     }
 
     OP_CHECK_IF(
-        faInfo.blockSize != 128,
+        faInfo.blockSize < 16 || faInfo.blockSize > 1024,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
-                                              "The value of block_size must be 128"),
+                                              "The value of block_size must be in [16, 1024]"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(

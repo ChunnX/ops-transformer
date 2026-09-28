@@ -98,7 +98,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 
 bool FlashMlaWithKvcacheMetadataCpuKernel::CheckAttrs()
 {
-    KERNEL_CHECK_FALSE(numHeadsQ_ > 0, false, "numHeadsQ must be greater than 0, but got %d", numHeadsQ_);
+    KERNEL_CHECK_FALSE(numHeadsQ_ >= 1 && numHeadsQ_ <= 128, false, "numHeadsQ must be in [1, 128], but got %d",
+                       numHeadsQ_);
     KERNEL_CHECK_FALSE(numHeadsKv_ == MLA_KV_HEADS, false, "MLA kv head num must be %ld, but got %d", MLA_KV_HEADS,
                        numHeadsKv_);
     KERNEL_CHECK_FALSE(headDimQk_ == MLA_HEAD_DIM_QK, false,

@@ -117,7 +117,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | cache_seqlens | Tensor | 必选 | 各batch有效KV长度，与主算子一致 | int32 | ND | (B,) |
-| num_heads_q | int | 必选 | Query头数，配套当前主算子时支持64、96 | int32 | - | - |
+| num_heads_q | int | 必选 | Query头数，配套当前主算子时支持1–128 | int32 | - | - |
 | num_heads_kv | int | 必选 | KV头数，配套当前主算子时为1 | int32 | - | - |
 | cu_seqlens_q | Tensor | 可选 | TND时必传，BSND/BNSD时不传；累积Query长度，首项为0 | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 各batch实际使用的Query长度 | int32 | ND | (B,) |
@@ -179,6 +179,8 @@ metadata的shape根据batch数和设备核数动态计算。
 
 ## 约束说明
 
+- Q、k_cache 任一维度大小为0时，入口报错；不支持空 Q 或空 k_cache。
+
 - `block_table`、序列长度、`attn_mask`和`metadata`中的值由调用者保证正确。Tiling阶段不能全面校验设备Tensor内容，非法值可能导致精度错误或非法内存访问。
 - metadata接口和主算子的序列长度、头数、头维、掩码模式及Query布局必须一致。输入变化后应重新生成对应metadata。
 
@@ -222,8 +224,8 @@ metadata的shape根据batch数和设备核数动态计算。
 
 | 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
 | :--- | :--- | :--- | :--- | :--- |
-| q | float16/bfloat16；BSND、BNSD或TND，shape与布局对应 | 必须存在 | 与k_cache、attn_out数据类型一致 | 0 < B < 65536；TND时Q_T > 0；Q_N支持64、96；KV_N=1、D=576 |
-| k_cache | float16/bfloat16；PA_BBND：(num_blocks, block_size, KV_N, D)；PA_BNBD：(num_blocks, KV_N, block_size, D)；PA_NZ：(num_blocks, KV_N, D / D0, block_size, D0)；非连续Tensor：PA_BBND仅dim0支持，PA_BNBD/PA_NZ支持dim0或dim1 | 必须存在 | 逻辑D与q相同 | block_size=128；D0=16 |
+| q | float16/bfloat16；BSND、BNSD或TND，shape与布局对应 | 必须存在 | 与k_cache、attn_out数据类型一致 | 0 < B < 65536；TND时Q_T > 0；Q_N支持1–128；KV_N=1、D=576 |
+| k_cache | float16/bfloat16；PA_BBND：(num_blocks, block_size, KV_N, D)；PA_BNBD：(num_blocks, KV_N, block_size, D)；PA_NZ：(num_blocks, KV_N, D / D0, block_size, D0)；非连续Tensor：PA_BBND仅dim0支持，PA_BNBD/PA_NZ支持dim0或dim1 | 必须存在 | 逻辑D与q相同 | 16 ≤ block_size ≤ 1024，且为16的倍数；D0=16 |
 | attn_out | float16/bfloat16；BSND、BNSD、TND或NTD，shape与布局对应 | 必须存在 | Q_T、Q_N与q对应 | DV=head_dim_v=512 |
 | metadata | int32、一维、ND、非空；容量不小于当前设备和B所需容量 | 必须传入 | 必须对应本次调用参数 | 由配套metadata接口生成 |
 | head_dim_v | 仅512 | 可省略，默认512 | head_dim_v+64=576 | Value取缓存前512维 |
@@ -276,7 +278,7 @@ C++ 调用方和 torch 扩展需使用新头文件重新编译，并搭配同版
 
 | 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
 | :--- | :--- | :--- | :--- | :--- |
-| block_table | int32、ND；shape为(B, max_num_blocks_per_seq)；max_num_blocks_per_seq > 0；block_size=128 | 必须传入 | B与cache_seqlens、cu_seqlens_q对应 | 必须传入cache_seqlens；layout_kv为PA_NZ时，D为D0的倍数 |
+| block_table | int32、ND；shape为(B, max_num_blocks_per_seq)；max_num_blocks_per_seq > 0；16 ≤ block_size ≤ 1024，且为16的倍数 | 必须传入 | B与cache_seqlens、cu_seqlens_q对应 | 必须传入cache_seqlens；layout_kv为PA_NZ时，D为D0的倍数 |
 
 #### SeqLengths参数组
 

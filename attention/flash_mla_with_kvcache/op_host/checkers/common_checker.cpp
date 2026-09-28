@@ -210,10 +210,10 @@ ge::graphStatus CommonChecker::CheckAxis(const FlashMlaWithKvcacheTilingInfo &fa
                     return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(faInfo.n1Size != 64 && faInfo.n1Size != 96,
+    OP_CHECK_IF(faInfo.n1Size < 1 || faInfo.n1Size > 128,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     faInfo.opName, "query", ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                    "N of query must be 64 or 96"),
+                    "N of query must be in [1, 128]"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
