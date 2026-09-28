@@ -201,8 +201,6 @@ bool GroupedMatmulSwigluQuantV2Hif4Tiling::CheckDtype() const
 
 bool GroupedMatmulSwigluQuantV2Hif4Tiling::AnalyzeInputs()
 {
-    auto compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-    supportMmadF16S8_ = compileInfoPtr->supportMmadF16S8;
     OP_CHECK_IF(!CheckCoreNum(),
             OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
     auto xStorageShape = context_->GetInputShape(X_INDEX);

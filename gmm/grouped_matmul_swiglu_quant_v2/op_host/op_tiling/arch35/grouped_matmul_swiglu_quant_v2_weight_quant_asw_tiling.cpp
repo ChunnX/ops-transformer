@@ -31,7 +31,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantASWTiling::GetShapeAttrsInf
     const auto *compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "CompileInfo is null."), return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
-    OP_LOGI(context_, "Compile info: npuArch(%u) aicNum(%u) aivNum(%lu) ubSize(%lu) l0cSize(%lu).",
+    OP_LOGI(context_, "Compile info: npuArch(%u) aicNum(%u) aivNum(%u) ubSize(%lu) l0cSize(%lu).",
             static_cast<uint32_t>(compileInfoPtr_->npuArch_), compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_,
             compileInfoPtr_->ubSize_, compileInfoPtr_->l0cSize_);
     return GMMSQWeightQuantChecker::GetShapeAttrsInfo(*context_, inputParams_, compileInfoPtr_->npuArch_);
