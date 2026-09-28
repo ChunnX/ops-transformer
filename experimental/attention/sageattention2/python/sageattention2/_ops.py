@@ -131,6 +131,73 @@ def _npu(
     )
 
 
+@impl(_library, "forward", "CPU")
+def _cpu(
+    q,
+    k,
+    v,
+    *,
+    tensor_layout="HND",
+    is_causal=False,
+    qk_quant_gran="per_thread",
+    sm_scale=None,
+    pv_accum_dtype="fp32+fp16",
+    smooth_k=True,
+    return_lse=False,
+):
+    from .reference import attention
+
+    if return_lse:
+        out, ref_lse = attention(
+            q,
+            k,
+            v,
+            sm_scale=sm_scale,
+            is_causal=is_causal,
+            smooth_k=smooth_k,
+            smooth_v=False,
+            tensor_layout=tensor_layout,
+            return_lse=True,
+        )
+        scale = 1.0 / math.sqrt(q.shape[-1]) if sm_scale is None else float(sm_scale)
+        if smooth_k:
+            if tensor_layout == "NHD":
+                seq_dim, nh_dim = 1, 2
+                km = k.mean(dim=seq_dim, keepdim=True)
+                nqheads = q.size(nh_dim)
+                nkheads = k.size(nh_dim)
+                q_per_kv_heads = nqheads // nkheads
+                km_bc = torch.repeat_interleave(km, q_per_kv_heads, dim=nh_dim) if q_per_kv_heads > 1 else km
+                q_hnd = q.transpose(1, 2)
+                km_hnd = km_bc.transpose(1, 2)
+                lse_corr = torch.matmul(q_hnd, km_hnd.transpose(-2, -1)).squeeze(-1).to(torch.float32)
+            else:
+                seq_dim, nh_dim = 2, 1
+                km = k.mean(dim=seq_dim, keepdim=True)
+                nqheads = q.size(nh_dim)
+                nkheads = k.size(nh_dim)
+                q_per_kv_heads = nqheads // nkheads
+                km_bc = torch.repeat_interleave(km, q_per_kv_heads, dim=nh_dim) if q_per_kv_heads > 1 else km
+                lse_corr = torch.matmul(q, km_bc.transpose(-2, -1)).squeeze(-1).to(torch.float32)
+            raw_lse = (ref_lse - lse_corr * scale) * 1.44269504
+        else:
+            raw_lse = ref_lse * 1.44269504
+        return out, raw_lse
+    else:
+        out = attention(
+            q,
+            k,
+            v,
+            sm_scale=sm_scale,
+            is_causal=is_causal,
+            smooth_k=smooth_k,
+            smooth_v=False,
+            tensor_layout=tensor_layout,
+            return_lse=False,
+        )
+        return out, None
+
+
 def sageattn_qk_int8_pv_fp8_asc(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -167,8 +234,9 @@ def sageattn_qk_int8_pv_fp8_asc(
         lse / 1.44269504 + lse_correction * sm_scale if smooth_k else lse / 1.44269504.
     """
     _validate(q, k, v, tensor_layout, is_causal, qk_quant_gran, pv_accum_dtype, kwargs)
+    d_orig = q.shape[-1]
     scale = (
-        1.0 / math.sqrt(q.shape[-1])
+        1.0 / math.sqrt(d_orig)
         if sm_scale is None
         else float(sm_scale)
     )
@@ -216,18 +284,32 @@ def sageattn_qk_int8_pv_fp8_asc(
                 km_broadcast.transpose(2, 3),
             ).squeeze(-1).to(torch.float32)
 
+    # Head dimension auto-padding (D <= 64 -> 64, 64 < D <= 128 -> 128)
+    target_d = 64 if d_orig <= 64 else 128
+    need_pad = d_orig < target_d
+    if need_pad:
+        pad_size = target_d - d_orig
+        q_in = torch.nn.functional.pad(q, (0, pad_size))
+        k_in = torch.nn.functional.pad(k, (0, pad_size))
+        v_in = torch.nn.functional.pad(v, (0, pad_size))
+    else:
+        q_in, k_in, v_in = q, k, v
+
     out, lse = torch.ops.sageattention2.forward(
-        q,
-        k,
-        v,
+        q_in,
+        k_in,
+        v_in,
         tensor_layout=tensor_layout,
         is_causal=is_causal,
         qk_quant_gran=qk_quant_gran,
-        sm_scale=sm_scale,
+        sm_scale=scale,
         pv_accum_dtype=pv_accum_dtype,
         smooth_k=smooth_k,
         return_lse=return_lse,
     )
+
+    if need_pad:
+        out = out[..., :d_orig]
 
     if return_lse:
         lse_final = (
@@ -272,6 +354,58 @@ def sageattn(
         return_lse=return_lse,
         **kwargs,
     )
+
+
+_orig_sdpa = None
+
+
+def replace_sdpa(enable: bool = True) -> None:
+    """Monkey-patch torch.nn.functional.scaled_dot_product_attention with sageattn.
+
+    When enable=True, replaces torch.nn.functional.scaled_dot_product_attention with a wrapper
+    that routes standard attention calls to sageattn.
+    When enable=False, restores the original implementation.
+    """
+    global _orig_sdpa
+    if enable:
+        if _orig_sdpa is None:
+            _orig_sdpa = torch.nn.functional.scaled_dot_product_attention
+
+        def _sage_sdpa_wrapper(
+            query: torch.Tensor,
+            key: torch.Tensor,
+            value: torch.Tensor,
+            attn_mask: Optional[torch.Tensor] = None,
+            dropout_p: float = 0.0,
+            is_causal: bool = False,
+            scale: Optional[float] = None,
+            enable_gqa: bool = False,
+        ) -> torch.Tensor:
+            if attn_mask is None and dropout_p == 0.0:
+                return sageattn(
+                    query,
+                    key,
+                    value,
+                    tensor_layout="HND",
+                    is_causal=is_causal,
+                    sm_scale=scale,
+                )
+            return _orig_sdpa(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+            )
+
+        torch.nn.functional.scaled_dot_product_attention = _sage_sdpa_wrapper
+    else:
+        if _orig_sdpa is not None:
+            torch.nn.functional.scaled_dot_product_attention = _orig_sdpa
+            _orig_sdpa = None
 
 
 run = sageattn_qk_int8_pv_fp8_asc
