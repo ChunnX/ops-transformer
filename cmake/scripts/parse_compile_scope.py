@@ -45,6 +45,11 @@ LONG_SOC = {
     "ascend5162a": "Ascend5162A",
     "ascend610lite": "Ascend610Lite",
 }
+METADATA_SUFFIX = "_metadata"
+AICPU_ONLY_ASCEND910B_OPS = {
+    "attention/attention_worker_scheduler",
+    "ffn/ffn_worker_scheduler",
+}
 
 
 def read_changed_files(changed_file):
@@ -165,7 +170,16 @@ def def_supports(op_path, soc):
 def filter_by_soc(ops, socs):
     if not socs:
         return ops
-    return [item for item in ops if any(def_supports(item[2], soc) for soc in socs)]
+    chosen = []
+    for domain, name, path in ops:
+        key = f"{domain}/{name}"
+        if key in AICPU_ONLY_ASCEND910B_OPS:
+            if any(soc == "ascend910b" for soc in socs):
+                chosen.append((domain, name, path))
+            continue
+        if any(def_supports(path, soc) for soc in socs):
+            chosen.append((domain, name, path))
+    return chosen
 
 
 def collect_compile_ops(changed_file, soc_text, experimental):
@@ -174,6 +188,14 @@ def collect_compile_ops(changed_file, soc_text, experimental):
     starts = changed_keys(changed_file, experimental)
     selected = reverse_closure(edges, starts)
     by_key = {f"{domain}/{name}": (domain, name, path) for domain, name, path in ops}
+    for key in list(selected):
+        if "/" not in key:
+            continue
+        domain, name = key.split("/", 1)
+        if name.endswith(METADATA_SUFFIX):
+            base_key = f"{domain}/{name[: -len(METADATA_SUFFIX)]}"
+            if base_key in by_key:
+                selected.add(base_key)
     chosen = [by_key[key] for key in selected if key in by_key]
     chosen = filter_by_soc(chosen, split_socs(soc_text))
     return sorted({name for _, name, _ in chosen})
