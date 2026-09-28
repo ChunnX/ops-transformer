@@ -185,7 +185,7 @@ public:
         curNOut_ = static_cast<uint64_t>(curN);
 
         kL1Iter_ = Blaze::Gemm::CeilDiv(oriK, kL1_);
-        //dbgCurN0_ = static_cast<uint32_t>(curN); // DEBUG
+        dbgCurN0_ = static_cast<uint32_t>(curN); // DEBUG
         if (dbgBiasDumpCnt_ < 1) {
             printf("[DBG] cfg: l1Stages=%u mL1=%u nL1=%u kL1=%u baseM=%u baseN=%u baseK=%u aL1=%u bL1=%u totalL1=%u\n",
                    static_cast<uint32_t>(l1Stages_), static_cast<uint32_t>(mL1_), static_cast<uint32_t>(nL1_),
@@ -218,8 +218,8 @@ public:
             for (uint64_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 uint64_t curK0 = (iter1 + 1 == kL0Iter) ? (curKL1 - iter1 * baseK_) : baseK_;
                 const auto &l0Slot = bufMgr_.GetL0Slot(l0PingPong_ & 0x1);
-                //dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
-                //dbgIter0_ = static_cast<uint32_t>(iter0);         // DEBUG
+                dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
+                dbgIter0_ = static_cast<uint32_t>(iter0);         // DEBUG
 
                 // A L1->L0
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
@@ -323,7 +323,7 @@ private:
         if (isBias_ && kIdx == 0 && isFirstSplitK) {
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
-            /*
+            
             // === DEBUG (temporary): GM bias 源 + L1 目标 ===
             if (dbgBiasDumpCnt_ < 4) {
                 dbgBiasDumpCnt_++;
@@ -337,7 +337,7 @@ private:
                 }
             }
             // === DEBUG end ===
-            */
+            
         }
 
         // Scale GM->L1 (int8 output fixpipe quantization)
@@ -457,7 +457,7 @@ private:
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
-            /*
+            
             // === DEBUG (temporary): L1 bias 内容（L1 可解引用） ===
             if (dbgBiasDumpCnt_ < 4) {
                 dbgBiasDumpCnt_++;
@@ -479,7 +479,7 @@ private:
                        static_cast<float>(bDbg[0]), static_cast<float>(bDbg[1]));
             }
             // === DEBUG end ===
-            */
+            
         }
 
         return AscendC::Std::make_tuple(tensorAL0, tensorBL0, tensorBiasL0);
@@ -529,10 +529,10 @@ private:
     uint64_t baseM_{16};
     uint64_t baseN_{16};
     uint64_t baseK_{16};
-    //uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
-    //uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
-    //uint32_t dbgIter0_{0};       // DEBUG (temporary)
-    //uint32_t dbgCurN0_{0};       // DEBUG (temporary)
+    uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
+    uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
+    uint32_t dbgIter0_{0};       // DEBUG (temporary)
+    uint32_t dbgCurN0_{0};       // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
