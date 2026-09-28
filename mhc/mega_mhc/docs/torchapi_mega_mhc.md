@@ -2,7 +2,7 @@
 
 ## 产品与状态
 
-目标为 Ascend 950PR/950DT；不支持910。验证状态见[实验与回归记录](generic_d_tiling_experiment.md)。
+目标为 Ascend 950PR/950DT；不支持910。
 提供 eager/Meta 接口，暂不提供 torchair GE Converter 或反向梯度。
 
 ## 功能与公式
@@ -31,7 +31,7 @@ mega_mhc(h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, pre_mix=None
 
 `...` 表示 `[T]` 或 `[B,S]`；所有输入必须在同一 NPU，支持非连续视图，通过 ACLNN 转连续。
 N 固定为4，D 在[2560,7168]内且为256的倍数，前导维度必须为正，乘积不超过 UINT32_MAX。
-扩展 D 当前为实验范围，精度验收例外见[实验记录](generic_d_tiling_experiment.md)。
+扩展 D 当前为实验范围，仍存在未通过精度阈值的案例，不代表全范围已通过数值验收。
 
 | 参数 | 必选 | shape / dtype / 语义 |
 |---|---|---|

@@ -1,7 +1,7 @@
 # mega_mhc on Ascend 950
 
 950 专用 M-K/ND/BS 实现：N=4、2560≤D≤7168 且 D 为256的倍数，FP16/BF16 输入，FP32/HF32 投影。
-扩展范围目前为实验实现，数值验收例外见[通用 D 分块实验](docs/generic_d_tiling_experiment.md)。
+扩展范围目前为实验实现，仍存在未通过精度阈值的案例，不代表全范围已通过数值验收。
 `gamma_0` 必须非空；gamma_2=None 为四算子，提供 [4D] gamma_2 为五算子。
 `pre_mix` 位于 `gamma_0` 前，`h_pre` 位于 `x_2_out` 后；两者均为可选预留字段，
 本版要求 pre_mix=None、h_pre 输出指针为空。Torch 返回 `(h_in_prime,h_post_new,h_res_new,x_2_out,None)`。

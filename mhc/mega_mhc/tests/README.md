@@ -50,8 +50,7 @@ MEGA_MHC_NPU_DEVICE=6 python -m unittest discover \
 `MEGA_MHC_TEST_AIC_LIMIT` 仅用于测试进程资源配额，不是默认实现的一部分。
 UB→L1 等非默认传输路径需要独立验收，不能从 GM 结果推定。
 
-扩展 D 的本轮精度及性能实测范围见[实验记录](../docs/generic_d_tiling_experiment.md)；
-上述历史验收结果不代表新增矩阵全部通过。
+扩展 D 仍存在未通过精度阈值的案例，上述历史验收结果不代表新增矩阵全部通过。
 
 通过 `MEGA_MHC_TEST_SCHEDULE_MODE=0/1/2` 分别对 M-K/ND/BS 运行完整数值矩阵。
-ND/BS 的实测子集及精度例外见通用分块实验记录，定义测试矩阵不代表全量已通过。
+ND/BS 仅验证了部分场景，仍存在精度验收例外；定义测试矩阵不代表全量已通过。
