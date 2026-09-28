@@ -117,15 +117,14 @@ def changed_keys(changed_file, experimental):
         if domain not in OP_DOMAINS or op_name is None:
             continue
         if op_name in ("common", "3rd"):
+            continue
+        base = (
+            REPO_ROOT / "experimental" / domain / op_name
+            if experimental
+            else REPO_ROOT / domain / op_name
+        )
+        if base.is_dir():
             keys.add(f"{domain}/{op_name}")
-        else:
-            base = (
-                REPO_ROOT / "experimental" / domain / op_name
-                if experimental
-                else REPO_ROOT / domain / op_name
-            )
-            if base.is_dir():
-                keys.add(f"{domain}/{op_name}")
     return keys
 
 
