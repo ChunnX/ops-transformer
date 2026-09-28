@@ -84,7 +84,7 @@ private:
                                                     int32_t activationFlagSlotsPerExpert);
     __aicore__ inline void InitGmmConfigs();
     __aicore__ inline void InitTokenUnpermuteConfig();
-    __aicore__ inline uint32_t InitQuantScratchTensors(uint32_t mxTempTensorAddr, bool hasTokenTask);
+    __aicore__ inline uint32_t InitQuantScratchTensors(uint32_t mxTempTensorAddr);
 
 protected:
     using A8W4BlockContext =
@@ -93,13 +93,13 @@ protected:
     using SharedA8W4Config = GmmKernel::Config<true, 0, SharedActivationOutType, SharedWeightType, bfloat16_t,
                                                SharedQuantScaleType, SharedQuantScaleType>;
     typename SharedA8W4Config::BlockContext sharedBlockContext_{};
-    __aicore__ inline void SendAndQuantBuffInit(bool hasResetTask, bool hasTokenTask);
+    __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void EnterSteadyDispatch();
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
-    __aicore__ inline void PrepareLocalInput(SharedGmmStartCondition sharedGmmStartCondition);
+    __aicore__ inline void PrepareLocalInput();
     __aicore__ inline void ProcessInputPreparationStage(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void WaitForInputPreparation(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline SharedGmmStartCondition GetSharedGmmStartCondition() const;
@@ -428,8 +428,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 //   MoE/shared 共用输入和 mxTemp，输出分别分配；返回量化区结束地址。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr,
-                                                                                     bool hasTokenTask)
+__aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
 {
     uint32_t mxTempTensorSize = 2 * 1024;
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
@@ -473,21 +472,18 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     /*
      * 输入尾部、临时乘法 scale 尾部和输出 scale 补偶槽必须保持为零，保护 H%64==32 的尾块。
      * 两种量化共用 mxTemp，有效 scale 数相同；独立输出避免不同格式覆盖彼此的 padding。
-     * 有 token 任务的核每次 launch 初始化一次，临时 scale 的 padding 在两次量化中均不写入。
+     * 每个 AIV 在每次 launch 初始化一次，临时 scale 的 padding 在两次量化中均不写入。
      * 预量化路径只搬入有效 data/scale/weight，输出记录的对齐 padding 同样保留为零。
      */
-    if (hasTokenTask) {
-        LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
-                                              (quantEndAddr - mxTempTensorAddr) / sizeof(int16_t));
-        Duplicate<int16_t>(quantScratchSpan, 0,
-                           static_cast<int32_t>((quantEndAddr - mxTempTensorAddr) / sizeof(int16_t)));
-        SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
-    }
+    LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
+                                          (quantEndAddr - mxTempTensorAddr) / sizeof(int16_t));
+    Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((quantEndAddr - mxTempTensorAddr) / sizeof(int16_t)));
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
     return quantEndAddr;
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit(bool hasResetTask, bool hasTokenTask)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 {
     sendMaskScratch_.topkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.expertIdxGmAddr));
 
@@ -529,13 +525,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit(bo
 
     uint32_t resetAddrActual = topkIdsIndexTensorAddr + topkIdsIndexTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetAddrActual, resetTensorSize / sizeof(int32_t));
-    if (hasResetTask) {
-        Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
-    }
+    Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
     resetBatchElementCount_ = resetBatchElementCount;
 
     uint32_t mxTempTensorAddr = resetAddrActual + resetTensorSize;
-    uint32_t routeRingAddr = InitQuantScratchTensors(mxTempTensorAddr, hasTokenTask);
+    uint32_t routeRingAddr = InitQuantScratchTensors(mxTempTensorAddr);
     uint32_t routeRingBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskScratch_.routeRingTensor = LocalTensor<uint8_t>(TPosition::VECCALC, routeRingAddr, routeRingBytes);
     uint32_t sendCntAccAddr = routeRingAddr + routeRingBytes;
@@ -910,21 +904,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExportAndResetExpertCou
 
 // 仅由 AIV 调用：准备本核输入，分别发布 reset 完成和 token 数据就绪通知。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput(
-    SharedGmmStartCondition sharedGmmStartCondition)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput()
 {
-    AivJobContext resetJob = aivJob_;
-    AivJobContext tokenJob = aivJob_;
-    if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
-        // 共享 GMM 直接读取原始输入：AIV0 分担 reset，AIV1 分担 pack，两者并行。
-        const AivJobContext halfAivJob{.jobIndex = blockIdx_, .totalJobs = blockNum_};
-        resetJob = GetSubBlockIdx() == 0U ? halfAivJob : AivJobContext{};
-        tokenJob = GetSubBlockIdx() == 1U ? halfAivJob : AivJobContext{};
-    }
-
-    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, tokenJob);
-    SendAndQuantBuffInit(resetJob.totalJobs > 0U, tokenRange.count > 0U);
-    ResetSyncStatus<TopkWeightsPrefetch>(resetJob, params_, resetBatchElementCount_, resetTensor_);
+    // 全部 AIV 均分 reset 和 quant/pack。
+    const WorkRange tokenRange = GetBalancedWorkRange(commonConfig_.tokenNum, aivJob_);
+    SendAndQuantBuffInit();
+    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     // 本核 reset 任务完成后发布通知；空任务核同样参与全 AIV 事件。
     CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(INPUT_RESET_DONE_FLAG);
     if (tokenRange.count > 0U) {
@@ -950,7 +935,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage(
     SharedGmmStartCondition sharedGmmStartCondition)
 {
-    PrepareLocalInput(sharedGmmStartCondition);
+    PrepareLocalInput();
     auto sendIndexAndCount = [&](const WorkRange &ownedExpertRange, bool notifyAicAfterQuantOrPack)
         __attribute__((cce_aicore))
     {
