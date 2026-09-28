@@ -65,7 +65,7 @@ struct MegaMoeArch35HardwarePolicy {
     }
 };
 
-// arch92 是 1C1V。唯一 AIV 需要在不同时段串行承担 arch35 AIV0 和 AIV1 的职责。
+// arch92 是 1C1V。routed Wave 保留 A8W4 的 AIV1 职责，删除 AIV0 prologue；通用后处理映射到唯一 AIV。
 struct MegaMoeArch92HardwarePolicy {
     static constexpr uint32_t VECTOR_CORE_COUNT_PER_CUBE = 1U;
 

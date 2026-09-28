@@ -826,7 +826,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
 }
 
 // 构造一个共享专家的 GMM1 输入、权重、输出与 Activation 量化输出 GM 视图。
-template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool UseA8W4Gmm1,
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool UseGmOutput,
           typename BlockEpilogue>
 __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonConfig &commonConfig,
                                                           const GmmExecutionConfig &gmmConfig,
@@ -845,7 +845,7 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
     uint64_t scaleN = Ops::Base::CeilDiv(activationN, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     uint64_t expertIdx = sharedExpertIdx;
 
-    if constexpr (UseA8W4Gmm1) {
+    if constexpr (UseGmOutput) {
         gmmAddrInfo.gmm1OutGlobal = workspace.sharedExpertGmm1OutPtr + expertIdx * m * n * sizeof(bfloat16_t);
     }
     gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(weights.weight1, gmmConfig.isPerExpertWeightTensor,
@@ -861,7 +861,7 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
     }
     gmmAddrInfo.metaInfoGlobal = nullptr;
     gmmAddrInfo.dispatchToGmm1Flag = nullptr;
-    if constexpr (UseA8W4Gmm1) {
+    if constexpr (UseGmOutput) {
         gmmAddrInfo.gmmToEpilogueFlag = nullptr;
         if (workspace.flagGmmToEpiloguePtr != nullptr) {
             gmmAddrInfo.gmmToEpilogueFlag = reinterpret_cast<__gm__ int32_t *>(workspace.flagGmmToEpiloguePtr) +

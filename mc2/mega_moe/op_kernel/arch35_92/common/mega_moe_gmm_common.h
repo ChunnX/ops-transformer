@@ -382,28 +382,7 @@ enum class GmmStage {
 };
 
 template <typename BlockMmad, typename DispatchPolicy = typename BlockMmad::DispatchPolicy>
-struct BlockMmadContext {
-    BlockMmad blockMmad;
-
-    template <GmmStage Stage, typename ProblemConfig>
-    __aicore__ inline void Init(const ProblemConfig &config)
-    {
-        const auto &tiling = config.blockMmadTiling;
-        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tiling.tileN, tiling.l1Params.kL1,
-                                                  tiling.l1Params.scaleKL1};
-        if (!initialized_ || initConfig_ != requestedConfig) {
-            typename BlockMmad::BlockShape tileShape{tiling.tileM, tiling.tileN, L0_TILE_K, 0};
-            typename BlockMmad::ProblemShape problemShape{config.m, config.n, config.k, 0};
-            blockMmad.Init(problemShape, tileShape, tiling.l1Params);
-            initConfig_ = requestedConfig;
-            initialized_ = true;
-        }
-    }
-
-private:
-    BlockMmadInitConfig initConfig_{};
-    bool initialized_ = false;
-};
+struct BlockMmadContext;
 
 template <typename BlockMmad>
 struct BlockMmadContext<BlockMmad, Blaze::Gemm::GroupedMatmulWithScaleMx<>> {

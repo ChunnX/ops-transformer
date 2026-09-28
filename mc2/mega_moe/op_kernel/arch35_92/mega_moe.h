@@ -555,7 +555,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm1Acti
     } else {
         RunGmm1Generic<typename SharedQuantConfig::QuantOutType, SharedActivationOutType,
                        SharedWeightType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                       SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true, true>(
+                       SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true, true,
+                       ExecutionPolicy::USE_GM_HANDOFF>(
             sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
             blockMmadContext, SharedQuantConfig::AXW_MODE == AxWMode::A8W8, gmmConfig.inputLayout);
@@ -592,7 +593,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         .aGlobal = sharedInputBase,
         .aScaleGlobal = sharedInputBase + sharedQuantProcessConfig_.quantTokenAlignBytes,
     };
-    if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
+    if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4 || ExecutionPolicy::USE_GM_HANDOFF) {
         gmmAddrInfo.gmm1ActivationSync = &sharedGmm1ActivationSync;
     }
     int32_t vecSetSyncCom = 0;
@@ -603,13 +604,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         sharedQuantProcessConfig_.quantTokenScaleAlignBytes / static_cast<uint32_t>(sizeof(SharedQuantScaleType))};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<SharedWeightType, SharedActivationOutType, SharedQuantScaleType,
-                                           SharedQuantConfig::AXW_MODE == AxWMode::A8W4>(
+                                           SharedQuantConfig::AXW_MODE == AxWMode::A8W4 ||
+                                               ExecutionPolicy::USE_GM_HANDOFF>(
             commonConfig_, sharedGmmConfig, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
             gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx,
                                       blockMmadContext);
     }
-    Gmm1UbActivationSync::EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    if constexpr (!ExecutionPolicy::USE_GM_HANDOFF) {
+        Gmm1UbActivationSync::EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    }
     gmm1PingPongIdx_ = 0U;
 }
 
@@ -764,6 +768,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncInputAcrossRanks()
 {
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
     if (sharedExpertNum_ > 0U) {
         if (!MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
             return;
@@ -801,9 +808,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     /*
      * 共享专家启用时，计算与 topK 有效下标发送在公共输入屏障后分别推进。
-     * 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
-     * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
-     * 子组同步只等待 AIV1，避免阻塞正在执行共享计算的 AIV0。
+     * arch35 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
+     * arch35 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
+     * arch92：AIC 直接计算并写 GM，唯一 AIV 完成发送及同步后从 GM 读取结果执行共享激活。
+     * 子组同步只等待路由发送 AIV；共享 GMM1 的结果通知独立管理计算与激活的先后关系。
      */
     if constexpr (g_coreType == AIV) {
         if (sharedExpertNum_ > 0U && MegaMoeHardwarePolicy::RunsDispatchVectorWork()) {
@@ -813,8 +821,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
     SyncInputAcrossRanks();
 
-    // 共享 A8W4 写 GM，由 AIV1 消费；独立事件使剩余 ACK 不阻塞 MoE GMM 启动。
-    Gmm1ActivationSync sharedGmm1ActivationSync(1U, GmmEventPair::SHARED_GMM1);
+    // GM 交接由 arch35 AIV1 或 arch92 唯一 AIV 消费；独立事件保留至主流程末尾排空。
+    constexpr uint16_t sharedActivationSubBlockIdx = MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE - 1U;
+    Gmm1ActivationSync sharedGmm1ActivationSync(sharedActivationSubBlockIdx, GmmEventPair::SHARED_GMM1);
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);

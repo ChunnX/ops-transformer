@@ -17,19 +17,18 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_executor.h"
 #include "opdev/platform.h"
-#include "op_host/util/op_const_def.h"
 #include "aclnn/aclnn_base.h"
-#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnnInner_mega_moe.h"
 
-using namespace Ops::Transformer;
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// Arch22-only conversion is disabled for the Arch92-only migration.
+#if 0
 // 将int4打包为int32输入的Tensor还原回int4
 aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor *executor)
 {
@@ -66,6 +65,7 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
     OP_LOGD("The conversion from int32 to int4 is completed.");
     return newInput;
 }
+#endif
 
 static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList, aclTensorList *&outList,
                               aclOpExecutor *executor)
@@ -146,14 +146,20 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
 
+    // Arch22 dtype selection is disabled for the Arch92-only migration.
+#if 0
     // weight scales dtype: arch35 → E8M0, arch22 → UINT64
     bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201;
     aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
+#endif
+    aclDataType weightScalesDtype = ACL_FLOAT8_E8M0;
     CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
     CreateEmptyTensor(weightScalesDtype, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
     CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
+    // Arch22-only weight conversion is disabled for the Arch92-only migration.
+#if 0
     // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
@@ -171,6 +177,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
             sharedWeight2Optional = ConvertTensorListToInt4(sharedWeight2Optional, *executor);
         }
     }
+#endif
 
     // shared weight 为空时，使用 MoE weight 的 dtype/format 创建占位 tensor 以完成原型匹配。
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0) ?

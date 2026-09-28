@@ -512,7 +512,8 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
 
 /*
  * Caller passes a logical block job and the first physical AIV counter of that block.
- * Only AIV1 participates; core selection belongs to SyncInputAcrossRanks.
+ * Only the routing AIV participates (AIV1 on arch35, the sole AIV on arch92).
+ * Core selection belongs to SyncInputAcrossRanks.
  */
 template <bool Aiv1Only>
 __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
@@ -527,8 +528,10 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
         reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES +
                                            static_cast<uint64_t>(firstPhysicalCoreIdx) * RANK_SYNC_COUNTER_SLOT_BYTES);
     const int32_t count = CrossRankHandshakeInWorldSize(rankSyncInWorldPtr, rankId, worldSize, syncJob, syncCount);
-    // Handshake updated AIV0; update AIV1 for the later full-AIV output synchronization.
-    WriteGmBypassDCache(syncCount + RANK_SYNC_COUNTER_SLOT_BYTES / sizeof(int32_t), count);
+    if constexpr (MegaMoeHardwarePolicy::VECTOR_CORE_COUNT_PER_CUBE == 2U) {
+        // Only 1C2V has a sibling AIV counter to update for the full-AIV output synchronization.
+        WriteGmBypassDCache(syncCount + RANK_SYNC_COUNTER_SLOT_BYTES / sizeof(int32_t), count);
+    }
     PipeBarrier<PIPE_ALL>();
     SyncTopkValidIndexSendCores(sendCoreSyncPtr, syncJob, ++phase);
 }
