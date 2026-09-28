@@ -80,7 +80,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     const aclTensor *valueTensor = (value == nullptr) ? key : value;
-    // SparseFlashAttentionOutputHolder 保持到下方 inner GetWorkspaceSize 调用结束。
+    // SparseFlashAttentionOutputHolder 声明于 if/else 外层作用域，确保生命周期覆盖下方 inner GetWorkspaceSize 调用
     std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxMaxHolder;
     std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxSumHolder;
     if (returnSoftmaxLse) {
