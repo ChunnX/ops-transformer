@@ -92,7 +92,6 @@ struct MixedQuantFlashAttnQuantParams {
     uint32_t quantComputeMode;
 };
 
-
 class MixedQuantFlashAttnTiling {
 public:
     MixedQuantFlashAttnBaseParams mixedQuantFlashAttnBaseParams;

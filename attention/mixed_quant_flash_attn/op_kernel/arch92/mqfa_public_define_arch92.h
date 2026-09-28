@@ -36,16 +36,16 @@ using AscendC::SoftmaxConfig;
 using AscendC::WaitFlag;
 
 /* ===== 静态 cross-core 事件 ID ===== */
-#define CC_BMM1_0 0U   // UB bmm1 slot0
-#define CC_BMM1_1 1U   // UB bmm1 slot1
-#define CC_BMM2_0 2U   // UB bmm2 slot0
-#define CC_BMM2_1 3U   // UB bmm2 slot1
-#define CC_L1P_0  4U   // L1 P slot0
-#define CC_L1P_1  5U   // L1 P slot1
-#define CC_L1P_2  6U   // L1 P slot2
-#define CC_L1P_3  7U   // L1 P slot3
-#define CC_L1Q_0  8U   // L1 Q slot1
-#define CC_L1Q_1  9U   // L1 Q slot2
+#define CC_BMM1_0 0U // UB bmm1 slot0
+#define CC_BMM1_1 1U // UB bmm1 slot1
+#define CC_BMM2_0 2U // UB bmm2 slot0
+#define CC_BMM2_1 3U // UB bmm2 slot1
+#define CC_L1P_0 4U  // L1 P slot0
+#define CC_L1P_1 5U  // L1 P slot1
+#define CC_L1P_2 6U  // L1 P slot2
+#define CC_L1P_3 7U  // L1 P slot3
+#define CC_L1Q_0 8U  // L1 Q slot1
+#define CC_L1Q_1 9U  // L1 Q slot2
 // id [11-14] SyncAll要用
 
 #endif // FIA_PUBLIC_DEFINE_ARCH92_H

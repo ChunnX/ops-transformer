@@ -15,11 +15,7 @@
 TTK 传入的 tensor 可能是 numpy array，需转为 torch tensor 后传给 tforward。
 """
 
-__golden__ = {
-    "e2e": {
-        "mqfa_ttk_ops.call_npu": "cpu_mixed_quant_flash_attn"
-    }
-}
+__golden__ = {"e2e": {"mqfa_ttk_ops.call_npu": "cpu_mixed_quant_flash_attn"}}
 
 import numpy as np
 import torch
@@ -38,7 +34,9 @@ def _to_torch(val, dtype=None):
     if isinstance(val, np.ndarray):
         dt = str(val.dtype)
         if dt.startswith("float8"):
-            return torch.from_numpy(val.view(np.uint8).copy()).view(torch.float8_e8m0fnu)
+            return torch.from_numpy(val.view(np.uint8).copy()).view(
+                torch.float8_e8m0fnu
+            )
         if dt == "bfloat16":
             return torch.from_numpy(val.view(np.uint16).copy()).view(torch.bfloat16)
         return torch.from_numpy(val.copy())
@@ -48,13 +46,33 @@ def _to_torch(val, dtype=None):
 
 
 def cpu_mixed_quant_flash_attn(
-    q, k, v, k_descale, v_descale,
-    block_table=None, cu_seqlens_q=None, seqused_q=None, seqused_kv=None,
-    sinks=None, attn_mask=None, metadata=None,
-    quant_compute_mode=1, softmax_scale=1.0, mask_mode=0,
-    win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1,
-    layout_q="BSND", layout_kv="PA_BBND", layout_attn_out="BSND",
-    return_softmax_lse=False,batch_size=1, num_heads_q=1, num_heads_kv=1, head_dim=128,
+    q,
+    k,
+    v,
+    k_descale,
+    v_descale,
+    block_table=None,
+    cu_seqlens_q=None,
+    seqused_q=None,
+    seqused_kv=None,
+    sinks=None,
+    attn_mask=None,
+    metadata=None,
+    quant_compute_mode=1,
+    softmax_scale=1.0,
+    mask_mode=0,
+    win_left=-1,
+    win_right=-1,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_attn_out="BSND",
+    return_softmax_lse=False,
+    batch_size=1,
+    num_heads_q=1,
+    num_heads_kv=1,
+    head_dim=128,
     **kwargs,
 ):
     """TTK golden adapter: 调用 pytest tforward 计算 CPU golden。"""
@@ -92,12 +110,20 @@ def cpu_mixed_quant_flash_attn(
     if seqused_q is not None or seqused_kv is not None:
         batch = lse.shape[0]
         for b in range(batch):
-            if seqused_kv is not None and int(seqused_kv[b]) == 0 and layout_q in ("BNSD", "BSND"):
-                lse[b, :, :] = float('inf')
+            if (
+                seqused_kv is not None
+                and int(seqused_kv[b]) == 0
+                and layout_q in ("BNSD", "BSND")
+            ):
+                lse[b, :, :] = float("inf")
                 continue
             if seqused_q is not None:
-                s_used = seqused_q[b] if isinstance(seqused_q, torch.Tensor) else seqused_q[b]
-                lse[b, :, s_used:] = float('inf')
+                s_used = (
+                    seqused_q[b]
+                    if isinstance(seqused_q, torch.Tensor)
+                    else seqused_q[b]
+                )
+                lse[b, :, s_used:] = float("inf")
 
     # 算子返回 (attn_out, softmax_lse)
     # return_softmax_lse=False 时 NPU 输出 softmax_lse 为空，golden 也应返回空

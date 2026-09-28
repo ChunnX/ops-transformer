@@ -67,7 +67,10 @@ class FaTilingShape {
 
 public:
     FaTilingShape(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
-        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName) {};
 
 public:
     const gert::Shape &shape_;
@@ -203,7 +206,10 @@ class FaTilingShapeCompare {
 
 public:
     FaTilingShapeCompare(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
-        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName) {};
 
 public:
     const gert::Shape &shape_;

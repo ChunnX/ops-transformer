@@ -121,12 +121,9 @@ enum class FaLayout : uint32_t {
     LSE_NT = 7
 };
 
-const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
-                                                    {"BNSD", FaLayout::BNSD},
-                                                    {"TND", FaLayout::TND},
-                                                    {"PA_BBND", FaLayout::PA_BBND},
-                                                    {"PA_BNBD", FaLayout::PA_BNBD},
-                                                    {"PA_NZ", FaLayout::PA_NZ}};
+const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},       {"BNSD", FaLayout::BNSD},
+                                                   {"TND", FaLayout::TND},         {"PA_BBND", FaLayout::PA_BBND},
+                                                   {"PA_BNBD", FaLayout::PA_BNBD}, {"PA_NZ", FaLayout::PA_NZ}};
 
 enum class FaAxis : uint32_t {
     B = 0,
@@ -146,7 +143,7 @@ enum class FaAxis : uint32_t {
 
 enum class FaQuantMode : uint32_t {
     A16C4_KV_MXFP4_SOFTMAX_FP32 = 1,
-	A16C4_KV_HIF4_SOFTMAX_FP32 = 2
+    A16C4_KV_HIF4_SOFTMAX_FP32 = 2
 };
 
 enum class KvStorageMode : uint32_t {
@@ -407,8 +404,8 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
                                                                     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
                                                                     {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"},
                                                                     {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"},
-																    {ge::DT_HIFLOAT4, "DT_HIFLOAT4"},
-																    {ge::DT_HIFLOAT4_SCALE, "DT_HIFLOAT4_SCALE"}};
+                                                                    {ge::DT_HIFLOAT4, "DT_HIFLOAT4"},
+                                                                    {ge::DT_HIFLOAT4_SCALE, "DT_HIFLOAT4_SCALE"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},

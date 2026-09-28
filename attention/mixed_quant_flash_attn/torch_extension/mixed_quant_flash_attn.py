@@ -20,6 +20,7 @@ class MaskMode(IntEnum):
     CAUSAL = 3
     SLIDING_WINDOW = 4
 
+
 class QuantComputeMode(IntEnum):
     A16C4_KV_MXFP4_SOFTMAX_FP32 = 1
     A16C4_KV_HIF4_SOFTMAX_FP32 = 2
@@ -68,7 +69,9 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
             sinks: Optional[torch.Tensor] = None,
             attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
-            quant_compute_mode: Optional[QuantComputeMode] = QuantComputeMode.A16C4_KV_MXFP4_SOFTMAX_FP32,
+            quant_compute_mode: Optional[
+                QuantComputeMode
+            ] = QuantComputeMode.A16C4_KV_MXFP4_SOFTMAX_FP32,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[MaskMode] = MaskMode.NO_MASK,
             win_left: Optional[int] = -1,
@@ -142,7 +145,9 @@ def mixed_quant_flash_attn(
     sinks: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
-    quant_compute_mode: Optional[QuantComputeMode] = QuantComputeMode.A16C4_KV_MXFP4_SOFTMAX_FP32,
+    quant_compute_mode: Optional[
+        QuantComputeMode
+    ] = QuantComputeMode.A16C4_KV_MXFP4_SOFTMAX_FP32,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[MaskMode] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
@@ -159,7 +164,11 @@ def mixed_quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     op_module = mixed_quant_flash_attn_op_builder.load()
-    quant_compute_mode = quant_compute_mode.value if isinstance(quant_compute_mode, IntEnum) else quant_compute_mode
+    quant_compute_mode = (
+        quant_compute_mode.value
+        if isinstance(quant_compute_mode, IntEnum)
+        else quant_compute_mode
+    )
     mask_mode = mask_mode.value if isinstance(mask_mode, IntEnum) else mask_mode
 
     return op_module.mixed_quant_flash_attn(

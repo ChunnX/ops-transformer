@@ -36,7 +36,8 @@ struct MixedQuantFlashAttnHostUtParamBase : public HostUtParamBase {
     std::string lay_atten = "BSND";
     bool return_softmax_lse = false;
 
-    MixedQuantFlashAttnHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
+    MixedQuantFlashAttnHostUtParamBase(const csv_map &csvMap)
+        : HostUtParamBase(csvMap)
     {
         quant_compute_mode = std::stoll(ReadMap(csvMap, "quant_compute_mode", "1"));
         softmax_scale = std::stof(ReadMap(csvMap, "softmax_scale", "0.0"));
@@ -79,7 +80,8 @@ struct MixedQuantFlashAttnTilingUtParam : public MixedQuantFlashAttnHostUtParamB
     MixedQuantFlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
 
-    MixedQuantFlashAttnTilingUtParam(const csv_map &csvMap) : MixedQuantFlashAttnHostUtParamBase(csvMap)
+    MixedQuantFlashAttnTilingUtParam(const csv_map &csvMap)
+        : MixedQuantFlashAttnHostUtParamBase(csvMap)
     {
         inputInstance.emplace_back(GetTensorGE(csvMap, "q_shape", "q_dtype", "q_format", this->q));
         inputInstance.emplace_back(GetTensorGE(csvMap, "k_shape", "k_dtype", "k_format", this->k));
@@ -126,7 +128,8 @@ struct MixedQuantFlashAttnInferShapeUtParam : public MixedQuantFlashAttnHostUtPa
 
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    MixedQuantFlashAttnInferShapeUtParam(const csv_map &csvMap) : MixedQuantFlashAttnHostUtParamBase(csvMap)
+    MixedQuantFlashAttnInferShapeUtParam(const csv_map &csvMap)
+        : MixedQuantFlashAttnHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "q_shape", "q_dtype", "q_format", this->q));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "k_shape", "k_dtype", "k_format", this->k));
@@ -174,7 +177,8 @@ struct MixedQuantFlashAttnInferDTypeUtParam : public MixedQuantFlashAttnHostUtPa
     ge::DataType expect_attn_out_dtype = ge::DT_UNDEFINED;
     ge::DataType expect_softmax_lse_dtype = ge::DT_UNDEFINED;
 
-    MixedQuantFlashAttnInferDTypeUtParam(const csv_map &csvMap) : MixedQuantFlashAttnHostUtParamBase(csvMap)
+    MixedQuantFlashAttnInferDTypeUtParam(const csv_map &csvMap)
+        : MixedQuantFlashAttnHostUtParamBase(csvMap)
     {
         GetDataTypeGE(csvMap, "q_dtype", this->q_dtype);
         GetDataTypeGE(csvMap, "k_dtype", this->k_dtype);
@@ -190,4 +194,3 @@ struct MixedQuantFlashAttnInferDTypeUtParam : public MixedQuantFlashAttnHostUtPa
 } // namespace MixedQuantFlashAttnUT
 
 #endif // MIXED_QUANT_FLASH_ATTN_PARAM_H
-

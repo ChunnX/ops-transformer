@@ -40,5 +40,5 @@ public:
     FiaMetaData fiaMetaData;
 };
 
-}  // namespace optiling
+} // namespace optiling
 #endif

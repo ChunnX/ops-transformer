@@ -47,9 +47,9 @@ struct FaPlatFormInfo {
 
 class MixedQuantFlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit MixedQuantFlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
-    {
-    }
+    explicit MixedQuantFlashAttnTilingImpl(gert::TilingContext *context)
+        : FiaTilingBase(context)
+    {}
     ~MixedQuantFlashAttnTilingImpl() override = default;
 
     void InitTilingInfo(TilingInfo *tilingInfo) override;
@@ -72,9 +72,8 @@ private:
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
     bool CheckNeedInitOutput() const;
-    void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode, 
-                                int64_t winLeft, int64_t winRight, uint32_t qLayout, 
-                                uint32_t &sOuterFactor, uint32_t &sInnerFactor);
+    void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode, int64_t winLeft,
+                               int64_t winRight, uint32_t qLayout, uint32_t &sOuterFactor, uint32_t &sInnerFactor);
 
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();

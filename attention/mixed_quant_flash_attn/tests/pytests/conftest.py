@@ -21,35 +21,57 @@ if _PYT_DIR not in sys.path:
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode", nargs="+", default=["gen"],
+        "--mode",
+        nargs="+",
+        default=["gen"],
         help="Test mode: gen, cpu, npu, compare",
     )
     parser.addoption(
-        "--testset", action="store", default="functional_stc",
+        "--testset",
+        action="store",
+        default="functional_stc",
         help="Test data directory name (e.g. functional_stc, functional_rdv, functional_redline)",
     )
     parser.addoption(
-        "--case_id", action="store", default="all",
+        "--case_id",
+        action="store",
+        default="all",
         help="Case ID filter: 'all' or comma-separated names",
     )
     parser.addoption(
-        "--device_id", action="store", default=0, type=int,
+        "--device_id",
+        action="store",
+        default=0,
+        type=int,
         help="NPU device ID",
     )
     parser.addoption(
-        "--seed", action="store", default=21, type=int,
+        "--seed",
+        action="store",
+        default=21,
+        type=int,
         help="Random seed for data generation",
     )
 
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "ci: mark a test as a CI test")
-    config.addinivalue_line("markers", "func_rdv: mark a test as a functional correctness RDV test")
-    config.addinivalue_line("markers", "func_redline: mark a test as a functional redline test")
+    config.addinivalue_line(
+        "markers", "func_rdv: mark a test as a functional correctness RDV test"
+    )
+    config.addinivalue_line(
+        "markers", "func_redline: mark a test as a functional redline test"
+    )
     config.addinivalue_line("markers", "func_stc: mark a test as a functional STC test")
-    config.addinivalue_line("markers", "func_test: mark a test as a functional TEST test")
-    config.addinivalue_line("markers", "perf_rdv: mark a test as a performance RDV test")
-    config.addinivalue_line("markers", "perf_redline: mark a test as a performance redline test")
+    config.addinivalue_line(
+        "markers", "func_test: mark a test as a functional TEST test"
+    )
+    config.addinivalue_line(
+        "markers", "perf_rdv: mark a test as a performance RDV test"
+    )
+    config.addinivalue_line(
+        "markers", "perf_redline: mark a test as a performance redline test"
+    )
     config.addinivalue_line("markers", "debug: mark a test as a daily debug test")
 
 
@@ -61,4 +83,3 @@ def device_id(request):
 @pytest.fixture(scope="session")
 def seed(request):
     return request.config.getoption("--seed")
-

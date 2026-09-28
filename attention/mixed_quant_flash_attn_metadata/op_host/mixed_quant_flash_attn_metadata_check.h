@@ -23,9 +23,9 @@ extern "C" {
 #endif
 
 static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-                               const aclTensor *sequsedKvOptional, int64_t batchSize,
-                               int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                               int64_t headDim, int64_t quantComputeMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
+                               const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                               int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                               int64_t quantComputeMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
                                const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
                                const aclTensor *metaData)
 {
@@ -76,8 +76,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     bool layoutKvValid =
         (strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
     if (!layoutKvValid) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, PA_NZ, but got %s",
-                layoutKv);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports PA_BNBD, PA_BBND, PA_NZ, but got %s", layoutKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -127,9 +126,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         // layoutQ为TND时，cuSeqlensQOptional、maxSeqlenQ、sequsedQOptional至少传一个
         bool hasQParam = (cuSeqlensQOptional != nullptr) || (maxSeqlenQ != -1) || (sequsedQOptional != nullptr);
         if (!hasQParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutQ is TND, at least one of cuSeqlensQOptional, "
-                    "maxSeqlenQ, sequsedQOptional must be provided");
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "When layoutQ is TND, at least one of cuSeqlensQOptional, "
+                                             "maxSeqlenQ, sequsedQOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {

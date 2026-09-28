@@ -35,8 +35,8 @@ constexpr uint32_t NPU_AIV_CORE_NUM = 64;
 constexpr uint32_t FA_METADATA_SIZE = 8;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
-//索引数组含义
-// FA Metadata Index Definitions
+// 索引数组含义
+//  FA Metadata Index Definitions
 constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
 constexpr uint32_t FA_BN2_START_INDEX = 1;
 constexpr uint32_t FA_M_START_INDEX = 2;
@@ -69,8 +69,8 @@ struct FiaBaseParams {
     uint32_t actualSeqLengthsQSize;
     uint32_t actualSeqLengthsKVSize;
     float scaleValue;
-    uint8_t isActualSeqLengthsNull;         // TODO，未使用，是否要删除？
-    uint8_t isActualSeqLengthsKVNull;         // TODO，未使用，是否要删除？
+    uint8_t isActualSeqLengthsNull;   // TODO，未使用，是否要删除？
+    uint8_t isActualSeqLengthsKVNull; // TODO，未使用，是否要删除？
     uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
@@ -135,5 +135,5 @@ struct FiaEmptyTensorParams {
     uint64_t totalSoftMaxLseOutputSize;
 };
 
-}  // namespace optiling
+} // namespace optiling
 #endif

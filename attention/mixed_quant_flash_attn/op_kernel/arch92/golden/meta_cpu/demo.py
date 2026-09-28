@@ -15,7 +15,6 @@ from mixed_quant_flash_attn_metadata_op import MixedQuantFlashAttnMetadataOp
 
 
 def main():
-    
     op = MixedQuantFlashAttnMetadataOp()
 
     metadata = op.npu_mixed_quant_flash_attn_metadata(
@@ -24,10 +23,10 @@ def main():
         head_dim=128,
         quant_mode=1,
         batch_size=1,
-        cu_seqlens_q = [1],
-        cu_seqlens_kv = [1],
-        seqused_q = [1],
-        seqused_kv = [1],
+        cu_seqlens_q=[1],
+        cu_seqlens_kv=[1],
+        seqused_q=[1],
+        seqused_kv=[1],
         max_seqlen_q=32768,
         max_seqlen_kv=32768,
         mask_mode=3,

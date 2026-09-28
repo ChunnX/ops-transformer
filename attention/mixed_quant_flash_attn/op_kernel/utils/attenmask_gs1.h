@@ -73,10 +73,11 @@ struct MaskInfo {
 template <typename T1>
 static __aicore__ inline constexpr T1 Align(T1 s, T1 alignment)
 {
-    if constexpr (IsSameType<T1, uint64_t>::value || IsSameType<T1, uint32_t>::value || IsSameType<T1, uint16_t>::value || IsSameType<T1, uint8_t>::value) {
-        return (s + alignment-1) & (~(alignment-1));
+    if constexpr (IsSameType<T1, uint64_t>::value || IsSameType<T1, uint32_t>::value ||
+                  IsSameType<T1, uint16_t>::value || IsSameType<T1, uint8_t>::value) {
+        return (s + alignment - 1) & (~(alignment - 1));
     } else {
-        return uint64_t(s + alignment-1) & (~uint64_t(alignment-1));
+        return uint64_t(s + alignment - 1) & (~uint64_t(alignment - 1));
     }
 }
 // TODO，后续放到VF层
@@ -100,13 +101,13 @@ __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t mask
 }
 
 template <typename T, uint32_t s2BaseSize>
-__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
-    uint16_t tailGLoop, uint16_t midS1Count)
+__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_t midGLoop, uint16_t tailGLoop,
+                                 uint16_t midS1Count)
 {
     MaskReg preg_all;
     if constexpr (s2BaseSize == 128) {
         preg_all = CreateMask<bool, MaskPattern::VL128>();
-    } else {    // s2BaseSize = 256 or 512
+    } else { // s2BaseSize = 256 or 512
         preg_all = CreateMask<bool, MaskPattern::ALL>();
     }
 
@@ -116,7 +117,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
         // head
         RegTensor<T> vreg_g_head1;
         RegTensor<T> vreg_g_head2;
-        for (uint16_t x = headGLoop; x > 0; x = 0) {     // if (headGLoop > 0) {}
+        for (uint16_t x = headGLoop; x > 0; x = 0) { // if (headGLoop > 0) {}
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vreg_g_head1, maskUb, 1, repeatStride, preg_all);
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -132,7 +133,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
         // mid
         RegTensor<T> vreg_g_mid1;
         RegTensor<T> vreg_g_mid2;
-        for (uint16_t x = midGLoop; x > 0; x = 0) {     // if (midGLoop > 0) {}
+        for (uint16_t x = midGLoop; x > 0; x = 0) { // if (midGLoop > 0) {}
             for (uint16_t i = 0; i < midS1Count; ++i) {
                 LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     vreg_g_mid1, maskUb, 1, repeatStride, preg_all);
@@ -151,7 +152,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
         // tail
         RegTensor<T> vreg_g_tail1;
         RegTensor<T> vreg_g_tail2;
-        for (uint16_t x = tailGLoop; x > 1; x = 0) {     // if (tailGLoop > 1) {}
+        for (uint16_t x = tailGLoop; x > 1; x = 0) { // if (tailGLoop > 1) {}
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vreg_g_tail1, maskUb, 1, repeatStride, preg_all);
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -170,7 +171,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
         RegTensor<T> vreg_g_mid;
         RegTensor<T> vreg_g_tail;
 
-        for (uint16_t x = headGLoop; x > 0; x = 0) {     // if (headGLoop > 0) {}
+        for (uint16_t x = headGLoop; x > 0; x = 0) { // if (headGLoop > 0) {}
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vreg_g_head, maskUb, 1, repeatStride, preg_all);
             for (uint16_t i = 1; i < headGLoop; ++i) {
@@ -179,7 +180,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
             }
         }
 
-        for (uint16_t x = midGLoop; x > 0; x = 0) {     // if (midGLoop > 0) {}
+        for (uint16_t x = midGLoop; x > 0; x = 0) { // if (midGLoop > 0) {}
             for (uint16_t i = 0; i < midS1Count; ++i) {
                 LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                     vreg_g_mid, maskUb, 1, repeatStride, preg_all);
@@ -191,7 +192,7 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
             }
         }
 
-        for (uint16_t x = tailGLoop; x > 1; x = 0) {     // if (tailGLoop > 1) {}
+        for (uint16_t x = tailGLoop; x > 1; x = 0) { // if (tailGLoop > 1) {}
             LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vreg_g_tail, maskUb, 1, repeatStride, preg_all);
             for (uint16_t i = 1; i < tailGLoop; ++i) {
@@ -224,14 +225,14 @@ __aicore__ inline void MergeMask(LocalTensor<T> &maskNext, LocalTensor<T> &maskP
 }
 
 template <typename T, uint32_t s2BaseSize>
-__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T>& maskTensor, int32_t headGSize, int32_t gSize,
-    int32_t tailGSize, int32_t midS1Count)
+__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T> &maskTensor, int32_t headGSize, int32_t gSize,
+                                     int32_t tailGSize, int32_t midS1Count)
 {
     if (gSize <= 1) {
         return;
     }
 
-    __ubuf__ T * maskUb = (__ubuf__ T*)maskTensor.GetPhyAddr();
+    __ubuf__ T *maskUb = (__ubuf__ T *)maskTensor.GetPhyAddr();
     MaskUbCopyS1GVF<T, s2BaseSize>(maskUb, headGSize, gSize, tailGSize, midS1Count);
 }
 
@@ -324,8 +325,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
         nextToken = static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     } else if (info.sparseMode == BAND) {
-        nextToken = info.nextToken +
-                    static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
+        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
     int64_t s2End = static_cast<int64_t>(info.s2StartIdx) + static_cast<int64_t>(info.s2dealNum);
     // SG类
@@ -337,7 +337,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         return false;
     }
     // GS类
-    //分头中尾判断
+    // 分头中尾判断
     int32_t headS1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t gs1EndInCurrentS1 = headS1StartIdx + info.gs1dealNum;
     // 不跨G，只判断头
@@ -372,13 +372,13 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
 }
 
 template <typename T, uint32_t s2BaseSize>
-__simd_vf__ void MaskUbCopyGS1VF(__ubuf__ T * maskUb, __ubuf__ T * maskSecUb,
-    uint16_t headLoop, uint16_t midRowCount, uint16_t midGLoop, uint16_t tailLoop)
+__simd_vf__ void MaskUbCopyGS1VF(__ubuf__ T *maskUb, __ubuf__ T *maskSecUb, uint16_t headLoop, uint16_t midRowCount,
+                                 uint16_t midGLoop, uint16_t tailLoop)
 {
     MaskReg preg_all;
     if constexpr (s2BaseSize == 128) {
         preg_all = CreateMask<bool, MaskPattern::VL128>();
-    } else {    // s2BaseSize = 256 or 512
+    } else { // s2BaseSize = 256 or 512
         preg_all = CreateMask<bool, MaskPattern::ALL>();
     }
 
@@ -388,8 +388,8 @@ __simd_vf__ void MaskUbCopyGS1VF(__ubuf__ T * maskUb, __ubuf__ T * maskSecUb,
         // head: copy from maskSecUb[s1StartIdx .. s1StartIdx+headLoop)
         RegTensor<T> vreg_head1;
         RegTensor<T> vreg_head2;
-        __ubuf__ T * srcHead = maskSecUb + (midRowCount - headLoop) * 512;
-        __ubuf__ T * dstHead = maskUb;
+        __ubuf__ T *srcHead = maskSecUb + (midRowCount - headLoop) * 512;
+        __ubuf__ T *dstHead = maskUb;
         for (uint16_t i = 0; i < headLoop; ++i) {
             LoadAlign(vreg_head1, srcHead + i * 512);
             LoadAlign(vreg_head2, srcHead + i * 512 + halfStride);
@@ -401,11 +401,11 @@ __simd_vf__ void MaskUbCopyGS1VF(__ubuf__ T * maskUb, __ubuf__ T * maskSecUb,
         RegTensor<T> vreg_mid1;
         RegTensor<T> vreg_mid2;
         for (uint16_t row = 0; row < midRowCount; ++row) {
-            __ubuf__ T * srcRow = maskSecUb + row * 512;
+            __ubuf__ T *srcRow = maskSecUb + row * 512;
             LoadAlign(vreg_mid1, srcRow);
             LoadAlign(vreg_mid2, srcRow + halfStride);
             for (uint16_t sg = 1; sg < midGLoop; ++sg) {
-                __ubuf__ T * dstRow = maskUb + (headLoop + sg * midRowCount + row) * 512;
+                __ubuf__ T *dstRow = maskUb + (headLoop + sg * midRowCount + row) * 512;
                 StoreAlign(dstRow, vreg_mid1, preg_all);
                 StoreAlign(dstRow + halfStride, vreg_mid2, preg_all);
             }
@@ -414,8 +414,8 @@ __simd_vf__ void MaskUbCopyGS1VF(__ubuf__ T * maskUb, __ubuf__ T * maskSecUb,
         // tail
         RegTensor<T> vreg_tail1;
         RegTensor<T> vreg_tail2;
-        __ubuf__ T * srcTail = maskSecUb;
-        __ubuf__ T * dstTailBase = maskUb + (headLoop + midGLoop * midRowCount) * 512;
+        __ubuf__ T *srcTail = maskSecUb;
+        __ubuf__ T *dstTailBase = maskUb + (headLoop + midGLoop * midRowCount) * 512;
         for (uint16_t i = 0; i < tailLoop; ++i) {
             LoadAlign(vreg_tail1, srcTail + i * 512);
             LoadAlign(vreg_tail2, srcTail + i * 512 + halfStride);
@@ -491,8 +491,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         SetFlag<HardEvent::MTE2_V>(eventId);
         WaitFlag<HardEvent::MTE2_V>(eventId);
 
-        __ubuf__ T * maskUb = (__ubuf__ T*)attenMaskUb.GetPhyAddr();
-        __ubuf__ T * maskSecUb = (__ubuf__ T*)attenMaskSecUb.GetPhyAddr();
+        __ubuf__ T *maskUb = (__ubuf__ T *)attenMaskUb.GetPhyAddr();
+        __ubuf__ T *maskSecUb = (__ubuf__ T *)attenMaskSecUb.GetPhyAddr();
         MaskUbCopyGS1VF<T, s2BaseSize>(maskUb, maskSecUb, headS1Count, info.s1Size, midGCount, tailS1Size);
         // // TODO，待优化，后续改成VF
         // // head

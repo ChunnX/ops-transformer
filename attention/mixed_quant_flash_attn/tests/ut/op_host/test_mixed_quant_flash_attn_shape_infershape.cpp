@@ -31,22 +31,21 @@ TEST_P(MixedQuantFlashAttnInferShapeTest, param)
 {
     auto param = GetParam();
 
-    gert::InfershapeContextPara::TensorDescription dummy(
-        {}, ge::DT_UNDEFINED, ge::FORMAT_NULL);
+    gert::InfershapeContextPara::TensorDescription dummy({}, ge::DT_UNDEFINED, ge::FORMAT_NULL);
 
     std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
-    inputTensorDesc.emplace_back(param.q);           // 0: q
-    inputTensorDesc.emplace_back(param.k);           // 1: k
-    inputTensorDesc.emplace_back(param.v);           // 2: v
-    inputTensorDesc.emplace_back(param.k_descale);   // 3: k_descale
-    inputTensorDesc.emplace_back(param.v_descale);   // 4: v_descale
-    inputTensorDesc.emplace_back(dummy);             // 5: block_table
-    inputTensorDesc.emplace_back(dummy);             // 6: cu_seqlens_q
-    inputTensorDesc.emplace_back(dummy);             // 7: seqused_q
-    inputTensorDesc.emplace_back(dummy);             // 8: seqused_kv
-    inputTensorDesc.emplace_back(dummy);             // 9: sinks
-    inputTensorDesc.emplace_back(dummy);             // 10: attn_mask
-    inputTensorDesc.emplace_back(dummy);             // 11: metadata
+    inputTensorDesc.emplace_back(param.q);         // 0: q
+    inputTensorDesc.emplace_back(param.k);         // 1: k
+    inputTensorDesc.emplace_back(param.v);         // 2: v
+    inputTensorDesc.emplace_back(param.k_descale); // 3: k_descale
+    inputTensorDesc.emplace_back(param.v_descale); // 4: v_descale
+    inputTensorDesc.emplace_back(dummy);           // 5: block_table
+    inputTensorDesc.emplace_back(dummy);           // 6: cu_seqlens_q
+    inputTensorDesc.emplace_back(dummy);           // 7: seqused_q
+    inputTensorDesc.emplace_back(dummy);           // 8: seqused_kv
+    inputTensorDesc.emplace_back(dummy);           // 9: sinks
+    inputTensorDesc.emplace_back(dummy);           // 10: attn_mask
+    inputTensorDesc.emplace_back(dummy);           // 11: metadata
 
     std::vector<gert::InfershapeContextPara::TensorDescription> outputTensorDesc;
     outputTensorDesc.emplace_back(param.attn_out);
@@ -77,4 +76,3 @@ INSTANTIATE_TEST_SUITE_P(
     PrintCaseInfoString<MixedQuantFlashAttnInferShapeUtParam>);
 
 } // namespace MixedQuantFlashAttnUT
-

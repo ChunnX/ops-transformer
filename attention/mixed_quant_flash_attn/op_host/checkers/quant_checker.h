@@ -30,4 +30,3 @@ public:
 } // namespace mixed_quant_flash_attn
 } // namespace optiling
 #endif
-

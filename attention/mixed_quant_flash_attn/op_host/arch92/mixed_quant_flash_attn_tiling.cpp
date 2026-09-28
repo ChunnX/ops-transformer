@@ -122,14 +122,13 @@ void MixedQuantFlashAttnTilingImpl::SplitPolicy()
         winLeft = MASK_MODE_INT_MAX;
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->gSize),
-                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
+                                          static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = true;
 }
-
 
 void MixedQuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
@@ -154,16 +153,21 @@ void MixedQuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
         dVsize = arch35FA::DSIZE_256;
     else if (dVsize <= arch35FA::DSIZE_512)
         dVsize = arch35FA::DSIZE_512;
-    if (sOuter == arch35FA::SOUTER_32 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
+    if (sOuter == arch35FA::SOUTER_32 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 &&
+        dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_48 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_48 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 &&
+               dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned48_S2Aligned512_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_32 && sInner == arch35FA::SINNER_256 && dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_32 && sInner == arch35FA::SINNER_256 && dSize == arch35FA::DSIZE_128 &&
+               dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 && dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 && dSize == arch35FA::DSIZE_128 &&
+               dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128;  // qkvd不等长
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_512 && dSize == arch35FA::DSIZE_128 &&
+               dVsize == arch35FA::DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128; // qkvd不等长
     }
 }
 
@@ -202,19 +206,22 @@ void MixedQuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 void MixedQuantFlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config, tilingKeyInfo_.quantComputeMode);
+    tilingKey_ =
+        GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
+                           tilingKeyInfo_.config, tilingKeyInfo_.quantComputeMode);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
-    fprintf(stderr, "[MQFA_HOST_TILING] tilingKey=%llu inOutLayout=%llu kvLayout=%llu hasMask=%llu config=%llu quantComputeMode=%llu\\n",
-            tilingKey_, tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config, tilingKeyInfo_.quantComputeMode);
+    fprintf(stderr,
+            "[MQFA_HOST_TILING] tilingKey=%llu inOutLayout=%llu kvLayout=%llu hasMask=%llu config=%llu "
+            "quantComputeMode=%llu\\n",
+            tilingKey_, tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
+            tilingKeyInfo_.config, tilingKeyInfo_.quantComputeMode);
     fflush(stderr);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu, quantComputeMode: %llu.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.config, tilingKeyInfo_.quantComputeMode);
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu, "
+            "quantComputeMode: %llu.",
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config,
+            tilingKeyInfo_.quantComputeMode);
 }
-
 
 void MixedQuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {
@@ -223,7 +230,8 @@ void MixedQuantFlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 
     numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     OP_LOGI(faInfo_->opName, "MixedQuantFlashAttn block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
-    fprintf(stderr, "[MQFA_HOST_TILING] numBlocks=%u aivNum=%u aicNum=%u cvRatio=%u\\n", numBlocks_, aivNum, aicNum, platformInfo_.cvRatio);
+    fprintf(stderr, "[MQFA_HOST_TILING] numBlocks=%u aivNum=%u aicNum=%u cvRatio=%u\\n", numBlocks_, aivNum, aicNum,
+            platformInfo_.cvRatio);
     fflush(stderr);
 }
 
@@ -337,7 +345,8 @@ void MixedQuantFlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->cuSeqLensQSize : 0;
+    tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensQSize =
+        faInfo_->qLayout == FaLayout::TND ? faInfo_->cuSeqLensQSize : 0;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.cuSeqLensKVSize =
         faInfo_->kvLayout == FaLayout::TND ? faInfo_->bSize : 0;
     tilingData_.baseTiling.mixedQuantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->seqUsedQSize : 0;
@@ -377,10 +386,14 @@ void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
 {
     MixedQuantFlashAttnTiling &baseTiling = tilingData_.baseTiling;
     MixedQuantFlashAttnBaseParams &mixedQuantFlashAttnBaseParams = baseTiling.mixedQuantFlashAttnBaseParams;
-    MixedQuantFlashAttnAttenMaskParams &mixedQuantFlashAttnAttenMaskParams = baseTiling.mixedQuantFlashAttnAttenMaskParams;
-    MixedQuantFlashAttnPageAttentionParams &mixedQuantFlashAttnPageAttentionParams = baseTiling.mixedQuantFlashAttnPageAttentionParams;
-    MixedQuantFlashAttnWorkspaceParams &mixedQuantFlashAttnWorkspaceParams = baseTiling.mixedQuantFlashAttnWorkspaceParams;
-    MixedQuantFlashAttnS1OuterSplitCoreParams &mixedQuantFlashAttnS1OuterSplitCoreParams = baseTiling.mixedQuantFlashAttnS1OuterSplitCoreParams;
+    MixedQuantFlashAttnAttenMaskParams &mixedQuantFlashAttnAttenMaskParams =
+        baseTiling.mixedQuantFlashAttnAttenMaskParams;
+    MixedQuantFlashAttnPageAttentionParams &mixedQuantFlashAttnPageAttentionParams =
+        baseTiling.mixedQuantFlashAttnPageAttentionParams;
+    MixedQuantFlashAttnWorkspaceParams &mixedQuantFlashAttnWorkspaceParams =
+        baseTiling.mixedQuantFlashAttnWorkspaceParams;
+    MixedQuantFlashAttnS1OuterSplitCoreParams &mixedQuantFlashAttnS1OuterSplitCoreParams =
+        baseTiling.mixedQuantFlashAttnS1OuterSplitCoreParams;
     MixedQuantFlashAttnQuantParams &mixedQuantFlashAttnQuantParams = baseTiling.mixedQuantFlashAttnQuantParams;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", mixedQuantFlashAttnBaseParams.bSize);

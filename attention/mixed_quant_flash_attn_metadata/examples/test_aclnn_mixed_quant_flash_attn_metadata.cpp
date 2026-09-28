@@ -22,14 +22,15 @@
 using namespace std;
 using namespace optiling;
 
-#define CHECK_RET(cond) ((cond) ? true :(false))
+#define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape) {
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
     int64_t shapeSize = 1;
     for (auto i : shape) {
         shapeSize *= i;
@@ -37,7 +38,8 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape) {
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream) {
+int Init(int32_t deviceId, aclrtStream *stream)
+{
     // Fixed writing method, AscendCL initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -57,8 +59,9 @@ int Init(int32_t deviceId, aclrtStream *stream) {
     return 0;
 }
 
-static void DumpMeta(void* data) {
-    int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
+static void DumpMeta(void *data)
+{
+    int32_t sectionNum = static_cast<int32_t>(((int32_t *)data)[0]);
     optiling::detail::FaMetaData faMetadata(data, sectionNum);
     printf("sectionNum:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX));
     printf("isFd:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_IS_FD_INDEX));
@@ -66,7 +69,7 @@ static void DumpMeta(void* data) {
     printf("s2BaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX));
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // FA Metadata Generate
-        printf("sectionIdx:%d\n",sectionId);
+        printf("sectionIdx:%d\n", sectionId);
         for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
             // FA start
             printf("bn2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
@@ -77,7 +80,8 @@ static void DumpMeta(void* data) {
             printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
             printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
             // FA idx
-            printf("first fd data ws idx: %d\n",faMetadata.GetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+            printf("first fd data ws idx: %d\n",
+                   faMetadata.GetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
 
         // FD Metadata Generate
@@ -94,7 +98,8 @@ static void DumpMeta(void* data) {
 
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor) {
+                    aclDataType dataType, aclTensor **tensor)
+{
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -121,7 +126,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-int main() {
+int main()
+{
     // 1. (Fixed writing method)  device/stream initialization. Refer to AscendCL's list of external interfaces.
     // Fill in the deviceId based on your actual device.
     int32_t deviceId = 0;
@@ -158,9 +164,9 @@ int main() {
     void *actualSeqLengthsQueryDeviceAddr = nullptr;
     void *actualSeqLengthsKvDeviceAddr = nullptr;
     void *metadataDeviceAddr = nullptr;
-    aclTensor* actualSeqLengthsQueryTensor = nullptr;
-    aclTensor* actualSeqLengthsKvTensor = nullptr;
-    aclTensor* metadataTensor = nullptr;
+    aclTensor *actualSeqLengthsQueryTensor = nullptr;
+    aclTensor *actualSeqLengthsKvTensor = nullptr;
+    aclTensor *metadataTensor = nullptr;
     int64_t actualSeqLengthsQueryShapeSize = GetShapeSize(actualSeqLengthsQueryShape);
     int64_t actualSeqLengthsKvShapeSize = GetShapeSize(actualSeqLengthsKvShape);
     int64_t metadataShapeSize = GetShapeSize(metadataShape);
@@ -168,42 +174,37 @@ int main() {
     std::vector<int32_t> actualSeqLengthsKvHostData(actualSeqLengthsKvShapeSize, kvS);
     std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
 
-
-
     // Create actual_seq_lengths_query aclTensor.
-    ret = CreateAclTensor(actualSeqLengthsQueryHostData, actualSeqLengthsQueryShape, &actualSeqLengthsQueryDeviceAddr, aclDataType::ACL_INT32, &actualSeqLengthsQueryTensor);
+    ret = CreateAclTensor(actualSeqLengthsQueryHostData, actualSeqLengthsQueryShape, &actualSeqLengthsQueryDeviceAddr,
+                          aclDataType::ACL_INT32, &actualSeqLengthsQueryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create actual_seq_lengths_kv aclTensor.
-    ret = CreateAclTensor(actualSeqLengthsKvHostData, actualSeqLengthsKvShape, &actualSeqLengthsKvDeviceAddr, aclDataType::ACL_INT32, &actualSeqLengthsKvTensor);
+    ret = CreateAclTensor(actualSeqLengthsKvHostData, actualSeqLengthsKvShape, &actualSeqLengthsKvDeviceAddr,
+                          aclDataType::ACL_INT32, &actualSeqLengthsKvTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create metadata aclTensor.
-    ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadataTensor);
+    ret =
+        CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadataTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     uint64_t workspaceSize = 0;
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
 
     char socVersion[] = "ascend950";
     printf("start aclnnMixedQuantFlashAttnMetadata\n");
     ret = aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
-        nullptr,
-        nullptr, nullptr,
-        batchSize, qS, kvS,
-        numHeads, numKeyValueHeads,
-        headDim, quantComputeMode, sparseMode, preTokens, nextTokens,
-         "BSND", "PA_BBND", "BSND",   // layoutQuery, layoutKv, layoutAttnOut
-        metadataTensor,
-        &workspaceSize, &executor);
+        nullptr, nullptr, nullptr, batchSize, qS, kvS, numHeads, numKeyValueHeads, headDim, quantComputeMode,
+        sparseMode, preTokens, nextTokens, "BSND", "PA_BBND", "BSND", // layoutQuery, layoutKv, layoutAttnOut
+        metadataTensor, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
-        printf("aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize %d\n",
-            ret);
+        printf("aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize %d\n", ret);
         return -1;
     }
 
@@ -219,10 +220,8 @@ int main() {
         return -1;
     }
 
-    ret = aclrtMemcpy(metadataHostData.data(),
-                        metadataHostData.size() * sizeof(metadataHostData[0]), metadataDeviceAddr,
-                        metadataShapeSize * sizeof(metadataHostData[0]),
-                        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(metadataHostData.data(), metadataHostData.size() * sizeof(metadataHostData[0]),
+                      metadataDeviceAddr, metadataShapeSize * sizeof(metadataHostData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         printf("aclrtMemcpy %d\n", ret);
         return -1;

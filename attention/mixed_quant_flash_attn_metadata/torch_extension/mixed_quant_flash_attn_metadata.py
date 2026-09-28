@@ -22,6 +22,7 @@ class MaskMode(IntEnum):
     CAUSAL = 3
     SLIDING_WINDOW = 4
 
+
 class QuantComputeMode(IntEnum):
     A16C4_KV_MXFP4_SOFTMAX_FP32 = 1
     A16C4_KV_HIF4_SOFTMAX_FP32 = 2
@@ -149,7 +150,11 @@ def mixed_quant_flash_attn_metadata(
         if batch_size is None
         else batch_size
     )
-    quant_compute_mode = quant_compute_mode.value if isinstance(quant_compute_mode, IntEnum) else quant_compute_mode
+    quant_compute_mode = (
+        quant_compute_mode.value
+        if isinstance(quant_compute_mode, IntEnum)
+        else quant_compute_mode
+    )
     mask_mode = mask_mode.value if isinstance(mask_mode, IntEnum) else mask_mode
 
     metadata_size = _calculate_metadata_size(batch_size, num_heads_kv)
@@ -218,6 +223,8 @@ def mixed_quant_flash_attn_metadata_fallback(
     )
 
 
-mixed_quant_flash_attn_metadata = torch.ops.cann_ops_transformer.mixed_quant_flash_attn_metadata
+mixed_quant_flash_attn_metadata = (
+    torch.ops.cann_ops_transformer.mixed_quant_flash_attn_metadata
+)
 mixed_quant_flash_attn_metadata.MaskMode = MaskMode
 mixed_quant_flash_attn_metadata.QuantComputeMode = QuantComputeMode
