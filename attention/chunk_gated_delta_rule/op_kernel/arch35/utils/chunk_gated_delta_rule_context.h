@@ -11,7 +11,7 @@
 #ifndef CHUNK_GATED_DELTA_RULE_CONTEXT_H
 #define CHUNK_GATED_DELTA_RULE_CONTEXT_H
 
-#include "../chunk_gated_delta_rule_tiling_data.h"
+#include "../../chunk_gated_delta_rule_tiling_data.h"
 #include "chunk_gated_delta_rule_layout.h"
 
 namespace ChunkGatedDeltaRule {

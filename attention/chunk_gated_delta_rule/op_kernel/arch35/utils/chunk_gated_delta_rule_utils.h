@@ -27,9 +27,16 @@ constexpr uint32_t MM_BLOCK_CUBE = 16;
 constexpr uint32_t MM_NZ_FRACTAL = 16;
 
 // 向上对齐：ceil(value / align) * align，align > 0；参数使用相同单位（元素或字节）。
-__aicore__ inline uint32_t MmAlign(uint32_t value, uint32_t align)
+__aicore__ inline uint32_t CeilAlign(uint32_t value, uint32_t align)
 {
     return (value + align - 1) / align * align;
+}
+
+__aicore__ inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
+{
+    // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
+    return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
+           (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * CeilAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
 }
 
 // 同步信号

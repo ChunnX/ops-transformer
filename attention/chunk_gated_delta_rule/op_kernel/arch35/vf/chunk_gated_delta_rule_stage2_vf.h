@@ -110,7 +110,7 @@ __simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ 
  * BF16 chunk 状态：把旧状态和 Cube 已转成 BF16 的增量升到 FP32，计算 exp(G_last)*S+update，
  * 最后一次舍入写回 BF16 状态。此处融合衰减与加法，避免在两者之间再落地一个 BF16 中间状态。
  */
-__simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, __ubuf__ bfloat16_t *updateAddr,
+__simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, __ubuf__ bfloat16_t *stateDeltaAddr,
                                                __ubuf__ float *gCumLastAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
@@ -119,10 +119,10 @@ __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, _
     static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
                                                  RoundMode::CAST_RINT};
     RegTensor<bfloat16_t> stateBf16Reg;
-    RegTensor<bfloat16_t> updateBf16Reg;
+    RegTensor<bfloat16_t> stateDeltaBf16Reg;
     RegTensor<bfloat16_t> roundedBf16Reg;
     RegTensor<float> stateReg;
-    RegTensor<float> updateReg;
+    RegTensor<float> stateDeltaReg;
     RegTensor<float> scaleReg;
     MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
     DataCopy<float, LoadDist::DIST_BRC_B32>(scaleReg, gCumLastAddr);
@@ -134,26 +134,28 @@ __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, _
         MaskReg mask = UpdateMask<float>(remaining);
         const uint32_t offset = static_cast<uint32_t>(repeat) * elementsPerRepeat;
         LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(stateBf16Reg, stateAddr + offset);
-        LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(updateBf16Reg, updateAddr + offset);
+        LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(stateDeltaBf16Reg, stateDeltaAddr + offset);
         Cast<float, bfloat16_t, castBf16ToFp32>(stateReg, stateBf16Reg, mask);
         Mul(stateReg, stateReg, scaleReg, mask);
-        Cast<float, bfloat16_t, castBf16ToFp32>(updateReg, updateBf16Reg, mask);
-        Add(stateReg, stateReg, updateReg, mask);
+        Cast<float, bfloat16_t, castBf16ToFp32>(stateDeltaReg, stateDeltaBf16Reg, mask);
+        Add(stateReg, stateReg, stateDeltaReg, mask);
         Cast<bfloat16_t, float, castFp32ToBf16>(roundedBf16Reg, stateReg, mask);
         StoreAlign<bfloat16_t, StoreDist::DIST_PACK_B32>(stateAddr + offset, roundedBf16Reg, mask);
     }
 }
 
 /*
- * FP32 chunk 主状态常驻行主序 UB；Cube 增量通过 Fixpipe 以 FP32 直接送达。
+ * [9a] S_next=exp(G_last)*S+delta，delta 来自 Cube [7] 的 R16.T@Kg。
+ * 每个 AIV 更新 FP32 [HALF_DIM,DIM]=[64,128] 的状态行片，主状态常驻行主序 UB。
+ * FP32 接口的 delta 经 FIX 直接送达；BF16 接口的 delta 由调用方先转回 FP32。
  * 保持先乘后加的递推顺序，中间不做 BF16 舍入；但 Cube 的矩阵输入仍是 BF16，并非全链路 FP32。
  */
-__simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf__ float *updateAddr,
+__simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf__ float *stateDeltaAddr,
                                                __ubuf__ float *gCumLastAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
     RegTensor<float> stateReg;
-    RegTensor<float> updateReg;
+    RegTensor<float> stateDeltaReg;
     RegTensor<float> scaleReg;
     MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
     DataCopy<float, LoadDist::DIST_BRC_B32>(scaleReg, gCumLastAddr);
@@ -165,79 +167,10 @@ __simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf
         MaskReg mask = UpdateMask<float>(remaining);
         const uint32_t offset = static_cast<uint32_t>(repeat) * elementsPerRepeat;
         LoadAlign(stateReg, stateAddr + offset);
-        LoadAlign(updateReg, updateAddr + offset);
+        LoadAlign(stateDeltaReg, stateDeltaAddr + offset);
         Mul(stateReg, stateReg, scaleReg, mask);
-        Add(stateReg, stateReg, updateReg, mask);
+        Add(stateReg, stateReg, stateDeltaReg, mask);
         StoreAlign<float, StoreDist::DIST_NORM_B32>(stateAddr + offset, stateReg, mask);
-    }
-}
-
-/*
- * 将行主序 FP32 主状态转成 compact zN 的 BF16 副本供 AIC 读取，舍入方式为 CAST_RINT。
- * 转换不覆盖 FP32 主状态，后续跨 chunk 的衰减和累加继续使用原 FP32 值。
- */
-__simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
-                                                      uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
-                                                      uint16_t dstFullRows)
-{
-    constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
-    constexpr uint32_t elementsPerBlock = 32 / sizeof(bfloat16_t);
-    static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
-                                                 RoundMode::CAST_RINT};
-    RegTensor<float> srcReg;
-    RegTensor<bfloat16_t> bf16Reg;
-    RegTensor<uint16_t> packedBf16Reg;
-
-    const uint16_t repeats = static_cast<uint16_t>((colCount + elementsPerRepeat - 1) / elementsPerRepeat);
-    for (uint16_t row = 0; row < rowCount; ++row) {
-        for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
-            const uint32_t featureBegin = static_cast<uint32_t>(repeat) * elementsPerRepeat;
-            const uint32_t remaining = colCount - featureBegin;
-            uint32_t validCount = remaining < elementsPerRepeat ? remaining : elementsPerRepeat;
-            uint32_t packedCount = validCount;
-            MaskReg validMask = UpdateMask<float>(validCount);
-            MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
-            const uint32_t srcOffset = static_cast<uint32_t>(row) * srcRowStride + featureBegin;
-            const uint32_t dstOffset = static_cast<uint32_t>(repeat) * (elementsPerRepeat / elementsPerBlock) *
-                                           dstFullRows * elementsPerBlock +
-                                       static_cast<uint32_t>(row) * elementsPerBlock;
-            LoadAlign(srcReg, srcAddr + srcOffset);
-            Cast<bfloat16_t, float, castFp32ToBf16>(bf16Reg, srcReg, validMask);
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
-                                                          reinterpret_cast<RegTensor<uint32_t> &>(bf16Reg));
-            StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-                reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
-        }
-    }
-}
-
-// 初始 BF16 状态从行主序转为 compact zN；之后状态更新和 UB->L1 发布一直沿用该布局。
-__simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
-                                                  uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
-                                                  uint16_t dstFullRows)
-{
-    constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
-    constexpr uint32_t elementsPerBlock = 32 / sizeof(bfloat16_t);
-    RegTensor<bfloat16_t> srcBf16Reg;
-    RegTensor<uint16_t> packedBf16Reg;
-
-    const uint16_t repeats = static_cast<uint16_t>((colCount + elementsPerRepeat - 1) / elementsPerRepeat);
-    for (uint16_t row = 0; row < rowCount; ++row) {
-        for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
-            const uint32_t srcOffset =
-                static_cast<uint32_t>(row) * srcRowStride + static_cast<uint32_t>(repeat) * elementsPerRepeat;
-            const uint32_t dstOffset = static_cast<uint32_t>(repeat) * (elementsPerRepeat / elementsPerBlock) *
-                                           dstFullRows * elementsPerBlock +
-                                       static_cast<uint32_t>(row) * elementsPerBlock;
-            const uint32_t remaining = colCount - static_cast<uint32_t>(repeat) * elementsPerRepeat;
-            uint32_t packedCount = remaining < elementsPerRepeat ? remaining : elementsPerRepeat;
-            MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
-            LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(srcBf16Reg, srcAddr + srcOffset);
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
-                                                          reinterpret_cast<RegTensor<uint32_t> &>(srcBf16Reg));
-            StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-                reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + dstOffset, packedBf16Reg, dstFullRows, packedMask);
-        }
     }
 }
 
@@ -257,7 +190,7 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
                                                  RoundMode::UNKNOWN};
     RegTensor<int32_t> lane, rowIndex, featureIndex, offset, tempIndex;
     RegTensor<float> state, key, query, source, product, reduced, total;
-    RegTensor<float> alpha, beta, value, delta, deltaBroadcast;
+    RegTensor<float> alpha, beta, value, residual, residualBroadcast;
     RegTensor<bfloat16_t> bf16;
     MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
     Arange(lane, static_cast<int32_t>(0));
@@ -297,11 +230,11 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
             Add(total, total, reduced, rowMask);
             LoadAlign(value, valueAddr + inputOffset + rowBegin);
             Mul(product, alpha, total, rowMask);
-            Sub(delta, value, product, rowMask);
-            Mul(delta, delta, beta, rowMask);
-            Gather<float, uint32_t>(deltaBroadcast, delta, reinterpret_cast<RegTensor<uint32_t> &>(rowIndex));
+            Sub(residual, value, product, rowMask);
+            Mul(residual, residual, beta, rowMask);
+            Gather<float, uint32_t>(residualBroadcast, residual, reinterpret_cast<RegTensor<uint32_t> &>(rowIndex));
             Mul(state, state, alpha, packedMask);
-            Mul(product, key, deltaBroadcast, packedMask);
+            Mul(product, key, residualBroadcast, packedMask);
             Add(state, state, product, packedMask);
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(bf16, queryAddr + inputOffset);
             Cast<float, bfloat16_t, castBf16ToFp32>(source, bf16, allMask);
@@ -323,9 +256,9 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
  * UB 物理 shape：S:[rowCount,128]，Q/K/V:[tokenCount,128]，out:[tokenCount,64]；
  * beta:[tokenCount,16]、g:[tokenCount,8] 为 DMA 对齐布局，每 token 只用首元素。
  * 优化方案：状态行之间无依赖，先遍历行，再在寄存器中沿 token 递推，减少 UB 状态读写：
- * delta_r=beta*(v_r-alpha*dot(S_r,k))，S_r=alpha*S_r+delta_r*k，out_r=dot(S_r,scale*q)。
+ * residual_r=beta*(v_r-alpha*dot(S_r,k))，S_r=alpha*S_r+residual_r*k，out_r=dot(S_r,scale*q)。
  * 两种接口状态类型都以 FP32 持续递推，仅在调用方写出 BF16 finalState 时量化状态。
- * Chunk 路径还会量化 Cube 输入和 BF16 接口的 delta，因此 Exact 不表示两条路径逐位相同。
+ * Chunk 路径还会量化 Cube 输入和 BF16 接口的 stateDelta，因此 Exact 不表示两条路径逐位相同。
  */
 template <bool hasGamma>
 __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,
@@ -350,8 +283,8 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
     RegTensor<float> alphaReg;
     RegTensor<float> betaReg;
     RegTensor<float> valueReg;
-    RegTensor<float> deltaReg;
-    RegTensor<float> deltaBroadcastReg;
+    RegTensor<float> residualReg;
+    RegTensor<float> residualBroadcastReg;
     MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
     MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
 
@@ -393,13 +326,13 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
 
             LoadAlign<float, LoadDist::DIST_BRC_B32>(valueReg, valueAddr + inputOffset + row);
             Mul(productReg, alphaReg, totalReg, oneMask);
-            Sub(deltaReg, valueReg, productReg, oneMask);
-            Mul(deltaReg, deltaReg, betaReg, oneMask);
+            Sub(residualReg, valueReg, productReg, oneMask);
+            Mul(residualReg, residualReg, betaReg, oneMask);
             // 标量递推仅定义 lane 0；外积更新前须广播到全部有效 Dk lane。
-            Duplicate(deltaBroadcastReg, deltaReg, allMask);
+            Duplicate(residualBroadcastReg, residualReg, allMask);
 
             Mul(stateLowReg, stateLowReg, alphaReg, lowMask);
-            Mul(productReg, keyLowReg, deltaBroadcastReg, lowMask);
+            Mul(productReg, keyLowReg, residualBroadcastReg, lowMask);
             Add(stateLowReg, stateLowReg, productReg, lowMask);
             LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(inputBf16Reg, queryAddr + inputOffset);
             Cast<float, bfloat16_t, castBf16ToFp32>(queryReg, inputBf16Reg, lowMask);
@@ -410,7 +343,7 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
             Add(totalReg, totalReg, reducedReg, oneMask);
             if (dk > elementsPerRepeat) {
                 Mul(stateHighReg, stateHighReg, alphaReg, highMask);
-                Mul(productReg, keyHighReg, deltaBroadcastReg, highMask);
+                Mul(productReg, keyHighReg, residualBroadcastReg, highMask);
                 Add(stateHighReg, stateHighReg, productReg, highMask);
                 LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(inputBf16Reg,
                                                                  queryAddr + inputOffset + elementsPerRepeat);

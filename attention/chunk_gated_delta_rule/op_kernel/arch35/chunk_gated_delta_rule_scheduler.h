@@ -11,7 +11,7 @@
 #ifndef CHUNK_GATED_DELTA_RULE_SCHEDULER_H
 #define CHUNK_GATED_DELTA_RULE_SCHEDULER_H
 
-#include "chunk_gated_delta_rule_context.h"
+#include "utils/chunk_gated_delta_rule_context.h"
 
 namespace ChunkGatedDeltaRule {
 

@@ -30,20 +30,33 @@ using namespace AscendC;
  * 沿该序列顺序递推 chunk。AIC 负责矩阵乘，AIV 负责门控、求逆和状态更新；中间量驻留 UB/L1，
  * 避免旧实现各阶段之间的 GM 往返及 SyncAll。计算量很小时可改走纯 AIV 逐 token 递推。
  *
- * 单个 chunk 的数学约定（省略 BF16 转换）：
- * Q/K 为 [C,Dk]，V 为 [C,Dv]，S 为 [Dv,Dk]。
- * G_i = sum(g_0..g_i)
- * L_ij = beta_i * (K_i K_j^T) * exp(G_i-G_j)，仅 j<i 非零，A=(I+L)^(-1)。
- * rawKcd_i=-beta_i*exp(G_i)*K_i
- * vBeta_i=beta_i*V_i
- * qPrime_i=scale*exp(G_i)*Q_i
- * kg_i=exp(G_last-G_i)*K_i；令 kcd=A*rawKcd，则：
- *   U = A*vBeta:[C,Dv]；R = U + kcd*S^T:[C,Dv]；S_next = exp(G_last)*S + R^T*kg:[Dv,Dk]；
- *   O = qPrime*S^T + maskedQkt*R:[C,Dv]，maskedQkt_ij=scale*(Q_i K_j^T)*exp(G_i-G_j)，j<=i。
- * rawKcd 已带负号，因此残差可直接累加进 L0C。Exact 表示实现递推语义，不表示无 BF16 舍入。
+ * 数学步骤索引（与 docs/math_to_kernel.md、pipeline_sample 的 ①~⑨ 对齐）：
+ * 单 head：Q/K:[C,Dk]，V:[C,Dv]，beta/g:[C]，S:[Dv,Dk]；S 是进入当前 chunk 的状态。
+ * [1, Cube]   KKT=K@K.T，QKT=Q@K.T，均为 [C,C]；一次打包 MMAD 同时计算两者。
+ * [2a, Vector] G=cumsum(g)，expG=exp(G)，均为 [C]。
+ * [2b, Vector] rawKcd=-beta*expG*K，vBeta=beta*V，Q'=scale*expG*Q，Kg=exp(G_last-G)*K。
+ * [3a, Vector] L=tril(beta*KKT*exp(G_i-G_j),-1)，M=tril(scale*QKT*exp(G_i-G_j),0)，均为 [C,C]。
+ * [3b, Vector] 两个 AIV 各求一个 [32,32] 对角逆块：A00=(I+L00)^-1，A11=(I+L11)^-1。
+ * [4a/b, Cube] tmp=(-L10)@A00；A10=A11@tmp；与 [3b] 合成 A=(I+L)^-1:[C,C]。
+ * [5a, Cube]  Kcd=A@rawKcd:[C,Dk]；[5b, Cube] U=A@vBeta:[C,Dv]，两者不依赖 S。
+ * [6a, Cube]  R=U+Kcd@S.T:[C,Dv]；[6b, Cube] O_inter=Q'@S.T:[C,Dv]，共享一次 S 的 L0B 装入。
+ * [6c, Vector] R32 -> R16，并搬 UB -> L1，供 [7]/[8] 的 Cube 使用。
+ * [7, Cube]   delta=R16.T@Kg:[Dv,Dk]，FIX 搬到 Vector UB。
+ * [8, Cube]   O=O_inter+M@R16:[C,Dv]，FIX 写回 GM。
+ * [9a, Vector] S_next=exp(G_last)*S+delta:[Dv,Dk]；[9b] 按需将 BF16 副本送到 L1 供下一块读取。
+ * R 已包含 beta；rawKcd 已包含负号；M 的对角线保留而 L 的对角线清零。
+ * 编号是数学依赖顺序，不是跨核串行执行顺序：[1]/[2] 并行，下块 [1~3] 与当前块 [6~9] 重叠。
+ * 公式省略中间 BF16 舍入；Exact 表示实现递推语义，不表示无舍入。不得据实数结合律重排乘法。
+ *
+ * 符号和存储命名约定（Python golden 使用相同词根的 snake_case）：
+ *   G -> gCum，expG -> gExp，Q' -> qPrime，Kg -> kg，M -> maskedQkt，L -> lower，A -> inverse。
+ *   rawKcd / vBeta 保留公式名；golden 的 Kcd/U 字段为 kcd/u；tmp -> lowerTimesInverse。
+ *   delta=R.T@Kg -> stateDelta；Streaming 的 beta*(v-alpha*S@k) 则叫 residual。
+ *   kcdQPrime 是 [Kcd;Q'] 的连续存储，不是额外计算结果。
+ *   residual/output 缓冲分别跨阶段保存 U->R / O_inter->O，保留生命周期说明。
  *
  * Cube/Vector 分工:
- *   -> PrepareVectorPrefix 准备对角逆块/rawKcd/Q'/Kg/M
+ *   -> PrepareStateIndependentChunkInputs 准备对角逆块/rawKcd/Q'/Kg/M
  *   -> ComputeCubeChunk 计算 R/O/delta
  *   -> ComputeVectorChunk 更新 FP32 S
  * shape 默认是单 head，物理 DIM 固定为 128
