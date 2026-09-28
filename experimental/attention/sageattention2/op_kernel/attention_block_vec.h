@@ -49,8 +49,10 @@ public:
         maxima_ = resource_->ubBuf.template GetBufferByByte<half>(MAX_UB);
         denom_ = resource_->ubBuf.template GetBufferByByte<float>(DEN_UB);
 
-        auto factors = resource_->ubBuf.template GetBufferByByte<float>(FACTORS_UB);
-        FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
+        if ASCEND_IS_AIV {
+            auto factors = resource_->ubBuf.template GetBufferByByte<float>(FACTORS_UB);
+            FixedScaleFactorsVF((__ubuf__ float *)factors.GetPhyAddr(), params_.smScale);
+        }
     }
     __aicore__ inline __attribute__((always_inline)) void QuantizeAndStreamQ(
         uint32_t b, uint32_t h, uint32_t qstart)
@@ -99,7 +101,6 @@ public:
         for (uint32_t c = 0; c < cols; ++c) {
             DataCopy(l1[c * (M * 32) + subBlockIdx_ * (HALF * 32)], out[c * 32], cp);
         }
-        Sync<HardEvent::MTE3_V>();
         CrossCoreSetFlag<4, PIPE_MTE3>(Q_READY);
     }
     __aicore__ inline __attribute__((always_inline)) void BeginTile(uint32_t b, uint32_t h,
