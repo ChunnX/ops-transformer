@@ -46,8 +46,8 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       add_library(${OP_ONNX_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
     endif()
     target_include_directories(
-      ${OP_ONNX_MODULE_NAME}_cases_obj PRIVATE ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
-          ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc
+      ${OP_ONNX_MODULE_NAME}_cases_obj PRIVATE ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
+          ${OP_PROTO_INCLUDE} ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc
       )
     target_link_libraries(
       ${OP_ONNX_MODULE_NAME}_cases_obj
