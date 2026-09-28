@@ -26,9 +26,15 @@ __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR vali
     REGISTER_NONE_TILING;
     if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
-        BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
-        op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
-        op.Process();
+        if (tilingData.inputDtype == optiling::BLOCK_ATTN_RES_PREPARE_INPUT_BF16) {
+            BlockAttnResPrepare::BlockAttnResPrepareVector<bfloat16_t> op(&tilingData);
+            op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
+            op.Process();
+        } else {
+            BlockAttnResPrepare::BlockAttnResPrepareVector<float> op(&tilingData);
+            op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
+            op.Process();
+        }
     } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_MIX) {
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);

@@ -32,6 +32,7 @@ namespace optiling {
 namespace {
 
 constexpr uint64_t FP32_BYTES = sizeof(float);
+constexpr uint64_t BF16_BYTES = sizeof(uint16_t);
 constexpr uint64_t UB_RESERVED_BYTES = 8UL * 1024UL;
 constexpr uint32_t FP32_REG_ELEMS = 64U;
 constexpr uint32_t VECTOR_UB_ROW_ALIGN_ELEMS = FP32_REG_ELEMS;
@@ -56,6 +57,7 @@ bool BlockAttnResPrepareVectorTiling::IsCapable()
 bool BlockAttnResPrepareVectorTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
 {
     const uint64_t usableUbBytes = ubSize_ - UB_RESERVED_BYTES;
+    const uint64_t inputBytes = inputDtype_ == BLOCK_ATTN_RES_PREPARE_INPUT_BF16 ? BF16_BYTES : FP32_BYTES;
     const uint64_t dAlign = AlignUp<uint64_t>(totalD_, VECTOR_UB_ROW_ALIGN_ELEMS);
 
     const std::array<uint64_t, VECTOR_BASE_D_CANDIDATE_NUM> candidates = {
@@ -81,9 +83,11 @@ bool BlockAttnResPrepareVectorTiling::SelectVectorBaseD(bool hasMultipleWorkRoun
                     return false);
         const uint64_t vLoopNum = dTileNum * totalN_;
         const uint64_t vBufferNum = (vLoopNum > 1 || hasMultipleWorkRounds) ? DOUBLE_BUFFER_NUM : 1UL;
-        const uint64_t fixedElems = (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
-                                    static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS;
-        const uint64_t fixedBytes = fixedElems * FP32_BYTES;
+        const uint64_t inputBufferElems = (qBufferNum + vBufferNum) * baseDAlign;
+        const uint64_t outputBufferElems = oBufferNum * baseDAlign;
+        const uint64_t fixedBytes = inputBufferElems * inputBytes +
+                                     (outputBufferElems + static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS) *
+                                         FP32_BYTES;
         if (fixedBytes > usableUbBytes) {
             continue;
         }
@@ -93,7 +97,7 @@ bool BlockAttnResPrepareVectorTiling::SelectVectorBaseD(bool hasMultipleWorkRoun
         vBufferNum_ = static_cast<uint32_t>(vBufferNum);
         oBufferNum_ = static_cast<uint32_t>(oBufferNum);
 
-        const uint64_t cacheRowBytes = dAlign * FP32_BYTES;
+        const uint64_t cacheRowBytes = dAlign * inputBytes;
         const uint64_t cacheCapacity = (usableUbBytes - fixedBytes) / cacheRowBytes;
         vCacheRows_ = static_cast<uint32_t>(std::min<uint64_t>(totalN_, cacheCapacity));
         return true;
@@ -131,6 +135,7 @@ ge::graphStatus BlockAttnResPrepareVectorTiling::DoOpTiling()
     tilingData_.qBufferNum = static_cast<uint8_t>(qBufferNum_);
     tilingData_.vBufferNum = static_cast<uint8_t>(vBufferNum_);
     tilingData_.oBufferNum = static_cast<uint8_t>(oBufferNum_);
+    tilingData_.inputDtype = inputDtype_;
     tilingData_.statUbElems = STAT_UB_ELEMS;
     tilingData_.eps = eps_;
     return ge::GRAPH_SUCCESS;
@@ -150,9 +155,9 @@ void BlockAttnResPrepareVectorTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(),
             "BlockAttnResPrepare Vector tiling: T=%lu N=%lu S=%lu D=%lu cores=%u baseD=%u "
-            "q/v/o buffers=%u/%u/%u vCacheRows=%u",
+            "q/v/o buffers=%u/%u/%u vCacheRows=%u inputDtype=%u",
             totalT_, totalN_, totalS_, totalD_, usedCoreNum_, baseD_, qBufferNum_, vBufferNum_, oBufferNum_,
-            vCacheRows_);
+            vCacheRows_, inputDtype_);
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockAttnResPrepare, BlockAttnResPrepareVectorTiling, supportedNpuArch,

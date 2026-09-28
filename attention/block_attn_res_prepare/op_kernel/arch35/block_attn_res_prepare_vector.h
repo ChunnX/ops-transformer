@@ -20,6 +20,7 @@ namespace BlockAttnResPrepare {
 
 using namespace AscendC;
 
+template <typename INPUT_T>
 class BlockAttnResPrepareVector {
 public:
     __aicore__ inline explicit BlockAttnResPrepareVector(
@@ -64,8 +65,8 @@ public:
         qBufferNum_ = tilingData_->qBufferNum;
         vBufferNum_ = tilingData_->vBufferNum;
 
-        blockResAddr_ = reinterpret_cast<__gm__ float *>(blockRes);
-        pseudoQueryAddr_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
+        blockResAddr_ = reinterpret_cast<__gm__ INPUT_T *>(blockRes);
+        pseudoQueryAddr_ = reinterpret_cast<__gm__ INPUT_T *>(pseudoQuery);
         numeratorAddr_ = reinterpret_cast<__gm__ float *>(numerator);
         logitMaxAddr_ = reinterpret_cast<__gm__ float *>(logitMax);
         expSumAddr_ = reinterpret_cast<__gm__ float *>(expSum);
@@ -108,6 +109,7 @@ public:
 
 private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
+    static constexpr uint64_t INPUT_BYTES = sizeof(INPUT_T);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
     static constexpr uint32_t FP32_REG_ELEMS = BlockAttnResPrepareVF::FP32_REG_ELEMS;
     static constexpr uint32_t MAX_PIPE_ID = 8U;
@@ -128,7 +130,7 @@ private:
     __aicore__ inline void InitUbOffset()
     {
         qUbOffset_ = 0U;
-        oUbOffset_ = qUbOffset_ + static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
+        oUbOffset_ = qUbOffset_ + static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * INPUT_BYTES;
         statUbOffset_ = oUbOffset_ + static_cast<uint64_t>(tilingData_->oBufferNum) * baseDAlign_ * FP32_BYTES;
         vCacheUbOffset_ =
             statUbOffset_ + static_cast<uint64_t>(STAT_BUFFER_NUM) * tilingData_->statUbElems * FP32_BYTES;
@@ -185,38 +187,40 @@ private:
         return validBlocksTensor[asc::te::make_coord(static_cast<int64_t>(0), static_cast<int64_t>(0))];
     }
 
-    __aicore__ inline __ubuf__ float *CopyInQ(uint64_t sIndex, uint32_t dOffset, uint32_t validD, uint32_t qBufferIndex)
+    __aicore__ inline __ubuf__ INPUT_T *CopyInQ(uint64_t sIndex, uint32_t dOffset, uint32_t validD,
+                                                uint32_t qBufferIndex)
     {
-        const uint64_t byteOffset = qUbOffset_ + static_cast<uint64_t>(qBufferIndex) * baseDAlign_ * FP32_BYTES;
-        auto pseudoQueryTensor = MakeGmTensor<float>(pseudoQueryAddr_, tilingData_->totalS, tilingData_->totalD);
-        CopyGmToUb<float>(byteOffset, pseudoQueryTensor, static_cast<int64_t>(sIndex), dOffset, validD, baseDAlign_);
+        const uint64_t byteOffset = qUbOffset_ + static_cast<uint64_t>(qBufferIndex) * baseDAlign_ * INPUT_BYTES;
+        auto pseudoQueryTensor = MakeGmTensor<INPUT_T>(pseudoQueryAddr_, tilingData_->totalS, tilingData_->totalD);
+        CopyGmToUb<INPUT_T>(byteOffset, pseudoQueryTensor, static_cast<int64_t>(sIndex), dOffset, validD,
+                            baseDAlign_);
         WaitMte2ToVector(static_cast<event_t>(qBufferIndex));
-        return GetUbAddr<float>(byteOffset);
+        return GetUbAddr<INPUT_T>(byteOffset);
     }
 
-    __aicore__ inline __ubuf__ float *CopyInV(uint64_t tIndex, uint32_t nIndex, uint32_t dOffset, uint32_t validD,
-                                              uint64_t vLoop)
+    __aicore__ inline __ubuf__ INPUT_T *CopyInV(uint64_t tIndex, uint32_t nIndex, uint32_t dOffset, uint32_t validD,
+                                                uint64_t vLoop)
     {
         const uint32_t bufferIndex = static_cast<uint32_t>(vLoop % vBufferNum_);
-        const uint64_t byteOffset = vUbOffset_ + static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
+        const uint64_t byteOffset = vUbOffset_ + static_cast<uint64_t>(bufferIndex) * baseDAlign_ * INPUT_BYTES;
         const int64_t rowIndex = static_cast<int64_t>(tIndex * tilingData_->totalN + nIndex);
-        auto blockResTensor = MakeGmTensor<float>(
+        auto blockResTensor = MakeGmTensor<INPUT_T>(
             blockResAddr_, static_cast<int64_t>(tilingData_->totalT) * tilingData_->totalN, tilingData_->totalD);
-        CopyGmToUb<float>(byteOffset, blockResTensor, rowIndex, dOffset, validD, baseDAlign_);
+        CopyGmToUb<INPUT_T>(byteOffset, blockResTensor, rowIndex, dOffset, validD, baseDAlign_);
         WaitMte2ToVector(static_cast<event_t>(bufferIndex));
-        return GetUbAddr<float>(byteOffset);
+        return GetUbAddr<INPUT_T>(byteOffset);
     }
 
-    __aicore__ inline __ubuf__ float *CopyVToCache(uint64_t tIndex, uint32_t nIndex, uint32_t dOffset,
-                                                   uint32_t cacheOffset, uint32_t validD)
+    __aicore__ inline __ubuf__ INPUT_T *CopyVToCache(uint64_t tIndex, uint32_t nIndex, uint32_t dOffset,
+                                                     uint32_t cacheOffset, uint32_t validD)
     {
-        const uint64_t byteOffset = vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES;
+        const uint64_t byteOffset = vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * INPUT_BYTES;
         const int64_t rowIndex = static_cast<int64_t>(tIndex * tilingData_->totalN + nIndex);
-        auto blockResTensor = MakeGmTensor<float>(
+        auto blockResTensor = MakeGmTensor<INPUT_T>(
             blockResAddr_, static_cast<int64_t>(tilingData_->totalT) * tilingData_->totalN, tilingData_->totalD);
-        CopyGmToUb<float>(byteOffset, blockResTensor, rowIndex, dOffset, validD, dAlign_);
+        CopyGmToUb<INPUT_T>(byteOffset, blockResTensor, rowIndex, dOffset, validD, dAlign_);
         WaitMte2ToVector(static_cast<event_t>(0));
-        return GetUbAddr<float>(byteOffset);
+        return GetUbAddr<INPUT_T>(byteOffset);
     }
 
     __aicore__ inline void CopyOutStats(uint64_t sIndex, uint64_t tIndex, uint64_t statByteOffset, event_t eventId)
@@ -244,26 +248,27 @@ private:
         CopyUbToGm<float>(numeratorTensor, rowIndex, dOffset, byteOffset, validD, baseDAlign_);
     }
 
-    __aicore__ inline void AccumulateStats(__ubuf__ float *qAddr, __ubuf__ float *vAddr, __ubuf__ float *statAddr,
+    __aicore__ inline void AccumulateStats(__ubuf__ INPUT_T *qAddr, __ubuf__ INPUT_T *vAddr,
+                                           __ubuf__ float *statAddr,
                                            uint32_t dLoop, uint32_t validD, uint32_t nIndex)
     {
         if (dLoop == 0U) {
-            BlockAttnResPrepareVF::AccumulateSquareDot<true>(qAddr, vAddr, statAddr, validD, nIndex);
+            BlockAttnResPrepareVF::AccumulateSquareDot<INPUT_T, true>(qAddr, vAddr, statAddr, validD, nIndex);
         } else {
-            BlockAttnResPrepareVF::AccumulateSquareDot<false>(qAddr, vAddr, statAddr, validD, nIndex);
+            BlockAttnResPrepareVF::AccumulateSquareDot<INPUT_T, false>(qAddr, vAddr, statAddr, validD, nIndex);
         }
     }
 
-    __aicore__ inline void AccumulateOutput(__ubuf__ float *vAddr, __ubuf__ float *weightAddr,
+    __aicore__ inline void AccumulateOutput(__ubuf__ INPUT_T *vAddr, __ubuf__ float *weightAddr,
                                             __ubuf__ float *outputAddr, uint32_t nIndex, uint32_t validN,
                                             uint32_t validD)
     {
         if (validN == 1U) {
-            BlockAttnResPrepareVF::CopySingleBlock(vAddr, outputAddr, validD);
+            BlockAttnResPrepareVF::CopySingleBlock<INPUT_T>(vAddr, outputAddr, validD);
         } else if (nIndex == 0U) {
-            BlockAttnResPrepareVF::WeightedAccumulate<true>(vAddr, weightAddr, outputAddr, validD);
+            BlockAttnResPrepareVF::WeightedAccumulate<INPUT_T, true>(vAddr, weightAddr, outputAddr, validD);
         } else {
-            BlockAttnResPrepareVF::WeightedAccumulate<false>(vAddr, weightAddr, outputAddr, validD);
+            BlockAttnResPrepareVF::WeightedAccumulate<INPUT_T, false>(vAddr, weightAddr, outputAddr, validD);
         }
     }
 
@@ -330,10 +335,10 @@ private:
             const uint32_t qBufferIndex = qLoop_ % tilingData_->qBufferNum;
             const event_t qEvent = static_cast<event_t>(qBufferIndex);
             wait_flag(PIPE_V, PIPE_MTE2, qEvent);
-            __ubuf__ float *qAddr = CopyInQ(sIndex, dOffset, validD, qBufferIndex);
+            __ubuf__ INPUT_T *qAddr = CopyInQ(sIndex, dOffset, validD, qBufferIndex);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
-                __ubuf__ float *vAddr;
+                __ubuf__ INPUT_T *vAddr;
                 if (cacheAllV) {
                     uint32_t vBufferId = validN > 1 ? nIndex : (vLoop_ & 1);
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + static_cast<event_t>(vBufferId));
@@ -370,11 +375,11 @@ private:
             const event_t outputEvent = static_cast<event_t>(outputBufferIndex);
             wait_flag(PIPE_MTE3, PIPE_V, outputEvent);
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
-                __ubuf__ float *vAddr;
+                __ubuf__ INPUT_T *vAddr;
                 if (cacheAllV) {
                     uint32_t vBufferId = validN > 1 ? nIndex : (vLoop_ & 1);
                     const uint32_t cacheOffset = vBufferId * dAlign_ + dOffset;
-                    vAddr = GetUbAddr<float>(vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES);
+                    vAddr = GetUbAddr<INPUT_T>(vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * INPUT_BYTES);
                 } else {
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ % vBufferNum_));
                     vAddr = CopyInV(tIndex, nIndex, dOffset, validD, vLoop_);
@@ -416,9 +421,9 @@ private:
     uint8_t qBufferNum_ = 1;
     uint8_t vBufferNum_ = 1;
 
-    __gm__ float *blockResAddr_ = nullptr;
+    __gm__ INPUT_T *blockResAddr_ = nullptr;
     __gm__ uint64_t *validBlocksAddr_ = nullptr;
-    __gm__ float *pseudoQueryAddr_ = nullptr;
+    __gm__ INPUT_T *pseudoQueryAddr_ = nullptr;
     __gm__ float *numeratorAddr_ = nullptr;
     __gm__ float *logitMaxAddr_ = nullptr;
     __gm__ float *expSumAddr_ = nullptr;
