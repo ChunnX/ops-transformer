@@ -39,11 +39,11 @@ using namespace AscendC;
 #define QSMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockCube<__VA_ARGS__>, \
-                                      BaseApi::CSABlockCubeDummy<__VA_ARGS__>>::type; \
+            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::MqsmlaCsaBlockCube<__VA_ARGS__>, \
+                                      BaseApi::MqsmlaCsaBlockCubeDummy<__VA_ARGS__>>::type; \
         using VecBlockType = \
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::CSABlockVecDummy<__VA_ARGS__>, \
-                                      BaseApi::CSABlockVec<__VA_ARGS__>>::type; \
+                                      BaseApi::MqsmlaCsaBlockVector<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
         const tilingdataClass *__restrict tilingData = &tilingDataIn; \
@@ -66,7 +66,7 @@ using namespace AscendC;
 #endif
 
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int QUANT_MODE, int KV_DTYPE,
-          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR, int HIGH_PERF>
+          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR, int HIGH_PERF, int TOPK_VALUE_MODE>
 __global__ __aicore__ void mixed_quant_sparse_flash_mla(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -89,13 +89,15 @@ __global__ __aicore__ void mixed_quant_sparse_flash_mla(
                       fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
                       static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
                       static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF);
+                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF,
+                      static_cast<TopkValueMode>(TOPK_VALUE_MODE));
     } else {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t, hifloat8_t,
                       float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
                       static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
                       static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF);
+                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF,
+                      static_cast<TopkValueMode>(TOPK_VALUE_MODE));
     }
 #else
     TPipe tPipe;
