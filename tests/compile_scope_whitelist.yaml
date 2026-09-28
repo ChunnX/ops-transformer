@@ -118,3 +118,10 @@ ops:
       - ffn_worker_scheduler
       soc:
       - ascend910b
+  mhc:
+    mhc_sinkhorn_common:
+      impact:
+      - mhc_sinkhorn
+      - mhc_sinkhorn_backward
+      soc:
+      - ascend950
