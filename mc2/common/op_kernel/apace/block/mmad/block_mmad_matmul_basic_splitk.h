@@ -314,12 +314,17 @@ private:
         if (isBias_ && kIdx == 0 && isFirstSplitK) {
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
-            // === DEBUG (temporary): GM bias 源地址 + L1 目标地址 ===
+            // === DEBUG (temporary): GM bias 源 + L1 目标 ===
             if (dbgBiasDumpCnt_ < 4) {
                 dbgBiasDumpCnt_++;
-                printf("[DBG] biasCopy: gmBiasAddr=%p l1Addr=%u curNL1=%u curN0=%u\n",
-                       reinterpret_cast<void *>(tensorBias.data().get()), static_cast<uint32_t>(biasL1Slot.Addr()),
-                       static_cast<uint32_t>(curNL1), static_cast<uint32_t>(dbgCurN0_));
+                uint64_t dumpN = (curNL1 < 8) ? curNL1 : 8;
+                printf("[DBG] biasCopy: l1Addr=%u curNL1=%u curN0=%u\n",
+                       static_cast<uint32_t>(biasL1Slot.Addr()), static_cast<uint32_t>(curNL1),
+                       static_cast<uint32_t>(dbgCurN0_));
+                for (uint64_t d = 0; d < dumpN; ++d) {
+                    float gv = static_cast<float>(tensorBias[AscendC::Te::MakeCoord(0, d)]);
+                    printf("[DBG]   gmbias[%u]=%f\n", static_cast<uint32_t>(d), gv);
+                }
             }
             // === DEBUG end ===
         }
