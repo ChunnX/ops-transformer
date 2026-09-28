@@ -680,7 +680,19 @@ gen_golden_cpu.py 语义：q_pooled=pool_blocks(Q,8token均值) → score=q_pool
 → att=softmax(score,dim=-1) → pooled=avg_pool2d(att,(post_bx,post_by))。
 inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上述链 → 与 dump 比值。
 
-### 第十七轮续：TopK 层审计开局（basebf16/basevar）
+### 第十七轮续二：TopK 实锤——radix 丢失高排名位置
+正确偏移（+16MB）+ 脚本 softmax 轴修正后实证（basevar B1H1，当前构建）：
+- mask diff = 34（B1H1×20 + B1H2×14），tolerated=32，**硬错仅 2**：B1H1[22,1]、[26,1]。
+- 两位置 cpu_att≈0.0354、**排名 399/400 << 480 阈值**，golden 正确选中有黑盒背书，**NPU mask=0**
+  → **radix TopK 结构性丢失高排名位置**（非 tie-break、非 count/域公式——UpdateRuntimeParams
+  与 golden 语义已核对一致：sortLen=valid 网格 32×30=960、kValue=round(0.5×960)=480）。
+- GT/EQ 双通道 tie 处理（SubTopKAndWriteMaskGT/EQ，EQ 按 index 序补选平票）**工作正常**：
+  32 处边界 tie 翻转全部被 compare 边界容差正确容忍。
+- 另：非 post attnScore = 单 2KB 串行槽 per (B,H) 覆写后 TopK 即时消费（dump 只剩末个 (B,H)）；
+  **softmax 按行 axis 脚本 bug 自坑两次**（numpy 全局 softmax 与 per-row 差异巨大，教训）。
+- 下轮：radix 多轮位切片内部审计——HandleLastRoundBoundary 的 per-tile 预算分配（tile 顺序、
+  curTileBoundaryNum 累计）与 remainK 收敛，定位丢位点的精确机制；或用小 sortLen 手工 case
+  （如 8×8 grid）单步仿真 radix 轮次对比 golden。
 - UpdateRuntimeParams 与 golden 语义一致（sortLen=valid 网格、kValue=round(ratio×sortLen)）——
   count/域公式排除。
 - 选择 = 多轮位切片 radix（numValue_ bins/轮、bitsPerRound），boundary-bin = 累计≥remainK 的
