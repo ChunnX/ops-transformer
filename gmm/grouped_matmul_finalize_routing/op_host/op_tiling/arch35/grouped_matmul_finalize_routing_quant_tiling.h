@@ -113,6 +113,7 @@ private:
     bool CheckDtype() const;
     bool CheckOptional(uint32_t index, const char *paramName, ge::DataType targetDtype) const;
     bool IsFp4Dtype(ge::DataType dtype) const;
+    bool IsHif4Scale() const;
     bool IsFp8Dtype(ge::DataType dtype) const;
     bool CheckInputsShape(const gert::Shape &xShape, const gert::StorageShape *wStorageShape,
                           const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
@@ -137,6 +138,7 @@ private:
     int8_t scaleType_ = 0;
     int8_t rowIndexType_ = 0;
     uint32_t deterWorkspaceSize_ = 0;
+    bool supportMmadF16S8_ = false;
 };
 } // namespace optiling
 
