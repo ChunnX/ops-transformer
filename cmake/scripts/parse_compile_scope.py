@@ -33,7 +33,10 @@ SKIP_EXTS = {".md", ".json", ".ini"}
 EXCLUDE_DIRS = {"common", "3rd", "tools"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WHITELIST_PATH = REPO_ROOT / "tests" / "compile_scope_whitelist.yaml"
-DEPEND_RE = re.compile(r"set\(\s*[A-Za-z0-9_]*depends\s+([^)]*?)\s+PARENT_SCOPE", re.I)
+DEPEND_RE = re.compile(
+    r"set\(\s*[A-Za-z0-9_]*depends\s+(.+?)\s+(?:PARENT_SCOPE|CACHE)\b",
+    re.I,
+)
 LONG_SOC = {
     "ascend310p": "Ascend310P3",
     "ascend310b": "Ascend310B1",
