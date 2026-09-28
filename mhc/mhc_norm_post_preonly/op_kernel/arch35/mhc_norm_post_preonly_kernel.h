@@ -593,35 +593,40 @@ private:
             // 避免每个标量结果都单独触发一次Vector到Scalar的等待。
             MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
 
-            // 四槽分别装两个输出的两路phi；每对输出共用一次x2寄存器读取。
-            for (uint32_t o = 0; o < N_MAX; o += 2U) {
-                LocalTensor<float> phi00 = bufPhiFp32_.AllocTensor<float>();
-                LocalTensor<float> phi01 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(phi00, phiGm_[(uint64_t)o * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams, copyPad);
-                DataCopyPad(phi01, phiGm_[(uint64_t)o * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams, copyPad);
-                bufPhiFp32_.EnQue(phi00);
-                bufPhiFp32_.EnQue(phi01);
+            // phi ping-pong：prologue预取o=0的两路，后续算o时预取o+1，4槽使MTE2与Vector重叠。
+            LocalTensor<float> curPhi0 = bufPhiFp32_.AllocTensor<float>();
+            LocalTensor<float> curPhi1 = bufPhiFp32_.AllocTensor<float>();
+            DataCopyPad(curPhi0, phiGm_[(uint64_t)h0 * D_ + tOff], copyParams, copyPad);
+            DataCopyPad(curPhi1, phiGm_[(uint64_t)h1 * D_ + tOff], copyParams, copyPad);
+            bufPhiFp32_.EnQue(curPhi0);
+            bufPhiFp32_.EnQue(curPhi1);
 
-                LocalTensor<float> phi10 = bufPhiFp32_.AllocTensor<float>();
-                LocalTensor<float> phi11 = bufPhiFp32_.AllocTensor<float>();
-                DataCopyPad(phi10, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
-                            copyPad);
-                DataCopyPad(phi11, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
-                            copyPad);
-                bufPhiFp32_.EnQue(phi10);
-                bufPhiFp32_.EnQue(phi11);
+            for (uint32_t o = 0; o < N_MAX; ++o) {
+                // 预取下一轮o+1的两路phi，与当前dot计算重叠。
+                LocalTensor<float> nextPhi0;
+                LocalTensor<float> nextPhi1;
+                if (o + 1U < N_MAX) {
+                    nextPhi0 = bufPhiFp32_.AllocTensor<float>();
+                    nextPhi1 = bufPhiFp32_.AllocTensor<float>();
+                    DataCopyPad(nextPhi0, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h0 * D_ + tOff], copyParams,
+                                copyPad);
+                    DataCopyPad(nextPhi1, phiGm_[(uint64_t)(o + 1U) * phiCols_ + (uint64_t)h1 * D_ + tOff], copyParams,
+                                copyPad);
+                    bufPhiFp32_.EnQue(nextPhi0);
+                    bufPhiFp32_.EnQue(nextPhi1);
+                }
 
-                phi00 = bufPhiFp32_.DeQue<float>();
-                phi01 = bufPhiFp32_.DeQue<float>();
-                phi10 = bufPhiFp32_.DeQue<float>();
-                phi11 = bufPhiFp32_.DeQue<float>();
-                MhcNormRegBase::VFPairMulAddTwoOutputs(reduceRows[(o + 1U) * dimTile_],
-                                                       reduceRows[(o + 2U) * dimTile_], x2[x2h0 * dimTile_],
-                                                       x2[x2h1 * dimTile_], phi00, phi01, phi10, phi11, tD);
-                bufPhiFp32_.FreeTensor(phi00);
-                bufPhiFp32_.FreeTensor(phi01);
-                bufPhiFp32_.FreeTensor(phi10);
-                bufPhiFp32_.FreeTensor(phi11);
+                LocalTensor<float> dotRow = reduceRows[(o + 1) * dimTile_];
+                curPhi0 = bufPhiFp32_.DeQue<float>();
+                curPhi1 = bufPhiFp32_.DeQue<float>();
+                MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], curPhi0, x2[x2h1 * dimTile_], curPhi1, tD);
+                bufPhiFp32_.FreeTensor(curPhi0);
+                bufPhiFp32_.FreeTensor(curPhi1);
+
+                if (o + 1U < N_MAX) {
+                    curPhi0 = nextPhi0;
+                    curPhi1 = nextPhi1;
+                }
             }
 
             PipeBarrier<PIPE_V>();
