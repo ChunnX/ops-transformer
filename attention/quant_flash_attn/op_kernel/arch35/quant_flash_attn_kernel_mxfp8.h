@@ -110,6 +110,9 @@ public:
     // schduler params
     uint64_t actSeqLensKv_ = 0;
     uint64_t actSeqLensQ_ = 0;
+    uint64_t s2LoopTimes_ = 0;
+    uint64_t gS1LoopTimes_ = 0;
+    uint32_t n2Step_ = 1;
     uint32_t curS2Start_ = 0;
     uint32_t curS2End_ = 0;
     uint32_t prevBIdx_ = 0;
@@ -161,7 +164,6 @@ public:
         this->pipe_ = tPipe;
 
         InitConstInfo(tiling);
-        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
         constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)metadata)[1]);
 
         keyPtr_ = key;
@@ -322,6 +324,9 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = qfaBaseParams.isSoftMaxLseEnable;
 
+        constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
+        n2Step_ = constInfo_.realN2Size / constInfo_.n2Size;
+
         constInfo_.dBasicBlock = Align64Func((uint16_t)constInfo_.dSizeV);
     }
 
@@ -456,10 +461,11 @@ public:
             } else {
                 actSeqLensQ_ = qSeqUsedParser_.GetActualSeqLength(bIdx);
             }
+            s2LoopTimes_ = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
+            gS1LoopTimes_ = (actSeqLensQ_ * constInfo_.realGSize + mBaseSize - 1) / mBaseSize;
         }
-        uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t s2LoopTimes = s2LoopTimes_;
+        uint64_t gS1LoopTimes = gS1LoopTimes_;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
@@ -658,9 +664,9 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop_;
-        info.bIdx = bN2Cur / (constInfo_.realN2Size);
-        info.n2Idx = (bN2Cur / (constInfo_.realN2Size / constInfo_.n2Size)) % constInfo_.n2Size;
-        info.realN2Idx = bN2Cur % constInfo_.realN2Size;
+        info.bIdx = prevBIdx_;
+        info.n2Idx = (bN2Cur / n2Step_) % constInfo_.n2Size;
+        info.realN2Idx = bN2Cur - prevBIdx_ * constInfo_.realN2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -730,9 +736,8 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t s2LoopTimes = s2LoopTimes_;
+        uint64_t gS1LoopTimes = gS1LoopTimes_;
         // 尚未到达有效区间, 快进s2Cur到curS2Start_, 不跳行
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start_;

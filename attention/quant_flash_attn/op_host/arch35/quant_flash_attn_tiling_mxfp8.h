@@ -54,6 +54,7 @@ private:
     void CalcScheduleMode();
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
+    bool CheckNeedInitOutput() const;
     ge::graphStatus SetTilingData(QuantFlashAttnTilingData &tilingData);
 
     QuantFlashAttnTilingData tilingData_;
