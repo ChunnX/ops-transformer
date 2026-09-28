@@ -139,9 +139,13 @@ public:
         if (tokenStart_ >= tokenEnd_) {
             return;
         }
-        // 双AIV的leader在首个token发起h_out/gamma0搬运后读取门控标量，
-        // 使Scalar读取与已发起的MTE2重叠；follower仍不读取这些标量。
+        // 双AIV的follower在会合后退出，不参与gate计算，省去五次无效标量GM读取。
         if constexpr (!DUAL_SIBLING) {
+            alpha0_ = alpha0Gm_.GetValue(0);
+            for (uint32_t i = 0; i < N_MAX; ++i) {
+                biasCache_[i] = biasGm_.GetValue(i);
+            }
+        } else if (laneId_ == 0U) {
             alpha0_ = alpha0Gm_.GetValue(0);
             for (uint32_t i = 0; i < N_MAX; ++i) {
                 biasCache_[i] = biasGm_.GetValue(i);
