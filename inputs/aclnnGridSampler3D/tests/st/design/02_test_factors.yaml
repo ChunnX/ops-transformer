@@ -1,0 +1,185 @@
+# aclnnGridSampler3D 测试因子定义
+# 来源: 01_parameter_description.md（aclnnGridSampler3D.md 参数说明表/约束关系清洗结果）
+operator_name: aclnnGridSampler3D
+
+input:
+  type: aclTensor
+  io_type: input
+  factors:
+    input.exist: [true]
+    # 来源: 01_parameter_description.md "必选/可选"列 "必选"（aclnn原型必传）
+    input.format: [NCDHW, NDHWC, ND]
+    # 来源: 01_parameter_description.md "数据格式"列 "NCDHW、NDHWC、ND"（完整保留三格式）
+    input.dimensions: [5]
+    # 来源: 01_parameter_description.md "维度/长度"列 "5维（固定）"；实际由 R4 format→dimensions 约束推导
+    input.dtype: [float16, float32, float64, bfloat16]
+    # 来源: 01_parameter_description.md "数据类型"列 "FLOAT16、FLOAT32、DOUBLE、BFLOAT16"
+    # 实际取值由 04_constraints.py solve_input_dtype 按 R9（NDHWC→仅float32）条件过滤
+
+grid:
+  type: aclTensor
+  io_type: input
+  factors:
+    grid.exist: [true]
+    # 来源: 01_parameter_description.md "必选/可选"列 "必选"
+    grid.format: [ND]
+    # 来源: 01_parameter_description.md "数据格式"列 "ND"（仅单一格式）
+    grid.dimensions: [5]
+    # 来源: 01_parameter_description.md "维度/长度"列 "5维（固定）"
+    grid.dtype: [float16, float32, float64, bfloat16]
+    # 来源: 01_parameter_description.md "数据类型"列；实际取值由 R1（与input一致）推导
+    grid.value_range:
+      - [-1.0, -1.0]
+      # 来源: R10 归一化坐标下边界（-1）
+      - [1.0, 1.0]
+      # 来源: R10 归一化坐标上边界（+1）
+      - [-1.0, 1.0]
+      # 来源: R10 场景A: 归一化范围内正常采样
+      - [1.0, 3.0]
+      # 来源: R10 场景B: 正向越界坐标（按paddingMode处理）
+      - [-3.0, -1.0]
+      # 来源: R10 场景B: 负向越界坐标（按paddingMode处理）
+    # 说明: dtype极值/inf/nan段由引擎 rangebound_highpre 覆盖目标按 dtype 锁定，不在正常分段中重复
+
+interpolationMode:
+  type: int64_t
+  io_type: input
+  factors:
+    interpolationMode.exist: [true]
+    interpolationMode.dtype: [int64]
+    # 来源: 01_parameter_description.md "数据类型"列 "INT64（固定）"（属性参数，类型固定）
+    interpolationMode.value: [0, 1]
+    # 来源: 01_parameter_description.md "取值范围"列 "0（bilinear）、1（nearest）"（3D不支持bicubic）
+    # 实际取值由 04_constraints.py solve_interpolation_mode 按 R9（NDHWC→仅0）条件过滤
+
+paddingMode:
+  type: int64_t
+  io_type: input
+  factors:
+    paddingMode.exist: [true]
+    paddingMode.dtype: [int64]
+    # 来源: 01_parameter_description.md "数据类型"列 "INT64（固定）"
+    paddingMode.value: [0, 1, 2]
+    # 来源: 01_parameter_description.md "取值范围"列 "0（zeros）、1（border）、2（reflection）"
+
+alignCorners:
+  type: bool
+  io_type: input
+  factors:
+    alignCorners.exist: [true]
+    alignCorners.dtype: [bool]
+    # 来源: 01_parameter_description.md "数据类型"列 "BOOL（固定）"
+    alignCorners.value: [true, false]
+    # 来源: 01_parameter_description.md "取值范围"列 "true / false"（bool类型）
+
+out:
+  type: aclTensor
+  io_type: output
+  factors:
+    out.exist: [true]
+    out.format: [NCDHW, NDHWC, ND]
+    # 来源: 01_parameter_description.md "数据格式"列 "NCDHW、NDHWC、ND（与input保持一致）"；实际由 R3 推导
+    out.dimensions: [5]
+    # 来源: 01_parameter_description.md "维度/长度"列 "5维（固定）"；实际由 R5 推导
+    out.dtype: [float16, float32, float64, bfloat16]
+    # 来源: 01_parameter_description.md "数据类型"列；实际取值由 R2（与input一致）推导
+
+intermediate:
+  _n:
+    # batch 维，input/grid/out 共享（R4/R5）
+    type: int64_t
+    factors:
+      _n.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _n.value_range:
+        - [0, 0]
+        # 来源: R8 空tensor场景（N=0，文档"支持空Tensor"）
+        - [1, 1]
+        - [1, 8]
+        - [8, 128]
+      # 来源: 文档未约束N取值范围，shape轴默认值域分段；含0（支持空tensor）
+  _c:
+    # 通道维，input/out 共享（R5）；NDHWC 时按 R9 向上对齐到4的倍数
+    type: int64_t
+    factors:
+      _c.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _c.value_range:
+        - [0, 0]
+        # 来源: R8 空tensor场景（C=0，文档"支持空Tensor"；0亦为4的倍数）
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: 文档未约束C取值范围，shape轴默认值域分段；含0（支持空tensor）
+  _d_in:
+    # input 深度维，≥1（R8 推断：空间三维不能为0）
+    type: int64_t
+    factors:
+      _d_in.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _d_in.value_range:
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: R8 空间维下界1（推断自README"所有维度都必须大于0"）；上界受 R7 D×H×W<INT32最大值 约束
+  _h_in:
+    # input 高维，≥1（R8 推断）
+    type: int64_t
+    factors:
+      _h_in.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _h_in.value_range:
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: R8 空间维下界1；上界受 R7 约束
+  _w_in:
+    # input 宽维，≥1（R8 推断）
+    type: int64_t
+    factors:
+      _w_in.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _w_in.value_range:
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: R8 空间维下界1；上界受 R7 约束
+  _out_d:
+    # grid/out 输出深度维，≥0（支持空输出）
+    type: int64_t
+    factors:
+      _out_d.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _out_d.value_range:
+        - [0, 0]
+        # 来源: R8 空输出场景（D_out=0）
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: 文档未约束输出维度范围，支持空tensor（含0）
+  _out_h:
+    # grid/out 输出高维，≥0（支持空输出）
+    type: int64_t
+    factors:
+      _out_h.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _out_h.value_range:
+        - [0, 0]
+        # 来源: R8 空输出场景（H_out=0）
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: 文档未约束输出维度范围，支持空tensor（含0）
+  _out_w:
+    # grid/out 输出宽维，≥0（支持空输出）
+    type: int64_t
+    factors:
+      _out_w.value: []
+      # 占位键：声明引擎因子名（供 03 场景锁定/QA 校验识别）；空域回退 value_range 采样
+      _out_w.value_range:
+        - [0, 0]
+        # 来源: R8 空输出场景（W_out=0）
+        - [1, 1]
+        - [1, 16]
+        - [16, 256]
+      # 来源: 文档未约束输出维度范围，支持空tensor（含0）

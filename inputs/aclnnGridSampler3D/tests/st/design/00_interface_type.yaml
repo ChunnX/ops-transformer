@@ -1,0 +1,10 @@
+# 接口类型确认（aclnnGridSampler3D）
+# 来源: 步骤1.1 全量扫描 inputs/aclnnGridSampler3D/
+available_interfaces:
+  aclnn: docs/aclnnGridSampler3D.md
+
+# 来源: 用户确认（GridSample 算子 aclnn 模式，本目录对应 3D 接口）
+generate_for: aclnn
+
+operator_name: aclnnGridSampler3D
+csv_mode: aclnn
