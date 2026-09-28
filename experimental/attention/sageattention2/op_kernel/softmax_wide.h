@@ -16,7 +16,7 @@ template <bool MASK>
 __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     __ubuf__ half *scores0, __ubuf__ half *scores1,
     AscendC::MicroAPI::RegTensor<half> &q0, AscendC::MicroAPI::RegTensor<half> &q1,
-    __ubuf__ half *khalf0, __ubuf__ half *khalf1,
+    AscendC::MicroAPI::RegTensor<half> &k0, AscendC::MicroAPI::RegTensor<half> &k1,
     uint16_t col, uint16_t row,
     int32_t causalLimit0, int32_t causalLimit1,
     AscendC::MicroAPI::RegTensor<int16_t> &laneOffset,
@@ -25,9 +25,6 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     AscendC::MicroAPI::MaskReg &h)
 {
     using namespace AscendC::MicroAPI;
-    RegTensor<half> k0, k1;
-    LoadAlign<half, LoadDist::DIST_BLK>(k0, khalf0 + col * 16);
-    LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
 
     RegTensor<half> x0_0, x1_0, x0_1, x1_1;
     LoadAlign(x0_0, scores0 + col * 64 * 16 + row * 16 + 0);
@@ -167,25 +164,67 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
         Sub(laneOffset, colIndex, rowIndex, h);
         Duplicate(negative, half(-__builtin_inff()));
     }
+    // Pin all 64 rows of Q into 8 vector registers outside the col loop
+    RegTensor<half> q0_0, q1_0, q0_1, q1_1, q0_2, q1_2, q0_3, q1_3;
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q0_0, qhalf + 0);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q1_0, qhalf + 8);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q0_1, qhalf + 16);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q1_1, qhalf + 24);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q0_2, qhalf + 32);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q1_2, qhalf + 40);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q0_3, qhalf + 48);
+    LoadAlign<half, LoadDist::DIST_E2B_B16>(q1_3, qhalf + 56);
+
+    // Initialize 8 maximum accumulators across the 64 rows
+    RegTensor<half> m0_0, m1_0, m0_1, m1_1, m0_2, m1_2, m0_3, m1_3;
+    Duplicate(m0_0, half(FP16_MIN));
+    Duplicate(m1_0, half(FP16_MIN));
+    Duplicate(m0_1, half(FP16_MIN));
+    Duplicate(m1_1, half(FP16_MIN));
+    Duplicate(m0_2, half(FP16_MIN));
+    Duplicate(m1_2, half(FP16_MIN));
+    Duplicate(m0_3, half(FP16_MIN));
+    Duplicate(m1_3, half(FP16_MIN));
+
+    // Outer loop over columns: loads K once per column (32 loads instead of 128)
+    for (uint16_t col = 0; col < 16; ++col) {
+        RegTensor<half> k0, k1;
+        LoadAlign<half, LoadDist::DIST_BLK>(k0, khalf + 0 + col * 16);
+        LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf + 256 + col * 16);
+
+        ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0_0, q1_0, k0, k1,
+                                       col, 0, queryInGroup, queryInGroup - 256,
+                                       laneOffset, negative, m0_0, m1_0, h);
+        ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0_1, q1_1, k0, k1,
+                                       col, 16, queryInGroup, queryInGroup - 256,
+                                       laneOffset, negative, m0_1, m1_1, h);
+        ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0_2, q1_2, k0, k1,
+                                       col, 32, queryInGroup, queryInGroup - 256,
+                                       laneOffset, negative, m0_2, m1_2, h);
+        ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0_3, q1_3, k0, k1,
+                                       col, 48, queryInGroup, queryInGroup - 256,
+                                       laneOffset, negative, m0_3, m1_3, h);
+    }
+
     auto blockMax = (__ubuf__ half *)alpha;
     UnalignReg maxStore;
-    for (uint16_t row = 0; row < 64; row += 16) {
-        RegTensor<half> q0, m0;
-        LoadAlign<half, LoadDist::DIST_E2B_B16>(q0, qhalf + row + 0);
-        Duplicate(m0, half(FP16_MIN));
-        RegTensor<half> q1, m1;
-        LoadAlign<half, LoadDist::DIST_E2B_B16>(q1, qhalf + row + 8);
-        Duplicate(m1, half(FP16_MIN));
-        for (uint16_t col = 0; col < 16; ++col) {
-            ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0, q1, khalf + 0, khalf + 256,
-                                           col, row, queryInGroup, queryInGroup - 256,
-                                           laneOffset, negative, m0, m1, h);
-        }
-        ReduceDataBlock<ReduceType::MAX>(m0, m0, h);
-        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0, maxStore, 8);
-        ReduceDataBlock<ReduceType::MAX>(m1, m1, h);
-        StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1, maxStore, 8);
-    }
+    ReduceDataBlock<ReduceType::MAX>(m0_0, m0_0, h);
+    ReduceDataBlock<ReduceType::MAX>(m1_0, m1_0, h);
+    ReduceDataBlock<ReduceType::MAX>(m0_1, m0_1, h);
+    ReduceDataBlock<ReduceType::MAX>(m1_1, m1_1, h);
+    ReduceDataBlock<ReduceType::MAX>(m0_2, m0_2, h);
+    ReduceDataBlock<ReduceType::MAX>(m1_2, m1_2, h);
+    ReduceDataBlock<ReduceType::MAX>(m0_3, m0_3, h);
+    ReduceDataBlock<ReduceType::MAX>(m1_3, m1_3, h);
+
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0_0, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1_0, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0_1, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1_1, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0_2, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1_2, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0_3, maxStore, 8);
+    StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m1_3, maxStore, 8);
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
