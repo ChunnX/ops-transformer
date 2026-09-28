@@ -14,6 +14,44 @@ import torch
 
 # 定义测试参数组合
 TEST_PARAMS = {
+    "high_perf_ori_cmp_sparse_tnd_4096": {
+        "testcase_name": ["high_perf_ori_cmp_sparse_tnd_4096"],
+        "layout_q": ["TND"],
+        "layout_kv": ["TND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.bfloat16],
+        "cmp_kv_type": [torch.bfloat16],
+        "B": [1],
+        "S1": [4096],
+        "S2": [8192],
+        "T1": [4096],
+        "T2": [8192],
+        "T3": [2048],
+        "N1": [64],
+        "N2": [1],
+        "D": [512],
+        "K1": [128],
+        "K": [512],
+        "cu_seqlens_q": [[0, 4096]],
+        "cu_seqlens_ori_kv": [[0, 8192]],
+        "cu_seqlens_cmp_kv": [[0, 2048]],
+        "seqused_q": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "return_softmax_lse": [False],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "template_mode": ["ORI_CMP_SPARSE"],
+        "ori_kv_topk_mode": ["fullK"],
+        "cmp_kv_topk_mode": ["fullK"],
+        "ori_sparse_indices_mode": ["full"],
+        "cmp_sparse_indices_mode": ["full"],
+        "actlen_mode": ["full"],
+        "high_perf": [True],
+        "golden_device": ["npu"],
+    },
     "swa_decode": {
         "testcase_name": ["swa_decode"],
         "layout_q": ["TND"],
@@ -904,5 +942,5 @@ TEST_PARAMS = {
 # 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = [
     # {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
-    TEST_PARAMS["ori_sparse_tnd_pa"],
+    TEST_PARAMS["high_perf_ori_cmp_sparse_tnd_4096"],
 ]
