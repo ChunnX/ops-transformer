@@ -166,6 +166,22 @@ else
             touch build_out/cann-ops-math-experimental_linux-${OS_TYPE}.run
             exit 0
         fi
+    elif [[ "${task_name}" == "Compile_Ascend_X86_arch22" ]]; then
+        LOG_DO bash build.sh --soc=ascend910b,ascend910_93 --PR_COMPILE "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --soc=ascend910b,ascend910_93 --PR_COMPILE -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_ARM_arch22" ]]; then
+        LOG_DO bash build.sh --soc=ascend910b,ascend910_93 --PR_COMPILE "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --soc=ascend910b,ascend910_93 --PR_COMPILE -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_X86_arch35" ]]; then
+        LOG_DO bash build.sh --soc=ascend950 --PR_COMPILE "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --soc=ascend950 --PR_COMPILE -j16]"
+    elif [[ "${task_name}" == "Compile_Ascend_ARM_arch35" ]]; then
+        LOG_DO bash build.sh --soc=ascend950 --PR_COMPILE "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        BUILD_EXIT_CODE=$?
+        DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --soc=ascend950 --PR_COMPILE -j16]"
     elif [[ "${task_name}" =~ monitor ]]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             if [[ "${task_name}" =~ "910c" ]]; then
