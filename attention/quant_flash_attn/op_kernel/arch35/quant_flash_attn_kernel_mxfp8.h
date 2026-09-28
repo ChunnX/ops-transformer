@@ -64,6 +64,7 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+    static constexpr bool HAS_V_TAIL = CubeBlockType::HAS_V_TAIL;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
@@ -87,12 +88,17 @@ public:
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers_;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
+    // [性能] 非vtail回退3buff: 与CubeBlockType::MM2_ABUF_POLICY_T保持一致, 回收6-12% L1
+    using L1PBuffersPolicy = std::conditional_t<
+        HAS_V_TAIL, BuffersPolicy4buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>,
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>>;
+    L1PBuffersPolicy l1PBuffers_;
 
     GlobalTensor<int32_t> cuSeqLensGmQ_;
     GlobalTensor<int32_t> cuSeqLensGmKv_;
     GlobalTensor<int32_t> seqUsedGmQ_;
     GlobalTensor<int32_t> seqUsedGmKv_;
+    GlobalTensor<int32_t> seqUsedKvTailGm_;
     GlobalTensor<uint32_t> faMetaDataGm_;
     GlobalTensor<uint32_t> fdMetaDataGm_;
     GlobalTensor<float> softmaxLseGm_;
@@ -104,12 +110,14 @@ public:
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
+    // B尾块独立L1 slot(AIV写/AIC读, 与l1P同契约): 分配紧随l1P, 两侧地址一致
 
     uint32_t createdTaskCount_ = 0U;
 
     // schduler params
     uint64_t actSeqLensKv_ = 0;
     uint64_t actSeqLensQ_ = 0;
+    uint32_t actTailLen_ = 0;
     uint32_t curS2Start_ = 0;
     uint32_t curS2End_ = 0;
     uint32_t prevBIdx_ = 0;
@@ -118,6 +126,9 @@ public:
     uint32_t mloop_ = 0;
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
+    // [VTAIL] 消灭混合task: 最后一块含尾窗(kMain>0且tail>0)时拆为两个task(主体kMain + 纯尾tail),
+    // 0=主体半步(或无拆分), 1=尾半步待创建。尾半步期间s2Cur不推进, 同块二次CREATE_TASK。
+    uint32_t tailSplitStep_ = 0;
 
     // metadata
     uint32_t sectionNum_;
@@ -155,7 +166,8 @@ public:
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *vTail,
+                                __gm__ uint8_t *blockTableTail, __gm__ uint8_t *sequsedKvTail,
                                 const QuantFlashAttnTilingData &tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
@@ -178,6 +190,11 @@ public:
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
+        }
+        if constexpr (HAS_V_TAIL) {
+            if (constInfo_.seqUsedKvTailSize > 0) {
+                seqUsedKvTailGm_.SetGlobalBuffer((__gm__ int32_t *)sequsedKvTail, constInfo_.seqUsedKvTailSize);
+            }
         }
         sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
         metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
@@ -206,10 +223,12 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_,
+                                         vTail, blockTableTail);
             } else {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_, vTail,
+                                         blockTableTail);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -244,7 +263,10 @@ public:
 
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
+        // B尾块独立L1 slot(1份, 替代原先挂在l1P每份x3的冗余):
+        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) +
+                                         mBaseSize * s2BaseSize / 32 +
+                                         (HAS_V_TAIL ? mBaseSize * MXFP8_V_TAIL_BOUNDARY * sizeof(bfloat16_t) : 0);
         l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
@@ -302,6 +324,11 @@ public:
 
         constInfo_.accumOutSize = qfaWorkspaceParams.accumOutSize;
         constInfo_.logSumExpSize = qfaWorkspaceParams.logSumExpSize;
+
+        // V tail params
+        const auto &qfaVTailParams = tiling.baseTiling.quantFlashAttnVTailParams;
+        constInfo_.seqUsedKvTailSize = qfaVTailParams.seqUsedKvTailSize;
+        constInfo_.tailMaxBlockNum = qfaVTailParams.tailMaxBlockNum;
 
         // strides
         constInfo_.keyStrides.bnStride = qfaBaseParams.keyStrides.bnStride;
@@ -393,6 +420,7 @@ public:
         mloop_ = 0;
         headS2Split_ = false;
         tailS2Split_ = false;
+        tailSplitStep_ = 0;
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -456,6 +484,23 @@ public:
             } else {
                 actSeqLensQ_ = qSeqUsedParser_.GetActualSeqLength(bIdx);
             }
+            if constexpr (HAS_V_TAIL) {
+                // 定义A: seqused_kv仍为总kvLen, tail为其尾部余数。防御: 信任满足约束的tail
+                // (0<=tail<64 且 kvLen-tail==align_down(kvLen,64)), 违反约束时强制纠正为真余数,
+                // 保证kMain恒为64倍数(主体段VScale组寻址依赖此约束)
+                if (constInfo_.seqUsedKvTailSize > 0) {
+                    int32_t tailInput = seqUsedKvTailGm_.GetValue(bIdx);
+                    uint32_t kvLen = static_cast<uint32_t>(actSeqLensKv_);
+                    uint32_t alignedDown = kvLen / MXFP8_V_TAIL_BOUNDARY * MXFP8_V_TAIL_BOUNDARY;
+                    uint32_t tailLenU = (tailInput < 0) ? 0 : static_cast<uint32_t>(tailInput);
+                    if ((tailLenU >= MXFP8_V_TAIL_BOUNDARY) || (kvLen - tailLenU != alignedDown)) {
+                        tailLenU = kvLen - alignedDown;
+                    }
+                    actTailLen_ = tailLenU;
+                } else {
+                    actTailLen_ = 0;
+                }
+            }
         }
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
@@ -488,11 +533,32 @@ public:
             return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
 
-        if (s2Cur == curS2Start_) {
+        // [VTAIL] 拆分的尾半步不重复计mloop: 与主体半步同槽(softmaxSumBuf_[mloop%..])
+        // 接力sum/max; 拆分仅发生在最后一块, kMain task必先于tail task占用该行首次计数
+        if (s2Cur == curS2Start_ && tailSplitStep_ == 0) {
             mloop_++;
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
+    }
+
+    // [VTAIL] 当前s2块是否为"需拆分的混合末块": 覆盖序列末尾、kMain(64对齐主体)>0且tail>0。
+    // kMain==0的末块已是纯尾task(单task), 无需拆分; 非末块或tail==0返回false。
+    __aicore__ inline bool NeedSplitTailTask(uint32_t s2Cur)
+    {
+        if constexpr (!HAS_V_TAIL) {
+            return false;
+        } else {
+            if (actTailLen_ == 0) {
+                return false;
+            }
+            uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
+            if (s2Cur + 1 != s2LoopTimes) {
+                return false; // 非序列最后一块
+            }
+            uint32_t lastBlock = static_cast<uint32_t>(actSeqLensKv_) - s2Cur * s2BaseSize;
+            return lastBlock > actTailLen_; // kMain>0才拆(kMain==0为纯尾task)
+        }
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
@@ -679,9 +745,30 @@ public:
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
+        info.kvTailLen = actTailLen_;
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        }
+        // [VTAIL] 消灭混合task: 末块含尾窗时拆两task —
+        //   主体半步(tailSplitStep_==0, 本块需拆): size=kMain(64对齐), 走现有mxfp8主路径
+        //     (kMain>256时自动subLoop0/1, 如448=256+192);
+        //   尾半步(tailSplitStep_==1): s2Idx移至尾窗起点, size=tail, isPureTailTask判定
+        //     天然成立(size==kvTailLen且覆盖序列末尾), 走BF16高精尾路径。
+        // 两task结果经V2 online链(out·exp(Δmax)+new)合并, 数学等价于L0C统一累加。
+        bool splitCurBlock = false;
+        if constexpr (HAS_V_TAIL) {
+            splitCurBlock = NeedSplitTailTask(s2Cur);
+            if (tailSplitStep_ == 1) {
+                info.s2Idx += info.actSingleLoopS2Size - actTailLen_;
+                info.actSingleLoopS2Size = actTailLen_;
+            } else if (splitCurBlock) {
+                info.actSingleLoopS2Size -= actTailLen_;
+            }
+            // 尾task统一判定: 尾半步(tailSplitStep_==1)或纯尾末块(kMain==0)
+            // —— 拆分后两者均满足 size==tailLen 且覆盖序列末尾, 表达式统一
+            info.isVtailTask = (actTailLen_ > 0) && (info.actSingleLoopS2Size == actTailLen_) &&
+                               (info.s2Idx + info.actSingleLoopS2Size >= info.actS2Size);
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(BYTE_BLOCK / sizeof(INPUT_T)));
@@ -694,20 +781,29 @@ public:
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
+        // [VTAIL] 拆分的尾半步不是首个task(主体半步必先建), 排除以免误初始化sum/max
+        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_)) && (tailSplitStep_ == 0);
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End_);
+        // [VTAIL] 需拆分的主体半步不是本核最后task(尾task在后, Vec2需走FlashUpdateNew累加
+        // 而非LastNew提前除sum, FD/GM写出也须推迟到尾task)
+        info.isLastS2Loop = (s2Cur + 1 == curS2End_) && !(splitCurBlock && tailSplitStep_ == 0);
+        // 本行最后一个DN主体task(最后块的主体半步或非拆分末块): v_tail拆分时主体
+        // task的isLastS2Loop被排除, 但其占用的l1Q slot必须释放(尾task的ND范式Q装载需Wait该事件,
+        // 否则Wait死等→aicore timeout实测)
+        info.isLastDnTask = (s2Cur + 1 == curS2End_) && (tailSplitStep_ == 0);
 
+        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
         if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            // DN(含尾task)统一公式: actM<=16时sub0全包、sub1早退(actVecM=0)
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo_.subBlockIdx == 1) {
+            // [回归修复] ND(decode)的vecMbase必须保持align32>>1(原值): 改成actVecMSize会
+            // 使actM<32的decode用例sub1读偏(func_rdv 51失败根因之一); DN保持=actVecMSize
             info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
@@ -730,6 +826,19 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
+        // [VTAIL] 消灭混合task: 主体半步task建完后不推进s2Cur, 下一轮循环对同一块
+        // 再次CREATE_TASK(纯尾task, CalcParams按tailSplitStep_取尾半步参数);
+        // 尾半步task建完后清标志走原推进逻辑。仅CREATE_TASK参与拆分, 快进/跳过不受影响。
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+            if (tailSplitStep_ == 0) {
+                if (NeedSplitTailTask(s2Cur)) {
+                    tailSplitStep_ = 1;
+                    return; // s2Cur不推进: 同块二连task(主体kMain → 纯尾tail)
+                }
+            } else {
+                tailSplitStep_ = 0;
+            }
+        }
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
