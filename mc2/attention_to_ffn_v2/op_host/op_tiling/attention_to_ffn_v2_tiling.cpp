@@ -205,6 +205,11 @@ ge::graphStatus CheckUrmaWinSlotCapacity(gert::TilingContext *context, const Att
 ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV2TilingData *tilingData,
                                    uint32_t tilingKeyQuantMode, uint32_t outDtype)
 {
+    OP_TILING_CHECK(tilingData->attentionToFfnV2Info.aivNum == 0U,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "aivNum",
+                                              std::to_string(tilingData->attentionToFfnV2Info.aivNum).c_str(),
+                                              "greater than zero"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckUrmaWinSlotCapacity(context, tilingData, tilingKeyQuantMode, outDtype) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "URMA win slot capacity check failed"), return ge::GRAPH_FAILED);
 
