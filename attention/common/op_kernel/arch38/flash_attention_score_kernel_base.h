@@ -20,6 +20,7 @@
 #include "flash_attention_score_common_regbase_arch38.h"
 #include "kernel_operator.h"
 #include "attenmask_arch38.h"
+#include "const_def.h"
 
 // 线上编包
 #include "matmul_arch38.h"
@@ -127,6 +128,8 @@ public:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+    /* C/V跨队列同步事件号 */
+    CVSyncEventIds cvSync;
 };
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -158,6 +161,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
                            actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, deqScaleQK, quantScaleP, postQuantScale,
                            postQuantOffset, queryRope, keyRope, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax,
                            softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
+    vecBlock.cvSyncPtr = &cvSync;
+    cubeBlock.cvSyncPtr = &cvSync;
     this->InitLocalBuffer();
 }
 
@@ -260,6 +265,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
+    cvSync.Init();
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
@@ -531,7 +537,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.s2AlignedSize = runInfo.s2RealSize;
     if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
         runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+        runInfo.s2AlignedSize = AttentionCommon::Align((uint32_t)runInfo.s2RealSize,
+                                                       (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
     }
 }
 } // namespace BaseApi
