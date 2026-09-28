@@ -61,7 +61,6 @@ public:
         UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, s1BaseSize == 64),
         (s2BaseSize == 256 && s1BaseSize == 64));
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
-    static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
     static constexpr bool isW8In = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                    IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
@@ -123,8 +122,9 @@ public:
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TQue<QuePosition::VECIN, 1> pseInQue;
     TBuf<> stage2OutBuf;
-    TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
-    TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    TEventID mte3ToVId[2];               // 存放MTE3_V的eventId, 2份表示可能存在pingpong
+    TEventID vToMte3Id[2];               // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    CVSyncEventIds *cvSyncPtr = nullptr; // C/V跨队列同步事件号, 由KernelBase注入
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
@@ -258,7 +258,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     int64_t stage1Offset = runInfo.taskIdMod2;
     AscendC::LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
 
-    WaitFlag<HardEvent::FIX_V>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+    WaitFlag<HardEvent::FIX_V>(cvSyncPtr->syncC1V1FixV[runInfo.taskIdMod2]);
 
     if (unlikely(runInfo.s2LoopCount == 0)) {
         FaVectorApi::ProcessVec1VfDnRegbaseV2<T, INPUT_T, false, s2BaseSize>(
@@ -270,17 +270,27 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
             static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
     }
 
-    SetFlag<HardEvent::V_FIX>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+    SetFlag<HardEvent::V_FIX>(cvSyncPtr->syncC1V1VFix[runInfo.taskIdMod2]);
 
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     stage1CastTensor = this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     //-------------------------Data copy to l1-------------------------
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-    DataCopy(mm2AL1Tensor[0], stage1CastTensor[0], {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, vec1S2CopyLenDn});
-    // 16:sinner / 2 * 32; 64:sinner / 2 * 32 * souter / 32
-    DataCopy(mm2AL1Tensor[s2BaseSize * 16], stage1CastTensor[s2BaseSize * 64],
-             {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, vec1S2CopyLenDn});
-    SetFlag<HardEvent::MTE3_MTE1>(SYNC_V1_C2_FLAG[runInfo.taskIdMod3]);
+    if (runInfo.s2RealSize > vec1S2CopyLenDn) {
+        DataCopy(
+            mm2AL1Tensor[0], stage1CastTensor[0],
+            {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn)});
+        DataCopy(mm2AL1Tensor[s2BaseSize * 16], stage1CastTensor[s2BaseSize * 64],
+                 {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn),
+                  static_cast<uint16_t>(s2BaseSize - runInfo.s2AlignedSize), vec1S2CopyLenDn});
+    } else {
+        DataCopy(mm2AL1Tensor, stage1CastTensor,
+                 {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize),
+                  static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.s2AlignedSize),
+                  static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.s2AlignedSize)});
+    }
+
+    SetFlag<HardEvent::MTE3_MTE1>(cvSyncPtr->syncV1C2Mte3Mte1[runInfo.taskIdMod3]);
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
     return;
@@ -353,7 +363,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
 
-    WaitFlag<HardEvent::FIX_V>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+    WaitFlag<HardEvent::FIX_V>(cvSyncPtr->syncC1V1FixV[runInfo.taskIdMod2]);
 
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize == 128) {
@@ -387,7 +397,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
         this->pseInQue.template FreeTensor(pseUb);
     }
 
-    SetFlag<HardEvent::V_FIX>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+    SetFlag<HardEvent::V_FIX>(cvSyncPtr->syncC1V1VFix[runInfo.taskIdMod2]);
 
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
@@ -397,7 +407,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
              {(uint16_t)(s2BaseSize / (BLOCK_BYTE / sizeof(INPUT_T))), (uint16_t)(runInfo.s1RealSize),
               (uint16_t)(vec1Srcstride - runInfo.s1RealSize), (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
 
-    SetFlag<HardEvent::MTE3_MTE1>(SYNC_V1_C2_FLAG[runInfo.taskIdMod3]);
+    SetFlag<HardEvent::MTE3_MTE1>(cvSyncPtr->syncV1C2Mte3Mte1[runInfo.taskIdMod3]);
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
     // ======================================================
@@ -430,7 +440,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUbRegbas
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 
-    WaitFlag<HardEvent::FIX_V>(SYNC_C2_V2_FLAG[runInfo.taskIdMod2]);
+    WaitFlag<HardEvent::FIX_V>(cvSyncPtr->syncC2V2FixV[runInfo.taskIdMod2]);
 
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -451,7 +461,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUbRegbas
         }
     }
 
-    SetFlag<HardEvent::V_FIX>(SYNC_C2_V2_FLAG[runInfo.taskIdMod2]);
+    SetFlag<HardEvent::V_FIX>(cvSyncPtr->syncC2V2VFix[runInfo.taskIdMod2]);
 
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -635,6 +645,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe
 
     vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }

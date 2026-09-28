@@ -4052,11 +4052,6 @@ bool PromptFlashAttentionTilingArch38::CheckArch38ScenarioSupported(const Contex
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "only BNSD layout is supported on this platform."),
                 return false);
 
-    OP_CHECK_IF(
-        (queryShapeInfo.b != 1U),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "batch size must be 1, but b = %u.", queryShapeInfo.b),
-        return false);
-
     OP_CHECK_IF((queryShapeInfo.s != static_cast<uint64_t>(S2)),
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
                                             "query seq length must equal kv seq length, but qs = %lu, kvs = %u.",
