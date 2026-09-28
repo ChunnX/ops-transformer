@@ -323,7 +323,10 @@ public:
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
-            if constexpr (dBaseSize > 128) {
+            if constexpr (dBaseSize == 192 && dVBaseSize == 128) {
+                MatmulK<KV_T, Q_T, MM_T, 128, 128, 96, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
+                                                                                   mmL0BPolicy_, l0CSubTensor, param);
+            } else if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
             } else {
