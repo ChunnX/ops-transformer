@@ -761,9 +761,10 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::SetInfInBlk(const LocalTensor<T> &
         uint64_t preMask = (1llu << (curStart - blockStart)) - 1;
         uint64_t postMask = ~((1llu << (blockEnd - blockStart + 1)) - 1);
         uint64_t mask[1] = {~(preMask | postMask)};
-        PipeBarrier<PIPE_V>();
         Duplicate(mmResUb[blockStart], SOFTMAX_MIN_NUM, mask, dealRowCount, 1, columnCount / BLOCK_ELEMENT_NUM);
-        PipeBarrier<PIPE_V>();
+        if constexpr (IS_DSPARK) {
+            PipeBarrier<PIPE_V>();
+        }
         curStart = blockEnd + 1;
     }
 }
