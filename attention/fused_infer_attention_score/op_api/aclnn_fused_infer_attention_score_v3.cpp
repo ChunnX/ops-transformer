@@ -9,7 +9,6 @@
  */
 
 #include "aclnn_fused_infer_attention_score_v3.h"
-#include <cstdlib>
 #include <cstring>
 #include "opdev/tensor_view_utils.h"
 #include "opdev/format_utils.h"
@@ -32,15 +31,6 @@ namespace {
 extern "C" void UnInitPTACacheThreadLocal() __attribute__((weak));
 // Select opdev's complete argument key for the validated dense GQA decode path.
 // Executor ownership, cached launch data, and address updates remain in opdev.
-bool LocalExecutorCacheEnabled()
-{
-    static const bool enabled = [] {
-        const char *off = std::getenv("FIA_DISABLE_LOCAL_EXECUTOR_CACHE");
-        return off == nullptr || std::strcmp(off, "1") != 0;
-    }();
-    return enabled;
-}
-
 bool IsDenseCacheInput(const aclTensor *tensor)
 {
     if (tensor == nullptr || tensor->IsEmpty() || tensor->GetPlacement() != gert::kOnDeviceHbm ||
@@ -62,7 +52,7 @@ bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *ke
                                 int64_t blockSize, int64_t sparseMode,
                                 const aclIntArray *queryLengths, const aclIntArray *kvLengths)
 {
-    if (!LocalExecutorCacheEnabled() || UnInitPTACacheThreadLocal == nullptr ||
+    if (UnInitPTACacheThreadLocal == nullptr ||
         op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 ||
         layout == nullptr || std::strcmp(layout, "TND") != 0 || heads <= 0 || kvHeads != 1 ||
         queryLengths == nullptr || kvLengths == nullptr ||
@@ -80,7 +70,7 @@ bool CanUseDenseFiaExecutorCache(const aclTensor *query, const aclTensorList *ke
         }
         // opdev records storage-to-argument relations: keep this cache domain alias-free.
         for (size_t j = 0; j < i; ++j) {
-            if (inputs[j] != nullptr && inputs[i]->GetStorageAddr() == inputs[j]->GetStorageAddr()) {
+            if (inputs[i]->GetStorageAddr() == inputs[j]->GetStorageAddr()) {
                 return false;
             }
         }
