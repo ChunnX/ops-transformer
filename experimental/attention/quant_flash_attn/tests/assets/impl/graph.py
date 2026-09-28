@@ -47,10 +47,6 @@ def _none_if_empty(t):
     return t if t.numel() > 0 else None
 
 
-def _int_or_none(v):
-    return None if v is None else int(v)
-
-
 def _head_index(shape, layout, kv):
     """从 q/k shape 推导 head 维下标."""
     if kv and layout == "PA_BBND":
