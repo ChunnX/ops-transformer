@@ -130,9 +130,10 @@ private:
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void TokenToExpertInQuant(GlobalTensor<XOutType> dstWinGMTensor,
                                                 TQue<QuePosition::VECIN, 1> inQueue, uint32_t tokenId, uint32_t topkId,
-                                                uint32_t quantExpertIdx, bool isNeedCopyIn, bool writeExpertScale);
+                                                uint32_t quantExpertIdx, bool isNeedCopyIn, int32_t lastTokenId,
+                                                bool writeExpertScale);
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
-                                         uint32_t tokenId, uint32_t topkId, bool isNeedCopyIn, int lastTokenId,
+                                         uint32_t tokenId, uint32_t topkId, bool isNeedCopyIn, int32_t lastTokenId,
                                          bool writeExpertScale);
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
@@ -176,6 +177,7 @@ private:
     LocalTensor<float> statusCleanFp32Tensor_;
     LocalTensor<int32_t> sendCntTensor_;
     LocalTensor<XOutType> outTensor_;
+    LocalTensor<XInType> quantInTensor_;
     LocalTensor<XOutType> tempTensor_;
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<uint32_t> expertMapTensor_;
@@ -488,21 +490,42 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::TokenToExpertInQuant(
     GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue, uint32_t tokenId, uint32_t topkId,
-    uint32_t quantExpertIdx, bool isNeedCopyIn, bool writeExpertScale)
+    uint32_t quantExpertIdx, bool isNeedCopyIn, int32_t lastTokenId, bool writeExpertScale)
 {
     if (isNeedCopyIn) {
+        if (lastTokenId != -1) {
+            inQueue.FreeTensor<XInType>(quantInTensor_);
+        }
         DataCopyPadParams copyPadParams{true, 0U, 0U, 0U};
         LocalTensor<XInType> xInTensor = inQueue.AllocTensor<XInType>();
         DataCopyPad(xInTensor, xGMTensor_[tokenId * axisH_], hCopyParams_, copyPadParams);
         inQueue.EnQue(xInTensor);
         xInTensor = inQueue.DeQue<XInType>();
+        quantInTensor_ = xInTensor;
+    }
+
+    // 原始token按核复用；专家相关的smooth scales仍需逐专家量化
+    bool isNeedQuant;
+    if constexpr (!IsSmoothScaleExist) {
+        isNeedQuant = isNeedCopyIn;
+    } else {
+        if constexpr ((QuantMode == PERTOKEN_DYNAMIC_QUANT) || (QuantMode == PERGROUP_DYNAMIC_QUANT)) {
+            isNeedQuant = true;
+        } else if constexpr (QuantMode == STATIC_QUANT) {
+            if constexpr (Std::IsSame<ExpandXOutType, int8_t>::value) {
+                isNeedQuant = isNeedCopyIn || ((scalesCount_ != 1) && (scalesCount_ != axisH_));
+            } else {
+                isNeedQuant = isNeedCopyIn;
+            }
+        }
+    }
+    if (isNeedQuant) {
         if constexpr (QuantMode > UNQUANT) {
-            quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
+            quantInst_.QuantProcess(tempTensor_, quantInTensor_, quantExpertIdx, scalesCount_, scalesGMTensor_);
         } else { // 非量化直转hifp8
-            Cast(floatLocalTemp_, xInTensor, RoundMode::CAST_NONE, axisH_);
+            Cast(floatLocalTemp_, quantInTensor_, RoundMode::CAST_NONE, axisH_);
             Cast(tempTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
         }
-        inQueue.FreeTensor<XInType>(xInTensor);
     }
 
     SyncFunc<AscendC::HardEvent::V_S>();
@@ -632,16 +655,13 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         if (isExpertMaskFlag_) {
             tokenId = validBsIndexTensor_.GetValue(sendTokenIndex);
         }
-        bool isNeedCopyIn;
-        if constexpr (QuantMode > UNQUANT && IsSmoothScaleExist) {
-            isNeedCopyIn = true;
-        } else {
-            isNeedCopyIn = (tokenId != lastTokenId);
-        }
+
+        bool isNeedCopyIn = (tokenId != lastTokenId);
         if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
             uint32_t topkId = axisK_ + dstSharedExpertIndex;
             uint32_t quantExpertIdx = dstSharedExpertIndex;
-            TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topkId, quantExpertIdx, isNeedCopyIn, false);
+            TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topkId, quantExpertIdx, isNeedCopyIn, lastTokenId,
+                                 false);
         } else {
             TokenToExpert(dstWinGMTensor, inQueue, tokenId, axisK_ + dstSharedExpertIndex, isNeedCopyIn, lastTokenId,
                           false);
@@ -650,6 +670,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
     if constexpr (Std::IsSame<ExpandXOutType, XType>::value) {
         inQueue.FreeTensor<XOutType>(tempTensor_);
+    } else {
+        inQueue.FreeTensor<XInType>(quantInTensor_);
     }
     for (int i = 0; i < sendTokenBufNum_; i++) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
@@ -690,52 +712,52 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     int32_t dstTokenIdx = 0;
 
     int32_t lastTokenId = -1;
-    // 按完整 token 交错分核，使各核共同推进前部 token，并保留 K 路发送的搬入复用。
-    uint32_t tokenNum = validTokenNum / axisK_;
-    for (uint32_t tokenId = aivId_; tokenId < tokenNum; tokenId += moeUsedAivNum_) {
-        for (uint32_t topKId = 0; topKId < axisK_; ++topKId) {
-            uint32_t index = tokenId * axisK_ + topKId;
-            int32_t expertId = validExpertIdsTensor_(index);
-            if (expertId >= moeExpertNum_ || expertId < 0)
-                continue;
-            int32_t toRankId = expertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
-            if (isScalingDownFlag_) {
-                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
-            }
-
-            CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
-
-            dstWinGMTensor.SetGlobalBuffer(
-                (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                    dataSectionSize_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
-                                                        expertId % moeExpertNumPerRank_) +
-                                    dstTokenIdx * hCommuSize_));
-            if (hasElasticInfoFlag_) {
-                dstWinGMTensor.SetGlobalBuffer(
-                    (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                        dataSectionSize_ *
-                                            (epRankId_ * moeExpertNumPerRank_ + expertId % moeExpertNumPerRank_) +
-                                        dstTokenIdx * hCommuSize_));
-            }
-            bool isNeedCopyIn;
-            if constexpr (QuantMode > UNQUANT && IsSmoothScaleExist) {
-                isNeedCopyIn = true;
-            } else {
-                isNeedCopyIn = (tokenId != lastTokenId);
-            }
-            if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
-                uint32_t quantExpertIdx = expertId + sharedExpertNum_;
-                TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx, isNeedCopyIn,
-                                     writeExpertScale);
-            } else {
-                TokenToExpert(dstWinGMTensor, inQueue, tokenId, topKId, isNeedCopyIn, lastTokenId, writeExpertScale);
-            }
-            lastTokenId = tokenId;
-        }
+    uint32_t startTokenId, endTokenId, sendTokenNum;
+    SplitToCore(validTokenNum, moeUsedAivNum_, startTokenId, endTokenId, sendTokenNum, true);
+    if (startTokenId >= validTokenNum) {
+        return;
     }
-    if constexpr (Std::IsSame<ExpandXOutType, XType>::value) {
-        if (lastTokenId != -1) {
+    for (int32_t index = startTokenId; index < endTokenId; index += 1) {
+        int32_t tokenId = index / axisK_;
+        int32_t topKId = index % axisK_;
+        int32_t expertId = validExpertIdsTensor_(index);
+        if (expertId >= moeExpertNum_ || expertId < 0)
+            continue;
+        int32_t toRankId = expertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+        if (isScalingDownFlag_) {
+            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
+        }
+
+        CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
+
+        dstWinGMTensor.SetGlobalBuffer(
+            (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
+                                dataSectionSize_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
+                                                    expertId % moeExpertNumPerRank_) +
+                                dstTokenIdx * hCommuSize_));
+        if (hasElasticInfoFlag_) {
+            dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
+                                                               dataSectionSize_ * (epRankId_ * moeExpertNumPerRank_ +
+                                                                                   expertId % moeExpertNumPerRank_) +
+                                                               dstTokenIdx * hCommuSize_));
+        }
+
+        bool isNeedCopyIn = (tokenId != lastTokenId);
+        if constexpr (!Std::IsSame<ExpandXOutType, XType>::value) {
+            uint32_t quantExpertIdx = expertId + sharedExpertNum_;
+            TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx, isNeedCopyIn, lastTokenId,
+                                 writeExpertScale);
+        } else {
+            TokenToExpert(dstWinGMTensor, inQueue, tokenId, topKId, isNeedCopyIn, lastTokenId, writeExpertScale);
+        }
+        lastTokenId = tokenId;
+    }
+
+    if (lastTokenId != -1) {
+        if constexpr (Std::IsSame<ExpandXOutType, XType>::value) {
             inQueue.FreeTensor<XOutType>(tempTensor_);
+        } else {
+            inQueue.FreeTensor<XInType>(quantInTensor_);
         }
     }
 }
