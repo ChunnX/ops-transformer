@@ -642,25 +642,27 @@ def run_qsli_case(case_data, device_id=0):
     torch_npu.npu.set_device(device_id)
     p, tensors = case_data["params"], case_data["tensors"]
     n = _to_npu_tensors(tensors)
-    metadata = torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer_metadata(
-        n["candidate_length"],
-        cu_seqlens_q=n["cu"],
-        cu_seqlens_k=n["cu_k"],
-        seqused_q=n["used_q"],
-        seqused_k=n["used_k"],
-        cmp_residual_k=n["residual"],
-        num_heads_q=N1,
-        num_heads_k=N2,
-        head_dim=PACKED_D * 2,
-        topk=p["topk"],
-        quant_mode=p["quant_mode"],
-        candidate_block_size=p["candidate_block_size"],
-        max_seqlen_q=p["max_seqlen_q"],
-        max_seqlen_k=p["sequence_length"],
-        mask_mode=p["mask_mode"],
-        cmp_ratio=p["cmp_ratio"],
-        layout_q=p["layout_q"],
-        layout_k=p["layout_k"],
+    metadata = (
+        torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer_metadata(
+            n["candidate_length"],
+            cu_seqlens_q=n["cu"],
+            cu_seqlens_k=n["cu_k"],
+            seqused_q=n["used_q"],
+            seqused_k=n["used_k"],
+            cmp_residual_k=n["residual"],
+            num_heads_q=N1,
+            num_heads_k=N2,
+            head_dim=PACKED_D * 2,
+            topk=p["topk"],
+            quant_mode=p["quant_mode"],
+            candidate_block_size=p["candidate_block_size"],
+            max_seqlen_q=p["max_seqlen_q"],
+            max_seqlen_k=p["sequence_length"],
+            mask_mode=p["mask_mode"],
+            cmp_ratio=p["cmp_ratio"],
+            layout_q=p["layout_q"],
+            layout_k=p["layout_k"],
+        )
     )
     actual_outputs = torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer(
         n["q"],

@@ -417,9 +417,7 @@ def run_qliv2_case_data(data, device_id=0):
             npu_kwargs["seqused_k"],
             npu_kwargs["cmp_residual_k"],
             batch_size=(
-                int(p["batch_size"])
-                if npu_kwargs["layout_k"] == "PA_BBND"
-                else None
+                int(p["batch_size"]) if npu_kwargs["layout_k"] == "PA_BBND" else None
             ),
             max_seqlen_q=npu_kwargs["max_seqlen_q"],
             max_seqlen_k=int(p["k_seq"]),
