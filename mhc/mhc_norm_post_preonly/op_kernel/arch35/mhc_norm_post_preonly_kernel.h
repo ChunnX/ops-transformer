@@ -425,6 +425,8 @@ private:
         SetFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         WaitFlag<HardEvent::V_MTE3>(evtVtoMte3_);
         DataCopy(hInPrimeGm_[gmOffset], srcDst, count);
+        // 下一tile/token可能复用同一缓存，必须等当前MTE3完成读取。
+        FenceMte3ToV();
     }
 
     __aicore__ inline uint32_t GetTileD(uint32_t tile) const

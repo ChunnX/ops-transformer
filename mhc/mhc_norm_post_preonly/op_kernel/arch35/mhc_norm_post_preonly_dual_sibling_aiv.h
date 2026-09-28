@@ -258,10 +258,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             }
             WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
         } else {
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
             if (D_ > GAMMA1_CACHE_MAX_D) {
+                // 当前VF读完gamma后才能让下一tile的MTE2覆盖它。
                 FenceVToMte2();
             }
-            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
         }
     }
 }
