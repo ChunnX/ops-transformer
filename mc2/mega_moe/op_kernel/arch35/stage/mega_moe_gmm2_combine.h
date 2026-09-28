@@ -1236,7 +1236,7 @@ __aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Param
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
         uint64_t slotOffset = static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(job);
-        AscendC::WriteGmBypassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
+        AscendC::WriteGmByPassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
                                      int32_t(1));
     }
 }

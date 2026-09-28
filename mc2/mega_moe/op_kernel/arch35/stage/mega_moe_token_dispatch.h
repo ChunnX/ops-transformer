@@ -504,7 +504,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
+    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
 /*
