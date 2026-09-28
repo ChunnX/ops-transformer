@@ -665,7 +665,7 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 - query、key、value的D轴当前仅支持配置为64或128
 - blockShapeOptional如果传入，则必须包含两个元素[blockShapeX, blockShapeY]，且值必须大于0。blockShapeX/blockShapeY在不同产品上的倍数约束如下：
   <!-- npu="950" id7 -->
-  - 在<term>Ascend 950PR/Ascend 950DT</term>上：blockShapeY须为16的倍数；MXFP4量化（quantMode=2/3）时，blockShapeX和blockShapeY均只支持64的倍数；MXFP8量化（quantMode=4）时，blockShapeX和blockShapeY均仅支持64或128。
+  - 在<term>Ascend 950PR/Ascend 950DT</term>上：blockShapeY须为16的倍数；MXFP4量化（quantMode=2/3）与MXFP8量化（quantMode=4）时，blockShapeX和blockShapeY均只支持64的倍数。
   <!-- end id7 -->
   <!-- npu="910b,A3" id8 -->
   - 在<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>上：blockShapeY须为128的倍数。
@@ -731,7 +731,7 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 
   - 仅Ascend 950PR/Ascend 950DT支持
   - 输入 query/key/value 为 FLOAT8_E4M3FN，scale 为 FLOAT8_E8M0
-  - blockShapeX 与 blockShapeY 均仅支持 64 或 128
+  - blockShapeX 与 blockShapeY 均只支持 64 的倍数
   - D仅支持64/128
   - attentionOut数据类型仅支持FLOAT16或BFLOAT16
   - innerPrecise 必须为 4；暂不支持attenMaskOptional、PagedAttention。softmaxLseFlag=1 可以输出 softmaxLse。

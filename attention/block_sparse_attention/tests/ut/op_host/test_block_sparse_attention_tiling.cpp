@@ -2448,8 +2448,7 @@ TEST_F(block_sparse_attention_tiling_ut, softmaxLseFlag_is_not_0_or_1)
 }
 
 // ============================================================================
-// MXFP8 OCP (quantMode=4): host 只要求 blockShapeY 为 64 倍数。Y=64 通过；Y=32/96 失败。
-// 文档约束更紧（X/Y 仅 64 或 128），host 暂不拦截其它 64 倍数。
+// MXFP8 OCP (quantMode=4): blockShapeX/Y 须为 64 的倍数。Y=64 通过；Y=32/96 失败。
 // ============================================================================
 TEST_F(block_sparse_attention_tiling_ut, A5_mxfp8_ocp_blockShapeY_64)
 {
@@ -2572,4 +2571,81 @@ TEST_F(block_sparse_attention_tiling_ut, A5_mxfp8_ocp_blockShapeY_96_fail)
          {"quantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)}},
         &compileInfo, "Ascend950", 56, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// MXFP8 OCP + LSE。qBaseTile=128，Q=14336、1 个 head 得到 112 个 Q tile。
+// 950 按 56 核切，coreTaskNum = totalTaskNum / blockDim = 2：同一核连续处理两个 Q tile，
+// 覆盖 LSE 写完后下一块 softmax 再占用同一块 UB。
+TEST_F(block_sparse_attention_tiling_ut, A5_mxfp8_ocp_lse_two_q_tiles_per_core)
+{
+    struct BlockSparseAttentionCompileInfo {
+    } compileInfo;
+    constexpr int64_t kAicNum = 56;
+    constexpr int64_t kQSeqlen = 128 * kAicNum * 2;
+    constexpr int64_t kKvSeqlen = 128;
+    constexpr int64_t kNumHeads = 1;
+    constexpr int64_t kNumKvHeads = 1;
+    constexpr int64_t kHeadDim = 128;
+    constexpr int64_t kBlockX = 128;
+    constexpr int64_t kBlockY = 128;
+    constexpr int64_t kQBlockNum = kQSeqlen / kBlockX;
+    constexpr int64_t kKvBlockNum = kKvSeqlen / kBlockY;
+    constexpr int64_t kDDiv64 = kHeadDim / 64;
+    constexpr int64_t kBtKv = (kKvSeqlen + 63) / 64;
+    constexpr uint32_t kTotalTaskNum = static_cast<uint32_t>(kQBlockNum * kNumHeads);
+    int64_t blockShapeDataLocal[] = {kBlockX, kBlockY};
+    int64_t qSeqData[] = {kQSeqlen};
+    int64_t kvSeqData[] = {kKvSeqlen};
+    gert::TilingContextPara tilingContextPara(
+        "BlockSparseAttention",
+        {{{{kQSeqlen, kNumHeads, kHeadDim}, {kQSeqlen, kNumHeads, kHeadDim}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {{{kKvSeqlen, kNumKvHeads, kHeadDim}, {kKvSeqlen, kNumKvHeads, kHeadDim}},
+          ge::DT_FLOAT8_E4M3FN,
+          ge::FORMAT_ND},
+         {{{kKvSeqlen, kNumKvHeads, kHeadDim}, {kKvSeqlen, kNumKvHeads, kHeadDim}},
+          ge::DT_FLOAT8_E4M3FN,
+          ge::FORMAT_ND},
+         {{{batch, kNumHeads, kQBlockNum, kKvBlockNum}, {batch, kNumHeads, kQBlockNum, kKvBlockNum}},
+          ge::DT_INT8,
+          ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeDataLocal},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, qSeqData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, kvSeqData},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{kQSeqlen, kNumHeads, kDDiv64, 2}, {kQSeqlen, kNumHeads, kDDiv64, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {{{kKvSeqlen, kNumKvHeads, kDDiv64, 2}, {kKvSeqlen, kNumKvHeads, kDDiv64, 2}},
+          ge::DT_FLOAT8_E8M0,
+          ge::FORMAT_ND},
+         {{{kBtKv, kNumKvHeads, kHeadDim, 2}, {kBtKv, kNumKvHeads, kHeadDim, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}},
+        {{{{kQSeqlen, kNumHeads, kHeadDim}, {kQSeqlen, kNumHeads, kHeadDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{kQSeqlen, kNumHeads, 1}, {kQSeqlen, kNumHeads, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"qInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"kvInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"numKeyValueHeads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kNumKvHeads)},
+         {"maskType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
+         {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"blockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"quantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)}},
+        &compileInfo, "Ascend950", kAicNum, 262144, 16384);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    // 9050000030400053 加上 LSE 的亿位
+    EXPECT_EQ(tilingInfo.tilingKey, 9050000130400053ULL);
+    EXPECT_EQ(tilingInfo.blockNum, static_cast<size_t>(kAicNum));
+    // BlockSparseAttentionTilingData 前部全是 uint32：
+    // batch, numHeads, kvHeads, embeddingSize, blockSize, maxNumBlocksPerBatch,
+    // firstBatchTaskNum, totalTaskNum, coreTaskNum
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(uint32_t) * 9);
+    const auto *words = reinterpret_cast<const uint32_t *>(tilingInfo.tilingData.get());
+    constexpr uint32_t kTotalTaskNumIndex = 7;
+    constexpr uint32_t kCoreTaskNumIndex = 8;
+    EXPECT_EQ(words[kTotalTaskNumIndex], kTotalTaskNum);
+    EXPECT_EQ(words[kCoreTaskNumIndex], kTotalTaskNum / static_cast<uint32_t>(kAicNum));
+    EXPECT_GE(words[kCoreTaskNumIndex], 2u);
 }
