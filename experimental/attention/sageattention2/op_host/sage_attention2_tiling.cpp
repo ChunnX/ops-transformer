@@ -37,12 +37,6 @@ struct CompileInfo {
 // guess core counts from a device model.
 bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &vectors)
 {
-    static uint32_t cached_cores = 0, cached_vectors = 0;
-    if (cached_cores > 0 && cached_vectors >= 2 * cached_cores) {
-        cores = cached_cores;
-        vectors = cached_vectors;
-        return true;
-    }
     if (c->GetPlatformInfo()) {
         auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
         cores = platform.GetCoreNumAic();
@@ -67,12 +61,7 @@ bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &
             vectors = static_cast<uint32_t>(aiv);
         }
     }
-    if (cores > 0 && vectors >= 2 * cores) {
-        cached_cores = cores;
-        cached_vectors = vectors;
-        return true;
-    }
-    return false;
+    return cores > 0 && vectors >= 2 * cores;
 }
 ge::graphStatus Tile(gert::TilingContext *c)
 {
@@ -173,13 +162,9 @@ ge::graphStatus Tile(gert::TilingContext *c)
         !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
-    static uint64_t cached_reserved = 0;
     uint64_t reserved = DEFAULT_RESERVED_WS;
-    if (cached_reserved > 0) {
-        reserved = cached_reserved;
-    } else if (c->GetPlatformInfo()) {
+    if (c->GetPlatformInfo()) {
         reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
-        cached_reserved = reserved;
     }
     if (bytes > std::numeric_limits<size_t>::max() - reserved) {
         return Failure(__LINE__);
