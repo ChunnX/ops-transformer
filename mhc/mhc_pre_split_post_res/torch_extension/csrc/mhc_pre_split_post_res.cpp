@@ -30,6 +30,7 @@ std::tuple<at::Tensor, at::Tensor> MhcPreSplitPostRes(
     // h_res 为可选输出：phi 行数为 N^2+N（完整形态）时分配真 shape；
     // 仅 post 形态（phi 行数==N）时第二个返回 0 元素 tensor（aclnn 层按 phi shape 忽略）
     const int64_t n = x.size(x.dim() - 2);
+    TORCH_CHECK(n == 4, "n must be 4, but got ", n);
     const bool hasRes = phi.size(0) == n * n + n;
     std::vector<int64_t> outSizes = x.sizes().vec();
     outSizes.pop_back();  // [T, n] / [B, S, n]

@@ -8,13 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
 */
 
-/* !
+/*!
  * \file mhc_pre_split_post_res_infershape.cpp
  * \brief MhcPreSplitPostRes 的 InferShape/InferDataType：h_post/h_res 形状由 x（[B,S,N,D]/[T,N,D]）
  *        与 phi 行数（N^2+N 完整形态 / N 仅 post 形态）推导，输出 dtype 恒 FP32
  */
 #include <string>
-#include <sstream>
 
 #include "exe_graph/runtime/infer_shape_context.h"
 #include "exe_graph/runtime/shape.h"
@@ -105,7 +104,14 @@ static ge::graphStatus InferShape4MhcPreSplitPostRes(InferShapeContext *context)
                                              std::to_string(biasShape->GetDimNum()).c_str(), "1"),
                 return GRAPH_FAILED);
 
-    const int64_t n = (xDim == optiling::MHC_DIM_NUM_4) ? xShape->GetDim(optiling::MHC_DIM_TWO) : xShape->GetDim(optiling::MHC_DIM_ONE);
+    const int64_t n = (xDim == optiling::MHC_DIM_NUM_4) ? xShape->GetDim(optiling::MHC_DIM_TWO)
+                                                          : xShape->GetDim(optiling::MHC_DIM_ONE);
+    // n 白名单先行校验（与 tiling/aclnn 对齐的四层一致防御）：图构建路径不经 aclnn CheckParams，
+    // 此处拦截可同时消除 n*n+n 的 int64 溢出面（n>3037000499 时溢出）与非法形态
+    OP_CHECK_IF(n != optiling::MHC_N_VALUE,
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "x", Ops::Base::ToString(*xShape).c_str(),
+                                          "n must be 4"),
+                return GRAPH_FAILED);
     const int64_t phiDim0 = phiShape->GetDim(optiling::MHC_DIM_ZERO);
     // phi 双形态：N^2+N 行（完整形态，输出 h_res=[.,N,N]）或 N 行（仅 post 形态，h_res 为 0 元素）
     const bool fullForm = (phiDim0 == n * n + n);

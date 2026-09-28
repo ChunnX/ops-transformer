@@ -32,6 +32,9 @@ constexpr int64_t FP32_ALIGN_ELEM = 8;      // 向量操作最小对齐单位：
 constexpr uint32_t REG_VL_FP32 = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(sizeof(float));
 
 constexpr float FLOAT_ZERO = 0.0f;
+// RMSNorm 默认 epsilon：与 op_host/mhc_pre_split_post_res_const.h 的 MHC_DEFAULT_NORM_EPS 同源互锚
+// （kernel 侧编译环境隔离无法 include host 头，改动必须两侧同步）
+constexpr float NORM_EPS_DEFAULT = 1e-6f;
 constexpr float FLOAT_ONE = 1.0f;
 constexpr float FLOAT_TWO = 2.0f;
 
@@ -133,7 +136,8 @@ protected:
     // Regbase 实现：Reg 内 Mul(x,x) + ReduceSum 段折叠 + 段间 Add 链——段内二叉、
     // 段间固定顺序的确定性归约，xFp32 只读不覆盖。N×copyD 恒为 VL 的整数倍
     // （N=4 × 白名单 D 均 128 对齐），无尾块。
-    __aicore__ inline void AccumSumSq(LocalTensor<float> &xFp32, LocalTensor<float> &sumSq, int64_t copyD, TPipe *pipe)
+    __aicore__ inline void AccumSumSq(const LocalTensor<float> &xFp32, LocalTensor<float> &sumSq, int64_t copyD,
+    TPipe *pipe)
     {
         LocalTensor<float> sqDot = sumSqDotBuf_.Get<float>();
         auto srcAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
@@ -328,9 +332,7 @@ protected:
     int64_t n_ = 0;
     int64_t d_ = 0;
     int64_t phiRows_ = 0;
-    // 默认值与 op_host/mhc_pre_split_post_res_const.h 的 MHC_DEFAULT_NORM_EPS 同源互锚
-    // （kernel 侧编译环境隔离无法 include host 头，改动必须两侧同步）
-    float normEps_ = 1e-6f;
+    float normEps_ = NORM_EPS_DEFAULT;
     float alpha0_ = 1.0f;
     float alpha1_ = 1.0f;
     float invK_ = 0.0f;  // 1/(N*D)，由 tiling 传入

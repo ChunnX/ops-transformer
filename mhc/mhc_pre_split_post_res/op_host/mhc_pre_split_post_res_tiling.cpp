@@ -269,9 +269,9 @@ ge::graphStatus MhcPreSplitPostResInfoParser::CheckUbBudget()
     // fixedUbBytes 逐项镜像 kernel InitCommonBuffers 固定分配（arch35/ascend950 形态，本算子仅注册 950）：
     // xHatBuf_/biasBuf_（AlignUp(phiRows)+8）、dotBuf_/sumSqDotBuf_（仅 8 结果槽，无 work 段）、
     // sumSqBuf_（8）、alphaBuf_（8）、hPostOutQueue_/hResOutQueue_（AlignUp(N)/AlignUp(N*N)）
-    const int64_t fixedUbBytes = 2 * (alignedPhiRows + MIN_FP32_ALIGN_ELEM_SIZE) * fp32Bytes +
-                                 2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
-                                 2 * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
+    const int64_t fixedUbBytes = MHC_NUM_TWO * (alignedPhiRows + MIN_FP32_ALIGN_ELEM_SIZE) * fp32Bytes +
+                                 MHC_NUM_TWO * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
+                                 MHC_NUM_TWO * MIN_FP32_ALIGN_ELEM_SIZE * fp32Bytes +
                                  (alignedN + alignedNN) * fp32Bytes;
     // 线性增长 buffer（对应 kernel InitCommonBuffers）：xInQueue_(2B/元素，SINGLE depth1/MULTI depth2)、
     // xFp32Buf_(4B，arch35 全量 n*d 按 tile 拼接持久化——Phase B 免除 x 的 GM 重读)、
@@ -391,7 +391,6 @@ ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
     tilingData_.set_dimLoop(dimLoop_);
     tilingData_.set_coresPerToken(coresPerToken_);
     tilingData_.set_phiRowMid(phiRowMid_);
-    tilingData_.set_blockDim(blockDim_);
     tilingData_.set_baseT(baseT_);
     tilingData_.set_tailT(tailT_);
     tilingData_.set_coreTAct(coreTAct_);
@@ -411,7 +410,6 @@ ge::graphStatus MhcPreSplitPostResTiling::DoTiling()
     OP_LOGD(context_->GetNodeName(), "dimLoop: %ld", dimLoop_);
     OP_LOGD(context_->GetNodeName(), "coresPerToken: %ld", coresPerToken_);
     OP_LOGD(context_->GetNodeName(), "phiRowMid: %ld", phiRowMid_);
-    OP_LOGD(context_->GetNodeName(), "blockDim: %ld", blockDim_);
     OP_LOGD(context_->GetNodeName(), "baseT: %ld", baseT_);
     OP_LOGD(context_->GetNodeName(), "tailT: %ld", tailT_);
     OP_LOGD(context_->GetNodeName(), "coreTAct: %ld", coreTAct_);

@@ -419,7 +419,7 @@ int main() {
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
     // Example: TND format (T, n, D)
     std::vector<int64_t> xShape = {1024, 4, 2560};      // TND
-    std::vector<int64_t> phiShape = {20, 10240};        // 完整形态n^2+n, n*D（仅post形态取{4, 10240}）
+    std::vector<int64_t> phiShape = {20, 10240};        // 完整形态n^2+n、n*D（仅post形态取{4, 10240}）
     std::vector<int64_t> alphaShape = {2};              // [alpha0, alpha1]
     std::vector<int64_t> biasShape = {20};              // n^2+n
     std::vector<int64_t> hPostOutShape = {1024, 4};     // Tn

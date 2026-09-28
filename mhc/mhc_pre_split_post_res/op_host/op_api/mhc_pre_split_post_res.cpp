@@ -46,6 +46,11 @@ bool MhcPreSplitPostRes(const aclTensor *x, const aclTensor *phi, const aclTenso
     const size_t xRank = x->GetViewShape().GetDimNum();
     const int64_t nValue = (xRank == optiling::MHC_DIM_NUM_4) ? x->GetViewShape().GetDim(optiling::MHC_DIM_TWO)
                                                                 : x->GetViewShape().GetDim(optiling::MHC_DIM_ONE);
+    // n 白名单校验（aclnn 层同款）：同时消除 nValue*nValue+nValue 的 int64 溢出面
+    if (nValue != optiling::MHC_N_VALUE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MhcPreSplitPostRes n must be 4 (%ld).", nValue);
+        return false;
+    }
     if (hResOut == nullptr && phi->GetViewShape().GetDim(optiling::MHC_DIM_ZERO) == nValue * nValue + nValue) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "MhcPreSplitPostRes h_res output is required when the number of phi rows is N^2+N (%ld).",

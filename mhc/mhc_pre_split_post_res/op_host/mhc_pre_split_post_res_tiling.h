@@ -35,7 +35,7 @@ constexpr uint64_t MHC_PRE_SPLIT_TILING_KEY_SINGLE_TILE = 0;
 // 多Tile模式：dimLoop>1（D>2560）；token 不足（T < coreNum/2）时每token使用2个核心，否则1个
 constexpr uint64_t MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE = 1;
 
-// -----------算子TilingData定义（15个字段）---------------
+// -----------算子TilingData定义（13个字段）---------------
 BEGIN_TILING_DATA_DEF(MhcPreSplitPostResTilingData)
 TILING_DATA_FIELD_DEF(int64_t, totalLength);     // B*S 或 T，合轴后的token总数
 TILING_DATA_FIELD_DEF(int64_t, n);               // 超连接维度 (固定4)
@@ -45,7 +45,6 @@ TILING_DATA_FIELD_DEF(int64_t, dimTile);         // 核内D的分块大小，min
 TILING_DATA_FIELD_DEF(int64_t, dimLoop);         // D需要几个tile
 TILING_DATA_FIELD_DEF(int64_t, coresPerToken);   // 每token使用的核数（1或2）
 TILING_DATA_FIELD_DEF(int64_t, phiRowMid);       // 单核处理的phi行起始偏移（双核模式用）
-TILING_DATA_FIELD_DEF(int64_t, blockDim);        // 实际启动的总核数
 TILING_DATA_FIELD_DEF(int64_t, baseT);           // 每（组）核处理的token数（前coreTAct-1组）
 TILING_DATA_FIELD_DEF(int64_t, tailT);           // 最后一（组）核处理的token数
 TILING_DATA_FIELD_DEF(int64_t, coreTAct);        // T轴实际分组数
