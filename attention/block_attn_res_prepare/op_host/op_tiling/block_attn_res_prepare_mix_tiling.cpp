@@ -94,6 +94,11 @@ struct BlockAttnResPrepareMixTiling::ResourceUsage {
 
 bool BlockAttnResPrepareMixTiling::IsCapable()
 {
+    // The Cube kernel remains FP32-only in this first BF16 iteration. Let the
+    // pure Vector template handle BF16 without adding Cube-side parameter checks.
+    if (inputBf16_) {
+        return false;
+    }
     if (aicCoreNum_ == 0U || aivCoreNum_ != aicCoreNum_ * AIV_CORE_NUM_PER_AIC) {
         return false;
     }

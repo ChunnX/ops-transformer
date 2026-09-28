@@ -109,13 +109,14 @@ def _check_dtypes(
     pseudo_query: torch.Tensor,
 ) -> None:
     tensor_dtypes = (
-        ("block_res", block_res, torch.float32),
+        ("block_res", block_res, (torch.float32, torch.bfloat16)),
         ("valid_blocks", valid_blocks, torch.uint64),
-        ("pseudo_query", pseudo_query, torch.float32),
+        ("pseudo_query", pseudo_query, block_res.dtype),
     )
     for tensor_name, tensor, expected_dtype in tensor_dtypes:
+        dtype_ok = tensor.dtype in expected_dtype if isinstance(expected_dtype, tuple) else tensor.dtype == expected_dtype
         torch_check(
-            tensor.dtype == expected_dtype,
+            dtype_ok,
             lambda tensor_name=tensor_name,
             tensor=tensor,
             expected_dtype=expected_dtype: (
@@ -316,10 +317,10 @@ def block_attn_res_prepare(
     """Run the Ascend 950 BlockAttnResPrepare Phase 1 operator.
 
     Args:
-        block_res: FP32 tensor with shape ``[T, N, D]``.
+        block_res: FP32 or BF16 tensor with shape ``[T, N, D]``.
         valid_blocks: UINT64 device tensor with shape ``[1]``. Zero produces the empty online-softmax state,
             and values above ``N`` are clipped to ``N``.
-        pseudo_query: FP32 tensor with shape ``[S, D]``.
+        pseudo_query: tensor with the same dtype as ``block_res`` and shape ``[S, D]``.
         eps: Positive numerical-stability coefficient. Defaults to ``1e-6``.
         numerator: Optional FP32 output tensor with shape ``[S, T, D]`` receiving the softmax numerator.
             Must be contiguous and live on the same device as the inputs. When omitted, a new tensor is

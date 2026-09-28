@@ -1,4 +1,5 @@
 socVersion,caseName,enable,prefix,blockResShape,pseudoQueryShape,blockResDtype,validBlocksDtype,pseudoQueryDtype,eps,aicCoreNum,aivCoreNum,contextCoreNum,expectSuccess,expectTilingKey,checkMode,expectBaseD,expectQBufferNum,expectVBufferNum,expectOBufferNum,expectVCacheRows,expectBaseT,expectBaseS,expectTotalWorkUnits,expectNAlign,expectMm1NAlign,checkWorkspaceFormula
+Ascend950,bf16_vector_register_cast,true,bf16_vector_register_cast,1:8:7168,18:7168,BF16,UINT64,BF16,1e-6,32,64,64,true,2,vector,7168,1,2,1,8,-1,-1,-1,-1,-1,false
 Ascend950,network_decode,true,network_decode,1:8:7168,18:7168,FLOAT,UINT64,FLOAT,1e-6,32,64,64,true,0,vector,7168,1,2,1,4,-1,-1,-1,-1,-1,false
 Ascend950,single_static_v_loop,true,single_static_v_loop,1:1:7168,18:7168,FLOAT,UINT64,FLOAT,1e-6,32,64,64,true,0,vector,-1,1,1,1,1,-1,-1,-1,-1,-1,false
 Ascend950,multi_round_double_buffer,true,multi_round_double_buffer,8:1:7168,16:7168,FLOAT,UINT64,FLOAT,1e-6,32,64,64,true,0,vector,-1,2,2,2,-1,-1,-1,-1,-1,-1,false

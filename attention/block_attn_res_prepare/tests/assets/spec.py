@@ -33,6 +33,33 @@ LAST_DIM_INDEX = -1
 FLATTENED_SIZE = -1
 
 
+def _round_to_bfloat16_float32(value):
+    """Round FP32 values to BF16 (RNE), keeping the result in an FP32 array."""
+    value = numpy.ascontiguousarray(value, dtype=numpy.float32)
+    bits = value.view(numpy.uint32)
+    nan_mask = numpy.isnan(value)
+    rounding_bias = numpy.uint32(0x7FFF) + ((bits >> numpy.uint32(16)) & numpy.uint32(1))
+    rounded_bits = (bits + rounding_bias) & numpy.uint32(0xFFFF0000)
+    rounded_bits = numpy.where(
+        nan_mask,
+        (bits & numpy.uint32(0xFFFF0000)) | numpy.uint32(0x00010000),
+        rounded_bits,
+    ).astype(numpy.uint32, copy=False)
+    return rounded_bits.view(numpy.float32)
+
+
+def _is_bfloat16_dtype(dtype):
+    if dtype is None:
+        return False
+    dtype_name = str(dtype).lower()
+    return "bfloat16" in dtype_name or dtype_name in ("bf16", "torch.bfloat16")
+
+
+def _numpy_input_to_fp32(value, dtype=None):
+    value = numpy.asarray(value, dtype=numpy.float32)
+    return _round_to_bfloat16_float32(value) if _is_bfloat16_dtype(dtype) else value
+
+
 __spec__ = {
     "block_attn_res_prepare": "BlockAttnResPrepareTestSpec",
     "aclnnBlockAttnResPrepare": "BlockAttnResPrepareAclnnTestSpec",
@@ -110,10 +137,16 @@ def _torch_exp_sub_ftz_float32(lhs, rhs):
     return _torch_ftz_float32(torch.exp(difference))
 
 
-def _numpy_golden(block_res, valid_blocks, pseudo_query, eps):
+def _numpy_golden(block_res, valid_blocks, pseudo_query, eps, input_dtypes=None):
     """Return ``(numerator, logit_max, exp_sum)`` as FP32 NumPy arrays."""
-    residual = numpy.asarray(block_res, dtype=numpy.float32)
-    query = numpy.asarray(pseudo_query, dtype=numpy.float32)
+    block_res_dtype = (
+        input_dtypes[0] if input_dtypes is not None and len(input_dtypes) > 0 else None
+    )
+    pseudo_query_dtype = (
+        input_dtypes[2] if input_dtypes is not None and len(input_dtypes) > 2 else None
+    )
+    residual = _numpy_input_to_fp32(block_res, block_res_dtype)
+    query = _numpy_input_to_fp32(pseudo_query, pseudo_query_dtype)
     valid = int(
         numpy.asarray(valid_blocks, dtype=numpy.uint64).reshape(FLATTENED_SIZE)[0].item()
     )
@@ -157,12 +190,27 @@ def _numpy_golden(block_res, valid_blocks, pseudo_query, eps):
     )
 
 
-def _torch_golden(block_res, valid_blocks, pseudo_query, eps):
+def _torch_input_to_fp32(value, dtype=None):
+    import torch
+
+    tensor = torch.as_tensor(value)
+    if _is_bfloat16_dtype(dtype):
+        tensor = tensor.to(dtype=torch.bfloat16)
+    return tensor.to(dtype=torch.float32)
+
+
+def _torch_golden(block_res, valid_blocks, pseudo_query, eps, input_dtypes=None):
     """Return ``(numerator, logit_max, exp_sum)`` as CPU torch tensors."""
     import torch
 
-    residual = torch.as_tensor(block_res).to(dtype=torch.float32)
-    query = torch.as_tensor(pseudo_query).to(dtype=torch.float32)
+    block_res_dtype = (
+        input_dtypes[0] if input_dtypes is not None and len(input_dtypes) > 0 else None
+    )
+    pseudo_query_dtype = (
+        input_dtypes[2] if input_dtypes is not None and len(input_dtypes) > 2 else None
+    )
+    residual = _torch_input_to_fp32(block_res, block_res_dtype)
+    query = _torch_input_to_fp32(pseudo_query, pseudo_query_dtype)
     valid = int(torch.as_tensor(valid_blocks).reshape(FLATTENED_SIZE)[0].item())
     valid = min(valid, residual.shape[N_DIM_INDEX])
 
@@ -215,9 +263,9 @@ class BlockAttnResPrepareTestSpec:
 
     @staticmethod
     def golden(block_res, valid_blocks, pseudo_query, eps=DEFAULT_EPS, **kwargs):
-        del kwargs
+        input_dtypes = kwargs.get("input_dtypes")
         numerator, logit_max, exp_sum = _numpy_golden(
-            block_res, valid_blocks, pseudo_query, eps
+            block_res, valid_blocks, pseudo_query, eps, input_dtypes
         )
         # Kernel CSV output order: numerator, logit_max, exp_sum.
         return [numerator, logit_max, exp_sum]
@@ -242,9 +290,10 @@ class BlockAttnResPrepareAclnnTestSpec:
         eps=DEFAULT_EPS,
         **kwargs,
     ):
-        del numerator, logitMax, expSum, kwargs
+        input_dtypes = kwargs.get("input_dtypes")
+        del numerator, logitMax, expSum
         numerator_golden, logit_max_golden, exp_sum_golden = _torch_golden(
-            blockRes, validBlocks, pseudoQuery, eps
+            blockRes, validBlocks, pseudoQuery, eps, input_dtypes
         )
         # ACLNN CSV output_tensor_indexes=(3, 4, 5).
         return [numerator_golden, logit_max_golden, exp_sum_golden]
@@ -269,8 +318,9 @@ class BlockAttnResPrepareE2ETestSpec:
         exp_sum=None,
         **kwargs,
     ):
-        del numerator, logit_max, exp_sum, kwargs
+        input_dtypes = kwargs.get("input_dtypes")
+        del numerator, logit_max, exp_sum
         numerator_golden, logit_max_golden, exp_sum_golden = _torch_golden(
-            block_res, valid_blocks, pseudo_query, eps
+            block_res, valid_blocks, pseudo_query, eps, input_dtypes
         )
         return [numerator_golden, logit_max_golden, exp_sum_golden]

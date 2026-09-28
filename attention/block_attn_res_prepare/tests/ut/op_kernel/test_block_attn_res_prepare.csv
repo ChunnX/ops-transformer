@@ -1,4 +1,6 @@
-socVersion,caseName,kernelUtTarget,prefix,coreNum,t,n,s,d,validBlocks,seed,result,numBlocks,tilingKey,tilingData,comment
+socVersion,caseName,kernelUtTarget,prefix,coreNum,t,n,s,d,validBlocks,seed,result,numBlocks,tilingKey,tilingData,inputDtype,comment
+Ascend950,bf16_vector_register_cast,BLOCK_ATTN_RES_PREPARE_FLOW,kernel,,1,8,1,63,7,10,TRUE,1,1002,1 1 1 63 1 1 63 144 897988541 1 33622024 1,BF16,BF16 Vector register-cast path with an unaligned D tail
+Ascend950,bf16_vector_aligned,BLOCK_ATTN_RES_PREPARE_FLOW,kernel,,1,8,1,64,8,11,TRUE,1,1002,1 1 1 64 1 1 64 144 897988541 1 33622024 1,BF16,BF16 Vector register-cast path with aligned D
 Ascend950,valid_blocks_zero,BLOCK_ATTN_RES_PREPARE_FLOW,kernel,,1,8,1,63,0,1,TRUE,1,1000,1 1 1 63 1 1 63 144 897988541 1 33622024 1,empty online-softmax state with a D tail
 Ascend950,single_block_aligned,BLOCK_ATTN_RES_PREPARE_FLOW,kernel,,1,1,1,64,1,3,TRUE,1,1000,1 1 1 64 1 1 64 144 897988541 1 16843009 1,single-block specialization with one aligned vector
 Ascend950,tail_d63_multi_block,BLOCK_ATTN_RES_PREPARE_FLOW,kernel,,1,8,1,63,7,4,TRUE,1,1000,1 1 1 63 1 1 63 144 897988541 1 33622024 1,multi-block softmax with a masked D tail

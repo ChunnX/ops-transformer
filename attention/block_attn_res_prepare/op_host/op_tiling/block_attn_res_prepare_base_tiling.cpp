@@ -164,7 +164,7 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::CheckInputShapes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareBaseTiling::CheckInputDtypes() const
+ge::graphStatus BlockAttnResPrepareBaseTiling::CheckInputDtypes()
 {
     const auto *blockResDesc = context_->GetInputDesc(BLOCK_RES_INDEX);
     const auto *validDesc = context_->GetInputDesc(VALID_BLOCKS_INDEX);
@@ -181,19 +181,21 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::CheckInputDtypes() const
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "pseudo_query", "nullptr",
                                                       "the input descriptor of pseudo_query must not be nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockResDesc->GetDataType() != ge::DT_FLOAT || pseudoQueryDesc->GetDataType() != ge::DT_FLOAT,
+    OP_CHECK_IF((blockResDesc->GetDataType() != ge::DT_FLOAT && blockResDesc->GetDataType() != ge::DT_BF16) ||
+                    pseudoQueryDesc->GetDataType() != blockResDesc->GetDataType(),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     context_->GetNodeName(), "block_res, pseudo_query",
                     (ge::TypeUtils::DataTypeToSerialString(blockResDesc->GetDataType()) + ", " +
                      ge::TypeUtils::DataTypeToSerialString(pseudoQueryDesc->GetDataType()))
                         .c_str(),
-                    "the dtypes of block_res and pseudo_query must both be FLOAT"),
+                    "the dtypes of block_res and pseudo_query must both be FLOAT or BFLOAT16 and match"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         validDesc->GetDataType() != ge::DT_UINT64,
         OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "valid_blocks",
                                   ge::TypeUtils::DataTypeToSerialString(validDesc->GetDataType()).c_str(), "UINT64"),
         return ge::GRAPH_FAILED);
+    inputBf16_ = blockResDesc->GetDataType() == ge::DT_BF16;
     return ge::GRAPH_SUCCESS;
 }
 

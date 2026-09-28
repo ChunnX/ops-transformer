@@ -109,9 +109,9 @@ cann_ops_transformer.block_attn_res_prepare(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| block_res | Tensor | 必选 | 历史残差块，对应公式中的 $V$。数据格式为 ND；$T$ 为 token 数，$N$ 为可容纳的历史残差块数，$D$ 为隐藏特征维度。 | float32 | [T, N, D] |
+| block_res | Tensor | 必选 | 历史残差块，对应公式中的 $V$。数据格式为 ND；$T$ 为 token 数，$N$ 为可容纳的历史残差块数，$D$ 为隐藏特征维度。支持 float32/bfloat16。 | float32/bfloat16 | [T, N, D] |
 | valid_blocks | Tensor | 必选 | 当前有效历史残差块数 $N_v$。数据格式为 ND。值为0时，`numerator` 返回全0 Tensor、`logit_max` 返回所有元素均为float32最小有限值的Tensor、`exp_sum` 返回全0 Tensor；值大于 $N$ 时按 $N$ 处理。 | uint64 | [1] |
-| pseudo_query | Tensor | 必选 | 伪 Query，对应公式中的 $Q$；每个目标 slot 对应一个 Query 向量，最后一维必须与 `block_res` 的最后一维相同。数据格式为 ND。 | float32 | [S, D] |
+| pseudo_query | Tensor | 必选 | 伪 Query，对应公式中的 $Q$；每个目标 slot 对应一个 Query 向量，最后一维必须与 `block_res` 的最后一维相同，且数据类型与 `block_res` 一致。数据格式为 ND。 | float32/bfloat16 | [S, D] |
 | eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-6`。 | float | - |
 | numerator | Tensor | 可选 | 可选输出参数（out 语义），对应公式中的 $O$。数据格式为 ND，仅支持关键字传参，默认值为 `None`；传入时须为连续 Tensor，dtype 为 float32、device 必须与输入一致。校验通过后直接复用传入 Tensor（原样写回，不拷贝、不转换）；未传入时由接口内部在输入所在 device 上分配同 shape 的 float32 Tensor。 | float32 | [S, T, D] |
 | logit_max | Tensor | 可选 | 可选输出参数（out 语义），对应公式中的 $M$。数据格式为 ND，仅支持关键字传参，默认值为 `None`；传入时须为连续 Tensor，dtype 为 float32、device 必须与输入一致。校验通过后直接复用传入 Tensor（原样写回，不拷贝、不转换）；未传入时由接口内部在输入所在 device 上分配同 shape 的 float32 Tensor。 | float32 | [S, T] |

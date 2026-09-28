@@ -11,6 +11,8 @@
 #ifndef BLOCK_ATTN_RES_PREPARE_VF_H
 #define BLOCK_ATTN_RES_PREPARE_VF_H
 
+#include <type_traits>
+
 #include "kernel_operator.h"
 
 namespace BlockAttnResPrepareVF {
@@ -59,6 +61,13 @@ constexpr AscendC::Reg::DivSpecificMode BARP_DIV_0ULP_FTZ_TRUE_MODE = {
     AscendC::DivAlgo::PRECISION_0ULP_FTZ_TRUE,
 };
 
+constexpr AscendC::Reg::CastTrait BARP_CAST_BF16_TO_FP32 = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
+
 __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
 {
     RegTensor<float> maxReg;
@@ -89,9 +98,21 @@ __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
 }
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
-template <bool FIRST_D_TILE>
-__simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ float *vAddr, __ubuf__ float *statAddr,
-                                            uint32_t validD, uint32_t nIndex)
+template <typename INPUT_T>
+__simd_vf__ inline void LoadInputAsFloat(RegTensor<float> &dst, __ubuf__ INPUT_T *src, const MaskReg &mask)
+{
+    if constexpr (std::is_same<INPUT_T, bfloat16_t>::value) {
+        RegTensor<bfloat16_t> srcReg;
+        LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(srcReg, src);
+        Cast<float, bfloat16_t, BARP_CAST_BF16_TO_FP32>(dst, srcReg, mask);
+    } else {
+        LoadAlign<float, LoadDist::DIST_NORM>(dst, reinterpret_cast<__ubuf__ float *>(src));
+    }
+}
+
+template <typename INPUT_T, bool FIRST_D_TILE>
+__simd_vf__ inline void AccumulateSquareDot(__ubuf__ INPUT_T *qAddr, __ubuf__ INPUT_T *vAddr,
+                                            __ubuf__ float *statAddr, uint32_t validD, uint32_t nIndex)
 {
     RegTensor<float> qReg;
     RegTensor<float> vReg;
@@ -112,8 +133,8 @@ __simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ floa
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
         MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        LoadAlign<float, LoadDist::DIST_NORM>(qReg, qAddr + offset);
-        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        LoadInputAsFloat<INPUT_T>(qReg, qAddr + offset, validMask);
+        LoadInputAsFloat<INPUT_T>(vReg, vAddr + offset, validMask);
         Mul<float, MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
         Mul<float, MaskMergeMode::ZEROING>(dotReg, qReg, vReg, validMask);
         Add<float, MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
@@ -195,8 +216,8 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-template <bool FIRST_BLOCK>
-__simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float *weightAddr,
+template <typename INPUT_T, bool FIRST_BLOCK>
+__simd_vf__ inline void WeightedAccumulate(__ubuf__ INPUT_T *vAddr, __ubuf__ float *weightAddr,
                                            __ubuf__ float *outputAddr, uint32_t validD)
 {
     RegTensor<float> vReg;
@@ -209,7 +230,7 @@ __simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
         MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        LoadInputAsFloat<INPUT_T>(vReg, vAddr + offset, validMask);
         if constexpr (FIRST_BLOCK) {
             Mul<float, MaskMergeMode::ZEROING>(outputReg, vReg, weightReg, validMask);
         } else {
@@ -221,7 +242,8 @@ __simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-__simd_vf__ inline void CopySingleBlock(__ubuf__ float *vAddr, __ubuf__ float *outputAddr, uint32_t validD)
+template <typename INPUT_T>
+__simd_vf__ inline void CopySingleBlock(__ubuf__ INPUT_T *vAddr, __ubuf__ float *outputAddr, uint32_t validD)
 {
     RegTensor<float> vReg;
     uint32_t remaining = validD;
@@ -229,7 +251,7 @@ __simd_vf__ inline void CopySingleBlock(__ubuf__ float *vAddr, __ubuf__ float *o
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
         MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        LoadInputAsFloat<INPUT_T>(vReg, vAddr + offset, validMask);
         StoreAlign<float, StoreDist::DIST_NORM>(outputAddr + offset, vReg, validMask);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();

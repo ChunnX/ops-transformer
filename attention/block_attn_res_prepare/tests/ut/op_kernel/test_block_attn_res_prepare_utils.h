@@ -49,6 +49,7 @@ struct BlockAttnResPrepareKernelTestParam {
     uint32_t numBlocks = 0U;
     uint64_t tilingKey = 0UL;
     std::vector<int32_t> tilingData;
+    bool bf16 = false;
 };
 
 struct BlockAttnResPrepareKernelCsvLoadResult {
@@ -113,6 +114,9 @@ public:
                 param.numBlocks = ParseU32(fields[index++], "numBlocks");
                 param.tilingKey = std::stoull(ops::ut::Trim(fields[index++]));
                 param.tilingData = ParseTilingData(fields[index++]);
+                if (index < fields.size() && ops::ut::Trim(fields[index]) == "BF16") {
+                    param.bf16 = true;
+                }
                 ValidateParam(param);
                 result.params.emplace_back(std::move(param));
             } catch (const std::exception &error) {
@@ -126,7 +130,8 @@ public:
     }
 
 #ifdef __CCE_KT_TEST__
-    static void TestOneParamCase950(const BlockAttnResPrepareKernelTestParam &param)
+    template <uint32_t TEMPLATE_MODE, typename InputStorageT>
+    static void TestOneParamCase950Impl(const BlockAttnResPrepareKernelTestParam &param)
     {
         ASSERT_TRUE(param.result) << "op_kernel CSV currently supports successful launch cases only";
 
@@ -138,9 +143,9 @@ public:
         std::vector<float> pseudoQueryInput(pseudoQueryElements);
         InitInputData(param, blockResInput, pseudoQueryInput);
 
-        GmBuffer blockResGm(blockResElements * sizeof(float));
+        GmBuffer blockResGm(blockResElements * sizeof(InputStorageT));
         GmBuffer validBlocksGm(sizeof(uint64_t));
-        GmBuffer pseudoQueryGm(pseudoQueryElements * sizeof(float));
+        GmBuffer pseudoQueryGm(pseudoQueryElements * sizeof(InputStorageT));
         GmBuffer numeratorGm(numeratorElements * sizeof(float));
         GmBuffer logitMaxGm(statsElements * sizeof(float));
         GmBuffer expSumGm(statsElements * sizeof(float));
@@ -154,20 +159,42 @@ public:
         ASSERT_TRUE(expSumGm.IsValid());
         ASSERT_TRUE(tilingGm.IsValid());
 
-        std::memcpy(blockResGm.Get(), blockResInput.data(), blockResElements * sizeof(float));
+        if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16) {
+            std::vector<uint16_t> blockResBf16(blockResElements);
+            std::vector<uint16_t> pseudoQueryBf16(pseudoQueryElements);
+            for (size_t index = 0UL; index < blockResElements; ++index) {
+                blockResBf16[index] = FloatToBf16(blockResInput[index]);
+            }
+            for (size_t index = 0UL; index < pseudoQueryElements; ++index) {
+                pseudoQueryBf16[index] = FloatToBf16(pseudoQueryInput[index]);
+            }
+            std::memcpy(blockResGm.Get(), blockResBf16.data(), blockResElements * sizeof(uint16_t));
+            std::memcpy(pseudoQueryGm.Get(), pseudoQueryBf16.data(), pseudoQueryElements * sizeof(uint16_t));
+        } else {
+            std::memcpy(blockResGm.Get(), blockResInput.data(), blockResElements * sizeof(float));
+            std::memcpy(pseudoQueryGm.Get(), pseudoQueryInput.data(), pseudoQueryElements * sizeof(float));
+        }
         std::memcpy(validBlocksGm.Get(), &param.validBlocks, sizeof(param.validBlocks));
-        std::memcpy(pseudoQueryGm.Get(), pseudoQueryInput.data(), pseudoQueryElements * sizeof(float));
         std::memset(numeratorGm.Get(), 0xFF, numeratorElements * sizeof(float));
         std::memset(logitMaxGm.Get(), 0xFF, statsElements * sizeof(float));
         std::memset(expSumGm.Get(), 0xFF, statsElements * sizeof(float));
         std::memcpy(tilingGm.Get(), param.tilingData.data(), param.tilingData.size() * sizeof(int32_t));
 
         const uint32_t launchBlocks = std::min(MAX_NUM_BLOCKS, param.numBlocks);
-        const auto kernelFunc = &block_attn_res_prepare<BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR>;
+        const auto kernelFunc = &block_attn_res_prepare<TEMPLATE_MODE>;
         ICPU_SET_TILING_KEY(param.tilingKey);
         ASSERT_TRUE(KERNEL_RUN_KF(kernelFunc, launchBlocks, blockResGm.Get(), validBlocksGm.Get(), pseudoQueryGm.Get(),
                                   numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(), nullptr, tilingGm.Get()))
             << "case=" << param.caseName << ", kernel CPU simulation failed";
+    }
+
+    static void TestOneParamCase950(const BlockAttnResPrepareKernelTestParam &param)
+    {
+        if (param.bf16) {
+            TestOneParamCase950Impl<BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16, uint16_t>(param);
+        } else {
+            TestOneParamCase950Impl<BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR, float>(param);
+        }
     }
 #endif
 
@@ -238,8 +265,13 @@ private:
             throw std::runtime_error("tilingData dimensions do not match the CSV case");
         }
         using BlockAttnResPrepareTilingKey::g_tilingDeclareParams;
-        if (param.tilingKey != GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR)) {
-            throw std::runtime_error("kernel UT currently supports the Vector tiling key only");
+        const uint64_t fp32VectorKey = GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR);
+        const uint64_t bf16VectorKey = GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16);
+        if (param.tilingKey != fp32VectorKey && param.tilingKey != bf16VectorKey) {
+            throw std::runtime_error("kernel UT currently supports the FP32/BF16 Vector tiling keys only");
+        }
+        if (param.bf16 != (param.tilingKey == bf16VectorKey)) {
+            throw std::runtime_error("BF16 kernel cases must use the BF16 Vector tiling key");
         }
         if (tiling.usedCoreNum == 0U || tiling.usedCoreNum > param.numBlocks || tiling.blockFactor == 0U ||
             tiling.tailBlockFactor == 0U || tiling.baseD == 0U || tiling.baseD > tiling.totalD ||
@@ -299,6 +331,14 @@ private:
             const int32_t value = static_cast<int32_t>((index * 5UL + param.seed) % 9UL) - 4;
             pseudoQuery[index] = static_cast<float>(value) * 0.125F;
         }
+    }
+
+    static uint16_t FloatToBf16(float value)
+    {
+        uint32_t bits = 0U;
+        std::memcpy(&bits, &value, sizeof(bits));
+        const uint32_t roundingBias = 0x7FFFU + ((bits >> 16U) & 1U);
+        return static_cast<uint16_t>((bits + roundingBias) >> 16U);
     }
 #endif
 };
