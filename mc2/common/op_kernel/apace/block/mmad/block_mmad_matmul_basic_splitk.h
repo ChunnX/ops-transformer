@@ -38,19 +38,6 @@
 
 #pragma once
 
-// === DEBUG (temporary): bias race 判别实验开关 ===
-// A2A_DBG_DUMP_BT    = 1 : CopyL12BT 后用 tensor API 同步 dump BT（bias 表，cube 真正读的表）。
-//                          之前用 `float*` 直读 L1 不可靠（与 MTE2 写 L1 无 barrier，可能读到 stale 0）。
-//                          注意：当前工具链 AscendC::Te::print_tensor 不可用，默认置 0。
-// A2A_DBG_LOCKMTE2_SYNC = 1 : 在 L1 bias 写(MTE2) 与 L1->BT 读(MTE1) 之间加显式 MTE2->MTE1 同步，
-//                          对照 qmm 参考实现；若结果变化则 race 被证实。
-#ifndef A2A_DBG_DUMP_BT
-#define A2A_DBG_DUMP_BT 0
-#endif
-#ifndef A2A_DBG_LOCKMTE2_SYNC
-#define A2A_DBG_LOCKMTE2_SYNC 0
-#endif
-
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "blaze/gemm/utils/buffer_manager.h"
@@ -201,10 +188,7 @@ public:
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
-            // BT（bias 表）槽跟随 L0C ping-pong 槽，而非 abL1LoopCnt_：
-            // L0C ping-pong 使两个 tile 的 mmad 可流水重叠，BT 必须各自独立，
-            // 否则并发 tile 会覆盖/读到同一 BT 槽的垃圾（-65504）。
-            uint64_t btBufId = l0cPingPong_ & 0x1;
+            uint64_t btBufId = abL1LoopCnt_ & 0x1;
 
             const auto &aL1Slot = bufMgr_.GetL1ASlot(l1BufId);
             const auto &bL1Slot = bufMgr_.GetL1BSlot(l1BufId);
@@ -224,13 +208,12 @@ public:
             for (uint64_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 uint64_t curK0 = (iter1 + 1 == kL0Iter) ? (curKL1 - iter1 * baseK_) : baseK_;
                 const auto &l0Slot = bufMgr_.GetL0Slot(l0PingPong_ & 0x1);
-                dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
 
                 // A L1->L0
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
                 bool needBias = NeedProcessBias(iter0, iter1, isFirstSplitK);
                 auto l0TensorTuple = CopyL0FromL1(tensorAL1, tensorBL1, tensorBiasL1, l0Shape, l0Slot, baseK_ * iter1,
-                                                  needBias, l1Slots, btSlot, btBufId);
+                                                  needBias, l1Slots, btSlot);
                 auto tensorAL0 = AscendC::Te::Get<0>(l0TensorTuple);
                 auto tensorBL0 = AscendC::Te::Get<1>(l0TensorTuple);
                 auto tensorBiasL0 = AscendC::Te::Get<2>(l0TensorTuple);
@@ -329,12 +312,6 @@ private:
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
         }
-#if A2A_DBG_LOCKMTE2_SYNC
-        // 判别实验：MTE2(GM->L1 bias 写) 完成后显式标记，供 L1->BT 读侧等待
-        if (isBias_ && kIdx == 0 && isFirstSplitK) {
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(biasL1Slot.Id());
-        }
-#endif
 
         // Scale GM->L1 (int8 output fixpipe quantization)
         if (kIdx == 0) {
@@ -409,7 +386,7 @@ private:
     __aicore__ inline auto CopyL0FromL1(const TensorA &tensorAL1, const TensorB &tensorBL1,
                                         const TensorBias &tensorBiasL1, const TripleShape &l0Shape,
                                         const BufferSlot &l0Slot, uint64_t kIdx, bool needBias,
-                                        const SlotsTuple &slotsTuple, const BufferSlot &btSlot, uint64_t btBufId)
+                                        const SlotsTuple &slotsTuple, const BufferSlot &btSlot)
     {
         auto curM0 = AscendC::Te::Get<MNK_M>(l0Shape);
         auto curN0 = AscendC::Te::Get<MNK_N>(l0Shape);
@@ -449,32 +426,10 @@ private:
         auto tensorBiasL0 = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::BIAS, float>(btSlot.Addr()), layoutBiasL0);
         if (needBias) {
-#if A2A_DBG_LOCKMTE2_SYNC
-            // 判别实验：等待 MTE2(GM->L1 bias 写) 完成，再执行 L1->BT 读
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(biasL1Slot.Id());
-#endif
             auto biasLock = biasL1Slot.LockMte1();
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
-            // === DEBUG (temporary): bias race 判别实验 ===
-            // 陷阱：核心普通 load 读 L1 与 MTE2 写 L1 之间无 barrier 时不保证一致，
-            //       直接 `float*` 读 L1 得到 0 可能是 stale 假象，不能直接证明 race。
-            // 判别法1（dump BT）：用 tensor API print_tensor 同步读 cube 真正读的 bias 表（BT），
-            //                     走 debug bus，反映 mmad 实际拿到的 bias。
-            // 判别法2（LockMte2 sync）：在 L1 bias 写 与 L1->BT 读 之间加显式同步。
-            if (dbgBiasDumpCnt_ < 8) {
-                dbgBiasDumpCnt_++;
-                printf("[DBG] bias: abL1=%u btBufId=%u l0cPP=%u enPP=%u btAddr=%u nl1Align=%u curN0=%u splitKIdx=%u\n",
-                       static_cast<uint32_t>(abL1LoopCnt_), static_cast<uint32_t>(btBufId),
-                       static_cast<uint32_t>(l0cPingPong_), static_cast<uint32_t>(enableL0cPingPong_),
-                       static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
-                       static_cast<uint32_t>(curN0), static_cast<uint32_t>(dbgSplitKIdx_));
-#if A2A_DBG_DUMP_BT
-                AscendC::Te::print_tensor(tensorBiasL0, true);
-#endif
-            }
-            // === DEBUG end ===
         }
 
         return AscendC::Std::make_tuple(tensorAL0, tensorBL0, tensorBiasL0);
@@ -524,8 +479,6 @@ private:
     uint64_t baseM_{16};
     uint64_t baseN_{16};
     uint64_t baseK_{16};
-    uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
-    uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
