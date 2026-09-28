@@ -15,8 +15,6 @@
 #ifndef ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_TILING_H
 #define ALLTO_ALLV_QUANT_GROUPED_MAT_MUL_TILING_H
 
-#include <cstdint>
-#include "kernel_tiling/kernel_tiling.h"
 #include "mc2_templates/common/a2av_common_tiling.h"
 
 #pragma pack(push, 8)
