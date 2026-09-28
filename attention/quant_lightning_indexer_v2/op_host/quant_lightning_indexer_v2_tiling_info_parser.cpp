@@ -151,6 +151,9 @@ void PopulateTilingInfo(const lightning_indexer_v2_checker::LightningIndexerV2Ch
     tilingInfo.n2Size = static_cast<uint32_t>(info.kHeads);
     tilingInfo.s1Size =
         info.layoutQ == lightning_indexer_v2_checker::CheckerLayout::BSND ? static_cast<uint32_t>(info.qSeq) : 0U;
+    if (info.layoutQ == lightning_indexer_v2_checker::CheckerLayout::TND) {
+        tilingInfo.totalQueryTokens = static_cast<uint32_t>(info.query.GetShape()->GetDim(DIM_IDX_ZERO));
+    }
     tilingInfo.s2Size = info.kSeq;
     tilingInfo.qkHeadDim = static_cast<uint32_t>(info.headDim);
     tilingInfo.gSize = info.kHeads == 0 ? 0U : static_cast<uint32_t>(info.qHeads / info.kHeads);
@@ -167,6 +170,8 @@ void PopulateTilingInfo(const lightning_indexer_v2_checker::LightningIndexerV2Ch
     tilingInfo.sparseCount = static_cast<uint32_t>(info.topk);
     tilingInfo.cmpRatio = static_cast<uint32_t>(info.cmpRatio);
     tilingInfo.returnValue = info.returnValue != 0;
+    const gert::Shape *outputIdxOffsetShape = info.outputIdxOffset.GetShape();
+    tilingInfo.hasOutputIdxOffset = outputIdxOffsetShape != nullptr && outputIdxOffsetShape->GetDimNum() != 0U;
     tilingInfo.maxSeqlenQ = static_cast<int32_t>(info.maxSeqlenQ);
     SetDataLayouts(info, tilingInfo);
     PopulateStrideInfo(info, tilingInfo);

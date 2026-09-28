@@ -38,11 +38,11 @@ bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
-    bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
-                         GetAttrValue(ctx, "head_dim", headDim_) && GetAttrValue(ctx, "topk", topk_);
+    bool requiredAttrs =
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) && GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
+        GetAttrValue(ctx, "soc_version", socVersion_) && GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
+        GetAttrValue(ctx, "num_heads_k", numHeadsK_) && GetAttrValue(ctx, "head_dim", headDim_) &&
+        GetAttrValue(ctx, "topk", topk_) && GetAttrValue(ctx, "quant_mode", quantMode_);
     if (!requiredAttrs) {
         return false;
     }
@@ -229,6 +229,20 @@ ValidSocVersion QuantLightningIndexerV2MetadataCpuKernel::ProcessSocVersion()
     }
 }
 
+bool QuantLightningIndexerV2MetadataCpuKernel::SupportsS1Base8() const
+{
+    if (layoutQ_ != "TND" || layoutK_ != "PA_BBND" || batchSize_ <= 0 ||
+        batchSize_ > static_cast<int32_t>(BASE8_MAX_BATCH) || groupSize_ == 0U ||
+        groupSize_ > BASE8_MAX_GROUP || topk_ <= 0 || topk_ > static_cast<int32_t>(TOPK_2K) ||
+        (maskMode_ != 0 && maskMode_ != 3) || cmpRatio_ != 1 ||
+        (quantMode_ != 1 && quantMode_ != 2 && quantMode_ != 4) || cuSeqlensQ_ == nullptr ||
+        cuSeqlensQ_->GetData() == nullptr) {
+        return false;
+    }
+    const int32_t *cuSeqlensQPtr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
+    return cuSeqlensQPtr[batchSize_] - cuSeqlensQPtr[0] >= static_cast<int32_t>(BASE8_MIN_TOTAL_Q);
+}
+
 bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
@@ -249,6 +263,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (static_cast<uint32_t>(topk_) > TOPK_6K) {
             s1BaseSize_ = S1_BASE_SIZE_SMALL;
+        } else if (SupportsS1Base8()) {
+            s1BaseSize_ = S1_BASE_SIZE_LARGE;
         }
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
