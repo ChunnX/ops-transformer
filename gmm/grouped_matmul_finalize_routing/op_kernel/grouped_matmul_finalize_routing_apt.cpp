@@ -13,7 +13,7 @@
  * \brief
  */
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
 #include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
@@ -23,7 +23,8 @@
 #endif
 
 #if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && defined(DT_FLOAT8_E4M3FN) && defined(DT_FLOAT4_E2M1)
-#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310 && \
+    (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
 #define V310_GMM_FR_ANTI_QUANT
 #endif
 #endif
@@ -42,6 +43,20 @@
 #endif
 #endif
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201) && defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && \
+    defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E4M3FN) && defined(DT_FLOAT4_E2M1) && \
+    defined(DT_HIFLOAT4) && defined(DT_FLOAT8_E8M0) && defined(DT_HIFLOAT4_SCALE)
+#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && \
+    (ORIG_DTYPE_W == DT_FLOAT4_E2M1 || ORIG_DTYPE_W == DT_HIFLOAT4) && \
+    (ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0 || ORIG_DTYPE_SCALE == DT_HIFLOAT4_SCALE)
+#define V9201_GMM_FINALIZE_ROUTING_WEIGHT_QUANT
+#endif
+#if (ORIG_DTYPE_X == DT_HIFLOAT4) && (ORIG_DTYPE_W == DT_HIFLOAT4) && \
+    (ORIG_DTYPE_SCALE == DT_HIFLOAT4_SCALE)
+#define V9201_GMM_FINALIZE_ROUTING_HIF4
+#endif
+#endif
+
 #if defined(GMM_FR_BF16_OUTPUT)
 #if defined(GMM_FR_FULL_MX)
 #include "lib/matmul_intf.h"
@@ -54,6 +69,8 @@
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_data.h"
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_key.h"
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_resplit_controller.h"
+#elif defined(V9201_GMM_FINALIZE_ROUTING_WEIGHT_QUANT) || defined(V9201_GMM_FINALIZE_ROUTING_HIF4)
+#include "arch35/grouped_matmul_finalize_routing_mx_basic_api.h"
 #else
 // Full Quantization scenario (全量化场景)
 #include "lib/matmul_intf.h"
@@ -154,6 +171,24 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     controller.Init(x, w, scale, bias, group_list, pertoken_scale, logit, row_index, y, share_input, tiling);
     controller.Process();
 #endif
+#elif defined(V9201_GMM_FINALIZE_ROUTING_WEIGHT_QUANT)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_basic_api<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    }
+#elif defined(V9201_GMM_FINALIZE_ROUTING_HIF4)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_basic_api<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_basic_api<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    }
 #elif defined(GMM_FR_BF16_OUTPUT)
 #if defined(GMM_FR_FULL_MX)
     AscendC::TPipe pipe;
