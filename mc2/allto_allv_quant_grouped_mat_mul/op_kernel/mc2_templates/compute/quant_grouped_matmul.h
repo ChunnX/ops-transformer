@@ -218,56 +218,47 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
             }
         }
         uint64_t batchBaseOffset = expertTokenOffset_ * h1_ / PACK_FACTOR;
-        uint64_t currentBatchRankSize[MAX_EP_RANK_SIZE] = {0};
+        // 单数组建表: table[e*ep+r] = batchBase + Σ_{i<r} rankSize(i) + Σ_{e'<e} cnt(e',r)*stride
+        uint64_t rankBatchSize[MAX_EP_RANK_SIZE] = {0};
         for (uint32_t r = 0; r < epWorldSize_; r++) {
             for (uint32_t e = 0; e < expertNum; e++) {
                 uint32_t absExpertIdx = startExpertIdx + e;
-                currentBatchRankSize[r] +=
+                rankBatchSize[r] +=
                     static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
             }
         }
-        uint64_t rankStartBase[MAX_EP_RANK_SIZE] = {0};
-        rankStartBase[0] = batchBaseOffset;
-        for (uint32_t r = 1; r < epWorldSize_; r++) {
-            rankStartBase[r] = rankStartBase[r - 1] + currentBatchRankSize[r - 1];
-        }
+        uint64_t runningBase = batchBaseOffset;
         for (uint32_t r = 0; r < epWorldSize_; r++) {
-            uint64_t aRunningElemOffset = rankStartBase[r];
+            uint64_t groupBase = runningBase;
             for (uint32_t e = 0; e < expertNum; e++) {
                 uint32_t absExpertIdx = startExpertIdx + e;
-                uint32_t groupIdx = e * epWorldSize_ + r;
-                aGroupOffsetTable[groupIdx] = aRunningElemOffset;
-                aRunningElemOffset +=
-                    static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
+                aGroupOffsetTable[e * epWorldSize_ + r] = groupBase;
+                groupBase += static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
             }
+            runningBase += rankBatchSize[r];
         }
         if constexpr (MX_QUANT_MODE) {
             __gm__ uint64_t *xScaleOffsetTable = reinterpret_cast<__gm__ uint64_t *>(xScaleGroupOffsetTableGm_);
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
                               Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
             uint64_t batchScaleBaseOffset = expertTokenOffset_ * scaleK;
-            // data块(aGroupOffsetTable)已构建完成，currentBatchRankSize/rankStartBase无后续引用，
-            // scale块完整重算覆写以复用数组，压缩kernel栈占用
             for (uint32_t r = 0; r < epWorldSize_; r++) {
-                currentBatchRankSize[r] = 0UL;
+                rankBatchSize[r] = 0UL;
                 for (uint32_t e = 0; e < expertNum; e++) {
                     uint32_t absExpertIdx = startExpertIdx + e;
-                    currentBatchRankSize[r] +=
+                    rankBatchSize[r] +=
                         static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
                 }
             }
-            rankStartBase[0] = batchScaleBaseOffset;
-            for (uint32_t r = 1; r < epWorldSize_; r++) {
-                rankStartBase[r] = rankStartBase[r - 1] + currentBatchRankSize[r - 1];
-            }
+            runningBase = batchScaleBaseOffset;
             for (uint32_t r = 0; r < epWorldSize_; r++) {
-                uint64_t scaleRunningOffset = rankStartBase[r];
+                uint64_t groupBase = runningBase;
                 for (uint32_t e = 0; e < expertNum; e++) {
                     uint32_t absExpertIdx = startExpertIdx + e;
-                    uint32_t groupIdx = e * epWorldSize_ + r;
-                    xScaleOffsetTable[groupIdx] = scaleRunningOffset;
-                    scaleRunningOffset += static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
+                    xScaleOffsetTable[e * epWorldSize_ + r] = groupBase;
+                    groupBase += static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
                 }
+                runningBase += rankBatchSize[r];
             }
         }
     } else if (!isLocal) {
