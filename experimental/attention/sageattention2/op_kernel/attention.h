@@ -53,9 +53,20 @@ public:
             SetFlag<HardEvent::FIX_M>(PV_EVENT);
         }
         uint32_t tiles = (p.sq + M - 1) / M;
-        const uint64_t taskEnd = DieTaskEnd(p, uint64_t(p.b) * p.hq * tiles, core);
-        for (uint64_t task = core; task < taskEnd; task += p.cores) {
-            const uint64_t mapped = UseDieGroups(p) ? DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores) : task;
+        const uint64_t totalTasks = uint64_t(p.b) * p.hq * tiles;
+        const uint64_t taskEnd = DieTaskEnd(p, totalTasks, core);
+        uint32_t ordinal = 0;
+        for (uint64_t task = core; task < taskEnd; task += p.cores, ++ordinal) {
+            uint64_t scheduledTask = task;
+            if constexpr (CAUSAL) {
+                const uint64_t waveBase = (task / p.cores) * p.cores;
+                const uint32_t coreInWave = static_cast<uint32_t>(task - waveBase);
+                const uint32_t tasksInWave = static_cast<uint32_t>(
+                    (totalTasks - waveBase < p.cores) ? (totalTasks - waveBase) : p.cores);
+                const uint32_t snakeSlot = (ordinal & 1) ? (tasksInWave - 1 - coreInWave) : coreInWave;
+                scheduledTask = waveBase + snakeSlot;
+            }
+            const uint64_t mapped = UseDieGroups(p) ? DieTask(scheduledTask, totalTasks, p.cores) : scheduledTask;
             uint32_t tile = mapped % tiles, h = (mapped / tiles) % p.hq, b = mapped / tiles / p.hq, kh = CalcKh(h, p.hq, p.hk);
             uint32_t qstart = tile * M;
             uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;
