@@ -43,13 +43,17 @@ private:
     AttentionWorkerCombineTilingData tilingData_;
 };
 
+constexpr int64_t SCHEDULE_CONTEXT_INDEX = 0;
 constexpr int64_t EXPERT_SCALES_INDEX = 1;
+constexpr int64_t LAYER_ID_INDEX = 2;
 constexpr int64_t SHAPE_IDX_BS = 0;
 constexpr int64_t SHAPE_IDX_K = 1;
 constexpr int64_t HIDDEN_SIZE_INDEX = 0;
 constexpr int64_t TOKEN_DTYPE_INDEX = 1;
 constexpr int64_t NEED_SCHEDULE_INDEX = 2;
 constexpr int64_t DIM_SIZE = 2;
+constexpr size_t SCHEDULE_CONTEXT_RANK = 1U;
+constexpr size_t LAYER_ID_RANK = 1U;
 constexpr int64_t H_ALIGN_SIZE = 512;
 constexpr int64_t K_UPPER_BOUND = 64;
 
@@ -97,6 +101,16 @@ ge::graphStatus AttentionWorkerCombineTiling::DoGetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."),
                 return ge::GRAPH_FAILED);
+
+    const gert::StorageShape *scheduleContextShapePtr = context_->GetInputShape(SCHEDULE_CONTEXT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, scheduleContextShapePtr);
+    OP_CHECK_IF(scheduleContextShapePtr->GetStorageShape().GetDimNum() != SCHEDULE_CONTEXT_RANK,
+                OP_LOGE(context_->GetNodeName(), "schedule_context must be a 1D tensor."), return ge::GRAPH_FAILED);
+
+    const gert::StorageShape *layerIdShapePtr = context_->GetInputShape(LAYER_ID_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, layerIdShapePtr);
+    OP_CHECK_IF(layerIdShapePtr->GetStorageShape().GetDimNum() != LAYER_ID_RANK,
+                OP_LOGE(context_->GetNodeName(), "layer_id must be a 1D tensor."), return ge::GRAPH_FAILED);
 
     auto expertScalesShapeTuple = GetShapeTuple(context_, EXPERT_SCALES_INDEX);
     int64_t batchSize = std::get<SHAPE_IDX_BS>(expertScalesShapeTuple);
