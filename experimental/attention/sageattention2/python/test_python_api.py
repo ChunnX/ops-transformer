@@ -84,10 +84,56 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
                         self.assertFalse(torch.isnan(out_asc).any())
 
     # -------------------------------------------------------------------------
-    # TC-03: 非连续跨步与 Stride 适应 (Non-contiguous strides with stride(-1)==1)
+    # TC-02: 量化粒度与累加精度组合 (per_thread/per_warp x fp32/fp32+fp32/fp32+fp16)
     # -------------------------------------------------------------------------
-    def test_tc03_non_contiguous_and_strides(self):
-        """TC-03: Verify handling of non-contiguous input tensors with stride(-1)==1."""
+    def test_tc02_quant_gran_and_accum_dtypes(self):
+        """TC-02: Verify per_thread/per_warp x fp32/fp32+fp32/fp32+fp16 combinations."""
+        b, h, s, d = 1, 4, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+        for gran in ("per_thread", "per_warp"):
+            for accum in ("fp32+fp16", "fp32+fp32", "fp32"):
+                with self.subTest(gran=gran, accum=accum):
+                    out = sageattn_qk_int8_pv_fp8_asc(
+                        q, k, v, qk_quant_gran=gran, pv_accum_dtype=accum
+                    )
+                    self.assertEqual(out.shape, (b, h, s, d))
+                    self.assertEqual(out.dtype, torch.float16)
+                    self.assertFalse(torch.isnan(out).any())
+
+    # -------------------------------------------------------------------------
+    # TC-03: smooth_k / smooth_v 开关与 warning 行为
+    # -------------------------------------------------------------------------
+    def test_tc03_smooth_k_and_smooth_v_behavior(self):
+        """TC-03: Verify smooth_k toggle and smooth_v warning/ignore behavior."""
+        b, h, s, d = 1, 4, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+
+        # smooth_k=True vs smooth_k=False
+        out_smooth = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=True)
+        out_no_smooth = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_k=False)
+        self.assertEqual(out_smooth.shape, (b, h, s, d))
+        self.assertEqual(out_no_smooth.shape, (b, h, s, d))
+
+        # smooth_v=True on fp32+fp16 issues warning and succeeds
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            out_v16 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32+fp16")
+            self.assertEqual(out_v16.shape, (b, h, s, d))
+            self.assertTrue(any("smooth_v is not supported" in str(item.message) for item in w))
+
+        # smooth_v=True on fp32 succeeds
+        out_v32 = sageattn_qk_int8_pv_fp8_asc(q, k, v, smooth_v=True, pv_accum_dtype="fp32")
+        self.assertEqual(out_v32.shape, (b, h, s, d))
+
+    # -------------------------------------------------------------------------
+    # 非连续跨步与 Stride 适应 (Non-contiguous strides with stride(-1)==1)
+    # -------------------------------------------------------------------------
+    def test_non_contiguous_and_strides(self):
+        """Verify handling of non-contiguous input tensors with stride(-1)==1."""
         # 1. Sliced sequence dimension (stride(-1)==1 preserved, but non-contiguous overall)
         q_raw = torch.randn(2, 4, 128, 64, dtype=torch.float16)
         k_raw = torch.randn(2, 4, 128, 64, dtype=torch.float16)
@@ -211,6 +257,49 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
             sageattn(q144, q144, q144)
 
     # -------------------------------------------------------------------------
+    # TC-06: GQA + 异构序列长度 (GQA Hq % Hk == 0, Sq != Sk)
+    # -------------------------------------------------------------------------
+    def test_tc06_gqa_and_asymmetric_sequence_lengths(self):
+        """TC-06: Verify GQA (Hq % Hk == 0) with asymmetric sequence lengths (Sq != Sk)."""
+        b, hq, hk, sq, sk, d = 2, 8, 2, 32, 96, 64
+        q = torch.randn(b, hq, sq, d, dtype=torch.float16)
+        k = torch.randn(b, hk, sk, d, dtype=torch.float16)
+        v = torch.randn(b, hk, sk, d, dtype=torch.float16)
+
+        # Non-causal allows Sq != Sk
+        out_hnd = sageattn(q, k, v, tensor_layout="HND", is_causal=False)
+        self.assertEqual(out_hnd.shape, (b, hq, sq, d))
+
+        q_nhd = q.transpose(1, 2).contiguous()
+        k_nhd = k.transpose(1, 2).contiguous()
+        v_nhd = v.transpose(1, 2).contiguous()
+        out_nhd = sageattn(q_nhd, k_nhd, v_nhd, tensor_layout="NHD", is_causal=False)
+        self.assertEqual(out_nhd.shape, (b, sq, hq, d))
+
+    # -------------------------------------------------------------------------
+    # TC-07: 因果注意力掩码特性 (Causal Attention Masking)
+    # -------------------------------------------------------------------------
+    def test_tc07_causal_attention(self):
+        """TC-07: Verify causal attention masking (future key positions masked)."""
+        b, h, s, d = 1, 2, 64, 64
+        q = torch.randn(b, h, s, d, dtype=torch.float16)
+        k = torch.randn(b, h, s, d, dtype=torch.float16)
+        v = torch.randn(b, h, s, d, dtype=torch.float16)
+
+        out_causal = sageattn(q, k, v, is_causal=True)
+        self.assertEqual(out_causal.shape, (b, h, s, d))
+        self.assertFalse(torch.isnan(out_causal).any())
+
+        # Modify future tokens of k and v, output at pos 0 must remain identical
+        k_modified = k.clone()
+        v_modified = v.clone()
+        k_modified[:, :, 1:, :] = torch.randn_like(k_modified[:, :, 1:, :])
+        v_modified[:, :, 1:, :] = torch.randn_like(v_modified[:, :, 1:, :])
+        out_modified = sageattn(q, k_modified, v_modified, is_causal=True)
+        diff = (out_causal[:, :, 0, :] - out_modified[:, :, 0, :]).abs().max()
+        self.assertLess(diff.item(), 0.05)
+
+    # -------------------------------------------------------------------------
     # TC-08: 严格异常拦截机制 (Input validation & 4-tier exception checks)
     # -------------------------------------------------------------------------
     def test_tc08_strict_exception_interception(self):
@@ -275,6 +364,24 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
                 q, k, v, smooth_v=True, pv_accum_dtype="fp32+fp16"
             )
             self.assertTrue(any("smooth_v is not supported" in str(item.message) for item in w))
+
+    # -------------------------------------------------------------------------
+    # TC-09: 长序列处理 (S >= 4096 / S >= 8192)
+    # -------------------------------------------------------------------------
+    def test_tc09_long_sequence_handling(self):
+        """TC-09: Verify long sequence execution (S=4096 / S=8192)."""
+        is_npu = hasattr(torch, "npu") and torch.npu.is_available()
+        device = "npu" if is_npu else "cpu"
+        seq_lens = [4096, 8192] if is_npu else [512, 1024]
+        heads = 4 if is_npu else 2
+        for s in seq_lens:
+            with self.subTest(seq_len=s):
+                q = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
+                k = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
+                v = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
+                out = sageattn(q, k, v, tensor_layout="HND")
+                self.assertEqual(out.shape, (1, heads, s, 64))
+                self.assertFalse(torch.isnan(out).any())
 
     # -------------------------------------------------------------------------
     # TC-10: 官方接口无缝平替冒烟 (torch.nn.functional.scaled_dot_product_attention)
