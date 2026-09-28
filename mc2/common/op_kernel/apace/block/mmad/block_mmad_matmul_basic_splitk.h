@@ -38,6 +38,18 @@
 
 #pragma once
 
+// === DEBUG (temporary): bias race 判别实验开关 ===
+// A2A_DBG_DUMP_BT    = 1 : CopyL12BT 后用 tensor API 同步 dump BT（bias 表，cube 真正读的表）。
+//                          之前用 `float*` 直读 L1 不可靠（与 MTE2 写 L1 无 barrier，可能读到 stale 0）。
+// A2A_DBG_LOCKMTE2_SYNC = 1 : 在 L1 bias 写(MTE2) 与 L1->BT 读(MTE1) 之间加显式 MTE2->MTE1 同步，
+//                          对照 qmm 参考实现；若结果变化则 race 被证实。
+#ifndef A2A_DBG_DUMP_BT
+#define A2A_DBG_DUMP_BT 1
+#endif
+#ifndef A2A_DBG_LOCKMTE2_SYNC
+#define A2A_DBG_LOCKMTE2_SYNC 0
+#endif
+
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "blaze/gemm/utils/buffer_manager.h"
@@ -139,7 +151,9 @@ public:
         l0cPingPong_ = 0;
         uint64_t aL1OneSize = mL1_ * kL1_ * sizeof(AType);
         uint64_t bL1OneSize = nL1_ * kL1_ * sizeof(BType);
+        // 把L1分成QUADRUPLE_BUFFER_COUNT个等大的slot
         constexpr uint64_t slotSize = AscendC::TOTAL_L1_SIZE / QUADRUPLE_BUFFER_COUNT;
+        // 每个stage占几个slot
         uint64_t stride = QUADRUPLE_BUFFER_COUNT / l1Stages_;
         // 2buffer时：|APing,BPing,BiasPing------|APong,BPong,BiasPong---|
         // 4buffer时：|A0,B0,Bias0 |A1,B1,Bias1 |A2,B2,Bias2 |A3,B3,Bias3 |
@@ -310,6 +324,12 @@ private:
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
         }
+#if A2A_DBG_LOCKMTE2_SYNC
+        // 判别实验：MTE2(GM->L1 bias 写) 完成后显式标记，供 L1->BT 读侧等待
+        if (isBias_ && kIdx == 0 && isFirstSplitK) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(biasL1Slot.Id());
+        }
+#endif
 
         // Scale GM->L1 (int8 output fixpipe quantization)
         if (kIdx == 0) {
@@ -424,21 +444,28 @@ private:
         auto tensorBiasL0 = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::BIAS, float>(btSlot.Addr()), layoutBiasL0);
         if (needBias) {
+#if A2A_DBG_LOCKMTE2_SYNC
+            // 判别实验：等待 MTE2(GM->L1 bias 写) 完成，再执行 L1->BT 读
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(biasL1Slot.Id());
+#endif
             auto biasLock = biasL1Slot.LockMte1();
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
-            // === DEBUG (temporary): dump bias L1 content (L1 本地内存可安全读) ===
+            // === DEBUG (temporary): bias race 判别实验 ===
+            // 陷阱：核心普通 load 读 L1 与 MTE2 写 L1 之间无 barrier 时不保证一致，
+            //       直接 `float*` 读 L1 得到 0 可能是 stale 假象，不能直接证明 race。
+            // 判别法1（dump BT）：用 tensor API print_tensor 同步读 cube 真正读的 bias 表（BT），
+            //                     走 debug bus，反映 mmad 实际拿到的 bias。
+            // 判别法2（LockMte2 sync）：在 L1 bias 写 与 L1->BT 读 之间加显式同步。
             if (dbgBiasDumpCnt_ < 4) {
                 dbgBiasDumpCnt_++;
                 printf("[DBG] bias: btAddr=%u nl1Align=%u curN0=%u\n",
                        static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
                        static_cast<uint32_t>(curN0));
-                float *l1Dbg = reinterpret_cast<float *>(biasL1Slot.Addr());
-                uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
-                for (uint64_t d = 0; d < dumpN; ++d) {
-                    printf("[DBG] bias l1[%u]=%f\n", static_cast<uint32_t>(d), static_cast<float>(l1Dbg[d]));
-                }
+#if A2A_DBG_DUMP_BT
+                AscendC::Te::print_tensor(tensorBiasL0, true);
+#endif
             }
             // === DEBUG end ===
         }
