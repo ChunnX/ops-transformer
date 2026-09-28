@@ -20,21 +20,42 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     auto mask = CreateMask<float, MaskPattern::ALL>();
     for (uint32_t col = 0; col < DP; col += 64) {
-        RegTensor<float> acc, x;
-        LoadAlign(acc, state + col);
-        for (uint32_t row = 0; row < count; ++row) {
+        RegTensor<float> acc0, acc1;
+        LoadAlign(acc0, state + col);
+        Duplicate(acc1, 0.0f);
+        uint32_t row = 0;
+        for (; row + 1 < count; row += 2) {
+            RegTensor<float> x0, x1;
             if constexpr (AscendC::IsSameType<T, float>::value) {
-                LoadAlign(x, rows + row * DP + col);
+                LoadAlign(x0, rows + row * DP + col);
+                LoadAlign(x1, rows + (row + 1) * DP + col);
             } else {
-                RegTensor<T> raw;
+                RegTensor<T> raw0, raw1;
                 static constexpr CastTrait cast{
                     RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, rows + row * DP + col);
-                Cast<float, T, cast>(x, raw, mask);
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + row * DP + col);
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
+                Cast<float, T, cast>(x0, raw0, mask);
+                Cast<float, T, cast>(x1, raw1, mask);
             }
-            Add(acc, acc, x, mask);
+            Add(acc0, acc0, x0, mask);
+            Add(acc1, acc1, x1, mask);
         }
-        StoreAlign(state + col, acc, mask);
+        if (row < count) {
+            RegTensor<float> x_tail;
+            if constexpr (AscendC::IsSameType<T, float>::value) {
+                LoadAlign(x_tail, rows + row * DP + col);
+            } else {
+                RegTensor<T> raw_tail;
+                static constexpr CastTrait cast{
+                    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw_tail, rows + row * DP + col);
+                Cast<float, T, cast>(x_tail, raw_tail, mask);
+            }
+            Add(acc0, acc0, x_tail, mask);
+        }
+        Add(acc0, acc0, acc1, mask);
+        StoreAlign(state + col, acc0, mask);
     }
 }
 template <class T>

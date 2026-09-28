@@ -68,15 +68,22 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     StoreAlign(inverseScales, inverse, full);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t row = 0; row < 64; ++row) {
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m, inverseScales + row);
+    for (uint16_t row = 0; row < 64; row += 2) {
+        RegTensor<float> m0, m1;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(m0, inverseScales + row);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(m1, inverseScales + row + 1);
 #pragma unroll
         for (uint16_t col = 0; col < DP; col += 64) {
-            RegTensor<int32_t> packed;
-            LoadAlign(a, x + row * DP + col);
-            Mul(a, a, m, full);
-            Cast<int32_t, float, trait>(packed, a, full);
-            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + col, (RegTensor<int8_t> &)packed, full);
+            RegTensor<float> a0, a1;
+            RegTensor<int32_t> packed0, packed1;
+            LoadAlign(a0, x + row * DP + col);
+            LoadAlign(a1, x + (row + 1) * DP + col);
+            Mul(a0, a0, m0, full);
+            Mul(a1, a1, m1, full);
+            Cast<int32_t, float, trait>(packed0, a0, full);
+            Cast<int32_t, float, trait>(packed1, a1, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + col, (RegTensor<int8_t> &)packed0, full);
+            StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + (row + 1) * DP + col, (RegTensor<int8_t> &)packed1, full);
         }
     }
     PackFixedScaleBlock(scales, halfScales, factor, valid);

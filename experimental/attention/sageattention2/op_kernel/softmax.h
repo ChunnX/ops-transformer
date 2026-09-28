@@ -31,33 +31,38 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
     LoadAlign(kh1, khalf + 128);
     Duplicate(negative, half(-__builtin_inff()));
     for (uint16_t row = 0; row < ROWS; ++row) {
-        RegTensor<half> qh, x, coeff, rowMax, m;
+        RegTensor<half> qh, rowMax, m;
         LoadAlign<half, LoadDist::DIST_BRC_B16>(qh, qhalf + row);
 
-#pragma unroll
-        for (uint16_t col = 0; col < COLS; col += 128) {
-            LoadAlign(x, scores + row * COLS + col);
-            if (col == 0)
-                Mul(coeff, qh, kh0, h);
-            else
-                Mul(coeff, qh, kh1, h);
-            Mul(x, x, coeff, h);
-            if constexpr (!FULL) {
-                uint32_t at = start + col, pos = qstart + row, valid = at < sk ? Min(uint32_t(128), sk - at) : 0;
-                if (causal)
-                    valid = Min(valid, pos >= at ? pos - at + 1 : 0);
-                if (pos >= sq)
-                    valid = 0;
-                auto mask = UpdateMask<half>(valid);
-                Select(x, x, negative, mask);
-            }
-            StoreAlign(scores + row * COLS + col, x, h);
-            // Seed from the first fragment; oldMax still protects fully masked rows.
-            if (col == 0)
-                rowMax = x;
-            else
-                Max(rowMax, rowMax, x, h);
+        RegTensor<half> x0, x1, coeff0, coeff1;
+        LoadAlign(x0, scores + row * COLS + 0);
+        Mul(coeff0, qh, kh0, h);
+        Mul(x0, x0, coeff0, h);
+        if constexpr (!FULL) {
+            uint32_t at0 = start + 0, pos = qstart + row, valid0 = at0 < sk ? Min(uint32_t(128), sk - at0) : 0;
+            if (causal)
+                valid0 = Min(valid0, pos >= at0 ? pos - at0 + 1 : 0);
+            if (pos >= sq)
+                valid0 = 0;
+            auto mask0 = UpdateMask<half>(valid0);
+            Select(x0, x0, negative, mask0);
         }
+        StoreAlign(scores + row * COLS + 0, x0, h);
+
+        LoadAlign(x1, scores + row * COLS + 128);
+        Mul(coeff1, qh, kh1, h);
+        Mul(x1, x1, coeff1, h);
+        if constexpr (!FULL) {
+            uint32_t at1 = start + 128, pos = qstart + row, valid1 = at1 < sk ? Min(uint32_t(128), sk - at1) : 0;
+            if (causal)
+                valid1 = Min(valid1, pos >= at1 ? pos - at1 + 1 : 0);
+            if (pos >= sq)
+                valid1 = 0;
+            auto mask1 = UpdateMask<half>(valid1);
+            Select(x1, x1, negative, mask1);
+        }
+        StoreAlign(scores + row * COLS + 128, x1, h);
+        Max(rowMax, x0, x1, h);
         ReduceMax(m, rowMax, h);
         StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m, maxStore, 1);
     }

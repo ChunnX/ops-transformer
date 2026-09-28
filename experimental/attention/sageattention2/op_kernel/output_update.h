@@ -55,17 +55,26 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
         MulDstAdd(den, ratio, sum, f);
         StoreAlign(denom, den, f);
     }
-    for (uint16_t row = 0; row < 64; ++row) {
-        RegTensor<float> ratio, x0, y0, x1, y1;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
-        LoadAlign(x0, accum + row * DP);
-        LoadAlign(y0, partial + row * DP);
-        LoadAlign(x1, accum + row * DP + 64);
-        LoadAlign(y1, partial + row * DP + 64);
-        MulDstAdd(x0, ratio, y0, f);
-        MulDstAdd(x1, ratio, y1, f);
-        StoreAlign(accum + row * DP, x0, f);
-        StoreAlign(accum + row * DP + 64, x1, f);
+    for (uint16_t row = 0; row < 64; row += 2) {
+        RegTensor<float> ratio0, ratio1, x0_0, y0_0, x1_0, y1_0, x0_1, y0_1, x1_1, y1_1;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
+        LoadAlign(x0_0, accum + row * DP);
+        LoadAlign(x0_1, accum + (row + 1) * DP);
+        LoadAlign(y0_0, partial + row * DP);
+        LoadAlign(y0_1, partial + (row + 1) * DP);
+        LoadAlign(x1_0, accum + row * DP + 64);
+        LoadAlign(x1_1, accum + (row + 1) * DP + 64);
+        LoadAlign(y1_0, partial + row * DP + 64);
+        LoadAlign(y1_1, partial + (row + 1) * DP + 64);
+        MulDstAdd(x0_0, ratio0, y0_0, f);
+        MulDstAdd(x0_1, ratio1, y0_1, f);
+        MulDstAdd(x1_0, ratio0, y1_0, f);
+        MulDstAdd(x1_1, ratio1, y1_1, f);
+        StoreAlign(accum + row * DP, x0_0, f);
+        StoreAlign(accum + (row + 1) * DP, x0_1, f);
+        StoreAlign(accum + row * DP + 64, x1_0, f);
+        StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
     }
 }
 // First PV of a query initializes O and its denominator. The previous query
@@ -268,39 +277,62 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    for (uint16_t row = 0; row < 64; ++row) {
-        RegTensor<float> x0, x1, z0, z1, a0, a1;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1, alpha1 + row);
+    for (uint16_t row = 0; row < 64; row += 2) {
+        RegTensor<float> x0_0, x1_0, x0_1, x1_1, z0_0, z1_0, z0_1, z1_1, a1_0, a1_1;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
         if constexpr (FIRST) {
-            LoadAlign(x0, partial0 + row * DP);
-            LoadAlign(x1, partial0 + row * DP + 64);
+            LoadAlign(x0_0, partial0 + row * DP);
+            LoadAlign(x1_0, partial0 + row * DP + 64);
+            LoadAlign(x0_1, partial0 + (row + 1) * DP);
+            LoadAlign(x1_1, partial0 + (row + 1) * DP + 64);
         } else {
-            RegTensor<float> y0, y1;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0, alpha0 + row);
-            LoadAlign(x0, accum + row * DP);
-            LoadAlign(x1, accum + row * DP + 64);
-            LoadAlign(y0, partial0 + row * DP);
-            LoadAlign(y1, partial0 + row * DP + 64);
-            MulDstAdd(x0, a0, y0, f);
-            MulDstAdd(x1, a0, y1, f);
+            RegTensor<float> y0_0, y1_0, y0_1, y1_1, a0_0, a0_1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            LoadAlign(x0_0, accum + row * DP);
+            LoadAlign(x1_0, accum + row * DP + 64);
+            LoadAlign(x0_1, accum + (row + 1) * DP);
+            LoadAlign(x1_1, accum + (row + 1) * DP + 64);
+            LoadAlign(y0_0, partial0 + row * DP);
+            LoadAlign(y1_0, partial0 + row * DP + 64);
+            LoadAlign(y0_1, partial0 + (row + 1) * DP);
+            LoadAlign(y1_1, partial0 + (row + 1) * DP + 64);
+            MulDstAdd(x0_0, a0_0, y0_0, f);
+            MulDstAdd(x0_1, a0_1, y0_1, f);
+            MulDstAdd(x1_0, a0_0, y1_0, f);
+            MulDstAdd(x1_1, a0_1, y1_1, f);
         }
-        LoadAlign(z0, partial1 + row * DP);
-        LoadAlign(z1, partial1 + row * DP + 64);
-        MulDstAdd(x0, a1, z0, f);
-        MulDstAdd(x1, a1, z1, f);
+        LoadAlign(z0_0, partial1 + row * DP);
+        LoadAlign(z1_0, partial1 + row * DP + 64);
+        LoadAlign(z0_1, partial1 + (row + 1) * DP);
+        LoadAlign(z1_1, partial1 + (row + 1) * DP + 64);
+        MulDstAdd(x0_0, a1_0, z0_0, f);
+        MulDstAdd(x0_1, a1_1, z0_1, f);
+        MulDstAdd(x1_0, a1_0, z1_0, f);
+        MulDstAdd(x1_1, a1_1, z1_1, f);
         if constexpr (LAST) {
-            RegTensor<float> inv;
-            RegTensor<T> p0, p1;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(inv, scratch + row);
-            Mul(x0, x0, inv, f);
-            Mul(x1, x1, inv, f);
-            Cast<T, float, cast>(p0, x0, f);
-            Cast<T, float, cast>(p1, x1, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);
-            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1, f);
+            RegTensor<float> inv0, inv1;
+            RegTensor<T> p0_0, p1_0, p0_1, p1_1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(inv0, scratch + row);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(inv1, scratch + row + 1);
+            Mul(x0_0, x0_0, inv0, f);
+            Mul(x0_1, x0_1, inv1, f);
+            Mul(x1_0, x1_0, inv0, f);
+            Mul(x1_1, x1_1, inv1, f);
+            Cast<T, float, cast>(p0_0, x0_0, f);
+            Cast<T, float, cast>(p0_1, x0_1, f);
+            Cast<T, float, cast>(p1_0, x1_0, f);
+            Cast<T, float, cast>(p1_1, x1_1, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0_0, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP, p0_1, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1_0, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + (row + 1) * DP + 64, p1_1, f);
         } else {
-            StoreAlign(accum + row * DP, x0, f);
-            StoreAlign(accum + row * DP + 64, x1, f);
+            StoreAlign(accum + row * DP, x0_0, f);
+            StoreAlign(accum + (row + 1) * DP, x0_1, f);
+            StoreAlign(accum + row * DP + 64, x1_0, f);
+            StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
         }
     }
 }

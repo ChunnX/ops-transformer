@@ -72,10 +72,13 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
                 Mul(a1, a1, inv, f);
                 Cast<float8_e4m3_t, float, cast>(p0, a0, f);
                 Cast<float8_e4m3_t, float, cast>(p1, a1, f);
-                uint16_t row0 = PERMUTE_V ? row * 2 : row;
-                uint16_t row1 = PERMUTE_V ? row * 2 + 1 : row + 16;
-                StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row0) * dp + col, p0, f);
-                StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row1) * dp + col, p1, f);
+                if constexpr (PERMUTE_V) {
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row * 2) * dp + col, p0, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row * 2 + 1) * dp + col, p1, f);
+                } else {
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row) * dp + col, p0, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group * 32 + row + 16) * dp + col, p1, f);
+                }
             }
         }
         StoreAlign<uint16_t, StoreDist::DIST_PACK_B32>(scales + col, (RegTensor<uint16_t> &)pair, f);
