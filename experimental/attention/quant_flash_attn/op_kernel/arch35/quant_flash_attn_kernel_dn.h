@@ -228,11 +228,11 @@ public:
         }
     }
 
-    template <typename RT, bool IS_AIC>
-    __aicore__ inline void FlashAttentionImpl(RT taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    template <typename RUNINFO_T, bool IS_AIC>
+    __aicore__ inline void FlashAttentionImpl(RUNINFO_T taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
         ICachePreLoad(2);
-        uint64_t t = 0;
+        uint64_t taskLoop = 0;
         incBIdx_ = bN2Start_ / constInfo.n2Size;
         curN2Idx_ = bN2Start_ % constInfo.n2Size;
         curKvHeadIdx_ = curN2Idx_ / constInfo.gRealSize;
@@ -252,13 +252,13 @@ public:
                     curS2Start = (bN2 == bN2Start_ && gS1 == gS1OStart_) ? s2OStart_ : 0U;
                     curS2End = (bN2 == bN2End_ && gS1 == gS1OEnd_) ? s2OEnd_ : static_cast<uint32_t>(s2LoopTimes_);
                     for (uint32_t s2 = curS2Start; s2 < curS2End; ++s2) {
-                        CreateTask(t, bN2, gS1, s2, taskRunInfo);
-                        ExecuteTask<RT, IS_AIC>(t, taskRunInfo);
-                        t++;
+                        CreateTask(taskLoop, bN2, gS1, s2, taskRunInfo);
+                        ExecuteTask<RUNINFO_T, IS_AIC>(taskLoop, taskRunInfo);
+                        taskLoop++;
                     }
                 }
             }
-            if (bN2 == bN2End_) {
+            if (bN2 >= bN2End_) {
                 break;
             }
             if (++curN2Idx_ == constInfo.n2Size) {
@@ -273,20 +273,20 @@ public:
                 curKvHeadIdx_++;
             }
         }
-        if (t != 0) {
-            uint32_t d = 0;
-            while (d < PRELOAD_N) {
-                ExecuteTask<RT, IS_AIC>(t, taskRunInfo);
-                t++;
-                d++;
+        if (taskLoop != 0) {
+            uint32_t drainCnt = 0;
+            while (drainCnt < PRELOAD_N) {
+                ExecuteTask<RUNINFO_T, IS_AIC>(taskLoop, taskRunInfo);
+                taskLoop++;
+                drainCnt++;
             }
         }
     }
 
-    template <typename RT, bool IS_AIC>
-    __aicore__ inline void ExecuteTask(uint64_t loop, RT taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    template <typename RUNINFO_T, bool IS_AIC>
+    __aicore__ inline void ExecuteTask(uint64_t loop, RUNINFO_T taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RT &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RUNINFO_T &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
 
         if (runInfo0.isValid) {
             if constexpr (IS_AIC) {
@@ -299,7 +299,7 @@ public:
         }
 
         if (loop >= PRELOAD_N) {
-            RT &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo20.isValid) {
                 if constexpr (IS_AIC) {
                     if (unlikely(runInfo20.isC2Sync)) {
@@ -328,7 +328,7 @@ public:
         }
 
         if (loop >= DELAY_P_SCALE_N) {
-            RT &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo3.isValid && unlikely(runInfo3.isUpdatePScale)) {
                 if constexpr (IS_AIC) {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
