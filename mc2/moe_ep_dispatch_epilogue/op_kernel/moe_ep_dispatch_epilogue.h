@@ -37,6 +37,9 @@
 
 #include "moe_ep_dispatch_epilogue_tiling_key.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
+#if defined(ENABLE_MOE_EP_DISPATCH_EPILOGUE_KERNEL)
+#include "moe_ep_dispatch_epilogue_count.h"
+#endif
 
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -158,7 +161,6 @@ private:
     LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
     LocalTensor<int32_t> ubTopkIds_;
-    LocalTensor<int32_t> ubTargetExpertId_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
     LocalTensor<int64_t> ubHitCountRowI64_;
@@ -181,7 +183,6 @@ private:
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
     TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
-    TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
     TBuf<QuePosition::VECIN> ubHitCountRowI64Buf_;
@@ -371,7 +372,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
         tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes * META_RING);
         tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
         tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
         tpipe_->InitBuffer(ubStageWeightsRingBuf_, ubStageWeightsBytes);
         tpipe_->InitBuffer(ubStageMetaRingBuf_, ubStageMetaBytes);
@@ -385,7 +385,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubRowStart_ = ubRowStartBuf_.Get<int64_t>();
         ubMeta_ = ubMetaBuf_.Get<int32_t>();
         ubTopkIds_ = ubTopkIdsBuf_.Get<int32_t>();
-        ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
         ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
         ubStageWeightsRing_ = ubStageWeightsRingBuf_.Get<float>();
         ubStageMetaRing_ = ubStageMetaRingBuf_.Get<int32_t>();
@@ -578,8 +577,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         GlobalTensor<int32_t> srcTopkIdsGm;
 
         uint32_t topkBytes = axisK_ * sizeof(int32_t);
-        LocalTensor<uint8_t> sharedTmpInt8 = ubMetaBuf_.Get<uint8_t>();
-        LocalTensor<uint32_t> sharedTmpInt32 = ubMetaBuf_.Get<uint32_t>();
 
         for (uint32_t tileStart = 0; tileStart < slotCntPerAiv; tileStart += SLOTS_TILE) {
             uint32_t tileCnt = (slotCntPerAiv - tileStart > SLOTS_TILE) ? SLOTS_TILE : (slotCntPerAiv - tileStart);
@@ -592,25 +589,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             DataCopyPad(ubTopkIds_, srcTopkIdsGm, topkCopyParams, topkPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-            int32_t calCnt = static_cast<int32_t>(tileCnt * paddedTopkElems_);
-            constexpr int32_t CMP_ALIGN = ALIGNED_LEN_256 / sizeof(int32_t);
-            int32_t calCntAlign = Ceil(calCnt, CMP_ALIGN) * CMP_ALIGN;
-            for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
-                int32_t targetExpertId = static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
-                uint64_t rsvdCnt = 0;
-                CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ,
-                              calCntAlign);
-                GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCnt, {1, 1, 0, 0}, rsvdCnt);
-                SyncFunc<AscendC::HardEvent::V_S>();
-                int32_t curExpertCnt = rsvdCnt;
-                int32_t currentHits = ubHitCount_.GetValue(localExpertId);
-                ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
-                uint32_t rankExpertIndex = rankId * rankExpertRowStride_ + localExpertId;
-                int32_t rankExpertHits = ubRankExpertHitCount_.GetValue(rankExpertIndex);
-                ubRankExpertHitCount_.SetValue(rankExpertIndex, rankExpertHits + curExpertCnt);
-            }
+            // 一次直方图统计整批topk，避免每个专家都扫描和等待V_S。
+            asc_vf_call<MoeEpDispatchEpilogueCount::CountTopkHits>(
+                (__ubuf__ int32_t *)ubTopkIds_.GetPhyAddr(),
+                (__ubuf__ int32_t *)ubRankExpertHitCount_[rankId * rankExpertRowStride_].GetPhyAddr(),
+                tileCnt * paddedTopkElems_, numLocalExperts_, epRankId_ * numLocalExperts_);
             SyncFunc<AscendC::HardEvent::V_MTE2>();
         }
+        Add(ubHitCount_, ubHitCount_, ubRankExpertHitCount_[rankId * rankExpertRowStride_], numLocalExperts_);
     }
 
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -663,27 +649,16 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     // P(c,r,e) = offsets[r] + sum_{e'<e,c'} H[c'][r][e'] + sum_{c'<c} H[c'][r][e].
     // recv_x stays expert/core/rank ordered, so (rank, expert, core, per-group cursor) is (rank, recv_x_idx) order.
-    SyncFunc<AscendC::HardEvent::V_S>();
-    int32_t rankPrefix = 0;
-    for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
-        if (aivId_ == 0U) {
-            ubRankOffsets_.SetValue(rankId, rankPrefix);
-        }
-        for (uint32_t expertId = 0; expertId < numLocalExperts_; ++expertId) {
-            uint32_t rankExpertIndex = rankId * rankExpertRowStride_ + expertId;
-            int32_t jointTotal = ubRankExpertRowStart_.GetValue(rankExpertIndex);
-            int32_t corePrefix = ubRankExpertHitCount_.GetValue(rankExpertIndex);
-            ubRankExpertRowStart_.SetValue(rankExpertIndex, rankPrefix + corePrefix);
-            rankPrefix += jointTotal;
-        }
-    }
+    // 总计数做整数前缀和，再加此前core的计数；保持原metadata与recvXIdx顺序。
+    asc_vf_call<MoeEpDispatchEpilogueCount::BuildMetadataStarts>(
+        (__ubuf__ int32_t *)ubRankExpertRowStart_.GetPhyAddr(), (__ubuf__ int32_t *)ubRankExpertHitCount_.GetPhyAddr(),
+        (__ubuf__ int32_t *)ubRankOffsets_.GetPhyAddr(), epWorldSize_, rankExpertRowStride_);
     if (aivId_ == 0U) {
-        ubRankOffsets_.SetValue(epWorldSize_, rankPrefix);
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopyExtParams offsetsCopyParams{1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U,
                                             0U};
         DataCopyPad(recvRankOffsetsGm_, ubRankOffsets_, offsetsCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        // rankOffsets暂存不再复用，由Process末尾统一等待写出完成。
     }
 }
 
@@ -750,7 +725,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     // recv_x 段起点 = 专家前缀 + 本核之前所有核在该专家上的命中数。
     // BuildRankRowStarts 已经把后者按 [rank][expert] 存进 ubRankExpertHitCount_，而且只累加了 coreId < aivId_
     // 的核，所以对 rank 求和恰好就是「本核之前所有核在该专家上的命中数」：
@@ -765,7 +739,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     Add(ubRowStart_, ubExpertPfx_, ubHitCountRowI64_, numLocalExperts_);
 
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
-    SyncFunc<AscendC::HardEvent::V_S>();
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
@@ -793,6 +766,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         IssueMeta(rankId, slotStart + tileStart, tileCnt, 0U);
     }
 
+    // 先发首批metadata读，再等V结果；真正读取行号和游标前完成同步。
+    SyncFunc<AscendC::HardEvent::V_S>();
     while (hasTile) {
         // 当前拍的 meta 读是上一拍发出去的，这里只等它到。
         const uint32_t metaBuf = metaSeq % META_RING;
@@ -835,6 +810,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             } else {
                 srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
             }
+            // 输入不经过L2，节省搬运时间。
+            srcTokenTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
             DataCopyPad(tokenOut, srcTokenTensor, tokenCopyParams, tokenPadParams);
             if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                 GlobalTensor<ScalesType> srcScalesTensor;
@@ -1022,6 +999,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             } else {
                 srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
             }
+            // 输入不经过L2，节省搬运时间。
+            srcTokenTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
             LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
             DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
 
