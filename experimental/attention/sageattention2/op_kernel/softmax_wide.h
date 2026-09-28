@@ -42,8 +42,8 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     RegTensor<half> x0_1, x1_1;
     if constexpr (MASK) {
         if (causalLimit1 + row + 8 - col * 16 < 0) {
-            Duplicate(x0_1, negative);
-            Duplicate(x1_1, negative);
+            x0_1 = negative;
+            x1_1 = negative;
         } else {
             RegTensor<half> k1;
             LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
@@ -63,8 +63,8 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
         }
 
         if (causalLimit0 + row + 8 - col * 16 < 0) {
-            Duplicate(x0_0, negative);
-            Duplicate(x1_0, negative);
+            x0_0 = negative;
+            x1_0 = negative;
         } else if (causalLimit0 + row - col * 16 < 16) {
             MaskReg valid0_0, valid1_0;
             CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(causalLimit0 + row - col * 16), h);
