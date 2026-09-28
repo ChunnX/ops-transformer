@@ -16,8 +16,10 @@ namespace MegaMhc::Compute {
 /** Convert an entire AIV tile and accumulate Pre statistics in the same VF.
  * Formula: stage[r,c] = FP32(x2[r,c]); squares[r] += sum_c stage[r,c]^2.
  * Input is packed by valid K; stage uses the host-planned L1 row stride.
- * Each lane adds at most 16 squares for host K<=1024, then reduces in fixed order.
- * COMPENSATE retains the compensated variant for numerical/performance comparisons.
+ * Paired rows share the column loop and mask while retaining independent, ordered reductions.
+ * Each lane adds at most
+ * 16 squares for host K<=1024, then reduces in fixed order. COMPENSATE retains the compensated variant for
+ * numerical/performance comparisons.
  */
 template <typename T, bool COMPENSATE = false>
 __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, uint32_t kCount, uint32_t stageStride,
@@ -25,6 +27,8 @@ __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, u
 {
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     const uint16_t repeats = static_cast<uint16_t>((kCount + 63U) / 64U);
+    const uint16_t pairedRows = rowCount / 2U;
+    const uint16_t tailRow = pairedRows * 2U;
     __VEC_SCOPE__
     {
         Reg::RegTensor<float> sum;
@@ -40,7 +44,68 @@ __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, u
         Reg::MaskReg mask;
         Reg::MaskReg fullMask = MaskForCount(64U);
         Reg::MaskReg scalarMask = MaskForCount(1U);
-        for (uint16_t row = 0; row < rowCount; ++row) {
+        Reg::RegTensor<float> sumNext;
+        Reg::RegTensor<float> compensationNext;
+        Reg::RegTensor<float> valueNext;
+        Reg::RegTensor<float> squareNext;
+        Reg::RegTensor<float> correctedNext;
+        Reg::RegTensor<float> updatedNext;
+        Reg::RegTensor<float> differenceNext;
+        Reg::RegTensor<float> partialNext;
+        Reg::RegTensor<float> previousNext;
+        Reg::RegTensor<T> rawNext;
+        // Interleave two rows while preserving each row's ordered FP32 reduction.
+        for (uint16_t pair = 0; pair < pairedRows; ++pair) {
+            const uint32_t row = pair * 2U;
+            Reg::Duplicate(sum, 0.0f, fullMask);
+            Reg::Duplicate(compensation, 0.0f, fullMask);
+            auto inputRow = input + row * kCount;
+            auto stageRow = stage + row * stageStride;
+            uint32_t remaining = kCount;
+            Reg::Duplicate(sumNext, 0.0f, fullMask);
+            Reg::Duplicate(compensationNext, 0.0f, fullMask);
+            auto inputRowNext = input + (row + 1U) * kCount;
+            auto stageRowNext = stage + (row + 1U) * stageStride;
+            for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
+                const uint32_t column = repeat * 64U;
+                mask = Reg::UpdateMask<float>(remaining);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(raw, inputRow + column);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(rawNext, inputRowNext + column);
+                Reg::Cast<float, T, kCastInputToFloat>(value, raw, mask);
+                Reg::StoreAlign<float>(stageRow + column, value, mask);
+                Reg::Mul(square, value, value, fullMask);
+                if constexpr (COMPENSATE) {
+                    Reg::Sub(corrected, square, compensation, fullMask);
+                    Reg::Add(next, sum, corrected, fullMask);
+                    Reg::Sub(difference, next, sum, fullMask);
+                    Reg::Sub(compensation, difference, corrected, fullMask);
+                    Reg::Adds(sum, next, 0.0f, fullMask);
+                } else {
+                    Reg::Add(sum, sum, square, fullMask);
+                }
+                Reg::Cast<float, T, kCastInputToFloat>(valueNext, rawNext, mask);
+                Reg::StoreAlign<float>(stageRowNext + column, valueNext, mask);
+                Reg::Mul(squareNext, valueNext, valueNext, fullMask);
+                if constexpr (COMPENSATE) {
+                    Reg::Sub(correctedNext, squareNext, compensationNext, fullMask);
+                    Reg::Add(updatedNext, sumNext, correctedNext, fullMask);
+                    Reg::Sub(differenceNext, updatedNext, sumNext, fullMask);
+                    Reg::Sub(compensationNext, differenceNext, correctedNext, fullMask);
+                    Reg::Adds(sumNext, updatedNext, 0.0f, fullMask);
+                } else {
+                    Reg::Add(sumNext, sumNext, squareNext, fullMask);
+                }
+            }
+            Reg::Reduce<Reg::ReduceType::SUM>(partial, sum, fullMask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(previous, squares + row);
+            Reg::Add(partial, previous, partial, scalarMask);
+            Reg::Store<float>(squares + row, partial, 1U);
+            Reg::Reduce<Reg::ReduceType::SUM>(partialNext, sumNext, fullMask);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(previousNext, squares + row + 1U);
+            Reg::Add(partialNext, previousNext, partialNext, scalarMask);
+            Reg::Store<float>(squares + row + 1U, partialNext, 1U);
+        }
+        for (uint16_t row = tailRow; row < rowCount; ++row) {
             Reg::Duplicate(sum, 0.0f, fullMask);
             Reg::Duplicate(compensation, 0.0f, fullMask);
             auto inputRow = input + row * kCount;
