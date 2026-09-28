@@ -19,8 +19,10 @@ namespace Sage {
 
 // Compile-time mathematical, quantization, and microarchitecture constants.
 // Computed at compile time to eliminate runtime scalar and vector division instructions.
+constexpr float LOG2_E = 1.4426950408889634f;
 constexpr float LN_448 = 6.104793232414985f;
 constexpr half SOFTMAX_FP8_SHIFT = half(-LN_448);
+constexpr float FP16_MIN = -65504.0f;
 constexpr float DEQF16_FACTOR = 2048.0f;
 constexpr uint64_t DEQ_SCALAR_DEQF16 = 0x3a000000ULL; // 2^-11
 constexpr float INT8_MAX_FLOAT = 127.0f;

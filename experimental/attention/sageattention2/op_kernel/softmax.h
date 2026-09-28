@@ -59,7 +59,9 @@ __simd_callee__ inline void StoreNZPlanePair(__ubuf__ float8_e4m3_t *out, uint32
 }
 
 // Production consumes prebalanced FP16 scales. Scores/max remain FP16.
-template <uint32_t ROWS = 64, uint32_t COLS = 256, bool FULL = false, bool NZ_OUTPUT = false, uint32_t NZ_PAD_ROWS = 0>
+// Probabilities are packed into the NZ (32x16 inner-outer) FP8 layout consumed
+// by the PV MMAD, with one padding row between adjacent NZ planes.
+template <uint32_t ROWS, uint32_t COLS, bool FULL, uint32_t NZ_PAD_ROWS>
 __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
                                       __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf,
                                       __ubuf__ half *khalf, __ubuf__ float *scratch, uint32_t qstart, uint32_t sq,
@@ -169,12 +171,12 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     LoadAlign(oldDen, denom);
     RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    MaskReg first32, last32;
-    if constexpr (NZ_OUTPUT) {
-        uint32_t halfChunk = 32;
-        first32 = UpdateMask<float>(halfChunk);
-        Not(last32, first32, f);
-    }
+    // NZ planes store 32 of the 64 float lanes each; the boundary between the
+    // two planes of an 8x8 fragment sits inside one 64-lane register.
+    uint32_t halfChunk = 32;
+    MaskReg first32 = UpdateMask<float>(halfChunk);
+    MaskReg last32;
+    Not(last32, first32, f);
     auto blockSum = scratch;
     UnalignReg sumStore;
 
@@ -238,26 +240,15 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
         Add(rowSum_a, s01_a, s23_a, f);
         Add(rowSum_b, s01_b, s23_b, f);
 
-        if constexpr (NZ_OUTPUT) {
-            constexpr uint32_t stride = (ROWS + NZ_PAD_ROWS) * 32;
-            StoreNZPlanePair<stride>(out, 0, row_a, packed0_a, first32, last32);
-            StoreNZPlanePair<stride>(out, 0, row_b, packed0_b, first32, last32);
-            StoreNZPlanePair<stride>(out, 2, row_a, packed1_a, first32, last32);
-            StoreNZPlanePair<stride>(out, 2, row_b, packed1_b, first32, last32);
-            StoreNZPlanePair<stride>(out, 4, row_a, packed2_a, first32, last32);
-            StoreNZPlanePair<stride>(out, 4, row_b, packed2_b, first32, last32);
-            StoreNZPlanePair<stride>(out, 6, row_a, packed3_a, first32, last32);
-            StoreNZPlanePair<stride>(out, 6, row_b, packed3_b, first32, last32);
-        } else {
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_a * COLS + 0, packed0_a, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_b * COLS + 0, packed0_b, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_a * COLS + 64, packed1_a, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_b * COLS + 64, packed1_b, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_a * COLS + 128, packed2_a, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_b * COLS + 128, packed2_b, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_a * COLS + 192, packed3_a, f);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row_b * COLS + 192, packed3_b, f);
-        }
+        constexpr uint32_t nzStride = (ROWS + NZ_PAD_ROWS) * 32;
+        StoreNZPlanePair<nzStride>(out, 0, row_a, packed0_a, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 0, row_b, packed0_b, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 2, row_a, packed1_a, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 2, row_b, packed1_b, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 4, row_a, packed2_a, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 4, row_b, packed2_b, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 6, row_a, packed3_a, first32, last32);
+        StoreNZPlanePair<nzStride>(out, 6, row_b, packed3_b, first32, last32);
 
         RegTensor<float> sum_a, sum_b;
         ReduceSum(sum_a, rowSum_a, f);

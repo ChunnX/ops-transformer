@@ -144,7 +144,7 @@ __simd_callee__ inline void ComputeProbAndPackNZPair(
 
 // NZ scores retain eight rows in each FP16 register. ReduceDataBlock produces
 // eight row statistics; FP8 P is packed into full 8x32 NZ output blocks.
-template <bool MASK = false>
+template <bool MASK>
 __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ half *scoresNext, __ubuf__ half *maxima,
                                                __ubuf__ float *alpha, __ubuf__ half *qhalf, __ubuf__ half *khalf,
                                                int32_t queryInGroup = 0)
@@ -172,10 +172,10 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     for (uint16_t row = 0; row < 64; row += 16) {
         RegTensor<half> q0, m0;
         LoadAlign<half, LoadDist::DIST_E2B_B16>(q0, qhalf + row + 0);
-        Duplicate(m0, half(-65504.0f));
+        Duplicate(m0, half(FP16_MIN));
         RegTensor<half> q1, m1;
         LoadAlign<half, LoadDist::DIST_E2B_B16>(q1, qhalf + row + 8);
-        Duplicate(m1, half(-65504.0f));
+        Duplicate(m1, half(FP16_MIN));
         for (uint16_t col = 0; col < 16; ++col) {
             ScaleMaskAndMaxWideNZPair<MASK>(scores, scoresNext, q0, q1, khalf + 0, khalf + 256,
                                            col, row, queryInGroup, queryInGroup - 256,
@@ -233,19 +233,18 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
 
 template <bool MASK = false>
 __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half *scoresNext, __ubuf__ half *maxima,
-                                           [[maybe_unused]] __ubuf__ float *denom, __ubuf__ float *alpha,
-                                           __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf, __ubuf__ half *khalf,
-                                           [[maybe_unused]] __ubuf__ float *scratch, __ubuf__ float *partialSums,
+                                           __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf,
+                                           __ubuf__ half *khalf, __ubuf__ float *partialSums,
                                            int32_t queryInGroup = 0)
 {
     SoftmaxWideMaxCore<MASK>(scores, scoresNext, maxima, alpha, qhalf, khalf, queryInGroup);
     SoftmaxWideProbCore<true>(scores, maxima, out, partialSums);
 }
 
+// The second 256-token half publishes its block sum in the unused upper half
+// of the alpha slot (alpha + 64), mirroring the pair protocol.
 __simd_vf__ inline void SoftmaxWideSecondVF(__ubuf__ half *scores, __ubuf__ half *maxima,
-                                            [[maybe_unused]] __ubuf__ float *denom,
                                             __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out,
-                                            [[maybe_unused]] __ubuf__ float *scratch,
                                             __ubuf__ float *partialSums)
 {
     SoftmaxWideProbCore<false>(scores, maxima, out, partialSums, alpha + 64);

@@ -11,6 +11,8 @@
 #pragma once
 #include "common.h"
 namespace Sage {
+// Shared stats UB layout: raw 16-bit rows, FP32 rows, then the column sums.
+constexpr uint32_t STATS_RAW_UB = 0, STATS_F32_UB = 65536, STATS_SUM_UB = 131072;
 // Load one 64-lane column slice of a row as FP32 registers. FP32 rows load
 // directly; 16-bit rows unpack and cast in the same sequence.
 template <class T, uint32_t DP>
@@ -116,7 +118,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
     constexpr uint32_t BATCH_ROWS = 128, SLOT_BYTES = 32768;
-    auto sum = r.ubBuf.template GetBufferByByte<float>(131072);
+    auto sum = r.ubBuf.template GetBufferByByte<float>(STATS_SUM_UB);
     const bool grouped = UseDieGroups(p);
     const uint32_t workers = grouped ? p.cores : 2 * p.cores;
     const uint32_t rank = GetBlockIdx() % workers;
@@ -147,7 +149,7 @@ __aicore__ void StreamKStats(GM_ADDR k, GM_ADDR mean, SageParams p)
         const uint32_t batches = (end - begin + BATCH_ROWS - 1) / BATCH_ROWS;
         SetFlag<HardEvent::V_MTE2>(1);
         SetFlag<HardEvent::V_MTE2>(2);
-        auto x = r.ubBuf.template GetBufferByByte<float>(65536);
+        auto x = r.ubBuf.template GetBufferByByte<float>(STATS_F32_UB);
         for (uint32_t batch = 0; batch <= batches; ++batch) {
             if (batch < batches) {
                 const uint32_t slot = batch & 1, start = begin + batch * BATCH_ROWS;
@@ -196,9 +198,9 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
     kg.SetGlobalBuffer((__gm__ T *)k);
     GlobalTensor<float> mg;
     mg.SetGlobalBuffer((__gm__ float *)mean);
-    auto input = r.ubBuf.GetBufferByByte<T>(0);
-    auto x = r.ubBuf.GetBufferByByte<float>(65536);
-    auto sum = r.ubBuf.GetBufferByByte<float>(131072);
+    auto input = r.ubBuf.GetBufferByByte<T>(STATS_RAW_UB);
+    auto x = r.ubBuf.GetBufferByByte<float>(STATS_F32_UB);
+    auto sum = r.ubBuf.GetBufferByByte<float>(STATS_SUM_UB);
     const bool grouped = UseDieGroups(p);
     const uint32_t workers = grouped ? p.cores : 2 * p.cores;
     const uint32_t rank = GetBlockIdx() % workers;

@@ -33,7 +33,7 @@ __aicore__ inline __attribute__((always_inline)) void FusedAttention(GM_ADDR q, 
     // Idle cores also reach this barrier. Its flags (11..14) do not overlap
     // attention's MODE4 flags (0..3).
     SyncAll<false>();
-    Attention<T, WIDE>(q, work + t.q8, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale, work + t.mean,
+    Attention<T, WIDE>(work + t.q8, work + t.k8, work + t.v8, work + t.qScale, work + t.kScale,
                        work + t.vMxScale, out, lse, p);
 }
 } // namespace Sage

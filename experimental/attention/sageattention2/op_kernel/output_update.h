@@ -104,12 +104,11 @@ __simd_callee__ inline void ScaleAndCastTileVF(__ubuf__ T *out, __ubuf__ float *
 }
 
 // Interleaved FMA accumulation, reciprocal scaling, and casting to target format T for single tile update.
-// Implements lazy softmax rescaling: when alpha == 1.0f (or ALPHA_ONE == true or alpha == nullptr),
-// bypasses broadcast load and converts MulDstAdd to Add.
+// Implements lazy softmax rescaling via the alpha ratio broadcast.
 // Unrolled 4 rows with outer row iteration to minimize broadcast loads and eliminate RAW hazard bubbles.
-template <class T, uint32_t DP, bool ALPHA_ONE = false>
+template <class T, uint32_t DP>
 __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial,
-                                                    [[maybe_unused]] __ubuf__ float *alpha, __ubuf__ float *invDenom)
+                                                    __ubuf__ float *alpha, __ubuf__ float *invDenom)
 {
     using namespace AscendC::MicroAPI;
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
@@ -122,14 +121,10 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
         LoadAlign<float, LoadDist::DIST_BRC_B32>(inv3, invDenom + row + 3);
 
         RegTensor<float> r0, r1, r2, r3;
-        if constexpr (!ALPHA_ONE) {
-            if (alpha != nullptr) {
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r0, alpha + row + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r1, alpha + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r2, alpha + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r3, alpha + row + 3);
-            }
-        }
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(r0, alpha + row + 0);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(r1, alpha + row + 1);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(r2, alpha + row + 2);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(r3, alpha + row + 3);
 
         for (uint16_t col = 0; col < DP; col += 64) {
             RegTensor<float> x0, x1, x2, x3;
@@ -146,22 +141,10 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
             LoadAlign(y2, partial + (row + 2) * DP + col);
             LoadAlign(y3, partial + (row + 3) * DP + col);
 
-            if constexpr (ALPHA_ONE) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else if (alpha == nullptr) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else {
-                MulDstAdd(x0, r0, y0, f);
-                MulDstAdd(x1, r1, y1, f);
-                MulDstAdd(x2, r2, y2, f);
-                MulDstAdd(x3, r3, y3, f);
-            }
+            MulDstAdd(x0, r0, y0, f);
+            MulDstAdd(x1, r1, y1, f);
+            MulDstAdd(x2, r2, y2, f);
+            MulDstAdd(x3, r3, y3, f);
 
             Mul(x0, x0, inv0, f);
             Mul(x1, x1, inv1, f);
@@ -182,18 +165,12 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
 }
 
 // Two-row interleaved computation for wide pair update, eliminating RAW pipeline stall bubbles.
-// Implements lazy softmax rescaling: when ALPHA0_ONE / ALPHA1_ONE == true or alpha0 / alpha1 == nullptr,
-// bypasses broadcast loads and converts MulDstAdd to Add. Store ordering is reordered row-0-first
-// to maximize latency hiding.
-template <class T, uint32_t DP, bool FIRST, bool LAST, bool ALPHA0_ONE = false, bool ALPHA1_ONE = false>
-__simd_callee__ inline void UpdateWidePairTwoRows([[maybe_unused]] __ubuf__ T *out,
-                                                  [[maybe_unused]] __ubuf__ float *accum,
-                                                  __ubuf__ float *partial0,
-                                                  __ubuf__ float *partial1,
-                                                  [[maybe_unused]] __ubuf__ float *alpha0,
-                                                  [[maybe_unused]] __ubuf__ float *alpha1,
-                                                  [[maybe_unused]] __ubuf__ float *scratch,
-                                                  uint16_t row,
+// FMA with the alpha ratio broadcasts; store ordering is reordered row-0-first to maximize
+// latency hiding.
+template <class T, uint32_t DP, bool FIRST, bool LAST>
+__simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial0,
+                                                  __ubuf__ float *partial1, __ubuf__ float *alpha0,
+                                                  __ubuf__ float *alpha1, __ubuf__ float *scratch, uint16_t row,
                                                   AscendC::MicroAPI::MaskReg &f)
 {
     using namespace AscendC::MicroAPI;
@@ -216,24 +193,12 @@ __simd_callee__ inline void UpdateWidePairTwoRows([[maybe_unused]] __ubuf__ T *o
         LoadAlign(y0_1, partial0 + (row + 1) * DP);
         LoadAlign(y1_1, partial0 + (row + 1) * DP + 64);
 
-        if constexpr (ALPHA0_ONE) {
-            Add(x0_0, x0_0, y0_0, f);
-            Add(x1_0, x1_0, y1_0, f);
-            Add(x0_1, x0_1, y0_1, f);
-            Add(x1_1, x1_1, y1_1, f);
-        } else if (alpha0 == nullptr) {
-            Add(x0_0, x0_0, y0_0, f);
-            Add(x1_0, x1_0, y1_0, f);
-            Add(x0_1, x0_1, y0_1, f);
-            Add(x1_1, x1_1, y1_1, f);
-        } else {
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-            MulDstAdd(x0_0, a0_0, y0_0, f);
-            MulDstAdd(x0_1, a0_1, y0_1, f);
-            MulDstAdd(x1_0, a0_0, y1_0, f);
-            MulDstAdd(x1_1, a0_1, y1_1, f);
-        }
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+        MulDstAdd(x0_0, a0_0, y0_0, f);
+        MulDstAdd(x0_1, a0_1, y0_1, f);
+        MulDstAdd(x1_0, a0_0, y1_0, f);
+        MulDstAdd(x1_1, a0_1, y1_1, f);
     }
 
     LoadAlign(z0_0, partial1 + row * DP);
@@ -241,25 +206,13 @@ __simd_callee__ inline void UpdateWidePairTwoRows([[maybe_unused]] __ubuf__ T *o
     LoadAlign(z0_1, partial1 + (row + 1) * DP);
     LoadAlign(z1_1, partial1 + (row + 1) * DP + 64);
 
-    if constexpr (ALPHA1_ONE) {
-        Add(x0_0, x0_0, z0_0, f);
-        Add(x1_0, x1_0, z1_0, f);
-        Add(x0_1, x0_1, z0_1, f);
-        Add(x1_1, x1_1, z1_1, f);
-    } else if (alpha1 == nullptr) {
-        Add(x0_0, x0_0, z0_0, f);
-        Add(x1_0, x1_0, z1_0, f);
-        Add(x0_1, x0_1, z0_1, f);
-        Add(x1_1, x1_1, z1_1, f);
-    } else {
-        RegTensor<float> a1_0, a1_1;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-        MulDstAdd(x0_0, a1_0, z0_0, f);
-        MulDstAdd(x0_1, a1_1, z0_1, f);
-        MulDstAdd(x1_0, a1_0, z1_0, f);
-        MulDstAdd(x1_1, a1_1, z1_1, f);
-    }
+    RegTensor<float> a1_0, a1_1;
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+    MulDstAdd(x0_0, a1_0, z0_0, f);
+    MulDstAdd(x0_1, a1_1, z0_1, f);
+    MulDstAdd(x1_0, a1_0, z1_0, f);
+    MulDstAdd(x1_1, a1_1, z1_1, f);
 
     if constexpr (LAST) {
         RegTensor<float> inv0, inv1;
@@ -286,221 +239,40 @@ __simd_callee__ inline void UpdateWidePairTwoRows([[maybe_unused]] __ubuf__ T *o
     }
 }
 
-template <uint32_t DP, bool ALPHA_ONE = false>
-__simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial,
-                                         [[maybe_unused]] __ubuf__ float *alpha, uint32_t rows = 8)
+// Accumulate a 64-row PV tile into the running FP32 O with the alpha ratio FMA.
+// Unrolled 4 rows; both padded dimensions use the same 64-row tile height (HALF).
+template <uint32_t DP>
+__simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha)
 {
     static_assert(DP == 64 || DP == 128, "unsupported padded dimension");
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
-    if constexpr (DP == 128) {
-        uint32_t row = 0;
-        for (; row + 3 < (rows & ~1U); row += 4) {
-            RegTensor<float> x0_0, x1_0, x2_0, x3_0;
-            RegTensor<float> x0_1, x1_1, x2_1, x3_1;
-            RegTensor<float> y0_0, y1_0, y2_0, y3_0;
-            RegTensor<float> y0_1, y1_1, y2_1, y3_1;
-
-            LoadAlign(x0_0, accum + (row + 0) * DP);
-            LoadAlign(x1_0, accum + (row + 1) * DP);
-            LoadAlign(x2_0, accum + (row + 2) * DP);
-            LoadAlign(x3_0, accum + (row + 3) * DP);
-
-            LoadAlign(x0_1, accum + (row + 0) * DP + 64);
-            LoadAlign(x1_1, accum + (row + 1) * DP + 64);
-            LoadAlign(x2_1, accum + (row + 2) * DP + 64);
-            LoadAlign(x3_1, accum + (row + 3) * DP + 64);
-
-            LoadAlign(y0_0, partial + (row + 0) * DP);
-            LoadAlign(y1_0, partial + (row + 1) * DP);
-            LoadAlign(y2_0, partial + (row + 2) * DP);
-            LoadAlign(y3_0, partial + (row + 3) * DP);
-
-            LoadAlign(y0_1, partial + (row + 0) * DP + 64);
-            LoadAlign(y1_1, partial + (row + 1) * DP + 64);
-            LoadAlign(y2_1, partial + (row + 2) * DP + 64);
-            LoadAlign(y3_1, partial + (row + 3) * DP + 64);
-
-            if constexpr (ALPHA_ONE) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x2_0, x2_0, y2_0, f);
-                Add(x3_0, x3_0, y3_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-                Add(x2_1, x2_1, y2_1, f);
-                Add(x3_1, x3_1, y3_1, f);
-            } else if (alpha == nullptr) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x2_0, x2_0, y2_0, f);
-                Add(x3_0, x3_0, y3_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-                Add(x2_1, x2_1, y2_1, f);
-                Add(x3_1, x3_1, y3_1, f);
-            } else {
-                RegTensor<float> ratio0, ratio1, ratio2, ratio3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
-
-                MulDstAdd(x0_0, ratio0, y0_0, f);
-                MulDstAdd(x1_0, ratio1, y1_0, f);
-                MulDstAdd(x2_0, ratio2, y2_0, f);
-                MulDstAdd(x3_0, ratio3, y3_0, f);
-                MulDstAdd(x0_1, ratio0, y0_1, f);
-                MulDstAdd(x1_1, ratio1, y1_1, f);
-                MulDstAdd(x2_1, ratio2, y2_1, f);
-                MulDstAdd(x3_1, ratio3, y3_1, f);
-            }
-
-            StoreAlign(accum + (row + 0) * DP, x0_0, f);
-            StoreAlign(accum + (row + 1) * DP, x1_0, f);
-            StoreAlign(accum + (row + 2) * DP, x2_0, f);
-            StoreAlign(accum + (row + 3) * DP, x3_0, f);
-            StoreAlign(accum + (row + 0) * DP + 64, x0_1, f);
-            StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
-            StoreAlign(accum + (row + 2) * DP + 64, x2_1, f);
-            StoreAlign(accum + (row + 3) * DP + 64, x3_1, f);
-        }
-        for (; row < (rows & ~1U); row += 2) {
-            RegTensor<float> x0_0, y0_0, x0_1, y0_1;
-            RegTensor<float> x1_0, y1_0, x1_1, y1_1;
-            LoadAlign(x0_0, accum + row * DP);
-            LoadAlign(x1_0, accum + row * DP + 64);
-            LoadAlign(x0_1, accum + (row + 1) * DP);
-            LoadAlign(x1_1, accum + (row + 1) * DP + 64);
-            LoadAlign(y0_0, partial + row * DP);
-            LoadAlign(y0_1, partial + (row + 1) * DP);
-            LoadAlign(y1_0, partial + row * DP + 64);
-            LoadAlign(y1_1, partial + (row + 1) * DP + 64);
-
-            if constexpr (ALPHA_ONE) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-            } else if (alpha == nullptr) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-            } else {
-                RegTensor<float> ratio0, ratio1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
-                MulDstAdd(x0_0, ratio0, y0_0, f);
-                MulDstAdd(x1_0, ratio0, y1_0, f);
-                MulDstAdd(x0_1, ratio1, y0_1, f);
-                MulDstAdd(x1_1, ratio1, y1_1, f);
-            }
-
-            StoreAlign(accum + row * DP, x0_0, f);
-            StoreAlign(accum + row * DP + 64, x1_0, f);
-            StoreAlign(accum + (row + 1) * DP, x0_1, f);
-            StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
-        }
-    } else {
-        uint32_t row = 0;
-        for (; row + 3 < (rows & ~1U); row += 4) {
+    for (uint16_t row = 0; row < 64; row += 4) {
+        RegTensor<float> ratio0, ratio1, ratio2, ratio3;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row + 0);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
+        for (uint16_t col = 0; col < DP; col += 64) {
             RegTensor<float> x0, x1, x2, x3, y0, y1, y2, y3;
-            LoadAlign(x0, accum + (row + 0) * DP);
-            LoadAlign(x1, accum + (row + 1) * DP);
-            LoadAlign(x2, accum + (row + 2) * DP);
-            LoadAlign(x3, accum + (row + 3) * DP);
-            LoadAlign(y0, partial + (row + 0) * DP);
-            LoadAlign(y1, partial + (row + 1) * DP);
-            LoadAlign(y2, partial + (row + 2) * DP);
-            LoadAlign(y3, partial + (row + 3) * DP);
+            LoadAlign(x0, accum + (row + 0) * DP + col);
+            LoadAlign(x1, accum + (row + 1) * DP + col);
+            LoadAlign(x2, accum + (row + 2) * DP + col);
+            LoadAlign(x3, accum + (row + 3) * DP + col);
+            LoadAlign(y0, partial + (row + 0) * DP + col);
+            LoadAlign(y1, partial + (row + 1) * DP + col);
+            LoadAlign(y2, partial + (row + 2) * DP + col);
+            LoadAlign(y3, partial + (row + 3) * DP + col);
 
-            if constexpr (ALPHA_ONE) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else if (alpha == nullptr) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else {
-                RegTensor<float> r0, r1, r2, r3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r0, alpha + row + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r1, alpha + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r2, alpha + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(r3, alpha + row + 3);
-                MulDstAdd(x0, r0, y0, f);
-                MulDstAdd(x1, r1, y1, f);
-                MulDstAdd(x2, r2, y2, f);
-                MulDstAdd(x3, r3, y3, f);
-            }
+            MulDstAdd(x0, ratio0, y0, f);
+            MulDstAdd(x1, ratio1, y1, f);
+            MulDstAdd(x2, ratio2, y2, f);
+            MulDstAdd(x3, ratio3, y3, f);
 
-            StoreAlign(accum + (row + 0) * DP, x0, f);
-            StoreAlign(accum + (row + 1) * DP, x1, f);
-            StoreAlign(accum + (row + 2) * DP, x2, f);
-            StoreAlign(accum + (row + 3) * DP, x3, f);
-        }
-        for (; row < (rows & ~1U); row += 2) {
-            RegTensor<float> x0, x1, y0, y1;
-            LoadAlign(x0, accum + row * DP);
-            LoadAlign(x1, accum + (row + 1) * DP);
-            LoadAlign(y0, partial + row * DP);
-            LoadAlign(y1, partial + (row + 1) * DP);
-
-            if constexpr (ALPHA_ONE) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-            } else if (alpha == nullptr) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-            } else {
-                RegTensor<float> ratio0, ratio1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
-                MulDstAdd(x0, ratio0, y0, f);
-                MulDstAdd(x1, ratio1, y1, f);
-            }
-
-            StoreAlign(accum + row * DP, x0, f);
-            StoreAlign(accum + (row + 1) * DP, x1, f);
-        }
-    }
-    if (rows & 1) {
-        uint32_t row = rows - 1;
-        RegTensor<float> x0, y0;
-        LoadAlign(x0, accum + row * DP);
-        LoadAlign(y0, partial + row * DP);
-        if constexpr (DP == 128) {
-            RegTensor<float> x1, y1;
-            LoadAlign(x1, accum + row * DP + 64);
-            LoadAlign(y1, partial + row * DP + 64);
-            if constexpr (ALPHA_ONE) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-            } else if (alpha == nullptr) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-            } else {
-                RegTensor<float> ratio;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
-                MulDstAdd(x0, ratio, y0, f);
-                MulDstAdd(x1, ratio, y1, f);
-            }
-            StoreAlign(accum + row * DP, x0, f);
-            StoreAlign(accum + row * DP + 64, x1, f);
-        } else {
-            if constexpr (ALPHA_ONE) {
-                Add(x0, x0, y0, f);
-            } else if (alpha == nullptr) {
-                Add(x0, x0, y0, f);
-            } else {
-                RegTensor<float> ratio;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
-                MulDstAdd(x0, ratio, y0, f);
-            }
-            StoreAlign(accum + row * DP, x0, f);
+            StoreAlign(accum + (row + 0) * DP + col, x0, f);
+            StoreAlign(accum + (row + 1) * DP + col, x1, f);
+            StoreAlign(accum + (row + 2) * DP + col, x2, f);
+            StoreAlign(accum + (row + 3) * DP + col, x3, f);
         }
     }
 }
@@ -508,7 +280,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
 // Wide P1 publishes its FP32 block sum in the unused half of its alpha slot.
 // Consume it with O in group order, after the matching PV_READY notification.
 // Implements lazy softmax rescaling and row-0-first store ordering.
-template <uint32_t DP, bool ALPHA_ONE = false>
+template <uint32_t DP>
 __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha,
                                              __ubuf__ float *denom)
 {
@@ -516,74 +288,32 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
     auto f = CreateMask<float, MaskPattern::ALL>();
     UpdateWideDenominator(denom, alpha, f, false);
     for (uint16_t row = 0; row < 64; row += 4) {
-        RegTensor<float> x0_0, x1_0, x2_0, x3_0;
-        RegTensor<float> x0_1, x1_1, x2_1, x3_1;
-        RegTensor<float> y0_0, y1_0, y2_0, y3_0;
-        RegTensor<float> y0_1, y1_1, y2_1, y3_1;
+        RegTensor<float> ratio0, ratio1, ratio2, ratio3;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row + 0);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
+        for (uint16_t col = 0; col < DP; col += 64) {
+            RegTensor<float> x0, x1, x2, x3, y0, y1, y2, y3;
+            LoadAlign(x0, accum + (row + 0) * DP + col);
+            LoadAlign(x1, accum + (row + 1) * DP + col);
+            LoadAlign(x2, accum + (row + 2) * DP + col);
+            LoadAlign(x3, accum + (row + 3) * DP + col);
+            LoadAlign(y0, partial + (row + 0) * DP + col);
+            LoadAlign(y1, partial + (row + 1) * DP + col);
+            LoadAlign(y2, partial + (row + 2) * DP + col);
+            LoadAlign(y3, partial + (row + 3) * DP + col);
 
-        LoadAlign(x0_0, accum + (row + 0) * DP);
-        LoadAlign(x1_0, accum + (row + 1) * DP);
-        LoadAlign(x2_0, accum + (row + 2) * DP);
-        LoadAlign(x3_0, accum + (row + 3) * DP);
+            MulDstAdd(x0, ratio0, y0, f);
+            MulDstAdd(x1, ratio1, y1, f);
+            MulDstAdd(x2, ratio2, y2, f);
+            MulDstAdd(x3, ratio3, y3, f);
 
-        LoadAlign(x0_1, accum + (row + 0) * DP + 64);
-        LoadAlign(x1_1, accum + (row + 1) * DP + 64);
-        LoadAlign(x2_1, accum + (row + 2) * DP + 64);
-        LoadAlign(x3_1, accum + (row + 3) * DP + 64);
-
-        LoadAlign(y0_0, partial + (row + 0) * DP);
-        LoadAlign(y1_0, partial + (row + 1) * DP);
-        LoadAlign(y2_0, partial + (row + 2) * DP);
-        LoadAlign(y3_0, partial + (row + 3) * DP);
-
-        LoadAlign(y0_1, partial + (row + 0) * DP + 64);
-        LoadAlign(y1_1, partial + (row + 1) * DP + 64);
-        LoadAlign(y2_1, partial + (row + 2) * DP + 64);
-        LoadAlign(y3_1, partial + (row + 3) * DP + 64);
-
-        if constexpr (ALPHA_ONE) {
-            Add(x0_0, x0_0, y0_0, f);
-            Add(x1_0, x1_0, y1_0, f);
-            Add(x2_0, x2_0, y2_0, f);
-            Add(x3_0, x3_0, y3_0, f);
-            Add(x0_1, x0_1, y0_1, f);
-            Add(x1_1, x1_1, y1_1, f);
-            Add(x2_1, x2_1, y2_1, f);
-            Add(x3_1, x3_1, y3_1, f);
-        } else if (alpha == nullptr) {
-            Add(x0_0, x0_0, y0_0, f);
-            Add(x1_0, x1_0, y1_0, f);
-            Add(x2_0, x2_0, y2_0, f);
-            Add(x3_0, x3_0, y3_0, f);
-            Add(x0_1, x0_1, y0_1, f);
-            Add(x1_1, x1_1, y1_1, f);
-            Add(x2_1, x2_1, y2_1, f);
-            Add(x3_1, x3_1, y3_1, f);
-        } else {
-            RegTensor<float> ratio0, ratio1, ratio2, ratio3;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row + 0);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, alpha + row + 2);
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, alpha + row + 3);
-
-            MulDstAdd(x0_0, ratio0, y0_0, f);
-            MulDstAdd(x1_0, ratio1, y1_0, f);
-            MulDstAdd(x2_0, ratio2, y2_0, f);
-            MulDstAdd(x3_0, ratio3, y3_0, f);
-            MulDstAdd(x0_1, ratio0, y0_1, f);
-            MulDstAdd(x1_1, ratio1, y1_1, f);
-            MulDstAdd(x2_1, ratio2, y2_1, f);
-            MulDstAdd(x3_1, ratio3, y3_1, f);
+            StoreAlign(accum + (row + 0) * DP + col, x0, f);
+            StoreAlign(accum + (row + 1) * DP + col, x1, f);
+            StoreAlign(accum + (row + 2) * DP + col, x2, f);
+            StoreAlign(accum + (row + 3) * DP + col, x3, f);
         }
-
-        StoreAlign(accum + (row + 0) * DP, x0_0, f);
-        StoreAlign(accum + (row + 1) * DP, x1_0, f);
-        StoreAlign(accum + (row + 2) * DP, x2_0, f);
-        StoreAlign(accum + (row + 3) * DP, x3_0, f);
-        StoreAlign(accum + (row + 0) * DP + 64, x0_1, f);
-        StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
-        StoreAlign(accum + (row + 2) * DP + 64, x2_1, f);
-        StoreAlign(accum + (row + 3) * DP + 64, x3_1, f);
     }
 }
 
@@ -604,10 +334,11 @@ __simd_vf__ inline void InitializeWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
     }
 }
 
-template <uint32_t DP, bool ALPHA0_ONE = false, bool ALPHA1_ONE = false>
+// Accumulate two consecutive PV tiles of the same query in one pass, preserving
+// both FP32 FMA roundings (O = (O * a0 + P0) * a1 + P1).
+template <uint32_t DP>
 __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ float *partial0, __ubuf__ float *partial1,
-                                             [[maybe_unused]] __ubuf__ float *alpha0,
-                                             [[maybe_unused]] __ubuf__ float *alpha1)
+                                             __ubuf__ float *alpha0, __ubuf__ float *alpha1)
 {
     static_assert(DP == 64 || DP == 128, "paired O requires a supported padded dimension");
     using namespace AscendC::MicroAPI;
@@ -617,7 +348,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             RegTensor<float> x0_0, x1_0, x0_1, x1_1;
             RegTensor<float> y0_0, y1_0, y0_1, y1_1;
             RegTensor<float> z0_0, z1_0, z0_1, z1_1;
-
+            RegTensor<float> a0_0, a0_1, a1_0, a1_1;
             LoadAlign(x0_0, accum + row * DP);
             LoadAlign(x1_0, accum + row * DP + 64);
             LoadAlign(x0_1, accum + (row + 1) * DP);
@@ -628,52 +359,24 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             LoadAlign(y0_1, partial0 + (row + 1) * DP);
             LoadAlign(y1_1, partial0 + (row + 1) * DP + 64);
 
-            // Phase 1: FMA or Add with alpha0 and partial0
-            if constexpr (ALPHA0_ONE) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-            } else if (alpha0 == nullptr) {
-                Add(x0_0, x0_0, y0_0, f);
-                Add(x1_0, x1_0, y1_0, f);
-                Add(x0_1, x0_1, y0_1, f);
-                Add(x1_1, x1_1, y1_1, f);
-            } else {
-                RegTensor<float> a0_0, a0_1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-                MulDstAdd(x0_0, a0_0, y0_0, f);
-                MulDstAdd(x1_0, a0_0, y1_0, f);
-                MulDstAdd(x0_1, a0_1, y0_1, f);
-                MulDstAdd(x1_1, a0_1, y1_1, f);
-            }
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            MulDstAdd(x0_0, a0_0, y0_0, f);
+            MulDstAdd(x1_0, a0_0, y1_0, f);
+            MulDstAdd(x0_1, a0_1, y0_1, f);
+            MulDstAdd(x1_1, a0_1, y1_1, f);
 
             LoadAlign(z0_0, partial1 + row * DP);
             LoadAlign(z1_0, partial1 + row * DP + 64);
             LoadAlign(z0_1, partial1 + (row + 1) * DP);
             LoadAlign(z1_1, partial1 + (row + 1) * DP + 64);
 
-            // Phase 2: FMA or Add with alpha1 and partial1
-            if constexpr (ALPHA1_ONE) {
-                Add(x0_0, x0_0, z0_0, f);
-                Add(x1_0, x1_0, z1_0, f);
-                Add(x0_1, x0_1, z0_1, f);
-                Add(x1_1, x1_1, z1_1, f);
-            } else if (alpha1 == nullptr) {
-                Add(x0_0, x0_0, z0_0, f);
-                Add(x1_0, x1_0, z1_0, f);
-                Add(x0_1, x0_1, z0_1, f);
-                Add(x1_1, x1_1, z1_1, f);
-            } else {
-                RegTensor<float> a1_0, a1_1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-                MulDstAdd(x0_0, a1_0, z0_0, f);
-                MulDstAdd(x1_0, a1_0, z1_0, f);
-                MulDstAdd(x0_1, a1_1, z0_1, f);
-                MulDstAdd(x1_1, a1_1, z1_1, f);
-            }
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+            MulDstAdd(x0_0, a1_0, z0_0, f);
+            MulDstAdd(x1_0, a1_0, z1_0, f);
+            MulDstAdd(x0_1, a1_1, z0_1, f);
+            MulDstAdd(x1_1, a1_1, z1_1, f);
 
             StoreAlign(accum + row * DP, x0_0, f);
             StoreAlign(accum + row * DP + 64, x1_0, f);
@@ -681,11 +384,12 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             StoreAlign(accum + (row + 1) * DP + 64, x1_1, f);
         }
     } else {
-        uint16_t row = 0;
-        for (; row + 3 < 64; row += 4) {
+        for (uint16_t row = 0; row < 64; row += 4) {
             RegTensor<float> x0, x1, x2, x3;
             RegTensor<float> y0, y1, y2, y3;
             RegTensor<float> z0, z1, z2, z3;
+            RegTensor<float> a0_0, a0_1, a0_2, a0_3;
+            RegTensor<float> a1_0, a1_1, a1_2, a1_3;
 
             LoadAlign(x0, accum + (row + 0) * DP);
             LoadAlign(x1, accum + (row + 1) * DP);
@@ -697,213 +401,33 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             LoadAlign(y2, partial0 + (row + 2) * DP);
             LoadAlign(y3, partial0 + (row + 3) * DP);
 
-            if constexpr (ALPHA0_ONE) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else if (alpha0 == nullptr) {
-                Add(x0, x0, y0, f);
-                Add(x1, x1, y1, f);
-                Add(x2, x2, y2, f);
-                Add(x3, x3, y3, f);
-            } else {
-                RegTensor<float> a0_0, a0_1, a0_2, a0_3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
-                MulDstAdd(x0, a0_0, y0, f);
-                MulDstAdd(x1, a0_1, y1, f);
-                MulDstAdd(x2, a0_2, y2, f);
-                MulDstAdd(x3, a0_3, y3, f);
-            }
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_3, alpha0 + row + 3);
+            MulDstAdd(x0, a0_0, y0, f);
+            MulDstAdd(x1, a0_1, y1, f);
+            MulDstAdd(x2, a0_2, y2, f);
+            MulDstAdd(x3, a0_3, y3, f);
 
             LoadAlign(z0, partial1 + (row + 0) * DP);
             LoadAlign(z1, partial1 + (row + 1) * DP);
             LoadAlign(z2, partial1 + (row + 2) * DP);
             LoadAlign(z3, partial1 + (row + 3) * DP);
 
-            if constexpr (ALPHA1_ONE) {
-                Add(x0, x0, z0, f);
-                Add(x1, x1, z1, f);
-                Add(x2, x2, z2, f);
-                Add(x3, x3, z3, f);
-            } else if (alpha1 == nullptr) {
-                Add(x0, x0, z0, f);
-                Add(x1, x1, z1, f);
-                Add(x2, x2, z2, f);
-                Add(x3, x3, z3, f);
-            } else {
-                RegTensor<float> a1_0, a1_1, a1_2, a1_3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
-                MulDstAdd(x0, a1_0, z0, f);
-                MulDstAdd(x1, a1_1, z1, f);
-                MulDstAdd(x2, a1_2, z2, f);
-                MulDstAdd(x3, a1_3, z3, f);
-            }
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_3, alpha1 + row + 3);
+            MulDstAdd(x0, a1_0, z0, f);
+            MulDstAdd(x1, a1_1, z1, f);
+            MulDstAdd(x2, a1_2, z2, f);
+            MulDstAdd(x3, a1_3, z3, f);
 
             StoreAlign(accum + (row + 0) * DP, x0, f);
             StoreAlign(accum + (row + 1) * DP, x1, f);
             StoreAlign(accum + (row + 2) * DP, x2, f);
             StoreAlign(accum + (row + 3) * DP, x3, f);
-        }
-        for (; row < 64; ++row) {
-            RegTensor<float> x0, y0, z0;
-            LoadAlign(x0, accum + row * DP);
-            LoadAlign(y0, partial0 + row * DP);
-            LoadAlign(z0, partial1 + row * DP);
-
-            if constexpr (ALPHA0_ONE) {
-                Add(x0, x0, y0, f);
-            } else if (alpha0 == nullptr) {
-                Add(x0, x0, y0, f);
-            } else {
-                RegTensor<float> a0;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a0, alpha0 + row);
-                MulDstAdd(x0, a0, y0, f);
-            }
-
-            if constexpr (ALPHA1_ONE) {
-                Add(x0, x0, z0, f);
-            } else if (alpha1 == nullptr) {
-                Add(x0, x0, z0, f);
-            } else {
-                RegTensor<float> a1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(a1, alpha1 + row);
-                MulDstAdd(x0, a1, z0, f);
-            }
-
-            StoreAlign(accum + row * DP, x0, f);
-        }
-    }
-}
-
-__simd_vf__ inline void NormalizeVF(__ubuf__ float *accum, __ubuf__ float *denom, uint32_t dp, uint32_t rows,
-                                    __ubuf__ float *scratch = nullptr)
-{
-    using namespace AscendC::MicroAPI;
-    auto full = CreateMask<float, MaskPattern::ALL>();
-    if (scratch != nullptr) {
-        RegTensor<float> den, inv;
-        LoadAlign(den, denom);
-        FastReciprocal(inv, den, full);
-        StoreAlign(scratch, inv, full);
-        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-        if (dp == 128) {
-            uint32_t i = 0;
-            for (; i + 3 < (rows & ~1U); i += 4) {
-                RegTensor<float> ratio0, ratio1, ratio2, ratio3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, scratch + i + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, scratch + i + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, scratch + i + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, scratch + i + 3);
-                RegTensor<float> x0_0, x1_0, x2_0, x3_0;
-                RegTensor<float> x0_1, x1_1, x2_1, x3_1;
-                LoadAlign(x0_0, accum + (i + 0) * dp + 0);
-                LoadAlign(x1_0, accum + (i + 1) * dp + 0);
-                LoadAlign(x2_0, accum + (i + 2) * dp + 0);
-                LoadAlign(x3_0, accum + (i + 3) * dp + 0);
-                LoadAlign(x0_1, accum + (i + 0) * dp + 64);
-                LoadAlign(x1_1, accum + (i + 1) * dp + 64);
-                LoadAlign(x2_1, accum + (i + 2) * dp + 64);
-                LoadAlign(x3_1, accum + (i + 3) * dp + 64);
-
-                Mul(x0_0, x0_0, ratio0, full);
-                Mul(x1_0, x1_0, ratio1, full);
-                Mul(x2_0, x2_0, ratio2, full);
-                Mul(x3_0, x3_0, ratio3, full);
-                Mul(x0_1, x0_1, ratio0, full);
-                Mul(x1_1, x1_1, ratio1, full);
-                Mul(x2_1, x2_1, ratio2, full);
-                Mul(x3_1, x3_1, ratio3, full);
-
-                StoreAlign(accum + (i + 0) * dp + 0, x0_0, full);
-                StoreAlign(accum + (i + 1) * dp + 0, x1_0, full);
-                StoreAlign(accum + (i + 2) * dp + 0, x2_0, full);
-                StoreAlign(accum + (i + 3) * dp + 0, x3_0, full);
-                StoreAlign(accum + (i + 0) * dp + 64, x0_1, full);
-                StoreAlign(accum + (i + 1) * dp + 64, x1_1, full);
-                StoreAlign(accum + (i + 2) * dp + 64, x2_1, full);
-                StoreAlign(accum + (i + 3) * dp + 64, x3_1, full);
-            }
-            for (; i < (rows & ~1U); i += 2) {
-                RegTensor<float> ratio0, ratio1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, scratch + i);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, scratch + i + 1);
-                RegTensor<float> x0_0, x0_1, x1_0, x1_1;
-                LoadAlign(x0_0, accum + i * dp + 0);
-                LoadAlign(x0_1, accum + (i + 1) * dp + 0);
-                LoadAlign(x1_0, accum + i * dp + 64);
-                LoadAlign(x1_1, accum + (i + 1) * dp + 64);
-                Mul(x0_0, x0_0, ratio0, full);
-                Mul(x0_1, x0_1, ratio1, full);
-                Mul(x1_0, x1_0, ratio0, full);
-                Mul(x1_1, x1_1, ratio1, full);
-                StoreAlign(accum + i * dp + 0, x0_0, full);
-                StoreAlign(accum + i * dp + 64, x1_0, full);
-                StoreAlign(accum + (i + 1) * dp + 0, x0_1, full);
-                StoreAlign(accum + (i + 1) * dp + 64, x1_1, full);
-            }
-        } else {
-            uint32_t i = 0;
-            for (; i + 3 < rows; i += 4) {
-                RegTensor<float> ratio0, ratio1, ratio2, ratio3;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, scratch + i + 0);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, scratch + i + 1);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio2, scratch + i + 2);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio3, scratch + i + 3);
-                RegTensor<float> x0, x1, x2, x3;
-                LoadAlign(x0, accum + (i + 0) * dp);
-                LoadAlign(x1, accum + (i + 1) * dp);
-                LoadAlign(x2, accum + (i + 2) * dp);
-                LoadAlign(x3, accum + (i + 3) * dp);
-                Mul(x0, x0, ratio0, full);
-                Mul(x1, x1, ratio1, full);
-                Mul(x2, x2, ratio2, full);
-                Mul(x3, x3, ratio3, full);
-                StoreAlign(accum + (i + 0) * dp, x0, full);
-                StoreAlign(accum + (i + 1) * dp, x1, full);
-                StoreAlign(accum + (i + 2) * dp, x2, full);
-                StoreAlign(accum + (i + 3) * dp, x3, full);
-            }
-            for (; i < (rows & ~1U); i += 2) {
-                RegTensor<float> ratio0, ratio1;
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, scratch + i);
-                LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, scratch + i + 1);
-                RegTensor<float> x0, x1;
-                LoadAlign(x0, accum + i * dp);
-                LoadAlign(x1, accum + (i + 1) * dp);
-                Mul(x0, x0, ratio0, full);
-                Mul(x1, x1, ratio1, full);
-                StoreAlign(accum + i * dp, x0, full);
-                StoreAlign(accum + (i + 1) * dp, x1, full);
-            }
-        }
-        if (rows & 1) {
-            uint32_t i = rows - 1;
-            RegTensor<float> ratio, x;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, scratch + i);
-            for (uint32_t col = 0; col < dp; col += 64) {
-                LoadAlign(x, accum + i * dp + col);
-                Mul(x, x, ratio, full);
-                StoreAlign(accum + i * dp + col, x, full);
-            }
-        }
-    } else {
-        for (uint32_t i = 0; i < rows; ++i) {
-            RegTensor<float> den, ratio;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(den, denom + i);
-            FastReciprocal(ratio, den, full);
-            for (uint32_t col = 0; col < dp; col += 64) {
-                RegTensor<float> x;
-                LoadAlign(x, accum + i * dp + col);
-                Mul(x, x, ratio, full);
-                StoreAlign(accum + i * dp + col, x, full);
-            }
         }
     }
 }
@@ -927,10 +451,9 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
 // The last PV never needs to store the updated FP32 O back to UB. Keep the
 // FMA -> reciprocal multiply -> cast rounding sequence.
 // Bypasses denom reload by directly using the returned den register.
-template <class T, uint32_t DP, bool FIRST, bool ALPHA_ONE = false>
-__simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, [[maybe_unused]] __ubuf__ float *accum,
-                                           __ubuf__ float *partial, __ubuf__ float *alpha, __ubuf__ float *denom,
-                                           __ubuf__ float *scratch)
+template <class T, uint32_t DP, bool FIRST>
+__simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial,
+                                           __ubuf__ float *alpha, __ubuf__ float *denom, __ubuf__ float *scratch)
 {
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
@@ -942,12 +465,12 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, [[maybe_unused]] __u
     if constexpr (FIRST) {
         ScaleAndCastTileVF<T, DP>(out, partial, scratch);
     } else {
-        AccumulateAndCastTileVF<T, DP, ALPHA_ONE>(out, accum, partial, alpha, scratch);
+        AccumulateAndCastTileVF<T, DP>(out, accum, partial, alpha, scratch);
     }
 }
 
 // Two consecutive groups of the same query, preserving both FP32 FMA roundings.
-template <class T, uint32_t DP, bool FIRST, bool LAST, bool ALPHA0_ONE = false, bool ALPHA1_ONE = false>
+template <class T, uint32_t DP, bool FIRST, bool LAST>
 __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial0,
                                          __ubuf__ float *partial1, __ubuf__ float *alpha0, __ubuf__ float *alpha1,
                                          __ubuf__ float *denom, __ubuf__ float *scratch)
@@ -963,8 +486,7 @@ __simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
     for (uint16_t row = 0; row < 64; row += 2) {
-        UpdateWidePairTwoRows<T, DP, FIRST, LAST, ALPHA0_ONE, ALPHA1_ONE>(
-            out, accum, partial0, partial1, alpha0, alpha1, scratch, row, f);
+        UpdateWidePairTwoRows<T, DP, FIRST, LAST>(out, accum, partial0, partial1, alpha0, alpha1, scratch, row, f);
     }
 }
 

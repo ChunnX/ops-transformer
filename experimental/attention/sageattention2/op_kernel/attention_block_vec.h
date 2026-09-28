@@ -15,7 +15,6 @@
 namespace Sage {
 struct DefaultVectorLayout {
     static constexpr uint32_t ACCUM_UB = Sage::ACCUM_UB;
-    static constexpr uint32_t MU_UB = Sage::MU_UB;
     static constexpr uint32_t P_UB = Sage::P_UB;
     static constexpr uint32_t QS_UB = Sage::QS_UB;
     static constexpr uint32_t MAX_UB = Sage::MAX_UB;
@@ -32,22 +31,18 @@ struct DefaultVectorLayout {
 template <class T, uint32_t DP, class Layout = DefaultVectorLayout>
 class AttentionBlockVec {
 public:
-    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q, GM_ADDR qs,
-                                                               GM_ADDR ks, GM_ADDR mean, GM_ADDR out, GM_ADDR lse,
-                                                               SageParams params)
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR qs,
+                                                               GM_ADDR ks, GM_ADDR out, GM_ADDR lse, SageParams params)
     {
         resource_ = &resource;
         params_ = params;
         subBlockIdx_ = GetSubBlockIdx();
         qsg_.SetGlobalBuffer((__gm__ half *)qs);
         ksg_.SetGlobalBuffer((__gm__ half *)ks);
-        mg_.SetGlobalBuffer((__gm__ float *)mean);
         lg_.SetGlobalBuffer((__gm__ float *)lse);
-        qg_.SetGlobalBuffer((__gm__ T *)q);
         og_.SetGlobalBuffer((__gm__ T *)out);
 
         accum_ = resource_->ubBuf.GetBufferByByte<float>(ACCUM_UB);
-        mu_ = resource_->ubBuf.GetBufferByByte<float>(MU_UB);
         qo_ = resource_->ubBuf.GetBufferByByte<T>(P_UB);
         qsu_ = resource_->ubBuf.GetBufferByByte<half>(QS_UB);
         maxima_ = resource_->ubBuf.GetBufferByByte<half>(MAX_UB);
@@ -58,25 +53,15 @@ public:
     {
         Sync<HardEvent::V_MTE2>();
         Duplicate(accum_, 0.0f, HALF * params_.dp);
-        DataCopy(mu_, mg_[(uint64_t(b) * params_.hk + kh) * params_.dp], params_.dp);
         DataCopy(qsu_, qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
         Sync<HardEvent::MTE2_S>();
-        Duplicate(maxima_, half(-65504.0f), 128);
+        Duplicate(maxima_, half(FP16_MIN), 128);
         Duplicate(denom_, 0.0f, 64);
         PipeBarrier<PIPE_V>();
     }
     __aicore__ inline __attribute__((always_inline)) void PrefetchScales(uint64_t kb, uint32_t count)
     {
-        // IDs 4/5 own the two immutable K-scale slots. Every prefetch
-        // consumes a free token and publishes one MTE2->V ready token.
-        SetFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
-        SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
-        for (uint32_t pre = 0; pre < Min(count, uint32_t(2)); ++pre) {
-            event_t ev = static_cast<event_t>(SCALE_EVENT_BASE + pre);
-            WaitFlag<HardEvent::V_MTE2>(ev);
-            DataCopy(resource_->ubBuf.GetBufferByByte<half>(KS_UB + pre * N * 2), ksg_[kb + pre * N], N);
-            SetFlag<HardEvent::MTE2_V>(ev);
-        }
+        PrefetchKScales<N>(*resource_, ksg_, kb, count, KS_UB);
     }
     template <bool CAUSAL = false>
     __aicore__ inline __attribute__((always_inline)) void Softmax(uint32_t step, uint32_t qstart, uint64_t kb,
@@ -103,11 +88,11 @@ public:
         const uint32_t qOffset = qstart + subBlockIdx_ * HALF;
 
         if (isFull) {
-            SoftmaxHalfVF<HALF, N, true, true, P_NZ_PAD_ROWS>(
+            SoftmaxHalfVF<HALF, N, true, P_NZ_PAD_ROWS>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
                 qOffset, params_.sq, start, params_.sk, CAUSAL);
         } else {
-            SoftmaxHalfVF<HALF, N, false, true, P_NZ_PAD_ROWS>(
+            SoftmaxHalfVF<HALF, N, false, P_NZ_PAD_ROWS>(
                 scoresPtr, maxPtr, denPtr, alphaPtr, p8Ptr, qsPtr, ksPtr, sumPtr,
                 qOffset, params_.sq, start, params_.sk, CAUSAL);
         }
@@ -143,28 +128,18 @@ public:
             auto alpha = resource_->ubBuf.GetBufferByByte<float>(ALPHA_UB + (index % ALPHA_SLOTS) * 512);
             AccumulateFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(),
                                  (__ubuf__ float *)resource_->ubBuf.GetBufferByByte<float>(PV_UB).GetPhyAddr(),
-                                 (__ubuf__ float *)alpha.GetPhyAddr(), HALF);
+                                 (__ubuf__ float *)alpha.GetPhyAddr());
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         }
     }
-    template <bool FusedCast = true, bool DrainScales = true>
     __aicore__ inline __attribute__((always_inline)) void FinalizeTile(uint32_t qstart, uint32_t b, uint32_t h)
     {
-        if constexpr (DrainScales) {
-            WaitFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
-            WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
-        }
-        if constexpr (FusedCast) {
-            NormalizeCastVF<T, DP>(
-                (__ubuf__ T *)qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
-                (__ubuf__ float *)denom_.GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
-        } else {
-            NormalizeVF((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(), params_.dp, HALF,
-                        (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
-            PipeBarrier<PIPE_V>();
-            Cast(qo_, accum_, RoundMode::CAST_RINT, HALF * params_.dp);
-        }
+        WaitFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
+        WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
+        NormalizeCastVF<T, DP>(
+            (__ubuf__ T *)qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
+            (__ubuf__ float *)denom_.GetPhyAddr(),
+            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
         StoreTileOutput(qstart, b, h);
     }
     __aicore__ inline __attribute__((always_inline)) void StoreTileOutput(uint32_t qstart, uint32_t b, uint32_t h)
@@ -190,67 +165,39 @@ protected:
     __aicore__ inline __attribute__((always_inline)) void StoreTileLse(uint32_t first, uint32_t validRows,
                                                                        uint32_t b, uint32_t h)
     {
-        // Vectorized epilogue: lse = float(maxima) + ln(denom) + sm_scale * <q, mean>.
-        // One vector pass plus a single GM write replaces the former per-row loop
-        // (two scalar UB reads, one Ln and one 4-byte GM store per row).
-        // Scratch reuses the retired P0/output staging after its MTE3 fence; the
-        // AIC may already be writing the next query tile's QK into the score area.
+        // Vectorized epilogue emitting the RAW log2-domain LSE:
+        //   lse_raw = (ln(denom) + float(maxima)) * log2(e),
+        // where denom/maxima track the smoothed scores q.(k-mean). The PyTorch
+        // layer converts back and adds the open-source smooth-K correction
+        // (lse_raw / log2(e) + sm_scale * <q, mean_kh>), so the kernel never
+        // re-reads Q here. Scratch reuses the retired P0/output staging after
+        // its MTE3 fence; the AIC may already be writing the next query tile's
+        // QK into the score area.
         Sync<HardEvent::MTE3_S>();
         Sync<HardEvent::V_S>();
         if (!validRows) {
             return;
         }
-        static_assert(2 * 8 * 128 * sizeof(float) + 1024 <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
-        constexpr uint32_t CHUNK = 8;
-        const uint32_t dp = params_.dp;
-        auto raw = resource_->ubBuf.template GetBufferByByte<T>(P_UB);
-        auto qf = resource_->ubBuf.template GetBufferByByte<float>(P_UB + CHUNK * dp * sizeof(T));
-        auto lse = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float));
-        auto dot = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float) + 256);
-        auto work = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float) + 512);
-        // lse = ln(denom) + float(maxima) for all 64 rows in three vector ops.
+        static_assert(2 * HALF * sizeof(float) <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
+        auto lse = resource_->ubBuf.template GetBufferByByte<float>(P_UB);
+        auto maxF = resource_->ubBuf.template GetBufferByByte<float>(P_UB + HALF * sizeof(float));
+        // lse = ln(denom) + float(maxima), then one Muls converts to log2 domain.
         DataCopy(lse, denom_, HALF);
         Sync<HardEvent::MTE2_V>();
         Ln(lse, lse, HALF);
         PipeBarrier<PIPE_V>();
-        Cast(dot, maxima_, RoundMode::CAST_NONE, HALF);
+        Cast(maxF, maxima_, RoundMode::CAST_NONE, HALF);
         PipeBarrier<PIPE_V>();
-        Add(lse, lse, dot, HALF);
+        Add(lse, lse, maxF, HALF);
         PipeBarrier<PIPE_V>();
-        if (params_.smoothK) {
-            // Rows beyond validRows are never read from GM nor written back.
-            for (uint32_t base = 0; base < HALF; base += CHUNK) {
-                const uint32_t rows = Min(CHUNK, validRows - base);
-                const uint32_t offset = Offset(params_.qs, b, h, first + base);
-                if (params_.d == dp) {
-                    Sync<HardEvent::V_MTE2>();
-                    DataCopy(raw, qg_[offset], rows * params_.d);
-                    Sync<HardEvent::MTE2_V>();
-                } else {
-                    for (uint32_t r = 0; r < rows; ++r)
-                        ReadRow(raw[r * dp], qg_, offset + r * params_.qs[2], params_.d, dp);
-                }
-                Cast(qf, raw, RoundMode::CAST_NONE, rows * dp);
-                PipeBarrier<PIPE_V>();
-                for (uint32_t r = 0; r < rows; ++r) {
-                    Mul(qf[r * dp], qf[r * dp], mu_, dp);
-                    PipeBarrier<PIPE_V>();
-                    ReduceSum(dot[base + r], qf[r * dp], work, dp);
-                }
-                PipeBarrier<PIPE_V>();
-            }
-            Muls(dot, dot, params_.smScale, HALF);
-            PipeBarrier<PIPE_V>();
-            Add(lse, lse, dot, HALF);
-            PipeBarrier<PIPE_V>();
-        }
+        Muls(lse, lse, LOG2_E, HALF);
+        PipeBarrier<PIPE_V>();
         Sync<HardEvent::V_MTE3>();
         DataCopyExtParams cp{1, validRows * uint32_t(sizeof(float)), 0, 0, 0};
         DataCopyPad(lg_[(uint64_t(b) * params_.hq + h) * params_.sq + first], lse, cp);
         Sync<HardEvent::MTE3_S>();
     }
     static constexpr uint32_t ACCUM_UB = Layout::ACCUM_UB;
-    static constexpr uint32_t MU_UB = Layout::MU_UB;
     static constexpr uint32_t P_UB = Layout::P_UB;
     static constexpr uint32_t QS_UB = Layout::QS_UB;
     static constexpr uint32_t MAX_UB = Layout::MAX_UB;
@@ -265,9 +212,9 @@ protected:
     SageParams params_;
     uint32_t subBlockIdx_;
     GlobalTensor<half> qsg_, ksg_;
-    GlobalTensor<float> mg_, lg_;
-    GlobalTensor<T> qg_, og_;
-    LocalTensor<float> accum_, mu_, denom_;
+    GlobalTensor<float> lg_;
+    GlobalTensor<T> og_;
+    LocalTensor<float> accum_, denom_;
     LocalTensor<half> qsu_, maxima_;
     LocalTensor<T> qo_;
 };

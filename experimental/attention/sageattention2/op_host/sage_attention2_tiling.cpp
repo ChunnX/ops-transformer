@@ -115,7 +115,6 @@ ge::graphStatus Tile(gert::TilingContext *c)
     p.smoothK = *smooth;
     p.causal = *causal;
     p.returnLse = *lse;
-    p.bf16 = dt == ge::DT_BF16;
     p.qs[2] = p.d;
     p.qs[1] = uint64_t(p.sq) * p.d;
     p.qs[0] = uint64_t(p.hq) * p.qs[1];

@@ -13,7 +13,7 @@
 // Runtime shape, layout and execution parameters shared by all stages.
 struct SageParams {
     uint32_t b, hq, hk, sq, sk, d, dp, qp, kp, cores;
-    uint32_t bf16, causal, smoothK, returnLse;
+    uint32_t causal, smoothK, returnLse;
     float smScale;
     uint64_t qs[3], ks[3], vs[3]; // canonical B,H,S strides, in elements
 };

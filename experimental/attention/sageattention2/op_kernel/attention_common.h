@@ -28,14 +28,14 @@ static_assert(M * N <= 32 * 1024 && N * 128 <= 32 * 1024 && M * 128 <= 32 * 1024
 constexpr uint32_t PV_SLOTS = 2, PV_SLOT_BYTES = HALF * 128 * 4;
 static_assert(LOOKAHEAD == 2 && PV_SLOTS == 2 && ALPHA_SLOTS == 4, "paired O ownership requires these ring depths");
 constexpr uint32_t SCORE_UB = 0, PV_UB = PIPE_SLOTS * HALF * N * 2, ACCUM_UB = PV_UB + PV_SLOTS * PV_SLOT_BYTES;
-constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, MU_UB = P_UB + PIPE_SLOTS * P_SLOT_BYTES;
-constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * N * 2;
+constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, KS_UB = P_UB + PIPE_SLOTS * P_SLOT_BYTES;
+constexpr uint32_t QS_UB = KS_UB + 2 * N * 2;
 constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
 constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * 512, UB_END = SUM_UB + HALF * 4;
 // The final LSE epilogue draws its vector scratch from the retired P0 slot
 // (see AttentionBlockVec::StoreTileLse); it must not touch the score area,
 // which the AIC may already be refilling for the next query tile.
-static_assert(2 * 8 * 128 * sizeof(float) + 1024 <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
+static_assert(2 * HALF * sizeof(float) <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
 static_assert(UB_END <= 248 * 1024, "UB exceeds capacity");
 static_assert(HALF * N >= HALF * 128 * 2, "P buffer cannot hold final FP16/BF16 output");
 static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds its 128 KiB slot");
@@ -43,6 +43,22 @@ static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds
 constexpr uint32_t QK_READY = 0, P_READY = 1, PV_READY = 2, PV_RELEASE = 3, AIV_FLAG_OFFSET = 16;
 // Local hard-event ownership. Scale slots use consecutive IDs 4 and 5.
 constexpr uint32_t QK_EVENT = 2, PV_EVENT = 3, SCALE_EVENT_BASE = 4;
+
+// IDs SCALE_EVENT_BASE and +1 own the two immutable K-scale slots. Every
+// prefetch consumes a free token and publishes one MTE2->V ready token.
+template <uint32_t GROUP>
+__aicore__ inline void PrefetchKScales(FixedResource &r, const GlobalTensor<half> &ksg, uint64_t kb, uint32_t count,
+                                       uint32_t ksUb)
+{
+    SetFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
+    SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
+    for (uint32_t pre = 0; pre < Min(count, uint32_t(2)); ++pre) {
+        event_t ev = static_cast<event_t>(SCALE_EVENT_BASE + pre);
+        WaitFlag<HardEvent::V_MTE2>(ev);
+        DataCopy(r.ubBuf.template GetBufferByByte<half>(ksUb + pre * GROUP * 2), ksg[kb + pre * GROUP], GROUP);
+        SetFlag<HardEvent::MTE2_V>(ev);
+    }
+}
 
 template <auto PIPE>
 __aicore__ inline void WaitBothAiv(uint32_t flag)

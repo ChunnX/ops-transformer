@@ -17,8 +17,7 @@ struct WideVectorLayout {
     static constexpr uint32_t P_PART_BYTES = HALF * N, PV_SLOT_BYTES = 2 * P_PART_BYTES,
                               ACCUM_UB = PV_UB + 2 * PV_SLOT_BYTES;
     static constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4;
-    static constexpr uint32_t MU_UB = P_UB + P_SLOT_BYTES;
-    static constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * 512 * 2;
+    static constexpr uint32_t KS_UB = P_UB + P_SLOT_BYTES, QS_UB = KS_UB + 2 * 512 * 2;
     static constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
     static constexpr uint32_t SUM_UB = ALPHA_UB + 3 * 512;
     static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = SUM_UB + HALF * 4;
@@ -34,21 +33,14 @@ class AttentionBlockVecWide : public AttentionBlockVec<T, DP, WideVectorLayout> 
 public:
     __aicore__ inline __attribute__((always_inline)) void PrefetchWideScales(uint64_t kb, uint32_t count)
     {
-        SetFlag<HardEvent::V_MTE2>(SCALE_EVENT_BASE);
-        SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(SCALE_EVENT_BASE + 1));
-        for (uint32_t pre = 0; pre < Min(count, uint32_t(2)); ++pre) {
-            event_t ev = static_cast<event_t>(SCALE_EVENT_BASE + pre);
-            WaitFlag<HardEvent::V_MTE2>(ev);
-            DataCopy(resource_->ubBuf.template GetBufferByByte<half>(KS_UB + pre * 512 * 2), ksg_[kb + pre * 512], 512);
-            SetFlag<HardEvent::MTE2_V>(ev);
-        }
+        PrefetchKScales<512>(*resource_, ksg_, kb, count, KS_UB);
     }
-    template <bool CAUSAL = false, bool STREAM = false>
-    __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint64_t kb, uint32_t count,
+    template <bool CAUSAL>
+    __aicore__ inline __attribute__((always_inline)) void SoftmaxWide(uint32_t step, uint32_t count,
                                                                       uint32_t qstart = 0, uint32_t group = 0,
                                                                       uint64_t nextScale = ~uint64_t(0))
     {
-        const uint32_t ring = STREAM ? group : step;
+        const uint32_t ring = group;
         auto scores = resource_->ubBuf.template GetBufferByByte<half>(SCORE_UB + (ring & 1) * 2 * HALF * N * 2);
         // Each FP8 NZ block replaces the consumed first FP16 stripe of its
         // 32-column score block. Keep the second stripe as a 2048-byte gap.
@@ -64,41 +56,34 @@ public:
         WaitFlag<HardEvent::MTE2_V>(ev);
         auto scoresNext =
             resource_->ubBuf.template GetBufferByByte<half>(SCORE_UB + ((ring & 1) * 2 + 1) * HALF * N * 2);
-        auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
         // Output scratch is idle until the complete softmax group finishes.
         auto partialSums = resource_->ubBuf.template GetBufferByByte<float>(WideVectorLayout::PARTIAL_SUMS_UB);
         if constexpr (CAUSAL) {
             if (step + 1 == count) {
                 SoftmaxWideFirstVF<true>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                                         (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                         (__ubuf__ half *)maxima_.GetPhyAddr(),
                                          (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
                                          (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                                         (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr(),
+                                         (__ubuf__ float *)partialSums.GetPhyAddr(),
                                          int32_t(qstart + subBlockIdx_ * HALF) - int32_t(step * 512));
             } else {
                 SoftmaxWideFirstVF<false>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                                          (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                          (__ubuf__ half *)maxima_.GetPhyAddr(),
                                           (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
                                           (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                                          (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
+                                          (__ubuf__ float *)partialSums.GetPhyAddr());
             }
         } else {
             SoftmaxWideFirstVF<false>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
-                                      (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
+                                      (__ubuf__ half *)maxima_.GetPhyAddr(),
                                       (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float8_e4m3_t *)p8.GetPhyAddr(),
                                       (__ubuf__ half *)qsu_.GetPhyAddr(), (__ubuf__ half *)ksu.GetPhyAddr(),
-                                      (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
+                                      (__ubuf__ float *)partialSums.GetPhyAddr());
         }
         SetFlag<HardEvent::V_MTE2>(ev);
-        if constexpr (STREAM) {
-            if (nextScale != ~uint64_t(0)) {
-                WaitFlag<HardEvent::V_MTE2>(ev);
-                DataCopy(ksu, ksg_[nextScale], 512);
-                SetFlag<HardEvent::MTE2_V>(ev);
-            }
-        } else if (step + 2 < count) {
+        if (nextScale != ~uint64_t(0)) {
             WaitFlag<HardEvent::V_MTE2>(ev);
-            DataCopy(ksu, ksg_[kb + (step + 2) * 512], 512);
+            DataCopy(ksu, ksg_[nextScale], 512);
             SetFlag<HardEvent::MTE2_V>(ev);
         }
         Sync<HardEvent::V_MTE3>();
@@ -108,24 +93,12 @@ public:
         CrossCoreSetFlag<4, PIPE_MTE3>(P_READY);
         auto p8Next = scoresNext.template ReinterpretCast<float8_e4m3_t>();
         SoftmaxWideSecondVF((__ubuf__ half *)scoresNext.GetPhyAddr(), (__ubuf__ half *)maxima_.GetPhyAddr(),
-                            (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
+                            (__ubuf__ float *)alpha.GetPhyAddr(),
                             (__ubuf__ float8_e4m3_t *)p8Next.GetPhyAddr(),
-                            (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
+                            (__ubuf__ float *)partialSums.GetPhyAddr());
         Sync<HardEvent::V_MTE3>();
         DataCopy(pl1[M * N + subBlockIdx_ * HALF * 32], p8Next, cp);
         CrossCoreSetFlag<4, PIPE_MTE3>(P_READY);
-    }
-    __aicore__ inline __attribute__((always_inline)) void UpdateWideOutput(uint32_t step)
-    {
-        CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
-        AccumulateWideFp32VF<DP>(
-            (__ubuf__ float *)accum_.GetPhyAddr(),
-            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (step & 1) * PV_SLOT_BYTES)
-                .GetPhyAddr(),
-            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (step % 3) * 512)
-                .GetPhyAddr(),
-            (__ubuf__ float *)denom_.GetPhyAddr());
-        CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
     }
 
     __aicore__ inline __attribute__((always_inline)) void BeginStream(uint64_t firstScale, uint64_t secondScale)
@@ -151,17 +124,9 @@ public:
             Sync<HardEvent::V_MTE2>();
             DataCopy(qsu_, Base::qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
             Sync<HardEvent::MTE2_V>();
-            Duplicate(maxima_, half(-65504.0f), 128);
+            Duplicate(maxima_, half(FP16_MIN), 128);
             PipeBarrier<PIPE_V>();
         }
-    }
-    __aicore__ inline __attribute__((always_inline)) void LoadLseMean(uint32_t b, uint32_t kh)
-    {
-        if (!Base::params_.returnLse || !Base::params_.smoothK)
-            return;
-        Sync<HardEvent::V_MTE2>();
-        DataCopy(Base::mu_, Base::mg_[(uint64_t(b) * Base::params_.hk + kh) * DP], DP);
-        Sync<HardEvent::MTE2_V>();
     }
     __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first, bool last)
     {

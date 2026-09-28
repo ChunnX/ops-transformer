@@ -54,7 +54,7 @@ __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const S
 // A deferred pair retires after S(g); retain metadata and alpha for all
 // three live groups g-2, g-1 and g. PV itself still uses two slots.
 struct WideOutputInfo {
-    uint32_t ordinal, b, h, kh, qstart;
+    uint32_t ordinal, b, h, qstart;
     bool first, last;
 };
 template <class T>
@@ -62,8 +62,7 @@ __aicore__ inline __attribute__((always_inline)) void FinishWideOutput(
     AttentionBlockVecWide<T, 128> &vector, const WideOutputInfo &info, uint64_t group)
 {
     if (info.last)
-        vector.LoadLseMean(info.b, info.kh);
-    vector.UpdateStreamOutput(group, info.first, info.last);
+        vector.UpdateStreamOutput(group, info.first, info.last);
     if (info.last)
         vector.FinishStreamQuery(info.ordinal, info.qstart, info.b, info.h);
 }
@@ -76,8 +75,6 @@ __aicore__ inline __attribute__((always_inline)) void RetireWideOutput(
     const auto first = pending[retired % 3];
     if (retired + 1 < produced && first.ordinal == pending[(retired + 1) % 3].ordinal) {
         const auto second = pending[(retired + 1) % 3];
-        if (second.last)
-            vector.LoadLseMean(second.b, second.kh);
         vector.template UpdateStreamPair<FIRST_READY>(retired, first.first, second.last);
         if (second.last)
             vector.FinishStreamQuery(second.ordinal, second.qstart, second.b, second.h);
@@ -139,15 +136,14 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
     }
 }
 template <class T, bool CAUSAL = false>
-__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
-                                                                          GM_ADDR qs, GM_ADDR ks, GM_ADDR mean,
-                                                                          GM_ADDR mxScale, GM_ADDR out, GM_ADDR lse,
-                                                                          SageParams p)
+__aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
+                                                                          GM_ADDR qs, GM_ADDR ks, GM_ADDR mxScale,
+                                                                          GM_ADDR out, GM_ADDR lse, SageParams p)
 {
     FixedResource r;
     MxScaleCache mxCache;
     AttentionBlockVecWide<T, 128> vector;
-    vector.Init(r, q, qs, ks, mean, out, lse, p);
+    vector.Init(r, qs, ks, out, lse, p);
     uint32_t core = GetBlockIdx();
     if ASCEND_IS_AIV {
         core /= 2;
@@ -173,7 +169,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         vector.BeginStream(first.kb, WideScaleAhead<CAUSAL>(p, first, 1, totalTasks));
     }
     WideOutputInfo outputPending[3];
-    static_assert(sizeof(WideOutputInfo) == 24, "Vector ring stores only delayed output metadata");
+    static_assert(sizeof(WideOutputInfo) == 20, "Vector ring stores only delayed output metadata");
     CubeFragmentInfo cubePending[4];
     static_assert(sizeof(CubeFragmentInfo) == 16, "Cube ring stores only K/V base and fragment index");
     uint64_t fragment = 0, retired = 0;
@@ -215,9 +211,9 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
                 const bool first = step == 0, last = step + 1 == current.count;
                 vector.SelectStreamQuery(current.ordinal, current.qb, current.qstart, first);
                 const uint64_t nextScale = WideScaleAhead<CAUSAL>(p, current, step + 2, totalTasks);
-                vector.template SoftmaxWide<CAUSAL, true>(step, current.kb, current.count, current.qstart,
-                                                          group, nextScale);
-                outputPending[group % 3] = {current.ordinal, current.b, current.h, current.kh,
+                vector.template SoftmaxWide<CAUSAL>(step, current.count, current.qstart,
+                                                    group, nextScale);
+                outputPending[group % 3] = {current.ordinal, current.b, current.h,
                                             current.qstart, first, last};
                 if (deferPair)
                     RetireWideOutput<true>(vector, outputPending, retired, group + 1);
