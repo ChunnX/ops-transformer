@@ -298,7 +298,7 @@ aclnnStatus aclnnAllGatherMatmul(
     - m为空，k不为空，n不为空；
     - m不为空，k不为空，n为空；
     - m为空，k不为空，n为空。
-- 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
+- 输出为2维，其shape为(m*rank_size, n)，rank_size为卡数。
 
 <!-- npu="910b" id9 -->
 - <term>Atlas A2系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
@@ -320,7 +320,7 @@ aclnnStatus aclnnAllGatherMatmul(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy，请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 <!-- npu="950,A3,910b" id13 -->
 - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>  、<term>Ascend 950PR&950DT系列产品</term>：
