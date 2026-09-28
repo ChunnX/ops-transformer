@@ -147,7 +147,7 @@ public:
             CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
         }
     }
-    template <bool FusedCast = false, bool DrainScales = true>
+    template <bool FusedCast = true, bool DrainScales = true>
     __aicore__ inline __attribute__((always_inline)) void FinalizeTile(uint32_t qstart, uint32_t b, uint32_t h)
     {
         if constexpr (DrainScales) {
