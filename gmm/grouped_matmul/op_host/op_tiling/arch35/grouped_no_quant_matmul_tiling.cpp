@@ -301,14 +301,13 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     splitItem_ = splitItemPtr != nullptr ? *splitItemPtr : 0;
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
     activeType_ = activeTypePtr != nullptr ? *activeTypePtr : ACT_TYPE_NONE;
-    OP_CHECK_IF(
-        activeType_ != ACT_TYPE_NONE && activeType_ != ACT_TYPE_GELU_TANH,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context->GetNodeName(), "actType", Ops::Transformer::Gmm::FormatString("%ld", activeType_).c_str(),
-            Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant", "actType",
-                                                "{0, 2}")
-                .c_str()),
-        return false);
+    OP_CHECK_IF(activeType_ != ACT_TYPE_NONE && activeType_ != ACT_TYPE_GELU_TANH,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "actType", Ops::Transformer::Gmm::FormatString("%ld", activeType_).c_str(),
+                    Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
+                                                        "actType", "{0, 2}")
+                        .c_str()),
+                return false);
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
@@ -322,14 +321,13 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     if (!CheckNoQuantGroupList(context)) {
         return false;
     }
-    OP_CHECK_IF(
-        activeType_ == ACT_TYPE_GELU_TANH && groupType_ == SPLIT_K,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%ld", groupType_).c_str(),
-            Ops::Transformer::Gmm::FormatString("In %s case with %s enabled, the value of %s must be in %s",
-                                                "no-quant", "GELU_TANH", "groupType", "{-1, 0}")
-                .c_str()),
-        return false);
+    OP_CHECK_IF(activeType_ == ACT_TYPE_GELU_TANH && groupType_ == SPLIT_K,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%ld", groupType_).c_str(),
+                    Ops::Transformer::Gmm::FormatString("In %s case with %s enabled, the value of %s must be in %s",
+                                                        "no-quant", "GELU_TANH", "groupType", "{-1, 0}")
+                        .c_str()),
+                return false);
     return true;
 }
 

@@ -29,7 +29,7 @@ namespace GROUPED_MATMUL {
 
 template <typename LayoutA, typename LayoutB, bool EnableGelu = false>
 __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y,
-                                            GM_ADDR tiling)
+                                           GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData, tiling);
@@ -51,10 +51,10 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using DispatchPolicy = AscendC::Std::conditional_t<EnableGelu, GeluDispatchPolicy, BasicDispatchPolicy>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
-    using BlockEpilogue = AscendC::Std::conditional_t<EnableGelu,
-                                                      Blaze::Epilogue::Block::BlockEpilogueGeluFixpipe<
-                                                          CType, EpilogueInputType>,
-                                                      Blaze::Epilogue::Block::BlockEpilogueEmpty>;
+    using BlockEpilogue =
+        AscendC::Std::conditional_t<EnableGelu,
+                                    Blaze::Epilogue::Block::BlockEpilogueGeluFixpipe<CType, EpilogueInputType>,
+                                    Blaze::Epilogue::Block::BlockEpilogueEmpty>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
     using GroupedMatmulKernel =
         Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
