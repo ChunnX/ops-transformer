@@ -9,8 +9,9 @@
  */
 
 /*!
- * \file all_gather_bmm_mmad_fragment.h
- * \brief 非量化（FP16/BF16）AllGather+Matmul 的 mmad fragment 通路
+ * \file bmm_block_mmad_fragment.h
+ * \brief 非量化（FP16/BF16）Matmul 的 mmad fragment 通路（block/mmad 共享组件层，
+ *        与量化版 qmm_mx_block_mmad_fragment.h 并排）
  *
  * 底本 apace/block/mmad/qmm_mx_block_mmad_fragment.h（去 scale 通路）：
  *   - 去 FragScaleA/scaleB 全通路（CopyScalesInL1、scale L1 分区、SCALE_BUFFER_FLAG 4/5、
@@ -40,13 +41,13 @@ namespace Apace {
 
 template <uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
           class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
-class AllGatherBmmMmadFragment;
+class BmmBlockMmadFragment;
 
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
 
 template <uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
           class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
-class AllGatherBmmMmadFragment {
+class BmmBlockMmadFragment {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -103,7 +104,7 @@ public:
         uint64_t l1BufNum;
     };
 
-    __aicore__ inline AllGatherBmmMmadFragment()
+    __aicore__ inline BmmBlockMmadFragment()
     {
         // INPUT_BUFFER_FLAG_0..3 全量预置为 Blaze 4-buffer 惯例（底本同款）：本实例化 l1BufNum=2 运行期
         // 仅消费 FLAG_0/1（l1BufId = abL1LoopCnt_ & 1），FLAG_2/3 为无害冗余预置——析构侧全量 WaitFlag
@@ -119,7 +120,7 @@ public:
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
-    __aicore__ inline ~AllGatherBmmMmadFragment()
+    __aicore__ inline ~BmmBlockMmadFragment()
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(Blaze::Gemm::INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(Blaze::Gemm::INPUT_BUFFER_FLAG_1);
