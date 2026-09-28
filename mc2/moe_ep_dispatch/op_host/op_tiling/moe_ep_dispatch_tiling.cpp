@@ -798,12 +798,9 @@ static void SetMetaBatch(MoeEpDispatchInfo &info, const char *nodeName)
         uint64_t maskBytes = AlignUpUb((maskElementCount + BITS_PER_BYTE - 1UL) / BITS_PER_BYTE);
         uint64_t sendCntRankBytes =
             AlignUpLEN256(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), SEND_PHASE_DATA_ALIGN);
-        uint64_t sendCntExpertBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.numExperts) * sizeof(int32_t));
-        uint64_t numRecvPerExpertBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t));
-        uint64_t numRecvPerRankBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t));
+        uint64_t sendCntExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numExperts) * sizeof(int32_t));
+        uint64_t numRecvPerExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t));
+        uint64_t numRecvPerRankBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t));
         fixedUbBytes = 5UL * perGroupBytes + 3UL * maskBytes + sendCntRankBytes + sendCntExpertBytes +
                        2UL * numRecvPerExpertBytes + numRecvPerRankBytes;
     }
@@ -820,8 +817,7 @@ static void SetMetaBatch(MoeEpDispatchInfo &info, const char *nodeName)
     uint64_t availableUbBytes = META_BATCH_UB_LIMIT - fixedUbBytes;
     uint64_t maxBatchByUb = availableUbBytes / minMetaQueueBytes;
     uint64_t maxBatchByCopy = META_COPY_MAX_BYTES / info.metaSlotBytes;
-    uint64_t tokenCountPerAiv =
-        (static_cast<uint64_t>(info.cfg.numTokens) + info.aivNum - 1UL) / info.aivNum;
+    uint64_t tokenCountPerAiv = (static_cast<uint64_t>(info.cfg.numTokens) + info.aivNum - 1UL) / info.aivNum;
     uint64_t metaBatch = std::min(std::min(maxBatchByUb, maxBatchByCopy),
                                   std::min(tokenCountPerAiv, static_cast<uint64_t>(MOE_EP_META_BATCH_MAX)));
     info.metaBatch = static_cast<uint32_t>(std::max(metaBatch, 1UL));
