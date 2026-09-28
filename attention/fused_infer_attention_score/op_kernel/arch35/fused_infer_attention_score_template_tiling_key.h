@@ -125,7 +125,7 @@ ASCENDC_TPL_ARGS_DECL(FusedInferAttentionScore,
 
 ASCENDC_TPL_SEL(
 // ifa
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD,
                                               InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
@@ -242,7 +242,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -317,7 +317,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -373,7 +373,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -455,7 +455,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -511,7 +511,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD,
                                               InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
@@ -627,7 +627,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -702,7 +702,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -758,7 +758,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -840,7 +840,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -896,7 +896,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD,
                                               InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
@@ -996,7 +996,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD,
                                               InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
                          ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
@@ -1096,7 +1096,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -1137,7 +1137,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -1178,7 +1178,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND),
@@ -1219,7 +1219,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && \
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && \
      ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
@@ -1610,7 +1610,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -1736,99 +1736,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
-                             Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,
-                             Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256,
-                             Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false, true), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
-                             Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128,
-                             Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, true), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
-                             Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, true),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode), ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
-        ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA), ASCENDC_TPL_BOOL_SEL(IsFd, false),
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0), ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
-        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false), ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
-#endif
-
-#if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -1920,7 +1828,99 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
+                             Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,
+                             Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256,
+                             Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false, true), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
+                             Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128,
+                             Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, true), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
+                             Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, true),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode), ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
+        ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA), ASCENDC_TPL_BOOL_SEL(IsFd, false),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0), ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
+        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false), ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true), ASCENDC_TPL_BOOL_SEL(HasRope, false),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, false), ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
+#endif
+
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -2046,7 +2046,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -2138,7 +2138,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
+#if 0 && (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
                              InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -2260,7 +2260,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_HIFLOAT8 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_HIFLOAT8 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     // mla fullquant
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
@@ -2277,7 +2277,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)),
 #endif
 
-#if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
+#if 0 && (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     // mla fullquant
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
