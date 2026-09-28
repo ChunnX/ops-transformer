@@ -188,7 +188,10 @@ public:
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
-            uint64_t btBufId = abL1LoopCnt_ & 0x1;
+            // BT 槽随 tile 序号交替：abL1LoopCnt_ 每 tile += kL1Iter_，除以 kL1Iter_ 得 tile 序号。
+            // 原 abL1LoopCnt_ & 0x1 因步长 14(偶数) 恒 0，所有 tile 共用一个 BT 槽，
+            // 相邻 tile 首 split 写/读同一 BT 槽 → 覆盖/读到垃圾 bias。
+            uint64_t btBufId = (abL1LoopCnt_ / kL1Iter_) & 0x1;
 
             const auto &aL1Slot = bufMgr_.GetL1ASlot(l1BufId);
             const auto &bL1Slot = bufMgr_.GetL1BSlot(l1BufId);
