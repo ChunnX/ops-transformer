@@ -15,12 +15,12 @@
 
 ## 功能说明
 
-- 算子功能：Swin Transformer网络模型完成Q、K、V的计算。  
-- 计算公式：  
+- 算子功能：Swin Transformer网络模型完成Q、K、V的计算。
+- 计算公式：
 
     $$
     (Q,K,V)=(Quant(Layernorm(x).transpose()) * weight).dequant().transpose().split()
-    $$  
+    $$
 
   其中，weight是Q、K、V三个矩阵权重的拼接。
 
@@ -69,7 +69,7 @@
     <td>表示目标张量转换使用的权重矩阵，维度只支持2维且维度为[3 * H, H]，Device侧的aclTensor。当前仅支持weightTranspose为true，此时第0维为N、第1维为K。不支持非连续的Tensor。</td>
     <td>INT8</td>
     <td>ND</td>
-  </tr>  
+  </tr>
   <tr>
     <td>bias</td>
     <td>输入</td>
