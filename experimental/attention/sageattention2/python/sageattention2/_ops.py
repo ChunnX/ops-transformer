@@ -449,9 +449,9 @@ def _dispatch(
         and q.dtype is plan.dtype
         and k.dtype is plan.dtype
         and v.dtype is plan.dtype
-        and q.device == plan.device
-        and k.device == plan.device
-        and v.device == plan.device
+        and (q.device is plan.device or q.device == plan.device)
+        and (k.device is plan.device or k.device == plan.device)
+        and (v.device is plan.device or v.device == plan.device)
         and tensor_layout == plan.tensor_layout
         and is_causal == plan.is_causal
         and qk_quant_gran == plan.qk_quant_gran
@@ -541,18 +541,35 @@ def _dispatch(
     else:
         q_in, k_in, v_in = q, k, v
 
-    out, lse = _forward_op(
-        q_in,
-        k_in,
-        v_in,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
-        sm_scale=scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        return_lse=return_lse,
-    )
+    dev_type = q_in.device.type
+    if (dev_type == "privateuseone" or dev_type == "npu") and not (
+        hasattr(torch, "compiler") and hasattr(torch.compiler, "is_compiling") and torch.compiler.is_compiling()
+    ):
+        out, lse = _get_extension().forward(
+            q_in,
+            k_in,
+            v_in,
+            tensor_layout,
+            is_causal,
+            qk_quant_gran,
+            scale,
+            pv_accum_dtype,
+            smooth_k,
+            return_lse,
+        )
+    else:
+        out, lse = _forward_op(
+            q_in,
+            k_in,
+            v_in,
+            tensor_layout=tensor_layout,
+            is_causal=is_causal,
+            qk_quant_gran=qk_quant_gran,
+            sm_scale=scale,
+            pv_accum_dtype=pv_accum_dtype,
+            smooth_k=smooth_k,
+            return_lse=return_lse,
+        )
 
     if plan.need_pad:
         out = out[..., :d_orig]

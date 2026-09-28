@@ -41,13 +41,15 @@ template <bool CAUSAL>
 __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const SageParams &p, WideQueryInfo info,
                                                                          uint32_t group, uint64_t totalTasks)
 {
-    if (info.task >= totalTasks)
+    if (info.task >= totalTasks || info.count == 0)
         return ~uint64_t(0);
     while (group >= info.count) {
         group -= info.count;
         if (info.task + p.cores >= totalTasks)
             return ~uint64_t(0);
         info = DecodeWideQuery<CAUSAL>(p, info.task + p.cores, info.ordinal + 1);
+        if (info.count == 0)
+            return ~uint64_t(0);
     }
     return info.kb + group * 512;
 }

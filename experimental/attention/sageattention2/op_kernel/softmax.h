@@ -217,43 +217,40 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
         ExpSub<float, half, RegLayout::ZERO>(p3_a, x3_a, m_a, h);
         ExpSub<float, half, RegLayout::ZERO>(p3_b, x3_b, m_b, h);
 
-        Mins(p0_a, p0_a, 448.0f, f);
-        Mins(p0_b, p0_b, 448.0f, f);
-        Mins(p1_a, p1_a, 448.0f, f);
-        Mins(p1_b, p1_b, 448.0f, f);
-        Mins(p2_a, p2_a, 448.0f, f);
-        Mins(p2_b, p2_b, 448.0f, f);
-        Mins(p3_a, p3_a, 448.0f, f);
-        Mins(p3_b, p3_b, 448.0f, f);
-
         RegTensor<float8_e4m3_t> packed0_a, packed1_a, packed2_a, packed3_a;
         RegTensor<float8_e4m3_t> packed0_b, packed1_b, packed2_b, packed3_b;
 
+        // Cast and accumulate first half (p0, p1) while p2, p3 complete in transcendental pipeline
         Cast<float8_e4m3_t, float, toFp8>(packed0_a, p0_a, f);
         Cast<float8_e4m3_t, float, toFp8>(packed0_b, p0_b, f);
         Cast<float8_e4m3_t, float, toFp8>(packed1_a, p1_a, f);
         Cast<float8_e4m3_t, float, toFp8>(packed1_b, p1_b, f);
 
-        RegTensor<float> s01_a, s01_b, s23_a, s23_b;
+        RegTensor<float> s01_a, s01_b;
         Add(s01_a, p0_a, p1_a, f);
         Add(s01_b, p0_b, p1_b, f);
-        Add(s23_a, p2_a, p3_a, f);
-        Add(s23_b, p2_b, p3_b, f);
 
-        Cast<float8_e4m3_t, float, toFp8>(packed2_a, p2_a, f);
-        Cast<float8_e4m3_t, float, toFp8>(packed2_b, p2_b, f);
-        Cast<float8_e4m3_t, float, toFp8>(packed3_a, p3_a, f);
-        Cast<float8_e4m3_t, float, toFp8>(packed3_b, p3_b, f);
-
-        RegTensor<float> rowSum_a, rowSum_b;
-        Add(rowSum_a, s01_a, s23_a, f);
-        Add(rowSum_b, s01_b, s23_b, f);
-
+        // Store planes 0 and 2 early to pipeline MTE3 stores and hide remaining latency of p2, p3
         constexpr uint32_t nzStride = (ROWS + NZ_PAD_ROWS) * 32;
         StoreNZPlanePair<nzStride>(out, 0, row_a, packed0_a, first32, last32);
         StoreNZPlanePair<nzStride>(out, 0, row_b, packed0_b, first32, last32);
         StoreNZPlanePair<nzStride>(out, 2, row_a, packed1_a, first32, last32);
         StoreNZPlanePair<nzStride>(out, 2, row_b, packed1_b, first32, last32);
+
+        // Second half (p2, p3): guaranteed > 14 cycles since ExpSub issue, eliminating all RAW stalls
+        Cast<float8_e4m3_t, float, toFp8>(packed2_a, p2_a, f);
+        Cast<float8_e4m3_t, float, toFp8>(packed2_b, p2_b, f);
+        Cast<float8_e4m3_t, float, toFp8>(packed3_a, p3_a, f);
+        Cast<float8_e4m3_t, float, toFp8>(packed3_b, p3_b, f);
+
+        RegTensor<float> s23_a, s23_b;
+        Add(s23_a, p2_a, p3_a, f);
+        Add(s23_b, p2_b, p3_b, f);
+
+        RegTensor<float> rowSum_a, rowSum_b;
+        Add(rowSum_a, s01_a, s23_a, f);
+        Add(rowSum_b, s01_b, s23_b, f);
+
         StoreNZPlanePair<nzStride>(out, 4, row_a, packed2_a, first32, last32);
         StoreNZPlanePair<nzStride>(out, 4, row_b, packed2_b, first32, last32);
         StoreNZPlanePair<nzStride>(out, 6, row_a, packed3_a, first32, last32);
