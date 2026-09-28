@@ -56,7 +56,9 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 
 本实现按 Ascend 950 的计算和执行模型提供接口：Q/K 量化支持 `per_thread`（默认）、`per_warp` 与 `per_token`；PV 累加支持 `fp32+fp16`（默认）、`fp32+fp32` 与兼容别名 `fp32`。上述标准参数均原生静默支持，不触发回退告警；传入非法选项时明确报错 ValueError。当 `smooth_v=True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时，按开源实现规范发出 warning 并忽略。最终 O 仍按输入 dtype 输出。
 
-**不再支持 smooth_v 计算。** V 改用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。因此当前路径无需再做 V 均值统计、减均值及输出补偿，省去相应计算与访存。`smooth_v` 仅作为兼容参数保留，传入 `True` 时告警并忽略。这是当前量化方案的取舍，不表示任意输入分布下平滑都不可能改善误差。
+**不再支持 smooth_v 计算。** V 改用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。因此当前路径无需再做 V 均值统计、减均值及输出补偿，省去相应计算与访存。`smooth_v` 仅作为兼容参数保留：传 `True` 且 `pv_accum_dtype` 为 `fp32+fp16` 或 `fp32+fp32` 时按开源实现规范发出 warning 并忽略（`pv_accum_dtype="fp32"` 分支与开源一致保持静默）。这是当前量化方案的取舍，不表示任意输入分布下平滑都不可能改善误差。
+
+`sageattn` 在 NPU 上固定分发到 `sageattn_qk_int8_pv_fp8_asc`（默认 `pv_accum_dtype="fp32+fp16"`）；可通过 kwargs 覆盖下沉参数，例如 `sageattn(q, k, v, pv_accum_dtype="fp32+fp32")`。
 
 支持 GQA（Hq 必须能被 Hkv 整除）、1≤D≤128、D padding、序列尾块、末维连续的 stride 输入。非因果模式支持 Sq≠Sk。LSE 包含 K smoothing 的行常数补偿。
 

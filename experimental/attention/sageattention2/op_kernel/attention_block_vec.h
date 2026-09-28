@@ -15,11 +15,7 @@
 namespace Sage {
 struct DefaultVectorLayout {
     static constexpr uint32_t ACCUM_UB = Sage::ACCUM_UB;
-    static constexpr uint32_t X_UB = Sage::X_UB;
-    static constexpr uint32_t RED_UB = Sage::RED_UB;
-    static constexpr uint32_t WORK_UB = Sage::WORK_UB;
     static constexpr uint32_t MU_UB = Sage::MU_UB;
-    static constexpr uint32_t QI_UB = Sage::QI_UB;
     static constexpr uint32_t P_UB = Sage::P_UB;
     static constexpr uint32_t QS_UB = Sage::QS_UB;
     static constexpr uint32_t MAX_UB = Sage::MAX_UB;
@@ -51,11 +47,7 @@ public:
         og_.SetGlobalBuffer((__gm__ T *)out);
 
         accum_ = resource_->ubBuf.GetBufferByByte<float>(ACCUM_UB);
-        x_ = resource_->ubBuf.GetBufferByByte<float>(X_UB);
-        red_ = resource_->ubBuf.GetBufferByByte<float>(RED_UB);
-        work_ = resource_->ubBuf.GetBufferByByte<float>(WORK_UB);
         mu_ = resource_->ubBuf.GetBufferByByte<float>(MU_UB);
-        qi_ = resource_->ubBuf.GetBufferByByte<T>(QI_UB);
         qo_ = resource_->ubBuf.GetBufferByByte<T>(P_UB);
         qsu_ = resource_->ubBuf.GetBufferByByte<half>(QS_UB);
         maxima_ = resource_->ubBuf.GetBufferByByte<half>(MAX_UB);
@@ -197,35 +189,67 @@ protected:
     __aicore__ inline __attribute__((always_inline)) void StoreTileLse(uint32_t first, uint32_t validRows,
                                                                        uint32_t b, uint32_t h)
     {
+        // Vectorized epilogue: lse = float(maxima) + ln(denom) + sm_scale * <q, mean>.
+        // One vector pass plus a single GM write replaces the former per-row loop
+        // (two scalar UB reads, one Ln and one 4-byte GM store per row).
+        // Scratch reuses the retired P0/output staging after its MTE3 fence; the
+        // AIC may already be writing the next query tile's QK into the score area.
         Sync<HardEvent::MTE3_S>();
         Sync<HardEvent::V_S>();
-        for (uint32_t i = 0; i < validRows; i++) {
-            uint32_t pos = first + i;
-            Duplicate(red_, denom_.GetValue(i), 8);
-            Ln(red_, red_, 8);
-            float value = float(maxima_.GetValue(i)) + Scalar(red_);
-            if (params_.smoothK) {
-                ReadRow(qi_, qg_, Offset(params_.qs, b, h, pos), params_.d, params_.dp);
-                Cast(x_, qi_, RoundMode::CAST_NONE, params_.dp);
-                PipeBarrier<PIPE_V>();
-                Mul(x_, x_, mu_, params_.dp);
-                PipeBarrier<PIPE_V>();
-                ReduceSum(red_, x_, work_, params_.dp);
-                value += params_.smScale * Scalar(red_);
-            }
-            red_.SetValue(0, value);
-            Sync<HardEvent::S_MTE3>();
-            DataCopyExtParams cp{1, 4, 0, 0, 0};
-            DataCopyPad(lg_[(uint64_t(b) * params_.hq + h) * params_.sq + pos], red_, cp);
-            Sync<HardEvent::MTE3_S>();
+        if (!validRows) {
+            return;
         }
+        static_assert(2 * 8 * 128 * sizeof(float) + 1024 <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
+        constexpr uint32_t CHUNK = 8;
+        const uint32_t dp = params_.dp;
+        auto raw = resource_->ubBuf.template GetBufferByByte<T>(P_UB);
+        auto qf = resource_->ubBuf.template GetBufferByByte<float>(P_UB + CHUNK * dp * sizeof(T));
+        auto lse = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float));
+        auto dot = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float) + 256);
+        auto work = resource_->ubBuf.template GetBufferByByte<float>(P_UB + 2 * CHUNK * dp * sizeof(float) + 512);
+        // lse = ln(denom) + float(maxima) for all 64 rows in three vector ops.
+        DataCopy(lse, denom_, HALF);
+        Sync<HardEvent::MTE2_V>();
+        Ln(lse, lse, HALF);
+        PipeBarrier<PIPE_V>();
+        Cast(dot, maxima_, RoundMode::CAST_NONE, HALF);
+        PipeBarrier<PIPE_V>();
+        Add(lse, lse, dot, HALF);
+        PipeBarrier<PIPE_V>();
+        if (params_.smoothK) {
+            // Rows beyond validRows are never read from GM nor written back.
+            for (uint32_t base = 0; base < HALF; base += CHUNK) {
+                const uint32_t rows = Min(CHUNK, validRows - base);
+                const uint32_t offset = Offset(params_.qs, b, h, first + base);
+                if (params_.d == dp) {
+                    Sync<HardEvent::V_MTE2>();
+                    DataCopy(raw, qg_[offset], rows * params_.d);
+                    Sync<HardEvent::MTE2_V>();
+                } else {
+                    for (uint32_t r = 0; r < rows; ++r)
+                        ReadRow(raw[r * dp], qg_, offset + r * params_.qs[2], params_.d, dp);
+                }
+                Cast(qf, raw, RoundMode::CAST_NONE, rows * dp);
+                PipeBarrier<PIPE_V>();
+                for (uint32_t r = 0; r < rows; ++r) {
+                    Mul(qf[r * dp], qf[r * dp], mu_, dp);
+                    PipeBarrier<PIPE_V>();
+                    ReduceSum(dot[base + r], qf[r * dp], work, dp);
+                }
+                PipeBarrier<PIPE_V>();
+            }
+            Muls(dot, dot, params_.smScale, HALF);
+            PipeBarrier<PIPE_V>();
+            Add(lse, lse, dot, HALF);
+            PipeBarrier<PIPE_V>();
+        }
+        Sync<HardEvent::V_MTE3>();
+        DataCopyExtParams cp{1, validRows * uint32_t(sizeof(float)), 0, 0, 0};
+        DataCopyPad(lg_[(uint64_t(b) * params_.hq + h) * params_.sq + first], lse, cp);
+        Sync<HardEvent::MTE3_S>();
     }
     static constexpr uint32_t ACCUM_UB = Layout::ACCUM_UB;
-    static constexpr uint32_t X_UB = Layout::X_UB;
-    static constexpr uint32_t RED_UB = Layout::RED_UB;
-    static constexpr uint32_t WORK_UB = Layout::WORK_UB;
     static constexpr uint32_t MU_UB = Layout::MU_UB;
-    static constexpr uint32_t QI_UB = Layout::QI_UB;
     static constexpr uint32_t P_UB = Layout::P_UB;
     static constexpr uint32_t QS_UB = Layout::QS_UB;
     static constexpr uint32_t MAX_UB = Layout::MAX_UB;
@@ -242,8 +266,8 @@ protected:
     GlobalTensor<half> qsg_, ksg_;
     GlobalTensor<float> mg_, lg_;
     GlobalTensor<T> qg_, og_;
-    LocalTensor<float> accum_, x_, red_, work_, mu_, denom_;
+    LocalTensor<float> accum_, mu_, denom_;
     LocalTensor<half> qsu_, maxima_;
-    LocalTensor<T> qi_, qo_;
+    LocalTensor<T> qo_;
 };
 } // namespace Sage

@@ -8,19 +8,66 @@
 #pragma once
 #include "common.h"
 namespace Sage {
+
+// Mask trailing elements for sequence padding and causal attention.
+template <class T>
+__simd_callee__ inline void MaskScoresTail(AscendC::MicroAPI::RegTensor<T> &x,
+                                           AscendC::MicroAPI::RegTensor<T> &negative, uint32_t pos, uint32_t at,
+                                           uint32_t sk, uint32_t sq, uint32_t causal)
+{
+    using namespace AscendC::MicroAPI;
+    uint32_t valid = at < sk ? Min(uint32_t(128), sk - at) : 0;
+    if (causal) {
+        valid = Min(valid, pos >= at ? pos - at + 1 : 0);
+    }
+    if (pos >= sq) {
+        valid = 0;
+    }
+    auto mask = UpdateMask<T>(valid);
+    Select(x, x, negative, mask);
+}
+
+// Update row maxima with FP8 shift and compute the exponential rescaling ratio alpha = exp(oldMax - newMax).
+__simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateSoftmaxRescaleFactors(
+    __ubuf__ half *maxima, __ubuf__ half *blockMax, __ubuf__ float *alpha, AscendC::MicroAPI::MaskReg &f,
+    AscendC::MicroAPI::MaskReg &h)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<half> oldMax, newMax;
+    RegTensor<float> ratio;
+    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
+    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, blockMax);
+    // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
+    Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
+    Max(newMax, newMax, oldMax, h);
+    ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
+    StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
+    StoreAlign(alpha, ratio, f);
+    return ratio;
+}
+
+// Store an 8x8 FP8 tile fragment across two 32-element NZ planes.
+template <uint32_t STRIDE>
+__simd_callee__ inline void StoreNZPlanePair(__ubuf__ float8_e4m3_t *out, uint32_t plane, uint32_t row,
+                                             AscendC::MicroAPI::RegTensor<float8_e4m3_t> &packed,
+                                             AscendC::MicroAPI::MaskReg &first32,
+                                             AscendC::MicroAPI::MaskReg &last32)
+{
+    using namespace AscendC::MicroAPI;
+    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + plane * STRIDE + row * 32, packed, first32);
+    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (plane + 1) * STRIDE + row * 32 - 32, packed, last32);
+}
+
 // Production consumes prebalanced FP16 scales. Scores/max remain FP16.
-template <uint32_t ROWS = 64, uint32_t COLS = 256, bool FULL = false, bool NZ_OUTPUT = false,
-          uint32_t NZ_PAD_ROWS = 0>
-__simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
-                                      __ubuf__ half *maxima, __ubuf__ float *denom, __ubuf__ float *alpha,
-                                      __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf, __ubuf__ half *khalf,
-                                      __ubuf__ float *scratch, uint32_t qstart, uint32_t sq, uint32_t start,
-                                      uint32_t sk, uint32_t causal)
+template <uint32_t ROWS = 64, uint32_t COLS = 256, bool FULL = false, bool NZ_OUTPUT = false, uint32_t NZ_PAD_ROWS = 0>
+__simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
+                                      __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ half *qhalf,
+                                      __ubuf__ half *khalf, __ubuf__ float *scratch, uint32_t qstart, uint32_t sq,
+                                      uint32_t start, uint32_t sk, uint32_t causal)
 {
     static_assert(ROWS == 64 && COLS == 256, "half softmax requires a 64x256 AIV tile");
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    static constexpr CastTrait toHalf{RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr CastTrait toFp8{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     auto f = CreateMask<float, MaskPattern::ALL>();
     auto h = CreateMask<half, MaskPattern::ALL>();
@@ -36,31 +83,17 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
 
         RegTensor<half> x0, x1, coeff0, coeff1;
         LoadAlign(x0, scores + row * COLS + 0);
-        Mul(coeff0, qh, kh0, h);
-        Mul(x0, x0, coeff0, h);
-        if constexpr (!FULL) {
-            uint32_t at0 = start + 0, pos = qstart + row, valid0 = at0 < sk ? Min(uint32_t(128), sk - at0) : 0;
-            if (causal)
-                valid0 = Min(valid0, pos >= at0 ? pos - at0 + 1 : 0);
-            if (pos >= sq)
-                valid0 = 0;
-            auto mask0 = UpdateMask<half>(valid0);
-            Select(x0, x0, negative, mask0);
-        }
-        StoreAlign(scores + row * COLS + 0, x0, h);
-
         LoadAlign(x1, scores + row * COLS + 128);
+        Mul(coeff0, qh, kh0, h);
         Mul(coeff1, qh, kh1, h);
+        Mul(x0, x0, coeff0, h);
         Mul(x1, x1, coeff1, h);
         if constexpr (!FULL) {
-            uint32_t at1 = start + 128, pos = qstart + row, valid1 = at1 < sk ? Min(uint32_t(128), sk - at1) : 0;
-            if (causal)
-                valid1 = Min(valid1, pos >= at1 ? pos - at1 + 1 : 0);
-            if (pos >= sq)
-                valid1 = 0;
-            auto mask1 = UpdateMask<half>(valid1);
-            Select(x1, x1, negative, mask1);
+            const uint32_t pos = qstart + row;
+            MaskScoresTail(x0, negative, pos, start + 0, sk, sq, causal);
+            MaskScoresTail(x1, negative, pos, start + 128, sk, sq, causal);
         }
+        StoreAlign(scores + row * COLS + 0, x0, h);
         StoreAlign(scores + row * COLS + 128, x1, h);
         Max(rowMax, x0, x1, h);
         ReduceMax(m, rowMax, h);
@@ -68,17 +101,9 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
     }
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    RegTensor<half> oldMax, newMax;
-    RegTensor<float> ratio, oldDen;
-    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
-    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
+    RegTensor<float> oldDen;
     LoadAlign(oldDen, denom);
-    // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
-    Max(newMax, newMax, oldMax, h);
-    ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
-    StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
-    StoreAlign(alpha, ratio, f);
+    RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     uint32_t halfChunk = 32;
     auto first32 = UpdateMask<float>(halfChunk);
@@ -90,7 +115,7 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
         // Independent fragments expose load/ExpSub/Cast overlap. Keep the
         // original sum order, and pack directly into the (optionally padded) NZ planes.
         RegTensor<half> m, x0, x1, x2, x3;
-        RegTensor<float> p0, p1, p2, p3, rowSum, sum;
+        RegTensor<float> p0, p1, p2, p3, s01, s23, rowSum, sum;
         RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
         LoadAlign<half, LoadDist::DIST_BRC_B16>(m, maxima + row);
         LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x0, scores + row * COLS + 0);
@@ -101,30 +126,20 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores,
         ExpSub<float, half, RegLayout::ZERO>(p1, x1, m, h);
         ExpSub<float, half, RegLayout::ZERO>(p2, x2, m, h);
         ExpSub<float, half, RegLayout::ZERO>(p3, x3, m, h);
-        Add(rowSum, p0, p1, f);
-        Add(rowSum, rowSum, p2, f);
-        Add(rowSum, rowSum, p3, f);
+        // Tree reduction interleaved with Cast to completely eliminate RAW pipeline latency bubbles
+        Add(s01, p0, p1, f);
+        Add(s23, p2, p3, f);
         Cast<float8_e4m3_t, float, toFp8>(packed0, p0, f);
         Cast<float8_e4m3_t, float, toFp8>(packed1, p1, f);
+        Add(rowSum, s01, s23, f);
         Cast<float8_e4m3_t, float, toFp8>(packed2, p2, f);
         Cast<float8_e4m3_t, float, toFp8>(packed3, p3, f);
         if constexpr (NZ_OUTPUT) {
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 0 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32,
-                                                                 packed0, first32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 1 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32 - 32,
-                                                                 packed0, last32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 2 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32,
-                                                                 packed1, first32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 3 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32 - 32,
-                                                                 packed1, last32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 4 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32,
-                                                                 packed2, first32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 5 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32 - 32,
-                                                                 packed2, last32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 6 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32,
-                                                                 packed3, first32);
-            StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + 7 * (ROWS + NZ_PAD_ROWS) * 32 + row * 32 - 32,
-                                                                 packed3, last32);
+            constexpr uint32_t stride = (ROWS + NZ_PAD_ROWS) * 32;
+            StoreNZPlanePair<stride>(out, 0, row, packed0, first32, last32);
+            StoreNZPlanePair<stride>(out, 2, row, packed1, first32, last32);
+            StoreNZPlanePair<stride>(out, 4, row, packed2, first32, last32);
+            StoreNZPlanePair<stride>(out, 6, row, packed3, first32, last32);
         } else {
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row * COLS + 0, packed0, f);
             StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row * COLS + 64, packed1, f);

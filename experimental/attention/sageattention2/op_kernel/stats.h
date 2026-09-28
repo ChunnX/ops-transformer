@@ -11,6 +11,24 @@
 #pragma once
 #include "common.h"
 namespace Sage {
+// Load one 64-lane column slice of a row as FP32 registers. FP32 rows load
+// directly; 16-bit rows unpack and cast in the same sequence.
+template <class T, uint32_t DP>
+__simd_callee__ inline void LoadLaneF32(AscendC::MicroAPI::RegTensor<float> &x, __ubuf__ T *addr, uint32_t row,
+                                        uint32_t col)
+{
+    using namespace AscendC::MicroAPI;
+    auto mask = CreateMask<float, MaskPattern::ALL>();
+    if constexpr (AscendC::IsSameType<T, float>::value) {
+        LoadAlign(x, addr + row * DP + col);
+    } else {
+        RegTensor<T> raw;
+        static constexpr CastTrait cast{
+            RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+        LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw, addr + row * DP + col);
+        Cast<float, T, cast>(x, raw, mask);
+    }
+}
 // Preserve per-channel FP32 addition order. Raw inputs are converted in
 // registers; the fallback can pass its already-converted FP32 rows.
 template <class T, uint32_t DP>
@@ -26,32 +44,14 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
         uint32_t row = 0;
         for (; row + 1 < count; row += 2) {
             RegTensor<float> x0, x1;
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                LoadAlign(x0, rows + row * DP + col);
-                LoadAlign(x1, rows + (row + 1) * DP + col);
-            } else {
-                RegTensor<T> raw0, raw1;
-                static constexpr CastTrait cast{
-                    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw0, rows + row * DP + col);
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw1, rows + (row + 1) * DP + col);
-                Cast<float, T, cast>(x0, raw0, mask);
-                Cast<float, T, cast>(x1, raw1, mask);
-            }
+            LoadLaneF32<T, DP>(x0, rows, row, col);
+            LoadLaneF32<T, DP>(x1, rows, row + 1, col);
             Add(acc0, acc0, x0, mask);
             Add(acc1, acc1, x1, mask);
         }
         if (row < count) {
             RegTensor<float> x_tail;
-            if constexpr (AscendC::IsSameType<T, float>::value) {
-                LoadAlign(x_tail, rows + row * DP + col);
-            } else {
-                RegTensor<T> raw_tail;
-                static constexpr CastTrait cast{
-                    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-                LoadAlign<T, LoadDist::DIST_UNPACK_B16>(raw_tail, rows + row * DP + col);
-                Cast<float, T, cast>(x_tail, raw_tail, mask);
-            }
+            LoadLaneF32<T, DP>(x_tail, rows, row, col);
             Add(acc0, acc0, x_tail, mask);
         }
         Add(acc0, acc0, acc1, mask);

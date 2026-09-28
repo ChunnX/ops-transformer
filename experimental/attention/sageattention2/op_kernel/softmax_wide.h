@@ -7,7 +7,85 @@
  */
 #pragma once
 #include "common.h"
+#include "softmax.h"
 namespace Sage {
+
+// Scale an NZ score block by Q and K factors, apply optional causal mask, and accumulate block maximums.
+template <bool MASK>
+__simd_callee__ inline void ScaleMaskAndMaxWideNZBlock(
+    __ubuf__ half *tileScores, AscendC::MicroAPI::RegTensor<half> &q0,
+    AscendC::MicroAPI::RegTensor<half> &q1, __ubuf__ half *khalfPtr, uint16_t col, uint16_t row,
+    int32_t causalLimitBase, AscendC::MicroAPI::RegTensor<int16_t> &laneOffset,
+    AscendC::MicroAPI::RegTensor<half> &negative, AscendC::MicroAPI::RegTensor<half> &m0,
+    AscendC::MicroAPI::RegTensor<half> &m1, AscendC::MicroAPI::MaskReg &h)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<half> k, x0, x1, c0, c1;
+    LoadAlign<half, LoadDist::DIST_BLK>(k, khalfPtr + col * 16);
+    LoadAlign(x0, tileScores + col * 64 * 16 + row * 16 + 0);
+    LoadAlign(x1, tileScores + col * 64 * 16 + row * 16 + 128);
+    // Interleave coeff multiplications to completely eliminate pipeline stall bubbles
+    Mul(c0, q0, k, h);
+    Mul(c1, q1, k, h);
+    Mul(x0, x0, c0, h);
+    Mul(x1, x1, c1, h);
+    if constexpr (MASK) {
+        MaskReg valid0, valid1;
+        CompareScalar<int16_t, CMPMODE::LE>(valid0, laneOffset, int16_t(causalLimitBase + row - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1, laneOffset, int16_t(causalLimitBase + row + 8 - col * 16), h);
+        Select(x0, x0, negative, valid0);
+        Select(x1, x1, negative, valid1);
+    }
+    Max(m0, m0, x0, h);
+    Max(m1, m1, x1, h);
+    StoreAlign(tileScores + col * 64 * 16 + row * 16 + 0, x0, h);
+    StoreAlign(tileScores + col * 64 * 16 + row * 16 + 128, x1, h);
+}
+
+// Compute probabilities from scores, tree-accumulate row sums, cast to FP8, and pack into NZ output format.
+__simd_callee__ inline void ComputeProbAndPackNZBlock(__ubuf__ float8_e4m3_t *out,
+                                                      AscendC::MicroAPI::RegTensor<half> &x0,
+                                                      AscendC::MicroAPI::RegTensor<half> &x1,
+                                                      AscendC::MicroAPI::RegTensor<half> &m,
+                                                      AscendC::MicroAPI::RegTensor<float> &rowSum, uint32_t outOffset)
+{
+    using namespace AscendC::MicroAPI;
+    static constexpr CastTrait cast0{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait cast1{RegLayout::ONE, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait cast2{RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait cast3{RegLayout::THREE, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    auto f = CreateMask<float, MaskPattern::ALL>();
+    auto h = CreateMask<half, MaskPattern::ALL>();
+    auto b = CreateMask<uint8_t, MaskPattern::ALL>();
+
+    RegTensor<float> p0, p1, p2, p3, pair0, pair1;
+    RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
+    RegTensor<uint8_t> merge0, merge1, merged;
+
+    ExpSub<float, half, RegLayout::ZERO>(p0, x0, m, h);
+    ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
+    ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
+    ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
+
+    // Tree reduction interleaved with Cast and Or to eliminate RAW pipeline latency bubbles
+    Add(pair0, p0, p1, f);
+    Add(pair1, p2, p3, f);
+    Cast<float8_e4m3_t, float, cast0>(packed0, p0, f);
+    Cast<float8_e4m3_t, float, cast2>(packed1, p1, f);
+    Add(pair0, pair0, pair1, f);
+    Cast<float8_e4m3_t, float, cast1>(packed2, p2, f);
+    Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
+    Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
+    Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
+    Add(rowSum, rowSum, pair0, f);
+    Or(merged, merge0, merge1, b);
+
+    // Overwrite only the first FP16 stripe just loaded for these 8
+    // rows. Other rows and column blocks remain disjoint. MTE3
+    // skips the unused second stripe when copying packed P.
+    StoreAlign((__ubuf__ uint8_t *)out + outOffset, merged, b);
+}
+
 // NZ scores retain eight rows in each FP16 register. ReduceDataBlock produces
 // eight row statistics; FP8 P is packed into full 8x32 NZ output blocks.
 template <bool MASK = false>
@@ -43,57 +121,10 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
         LoadAlign<half, LoadDist::DIST_E2B_B16>(q1, qhalf + row + 8);
         Duplicate(m1, half(-65504.0f));
         for (uint16_t col = 0; col < 16; ++col) {
-            {
-                RegTensor<half> k, x0, x1, c0, c1;
-                LoadAlign<half, LoadDist::DIST_BLK>(k, khalf + 0 + col * 16);
-                LoadAlign(x0, scores + col * 64 * 16 + row * 16 + 0);
-                Mul(c0, q0, k, h);
-                LoadAlign(x1, scores + col * 64 * 16 + row * 16 + 128);
-                Mul(c1, q1, k, h);
-                Mul(x0, x0, c0, h);
-                if constexpr (MASK) {
-                    MaskReg valid;
-                    CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(queryInGroup + row - col * 16), h);
-                    Select(x0, x0, negative, valid);
-                }
-                Max(m0, m0, x0, h);
-                StoreAlign(scores + col * 64 * 16 + row * 16 + 0, x0, h);
-                Mul(x1, x1, c1, h);
-                if constexpr (MASK) {
-                    MaskReg valid;
-                    CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(queryInGroup + row + 8 - col * 16),
-                                                        h);
-                    Select(x1, x1, negative, valid);
-                }
-                Max(m1, m1, x1, h);
-                StoreAlign(scores + col * 64 * 16 + row * 16 + 128, x1, h);
-            }
-            {
-                RegTensor<half> k, x0, x1, c0, c1;
-                LoadAlign<half, LoadDist::DIST_BLK>(k, khalf + 256 + col * 16);
-                LoadAlign(x0, scoresNext + col * 64 * 16 + row * 16 + 0);
-                Mul(c0, q0, k, h);
-                LoadAlign(x1, scoresNext + col * 64 * 16 + row * 16 + 128);
-                Mul(c1, q1, k, h);
-                Mul(x0, x0, c0, h);
-                if constexpr (MASK) {
-                    MaskReg valid;
-                    CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset, int16_t(queryInGroup + row - col * 16 - 256),
-                                                        h);
-                    Select(x0, x0, negative, valid);
-                }
-                Max(m0, m0, x0, h);
-                StoreAlign(scoresNext + col * 64 * 16 + row * 16 + 0, x0, h);
-                Mul(x1, x1, c1, h);
-                if constexpr (MASK) {
-                    MaskReg valid;
-                    CompareScalar<int16_t, CMPMODE::LE>(valid, laneOffset,
-                                                        int16_t(queryInGroup + row + 8 - col * 16 - 256), h);
-                    Select(x1, x1, negative, valid);
-                }
-                Max(m1, m1, x1, h);
-                StoreAlign(scoresNext + col * 64 * 16 + row * 16 + 128, x1, h);
-            }
+            ScaleMaskAndMaxWideNZBlock<MASK>(scores, q0, q1, khalf + 0, col, row, queryInGroup, laneOffset, negative,
+                                             m0, m1, h);
+            ScaleMaskAndMaxWideNZBlock<MASK>(scoresNext, q0, q1, khalf + 256, col, row, queryInGroup - 256, laneOffset,
+                                             negative, m0, m1, h);
         }
         ReduceDataBlock<ReduceType::MAX>(m0, m0, h);
         StoreUnAlign<half, PostLiteral::POST_MODE_UPDATE>(blockMax, m0, maxStore, 8);
@@ -102,16 +133,8 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     }
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    RegTensor<half> oldMax, newMax;
-    RegTensor<float> ratio;
-    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
-    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
-    Max(newMax, newMax, oldMax, h);
-    ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
-    StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
-    StoreAlign(alpha, ratio, f);
+    UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
 }
 
 template <bool FIRST, bool UPDATE_DEN = true>
@@ -122,13 +145,7 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
     using namespace AscendC::MicroAPI;
     // FIRST reads MaxCore's maxima; SECOND reads FIRST's partial lane sums.
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    static constexpr CastTrait cast0{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait cast1{RegLayout::ONE, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait cast2{RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr CastTrait cast3{RegLayout::THREE, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     auto f = CreateMask<float, MaskPattern::ALL>();
-    auto h = CreateMask<half, MaskPattern::ALL>();
-    auto b = CreateMask<uint8_t, MaskPattern::ALL>();
     auto sumMask = CreateMask<float, MaskPattern::VL8>();
     for (uint16_t row = 0; row < 64; row += 8) {
         RegTensor<half> m;
@@ -144,57 +161,12 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
             RegTensor<half> next0, next1;
             LoadAlign(next0, scores + (col + 1) * 64 * 32 + row * 16);
             LoadAlign(next1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
-            {
-                RegTensor<half> x0, x1;
-                RegTensor<float> p0, p1, p2, p3, pair0, pair1;
-                RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
-                RegTensor<uint8_t> merge0, merge1, merged;
-                LoadAlign(x0, scores + (col + 0) * 64 * 32 + row * 16);
-                LoadAlign(x1, scores + (col + 0) * 64 * 32 + 64 * 16 + row * 16);
-                ExpSub<float, half, RegLayout::ZERO>(p0, x0, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
-                ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
-                Add(pair0, p0, p1, f);
-                Add(pair1, p2, p3, f);
-                Add(pair0, pair0, pair1, f);
-                Add(rowSum, rowSum, pair0, f);
-                Cast<float8_e4m3_t, float, cast0>(packed0, p0, f);
-                Cast<float8_e4m3_t, float, cast2>(packed1, p1, f);
-                Cast<float8_e4m3_t, float, cast1>(packed2, p2, f);
-                Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
-                Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
-                Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
-                Or(merged, merge0, merge1, b);
-                // Overwrite only the first FP16 stripe just loaded for these 8
-                // rows. Other rows and column blocks remain disjoint. MTE3
-                // skips the unused second stripe when copying packed P.
-                StoreAlign((__ubuf__ uint8_t *)out + (col + 0) * 64 * 64 + row * 32, merged, b);
-            }
-            {
-                RegTensor<float> p0, p1, p2, p3, pair0, pair1;
-                RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
-                RegTensor<uint8_t> merge0, merge1, merged;
-                ExpSub<float, half, RegLayout::ZERO>(p0, next0, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p1, next0, m, h);
-                ExpSub<float, half, RegLayout::ZERO>(p2, next1, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p3, next1, m, h);
-                Add(pair0, p0, p1, f);
-                Add(pair1, p2, p3, f);
-                Add(pair0, pair0, pair1, f);
-                Add(rowSum, rowSum, pair0, f);
-                Cast<float8_e4m3_t, float, cast0>(packed0, p0, f);
-                Cast<float8_e4m3_t, float, cast2>(packed1, p1, f);
-                Cast<float8_e4m3_t, float, cast1>(packed2, p2, f);
-                Cast<float8_e4m3_t, float, cast3>(packed3, p3, f);
-                Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
-                Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
-                Or(merged, merge0, merge1, b);
-                // Overwrite only the first FP16 stripe just loaded for these 8
-                // rows. Other rows and column blocks remain disjoint. MTE3
-                // skips the unused second stripe when copying packed P.
-                StoreAlign((__ubuf__ uint8_t *)out + (col + 1) * 64 * 64 + row * 32, merged, b);
-            }
+
+            RegTensor<half> x0, x1;
+            LoadAlign(x0, scores + (col + 0) * 64 * 32 + row * 16);
+            LoadAlign(x1, scores + (col + 0) * 64 * 32 + 64 * 16 + row * 16);
+            ComputeProbAndPackNZBlock(out, x0, x1, m, rowSum, (col + 0) * 64 * 64 + row * 32);
+            ComputeProbAndPackNZBlock(out, next0, next1, m, rowSum, (col + 1) * 64 * 64 + row * 32);
         }
         if constexpr (FIRST) {
             StoreAlign(partialSums + row * 8, rowSum, f);
@@ -214,6 +186,7 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
         StoreAlign(denom, oldDen, f);
     }
 }
+
 template <bool MASK = false>
 __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half *scoresNext, __ubuf__ half *maxima,
                                            __ubuf__ float *denom, __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out,
@@ -223,10 +196,12 @@ __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half 
     SoftmaxWideMaxCore<MASK>(scores, scoresNext, maxima, alpha, qhalf, khalf, queryInGroup);
     SoftmaxWideProbCore<true>(scores, maxima, denom, alpha, out, scratch, partialSums);
 }
+
 __simd_vf__ inline void SoftmaxWideSecondVF(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
                                             __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ float *scratch,
                                             __ubuf__ float *partialSums)
 {
     SoftmaxWideProbCore<false, false>(scores, maxima, denom, alpha, out, alpha + 64, partialSums);
 }
+
 } // namespace Sage

@@ -30,6 +30,39 @@ ge::graphStatus Failure(int line)
 struct CompileInfo {
     uint32_t cores = 0, vectors = 0;
 };
+// Core-count resolution chain: tiling platform info, then offline compile
+// info, then runtime device queries. Standalone aclnn launches may carry an
+// empty compile-info object; runtime queries resolve optional symbols via
+// dlsym without imposing a dependency on offline tiling tools, and never
+// guess core counts from a device model.
+bool ResolveCoreCounts(const gert::TilingContext *c, uint32_t &cores, uint32_t &vectors)
+{
+    if (c->GetPlatformInfo()) {
+        auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
+        cores = platform.GetCoreNumAic();
+        vectors = platform.GetCoreNumAiv();
+    }
+    if (!cores && c->GetCompileInfo()) {
+        const auto *info = static_cast<const CompileInfo *>(c->GetCompileInfo());
+        cores = info->cores;
+        vectors = info->vectors;
+    }
+    if (!cores || vectors < 2 * cores) {
+        auto getDevice = reinterpret_cast<aclError (*)(int32_t *)>(dlsym(RTLD_DEFAULT, "aclrtGetDevice"));
+        auto getInfo = reinterpret_cast<aclError (*)(uint32_t, aclrtDevAttr, int64_t *)>(
+            dlsym(RTLD_DEFAULT, "aclrtGetDeviceInfo"));
+        int32_t device = 0;
+        int64_t aic = 0, aiv = 0;
+        if (getDevice && getInfo && getDevice(&device) == ACL_SUCCESS &&
+            getInfo(device, ACL_DEV_ATTR_CUBE_CORE_NUM, &aic) == ACL_SUCCESS &&
+            getInfo(device, ACL_DEV_ATTR_VECTOR_CORE_NUM, &aiv) == ACL_SUCCESS && aic > 0 && aic < UINT32_MAX &&
+            aiv >= 2 * aic && aiv < UINT32_MAX) {
+            cores = static_cast<uint32_t>(aic);
+            vectors = static_cast<uint32_t>(aiv);
+        }
+    }
+    return cores > 0 && vectors >= 2 * cores;
+}
 ge::graphStatus Tile(gert::TilingContext *c)
 {
     if (!c || !c->GetAttrs()) {
@@ -94,34 +127,7 @@ ge::graphStatus Tile(gert::TilingContext *c)
     // Standalone aclnn may provide an empty compile-info object. Runtime
     // platform information is authoritative and does not require torch init.
     uint32_t vectors = 0;
-    if (c->GetPlatformInfo()) {
-        auto platform = platform_ascendc::PlatformAscendC(c->GetPlatformInfo());
-        p.cores = platform.GetCoreNumAic();
-        vectors = platform.GetCoreNumAiv();
-    }
-    if (!p.cores && c->GetCompileInfo()) {
-        const auto *info = static_cast<const CompileInfo *>(c->GetCompileInfo());
-        p.cores = info->cores;
-        vectors = info->vectors;
-    }
-    if (!p.cores || vectors < 2 * p.cores) {
-        // Some direct aclnn launches carry no populated tiling platform data.
-        // Resolve optional runtime queries without imposing a runtime dependency
-        // on offline tiling tools; never guess core counts from a device model.
-        auto getDevice = reinterpret_cast<aclError (*)(int32_t *)>(dlsym(RTLD_DEFAULT, "aclrtGetDevice"));
-        auto getInfo = reinterpret_cast<aclError (*)(uint32_t, aclrtDevAttr, int64_t *)>(
-            dlsym(RTLD_DEFAULT, "aclrtGetDeviceInfo"));
-        int32_t device = 0;
-        int64_t aic = 0, aiv = 0;
-        if (getDevice && getInfo && getDevice(&device) == ACL_SUCCESS &&
-            getInfo(device, ACL_DEV_ATTR_CUBE_CORE_NUM, &aic) == ACL_SUCCESS &&
-            getInfo(device, ACL_DEV_ATTR_VECTOR_CORE_NUM, &aiv) == ACL_SUCCESS && aic > 0 && aic < UINT32_MAX &&
-            aiv >= 2 * aic && aiv < UINT32_MAX) {
-            p.cores = static_cast<uint32_t>(aic);
-            vectors = static_cast<uint32_t>(aiv);
-        }
-    }
-    if (!p.cores || vectors < 2 * p.cores) {
+    if (!ResolveCoreCounts(c, p.cores, vectors)) {
         return Failure(__LINE__);
     }
     c->SetBlockDim(p.cores);

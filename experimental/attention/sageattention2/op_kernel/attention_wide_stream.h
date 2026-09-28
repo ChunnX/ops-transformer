@@ -104,27 +104,30 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideCubeStep(
         GemmQkSplit<WIDE_B_L1>(r, q, (fragment & 3) * HALF * N * 2,
                                current.part == 0, PHASE);
     }
-    if (fragment >= 3) {
-        uint64_t previous = fragment - 3;
-        const auto &old = pending[previous & 3];
-        uint32_t group = previous / 2;
-        WaitBothAiv<PIPE_MTE1>(P_READY);
-        uint32_t parity = previous & 3;
-        uint32_t pvOffset = WideVectorLayout::PV_UB + (group & 1) * WideVectorLayout::PV_SLOT_BYTES;
-        if ((1 - PHASE)) {
-            if (group >= 2) {
-                WaitBothAiv<PIPE_FIX>(PV_RELEASE);
+        if (fragment >= 3) {
+            uint64_t previous = fragment - 3;
+            const auto &old = pending[previous & 3];
+            uint32_t group = previous / 2;
+            WaitBothAiv<PIPE_MTE1>(P_READY);
+            uint32_t parity = previous & 3;
+            uint32_t pvOffset = WideVectorLayout::PV_UB + (group & 1) * WideVectorLayout::PV_SLOT_BYTES;
+            if constexpr (PHASE == 0) {
+                // Even fragment: accumulate onto the L0C state left by the odd
+                // fragment and emit the completed 512-token group to the AIVs.
+                if (group >= 2) {
+                    WaitBothAiv<PIPE_FIX>(PV_RELEASE);
+                }
+                Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false, true>(
+                    r, v8, nullptr, N, DP, pvOffset, parity, true,
+                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
+                Notify(PV_READY);
+            } else {
+                // Odd fragment: initialize L0C and keep the partial in place.
+                Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, false, true, true>(
+                    r, v8, nullptr, N, DP, pvOffset, parity, true,
+                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
             }
-            Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false, true>(
-                r, v8, nullptr, N, DP, pvOffset, parity, true,
-                vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
-            Notify(PV_READY);
-        } else {
-            Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, false, true, true>(
-                r, v8, nullptr, N, DP, pvOffset, parity, true,
-                vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N, (1 - PHASE));
         }
-    }
     if (hasQk) {
         const auto &current = pending[fragment & 3];
         if (current.part + 2 < count * 2)

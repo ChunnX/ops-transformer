@@ -32,10 +32,10 @@ constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, MU_UB = P_UB + PIPE_SLOTS *
 constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * N * 2;
 constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
 constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * 512, UB_END = SUM_UB + HALF * 4;
-// Final-only LSE temporaries reuse P0 after the output's MTE3_S fence.
-// Do not reuse score: AIC may already be writing the next query tile's QK.
-constexpr uint32_t X_UB = P_UB, RED_UB = P_UB + 1024, WORK_UB = P_UB + 2048, QI_UB = P_UB + 4096;
-static_assert(QI_UB + 512 <= P_UB + P_SLOT_BYTES, "final scratch exceeds retired P0");
+// The final LSE epilogue draws its vector scratch from the retired P0 slot
+// (see AttentionBlockVec::StoreTileLse); it must not touch the score area,
+// which the AIC may already be refilling for the next query tile.
+static_assert(2 * 8 * 128 * sizeof(float) + 1024 <= P_SLOT_BYTES, "LSE scratch exceeds retired P0");
 static_assert(UB_END <= 248 * 1024, "UB exceeds capacity");
 static_assert(HALF * N >= HALF * 128 * 2, "P buffer cannot hold final FP16/BF16 output");
 static_assert(M * N * 4 <= 128 * 1024 && M * 128 * 4 <= 128 * 1024, "L0C exceeds its 128 KiB slot");

@@ -22,7 +22,6 @@ struct WideVectorLayout {
     static constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
     static constexpr uint32_t SUM_UB = ALPHA_UB + 3 * 512;
     static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = SUM_UB + HALF * 4;
-    static constexpr uint32_t X_UB = P_UB, RED_UB = P_UB + 1024, WORK_UB = P_UB + 2048, QI_UB = P_UB + 4096;
     static_assert(PV_SLOT_BYTES >= HALF * 128 * 4, "PV slot cannot hold FP32 PV");
     static_assert(P_SLOT_BYTES >= HALF * 8 * 4, "output scratch cannot hold softmax partial sums");
     static_assert(END <= 248 * 1024, "wide softmax exceeds UB");
