@@ -104,7 +104,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>-</td>
+      <td>1维，shape固定为(1024)</td>
       <td>×</td>
     </tr>
     <tr>
@@ -124,7 +124,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>1维，(1)</td>
       <td>×</td>
     </tr>
     <tr>
@@ -174,7 +174,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>1维，(1)</td>
       <td>×</td>
     </tr>
     <tr>
