@@ -88,7 +88,8 @@ public:
     }
 
     /** Copy one completed GM slot into the host-sized L1 A NZ buffer. */
-    __aicore__ inline static void LoadA1(Cube::ProjectionCube &cube, const GlobalTensor<float> &stage,
+    template <bool USE_HF32>
+    __aicore__ inline static void LoadA1(Cube::ProjectionCube<USE_HF32> &cube, const GlobalTensor<float> &stage,
                                          uint64_t stageOffset, uint32_t mRows, uint32_t nzM, uint32_t kCount,
                                          uint32_t slot)
     {
@@ -143,8 +144,9 @@ public:
     }
 
     /** Activate an already populated A L1 slot; synchronization is owned by the transfer policy. */
-    __aicore__ inline static void LoadA1(Cube::ProjectionCube &cube, const GlobalTensor<float> &stage, uint64_t offset,
-                                         uint32_t rows, uint32_t nzM, uint32_t kCount, uint32_t slot)
+    template <bool USE_HF32>
+    __aicore__ inline static void LoadA1(Cube::ProjectionCube<USE_HF32> &cube, const GlobalTensor<float> &stage,
+                                         uint64_t offset, uint32_t rows, uint32_t nzM, uint32_t kCount, uint32_t slot)
     {
         cube.AcceptDirectA(slot);
     }

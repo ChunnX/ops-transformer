@@ -9,6 +9,7 @@
  */
 #include "mega_mhc_tiling.h"
 #include "mega_mhc_memory_plan.h"
+#include "../../../op_kernel/arch35/mega_mhc_tiling_key.h"
 
 #include <algorithm>
 #include <cmath>
@@ -359,11 +360,6 @@ ge::graphStatus MegaMhcTiling::DoOpTiling()
             }
         }
     }
-    tilingData_.set_scheduleMode(static_cast<uint32_t>(scheduleMode_));
-    tilingData_.set_hasMid(hasMid_ ? 1U : 0U);
-    tilingData_.set_projectionMode(static_cast<uint32_t>(projectionMode_));
-    tilingData_.set_stagingKind(static_cast<uint32_t>(hasMid_ ? AiInfraMegaMhc::kFiveProjectionTransport :
-                                                                AiInfraMegaMhc::kFourProjectionTransport));
     tilingData_.set_totalRows(static_cast<uint32_t>(totalRows_));
     tilingData_.set_n(kHeadCount);
     tilingData_.set_d(d_);
@@ -533,10 +529,14 @@ ge::graphStatus MegaMhcTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-/** Use one kernel variant; HasMid and precision are runtime fields in MegaMhcTilingData. */
+/** Select the schedule, optional Mid and Cube precision at compile time through the shared key declaration. */
 uint64_t MegaMhcTiling::GetTilingKey() const
 {
-    return 0;
+    static_assert(static_cast<uint32_t>(mega_mhc::ScheduleMode::MK) == MEGA_MHC_SPLIT_M_K);
+    static_assert(static_cast<uint32_t>(mega_mhc::ScheduleMode::ND) == MEGA_MHC_SPLIT_ND);
+    static_assert(static_cast<uint32_t>(mega_mhc::ScheduleMode::BS) == MEGA_MHC_SPLIT_BS);
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(scheduleMode_), hasMid_,
+                              projectionMode_ == mega_mhc::ProjectionMode::HF32);
 }
 
 /** Workspace size is finalized while building the checked user-workspace layout. */

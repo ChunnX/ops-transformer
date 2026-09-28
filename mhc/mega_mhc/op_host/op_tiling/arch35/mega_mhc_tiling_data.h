@@ -15,10 +15,6 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MegaMhcTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, hasMid);
-TILING_DATA_FIELD_DEF(uint32_t, scheduleMode);
-TILING_DATA_FIELD_DEF(uint32_t, projectionMode);
-TILING_DATA_FIELD_DEF(uint32_t, stagingKind);
 TILING_DATA_FIELD_DEF(uint32_t, totalRows);
 TILING_DATA_FIELD_DEF(uint32_t, n);
 TILING_DATA_FIELD_DEF(uint32_t, d);

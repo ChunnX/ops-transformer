@@ -17,13 +17,13 @@ namespace AiInfraMegaMhc::Cube {
 using namespace AscendC;
 
 /** Execute host-described FP32/HF32 projection tiles; this class owns only the AIC Cube micro-pipeline. */
+template <bool USE_HF32>
 class ProjectionCube {
 public:
     /** Allocate the exact planned L1/L0 slots and select HF32 mode on the Cube participant. */
-    __aicore__ inline void Init(TPipe *pipe, const MegaMhcTilingData *tiling, uint32_t projectionMode)
+    __aicore__ inline void Init(TPipe *pipe, const MegaMhcTilingData *tiling)
     {
         tiling_ = tiling;
-        projectionMode_ = projectionMode;
         pipe->InitBuffer(l1Buffer_, static_cast<uint32_t>(tiling_->l1PeakBytes));
         LocalTensor<float> l1Base = l1Buffer_.Get<float>();
         aL1_ = l1Base;
@@ -48,7 +48,7 @@ public:
         SetFlag<HardEvent::FIX_M>(0);
         SetFlag<HardEvent::FIX_M>(1);
         if ASCEND_IS_AIC {
-            if (projectionMode_ == 1) {
+            if constexpr (USE_HF32) {
                 SetHF32Mode(1);
                 SetHF32TransMode(1);
             }
@@ -129,9 +129,8 @@ public:
             for (uint32_t inner = 0; inner < madLoops; ++inner) {
                 const bool innerIsTail = l0IsTail && inner + 1 == madLoops && tailMmadLoops != 0;
                 const uint32_t madK =
-                    innerIsTail ?
-                        tailMmadFinalKStep :
-                        (projectionMode_ == 0 ? tiling_->fullMmadKStep : (l0IsTail ? tailMmadKStep : tiling_->baseK));
+                    innerIsTail ? tailMmadFinalKStep :
+                                  (!USE_HF32 ? tiling_->fullMmadKStep : (l0IsTail ? tailMmadKStep : tiling_->baseK));
                 MmadParams params;
                 params.m = nzM;
                 params.n = tiling_->q;
@@ -169,7 +168,7 @@ public:
         WaitFlag<HardEvent::FIX_M>(0);
         WaitFlag<HardEvent::FIX_M>(1);
         if ASCEND_IS_AIC {
-            if (projectionMode_ == 1) {
+            if constexpr (USE_HF32) {
                 SetHF32Mode(0);
                 SetHF32TransMode(0);
             }
@@ -227,7 +226,6 @@ private:
     }
 
     const MegaMhcTilingData *tiling_ = nullptr;
-    uint32_t projectionMode_ = 0;
     TBuf<TPosition::A1> l1Buffer_;
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;

@@ -11,8 +11,10 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mega_mhc_kernel_context.h"
-#include "arch35/epilogue.h"
-#include "arch35/schedule.h"
+#include "arch35/mega_mhc_tiling_key.h"
+#include "arch35/schedule_mk.h"
+#include "arch35/schedule_bs.h"
+#include "arch35/schedule_nd.h"
 
 using namespace AscendC;
 using namespace AiInfraMegaMhc;
@@ -24,6 +26,7 @@ using namespace AiInfraMegaMhc;
  * ND partitions K=N*D; BS partitions tokens with full K. Both use staged barriers.
  * All variants reuse the same ordered Pre/RMS1 compute routines.
  */
+template <uint16_t TILING_MODE, bool WITH_MID, bool USE_HF32>
 __global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
                                              GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR gamma0,
                                              GM_ADDR gamma2, GM_ADDR hInPrime, GM_ADDR hPostNew, GM_ADDR hResNew,
@@ -52,21 +55,17 @@ __global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_
     tensors.partialMm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(userWorkspace + tilingData.partialMmOffset));
     tensors.partialRms.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(userWorkspace + tilingData.partialRmsOffset));
     tensors.stage.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(userWorkspace + tilingData.stageOffset));
-    if (tilingData.hasMid != 0U) {
+    if constexpr (WITH_MID) {
         tensors.gamma2.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gamma2));
     }
 
-    if (tilingData.hasMid == 0U) {
-        TPipe fourOpPipe;
-        Schedule::RunSchedule<T, false>(tensors, tilingData, &fourOpPipe);
-    } else {
-        TPipe fiveOpPipe;
-        Schedule::RunSchedule<T>(tensors, tilingData, &fiveOpPipe);
+    if constexpr (TILING_MODE == MEGA_MHC_SPLIT_M_K) {
+        Schedule::RunMkSchedule<T, WITH_MID, USE_HF32>(tensors, tilingData);
+    } else if constexpr (TILING_MODE == MEGA_MHC_SPLIT_BS) {
+        Schedule::RunBsSchedule<T, WITH_MID, USE_HF32>(tensors, tilingData);
+    } else if constexpr (TILING_MODE == MEGA_MHC_SPLIT_ND) {
+        Schedule::RunNdSchedule<T, WITH_MID, USE_HF32>(tensors, tilingData);
     }
-
-    TPipe epiloguePipe;
-    Schedule::RunEpilogue<T>(tensors, tilingData, &epiloguePipe);
-    epiloguePipe.Destroy();
 }
 
 #endif // defined(__CCE_AICORE__) && __CCE_AICORE__ == 310

@@ -1471,3 +1471,23 @@ AIV time(us)导出为0而ratio非零，不能把该字段当成实际阶段耗�
 |8192|6144|5|1555.025|1555.070|
 |8192|7168|4|974.205|974.976|
 |8192|7168|5|1788.006|1789.793|
+
+## 调度文件与 tiling key 拆分（round60，验证未完成）
+
+M-K、BS、ND 分别使用 `schedule_mk.h`、`schedule_bs.h`、`schedule_nd.h`；
+公共 projection/producer 辅助函数保留在 `schedule_common.h`，数学函数仍共用。
+不修改 Host 分块公式、阶段舍入和原有阶段屏障顺序。
+
+参照 mhc_pre/mhc_post 的模板声明形式，通过
+`GET_TPL_TILING_KEY(TILING_MODE, WITH_MID, USE_HF32)` 选择编译实例。
+模板编码 M-K=0、ND=1、BS=2；Mid/HF32 分别为布尔模板参数。
+CANN-0830 实际生成的12个 key 为0/1/2、4/5/6、8/9/10、12/13/14，
+独立 Host 检查确认无冲突。TilingData 移除重复模式字段，从456字节缩至440字节。
+
+A5-222 隔离目录为 `/home/l00947498/workspace/megamhc/round60`。
+Ascend950 构建、Host planner 检查和本地 pre-commit 通过。
+1号卡完成 T257、D2560 的24组组合（三模板、Mid、FP32/HF32、FP16/BF16），
+参考精度和重复执行确定性均通过。随后 T257、D7168、FP16、四算子、FP32、M-K
+出现持续等待；7号卡以原版 round58 安装包运行同用例也出现持续等待。
+两次诊断均已停止并保留日志，未重置设备。原先验证使用的3号卡当时有其他任务。
+这些现象尚不能确定是设备状态还是既有流水问题；本轮不能声称完整精度通过或性能未劣化。

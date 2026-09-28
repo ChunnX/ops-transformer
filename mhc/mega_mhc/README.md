@@ -44,6 +44,17 @@ ND/BS 首版在完整 RMS0/Post/可选 Mid 后同步，投影内部继续 CV 双
 
 ## 当前调度
 
+外层调度按模板分为 `schedule_mk.h`、`schedule_bs.h`、`schedule_nd.h`，
+各自负责阶段顺序、TPipe 生命周期和阶段屏障。公共投影循环及 producer 辅助函数位于
+`schedule_common.h`；RegBase 数学逻辑继续由 `compute/` 复用。
+M-K 的跨批 Post producer 和完成计数协议归属 `schedule_mk.h`。
+
+`mega_mhc_tiling_key.h` 使用仓内 `ASCENDC_TPL_ARGS_DECL` / `ASCENDC_TPL_SEL` 形式，
+Host 通过 `GET_TPL_TILING_KEY(TILING_MODE, WITH_MID, USE_HF32)` 选择实例。
+三个维度分别为 M-K/ND/BS、是否包含 RMSNorm Mid、是否使用 HF32，共12种组合。
+Kernel 入口和 Cube 精度选择使用编译期分支；TilingData 只传递分块、容量和运行参数，
+不再重复存储这些模式字段。输入 FP16/BF16 仍由算子 dtype 实例区分。
+
 四算子由 Host 按 T 动态选择每个 AIV 每批的行数 R：在不超过16的2次幂中，
 选择满足每批 `2*C*R` 行、尽量保留至少两批的最大值。
 若最小批能整除T，再逐级缩小R使整批覆盖；若整批候选不合法，则尝试容量上限批量并保留尾批。
