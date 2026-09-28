@@ -1083,9 +1083,8 @@ class GeneralizedQLIV2:
         debug_batch = int(os.environ.get("QLIV2_HIF4_DEBUG_BATCH", "0"))
         if debug_enabled and b_idx == debug_batch and not self.hif4_vector_debug_dumped:
             # Device 6201/6202 are raw FP32 L0C fragments; this is their logical [G, S2] reference before
-            # Fixpipe, ReLU and F322BF16. Device 6211/6212 contain raw BF16 UB spans. Relative to qkBase,
-            # each row has a 256-BF16 stride: physical [0,128) is the selected ping/pong buffer's contiguous
-            # logical S2 [0,128), while physical [128,256) belongs to the interleaved opposite buffer.
+            # Fixpipe, ReLU and F322BF16. Device 6211/6212 are sequences of compact 128-BF16 row dumps for
+            # the first/remaining G rows. Concatenate records with the same desc in call order before comparison.
             tile_s2 = min(128, qk_matrix.shape[-1])
             debug_rows = min(self.group_size, 64)
             qk_fp32_matrix = qk_bmm_res.permute(0, 2, 1, 3).squeeze(0)
@@ -1095,9 +1094,8 @@ class GeneralizedQLIV2:
             print(
                 "[QLIV2_HIF4_GOLDEN] device_map: "
                 "6201/6202=raw FP32 L0C for first S1 (unpack Cube fractal layout before comparison); "
-                "6211/6212=BF16 UB first/remaining G rows, physical row stride=256, "
-                "reshape to [rows,256] and compare physical [0:128] with contiguous logical S2[0:128]; "
-                "physical [128:256] belongs to the opposite ping/pong buffer"
+                "6211/6212=compact BF16 UB first/remaining G rows, one 128-element row per record; "
+                "concatenate records with the same desc in call order and compare directly with logical S2[0:128]"
             )
             print_hif4_vector_golden_stage(
                 "6201_6202_l0c_fp32_logical", qk_fp32_valid

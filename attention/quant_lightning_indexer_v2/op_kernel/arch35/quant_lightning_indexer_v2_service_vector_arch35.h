@@ -564,11 +564,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / CVRATIO * constInfo_.mBaseSizeMax;
 
 #if QLIV2_HIF4_DEBUG_DUMP
-    // 6211/6212 = raw BF16 Fixpipe output in UB, split by G rows to keep each record below 32 KiB.
-    // For S2=128, qkBase points at the selected ping/pong buffer. In every 256-BF16 row stride:
-    //   relative physical [0,128) -> this buffer's contiguous logical S2 [0,128)
-    //   relative physical [128,256) -> data from the interleaved opposite ping/pong buffer
-    // To compare with Golden, reshape each dump to [rows, 256] and use only columns [0,128).
+    // 6211/6212 = compact BF16 Fixpipe output for the first/remaining G rows.
+    // qkBase points at the selected ping/pong buffer. Each logical row has 128 contiguous BF16 values,
+    // while adjacent rows are 256 BF16 apart because the opposite ping/pong buffer is interleaved between them.
+    // Dump one valid row per call so the opposite buffer is neither printed nor read past the final valid row.
     if constexpr (IS_HIFLOAT4) {
         bool isDebugTile = info.bIdx == QLIV2_HIF4_DEBUG_BATCH &&
                            info.n2Idx == QLIV2_HIF4_DEBUG_KV_HEAD &&
@@ -579,11 +578,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             uint32_t qkRowStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
             uint32_t debugRows = Min(gSize_, 64U);
             uint32_t firstDumpRows = (debugRows + 1U) / 2U;
-            uint32_t secondDumpRows = debugRows - firstDumpRows;
-            AscendC::DumpTensor(qkBase, 6211, firstDumpRows * qkRowStride);
-            if (secondDumpRows > 0U) {
-                AscendC::DumpTensor(qkBase[firstDumpRows * qkRowStride], 6212,
-                                    secondDumpRows * qkRowStride);
+            uint32_t qkValidElementsPerRow = UB_BANK_STRIDE / sizeof(QK_T);
+            for (uint32_t rowIdx = 0; rowIdx < debugRows; ++rowIdx) {
+                uint32_t dumpDesc = rowIdx < firstDumpRows ? 6211U : 6212U;
+                AscendC::DumpTensor(qkBase[rowIdx * qkRowStride], dumpDesc, qkValidElementsPerRow);
             }
         }
     }
