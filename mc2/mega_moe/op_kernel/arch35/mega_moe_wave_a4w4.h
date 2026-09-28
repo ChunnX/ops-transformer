@@ -297,7 +297,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     uint64_t gmm1Count = 0U;
     uint64_t gmm2Count = 0U;
     DispatchBuffInit();
-    PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_,
+                                          &this->inputTrace_);
     WaveCombineBufferConfig combineBufferConfig{};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);

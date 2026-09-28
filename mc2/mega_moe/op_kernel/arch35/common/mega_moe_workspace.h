@@ -18,6 +18,7 @@
 
 // peermem 窗口的布局与尺寸（含 HOST_DEVICE / GM_ADDR 宏与基础 include）。
 #include "mega_moe_peermem.h"
+#include "mega_moe_input_trace_config.h"
 
 namespace MegaMoeImpl {
 
@@ -85,6 +86,7 @@ struct WorkspaceLayout {
     // prefetch 软同步 GMM1 tile 状态区的 int32 元素总数（未分配时为 0）。
     int64_t gmm1TileStatusElementCount{0};
 
+    int64_t inputTraceOffset{INVALID_WORKSPACE_OFFSET};
     int64_t workspaceSize{0};
     HOST_DEVICE explicit WorkspaceLayout(const MegaMoeTilingData *tilingData)
     {
@@ -106,6 +108,11 @@ private:
         // Tiling admits only MTE and URMA. Each path preserves its original allocation order.
         if (tilingData->topoType == TOPO_TYPE_MTE) {
             InitializeMte(tilingData);
+#if MEGA_MOE_INPUT_TRACE
+            inputTraceOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INPUT_TRACE_ROLE_COUNT *
+                             INPUT_TRACE_RECORD_WORDS * sizeof(uint32_t);
+#endif
         } else {
             InitializeUrma(tilingData, serverNum);
         }

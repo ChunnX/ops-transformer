@@ -15,6 +15,8 @@
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
+#include "../common/mega_moe_input_trace.h"
+
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -423,7 +425,8 @@ template <bool NeedCumsumReload = false, typename ActivationType, typename TopkI
 __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
                                                        const BlockWorkspaceContext &countWorkspace,
                                                        const Params &params,
-                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch)
+                                                       TokenDispatchScratch<ActivationType, TopkIndexType> &scratch,
+                                                       InputTrace *inputTrace = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -434,6 +437,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         return;
     }
 
+    const uint32_t countPrepareBegin = inputTrace == nullptr ? 0U : InputTrace::Now();
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
 
     /*
@@ -448,8 +452,13 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
     // MoE 阶段入口已通过 MTE3_MTE2 完成这段 UB 的交接。
     // expertTokenNumsOutTensor 尚未保存输出，首项暂存整表检查结果，不增加 UB 分配。
+    const uint32_t countWaitBegin = inputTrace == nullptr ? 0U : InputTrace::Now();
     WaitForCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
                       rawCountElementCount, expectedSyncRoundTag);
+    if (inputTrace != nullptr) {
+        inputTrace->Record(InputTraceEvent::COUNT_TABLE_WAIT, countWaitBegin, InputTrace::Now(), 0U,
+                           rawCountElementCount, static_cast<uint32_t>(InputTraceEvent::COUNT_TABLE_PREPARE));
+    }
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                              common.worldSize, params.tilingData->maxOutputSize);
     // 后续只使用 UB 结果及 workspace 副本，不再读取 peermem 原始 count 表。
@@ -469,6 +478,10 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
+    if (inputTrace != nullptr) {
+        inputTrace->Record(InputTraceEvent::COUNT_TABLE_PREPARE, countPrepareBegin, InputTrace::Now(), 0U,
+                           rawCountElementCount);
+    }
 }
 
 /*
