@@ -20,7 +20,7 @@
 namespace Mc2GroupedMatmulTilingData {
 #pragma pack(push, 8)
 struct GMMArray {
-    // Mc2GroupedMatmul::MAX_TENSOR_CONT，与MKN_LIST_LEN保持一致
+    // Mc2GroupedMatmul::MAX_TENSOR_CONT
     int32_t mList[128] = {0};
     int32_t kList[128] = {0};
     int32_t nList[128] = {0};

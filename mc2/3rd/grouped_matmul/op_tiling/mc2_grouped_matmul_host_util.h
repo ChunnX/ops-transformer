@@ -111,7 +111,7 @@ constexpr int32_t SPLIT_K = 2;
 // used for whether going into performance branch in antiquant case, by experiment
 constexpr int64_t ANTIQUANT_PERFORMANCE_THRESHOLD = 5L * 1024L * 1024L;
 constexpr int64_t ACT_TYPE_GELU = 2;
-constexpr uint16_t MAX_TENSOR_CONT = 128;       // mList/kList/nList数组容量
+constexpr uint16_t MAX_TENSOR_CONT = 128;
 constexpr int64_t FULL_K_SINGLE_N = 1280;       // used for fullload k case, by experiment
 constexpr int64_t FULL_K_N_THRESHOLD = 2560;    // used for fullload k case, by experiment
 constexpr int64_t FULL_K_M_THRESHOLD = 2048;    // used for fullload k case, by experiment

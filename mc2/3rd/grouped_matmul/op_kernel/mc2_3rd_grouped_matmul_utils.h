@@ -150,7 +150,7 @@ namespace MC2_GROUPED_MATMUL {
 using namespace AscendC;
 
 constexpr uint32_t INT8_BITS = 8;                                    // a int8 number has 8 bits
-constexpr int32_t MKN_LIST_LEN = 128;                                // 128: predefined array legnth, sync with GMMArray
+constexpr int32_t MKN_LIST_LEN = 128;                                // 128: predefined array legnth
 constexpr uint32_t UB_BLOCK_UNIT_SIZE = 32;                          // 32: a block has 32 bytes data
 constexpr uint32_t UB_BLOCK_DOUBLE_UNIT_SIZE = 64;                   // 64: a block has 64 bytes data
 constexpr uint32_t HALF_UB_BLOCK_UNIT_SIZE = UB_BLOCK_UNIT_SIZE / 2; // 2: a float16 data has two bytes
