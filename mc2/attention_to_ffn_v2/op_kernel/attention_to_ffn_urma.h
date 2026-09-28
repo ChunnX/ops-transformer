@@ -160,6 +160,7 @@ private:
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
     __aicore__ inline void SetFlagToFFN();
     __aicore__ inline void SetFlagInAttn();
+    __aicore__ inline void ClearAttnActiveFlags();
     __aicore__ inline void ActiveMaskCalCnt();
 
     TPipe *tpipe_{nullptr};
@@ -1037,6 +1038,34 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ClearAttnActiveFlags()
+{
+    uint32_t startId = 0;
+    uint32_t endId = 0;
+    uint32_t clearNum = 0;
+    uint32_t clearTotal = axisX_ * curBsCnt_ * (axisK_ + sharedExpertNum_);
+    if (clearTotal == 0) {
+        return;
+    }
+    SplitToCore(clearTotal, aivNum_, startId, endId, clearNum);
+    if (startId >= clearTotal) {
+        return;
+    }
+
+    uint64_t segmentOffset = static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_);
+    GM_ADDR selfRankAddr = GetWindowAddr(static_cast<int32_t>(rankId_));
+    GM_ADDR attnTableGM = selfRankAddr + segmentOffset * sizeof(int32_t);
+    GlobalTensor<int32_t> attnTableGMTensor;
+    attnTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(attnTableGM));
+    DataCopyExtParams clearParams = {1U, static_cast<uint32_t>(clearNum * sizeof(int32_t)), 0U, 0U, 0U};
+    LocalTensor<int32_t> clearTensor = expertIdsBuf_.Get<int32_t>();
+    Duplicate<int32_t>(clearTensor, static_cast<int32_t>(0), clearNum);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(attnTableGMTensor[startId], clearTensor, clearParams);
+    PipeBarrier<PIPE_MTE3>();
+}
+
+template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SetFlagToFFN()
 {
     if (aivId_ != 0U) {
@@ -1207,6 +1236,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             }
         }
 
+        SyncAll<true>();
+        ClearAttnActiveFlags();
         SyncAll<true>();
         SetFlagToFFN();
         if constexpr (isActiveMask) {
