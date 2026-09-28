@@ -201,7 +201,10 @@ public:
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
-            uint64_t btBufId = abL1LoopCnt_ & 0x1;
+            // BT（bias 表）槽跟随 L0C ping-pong 槽，而非 abL1LoopCnt_：
+            // L0C ping-pong 使两个 tile 的 mmad 可流水重叠，BT 必须各自独立，
+            // 否则并发 tile 会覆盖/读到同一 BT 槽的垃圾（-65504）。
+            uint64_t btBufId = l0cPingPong_ & 0x1;
 
             const auto &aL1Slot = bufMgr_.GetL1ASlot(l1BufId);
             const auto &bL1Slot = bufMgr_.GetL1BSlot(l1BufId);
