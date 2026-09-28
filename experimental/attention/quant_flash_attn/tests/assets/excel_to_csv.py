@@ -138,11 +138,12 @@ def _get_core_nums():
     return _CORE_NUMS
 
 
-def _calculate_max_schedule_size(batch_size, num_heads_kv, aic_num, aiv_num):
+def _calculate_max_schedule_size(batch_size, num_heads_q, aic_num, aiv_num):
+    # schedule 按 N_q 切分 (kernel n2Size=n1Size, GQA 下 N_q 个 n2 迭代), 与 aicpu 侧保持一致
     align_size = 4096
     batch_size = batch_size if batch_size and batch_size > 0 else 1
-    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
-    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_q
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_q
     schedule_size = METADATA_STRIDE + fa_size + fd_size
     return ((schedule_size + align_size - 1) // align_size) * align_size
 
@@ -155,11 +156,11 @@ def _metadata_batch_size(B, sq, skv, cu_sq, cu_skv, layout_q):
     return int(B) if B else 0
 
 
-def _metadata_slot_shape(B, N_kv, sq, cu_sq, layout_q):
-    num_heads_kv = int(N_kv) if N_kv else 1
+def _metadata_slot_shape(B, N_q, N_kv, sq, cu_sq, layout_q):
+    num_heads_q = int(N_q) if N_q else int(N_kv) if N_kv else 1
     batch_size = _metadata_batch_size(B, sq, [], cu_sq, [], layout_q)
     aic_num, aiv_num = _get_core_nums()
-    return (2, _calculate_max_schedule_size(batch_size, num_heads_kv, aic_num, aiv_num))
+    return (2, _calculate_max_schedule_size(batch_size, num_heads_q, aic_num, aiv_num))
 
 
 def _parse_int_list(s):
@@ -296,7 +297,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     attn_mask_shape = _slot_shape("attn_mask_shape")
 
     layout_q = str(g("layout_q")).strip()
-    metadata_shape = _metadata_slot_shape(B, N_kv, sq, cu_sq, layout_q)
+    metadata_shape = _metadata_slot_shape(B, N_q, N_kv, sq, cu_sq, layout_q)
 
     shapes = [
         q_shape,
