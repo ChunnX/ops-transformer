@@ -24,64 +24,38 @@ __simd_callee__ inline void ScaleMaskAndMaxWideNZPair(
     AscendC::MicroAPI::RegTensor<half> &m0, AscendC::MicroAPI::RegTensor<half> &m1,
     AscendC::MicroAPI::MaskReg &h)
 {
-    using namespace AscendC::MicroAPI;
-    RegTensor<half> k0;
+    RegTensor<half> k0, k1;
     LoadAlign<half, LoadDist::DIST_BLK>(k0, khalf0 + col * 16);
+    LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
 
-    RegTensor<half> x0_0, x1_0;
+    RegTensor<half> x0_0, x1_0, x0_1, x1_1;
     LoadAlign(x0_0, scores0 + col * 64 * 16 + row * 16 + 0);
     LoadAlign(x1_0, scores0 + col * 64 * 16 + row * 16 + 128);
+    LoadAlign(x0_1, scores1 + col * 64 * 16 + row * 16 + 0);
+    LoadAlign(x1_1, scores1 + col * 64 * 16 + row * 16 + 128);
 
-    RegTensor<half> c0_0, c1_0;
+    RegTensor<half> c0_0, c1_0, c0_1, c1_1;
+    // 4-coeff interleaved multiplication completely eliminates RAW latency bubbles
     Mul(c0_0, q0, k0, h);
     Mul(c1_0, q1, k0, h);
+    Mul(c0_1, q0, k1, h);
+    Mul(c1_1, q1, k1, h);
 
     Mul(x0_0, x0_0, c0_0, h);
     Mul(x1_0, x1_0, c1_0, h);
+    Mul(x0_1, x0_1, c0_1, h);
+    Mul(x1_1, x1_1, c1_1, h);
 
-    RegTensor<half> x0_1, x1_1;
     if constexpr (MASK) {
-        if (causalLimit1 + row + 8 - col * 16 < 0) {
-            x0_1 = negative;
-            x1_1 = negative;
-        } else {
-            RegTensor<half> k1;
-            LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
-            RegTensor<half> c0_1, c1_1;
-            Mul(c0_1, q0, k1, h);
-            Mul(c1_1, q1, k1, h);
-            LoadAlign(x0_1, scores1 + col * 64 * 16 + row * 16 + 0);
-            LoadAlign(x1_1, scores1 + col * 64 * 16 + row * 16 + 128);
-            Mul(x0_1, x0_1, c0_1, h);
-            Mul(x1_1, x1_1, c1_1, h);
-
-            MaskReg valid0_1, valid1_1;
-            CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(causalLimit1 + row - col * 16), h);
-            CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(causalLimit1 + row + 8 - col * 16), h);
-            Select(x0_1, x0_1, negative, valid0_1);
-            Select(x1_1, x1_1, negative, valid1_1);
-        }
-
-        if (causalLimit0 + row + 8 - col * 16 < 0) {
-            x0_0 = negative;
-            x1_0 = negative;
-        } else if (causalLimit0 + row - col * 16 < 16) {
-            MaskReg valid0_0, valid1_0;
-            CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(causalLimit0 + row - col * 16), h);
-            CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(causalLimit0 + row + 8 - col * 16), h);
-            Select(x0_0, x0_0, negative, valid0_0);
-            Select(x1_0, x1_0, negative, valid1_0);
-        }
-    } else {
-        RegTensor<half> k1;
-        LoadAlign<half, LoadDist::DIST_BLK>(k1, khalf1 + col * 16);
-        RegTensor<half> c0_1, c1_1;
-        Mul(c0_1, q0, k1, h);
-        Mul(c1_1, q1, k1, h);
-        LoadAlign(x0_1, scores1 + col * 64 * 16 + row * 16 + 0);
-        LoadAlign(x1_1, scores1 + col * 64 * 16 + row * 16 + 128);
-        Mul(x0_1, x0_1, c0_1, h);
-        Mul(x1_1, x1_1, c1_1, h);
+        MaskReg valid0_0, valid1_0, valid0_1, valid1_1;
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_0, laneOffset, int16_t(causalLimit0 + row - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_0, laneOffset, int16_t(causalLimit0 + row + 8 - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid0_1, laneOffset, int16_t(causalLimit1 + row - col * 16), h);
+        CompareScalar<int16_t, CMPMODE::LE>(valid1_1, laneOffset, int16_t(causalLimit1 + row + 8 - col * 16), h);
+        Select(x0_0, x0_0, negative, valid0_0);
+        Select(x1_0, x1_0, negative, valid1_0);
+        Select(x0_1, x0_1, negative, valid0_1);
+        Select(x1_1, x1_1, negative, valid1_1);
     }
 
     Max(m0, m0, x0_0, h);
