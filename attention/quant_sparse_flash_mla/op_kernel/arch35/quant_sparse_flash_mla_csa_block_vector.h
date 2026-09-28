@@ -441,10 +441,12 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx
         int64_t blkTableIdx = s2Idx / qsActiveBlockSize;
         int64_t blkTableOffset = s2Idx % qsActiveBlockSize;
         int64_t paBlockStride = qs35VecRunInfo.isCmp ? qs35VecConstInfo.cmpKvStride : qs35VecConstInfo.oriKvStride;
-        qsmlaRealkeyOffset =
-            qsActiveBlockTableGm.GetValue(qs35VecRunInfo.boIdx * qsActiveMaxBlocksPerBatch + blkTableIdx) *
-                paBlockStride +
-            blkTableOffset * qs35VecConstInfo.dSizeVInput;
+        int64_t physBlockIdx = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockIdx =
+                qsActiveBlockTableGm.GetValue(qs35VecRunInfo.boIdx * qsActiveMaxBlocksPerBatch + blkTableIdx);
+        }
+        qsmlaRealkeyOffset = physBlockIdx * paBlockStride + blkTableOffset * qs35VecConstInfo.dSizeVInput;
     } else if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         int64_t tPrefix = qs35VecRunInfo.isCmp ? cuSeqlensCmpKvGm.GetValue(qs35VecRunInfo.boIdx) :
                                                  cuSeqlensOriKvGm.GetValue(qs35VecRunInfo.boIdx);

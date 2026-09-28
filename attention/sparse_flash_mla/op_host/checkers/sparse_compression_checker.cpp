@@ -66,10 +66,10 @@ ge::graphStatus SparseCompressionChecker::CheckSinglePara(const CheckContext &co
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_ratio", std::to_string(context.cmpRatio).c_str(),
                                               "Cmp_ratio must be in range [1, 128]"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        context.topkValueMode != 1,
-        OP_LOGE_FOR_INVALID_VALUE(Op(context), "topk_value_mode", std::to_string(context.topkValueMode).c_str(), "1"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.topkValueMode != 1 && context.topkValueMode != 2,
+                OP_LOGE_FOR_INVALID_VALUE(Op(context), "topk_value_mode", std::to_string(context.topkValueMode).c_str(),
+                                          "1 or 2"),
+                return ge::GRAPH_FAILED);
     if (CheckIndex(context, context.oriSparseIndices, "ori_sparse_indices") != ge::GRAPH_SUCCESS ||
         CheckIndex(context, context.cmpSparseIndices, "cmp_sparse_indices") != ge::GRAPH_SUCCESS ||
         CheckTopkLength(context, context.oriTopkLength, "ori_topk_length") != ge::GRAPH_SUCCESS ||
@@ -154,6 +154,18 @@ ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext 
 
 ge::graphStatus SparseCompressionChecker::CheckFeature(const CheckContext &context) const
 {
+    if (context.topkValueMode == 2) {
+        OP_CHECK_IF(
+            context.kvLayout != Layout::PA_BBND,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "topk_value_mode",
+                                                     "Topk_value_mode 2 is only supported when layout_kv is PA_BBND"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!context.oriSparseIndices.present && !context.cmpSparseIndices.present,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        Op(context), "ori_sparse_indices/cmp_sparse_indices",
+                        "At least one sparse_indices input is required when topk_value_mode is 2"),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(context.cmpSparseIndices.present && !context.cmpKv.present,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "cmp_sparse_indices",
                                                          "Cmp_sparse_indices requires cmp_kv"),

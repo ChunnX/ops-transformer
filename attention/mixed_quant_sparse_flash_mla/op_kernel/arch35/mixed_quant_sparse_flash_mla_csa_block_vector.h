@@ -474,8 +474,10 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKeyOffset(int64_t
         int64_t blkTableIdx = s2Idx / mqActiveBlockSize;
         int64_t blkTableOffset = s2Idx % mqActiveBlockSize;
         int64_t paBlockStride = mq35VecRunInfo.isCmp ? mq35VecConstInfo.cmpKvStride : mq35VecConstInfo.oriKvStride;
-        int32_t physBlockId =
-            mqActiveBlockTableGm.GetValue(mq35VecRunInfo.boIdx * mqActiveMaxBlocksPerBatch + blkTableIdx);
+        int64_t physBlockId = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockId = mqActiveBlockTableGm.GetValue(mq35VecRunInfo.boIdx * mqActiveMaxBlocksPerBatch + blkTableIdx);
+        }
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             realKeyOffset = physBlockId * paBlockStride + blkTableOffset * mq35VecConstInfo.dSizeVInput;
         } else {

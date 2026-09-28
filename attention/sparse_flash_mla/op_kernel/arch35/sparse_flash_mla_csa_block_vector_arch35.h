@@ -440,9 +440,11 @@ __aicore__ inline int64_t SmlaCsaBlockVector<TEMPLATE_ARGS>::GetkeyOffset(int64_
         int64_t blkTableOffset = s2Idx % blockSize;
         int64_t paBlockStride =
             smla35VecRunInfo.isCmp ? smla35VecConstInfo.cmpKvStride : smla35VecConstInfo.oriKvStride;
-        smlaRealkeyOffset =
-            blockTableGm.GetValue(smla35VecRunInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
-            blkTableOffset * smla35VecConstInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+        int64_t physBlockIdx = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockIdx = blockTableGm.GetValue(smla35VecRunInfo.boIdx * maxBlockNumPerBatch + blkTableIdx);
+        }
+        smlaRealkeyOffset = physBlockIdx * paBlockStride + blkTableOffset * smla35VecConstInfo.dSizeVInput;
     } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
         if (smla35VecRunInfo.isCmp) {
             smlaRealkeyOffset = smla35VecRunInfo.boIdx * smla35VecConstInfo.n2Size * smla35VecConstInfo.cmpS2Size *
