@@ -2394,7 +2394,7 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
 
 ge::graphStatus DequantChecker::CheckInt8PerChannelTokenConstraints(const FiaTilingInfo &fiaInfo) const
 {
-    // INT8 + per-channel/per-token模式：query和attention_out必须为BF16
+    // INT8 + per-channel/per-token模式：query和attention_out必须是BF16
     if (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16) {
         std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
