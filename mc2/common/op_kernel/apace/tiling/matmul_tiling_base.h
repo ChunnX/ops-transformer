@@ -31,7 +31,7 @@ public:
     virtual ~MatmulTilingBase() = default;
 
     virtual void GetTilingData(uint64_t m, uint64_t n, uint64_t k, uint64_t dataTypeSize, bool transA, bool transB,
-                               MatmulTilingData &tilingData)
+                               MatmulTilingData &tilingData, bool hasBias = false)
     {
         // Clear the cached state so one tiling object can safely be reused for
         // multiple shapes without leaking the previous decision.
@@ -40,7 +40,7 @@ public:
         runInfo_ = {};
 
         InitCompileInfo();
-        InitShapeArgs(m, n, k, dataTypeSize, transA, transB);
+        InitShapeArgs(m, n, k, dataTypeSize, transA, transB, true, hasBias);
         DoOpTiling(tilingData);
         PrintTilingData(tilingData);
     };

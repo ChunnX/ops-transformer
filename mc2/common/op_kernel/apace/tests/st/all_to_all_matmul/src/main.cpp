@@ -114,7 +114,7 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, int localMat
 
     MatmulTilingSwat tilingEngine;
     // 非量化 tiling 引擎按数据类型字节宽度推导 baseK（fp16 = 2 字节）
-    tilingEngine.GetTilingData(m, n, ka, sizeof(uint16_t), false, true, tilingData.tileMmTilingData);
+    tilingEngine.GetTilingData(m, n, ka, sizeof(uint16_t), false, true, tilingData.tileMmTilingData, true);
 
     // headMSize 直接采用命令行/CSV 指定值（不再由 tiling 重算），保证 cases.csv 的 head_m_size 列生效。
     // 仅约束 headMSize 不超过 m，超限时退化为单尾块。
