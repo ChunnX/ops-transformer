@@ -189,12 +189,23 @@ void QfaInfoParser::GetOptionalInputParaSinksInfo()
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
 
+void QfaInfoParser::GetOptionalInputParaVTailInfo()
+{
+    opParamInfo_.vTail.tensor = context_->GetOptionalInputTensor(V_TAIL_INDEX);
+    opParamInfo_.vTail.desc = context_->GetOptionalInputDesc(V_TAIL_INDEX);
+    opParamInfo_.blockTableTail.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_TAIL_INDEX);
+    opParamInfo_.blockTableTail.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_TAIL_INDEX);
+    opParamInfo_.sequsedKvTail.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_TAIL_INDEX);
+    opParamInfo_.sequsedKvTail.desc = context_->GetOptionalInputDesc(SEQUSED_KV_TAIL_INDEX);
+}
+
 void QfaInfoParser::GetOptionalInputParaInfo()
 {
     GetOptionalInputParaQuantInfo();
     GetOptionalInputParaSeqLengthInfo();
     GetOptionalInputParaMaskInfo();
     GetOptionalInputParaSinksInfo();
+    GetOptionalInputParaVTailInfo();
 }
 
 void QfaInfoParser::GetInputParaInfo()
@@ -549,6 +560,22 @@ void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.maxSeqKv = maxSeqKv_;
 }
 
+void QfaInfoParser::GenerateVTailInfo(QfaTilingInfo &qfaInfo)
+{
+    // l0op层会将未传入的optional输入替换为空占位tensor(非nullptr但shapeSize==0),
+    // 必须三重判空(tensor指针/shape尺寸/desc), 与sequsedQ的防御模式一致, 否则默认调用被误判为启用尾块
+    auto isEmptyOptional = [](const QfaOptionalParaInfo &para) {
+        return (para.tensor == nullptr) || (para.desc == nullptr) ||
+               (para.tensor->GetStorageShape().GetShapeSize() == 0);
+    };
+    qfaInfo.hasVTail = !isEmptyOptional(opParamInfo_.vTail) && !isEmptyOptional(opParamInfo_.sequsedKvTail);
+    qfaInfo.tailMaxBlockNum = 0;
+    if (qfaInfo.hasVTail && !isEmptyOptional(opParamInfo_.blockTableTail) &&
+        (opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDimNum() >= arch35QFA::DIM_NUM_2)) {
+        qfaInfo.tailMaxBlockNum = opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDim(1);
+    }
+}
+
 void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
 {
     qfaInfo.qLayout = layoutQ_;
@@ -599,6 +626,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     GenerateAxisInfo(qfaInfo);
     GenerateDtypeInfo(qfaInfo);
     GenerateQuantInfo(qfaInfo);
+    GenerateVTailInfo(qfaInfo);
     qfaInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
     qfaInfo.emptyTensorFlag = emptyTensorFlag_;
 
