@@ -74,23 +74,26 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
     constexpr uint32_t l0Offset = LocalA ? 32768 : 0;
     constexpr uint32_t l0cOffset = LocalA ? 131072 : 0;
     WaitFlag<HardEvent::MTE1_MTE2>(slot);
-    GlobalTensor<T> ag, bg;
-    ag.SetGlobalBuffer((__gm__ T *)a);
-    bg.SetGlobalBuffer((__gm__ T *)b);
-    auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
-    auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, BLayout>(k, n), Catlass::Arch::PositionGM{});
     auto la = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(LocalA ? P_L1 + parity * M * N : 0),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1A>(M, k), Catlass::Arch::PositionL1{});
     auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + (LocalA ? N * 128 : 0) + (PreloadedB ? vParity * 65536 : 0)),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1B>(k, n), Catlass::Arch::PositionL1{});
     if constexpr (!LocalA) {
         if (loadA) {
+            GlobalTensor<T> ag;
+            ag.SetGlobalBuffer((__gm__ T *)a);
+            auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
             typename Copy::template CopyGmToL1A<decltype(ga)> ca;
             ca(la, ga);
         }
     }
-    typename Copy::template CopyGmToL1B<decltype(gb)> cb;
-    if constexpr (!PreloadedB) cb(lb, gb);
+    if constexpr (!PreloadedB) {
+        GlobalTensor<T> bg;
+        bg.SetGlobalBuffer((__gm__ T *)b);
+        auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, BLayout>(k, n), Catlass::Arch::PositionGM{});
+        typename Copy::template CopyGmToL1B<decltype(gb)> cb;
+        cb(lb, gb);
+    }
     const bool cached = mxCache && uint64_t(mxK) / 32 * n <= MX_P_L1 - MX_V_L1;
     const uint32_t scaleK = cached ? mxK : k;
     const uint32_t scaleStart = cached ? mxStart : 0;

@@ -105,14 +105,14 @@ __simd_callee__ inline void ScaleAndCastTileVF(__ubuf__ T *out, __ubuf__ float *
 // bypasses broadcast load and converts MulDstAdd to Add.
 template <class T, uint32_t DP, bool ALPHA_ONE = false>
 __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial,
-                                                    __ubuf__ float *alpha, __ubuf__ float *invDenom)
+                                                    [[maybe_unused]] __ubuf__ float *alpha, __ubuf__ float *invDenom)
 {
     using namespace AscendC::MicroAPI;
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     auto f = CreateMask<float, MaskPattern::ALL>();
     for (uint16_t col = 0; col < DP; col += 64) {
         for (uint16_t row = 0; row < 64; row += 2) {
-            RegTensor<float> x0, x1, y0, y1, r0, r1, inv0, inv1;
+            RegTensor<float> x0, x1, y0, y1, inv0, inv1;
             RegTensor<T> p0, p1;
 
             LoadAlign(x0, accum + row * DP + col);
@@ -127,6 +127,7 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
                 Add(x0, x0, y0, f);
                 Add(x1, x1, y1, f);
             } else {
+                RegTensor<float> r0, r1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(r0, alpha + row);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(r1, alpha + row + 1);
                 MulDstAdd(x0, r0, y0, f);
@@ -153,14 +154,19 @@ __simd_callee__ inline void AccumulateAndCastTileVF(__ubuf__ T *out, __ubuf__ fl
 // bypasses broadcast loads and converts MulDstAdd to Add. Store ordering is reordered row-0-first
 // to maximize latency hiding.
 template <class T, uint32_t DP, bool FIRST, bool LAST, bool ALPHA0_ONE = false, bool ALPHA1_ONE = false>
-__simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial0,
-                                                  __ubuf__ float *partial1, __ubuf__ float *alpha0,
-                                                  __ubuf__ float *alpha1, __ubuf__ float *scratch, uint16_t row,
+__simd_callee__ inline void UpdateWidePairTwoRows([[maybe_unused]] __ubuf__ T *out,
+                                                  [[maybe_unused]] __ubuf__ float *accum,
+                                                  __ubuf__ float *partial0,
+                                                  __ubuf__ float *partial1,
+                                                  [[maybe_unused]] __ubuf__ float *alpha0,
+                                                  [[maybe_unused]] __ubuf__ float *alpha1,
+                                                  [[maybe_unused]] __ubuf__ float *scratch,
+                                                  uint16_t row,
                                                   AscendC::MicroAPI::MaskReg &f)
 {
     using namespace AscendC::MicroAPI;
     static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    RegTensor<float> x0_0, x1_0, x0_1, x1_1, z0_0, z1_0, z0_1, z1_1, a1_0, a1_1;
+    RegTensor<float> x0_0, x1_0, x0_1, x1_1, z0_0, z1_0, z0_1, z1_1;
 
     if constexpr (FIRST) {
         LoadAlign(x0_0, partial0 + row * DP);
@@ -214,6 +220,7 @@ __simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ floa
         Add(x0_1, x0_1, z0_1, f);
         Add(x1_1, x1_1, z1_1, f);
     } else {
+        RegTensor<float> a1_0, a1_1;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
         LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
         MulDstAdd(x0_0, a1_0, z0_0, f);
@@ -248,15 +255,15 @@ __simd_callee__ inline void UpdateWidePairTwoRows(__ubuf__ T *out, __ubuf__ floa
 }
 
 template <uint32_t DP, bool ALPHA_ONE = false>
-__simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial, __ubuf__ float *alpha,
-                                         uint32_t rows = 8)
+__simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *partial,
+                                         [[maybe_unused]] __ubuf__ float *alpha, uint32_t rows = 8)
 {
     static_assert(DP == 64 || DP == 128, "unsupported padded dimension");
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
     if constexpr (DP == 128) {
         for (uint32_t row = 0; row < (rows & ~1U); row += 2) {
-            RegTensor<float> ratio0, ratio1, x0_0, y0_0, x0_1, y0_1;
+            RegTensor<float> x0_0, y0_0, x0_1, y0_1;
             RegTensor<float> x1_0, y1_0, x1_1, y1_1;
             LoadAlign(x0_0, accum + row * DP);
             LoadAlign(x1_0, accum + row * DP + 64);
@@ -278,6 +285,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
                 Add(x0_1, x0_1, y0_1, f);
                 Add(x1_1, x1_1, y1_1, f);
             } else {
+                RegTensor<float> ratio0, ratio1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
                 MulDstAdd(x0_0, ratio0, y0_0, f);
@@ -294,7 +302,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
     } else {
         uint32_t row = 0;
         for (; row + 3 < (rows & ~1U); row += 4) {
-            RegTensor<float> x0, x1, x2, x3, y0, y1, y2, y3, r0, r1, r2, r3;
+            RegTensor<float> x0, x1, x2, x3, y0, y1, y2, y3;
             LoadAlign(x0, accum + (row + 0) * DP);
             LoadAlign(x1, accum + (row + 1) * DP);
             LoadAlign(x2, accum + (row + 2) * DP);
@@ -315,6 +323,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
                 Add(x2, x2, y2, f);
                 Add(x3, x3, y3, f);
             } else {
+                RegTensor<float> r0, r1, r2, r3;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(r0, alpha + row + 0);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(r1, alpha + row + 1);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(r2, alpha + row + 2);
@@ -331,7 +340,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             StoreAlign(accum + (row + 3) * DP, x3, f);
         }
         for (; row < (rows & ~1U); row += 2) {
-            RegTensor<float> ratio0, ratio1, x0, x1, y0, y1;
+            RegTensor<float> x0, x1, y0, y1;
             LoadAlign(x0, accum + row * DP);
             LoadAlign(x1, accum + (row + 1) * DP);
             LoadAlign(y0, partial + row * DP);
@@ -344,6 +353,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
                 Add(x0, x0, y0, f);
                 Add(x1, x1, y1, f);
             } else {
+                RegTensor<float> ratio0, ratio1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
                 MulDstAdd(x0, ratio0, y0, f);
@@ -356,7 +366,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
     }
     if (rows & 1) {
         uint32_t row = rows - 1;
-        RegTensor<float> ratio, x0, y0;
+        RegTensor<float> x0, y0;
         LoadAlign(x0, accum + row * DP);
         LoadAlign(y0, partial + row * DP);
         if constexpr (DP == 128) {
@@ -370,6 +380,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
                 Add(x0, x0, y0, f);
                 Add(x1, x1, y1, f);
             } else {
+                RegTensor<float> ratio;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
                 MulDstAdd(x0, ratio, y0, f);
                 MulDstAdd(x1, ratio, y1, f);
@@ -382,6 +393,7 @@ __simd_vf__ inline void AccumulateFp32VF(__ubuf__ float *accum, __ubuf__ float *
             } else if (alpha == nullptr) {
                 Add(x0, x0, y0, f);
             } else {
+                RegTensor<float> ratio;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio, alpha + row);
                 MulDstAdd(x0, ratio, y0, f);
             }
@@ -401,7 +413,7 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
     auto f = CreateMask<float, MaskPattern::ALL>();
     UpdateWideDenominator(denom, alpha, f, false);
     for (uint16_t row = 0; row < 64; row += 2) {
-        RegTensor<float> ratio0, ratio1, x0_0, y0_0, x1_0, y1_0, x0_1, y0_1, x1_1, y1_1;
+        RegTensor<float> x0_0, y0_0, x1_0, y1_0, x0_1, y0_1, x1_1, y1_1;
         LoadAlign(x0_0, accum + row * DP);
         LoadAlign(x0_1, accum + (row + 1) * DP);
         LoadAlign(y0_0, partial + row * DP);
@@ -422,6 +434,7 @@ __simd_vf__ inline void AccumulateWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
             Add(x0_1, x0_1, y0_1, f);
             Add(x1_1, x1_1, y1_1, f);
         } else {
+            RegTensor<float> ratio0, ratio1;
             LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio0, alpha + row);
             LoadAlign<float, LoadDist::DIST_BRC_B32>(ratio1, alpha + row + 1);
             MulDstAdd(x0_0, ratio0, y0_0, f);
@@ -456,14 +469,14 @@ __simd_vf__ inline void InitializeWideFp32VF(__ubuf__ float *accum, __ubuf__ flo
 
 template <uint32_t DP, bool ALPHA0_ONE = false, bool ALPHA1_ONE = false>
 __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ float *partial0, __ubuf__ float *partial1,
-                                             __ubuf__ float *alpha0, __ubuf__ float *alpha1)
+                                             [[maybe_unused]] __ubuf__ float *alpha0,
+                                             [[maybe_unused]] __ubuf__ float *alpha1)
 {
     static_assert(DP == 64 || DP == 128, "paired O requires a supported padded dimension");
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();
     if constexpr (DP == 128) {
         for (uint16_t row = 0; row < 64; row += 2) {
-            RegTensor<float> a0_0, a0_1, a1_0, a1_1;
             RegTensor<float> x0_0, x1_0, x0_1, x1_1;
             RegTensor<float> y0_0, y1_0, y0_1, y1_1;
             RegTensor<float> z0_0, z1_0, z0_1, z1_1;
@@ -490,6 +503,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
                 Add(x0_1, x0_1, y0_1, f);
                 Add(x1_1, x1_1, y1_1, f);
             } else {
+                RegTensor<float> a0_0, a0_1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
                 MulDstAdd(x0_0, a0_0, y0_0, f);
@@ -515,6 +529,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
                 Add(x0_1, x0_1, z0_1, f);
                 Add(x1_1, x1_1, z1_1, f);
             } else {
+                RegTensor<float> a1_0, a1_1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
                 MulDstAdd(x0_0, a1_0, z0_0, f);
@@ -531,8 +546,6 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
     } else {
         uint16_t row = 0;
         for (; row + 3 < 64; row += 4) {
-            RegTensor<float> a0_0, a0_1, a0_2, a0_3;
-            RegTensor<float> a1_0, a1_1, a1_2, a1_3;
             RegTensor<float> x0, x1, x2, x3;
             RegTensor<float> y0, y1, y2, y3;
             RegTensor<float> z0, z1, z2, z3;
@@ -558,6 +571,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
                 Add(x2, x2, y2, f);
                 Add(x3, x3, y3, f);
             } else {
+                RegTensor<float> a0_0, a0_1, a0_2, a0_3;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_0, alpha0 + row + 0);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_1, alpha0 + row + 1);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0_2, alpha0 + row + 2);
@@ -584,6 +598,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
                 Add(x2, x2, z2, f);
                 Add(x3, x3, z3, f);
             } else {
+                RegTensor<float> a1_0, a1_1, a1_2, a1_3;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_0, alpha1 + row + 0);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_1, alpha1 + row + 1);
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1_2, alpha1 + row + 2);
@@ -600,7 +615,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             StoreAlign(accum + (row + 3) * DP, x3, f);
         }
         for (; row < 64; ++row) {
-            RegTensor<float> a0, a1, x0, y0, z0;
+            RegTensor<float> x0, y0, z0;
             LoadAlign(x0, accum + row * DP);
             LoadAlign(y0, partial0 + row * DP);
             LoadAlign(z0, partial1 + row * DP);
@@ -610,6 +625,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             } else if (alpha0 == nullptr) {
                 Add(x0, x0, y0, f);
             } else {
+                RegTensor<float> a0;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a0, alpha0 + row);
                 MulDstAdd(x0, a0, y0, f);
             }
@@ -619,6 +635,7 @@ __simd_vf__ inline void AccumulateFp32PairVF(__ubuf__ float *accum, __ubuf__ flo
             } else if (alpha1 == nullptr) {
                 Add(x0, x0, z0, f);
             } else {
+                RegTensor<float> a1;
                 LoadAlign<float, LoadDist::DIST_BRC_B32>(a1, alpha1 + row);
                 MulDstAdd(x0, a1, z0, f);
             }
@@ -738,8 +755,9 @@ __simd_vf__ inline void NormalizeCastVF(__ubuf__ T *out, __ubuf__ float *accum, 
 // FMA -> reciprocal multiply -> cast rounding sequence.
 // Bypasses denom reload by directly using the returned den register.
 template <class T, uint32_t DP, bool FIRST, bool ALPHA_ONE = false>
-__simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accum, __ubuf__ float *partial,
-                                           __ubuf__ float *alpha, __ubuf__ float *denom, __ubuf__ float *scratch)
+__simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, [[maybe_unused]] __ubuf__ float *accum,
+                                           __ubuf__ float *partial, __ubuf__ float *alpha, __ubuf__ float *denom,
+                                           __ubuf__ float *scratch)
 {
     using namespace AscendC::MicroAPI;
     auto f = CreateMask<float, MaskPattern::ALL>();

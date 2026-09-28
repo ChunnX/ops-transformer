@@ -50,7 +50,7 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
         RegTensor<uint32_t> pair;
         Duplicate(pair, uint32_t(0));
         for (uint16_t group = 0; group < 2; ++group) {
-            RegTensor<float> a, mx, inv;
+            RegTensor<float> mx, inv;
             RegTensor<T> mx16;
             LoadAlign<T, LoadDist::DIST_UNPACK_B16>(mx16, maxima + group * dp + col);
             Cast<float, T, toFloat>(mx, mx16, f);

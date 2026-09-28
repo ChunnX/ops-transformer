@@ -9,34 +9,11 @@
 """Compatibility entry for the registered C++/torch_npu ACLNN backend."""
 
 
-def run(
-    q,
-    k,
-    v,
-    *,
-    tensor_layout="HND",
-    is_causal=False,
-    qk_quant_gran="per_thread",
-    sm_scale=None,
-    pv_accum_dtype="fp32+fp16",
-    smooth_k=True,
-    smooth_v=False,
-    return_lse=False,
-    **kwargs,
-):
-    from ._ops import run as run_registered
+from typing import Any, Optional, Tuple, Union
+import torch
 
-    return run_registered(
-        q,
-        k,
-        v,
-        tensor_layout=tensor_layout,
-        is_causal=is_causal,
-        qk_quant_gran=qk_quant_gran,
-        sm_scale=sm_scale,
-        pv_accum_dtype=pv_accum_dtype,
-        smooth_k=smooth_k,
-        smooth_v=smooth_v,
-        return_lse=return_lse,
-        **kwargs,
-    )
+from ._ops import sageattn, sageattn_qk_int8_pv_fp8_asc
+
+run = sageattn_qk_int8_pv_fp8_asc
+
+__all__ = ["run", "sageattn", "sageattn_qk_int8_pv_fp8_asc"]

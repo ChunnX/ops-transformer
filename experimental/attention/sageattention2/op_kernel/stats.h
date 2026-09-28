@@ -94,12 +94,6 @@ __simd_vf__ inline void StatsSumImpl(__ubuf__ T *rows, __ubuf__ float *state, ui
     }
 }
 
-// ComputeStatsImpl: unified entry point for column-wise accumulation
-template <class T, uint32_t DP>
-__simd_vf__ inline void ComputeStatsImpl(__ubuf__ T *rows, __ubuf__ float *state, uint32_t count)
-{
-    StatsSumImpl<T, DP>(rows, state, count);
-}
 template <class T>
 __aicore__ inline void StatsSumVF(LocalTensor<T> rows, LocalTensor<float> state, uint32_t count, uint32_t dp)
 {

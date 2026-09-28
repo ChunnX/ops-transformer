@@ -14,7 +14,7 @@
 namespace Sage {
 
 template <uint32_t DP, bool SMOOTH>
-__simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
+__simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, [[maybe_unused]] __ubuf__ float *mean, __ubuf__ float *scales,
                                       __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
                                       __ubuf__ float *inverseScales, uint32_t valid)
 {

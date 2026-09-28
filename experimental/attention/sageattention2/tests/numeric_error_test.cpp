@@ -9,7 +9,7 @@
  *
  * 可移植 C++17（宿主机 g++/clang++ 或 CANN 容器内编译运行，无 AscendC 依赖），
  * 将内核的数值规格以可执行断言固化，逐项验证浮点误差满足设计界：
- *   1. FastReciprocal（common.h 牛顿迭代，魔数 0x7EEF370B）   ≤ 2 ULP FP32
+ *   1. FastReciprocal（common.h 牛顿迭代，魔数 0x7EEF370B）   e0^4 包络 ≤ 2^-14
  *   2. per-token INT8 对称量化往返误差                          ≤ scale/2
  *   3. E4M3 饱和舍入相对误差（3 位尾数）                        ≤ 2^-4
  *   4. E8M0 分组 scale 覆盖性（2^ceil(log2(amax/448))）        无饱和且 ≤2×
@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -222,16 +223,29 @@ void TestMxScale(std::mt19937 &rng)
     Report("tightness (<= 2x)", tightOk ? 0.0 : 1.0, 0.0, tightOk);
 }
 
+// 将 float 按 RNE 舍入到 FP16 精度，结果仍以 float 承载（宿主无 _Float16 依赖）。
+// 幂次网格下的 nearbyint 乘除均为精确运算，无二次舍入；非规格化域固定 2^-24 网格，
+// 结果超出 [−65520, 65520] 按 IEEE 上溢到 Inf。
+float RoundToFp16(float f)
+{
+    const float mag = std::fabs(f);
+    if (std::isnan(f) || mag >= 65520.0f) {
+        return std::isnan(f) ? f : std::copysign(std::numeric_limits<float>::infinity(), f);
+    }
+    int e = 0;
+    std::frexp(mag, &e);                             // mag = m * 2^(e-1)，m ∈ [0.5,1)
+    const int gridExp = e - 11 >= -24 ? e - 11 : -24;  // 规格化步长 2^(e-11)，非规格化 2^-24
+    const float grid = std::ldexp(1.0f, gridExp);
+    const float r = std::nearbyint(f / grid) * grid;
+    return std::fabs(r) < 65520.0f ? r : std::copysign(std::numeric_limits<float>::infinity(), f);
+}
+
 void TestDeqf16BalancedScales(std::mt19937 &rng)
 {
     // 恒等式：(S_int * 2^-11) * qh * kh == S_int * qs * ks * sm_scale，
     // 其中 qh = fp16(qs * sign(s) * sqrt(|s|*2048))，kh = fp16(ks * sqrt(|s|*2048))，
     // S_int 的 INT32 累加在 float 中精确（|S_int| < 2^24）。
     std::uniform_real_distribution<float> uni(0.5f, 100.0f);
-    auto fp16 = [](float f) {
-        // RNE 舍入到 FP16 的可移植近似（宿主无 _Float16 时用双精度中转）
-        return static_cast<float>(static_cast<double>(f));
-    };
     double worst = 0.0;
     for (int i = 0; i < 100000; ++i) {
         float qs = uni(rng);
@@ -239,15 +253,15 @@ void TestDeqf16BalancedScales(std::mt19937 &rng)
         float smScale = (i % 2 ? 1.0f : -1.0f) * (1.0f / std::sqrt(128.0f));
         double sInt = std::round(uni(rng) * 20000.0) - 10000.0;  // |S_int| < 2^24
         float factor = std::sqrt(std::fabs(smScale) * 2048.0f);
-        float qh = fp16(qs * (smScale >= 0 ? factor : -factor));
-        float kh = fp16(ks * factor);
+        float qh = RoundToFp16(qs * (smScale >= 0 ? factor : -factor));
+        float kh = RoundToFp16(ks * factor);
         double lhs = sInt * (1.0 / 2048.0) * static_cast<double>(qh) * static_cast<double>(kh);
         double rhs = sInt * static_cast<double>(qs) * static_cast<double>(ks) * smScale;
         double rel = std::fabs(lhs - rhs) / std::fabs(rhs);
         worst = std::fmax(worst, rel);
     }
     std::printf("[5] DEQF16(2^-11) x FP16 balanced scales cancellation\n");
-    // 界来源：qh/kh 各一次 FP16 舍入 + sqrt 因子一次 float 舍入 ≈ 3 * 2^-11。
+    // 界来源：qh/kh 各一次 FP16 RNE 舍入（各 ≤ 2^-11 相对）+ float 乘/sqrt 舍入，合计 ≈ 2^-10。
     Report("identity relative error", worst, 1.0 / 512.0, worst <= 1.0 / 512.0);
 }
 

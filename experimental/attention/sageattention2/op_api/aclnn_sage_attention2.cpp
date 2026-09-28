@@ -11,6 +11,7 @@
 #include "aclnn_sage_attention2.h"
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <utility>
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/make_op_executor.h"

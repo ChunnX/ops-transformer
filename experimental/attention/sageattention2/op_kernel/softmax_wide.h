@@ -138,9 +138,12 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
 }
 
 template <bool FIRST, bool UPDATE_DEN = true>
-__simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
-                                                __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out,
-                                                __ubuf__ float *scratch, __ubuf__ float *partialSums)
+__simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ half *maxima,
+                                                [[maybe_unused]] __ubuf__ float *denom,
+                                                [[maybe_unused]] __ubuf__ float *alpha,
+                                                __ubuf__ float8_e4m3_t *out,
+                                                [[maybe_unused]] __ubuf__ float *scratch,
+                                                __ubuf__ float *partialSums)
 {
     using namespace AscendC::MicroAPI;
     // FIRST reads MaxCore's maxima; SECOND reads FIRST's partial lane sums.
@@ -198,7 +201,8 @@ __simd_vf__ inline void SoftmaxWideFirstVF(__ubuf__ half *scores, __ubuf__ half 
 }
 
 __simd_vf__ inline void SoftmaxWideSecondVF(__ubuf__ half *scores, __ubuf__ half *maxima, __ubuf__ float *denom,
-                                            __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out, __ubuf__ float *scratch,
+                                            __ubuf__ float *alpha, __ubuf__ float8_e4m3_t *out,
+                                            [[maybe_unused]] __ubuf__ float *scratch,
                                             __ubuf__ float *partialSums)
 {
     SoftmaxWideProbCore<false, false>(scores, maxima, denom, alpha, out, alpha + 64, partialSums);
