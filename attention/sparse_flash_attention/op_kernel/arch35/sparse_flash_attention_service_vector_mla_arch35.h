@@ -408,7 +408,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         CrossCoreSetFlag<0, PIPE_MTE3>(15);  // 15: 跨核同步标志位值
         CrossCoreWaitFlag<0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
-    outputL1.SetCrossCore();
     v0ResGm.SetCrossCore();
 }
 
@@ -686,9 +685,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)(softmaxSum));
         this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)(softmaxMax));
         if (constInfo.needInit == 1) {
+            initOutputEventId = GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_V>();
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
@@ -807,8 +808,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
-
-    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::UninitLocalBuffer()
@@ -827,7 +826,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(mte2ToMte3[0]);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(mte2ToMte3[1]);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(initOutputEventId);
     }
 }
 
@@ -945,5 +943,6 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
 };
+
 } // namespace BaseApi
 #endif // SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_ARCH35_H
