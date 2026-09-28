@@ -1,0 +1,87 @@
+2026-09-09 08:55:22,557 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0972 - device_id: 14
+2026-09-09 08:55:22,557 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0992 - WARRING: the SOC_VERSION_DAILY is not setted, use 910B3 as default
+2026-09-09 08:55:22,557 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0994 - info: the soc_version is setted to be 910B3
+2026-09-09 08:55:22,585 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:1063 - 1
+<multiprocessing.queues.Queue object at 0xfffdbf87dde0>
+2026-09-09 08:55:23,418 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0923 - ==========================================================Start run case 152/152,case_name:unpadFlashAttention_fanhua_0702==========================================================
+2026-09-09 08:55:23,419 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0926 - {'testcase_name': 'unpadFlashAttention_fanhua_0702', 'B': 1, 'N1': 3, 'N2': None, 'seqlens_list_q': [0], 'seqlens_list_kv': [5697], 'D': 128, 'dtype': 'bf16', 'sparse_mode': 0.0, 'input_layout': 'TND', 'atten_mask_dtype': 'None', 'atten_mask_shape': 'None', 'padding_mask': 'None', 'pse_layout': 'None', 'pse_type': '', 'pre_tockens': 65536, 'next_tockens': 65536, 'keep_prob': 1.0, 'case_level': 'level2', 'enable': 'enable', 'Group': 'unpadFlashAttention_x1', 'inner_precise': 0, 'D2': None}
+[mssanitizer] Start memcheck, racecheck and synccheck sanitizer on kernel FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0
+seqlens_list_q:[0]
+seqlens_list_k:[5697]
+cu_seqlens_q:tensor([0, 0])
+cu_seqlens_k:tensor([   0, 5697])
+max_seqlen_q:0
+max_seqlen_k:5697
+qk_size:[0]
+qk_pointer:tensor([0, 0])
+2026-09-09 08:55:26,999 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0773 - 正在生成标杆数据
+2026-09-09 08:55:27,097 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0784 - torch.Size([0, 3, 128])
+2026-09-09 08:55:27,097 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0785 - torch.Size([5697, 3, 128])
+2026-09-09 08:55:27,097 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0786 - sparse, pre_tockens: 65536, next_tockens: 65536
+2026-09-09 08:55:27,098 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0798 - atten_mask: torch.Size([])
+2026-09-09 08:55:27,098 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0799 - tensor(0)
+2026-09-09 08:57:13,244 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:0889 - unpadFlashAttention_fanhua_0702e2e耗时：1.1e+02s
+2026-09-09 08:55:22,933 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:1133 - 拉起子进程，pid = 1166732
+2026-09-09 08:57:14,974 - [INFO]-unpad_dailyauto_fusion_backward_memo.py:1139 - PACKED_FLASH_ATTENTION TEST pass
+result is True!
+====== ERROR: Potential WAR hazard detected at UB in FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0:
+======    PIPE_MTE3 Read at WAR()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a1026c (serialNo:66)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:66:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+======    PIPE_V Write at WAR()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a104c8 (serialNo:81)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:67:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+
+====== ERROR: Potential WAR hazard detected at UB in FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0:
+======    PIPE_MTE3 Read at WAR()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a102c8 (serialNo:77)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:66:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+======    PIPE_V Write at WAR()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a104c8 (serialNo:81)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:67:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+
+====== ERROR: Potential WAR hazard detected at UB in FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0:
+======    PIPE_MTE3 Read at WAR()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a1026c (serialNo:73)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:66:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+======    PIPE_V Write at WAR()+0x1f00 in block 0 (aiv) on device 14 at pc current 0x29a104c8 (serialNo:81)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:67:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+
+====== ERROR: Potential WAW hazard detected at UB in FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0:
+======    PIPE_V Write at WAW()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a10070 (serialNo:60)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:66:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+======    PIPE_V Write at WAW()+0x0 in block 0 (aiv) on device 14 at pc current 0x29a104c8 (serialNo:81)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:67:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+
+====== ERROR: Potential WAW hazard detected at UB in FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0:
+======    PIPE_V Write at WAW()+0x1f00 in block 0 (aiv) on device 14 at pc current 0x29a10070 (serialNo:60)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:66:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+======    PIPE_V Write at WAW()+0x1f00 in block 0 (aiv) on device 14 at pc current 0x29a104c8 (serialNo:81)
+======    #0 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/arch22/flash_attention_score_grad_empty_tensor.h:67:13
+======    #1 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/src/flash_attention_score_grad/op_kernel/flash_attention_score_grad.cpp:523:16
+======    #2 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3454:5
+======    #3 /home/l00894278/z30072679/ops-transformer/build/binary/ascend910_93/gen/kernel_meta_FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb/kernel_meta/FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_kernel.cpp:3465:5
+
+[mssanitizer] Sanitizer finished on kernel FlashAttentionScoreGrad_8254dd3bbe4c41cee428ca44ed7821fb_0. See all detected errors above.
