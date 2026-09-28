@@ -52,7 +52,12 @@ ASCEND_SOC_UNITS="ascend910b"
 SOC_USER_SPECIFIED=false
 # 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
 # + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62" "ascend5162a")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend960dt" "ascend960pr" "ascend350" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62" "ascend5162a")
+# normalize soc names finalized by the toolchain whitelist (case-sensitive in cmake)
+normalize_soc_unit() {
+  echo "$1" | sed 's/ascend960dt/ascend960DT/g; s/ascend960pr/ascend960PR/g'
+}
+
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -917,7 +922,7 @@ build_static_lib() {
         option="--verbose"
     fi
 
-    cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
+    cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=$(normalize_soc_unit "${unit}")
     local all_targets=$(cmake --build . --target help)
     rm -fr ${BUILD_PATH}/bin_tmp
     mkdir -p ${BUILD_PATH}/bin_tmp
@@ -936,7 +941,7 @@ build_static_lib() {
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" GenStaticOpResourceIni -s ${unit} -b ${BUILD_PATH} ${jit_command}
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
-    cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
+    cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=$(normalize_soc_unit "${unit}")
     if echo "${all_targets}" | grep -wq "cann_transformer_static"; then
         cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
     fi
@@ -955,7 +960,7 @@ package_static() {
     else
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_OPS_KERNEL=ON"
     fi
-    cmake_config -DASCEND_COMPUTE_UNIT=${unit}
+    cmake_config -DASCEND_COMPUTE_UNIT=$(normalize_soc_unit "${unit}")
     build_package
     # Check weather BUILD_OUT_DIR directory exists
     if [ ! -d "$BUILD_OUT_DIR" ]; then
