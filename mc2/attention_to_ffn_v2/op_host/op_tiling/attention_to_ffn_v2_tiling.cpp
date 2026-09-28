@@ -303,9 +303,11 @@ ge::graphStatus CheckUrmaUbCapacity(gert::TilingContext *context, const Attentio
         if (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_PERTOKEN_INT8) {
             xInBytes = CeilAlignSize(axisH * TOKEN_BYTES, ubAlign);
         } else {
-            // MX/MX_CLIP stage the input per 128-element groups.
+            // MX/MX_CLIP stage the input per 128-element groups; the group count is a ceiling
+            // division (kernel: Ceil(axisH, PERGROUP_BLOCK_SIZE)), NOT an align-up of axisH.
             xInBytes = CeilAlignSize(
-                CeilAlignSize(axisH, MX_PERGROUP_BLOCK_SIZE) * MX_PERGROUP_BLOCK_SIZE * TOKEN_BYTES, ubAlign);
+                (axisH + MX_PERGROUP_BLOCK_SIZE - 1U) / MX_PERGROUP_BLOCK_SIZE * MX_PERGROUP_BLOCK_SIZE * TOKEN_BYTES,
+                ubAlign);
         }
         const size_t xOutBytes = CeilAlignSize(GetUrmaCommuBytes(tilingKeyQuantMode, outDtype, axisH), ubAlign);
         queueBytes = URMA_BUFFER_NUM * (xInBytes + xOutBytes) +

@@ -143,12 +143,17 @@ std::vector<OpAttr> BuildAttrsWithHs(int64_t hs)
     };
 }
 
+static std::string MakeAscend950SocInfo()
+{
+    return R"({"hardware_info": {"UB_SIZE": 196608, "cube_core_cnt": 24, "vector_core_cnt": 48}})";
+}
+
 void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, const std::vector<OpAttr> &attrs,
                        ge::graphStatus expectedStatus, uint64_t expectedTilingKey = 0UL)
 {
     FFNToAttentionV2CompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("FFNToAttentionV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}}, attrs,
-                                              &compileInfo, "3510");
+                                              &compileInfo, "3510", 48U, 196608U, 4096U, MakeAscend950SocInfo());
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
@@ -217,13 +222,17 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsHsSmallerThanH)
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsBufferWithoutTokenInfoAlignmentSpace)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(2LL * MB_SIZE), ge::GRAPH_FAILED);
+    // Rank-table mode (attnRankTable dim0 = 11) forces the window to host all 11 sessions (~23MB),
+    // drowning out the 2MB/4MB alignment boundary this pair verifies. Run without the rank table so
+    // the search picks one worker session (~2.5MB) and the 512B token-info alignment (neededSize
+    // 2097304 = 2MB + 152B) alone decides between the 2MB and 4MB buffers.
+    ExecuteTilingCase(BuildInputs(false), BuildAlignmentBoundaryAttrs(2LL * MB_SIZE), ge::GRAPH_FAILED);
 }
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, AcceptsBufferWithTokenInfoAlignmentSpace)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(4LL * MB_SIZE), ge::GRAPH_SUCCESS,
-                      GET_TPL_TILING_KEY(true, TILINGKEY_TPL_A5));
+    ExecuteTilingCase(BuildInputs(false), BuildAlignmentBoundaryAttrs(4LL * MB_SIZE), ge::GRAPH_SUCCESS,
+                      GET_TPL_TILING_KEY(false, TILINGKEY_TPL_A5));
 }
 
 } // namespace
