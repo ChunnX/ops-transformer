@@ -126,6 +126,13 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
         torch.npu.synchronize()
 
         logger.info("[GRAPH] 构建 metadata (quant_flash_attn_metadata)")
+        is_varlen_q = layout_q in ("TND", "NTD")
+        if is_varlen_q:
+            batch_size_arg = None
+        else:
+            batch_size_arg = (
+                int(batch_size) if batch_size is not None else int(q_shape[0])
+            )
         self.metadata = _resolve_metadata_op()(
             num_heads_q=num_heads_q,
             num_heads_kv=num_heads_kv,
@@ -135,7 +142,7 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
             cu_seqlens_kv=cu_seqlens_kv_t,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            batch_size=_int_or_none(batch_size),
+            batch_size=batch_size_arg,
             max_seqlen_q=int(max_seqlen_q),
             max_seqlen_kv=int(max_seqlen_kv),
             head_dim_v=head_dim_v,
