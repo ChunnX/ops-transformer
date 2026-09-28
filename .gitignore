@@ -52,6 +52,3 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
-
-# local host-only pipeline check, not part of the operator commit
-attention/flash_attn_grad/tests/test_normal_pipeline.py
