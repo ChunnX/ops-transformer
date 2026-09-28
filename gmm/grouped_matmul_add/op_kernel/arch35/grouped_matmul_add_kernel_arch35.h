@@ -15,29 +15,6 @@
 
 #pragma once
 
-// The CANN 9.1.0 compiler in the frozen 950 validation image exposes the
-// original debug-bus constants, while the ops-tensor revision pinned by this
-// tree expects two later hardware traits. The module is frozen to CANN 9.1,
-// so define the equivalent traits for its 3510 Cube build. They are used only
-// by debug printing and do not alter GMM data or scheduling.
-#if defined(__DAV_CUBE__) && (__NPU_ARCH__ == 3510)
-#include "kernel_operator.h"
-#include "impl/utils/debug/npu_arch_3510/asc_aicore_dump_utils.h"
-namespace __asc_aicore {
-template <AscendC::Hardware Hardware>
-__aicore__ constexpr inline uint32_t get_debug_bus_local_addr_shift()
-{
-    return Hardware == AscendC::Hardware::L1 ? 5U : 0U;
-}
-
-template <AscendC::Hardware Hardware>
-__aicore__ constexpr inline uint64_t get_debug_bus_loop_steplen()
-{
-    return ASC_DEBUG_BUS_CHUNK_BYTES;
-}
-} // namespace __asc_aicore
-#endif
-
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
 #include "pointer_grouped_matmul_add_universal.h"
