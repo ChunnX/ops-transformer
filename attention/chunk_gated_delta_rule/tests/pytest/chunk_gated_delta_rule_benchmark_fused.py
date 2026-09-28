@@ -19,14 +19,11 @@ import torch.nn.functional as F
 
 CHUNK_SIZE = 64
 INVERSE_BLOCK_SIZE = CHUNK_SIZE // 2
-# 与 BasicBlock::UseStreamingExact 的边界校准一致；分数只用于相对选路。
-STREAM_ROW_TOKEN_COST = 33
-STREAM_WIDE_ROW_TOKEN_COST = 37
-CHUNK_SETUP_BUDGET = 3600
-CHUNK_BATCH_BUDGET = 1100
-SINGLE_HEAD_TOKEN_CREDIT = 43
-MULTI_HEAD_TOKEN_CREDIT = 36
-MAX_CALIBRATED_VALUE_HEADS = 32
+# 与 BasicBlock::UseStreamingExact 的算术量选路模型一致。
+STREAM_ARITHMETIC_FACTOR = 7
+STREAM_VECTOR_COST = 256
+CUBE_MAC_PER_CHUNK = 5832704
+MODEL_REVISION = "r32_ub_state32_arithmetic_dispatch_v6"
 
 
 class ChunkPrefix(NamedTuple):
