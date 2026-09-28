@@ -17,29 +17,31 @@ import torch
 import torch.nn.functional as F
 
 
-SOURCE_COMMIT = "dbe6a50a2"
-MODEL_REVISION = "r32_ub_state32_npu_sum_v3"
 CHUNK_SIZE = 64
 INVERSE_BLOCK_SIZE = CHUNK_SIZE // 2
-# 与 FusedStage123Exact::UseStreamingExact 保持一致，均为静态代价权重。
-STREAM_ARITHMETIC_FACTOR = 7
-STREAM_VECTOR_COST = 256
-CUBE_MAC_PER_CHUNK = 5832704
+# 与 BasicBlock::UseStreamingExact 的边界校准一致；分数只用于相对选路。
+STREAM_ROW_TOKEN_COST = 33
+STREAM_WIDE_ROW_TOKEN_COST = 37
+CHUNK_SETUP_BUDGET = 3600
+CHUNK_BATCH_BUDGET = 1100
+SINGLE_HEAD_TOKEN_CREDIT = 43
+MULTI_HEAD_TOKEN_CREDIT = 36
+MAX_CALIBRATED_VALUE_HEADS = 32
 
 
 class ChunkPrefix(NamedTuple):
     """与状态无关的 chunk 中间量；P=Nv*chunk_count，下面省略共同前缀 [P]。
 
-    数学符号与 C++ 对应：value_projection=U，state_projection=Kcd，
-    gated_query=Q'，decayed_key=Kg，causal_scores=M，chunk_decay=exp(G_last)。
+    数学符号与 C++ 对应：u=U，kcd=Kcd，
+    q_prime=Q'，kg=Kg，masked_qkt=M，chunk_decay=exp(G_last)。
     除 U/decay 外，成员均已在对应发布点舍入 BF16，再升为 FP32 供小算子计算。
     """
 
-    value_projection: torch.Tensor  # U=A@(beta*V), [C,Dv]，FP32 L0C 累加量
-    state_projection: torch.Tensor  # Kcd=A@(-beta*exp(G)*K), [C,Dk]，已包含负号
-    gated_query: torch.Tensor  # Q'=scale*exp(G)*Q, [C,Dk]
-    decayed_key: torch.Tensor  # Kg=exp(G_last-G)*K, [C,Dk]
-    causal_scores: torch.Tensor  # M_ij=scale*(Q_i K_j^T)*exp(G_i-G_j), j<=i, [C,C]
+    u: torch.Tensor  # U=A@(beta*V), [C,Dv]，FP32 L0C 累加量
+    kcd: torch.Tensor  # Kcd=A@(-beta*exp(G)*K), [C,Dk]，已包含负号
+    q_prime: torch.Tensor  # Q'=scale*exp(G)*Q, [C,Dk]
+    kg: torch.Tensor  # Kg=exp(G_last-G)*K, [C,Dk]
+    masked_qkt: torch.Tensor  # M_ij=scale*(Q_i K_j^T)*exp(G_i-G_j), j<=i, [C,C]
     chunk_decay: torch.Tensor  # exp(G_last), 标量
 
 
@@ -67,11 +69,11 @@ def _inclusive_log_decay_scan(log_decay):
     C = 64, 64 轮 -> 6 轮并行前缀和；
     改成串行 cumsum 会改变浮点加法顺序，clone 保证每轮读取更新前的值。
     """
-    cumulative = log_decay.clone()
+    g_cum = log_decay.clone()
     for stride in (1, 2, 4, 8, 16, 32):
-        cumulative[..., stride:] = cumulative[..., stride:] \
-                                 + cumulative[..., :-stride].clone()
-    return cumulative
+        g_cum[..., stride:] = g_cum[..., stride:] \
+                                 + g_cum[..., :-stride].clone()
+    return g_cum
 
 
 def _invert_unit_lower_block(lower):
@@ -114,8 +116,8 @@ def _invert_unit_lower_chunk(lower):
     两次矩阵乘拼出左下块，避免对整个 64x64 矩阵逐行前代。
     本模型按发布顺序计算；记 R(x)=FP32(BF16(x))：
         A00=R(A00)，A11=R(A11)
-        intermediate=R(R(-L10)@A00)
-        A10=R(A11@intermediate)
+        lower_times_inverse=R(R(-L10)@A00)
+        A10=R(A11@lower_times_inverse)
     中间结果有独立 BF16 舍入，不能重排矩阵乘或替换为 torch.linalg.inv，
     否则虽在实数域公式等价，却无法复现 kernel 的低精度数值行为。
     """
@@ -130,7 +132,7 @@ def _invert_unit_lower_chunk(lower):
         _invert_unit_lower_block(lower[..., split:, split:])
     )
 
-    # 左下块：先 (-L10)@A00，再 A11@intermediate；各乘积均为 [P,32,32]。
+    # 左下块：先 (-L10)@A00，再 A11@lower_times_inverse；各乘积均为 [P,32,32]。
     lower_times_inverse = _bf16(
         _bf16(-lower[..., split:, :split]) @ inverse[..., :split, :split]
     )
@@ -156,9 +158,9 @@ def _prepare_chunk_prefix(q, # [P,C,Dk]
     kkt = _bf16(k @ k.transpose(-1, -2))  # KKT:[P,C,C]
     qkt = _bf16(q @ k.transpose(-1, -2))  # QKT:[P,C,C]
 
-    cumulative = _inclusive_log_decay_scan(g)  # G:[P,C]
-    exp_cumulative = cumulative.exp()
-    log_decay_difference = cumulative[..., :, None] - cumulative[..., None, :]
+    g_cum = _inclusive_log_decay_scan(g)  # G:[P,C]
+    g_exp = g_cum.exp()
+    log_decay_difference = g_cum[..., :, None] - g_cum[..., None, :]
     # 上三角不参与后续计算，先置 0 再 exp，避免无效位置溢出；下三角保留 exp(G_i-G_j)。
     pairwise_decay = torch.tril(log_decay_difference).exp()
 
@@ -166,15 +168,15 @@ def _prepare_chunk_prefix(q, # [P,C,Dk]
     lower = torch.tril(kkt * pairwise_decay, diagonal=-1) * beta[..., None]
     inverse = _invert_unit_lower_chunk(lower)
 
-    raw_kcd = _bf16(k * (-(beta * exp_cumulative))[..., None])
+    raw_kcd = _bf16(k * (-(beta * g_exp))[..., None])
     v_beta = _bf16(v * beta[..., None])
-    q_prime = _bf16((q * scale) * exp_cumulative[..., None])
-    kg = _bf16(k * (cumulative[..., -1, None] - cumulative).exp()[..., None])
+    q_prime = _bf16((q * scale) * g_exp[..., None])
+    kg = _bf16(k * (g_cum[..., -1, None] - g_cum).exp()[..., None])
     kcd = _bf16(inverse @ raw_kcd)
     u = inverse @ v_beta  # U 保留 L0C FP32，尚未发布残差 R。
     masked_qkt = _bf16(torch.tril((qkt * scale) * pairwise_decay))
 
-    prefix = u, kcd, q_prime, kg, masked_qkt, cumulative[..., -1].exp()
+    prefix = u, kcd, q_prime, kg, masked_qkt, g_cum[..., -1].exp()
     # [Nv*chunk_count,...] -> [Nv,chunk_count,...]，下一步按 chunk 取出所有头。
     prefix = ChunkPrefix(*(tensor.reshape(nv, chunk_count, *tensor.shape[1:]) for tensor in prefix))
     return prefix
@@ -237,12 +239,12 @@ def _advance_chunk(prefix, state, state_dtype):
     # 优化方案：两次状态矩阵乘共享同一份 BF16 S^T；kernel 只搬一次 L1->L0B。
     published_state = _bf16(state).transpose(-1, -2)  # [Nv,Dk,Dv]
     # U 的 FP32 累加量直接叠加 Kcd@S^T，再写 UB
-    residual_fp32 = torch.baddbmm(prefix.value_projection, prefix.state_projection, published_state)
+    residual_fp32 = torch.baddbmm(prefix.u, prefix.kcd, published_state)
     # R 转 BF16 进行 Cube 计算
     residual_bf16 = _bf16(residual_fp32)  # [Nv,C,Dv]
-    inter_chunk_output = prefix.gated_query @ published_state  # [Nv,C,Dv]
-    output = torch.baddbmm(inter_chunk_output, prefix.causal_scores, residual_bf16).bfloat16()
-    state_delta = residual_bf16.transpose(-1, -2) @ prefix.decayed_key  # [Nv,Dv,Dk]
+    inter_chunk_output = prefix.q_prime @ published_state  # [Nv,C,Dv]
+    output = torch.baddbmm(inter_chunk_output, prefix.masked_qkt, residual_bf16).bfloat16()
+    state_delta = residual_bf16.transpose(-1, -2) @ prefix.kg  # [Nv,Dv,Dk]
     if state_dtype == torch.bfloat16:
         # BF16 接口保留 delta 的既有 BF16 舍入；主状态的 FP32 精度与此独立。
         state_delta = _bf16(state_delta)

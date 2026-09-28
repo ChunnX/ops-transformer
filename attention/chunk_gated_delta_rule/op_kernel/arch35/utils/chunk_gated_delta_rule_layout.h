@@ -79,7 +79,10 @@ struct FusedLayout {
                   "AIV halves must cover one physical tile");
 
     // 布局表均使用半开区间 [begin,end)，单位 KiB；代码中的偏移/容量单位为字节。
-    // L1 总览：[0,160) chunk 槽0 | [160,320) 槽1 | [320,352) S | [352,512) 未使用。
+    // L1 总览：[0,160) chunk 槽0 | [160,192) S | [192,256) 未使用；
+    //          [256,416) chunk 槽1 | [416,512) 未使用。
+    // 优化方案：L1 高位交织，两槽按半个 L1 的跨度对称分配，使对应矩阵落在不同的256KiB半区。
+    // 当前槽读与下一槽写可避免同半区竞争；这不消除槽内矩阵、共享 S 的所有 bank 冲突。
     // S 是单份 BF16 NZ [D,D]=32KiB，AIV MTE3 -> AIC MTE1；StateBufferFree/StateReady 控制复用。
     // 槽内矩阵均为 BF16 NZ，C=CHUNK=64、D=DIM=128；物理维度已按16对齐，容量=行*列*2B。
     // 相对槽起点     内容 / shape                         写入流水 -> 读取流水
@@ -103,12 +106,14 @@ struct FusedLayout {
     static constexpr uint32_t L1_RAW_KCD_OFFSET = L1_INVERSE_OFFSET +
         CHUNK * CHUNK * sizeof(bfloat16_t) + HALF_CHUNK * HALF_CHUNK * sizeof(bfloat16_t) + 6 * 1024;
     static constexpr uint32_t L1_VBETA_OFFSET = L1_RAW_KCD_OFFSET + L1_TILE_BYTES;
-    static constexpr uint32_t L1_STATE_PROJECTIONS_OFFSET = L1_VBETA_OFFSET + L1_TILE_BYTES;
-    static constexpr uint32_t L1_RESIDUAL_OFFSET = L1_STATE_PROJECTIONS_OFFSET + 2 * L1_TILE_BYTES;
+    static constexpr uint32_t L1_KCD_QPRIME_OFFSET = L1_VBETA_OFFSET + L1_TILE_BYTES;
+    static constexpr uint32_t L1_RESIDUAL_OFFSET = L1_KCD_QPRIME_OFFSET + 2 * L1_TILE_BYTES;
     static constexpr uint32_t L1_KG_OFFSET = L1_RESIDUAL_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_MASKED_QKT_OFFSET = L1_KG_OFFSET + L1_TILE_BYTES;
     static constexpr uint32_t L1_SLOT_BYTES = L1_MASKED_QKT_OFFSET + CHUNK * CHUNK * sizeof(bfloat16_t) + 8 * 1024;
-    static constexpr uint32_t L1_STATE_OFFSET = 2 * L1_SLOT_BYTES;
+    // 槽容量和槽间距分开：160KiB 是存储范围，256KiB 是双缓冲的地址跨度。
+    static constexpr uint32_t L1_SLOT_STRIDE_BYTES = ArchTag::L1_SIZE / 2;
+    static constexpr uint32_t L1_STATE_OFFSET = L1_SLOT_BYTES; // 单份 S 放在槽0之后
 
     // Chunk 路径：每个 AIV 各有一份 UB；这里的“共享”指 AIC FIX 与目标 AIV 约定相同地址。
     // [  0, 72) Vector 私有：S32 + 留白8 + lower/inverse/identity 各8 + M双槽各4 KiB
@@ -137,8 +142,12 @@ struct FusedLayout {
     static constexpr uint32_t UB_PREFIX_DIRECT0_OFFSET = UB_STAGE1_PUB0_OFFSET - UB_PREFIX_DIRECT_BYTES -
         2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t); // 中间还需两个 inverse 发布槽，共8 KiB
 
-    static_assert(L1_STATE_OFFSET + DIM * DIM * sizeof(bfloat16_t) <= ArchTag::L1_SIZE,
-                  "shared L1 state exceeds capacity");
+    static_assert(L1_SLOT_BYTES <= L1_SLOT_STRIDE_BYTES, "L1 slot crosses its half");
+    static_assert(L1_STATE_OFFSET >= L1_SLOT_BYTES &&
+                  L1_STATE_OFFSET + DIM * DIM * sizeof(bfloat16_t) <= L1_SLOT_STRIDE_BYTES,
+                  "shared L1 state must fit between the two slots");
+    static_assert(L1_SLOT_STRIDE_BYTES + L1_SLOT_BYTES <= ArchTag::L1_SIZE,
+                  "L1 slot 1 exceeds capacity");
     static_assert(L1_VBETA_OFFSET == L1_RAW_KCD_OFFSET + CHUNK * DIM * sizeof(bfloat16_t),
                   "rawKcd and vBeta must stay contiguous for merged DMA");
     static_assert(UB_STATE_DELTA_BF16_OFFSET + STATE_SLICE_ELEMS * sizeof(bfloat16_t) <= UB_PREFIX_DIRECT0_OFFSET,
@@ -169,12 +178,6 @@ struct FusedLayout {
         return slot == 0 ? UB_STAGE1_PUB0_OFFSET : UB_STAGE1_PUB1_OFFSET;
     }
 
-    __aicore__ static inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
-    {
-        // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
-        return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
-               (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * MmAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
-    }
 };
 
 } // namespace ChunkGatedDeltaRule

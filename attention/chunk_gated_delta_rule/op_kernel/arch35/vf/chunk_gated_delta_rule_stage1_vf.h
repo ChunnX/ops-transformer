@@ -20,17 +20,17 @@ using namespace Reg;
 /*
  * 按传入的 chunkSize 计算 FP32 inclusive cumsum、exp 和 Gamma：
  *   gCum[i] = sum(g[0:i + 1])
- *   gCumExp[i] = exp(gCum[i])
+ *   gExp[i] = exp(gCum[i])
  *   gamma[i, j] = j < i ? exp(gCum[i] - gCum[j]) : 0
  * gCum 计算完后保留在寄存器中直接生成 Gamma，避免再次从 UB 加载以及两次 Broadcast。
  */
-__simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr,
+__simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gExpAddr,
                                     __ubuf__ float *gammaAddr, uint32_t chunkSize)
 {
     // chunkSize <= 单个 FP32 Vector 寄存器的元素数，因此一个寄存器可保存整个 chunk 的 g/gCum
     RegTensor<float> gCumReg;
     RegTensor<float> shiftedReg;
-    RegTensor<float> gCumExpReg;
+    RegTensor<float> gExpReg;
     RegTensor<int32_t> laneIndexReg;
     RegTensor<int32_t> gatherIndexReg;
     // validMask 只使能当前 chunk 的有效 lane，避免寄存器尾部数据参与计算和写回
@@ -57,30 +57,31 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
         Add<float, MaskMergeMode::MERGING>(gCumReg, gCumReg, shiftedReg, addMask);
     }
 
-    Exp<float, MaskMergeMode::ZEROING>(gCumExpReg, gCumReg, validMask);
+    Exp<float, MaskMergeMode::ZEROING>(gExpReg, gCumReg, validMask);
     StoreAlign<float, StoreDist::DIST_NORM>(gCumAddr, gCumReg, validMask);
-    StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr, gCumExpReg, validMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(gExpAddr, gExpReg, validMask);
 
     // stageOneMask 是严格下三角矩阵。直接用 laneIndexReg < row 生成行 mask，
     // 在 Gamma 矩阵中写出对角线及上三角为 0，不再从 GM 搬运 mask 或执行两次 Mul。
-    Duplicate(gCumExpReg, static_cast<float>(0.0));
-    StoreAlign<float, StoreDist::DIST_NORM_B32>(gammaAddr, gCumExpReg, validMask);
+    Duplicate(gExpReg, static_cast<float>(0.0));
+    StoreAlign<float, StoreDist::DIST_NORM_B32>(gammaAddr, gExpReg, validMask);
     for (uint16_t row = 1; row < static_cast<uint16_t>(chunkSize); ++row) {
         uint32_t rowOffset = static_cast<uint32_t>(row) * chunkSize;
         Duplicate(reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg), static_cast<uint32_t>(row));
         Gather<float, uint32_t>(shiftedReg, gCumReg, reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
         Compares<int32_t, CMPMODE::LT>(gammaMask, laneIndexReg, static_cast<int32_t>(row), validMask);
-        Sub<float, MaskMergeMode::ZEROING>(gCumExpReg, shiftedReg, gCumReg, gammaMask);
-        Exp<float, MaskMergeMode::ZEROING>(gCumExpReg, gCumExpReg, gammaMask);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(gammaAddr + rowOffset, gCumExpReg, validMask);
+        Sub<float, MaskMergeMode::ZEROING>(gExpReg, shiftedReg, gCumReg, gammaMask);
+        Exp<float, MaskMergeMode::ZEROING>(gExpReg, gExpReg, gammaMask);
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(gammaAddr + rowOffset, gExpReg, validMask);
     }
 }
 
 /*
+ * [2a] G=cumsum(g)，expG=exp(G)，逻辑 shape 均为 [C]，物理 C=64。
  * 融合路径中两个 AIV 各自保留完整 64 元素的 G 和 exp(G)，以少量重复计算消除跨 AIV 的前缀和传递。
  * 使用寄存器内 Hillis-Steele 扫描，步长 1/2/4/8/16/32；Gamma 不在此物化，由分数后处理按行生成。
  */
-__simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr,
+__simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gExpAddr,
                                          uint16_t chunkSize)
 {
     RegTensor<float> gCumReg;
@@ -105,11 +106,12 @@ __simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *
 
     Exp<float, MaskMergeMode::ZEROING>(resultReg, gCumReg, validMask);
     StoreAlign<float, StoreDist::DIST_NORM>(gCumAddr, gCumReg, validMask);
-    StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr, resultReg, validMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(gExpAddr, resultReg, validMask);
 }
 
 /*
- * Dk=Dv=128 的常用维度特化：同一固定宽度循环加载 Q/K/V，在 FP32 寄存器中生成四个 BF16 矩阵：
+ * [2b] ComputeGatedChunkOperandRows 调用的 Dk=Dv=128 常用维度特化。
+ * 同一固定宽度循环加载 Q/K/V，在 FP32 寄存器中生成四个 BF16 矩阵：
  * rawKcd=-beta*exp(G)*K，vBeta=beta*V，qPrime=scale*exp(G)*Q，kg=exp(G_last-G)*K。
  * 缩放、类型转换和 compact zN 写出融合在一次 VF 内，省去多个中间 UB 张量和独立的格式转换。
  */
@@ -117,7 +119,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
                                                     __ubuf__ bfloat16_t *vAddr, __ubuf__ bfloat16_t *rawKcdZnAddr,
                                                     __ubuf__ bfloat16_t *vBetaZnAddr, __ubuf__ bfloat16_t *qPrimeZnAddr,
                                                     __ubuf__ bfloat16_t *kgZnAddr, __ubuf__ float *betaAddr,
-                                                    __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr, float scale,
+                                                    __ubuf__ float *gCumAddr, __ubuf__ float *gExpAddr, float scale,
                                                     uint16_t rowStart, uint16_t rowCount, uint16_t dim,
                                                     uint16_t dstRowStart, uint16_t dstFullRows)
 {
@@ -148,7 +150,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
     const uint16_t repeats = static_cast<uint16_t>((dim + elementsPerRepeat - 1) / elementsPerRepeat);
     for (uint16_t row = 0; row < rowCount; ++row) {
         DataCopy<float, LoadDist::DIST_BRC_B32>(betaReg, betaAddr + row);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(gExpReg, gCumExpAddr + rowStart + row);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(gExpReg, gExpAddr + rowStart + row);
         DataCopy<float, LoadDist::DIST_BRC_B32>(tmpReg, gCumAddr + rowStart + row);
         Sub(tmpReg, decayReg, tmpReg, fullMask);
         Exp<float, MaskMergeMode::ZEROING>(tmpReg, tmpReg, fullMask);
@@ -167,6 +169,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             Cast<float, bfloat16_t, castBf16ToFp32>(kReg, kBf16Reg, mask);
             Cast<float, bfloat16_t, castBf16ToFp32>(vReg, vBf16Reg, mask);
 
+            // [2b] rawKcd_i=-beta_i*exp(G_i)*K_i；负号用于 [6a] 的残差相加。
             Mul(rawKcdReg, betaReg, gExpReg, mask);
             Muls(rawKcdReg, rawKcdReg, static_cast<float>(-1.0f), mask);
             Mul(rawKcdReg, kReg, rawKcdReg, mask);
@@ -176,6 +179,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(rawKcdZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] Kg_i=exp(G_last-G_i)*K_i，供 [7] 累积块末状态增量。
             Mul(kReg, kReg, tmpReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, kReg, mask);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
@@ -183,6 +187,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(kgZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] Q'_i=scale*exp(G_i)*Q_i，供 [6b] 计算初态对输出的贡献。
             Muls(qReg, qReg, scale, mask);
             Mul(qReg, qReg, gExpReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, qReg, mask);
@@ -191,6 +196,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
             StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
                 reinterpret_cast<__ubuf__ uint16_t *>(qPrimeZnAddr) + znOffset, packedBf16Reg, dstFullRows, packedMask);
 
+            // [2b] vBeta_i=beta_i*V_i，供 [5b] 计算 U。
             Mul(vReg, vReg, betaReg, mask);
             Cast<bfloat16_t, float, castFp32ToBf16>(outBf16Reg, vReg, mask);
             Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg,
@@ -202,7 +208,7 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
 }
 
 /*
- * 上述四个矩阵的通用维度版本：Q/K 与 V 分别按 Dk/Dv 建掩码，只处理有效特征。
+ * [2b] 上述四个矩阵的通用维度版本：Q/K 与 V 分别按 Dk/Dv 建掩码，只处理有效特征。
  * 输入为行主序，输出直接按整个 32 行切片的 compact zN 步长写入；两次 16 行输入可填充同一输出 tile。
  * 无效行列由调用方预先清零，避免固定 128 维的后续 Cube 计算读到旧数据。
  */
@@ -210,7 +216,7 @@ __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf_
                                              __ubuf__ bfloat16_t *vAddr, __ubuf__ bfloat16_t *rawKcdZnAddr,
                                              __ubuf__ bfloat16_t *vBetaZnAddr, __ubuf__ bfloat16_t *qPrimeZnAddr,
                                              __ubuf__ bfloat16_t *kgZnAddr, __ubuf__ float *betaAddr,
-                                             __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr, float scale,
+                                             __ubuf__ float *gCumAddr, __ubuf__ float *gExpAddr, float scale,
                                              uint16_t rowStart, uint16_t rowCount, uint16_t dk, uint16_t dv,
                                              uint16_t dkRowStride, uint16_t dvRowStride, uint16_t dstRowStart,
                                              uint16_t dstFullRows)
@@ -243,7 +249,7 @@ __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf_
     const uint16_t repeats = static_cast<uint16_t>((maxDim + elementsPerRepeat - 1) / elementsPerRepeat);
     for (uint16_t row = 0; row < rowCount; ++row) {
         DataCopy<float, LoadDist::DIST_BRC_B32>(betaReg, betaAddr + row);
-        DataCopy<float, LoadDist::DIST_BRC_B32>(gExpReg, gCumExpAddr + rowStart + row);
+        DataCopy<float, LoadDist::DIST_BRC_B32>(gExpReg, gExpAddr + rowStart + row);
         DataCopy<float, LoadDist::DIST_BRC_B32>(tmpReg, gCumAddr + rowStart + row);
         Sub(tmpReg, decayReg, tmpReg, fullMask);
         Exp<float, MaskMergeMode::ZEROING>(tmpReg, tmpReg, fullMask);
@@ -308,12 +314,14 @@ __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf_
 }
 
 /*
+ * [3a] L_ij=beta_i*KKT_ij*exp(G_i-G_j) (j<i)，M_ij=scale*QKT_ij*exp(G_i-G_j) (j<=i)。
+ * 每个 AIV 生成 L/M:[32,64]；lowerAddr 存 L，inverseAddr 暂存 -L，maskedQktZnAddr 存 M。
  * 一次计算 exp(G_i-G_j)，同时用于严格下三角 KKT（L，求逆输入）和含对角线的 QKT（输出注意力）。
  * 前者必须排除当前 token，后者必须包含当前 token；两种 mask 不可混用。
  * 直接对前缀和之差取 exp，避免先算 exp(G_i)/exp(G_j) 时的小数相除；上三角在取 exp 前置零，
  * 随后通过乘法掩码清零。inverse 初始化为 -L，两个对角块稍后被各自的 (I+L_diag)^(-1) 覆盖。
  */
-__simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr, __ubuf__ float *inverseAddr,
+__simd_vf__ inline void BuildLowerAndMaskedQktExactSliceVF(__ubuf__ float *lowerAddr, __ubuf__ float *inverseAddr,
                                                        __ubuf__ bfloat16_t *maskedQktZnAddr,
                                                        __ubuf__ bfloat16_t *kktAddr, __ubuf__ bfloat16_t *qktAddr,
                                                        __ubuf__ float *gCumAddr, __ubuf__ float *betaAddr, float scale,
@@ -330,7 +338,7 @@ __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr,
     RegTensor<float> betaReg;
     RegTensor<float> kktFp32Reg;
     RegTensor<float> qktFp32Reg;
-    RegTensor<float> attnReg;
+    RegTensor<float> lowerReg;
     RegTensor<float> inverseInitReg;
     RegTensor<bfloat16_t> kktBf16Reg;
     RegTensor<bfloat16_t> qktBf16Reg;
@@ -356,11 +364,11 @@ __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr,
 
         LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(kktBf16Reg, kktAddr + offset);
         Cast<float, bfloat16_t, castBf16ToFp32>(kktFp32Reg, kktBf16Reg, validMask);
-        Mul<float, MaskMergeMode::ZEROING>(attnReg, kktFp32Reg, decayReg, strictLowerMask);
+        Mul<float, MaskMergeMode::ZEROING>(lowerReg, kktFp32Reg, decayReg, strictLowerMask);
         DataCopy<float, LoadDist::DIST_BRC_B32>(betaReg, betaAddr + localRow);
-        Mul(attnReg, attnReg, betaReg, validMask);
-        Muls(inverseInitReg, attnReg, static_cast<float>(-1.0f), validMask);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(attnAddr + offset, attnReg, validMask);
+        Mul(lowerReg, lowerReg, betaReg, validMask);
+        Muls(inverseInitReg, lowerReg, static_cast<float>(-1.0f), validMask);
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(lowerAddr + offset, lowerReg, validMask);
         StoreAlign<float, StoreDist::DIST_NORM_B32>(inverseAddr + offset, inverseInitReg, validMask);
 
         LoadAlign<bfloat16_t, LoadDist::DIST_UNPACK_B16>(qktBf16Reg, qktAddr + offset);
@@ -376,40 +384,16 @@ __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr,
     }
 }
 
-// FP32 行主序矩阵在寄存器内转 BF16，Pack 后按 16 元素块跨步写出 compact zN，供 UB->L1 直接搬运。
-__simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
-                                                  uint16_t rowCount, uint16_t colCount)
-{
-    static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
-                                                 RoundMode::CAST_RINT};
-    RegTensor<float> srcReg;
-    RegTensor<bfloat16_t> bf16Reg;
-    RegTensor<uint16_t> packedBf16Reg;
-    uint32_t validCount = colCount;
-    uint32_t packedCount = colCount;
-    MaskReg validMask = UpdateMask<float>(validCount);
-    MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
-
-    for (uint16_t row = 0; row < rowCount; ++row) {
-        LoadAlign(srcReg, srcAddr + static_cast<uint32_t>(row) * colCount);
-        Cast<bfloat16_t, float, castFp32ToBf16>(bf16Reg, srcReg, validMask);
-        Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(packedBf16Reg, reinterpret_cast<RegTensor<uint32_t> &>(bf16Reg));
-        StoreAlign<uint16_t, DataCopyMode::DATA_BLOCK_COPY>(
-            reinterpret_cast<__ubuf__ uint16_t *>(dstZnAddr) + static_cast<uint32_t>(row) * 16, packedBf16Reg, rowCount,
-            packedMask);
-    }
-}
-
 /*!
- * InverseAIVVF: forward-substitution inverse of the N x N lower-triangular (unit-diagonal) attn block.
- *   inv[0] = e_0; for i=1..N-1: inv[i] = e_i - sum_{j<i} attn[i,j] * inv[j]
- * attnUb/invResUb layout: [halfChunkSize rows, chunkSize cols]; subBlock uses column offset = `offset`,
+ * InverseAIVVF: solve A=(I+L)^-1 by forward substitution; lower stores strictly lower-triangular L.
+ *   inv[0] = e_0; for i=1..N-1: inv[i] = e_i - sum_{j<i} lower[i,j] * inv[j]
+ * lowerUb/invResUb layout: [halfChunkSize rows, chunkSize cols]; subBlock uses column offset = `offset`,
  *   i.e. element (i, col) is at base + offset + i*chunkSize + col. Only first N columns per row are valid.
  * eiUb layout: identity matrix, row i = e_i, row stride = chunkSize (no column offset).
  *   eiUb must be pre-filled by the caller (unit-diagonal identity in the first N rows).
  */
 template <uint32_t N>
-__simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
+__simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *lowerUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
                                          uint32_t offset, uint32_t chunkSize)
 {
     // N<=64, 单寄存器容纳一行; UpdateMask 生成前 N 个 lane 有效的掩码
@@ -422,16 +406,16 @@ __simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *attnUb, __ubuf__ float 
     StoreAlign<float, StoreDist::DIST_NORM_B32>(invResUb + offset, inv0, maskN);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
-    // 前代法: 逐行求解 inv[i] = e_i - sum_{j<i} attn[i,j] * inv[j]
+    // 前代法: 逐行求解 inv[i] = e_i - sum_{j<i} lower[i,j] * inv[j]
     RegTensor<uint32_t> idxReg;
     RegTensor<float> acc;
     for (uint16_t i = 1; i < static_cast<uint16_t>(N); ++i) {
         // acc 清零, 准备累加当前行 i 的内积
         Duplicate(acc, static_cast<float>(0.0));
-        // 加载 attn 第 i 行(对角块内, 含 offset 列偏移)
+        // 加载 lower 第 i 行(对角块内, 含 offset 列偏移)
         RegTensor<float> li;
-        LoadAlign(li, attnUb + offset + i * chunkSize);
-        // 累加 sum_{j<i} attn[i,j] * inv[j]: Gather 取出 li[j] 广播, 与已求出的 inv[j] 乘加
+        LoadAlign(li, lowerUb + offset + i * chunkSize);
+        // 累加 sum_{j<i} lower[i,j] * inv[j]: Gather 取出 li[j] 广播, 与已求出的 inv[j] 乘加
         for (uint16_t j = 0; j < i; ++j) {
             Duplicate(idxReg, j);
             RegTensor<float> lijBrc;
@@ -452,27 +436,27 @@ __simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *attnUb, __ubuf__ float 
 }
 
 template <uint32_t N>
-__aicore__ inline void InverseAIVVF(const LocalTensor<float> &attnUb, const LocalTensor<float> &invResUb,
+__aicore__ inline void InverseAIVVF(const LocalTensor<float> &lowerUb, const LocalTensor<float> &invResUb,
                                     const LocalTensor<float> &eiUb, uint32_t offset, uint32_t chunkSize)
 {
-    __ubuf__ float *attn = reinterpret_cast<__ubuf__ float *>(attnUb.GetPhyAddr());
+    __ubuf__ float *lower = reinterpret_cast<__ubuf__ float *>(lowerUb.GetPhyAddr());
     __ubuf__ float *inv = reinterpret_cast<__ubuf__ float *>(invResUb.GetPhyAddr());
     __ubuf__ float *ei = reinterpret_cast<__ubuf__ float *>(eiUb.GetPhyAddr());
-    InverseAIVVFImpl<N>(attn, inv, ei, offset, chunkSize);
+    InverseAIVVFImpl<N>(lower, inv, ei, offset, chunkSize);
 }
 
 /*
  * 32x32 对角块的八行分组求逆版本：一次加载的已求逆行可服务八个累加器，减少 UB 重复读取。
  * 每个目标行仍按 j=0..i-1 顺序累加。当前入口选用下方 DirectBrc 版本，此处保留 Gather 版本。
  */
-__simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
+__simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *lowerUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
                                                uint32_t offset, uint32_t chunkSize)
 {
     constexpr uint16_t inverseSize = 32;
     constexpr uint16_t panelRows = 8;
     uint32_t maskLen = inverseSize;
     MaskReg mask = UpdateMask<float>(maskLen);
-    RegTensor<float> attnRow[panelRows];
+    RegTensor<float> lowerRow[panelRows];
     RegTensor<float> acc[panelRows];
     RegTensor<float> invRow[panelRows];
     RegTensor<float> previousInv;
@@ -480,14 +464,14 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
     RegTensor<uint32_t> index;
 
     for (uint16_t panel = 0; panel < inverseSize; panel += panelRows) {
-        LoadAlign(attnRow[0], attnUb + offset + static_cast<uint32_t>(panel) * chunkSize);
-        LoadAlign(attnRow[1], attnUb + offset + static_cast<uint32_t>(panel + 1) * chunkSize);
-        LoadAlign(attnRow[2], attnUb + offset + static_cast<uint32_t>(panel + 2) * chunkSize);
-        LoadAlign(attnRow[3], attnUb + offset + static_cast<uint32_t>(panel + 3) * chunkSize);
-        LoadAlign(attnRow[4], attnUb + offset + static_cast<uint32_t>(panel + 4) * chunkSize);
-        LoadAlign(attnRow[5], attnUb + offset + static_cast<uint32_t>(panel + 5) * chunkSize);
-        LoadAlign(attnRow[6], attnUb + offset + static_cast<uint32_t>(panel + 6) * chunkSize);
-        LoadAlign(attnRow[7], attnUb + offset + static_cast<uint32_t>(panel + 7) * chunkSize);
+        LoadAlign(lowerRow[0], lowerUb + offset + static_cast<uint32_t>(panel) * chunkSize);
+        LoadAlign(lowerRow[1], lowerUb + offset + static_cast<uint32_t>(panel + 1) * chunkSize);
+        LoadAlign(lowerRow[2], lowerUb + offset + static_cast<uint32_t>(panel + 2) * chunkSize);
+        LoadAlign(lowerRow[3], lowerUb + offset + static_cast<uint32_t>(panel + 3) * chunkSize);
+        LoadAlign(lowerRow[4], lowerUb + offset + static_cast<uint32_t>(panel + 4) * chunkSize);
+        LoadAlign(lowerRow[5], lowerUb + offset + static_cast<uint32_t>(panel + 5) * chunkSize);
+        LoadAlign(lowerRow[6], lowerUb + offset + static_cast<uint32_t>(panel + 6) * chunkSize);
+        LoadAlign(lowerRow[7], lowerUb + offset + static_cast<uint32_t>(panel + 7) * chunkSize);
         Duplicate(acc[0], static_cast<float>(0.0f));
         Duplicate(acc[1], static_cast<float>(0.0f));
         Duplicate(acc[2], static_cast<float>(0.0f));
@@ -500,21 +484,21 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
         for (uint16_t j = 0; j < panel; ++j) {
             LoadAlign(previousInv, invResUb + offset + static_cast<uint32_t>(j) * chunkSize);
             Duplicate(index, static_cast<uint32_t>(j));
-            Gather(coefficient, attnRow[0], index);
+            Gather(coefficient, lowerRow[0], index);
             MulAddDst(acc[0], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[1], index);
+            Gather(coefficient, lowerRow[1], index);
             MulAddDst(acc[1], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[2], index);
+            Gather(coefficient, lowerRow[2], index);
             MulAddDst(acc[2], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[3], index);
+            Gather(coefficient, lowerRow[3], index);
             MulAddDst(acc[3], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[4], index);
+            Gather(coefficient, lowerRow[4], index);
             MulAddDst(acc[4], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[5], index);
+            Gather(coefficient, lowerRow[5], index);
             MulAddDst(acc[5], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[6], index);
+            Gather(coefficient, lowerRow[6], index);
             MulAddDst(acc[6], previousInv, coefficient, mask);
-            Gather(coefficient, attnRow[7], index);
+            Gather(coefficient, lowerRow[7], index);
             MulAddDst(acc[7], previousInv, coefficient, mask);
         }
 
@@ -524,7 +508,7 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[0], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[1], index);
+        Gather(coefficient, lowerRow[1], index);
         MulAddDst(acc[1], invRow[0], coefficient, mask);
         LoadAlign(invRow[1], eiUb + static_cast<uint32_t>(panel + 1) * chunkSize);
         Sub(invRow[1], invRow[1], acc[1], mask);
@@ -532,10 +516,10 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[1], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[2], index);
+        Gather(coefficient, lowerRow[2], index);
         MulAddDst(acc[2], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[2], index);
+        Gather(coefficient, lowerRow[2], index);
         MulAddDst(acc[2], invRow[1], coefficient, mask);
         LoadAlign(invRow[2], eiUb + static_cast<uint32_t>(panel + 2) * chunkSize);
         Sub(invRow[2], invRow[2], acc[2], mask);
@@ -543,13 +527,13 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[2], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[3], index);
+        Gather(coefficient, lowerRow[3], index);
         MulAddDst(acc[3], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[3], index);
+        Gather(coefficient, lowerRow[3], index);
         MulAddDst(acc[3], invRow[1], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 2));
-        Gather(coefficient, attnRow[3], index);
+        Gather(coefficient, lowerRow[3], index);
         MulAddDst(acc[3], invRow[2], coefficient, mask);
         LoadAlign(invRow[3], eiUb + static_cast<uint32_t>(panel + 3) * chunkSize);
         Sub(invRow[3], invRow[3], acc[3], mask);
@@ -557,16 +541,16 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[3], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[4], index);
+        Gather(coefficient, lowerRow[4], index);
         MulAddDst(acc[4], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[4], index);
+        Gather(coefficient, lowerRow[4], index);
         MulAddDst(acc[4], invRow[1], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 2));
-        Gather(coefficient, attnRow[4], index);
+        Gather(coefficient, lowerRow[4], index);
         MulAddDst(acc[4], invRow[2], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 3));
-        Gather(coefficient, attnRow[4], index);
+        Gather(coefficient, lowerRow[4], index);
         MulAddDst(acc[4], invRow[3], coefficient, mask);
         LoadAlign(invRow[4], eiUb + static_cast<uint32_t>(panel + 4) * chunkSize);
         Sub(invRow[4], invRow[4], acc[4], mask);
@@ -574,19 +558,19 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[4], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[5], index);
+        Gather(coefficient, lowerRow[5], index);
         MulAddDst(acc[5], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[5], index);
+        Gather(coefficient, lowerRow[5], index);
         MulAddDst(acc[5], invRow[1], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 2));
-        Gather(coefficient, attnRow[5], index);
+        Gather(coefficient, lowerRow[5], index);
         MulAddDst(acc[5], invRow[2], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 3));
-        Gather(coefficient, attnRow[5], index);
+        Gather(coefficient, lowerRow[5], index);
         MulAddDst(acc[5], invRow[3], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 4));
-        Gather(coefficient, attnRow[5], index);
+        Gather(coefficient, lowerRow[5], index);
         MulAddDst(acc[5], invRow[4], coefficient, mask);
         LoadAlign(invRow[5], eiUb + static_cast<uint32_t>(panel + 5) * chunkSize);
         Sub(invRow[5], invRow[5], acc[5], mask);
@@ -594,22 +578,22 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[5], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[1], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 2));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[2], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 3));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[3], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 4));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[4], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 5));
-        Gather(coefficient, attnRow[6], index);
+        Gather(coefficient, lowerRow[6], index);
         MulAddDst(acc[6], invRow[5], coefficient, mask);
         LoadAlign(invRow[6], eiUb + static_cast<uint32_t>(panel + 6) * chunkSize);
         Sub(invRow[6], invRow[6], acc[6], mask);
@@ -617,25 +601,25 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
                                                     invRow[6], mask);
 
         Duplicate(index, static_cast<uint32_t>(panel));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[0], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 1));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[1], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 2));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[2], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 3));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[3], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 4));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[4], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 5));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[5], coefficient, mask);
         Duplicate(index, static_cast<uint32_t>(panel + 6));
-        Gather(coefficient, attnRow[7], index);
+        Gather(coefficient, lowerRow[7], index);
         MulAddDst(acc[7], invRow[6], coefficient, mask);
         LoadAlign(invRow[7], eiUb + static_cast<uint32_t>(panel + 7) * chunkSize);
         Sub(invRow[7], invRow[7], acc[7], mask);
@@ -651,7 +635,7 @@ __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ 
  * j-order while sharing one vector FMA for every coefficient pair.
  */
 __simd_vf__ inline void InverseAIVPanel8PairVFImpl(
-    __ubuf__ float *attnUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
+    __ubuf__ float *lowerUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
     uint32_t offset, uint32_t chunkSize)
 {
     constexpr uint16_t inverseSize = 32;
@@ -673,14 +657,14 @@ __simd_vf__ inline void InverseAIVPanel8PairVFImpl(
 #define CGDR_INVERSE_PREPARE_PAIRED_ROW(inverseRow) Interleave(pairedInv, interleaveScratch, (inverseRow), (inverseRow))
 #define CGDR_INVERSE_PAIR_FMA(accumulator, row0, row1, col) \
     DataCopy<float, LoadDist::DIST_BRC_B32>(coefficient0, \
-                                            attnUb + offset + static_cast<uint32_t>(row0) * chunkSize + (col)); \
+                                            lowerUb + offset + static_cast<uint32_t>(row0) * chunkSize + (col)); \
     DataCopy<float, LoadDist::DIST_BRC_B32>(coefficient1, \
-                                            attnUb + offset + static_cast<uint32_t>(row1) * chunkSize + (col)); \
+                                            lowerUb + offset + static_cast<uint32_t>(row1) * chunkSize + (col)); \
     Interleave(pairedCoefficient, interleaveScratch, coefficient0, coefficient1); \
     MulAddDst((accumulator), pairedInv, pairedCoefficient, pairMask)
 #define CGDR_INVERSE_ODD_FMA(accumulator, row, col, inverseRow) \
     DataCopy<float, LoadDist::DIST_BRC_B32>(pairedCoefficient, \
-                                            attnUb + offset + static_cast<uint32_t>(row) * chunkSize + (col)); \
+                                            lowerUb + offset + static_cast<uint32_t>(row) * chunkSize + (col)); \
     MulAddDst((accumulator), (inverseRow), pairedCoefficient, rowMask)
 
     for (uint16_t panel = 0; panel < inverseSize; panel += panelRows) {
@@ -781,7 +765,7 @@ __simd_vf__ inline void InverseAIVPanel8PairVFImpl(
  * panel-resident pair row, so common contributions need one Gather and one FMA.
  * Each logical row still receives j=0..i-1 in the original FP32 order.
  */
-__simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttnUb, __ubuf__ float *invResUb,
+__simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairLowerUb, __ubuf__ float *invResUb,
                                                         __ubuf__ float *eiUb, uint32_t offset, uint32_t chunkSize)
 {
     constexpr uint16_t inverseSize = 32;
@@ -817,7 +801,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
 #define CGDR_INVERSE_PAIR_PREPARE_INDEX(col) \
     Adds(coefficientIndex, parityIndex, static_cast<uint32_t>(2 * (col)), pairMask)
 #define CGDR_INVERSE_PAIR_GATHER(coefficient, pairIndex) \
-    Gather((coefficient), pairAttnUb + static_cast<uint32_t>(pairIndex) * inverseSize * 2, coefficientIndex, pairMask)
+    Gather((coefficient), pairLowerUb + static_cast<uint32_t>(pairIndex) * inverseSize * 2, coefficientIndex, pairMask)
 #define CGDR_INVERSE_PAIR_FMA(accumulator, coefficient) MulAddDst((accumulator), pairedInv, (coefficient), pairMask)
 
     for (uint16_t panel = 0; panel < inverseSize; panel += panelRows) {
@@ -847,7 +831,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
                                                     evenInv, rowMask);
         DataCopy<float, LoadDist::DIST_BRC_B32>(
             oddCoefficient,
-            pairAttnUb + static_cast<uint32_t>(panel / 2) * inverseSize * 2 + static_cast<uint32_t>(2 * panel + 1));
+            pairLowerUb + static_cast<uint32_t>(panel / 2) * inverseSize * 2 + static_cast<uint32_t>(2 * panel + 1));
         MulAddDst(oddAcc, evenInv, oddCoefficient, rowMask);
         LoadAlign(oddInv, eiUb + static_cast<uint32_t>(panel + 1) * chunkSize);
         Sub(oddInv, oddInv, oddAcc, rowMask);
@@ -876,7 +860,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
         StoreAlign<float, StoreDist::DIST_NORM_B32>(invResUb + offset + static_cast<uint32_t>(panel + 2) * chunkSize,
                                                     evenInv, rowMask);
         DataCopy<float, LoadDist::DIST_BRC_B32>(oddCoefficient,
-                                                pairAttnUb + static_cast<uint32_t>(panel / 2 + 1) * inverseSize * 2 +
+                                                pairLowerUb + static_cast<uint32_t>(panel / 2 + 1) * inverseSize * 2 +
                                                     static_cast<uint32_t>(2 * (panel + 2) + 1));
         MulAddDst(oddAcc, evenInv, oddCoefficient, rowMask);
         LoadAlign(oddInv, eiUb + static_cast<uint32_t>(panel + 3) * chunkSize);
@@ -902,7 +886,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
         StoreAlign<float, StoreDist::DIST_NORM_B32>(invResUb + offset + static_cast<uint32_t>(panel + 4) * chunkSize,
                                                     evenInv, rowMask);
         DataCopy<float, LoadDist::DIST_BRC_B32>(oddCoefficient,
-                                                pairAttnUb + static_cast<uint32_t>(panel / 2 + 2) * inverseSize * 2 +
+                                                pairLowerUb + static_cast<uint32_t>(panel / 2 + 2) * inverseSize * 2 +
                                                     static_cast<uint32_t>(2 * (panel + 4) + 1));
         MulAddDst(oddAcc, evenInv, oddCoefficient, rowMask);
         LoadAlign(oddInv, eiUb + static_cast<uint32_t>(panel + 5) * chunkSize);
@@ -924,7 +908,7 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
         StoreAlign<float, StoreDist::DIST_NORM_B32>(invResUb + offset + static_cast<uint32_t>(panel + 6) * chunkSize,
                                                     evenInv, rowMask);
         DataCopy<float, LoadDist::DIST_BRC_B32>(oddCoefficient,
-                                                pairAttnUb + static_cast<uint32_t>(panel / 2 + 3) * inverseSize * 2 +
+                                                pairLowerUb + static_cast<uint32_t>(panel / 2 + 3) * inverseSize * 2 +
                                                     static_cast<uint32_t>(2 * (panel + 6) + 1));
         MulAddDst(oddAcc, evenInv, oddCoefficient, rowMask);
         LoadAlign(oddInv, eiUb + static_cast<uint32_t>(panel + 7) * chunkSize);
@@ -941,14 +925,14 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
 }
 
 /*
- * 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
- * attnUb/invResUb/eiUb 均为 FP32 [32,64]；offset=0/32 选择当前 AIV 的 32x32 对角子块。
+ * [3b] 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
+ * lowerUb/invResUb/eiUb 均为 FP32 [32,64]；offset=0/32 选择当前 AIV 的 32x32 对角子块。
  * 每个 invRow 为 32 个有效 FP32 lane，表示 A 的一行；A=(I+L)^(-1)。
  * 优化方案：每组共同依赖的旧逆行仅加载一次，新求得的八行留在寄存器中供后续行复用。
  * 系数 L_ij 通过 B32 从 UB 直接广播，省去常驻的八个系数行寄存器以及索引构造/Gather。
  * 各行的 j 累加顺序不变；组末的 store->load 屏障保证下一组读到完整的旧逆行。
  */
-__simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb,
+__simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *lowerUb, __ubuf__ float *invResUb,
                                                         __ubuf__ float *eiUb, uint32_t offset, uint32_t chunkSize)
 {
     constexpr uint16_t inverseSize = 32;
@@ -962,7 +946,7 @@ __simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *attnUb, 
 
 #define CGDR_INVERSE_DIRECT_FMA(accumulator, row, col, inverseRow) \
     DataCopy<float, LoadDist::DIST_BRC_B32>(coefficient, \
-                                            attnUb + offset + static_cast<uint32_t>(row) * chunkSize + (col)); \
+                                            lowerUb + offset + static_cast<uint32_t>(row) * chunkSize + (col)); \
     MulAddDst((accumulator), (inverseRow), coefficient, mask)
 
     for (uint16_t panel = 0; panel < inverseSize; panel += panelRows) {
@@ -1060,14 +1044,15 @@ __simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *attnUb, 
 #undef CGDR_INVERSE_DIRECT_FMA
 }
 
-__aicore__ inline void InverseAIVPanel8VF(const LocalTensor<float> &attnUb, const LocalTensor<float> &invResUb,
+// [3b] 只求当前 AIV 的 A00/A11:[32,32]；A10 由 Cube [4a/4b] 补齐。
+__aicore__ inline void InverseAIVPanel8VF(const LocalTensor<float> &lowerUb, const LocalTensor<float> &invResUb,
                                           const LocalTensor<float> &eiUb, uint32_t offset, uint32_t chunkSize)
 {
-    auto attn = reinterpret_cast<__ubuf__ float *>(attnUb.GetPhyAddr());
+    auto lower = reinterpret_cast<__ubuf__ float *>(lowerUb.GetPhyAddr());
     auto inv = reinterpret_cast<__ubuf__ float *>(invResUb.GetPhyAddr());
     auto ei = reinterpret_cast<__ubuf__ float *>(eiUb.GetPhyAddr());
     // Pair/AoSoA/Gather 等保留版本不在当前调用链中，性能分析应以此 DirectBrc 实现为准。
-    InverseAIVPanel8DirectBrcVFImpl(attn, inv, ei, offset, chunkSize);
+    InverseAIVPanel8DirectBrcVFImpl(lower, inv, ei, offset, chunkSize);
 }
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE1_VF_H

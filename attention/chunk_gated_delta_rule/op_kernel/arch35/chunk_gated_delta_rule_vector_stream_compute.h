@@ -11,8 +11,8 @@
 #ifndef CHUNK_GATED_DELTA_RULE_VECTOR_STREAM_COMPUTE_H
 #define CHUNK_GATED_DELTA_RULE_VECTOR_STREAM_COMPUTE_H
 
-#include "chunk_gated_delta_rule_context.h"
-#include "chunk_gated_delta_rule_vector_copy.h"
+#include "utils/chunk_gated_delta_rule_context.h"
+#include "utils/chunk_gated_delta_rule_vector_utils.h"
 #include "vf/chunk_gated_delta_rule_stage2_vf.h"
 
 namespace ChunkGatedDeltaRule {
@@ -152,27 +152,6 @@ private:
                 BufferViews::Ub<bfloat16_t>(outBf16Offset)};
     }
 
-    // 每个 token 取一个 beta/g 标量，放入独立 32B 数据块，供 VF 广播读取。
-    template <typename T>
-    __aicore__ inline void CopyTokenScalarsGmToUb(LocalTensor<T> dst, GlobalTensor<T> src, uint32_t tokenCount)
-    {
-        constexpr uint32_t elementsPerBlock = BLOCK_SIZE / sizeof(T);
-        DataCopyExtParams copy{static_cast<uint16_t>(tokenCount), sizeof(T),
-                               static_cast<int64_t>((context_.params.nv - 1) * sizeof(T)), 0, 0};
-        DataCopyPadExtParams<T> pad{true, 0, elementsPerBlock - 1, static_cast<T>(0)};
-        DataCopyPad(dst, src, copy, pad);
-    }
-
-    __aicore__ inline void CopyOutputRowsUbToGm(GlobalTensor<bfloat16_t> dst, LocalTensor<bfloat16_t> src,
-                                               uint32_t rows, uint32_t count)
-    {
-        // UB rows have HALF_DIM elements; GM rows have nv * dv elements.
-        DataCopyExtParams params{static_cast<uint16_t>(rows), static_cast<uint32_t>(count * sizeof(bfloat16_t)),
-                                 (HALF_DIM - MmAlign(count, MM_NZ_FRACTAL)) / MM_NZ_FRACTAL,
-                                 static_cast<int64_t>((context_.params.nv * context_.params.dv - count) * sizeof(bfloat16_t)), 0};
-        DataCopyPad(dst, src, params);
-    }
-
     // Streaming 主状态为 FP32 [HALF_DIM,DIM]；Run 已排除空序列和无有效 Dv 行的切片。
     // 清零物理状态区并加载初态；后续类型转换及递推的 V 同步由 Run 管理。
     __aicore__ inline void CopyInitialStreamingStateGmToUb(const Head &head, const Buffers &buffers)
@@ -188,10 +167,10 @@ private:
         const uint64_t initialStateOffset = context_.InitialStateOffset(head.valueHead, stateRowBegin);
         Mutex::Lock<PIPE_MTE2>(stateMutex);
         if constexpr (STATE_FP32) {
-            CopyRowsGmToUb(buffers.stateFp32, context_.params.initialState[initialStateOffset], validRows,
+            CopyRowsGmToUb<DIM>(buffers.stateFp32, context_.params.initialState[initialStateOffset], validRows,
                           context_.params.dk, context_.params.dk);
         } else {
-            CopyRowsGmToUb(buffers.stateBf16, context_.params.initialState[initialStateOffset], validRows,
+            CopyRowsGmToUb<DIM>(buffers.stateBf16, context_.params.initialState[initialStateOffset], validRows,
                           context_.params.dk, context_.params.dk);
         }
         Mutex::Unlock<PIPE_MTE2>(stateMutex);
@@ -206,9 +185,11 @@ private:
         Mutex::Lock<PIPE_MTE3>(stateMutex);
         const uint64_t finalStateOffset = context_.FinalStateOffset(head.valueHead, stateRowBegin);
         if constexpr (STATE_FP32) {
-            CopyStateRowsUbToGm(context_.params.finalState[finalStateOffset], buffers.stateFp32, validRows, context_.params.dk);
+            CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], buffers.stateFp32,
+                validRows, context_.params.dk, context_.params.dk);
         } else {
-            CopyStateRowsUbToGm(context_.params.finalState[finalStateOffset], buffers.stateBf16, validRows, context_.params.dk);
+            CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], buffers.stateBf16,
+                validRows, context_.params.dk, context_.params.dk);
         }
         Mutex::Unlock<PIPE_MTE3>(stateMutex);
     }
@@ -222,12 +203,15 @@ private:
         const uint64_t scalarOffset = batch.globalToken * context_.params.nv + batch.valueHead;
         const MutexID tokenMutex = MutexId(INPUT_MUTEX);
         Mutex::Lock<PIPE_MTE2>(tokenMutex);
-        CopyRowsGmToUb(buffers.query, context_.params.query[qkOffset], batch.tokenCount, context_.params.dk, context_.params.nk * context_.params.dk);
-        CopyRowsGmToUb(buffers.key, context_.params.key[qkOffset], batch.tokenCount, context_.params.dk, context_.params.nk * context_.params.dk);
-        CopyRowsGmToUb(buffers.valueBf16, context_.params.value[valueOffset], batch.tokenCount, batch.stateRows, context_.params.nv * context_.params.dv);
-        CopyTokenScalarsGmToUb(buffers.betaBf16, context_.params.beta[scalarOffset], batch.tokenCount);
+        CopyRowsGmToUb<DIM>(buffers.query, context_.params.query[qkOffset],
+            batch.tokenCount, context_.params.dk, context_.params.nk * context_.params.dk);
+        CopyRowsGmToUb<DIM>(buffers.key, context_.params.key[qkOffset],
+            batch.tokenCount, context_.params.dk, context_.params.nk * context_.params.dk);
+        CopyRowsGmToUb<DIM>(buffers.valueBf16, context_.params.value[valueOffset],
+            batch.tokenCount, batch.stateRows, context_.params.nv * context_.params.dv);
+        CopyScalarsGmToUb(buffers.betaBf16, context_.params.beta[scalarOffset], batch.tokenCount, context_.params.nv);
         if constexpr (hasGamma) {
-            CopyTokenScalarsGmToUb(buffers.g, context_.params.g[scalarOffset], batch.tokenCount);
+            CopyScalarsGmToUb(buffers.g, context_.params.g[scalarOffset], batch.tokenCount, context_.params.nv);
         }
         Mutex::Unlock<PIPE_MTE2>(tokenMutex);
     }
@@ -272,7 +256,8 @@ private:
         Mutex::Lock<PIPE_MTE3>(tokenMutex);
         const uint64_t outOffset =
             batch.globalToken * context_.params.nv * context_.params.dv + static_cast<uint64_t>(batch.valueHead) * context_.params.dv + batch.stateRowBegin;
-        CopyOutputRowsUbToGm(context_.params.out[outOffset], buffers.outBf16, batch.tokenCount, batch.stateRows);
+        CopyRowsUbToGm<HALF_DIM>(context_.params.out[outOffset], buffers.outBf16, batch.tokenCount,
+                                  batch.stateRows, context_.params.nv * context_.params.dv);
         Mutex::Unlock<PIPE_MTE3>(tokenMutex);
     }
 
@@ -291,11 +276,12 @@ private:
         auto state = BufferViews::Ub<stateType>(stateOffset);
 
         Mutex::Lock<PIPE_MTE2>(stateMutex);
-        CopyRowsGmToUb(state, context_.params.initialState[initialStateOffset], stateValidRows,
+        CopyRowsGmToUb<DIM>(state, context_.params.initialState[initialStateOffset], stateValidRows,
                       context_.params.dk, context_.params.dk);
         Mutex::Unlock<PIPE_MTE2>(stateMutex);
         Mutex::Lock<PIPE_MTE3>(stateMutex);
-        CopyStateRowsUbToGm(context_.params.finalState[finalStateOffset], state, stateValidRows, context_.params.dk);
+        CopyRowsUbToGm<DIM>(context_.params.finalState[finalStateOffset], state,
+            stateValidRows, context_.params.dk, context_.params.dk);
         Mutex::Unlock<PIPE_MTE3>(stateMutex);
     }
 
