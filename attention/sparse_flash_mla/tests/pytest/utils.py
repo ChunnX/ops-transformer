@@ -318,6 +318,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),
             "template_mode": params.get("template_mode", [None]),
+            "golden_device": params.get("golden_device", ["cpu"]),
             "q_datarange": params.get("q_datarange", ["[-2, 2]"]),
             "ori_kv_datarange": params.get("ori_kv_datarange", ["[-2, 2]"]),
             "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-2, 2]"]),

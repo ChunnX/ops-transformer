@@ -78,6 +78,7 @@ class GeneralizedSFA:
         ori_win_right,
         ori_topk_length,
         cmp_topk_length,
+        device="cpu",
     ):
         self.layout_q = layout_q
         self.layout_kv = layout_kv
@@ -110,6 +111,8 @@ class GeneralizedSFA:
         self.ori_win_right = ori_win_right
         self.ori_topk_length = ori_topk_length
         self.cmp_topk_length = cmp_topk_length
+        # 计算设备：默认 CPU；"npu" 时用 torch 小算子在 NPU 上完成预期输出计算。
+        self.device = device
 
     @staticmethod
     def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
@@ -158,7 +161,8 @@ class GeneralizedSFA:
         score_max = initial_score_max.clone()
         sumexp = torch.ones_like(score_max, dtype=torch.float32)
         acc_o = torch.zeros(
-            (q_fp32.shape[0], k_block_fp32.shape[-1]), dtype=torch.float32
+            (q_fp32.shape[0], k_block_fp32.shape[-1]), dtype=torch.float32,
+            device=q_fp32.device,
         )
 
         for s2_start in range(0, k_block_fp32.shape[0], s2_base_size):
@@ -203,7 +207,10 @@ class GeneralizedSFA:
             initial_max = (
                 sinks.clone()
                 if block_id == 0 and sinks is not None
-                else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
+                else torch.full(
+                    (q_fp32.shape[0],), -torch.inf, dtype=torch.float32,
+                    device=q_fp32.device,
+                )
             )
             local_max, local_sum, local_o = self._calculate_local_s2_block(
                 q_fp32, k_block, initial_max
@@ -252,7 +259,7 @@ class GeneralizedSFA:
         return_softmax_lse=False,
         batch_consistency=False,
     ):
-        attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype, device=q_bnsd.device)
         softmax_lse = None
         if return_softmax_lse:
             softmax_lse = torch.zeros(
@@ -263,6 +270,7 @@ class GeneralizedSFA:
                     q_bnsd.shape[1] // ori_k_bnsd.shape[1],
                 ),
                 dtype=torch.float32,
+                device=q_bnsd.device,
             )
         B = q_bnsd.shape[0]
         if seqused_q is not None:
@@ -423,7 +431,7 @@ class GeneralizedSFA:
 
                     if is_empty(cur_ori_k_bnsd) and is_empty(cur_cmp_k):
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
-                            [G, self.D], dtype=torch.float
+                            [G, self.D], dtype=torch.float, device=q_bnsd.device
                         )
                         continue
 
@@ -490,10 +498,9 @@ class GeneralizedSFA:
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
                             total_s2_loop_time = cmp_s2_loop_time
-                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(
-                                1.0, 1.0
-                            )
-                            row_max = torch.empty((G, 1), dtype=torch.float32)
+                            row_sum = torch.empty(
+                                (G), dtype=torch.float32, device=q_bnsd.device
+                            ).uniform_(1.0, 1.0)
                             row_max = cur_sinks
                         else:
                             ori_s2_loop_time = math.ceil(
@@ -501,10 +508,9 @@ class GeneralizedSFA:
                             )
                             total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
                             cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                            row_sum = torch.empty((G), dtype=torch.float32).uniform_(
-                                1.0, 1.0
-                            )
-                            row_max = torch.empty((G, 1), dtype=torch.float32)
+                            row_sum = torch.empty(
+                                (G), dtype=torch.float32, device=q_bnsd.device
+                            ).uniform_(1.0, 1.0)
                             row_max = cur_sinks
 
                         for i_S2 in range(total_s2_loop_time):
@@ -568,18 +574,18 @@ class GeneralizedSFA:
                         total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
 
                         cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                        row_sum = torch.empty((G), dtype=torch.float32).uniform_(
-                            1.0, 1.0
-                        )  # due to sinks
-                        row_max = torch.empty((G, 1), dtype=torch.float32)
+                        row_sum = torch.empty(
+                            (G), dtype=torch.float32, device=q_bnsd.device
+                        ).uniform_(1.0, 1.0)  # due to sinks
                         row_max = cur_sinks
                         O_flash = torch.empty(
-                            (G, q_bnsd.shape[3]), dtype=torch.float32
+                            (G, q_bnsd.shape[3]), dtype=torch.float32,
+                            device=q_bnsd.device,
                         ).uniform_(2 ** (-80), 2 ** (-80))  # 注意D轴
 
-                        rcof_old = torch.empty((G), dtype=torch.float32).uniform_(
-                            1.0, 1.0
-                        )
+                        rcof_old = torch.empty(
+                            (G), dtype=torch.float32, device=q_bnsd.device
+                        ).uniform_(1.0, 1.0)
 
                         for i_S2 in range(total_s2_loop_time):
                             if i_S2 < ori_s2_loop_time:  # ori_kv
@@ -735,10 +741,11 @@ class GeneralizedSFA:
 
         empty_flag = False
         if len(s2_sparse) == 0:
-            cur_ori_k = torch.tensor([])
+            cur_ori_k = torch.empty(0, dtype=k_tensor.dtype, device=k_tensor.device)
             empty_flag = True
         else:
-            cur_ori_k = k_tensor[i_B, i_N2, s2_sparse, :]
+            s2_idx = torch.tensor(s2_sparse, dtype=torch.long, device=k_tensor.device)
+            cur_ori_k = k_tensor[i_B, i_N2].index_select(0, s2_idx)
         return empty_flag, cur_ori_k
 
     def gather_cmp_kv(
@@ -796,7 +803,8 @@ class GeneralizedSFA:
             cur_cmp_k = []
             empty_flag = True
         else:
-            cur_cmp_k = k_tensor[i_B, i_N2, s2_sparse, :]
+            s2_idx = torch.tensor(s2_sparse, dtype=torch.long, device=k_tensor.device)
+            cur_cmp_k = k_tensor[i_B, i_N2].index_select(0, s2_idx)
         return empty_flag, cur_cmp_k
 
     def sinks_softmax(self, x, sinks):  # [G, S2] [G, 1]
@@ -827,7 +835,9 @@ class GeneralizedSFA:
             seqused_per_batch = (
                 seqused if seqused is not None else act_seq_per_batch
             )  # padding
-            new_tensor = torch.zeros((B, N, max_s1, D), dtype=tensor.dtype)
+            new_tensor = torch.zeros(
+                (B, N, max_s1, D), dtype=tensor.dtype, device=tensor.device
+            )
             # t_start = 0
             for b_index in range(B):
                 t_start = int(act_seq[b_index])
@@ -862,7 +872,9 @@ class GeneralizedSFA:
                 if seqused_q is not None
                 else prefix_sum_to_original(cu_seqlens_q)
             )
-            new_tensor = torch.zeros((B, 1, max_s1, 1), dtype=tensor.dtype)
+            new_tensor = torch.zeros(
+                (B, 1, max_s1, 1), dtype=tensor.dtype, device=tensor.device
+            )
             for b_index in range(B):
                 t_start = int(cu_seqlens_q[b_index])
                 cur_seqused = int(seqused_per_batch[b_index])
@@ -882,7 +894,7 @@ class GeneralizedSFA:
             B = tensor.shape[0]
             N = tensor.shape[1]
             D = tensor.shape[3]
-            output = torch.zeros((T, N, D), dtype=torch.float)
+            output = torch.zeros((T, N, D), dtype=torch.float, device=tensor.device)
             t_start = 0
             act_seq_per_batch = prefix_sum_to_original(act_seq)
             for b_index in range(B):
@@ -907,7 +919,7 @@ class GeneralizedSFA:
             B = tensor.shape[0]
             N2 = tensor.shape[1]
             G = tensor.shape[3]
-            output = torch.zeros((N2, T, G), dtype=torch.float)
+            output = torch.zeros((N2, T, G), dtype=torch.float, device=tensor.device)
             t_start = 0
             act_seq_per_batch = prefix_sum_to_original(
                 act_seq
@@ -1751,6 +1763,10 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     return_softmax_lse = params.get("return_softmax_lse")
     batch_consistency = params.get("batch_consistency", False)
     template_mode = params.get("template_mode")
+    golden_device = params.get("golden_device", "cpu")
+    if isinstance(golden_device, (list, tuple)):
+        golden_device = golden_device[0] if golden_device else "cpu"
+    golden_device = "npu" if str(golden_device).lower() == "npu" else "cpu"
 
     # 路由到各算子的逻辑。必须先于Tensor转换和压缩长度推导执行，
     # 否则SWA会从共享参数中生成无效的cmp_kv相关Tensor。
@@ -2100,7 +2116,11 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
         "batch_consistency": batch_consistency,
     }
     if generate_golden:
-        generate_cpu_golden({"golden_state": golden_state})
+        if golden_device == "npu":
+            print("golden_device=npu: 用 torch 小算子在 NPU 上计算预期输出")
+            generate_npu_golden({"golden_state": golden_state})
+        else:
+            generate_cpu_golden({"golden_state": golden_state})
         cpu_result = golden_state["cpu_output"]
         softmax_lse = golden_state["softmax_lse"]
     else:
@@ -2212,9 +2232,21 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     return input_data
 
 
-def generate_cpu_golden(input_data):
-    """Calculate CPU reference from input-stage state without regenerating random tensors."""
+def _compute_golden(input_data, device="cpu"):
+    """Reuse the per-(B,N2,S1) online-softmax loop, optionally on NPU.
+
+    Only the heavy compute tensors (q / kv / sinks) are moved to ``device``;
+    metadata and sparse indices stay on CPU for Python-level shape/index/range
+    logic. Gather indices are copied to the KV device when needed. Results are
+    always returned on CPU.
+    """
     state = input_data["golden_state"]
+
+    def move(tensor):
+        if tensor is None or device == "cpu" or not torch.is_tensor(tensor):
+            return tensor
+        return tensor.to(device)
+
     test_smla = GeneralizedSFA(
         state["layout_q"],
         state["layout_kv"],
@@ -2246,10 +2278,11 @@ def generate_cpu_golden(input_data):
         state["ori_win_right"],
         state["ori_topk_length"],
         state["cmp_topk_length"],
+        device=device,
     )
-    cpu_output, softmax_lse = test_smla.forward(
-        state["q"],
-        state["ori_k"],
+    golden_output, softmax_lse = test_smla.forward(
+        move(state["q"]),
+        move(state["ori_k"]),
         state["ori_sparse_indices"],
         state["cu_seqlens_q"],
         state["cu_seqlens_ori_kv"],
@@ -2257,9 +2290,9 @@ def generate_cpu_golden(input_data):
         state["seqused_ori_kv"],
         state["seqused_cmp_kv"],
         state["cmp_residual_kv"],
-        state["sinks"],
+        move(state["sinks"]),
         state["template_idx"],
-        state["cmp_k"],
+        move(state["cmp_k"]),
         state["cmp_sparse_indices"],
         state["seqused_q"],
         state["ori_topk_length"],
@@ -2267,11 +2300,25 @@ def generate_cpu_golden(input_data):
         state["return_softmax_lse"],
         state.get("batch_consistency", False),
     )
-    state["cpu_output"] = cpu_output
+    golden_output = golden_output.cpu()
+    softmax_lse = softmax_lse.cpu() if softmax_lse is not None else None
+    state["cpu_output"] = golden_output
     state["softmax_lse"] = softmax_lse
-    input_data["cpu_output"] = cpu_output
+    input_data["cpu_output"] = golden_output
     input_data["softmax_lse"] = softmax_lse
-    return cpu_output, softmax_lse
+    return golden_output, softmax_lse
+
+
+def generate_cpu_golden(input_data):
+    """Calculate CPU reference from input-stage state without regenerating random tensors."""
+    return _compute_golden(input_data, device="cpu")
+
+
+def generate_npu_golden(input_data):
+    """Calculate the reference on NPU with torch ops, independently of the SMLA op."""
+    import torch_npu  # noqa: F401  确保 NPU 后端已加载
+
+    return _compute_golden(input_data, device="npu")
 
 
 def save_test_case(input_data, output_dir):
