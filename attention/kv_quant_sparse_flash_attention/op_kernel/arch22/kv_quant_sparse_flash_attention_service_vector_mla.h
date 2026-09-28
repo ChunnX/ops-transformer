@@ -303,7 +303,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
         }
     }
     // Keep the aligned tail finite and avoid a non-32B vector tail write
-    // (507015 on 910B) when the valid sequence is shorter than 512 columns.
+    // when the valid sequence is shorter than 512 columns.
     Duplicate(tq4ScaleBuf_.Get<T>()[TQ4_SCALE_UB_F32], static_cast<T>(1.0), TQ4_SCALE_SLOT_STRIDE);
     PipeBarrier<PIPE_ALL>();
 }

@@ -1424,7 +1424,6 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
                     "TQ4 key and value quant modes must both be 3"),
                 return ge::GRAPH_FAILED);
 
-    // TQ4 仅在 arch22(Atlas A2/A3) kernel 实现，A5(950/arch35) kernel 无该分支
     OP_CHECK_IF(qsfaInfo_.isA5 && keyQuantMode_ == KEY_QUANT_MODE_TQ4,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode", std::to_string(keyQuantMode_).c_str(),
                                                       "TQ4 is supported on Atlas A2/A3 only, but not on Ascend 950"),
