@@ -43,6 +43,11 @@ private:
     ge::graphStatus CheckFeatureMLAOutQuant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const;
+    bool IsPostQuantOffsetEnabled(const FiaTilingInfo &fiaInfo) const;
+    int64_t GetBatchActualSeqLength(const FiaTilingInfo &fiaInfo, uint32_t batchIdx) const;
+    int64_t GetBatchActualSeqLengthKV(const FiaTilingInfo &fiaInfo, uint32_t batchIdx) const;
+    void GetBatchSparsePreNextTokens(const FiaTilingInfo &fiaInfo, int64_t actualSeqLen, int64_t actualSeqLenKV,
+                                     int64_t &preTokensPerbatch, int64_t &nextTokensPerbatch) const;
     ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo) const;
 

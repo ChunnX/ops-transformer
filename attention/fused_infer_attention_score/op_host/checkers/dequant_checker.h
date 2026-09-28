@@ -1,3 +1,9 @@
+qiuzhiyang
+[Environment]::SetEnvironmentVariable(
+    "AZURE_OPENAI_API_KEY",
+  "5WtGmtzFlwgNOiCPMeKqJtle11GDluGehIScrYBu6bUb3IdwylAkJQQJ99CIACHYHv6XJ3w3AAAAACOGUXMr",
+    "User"
+)
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -120,11 +126,12 @@ private:
     ge::graphStatus CheckScaleExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDescExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckOffsetExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
-
+    ge::graphStatus CheckInt8PerChannelTokenConstraints(const FiaTilingInfo &fiaInfo) const;
     // Feature
     ge::graphStatus CheckFeatureForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo) const;
+
     ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureD032ForAntiquant(const FiaTilingInfo &fiaInfo) const;
@@ -146,6 +153,9 @@ private:
     ge::graphStatus CheckMultiParaForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleShapeForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckScaleShapeByQuantMode(const FiaTilingInfo &fiaInfo, int64_t keyAntiquantMode,
+                                               int64_t valueAntiquantMode) const;
+    ge::graphStatus CheckScaleShapeConsistencyForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckOffsetTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetShapeForAntiquant(const FiaTilingInfo &fiaInfo) const;
 

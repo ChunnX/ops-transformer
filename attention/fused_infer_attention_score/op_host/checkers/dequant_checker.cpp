@@ -7,7 +7,12 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
   */
-
+qiuzhiyang
+[Environment]::SetEnvironmentVariable(
+    "AZURE_OPENAI_API_KEY",
+  "5WtGmtzFlwgNOiCPMeKqJtle11GDluGehIScrYBu6bUb3IdwylAkJQQJ99CIACHYHv6XJ3w3AAAAACOGUXMr",
+    "User"
+)
 /*!
  * \file dequant_checker.cpp
  * \brief
@@ -2503,68 +2508,91 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus DequantChecker::CheckInt8PerChannelTokenConstraints(const FiaTilingInfo &fiaInfo) const
+{
+    // INT8 + per-channel/per-token模式：query和attention_out必须是BF16
+    if (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16) {
+        std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            fiaInfo.opName, "query and attention_out", dtypeMsg.c_str(),
+            "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, "
+            "the dtype of query and attention_out must be BFLOAT16");
+        return ge::GRAPH_FAILED;
+    }
+
+    // INT8 + per-channel/per-token模式：query的S轴不能大于16
+    if (fiaInfo.s1Size > NUM_16) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", std::to_string(fiaInfo.s1Size).c_str(),
+                                              "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, "
+                                              "the axis S of query should not be greater than 16");
+        return ge::GRAPH_FAILED;
+    }
+
+    // INT8 + per-channel/per-token模式：不支持tensorlist
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            fiaInfo.opName, "key and value",
+            "key and value do not support tensorlist storage mode when the dtype is INT8 and "
+            "keyAntiquantMode is 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // INT8 + per-channel/per-token模式：非batch连续且D0!=32不支持
+    if (!fiaInfo.batchContinuousFlag && fiaInfo.kvCacheNzD0 != NUM_32) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            fiaInfo.opName, "key and value",
+            "key and value do not support non-batch-continuous page attention storage mode when the dtype is INT8 "
+            "and keyAntiquantMode is 0 or 1 in D0=16 PA_NZ antiquant scenario");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo) const
 {
-    if (fiaInfo.s1Size > 1) {
-        int64_t keyAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
-        if ((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
-             keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantMode",
-                                                  std::to_string(keyAntiquantMode).c_str(),
-                                                  "When the dtype of key/value is INT8 and the S axis of query > 1, "
-                                                  "keyAntiquantMode 2, 3, 4, 5 are not supported");
-            return ge::GRAPH_FAILED;
-        }
+    if (fiaInfo.s1Size <= 1) {
+        return ge::GRAPH_SUCCESS;
+    }
 
-        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 &&
-            (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16)) {
-            std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                fiaInfo.opName, "query and attention_out", dtypeMsg.c_str(),
-                "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, "
-                "the dtype of query and attention_out must be BFLOAT16");
-            return ge::GRAPH_FAILED;
-        }
+    if (fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32) {
+        std::string dtypeMsg = ToString(fiaInfo.inputKvType);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            fiaInfo.opName, "key/value", dtypeMsg.c_str(),
+            "In keyAntiquant/valueAntiquant split mode scenario, the dtypes of key "
+            "and value cannot be INT4 or INT32");
+        return ge::GRAPH_FAILED;
+    }
 
-        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", std::to_string(fiaInfo.s1Size).c_str(),
-                                                  "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, "
-                                                  "the axis S of query should not be greater than 16");
-            return ge::GRAPH_FAILED;
-        }
+    int64_t keyAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+    }
 
-        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                fiaInfo.opName, "key and value",
-                "key and value do not support tensorlist storage mode when the dtype is INT8 and "
-                "keyAntiquantMode is 0 or 1");
-            return ge::GRAPH_FAILED;
-        }
+    if (fiaInfo.inputKvType != ge::DT_INT8) {
+        return ge::GRAPH_SUCCESS;
+    }
 
-        if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 && (!fiaInfo.batchContinuousFlag && fiaInfo.kvCacheNzD0 != NUM_32)) {
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                fiaInfo.opName, "key and value",
-                "key and value do not support non-batch-continuous page attention storage mode when the dtype is INT8 "
-                "and keyAntiquantMode is 0 or 1 in D0=16 PA_NZ antiquant scenario");
-            return ge::GRAPH_FAILED;
-        }
-        if (fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32) {
-            std::string dtypeMsg = ToString(fiaInfo.inputKvType);
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                fiaInfo.opName, "key/value", dtypeMsg.c_str(),
-                "In keyAntiquant/valueAntiquant split mode scenario, the dtypes of key "
-                "and value cannot be INT4 or INT32");
+    // INT8场景：keyAntiquantMode 2/3/4/5不支持
+    static const std::set<int64_t> headOrPaModes = {static_cast<int64_t>(PER_TENSOR_HEAD_MODE),
+                                                    static_cast<int64_t>(PER_TOKEN_HEAD_MODE),
+                                                    static_cast<int64_t>(PER_TOKEN_PA_MODE),
+                                                    static_cast<int64_t>(PER_TOKEN_HEAD_PA_MODE)};
+    if (headOrPaModes.find(keyAntiquantMode) != headOrPaModes.end()) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantMode",
+                                              std::to_string(keyAntiquantMode).c_str(),
+                                              "When the dtype of key/value is INT8 and the S axis of query > 1, "
+                                              "keyAntiquantMode 2, 3, 4, 5 are not supported");
+        return ge::GRAPH_FAILED;
+    }
+
+    // INT8 + per-channel/per-token模式：附加约束
+    if (keyAntiquantMode == static_cast<int64_t>(PER_CHANNEL_MODE) ||
+        keyAntiquantMode == static_cast<int64_t>(PER_TOKEN_MODE)) {
+        if (ge::GRAPH_SUCCESS != CheckInt8PerChannelTokenConstraints(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2987,12 +3015,65 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus DequantChecker::CheckScaleShapeByQuantMode(const FiaTilingInfo &fiaInfo, int64_t keyAntiquantMode,
+                                                            int64_t valueAntiquantMode) const
+{
+    using CheckFunc = ge::graphStatus (DequantChecker::*)(const FiaTilingInfo &) const;
+    static const std::map<std::pair<int64_t, int64_t>, CheckFunc> dispatchMap = {
+        {std::make_pair(static_cast<int64_t>(PER_CHANNEL_MODE), static_cast<int64_t>(PER_CHANNEL_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode},
+        {std::make_pair(static_cast<int64_t>(PER_TOKEN_MODE), static_cast<int64_t>(PER_TOKEN_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTokenMode},
+        {std::make_pair(static_cast<int64_t>(PER_TENSOR_HEAD_MODE), static_cast<int64_t>(PER_TENSOR_HEAD_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTensorHeadMode},
+        {std::make_pair(static_cast<int64_t>(PER_TOKEN_HEAD_MODE), static_cast<int64_t>(PER_TOKEN_HEAD_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTokenHeadMode},
+        {std::make_pair(static_cast<int64_t>(PER_TOKEN_PA_MODE), static_cast<int64_t>(PER_TOKEN_PA_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTokenPAMode},
+        {std::make_pair(static_cast<int64_t>(PER_TOKEN_HEAD_PA_MODE), static_cast<int64_t>(PER_TOKEN_HEAD_PA_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTokenHeadPAMode},
+        {std::make_pair(static_cast<int64_t>(PER_TOKEN_GROUP_MODE), static_cast<int64_t>(PER_TOKEN_GROUP_MODE)),
+         &DequantChecker::CheckKScaleShapeForPerTokenGroupMode},
+    };
+
+    auto it = dispatchMap.find(std::make_pair(keyAntiquantMode, valueAntiquantMode));
+    if (it != dispatchMap.end()) {
+        return (this->*(it->second))(fiaInfo);
+    }
+
+    // key支持per-channel叠加value支持per-token
+    if (keyAntiquantMode == static_cast<int64_t>(PER_CHANNEL_MODE) &&
+        valueAntiquantMode == static_cast<int64_t>(PER_TOKEN_MODE)) {
+        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo) ||
+            ge::GRAPH_SUCCESS != CheckVScaleShapeForPerTokenMode(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckScaleShapeConsistencyForAntiquant(const FiaTilingInfo &fiaInfo) const
+{
+    auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
+    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
+    gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
+    if (keyAntiquantScaleTensorShape != valueAntiquantScaleTensorShape) {
+        std::string shapeMsg =
+            ToString(keyAntiquantScaleTensorShape) + " and " + ToString(valueAntiquantScaleTensorShape);
+        std::string reasonMsg =
+            "The shape of key_antiquant_scale and value_antiquant_scale must be the same when keyAntiquantMode is "
+            "not per-channel mode and valueAntiquantMode is not per-token mode";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
+                                               shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo &fiaInfo) const
 {
     // 校验scale矩阵的shape的合法性
-    auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-    auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-
     int64_t keyAntiquantMode = 0;
     int64_t valueAntiquantMode = 0;
     if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
@@ -3002,75 +3083,15 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
         valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
     }
 
-    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
-    gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
-    uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
-    uint32_t valueAntiquantScaleTensorDimNum = valueAntiquantScaleTensorShape.GetDimNum();
-    uint32_t numKeyValueHeads = fiaInfo.n2Size;
-    uint32_t headDim = fiaInfo.qkHeadDim;
-    uint32_t batchSize = fiaInfo.bSize;
-    uint64_t seqLength = fiaInfo.s2Size;
-    if (fiaInfo.kvCacheNzD0 == NUM_32) {
-        // kv cache排布为NZ且最后一维D0为32下，scaleshape存在以下约束
-        // perchannel：inputLayout为BSH时为[H]，inputLayout为BNSD时为[N,1,D]，inputLayout为BSND时为[N,D]
-        // pertoken: keyAntiquantScale的shape为[B,S]，S需要大于等于blockTable第二维大小（shape[1]）与blockSize的乘积
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForKvCacheNz(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
+    if (ge::GRAPH_SUCCESS != CheckScaleShapeByQuantMode(fiaInfo, keyAntiquantMode, valueAntiquantMode)) {
+        return ge::GRAPH_FAILED;
     }
-    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTensorHeadMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenPAMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenHeadPAMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
-        // key支持per-channel叠加value支持per-token
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo) ||
-            ge::GRAPH_SUCCESS != CheckVScaleShapeForPerTokenMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupMode(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (!((keyAntiquantMode == PER_CHANNEL_MODE) && (valueAntiquantMode == PER_TOKEN_MODE))) {
-        // 除key支持per-channel叠加value支持per-token模式以外
-        // keyAntiquantScale的shape必须与valueAntiquantScale一致
-        if (keyAntiquantScaleTensorShape != valueAntiquantScaleTensorShape) {
-            std::string shapeMsg =
-                ToString(keyAntiquantScaleTensorShape) + " and " + ToString(valueAntiquantScaleTensorShape);
-            std::string reasonMsg =
-                "The shape of key_antiquant_scale and value_antiquant_scale must be the same when keyAntiquantMode is "
-                "not per-channel mode and valueAntiquantMode is not per-token mode";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
-                                                   shapeMsg.c_str(), reasonMsg.c_str());
+
+    // 除key支持per-channel叠加value支持per-token模式以外
+    // keyAntiquantScale的shape必须与valueAntiquantScale一致
+    if (!(keyAntiquantMode == static_cast<int64_t>(PER_CHANNEL_MODE) &&
+          valueAntiquantMode == static_cast<int64_t>(PER_TOKEN_MODE))) {
+        if (ge::GRAPH_SUCCESS != CheckScaleShapeConsistencyForAntiquant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
