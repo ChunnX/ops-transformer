@@ -6,7 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""Independent CPU reference for ORI_SPARSE and ORI_CMP_SPARSE.
+"""Independent CPU reference for ORI_SPARSE, ORI_CMP_SPARSE and CMP_SPARSE.
 
 Packed KV decodes to shared K/V in logical [nope448, rope64] order.
 Each query gathers the specified optional TopK prefix (all K columns if omitted)
@@ -159,7 +159,7 @@ def mqsmla_cpu_benchmark(ref, scenario=None, quant_mode=None, return_softmax_lse
     quant_mode = ref["quant_mode"] if quant_mode is None else quant_mode
     if int(quant_mode) != int(C.QuantMode.CONTIGUOUS):
         raise ValueError("only quant_mode=1 is supported")
-    sides = ("ori", "cmp") if scenario == C.Scenario.ORI_CMP_SPARSE else ("ori",)
+    sides = scenario_sides(scenario)
     decoded = {side: kv_dequant(ref[side]) for side in sides}
     lengths = {side: _topk_lengths(ref["T1"], ref[f"{side}_sparse_indices"].shape[1],
                                  ref[f"{side}_topk_length"]) for side in sides}
@@ -201,8 +201,20 @@ def mqsmla_cpu_benchmark(ref, scenario=None, quant_mode=None, return_softmax_lse
 # =============================================================================
 
 def _validate_scenario(scenario):
-    if scenario not in (C.Scenario.ORI_SPARSE, C.Scenario.ORI_CMP_SPARSE):
-        raise ValueError("only ORI_SPARSE and ORI_CMP_SPARSE are supported")
+    if scenario not in (C.Scenario.ORI_SPARSE, C.Scenario.ORI_CMP_SPARSE,
+                        C.Scenario.CMP_SPARSE):
+        raise ValueError("only ORI_SPARSE, ORI_CMP_SPARSE and CMP_SPARSE "
+                         "are supported")
+
+
+def scenario_sides(scenario):
+    """Active KV sides per scenario: ori-only, ori+cmp, or cmp-only."""
+    _validate_scenario(scenario)
+    if scenario == C.Scenario.ORI_SPARSE:
+        return ("ori",)
+    if scenario == C.Scenario.CMP_SPARSE:
+        return ("cmp",)
+    return ("ori", "cmp")
 
 
 
@@ -259,6 +271,8 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
     Random indices sample with replacement, so generation needs only [T1,K]
     storage. Explicit lengths override the mode; otherwise fullK uses K
     and random generates a positive prefix length per query.
+    CMP_SPARSE builds only the cmp pool (S2C/K2); seqlen_kv/ori_topk are
+    unused there.
     """
     torch = _torch()
     _validate_scenario(scenario)
@@ -277,7 +291,7 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
 
     q_lengths, cu_seqlens_q, seqused_q = query_lengths(
         batch_size, seqlen_q, cu_seqlens_q, seqused_q)
-    ori_lengths = batch_lengths(seqlen_kv)
+    sides = scenario_sides(scenario)
     query_batch = torch.repeat_interleave(torch.arange(batch_size), q_lengths.long())
     T1, D = int(q_lengths.sum()), C.D
     g = torch.Generator().manual_seed(seed)
@@ -337,9 +351,12 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         ref[f"{side}_sparse_indices"] = indices
         ref[f"{side}_topk_length"] = lengths
 
-    make_side("ori", ori_lengths, ori_topk, ori_topk_length, ori_kv_topk_mode)
-    if scenario == C.Scenario.ORI_CMP_SPARSE:
-        make_side("cmp", batch_lengths(cmp_seqlen), cmp_topk, cmp_topk_length, cmp_kv_topk_mode)
+    if "ori" in sides:
+        make_side("ori", batch_lengths(seqlen_kv), ori_topk, ori_topk_length,
+                  ori_kv_topk_mode)
+    if "cmp" in sides:
+        make_side("cmp", batch_lengths(cmp_seqlen), cmp_topk, cmp_topk_length,
+                  cmp_kv_topk_mode)
     inputs = {"q": q, "sinks": sinks, "quant_mode": int(quant_mode),
               "softmax_scale": ref["softmax_scale"], "cu_seqlens_q": cu_seqlens_q,
               "seqused_q": seqused_q, "layout_q": layout_q, "layout_kv": layout_kv}
@@ -392,7 +409,7 @@ def pack_pa_layout(ref, quant_mode=None, block_size=64, spare_blocks=2, seed=17,
     assert int(quant_mode) == int(C.QuantMode.CONTIGUOUS)
     g = torch.Generator().manual_seed(seed)
     out = {}
-    sides = ("ori", "cmp") if ref["scenario"] == C.Scenario.ORI_CMP_SPARSE else ("ori",)
+    sides = scenario_sides(ref["scenario"])
     for side in sides:
         bs = block_size if side == "ori" or cmp_block_size is None else int(cmp_block_size)
         lengths = ref[f"{side}_seqlens"].long()
