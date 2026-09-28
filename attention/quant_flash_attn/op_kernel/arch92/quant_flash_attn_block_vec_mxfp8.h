@@ -898,7 +898,8 @@ public:
 
         isSkipMask_ = IsSkipAttentionmask(maskInfo);
         if (unlikely(!isSkipMask_)) {
-            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt_, maskInfo);
+            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt_, maskInfo,
+                                                                             mBaseSize);
         }
     }
 };
