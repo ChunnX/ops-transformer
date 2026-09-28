@@ -26,6 +26,8 @@ static constexpr uint32_t MAX_EP_RANK_SIZE = 256U;
 // 其他架构epWorldSize上限为128，维持原容量避免kernel栈帧超限
 static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
 #endif
+// scale通信axis(2*CeilDiv(H1,64)字节/token)非块对齐，HCCL要求recv段基址按512B对齐放置
+static constexpr uint64_t SCALE_COMM_ALIGN_BYTES = 512U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t MAX_EXPERT_PER_RANK = 32U;

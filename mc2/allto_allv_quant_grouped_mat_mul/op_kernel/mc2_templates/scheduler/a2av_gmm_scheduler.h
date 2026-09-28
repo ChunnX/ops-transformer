@@ -68,6 +68,9 @@ public:
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
             uint64_t permuteScaleOutSize = Align(tilingData_->taskTilingInfo.A * scaleAxis, TENSOR_LIST_SIZE);
+            // scale通信recv段基址按512B对齐累加，预留每段最大padding余量
+            permuteScaleOutSize +=
+                tilingData_->taskTilingInfo.e * tilingData_->taskTilingInfo.epWorldSize * (SCALE_COMM_ALIGN_BYTES - 1);
             gmmxScaleCommOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += permuteScaleOutSize;
             gmmxScalePermuteOutGm_ = gmmxScaleCommOutGm_;
