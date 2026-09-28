@@ -21,9 +21,9 @@ extern "C" {
 /**
  * @brief 计算BlockAttnResPrepare所需的工作空间大小。
  *
- * @param blockRes [输入] 形状为[T, N, D]的FP32 ND张量。
+ * @param blockRes [输入] 形状为[T, N, D]的FP32或BF16 ND张量。
  * @param validBlocks [输入] 形状为[1]的UINT64 ND张量。
- * @param pseudoQuery [输入] FP32 ND张量，shape为[S, D]。
+ * @param pseudoQuery [输入] 与blockRes数据类型一致的ND张量，shape为[S, D]。
  *
  * @param numerator [输出] 形状为[S, T, D]的FP32 ND张量。
  * @param logitMax [输出] 形状为[S, T]的FP32 ND张量。

@@ -20,7 +20,8 @@
 
 #define BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR 0UL
 #define BLOCK_ATTN_RES_PREPARE_TPL_MIX 1UL
-#define BLOCK_ATTN_RES_PREPARE_TEMPLATE_MODE_BIT_WIDTH 1U
+#define BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16 2UL
+#define BLOCK_ATTN_RES_PREPARE_TEMPLATE_MODE_BIT_WIDTH 2U
 
 namespace BlockAttnResPrepareTilingKey {
 
@@ -30,14 +31,18 @@ static_assert(BLOCK_ATTN_RES_PREPARE_TPL_MIX == optiling::BLOCK_ATTN_RES_PREPARE
 ASCENDC_TPL_ARGS_DECL(BlockAttnResPrepare,
                       ASCENDC_TPL_UINT_DECL(TEMPLATE_MODE, BLOCK_ATTN_RES_PREPARE_TEMPLATE_MODE_BIT_WIDTH,
                                             ASCENDC_TPL_UI_LIST, BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR,
-                                            BLOCK_ATTN_RES_PREPARE_TPL_MIX));
+                                            BLOCK_ATTN_RES_PREPARE_TPL_MIX,
+                                            BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16));
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIV_ONLY),
                                      ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST,
                                                           BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR)),
                 ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                                      ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST,
-                                                          BLOCK_ATTN_RES_PREPARE_TPL_MIX)));
+                                                          BLOCK_ATTN_RES_PREPARE_TPL_MIX)),
+                ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIV_ONLY),
+                                     ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST,
+                                                          BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR_BF16)));
 
 } // namespace BlockAttnResPrepareTilingKey
 

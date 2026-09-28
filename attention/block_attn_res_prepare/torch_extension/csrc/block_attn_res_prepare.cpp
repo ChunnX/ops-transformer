@@ -67,12 +67,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
                 "valid_blocks must have shape [1], but got ", validBlocks.sizes());
     TORCH_CHECK(pseudoQuery.dim() == PSEUDO_QUERY_RANK, "pseudo_query must be a 2D tensor, but got ", pseudoQuery.dim(),
                 "D");
-    TORCH_CHECK(blockRes.scalar_type() == at::kFloat, "block_res must have dtype float32, but got ",
-                blockRes.scalar_type());
+    TORCH_CHECK(blockRes.scalar_type() == at::kFloat || blockRes.scalar_type() == at::kBFloat16,
+                "block_res must have dtype float32 or bfloat16, but got ", blockRes.scalar_type());
     TORCH_CHECK(validBlocks.scalar_type() == at::ScalarType::UInt64, "valid_blocks must have dtype uint64, but got ",
                 validBlocks.scalar_type());
-    TORCH_CHECK(pseudoQuery.scalar_type() == at::kFloat, "pseudo_query must have dtype float32, but got ",
-                pseudoQuery.scalar_type());
+    TORCH_CHECK(pseudoQuery.scalar_type() == blockRes.scalar_type(),
+                "pseudo_query must have the same dtype as block_res, but got ", pseudoQuery.scalar_type(),
+                " while block_res has ", blockRes.scalar_type());
     TORCH_CHECK(blockRes.device() == validBlocks.device() && blockRes.device() == pseudoQuery.device(),
                 "all inputs must be on the same device, but got block_res=", blockRes.device(),
                 ", valid_blocks=", validBlocks.device(), ", pseudo_query=", pseudoQuery.device());
