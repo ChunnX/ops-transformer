@@ -573,7 +573,7 @@ def _parse_datarange(val):
     if isinstance(val, (int, float)):
         f = float(val)
         return (-f, f)
-    s = str(val).strip()
+    s = str(val).strip().strip("[]()")
     parts = [p.strip() for p in s.split(",") if p.strip() != ""]
     if len(parts) == 1:
         f = float(parts[0])
