@@ -75,7 +75,6 @@ constexpr int64_t BS_MAX = 512;
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 16;
-constexpr int64_t MAX_WORLD_SIZE = 768L; // 384 * 2
 constexpr int64_t MIN_WORLD_SIZE = 2;
 
 constexpr uint32_t USER_QUANT_MODE_MX_E5M2 = 3U;
@@ -213,7 +212,7 @@ static bool CheckAndSetShapeAttrs(const gert::TilingContext *context, const char
 
 static bool CheckAttrValues(const char *nodeName, const uint32_t moeExpertNum, const uint32_t worldSize,
                             const int worldSizeRaw, const int quantMode, const int syncFlag, const int ffnStartRankId,
-                            const bool allowMxQuantMode)
+                            const bool allowMxQuantMode, const int64_t maxWorldSize)
 {
     OP_TILING_CHECK(
         (moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
@@ -242,10 +241,10 @@ static bool CheckAttrValues(const char *nodeName, const uint32_t moeExpertNum, c
                                   (std::string("[0, ") + std::to_string(worldSizeRaw) + ")").c_str()),
         return false);
     OP_TILING_CHECK(
-        (worldSize < MIN_WORLD_SIZE) || (worldSize > MAX_WORLD_SIZE),
+        (worldSize < MIN_WORLD_SIZE) || (static_cast<int64_t>(worldSize) > maxWorldSize),
         OP_LOGE_WITH_INVALID_ATTR(
             nodeName, "world_size", std::to_string(worldSize).c_str(),
-            (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
+            (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(maxWorldSize) + "]").c_str()),
         return false);
     return true;
 }
@@ -274,7 +273,7 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
     uint32_t worldSize = *worldSizePtr;
 
     OP_TILING_CHECK(!CheckAttrValues(nodeName, moeExpertNum, worldSize, *worldSizePtr, *quantModePtr, *syncFlagPtr,
-                                     *ffnStartRankIdPtr, config.allowMxQuantMode),
+                                     *ffnStartRankIdPtr, config.allowMxQuantMode, config.maxWorldSize),
                     static_cast<void>(0), return false);
 
     OP_TILING_CHECK(!CheckAndSetShapeAttrs(context, nodeName, tilingData, config),
@@ -723,8 +722,8 @@ static bool CheckXAndExpertIdShapes(const char *nodeName, const int32_t xDim0, c
 }
 
 static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expertRankTableDim0,
-                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum,
-                                      const AttentionToFFNTilingConfig &config)
+                                      const int32_t expertRankTableDim1, const int32_t expertRankTableDim2,
+                                      const int64_t moeExpertNum, const AttentionToFFNTilingConfig &config)
 {
     if (config.allowMultiLayer) {
         OP_TILING_CHECK(
@@ -748,6 +747,14 @@ static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expert
                                   (std::string("[") + std::to_string(moeExpertNum) + ", " +
                                    std::to_string(moeExpertNum + SHARED_EXPERT_MAX_NUM) + "]")
                                       .c_str()),
+        return false);
+    // 每行布局为 [rankCnt, (toRankId, localExpId) * rankCnt]，rankCnt 不超过 worldSize，故 M 上界为 2 * maxWorldSize +
+    // 1
+    const int64_t expRankTableMMax = 2 * config.maxWorldSize + 1;
+    OP_TILING_CHECK(
+        (expertRankTableDim2 < 1) || (expertRankTableDim2 > expRankTableMMax),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expert_rank_table", std::to_string(expertRankTableDim2).c_str(),
+                                  (std::string("[1, ") + std::to_string(expRankTableMMax) + "]").c_str()),
         return false);
     return true;
 }
@@ -779,9 +786,9 @@ static bool CheckTensorShapeAndSetTinglingData(const gert::TilingContext *contex
     OP_TILING_CHECK(!CheckXAndExpertIdShapes(nodeName, xDim0, xDim1, xDim2, sessionIdDim0, microBatchIdDim0,
                                              layerIdDim0, expertIdsDim0, expertIdsDim1, expertIdsDim2, moeExpertNum),
                     OP_LOGE(nodeName, "Check x and expertId shape failed!"), return false);
-    OP_TILING_CHECK(
-        !CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, moeExpertNum, config),
-        OP_LOGE(nodeName, "Check expertRankTable shape failed!"), return false);
+    OP_TILING_CHECK(!CheckExpertRankTableShape(nodeName, expertRankTableDim0, expertRankTableDim1, expertRankTableDim2,
+                                               moeExpertNum, config),
+                    OP_LOGE(nodeName, "Check expertRankTable shape failed!"), return false);
 
     if (isScales) {
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
