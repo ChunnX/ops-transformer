@@ -121,7 +121,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             softmax_precision: Optional[int] = 1,
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
-            residual_block_mode: Optional[Union[ResidualBlockMode, int]] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+            residual_block_mode: Optional[
+                Union[ResidualBlockMode, int]
+            ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
             is_consistent_topk: Optional[bool] = False,
         ):
             return torch.empty((GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta")
@@ -157,7 +159,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
             return_softmax_lse: Optional[bool] = False,
-            residual_block_mode: Optional[Union[ResidualBlockMode, int]] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+            residual_block_mode: Optional[
+                Union[ResidualBlockMode, int]
+            ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
             is_consistent_topk: Optional[bool] = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
@@ -214,7 +218,9 @@ def generic_block_sparse_attention_metadata(
     softmax_precision: Optional[int] = 1,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
-    residual_block_mode: Optional[Union[ResidualBlockMode, int]] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
     is_consistent_topk: Optional[bool] = False,
 ):
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
@@ -293,7 +299,9 @@ def generic_block_sparse_attention_metadata_fallback(
     softmax_precision: Optional[int] = 1,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
-    residual_block_mode: Optional[Union[ResidualBlockMode, int]] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
     is_consistent_topk: Optional[bool] = False,
 ):
     return _generic_block_sparse_attention_metadata(
@@ -353,7 +361,9 @@ def generic_block_sparse_attention(
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
     return_softmax_lse: Optional[bool] = False,
-    residual_block_mode: Optional[Union[ResidualBlockMode, int]] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
     is_consistent_topk: Optional[bool] = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
