@@ -23,10 +23,7 @@ namespace optiling {
 constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 20000;
 constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t MAX_COPY_BLOCK_COUNT = 4095;
-<<<<<<< HEAD
-=======
 constexpr int32_t DEFAULT_WORKSPACE_SIZE = 0;
->>>>>>> b8a938608 (Remove unnecessary workspace for apply_rotary_pos_emb/rotary_position_embedding/kv_compress_epilog/interleave_rope)
 constexpr uint64_t TILING_KEY_ABA = 20010;
 constexpr uint64_t TILING_KEY_BA = 20011;
 constexpr int64_t HALF_INTERLEAVE_COEF = 2;
