@@ -185,6 +185,7 @@ public:
         curNOut_ = static_cast<uint64_t>(curN);
 
         kL1Iter_ = Blaze::Gemm::CeilDiv(oriK, kL1_);
+        dbgCurN0_ = static_cast<uint32_t>(curN); // DEBUG
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
@@ -313,6 +314,14 @@ private:
         if (isBias_ && kIdx == 0 && isFirstSplitK) {
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
+            // === DEBUG (temporary): GM bias 源地址 + L1 目标地址 ===
+            if (dbgBiasDumpCnt_ < 4) {
+                dbgBiasDumpCnt_++;
+                printf("[DBG] biasCopy: gmBiasAddr=%p l1Addr=%u curNL1=%u curN0=%u\n",
+                       reinterpret_cast<void *>(tensorBias.data().get()), static_cast<uint32_t>(biasL1Slot.Addr()),
+                       static_cast<uint32_t>(curNL1), static_cast<uint32_t>(dbgCurN0_));
+            }
+            // === DEBUG end ===
         }
 
         // Scale GM->L1 (int8 output fixpipe quantization)
@@ -498,6 +507,7 @@ private:
     uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
     uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
     uint32_t dbgIter0_{0};       // DEBUG (temporary)
+    uint32_t dbgCurN0_{0};       // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
