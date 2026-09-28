@@ -26,10 +26,10 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// 共享 GMM 启动前，输入准备需要满足的完成条件。
+// 共享 GMM 的输入来源决定 AIC 搬入前是否需要等待 quant/pack。
 enum class SharedGmmStartCondition {
     NoSharedExpert,
-    ResetDone,
+    InputDirectly,
     QuantOrPackDone,
 };
 

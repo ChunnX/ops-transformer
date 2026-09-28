@@ -106,12 +106,12 @@ protected:
     __aicore__ inline void QuantizeInputTokens(const WorkRange &tokenRange);
     __aicore__ inline void PrepareLocalInput(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void ProcessInputPreparationStage(SharedGmmStartCondition sharedGmmStartCondition);
-    __aicore__ inline void WaitForInputPreparation();
+    __aicore__ inline void WaitForInputPreparation(SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline SharedGmmStartCondition GetSharedGmmStartCondition() const;
     __aicore__ inline void ProcessTokenUnpermuteStage();
     __aicore__ inline void SyncBeforeSharedExpertGmm1();
     template <typename Derived>
-    __aicore__ inline void SyncBeforeMoeExpertStages(Derived &derived);
+    __aicore__ inline void SyncBeforeMoeExpertStages(Derived &derived, SharedGmmStartCondition sharedGmmStartCondition);
     __aicore__ inline void ExportAndResetExpertCounts();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -660,7 +660,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeSharedExpertG
 // 在 MoE 阶段开始前，AIV 承接前序搬出以复用 UB；AIC 承接 reset 完成以读取 GM 状态。
 template <TemplateMegaMoeTypeClass>
 template <typename Derived>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStages(Derived &derived)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStages(
+    Derived &derived, SharedGmmStartCondition sharedGmmStartCondition)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -672,7 +673,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncBeforeMoeExpertStag
         }
     } else {
         if (sharedExpertNum_ > 0U) {
-            // 共享 GMM 后进入 MoE，Scalar 状态轮询承接入口 MTE2 的输入就绪等待。
+            if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
+                // 共享直接读取输入时，输入准备通知在进入 MoE 前消费。
+                CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
+            }
+            // MoE 的 Scalar 状态轮询承接输入准备完成通知，保证 reset 已完成。
             SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
         }
     }
@@ -921,7 +926,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareLocalInput(
 {
     AivJobContext resetJob = aivJob_;
     AivJobContext tokenJob = aivJob_;
-    if (sharedGmmStartCondition == SharedGmmStartCondition::ResetDone) {
+    if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
         // 共享 GMM 直接读取原始输入：AIV0 分担 reset，AIV1 分担 pack，两者并行。
         const AivJobContext halfAivJob{.jobIndex = blockIdx_, .totalJobs = blockNum_};
         resetJob = GetSubBlockIdx() == 0U ? halfAivJob : AivJobContext{};
@@ -1019,10 +1024,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
 
 // 仅由 AIC 调用，分别承接输入搬运、Scalar 状态读取和 FIX 输出的依赖。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitForInputPreparation()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitForInputPreparation(
+    SharedGmmStartCondition sharedGmmStartCondition)
 {
-    CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
-    if (sharedExpertNum_ == 0U) {
+    // 共享直接读取原始输入时，MTE2 可提前搬入；输入准备通知留到 MoE 前消费。
+    if (sharedGmmStartCondition != SharedGmmStartCondition::InputDirectly) {
+        CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
+    }
+    if (sharedGmmStartCondition == SharedGmmStartCondition::NoSharedExpert) {
         // 直接进入 MoE，Scalar 状态轮询需要等待全部 reset 完成。
         SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID3>();
     }
@@ -1041,7 +1050,7 @@ __aicore__ inline SharedGmmStartCondition MegaMoe<TemplateMegaMoeTypeFunc>::GetS
     const bool sharedInputDirectly =
         !Std::IsSame<XType, bfloat16_t>::value && commonConfig_.tokenHiddenDim % MXFP_DIVISOR_SIZE == 0U;
     if (sharedInputDirectly) {
-        return SharedGmmStartCondition::ResetDone;
+        return SharedGmmStartCondition::InputDirectly;
     }
     return SharedGmmStartCondition::QuantOrPackDone;
 }
@@ -1081,7 +1090,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     if constexpr (g_coreType == AIV) {
         ProcessInputPreparationStage(sharedGmmStartCondition);
     } else {
-        WaitForInputPreparation();
+        WaitForInputPreparation(sharedGmmStartCondition);
     }
 
     // 共享 A8W4 写 GM，由 AIV1 消费；独立事件使剩余 ACK 不阻塞 MoE GMM 启动。
@@ -1092,7 +1101,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         SyncBeforeSharedExpertGmm1();
         ProcessSharedExpertGmm1(sharedGmm1ActivationSync);
         if constexpr (g_coreType == AIV) {
-            if (sharedGmmStartCondition == SharedGmmStartCondition::ResetDone && GetSubBlockIdx() == 0U) {
+            if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly && GetSubBlockIdx() == 0U) {
                 // 此路径 AIV0 仅等待 reset 完成就启动共享 GMM，token ready 留到共享计算结束后等待。
                 CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(TOKEN_DATA_READY_FLAG);
             }
@@ -1100,6 +1109,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
 
 #if MEGA_MOE_PROFILE_INPUT
+    if constexpr (g_coreType == AIC) {
+        if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
+            // 截断路径在共享 GMM 后回收延后的输入准备事件。
+            CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_READY_FLAG);
+        }
+    }
     sharedGmm1ActivationSync.EndSync();
     PipeBarrier<PIPE_ALL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
@@ -1110,7 +1125,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     Gmm1ActivationSync gmm1ActivationSync(MoeQuantConfig::AXW_MODE == AxWMode::A8W4 ? 1U : 0U);
     Gmm2CombineSync gmm2CombineSync;
-    SyncBeforeMoeExpertStages(derived);
+    SyncBeforeMoeExpertStages(derived, sharedGmmStartCondition);
     derived.ProcessMoeExpertStages(gmm1ActivationSync, gmm2CombineSync);
     if constexpr (g_coreType == AIV) {
         ExportAndResetExpertCounts();
