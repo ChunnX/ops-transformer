@@ -178,7 +178,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
                       allGatherMatmulTilingDataV2_->dataType);
     // 非量化路径：cutRes 与 mc2InitTiling/mc2CcTiling 映射 apace tiling 结构（R13 起恒 APACE）
-    MC2_CHECK_LOG_RET(opName_, DoApaceTiling());
+    OP_TILING_CHECK(DoApaceTiling() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to do apace tiling."),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
