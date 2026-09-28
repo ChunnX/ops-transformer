@@ -82,7 +82,7 @@ constexpr int64_t SCALES_ALIGN_EVEN = 2; // fp8 align 2
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t UB_ALIGN = 32UL;
-constexpr uint64_t META_BATCH_UB_LIMIT = 240UL * 1024UL;
+constexpr uint64_t MAX_UB_SIZE = 240UL * 1024UL;
 constexpr uint32_t META_BUFFER_NUM = 2U;
 constexpr uint32_t META_COPY_MAX_BYTES = 65535U;
 constexpr uint32_t SEND_PHASE_GROUP_BYTES = 32U * 1024U;
@@ -798,30 +798,26 @@ static void SetMetaBatch(MoeEpDispatchInfo &info, const char *nodeName)
         uint64_t maskBytes = AlignUpUb((maskElementCount + BITS_PER_BYTE - 1UL) / BITS_PER_BYTE);
         uint64_t sendCntRankBytes =
             AlignUpLEN256(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), SEND_PHASE_DATA_ALIGN);
-        uint64_t sendCntExpertBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.numExperts) * sizeof(int32_t));
-        uint64_t numRecvPerExpertBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t));
-        uint64_t numRecvPerRankBytes =
-            AlignUpUb(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t));
+        uint64_t sendCntExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numExperts) * sizeof(int32_t));
+        uint64_t numRecvPerExpertBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int32_t));
+        uint64_t numRecvPerRankBytes = AlignUpUb(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t));
         fixedUbBytes = 5UL * perGroupBytes + 3UL * maskBytes + sendCntRankBytes + sendCntExpertBytes +
                        2UL * numRecvPerExpertBytes + numRecvPerRankBytes;
     }
 
     fixedUbBytes += MOE_EP_META_SCATTER_UB_BYTES;
     uint64_t minMetaQueueBytes = static_cast<uint64_t>(META_BUFFER_NUM) * info.metaSlotBytes;
-    if (fixedUbBytes + minMetaQueueBytes > META_BATCH_UB_LIMIT) {
+    if (fixedUbBytes + minMetaQueueBytes > MAX_UB_SIZE) {
         OP_LOGD(nodeName,
                 "Insufficient UB for meta batching: fixed=%lu, one-batch queue=%lu, limit=%lu; fallback to 1.",
-                fixedUbBytes, minMetaQueueBytes, META_BATCH_UB_LIMIT);
+                fixedUbBytes, minMetaQueueBytes, MAX_UB_SIZE);
         return;
     }
 
-    uint64_t availableUbBytes = META_BATCH_UB_LIMIT - fixedUbBytes;
+    uint64_t availableUbBytes = MAX_UB_SIZE - fixedUbBytes;
     uint64_t maxBatchByUb = availableUbBytes / minMetaQueueBytes;
     uint64_t maxBatchByCopy = META_COPY_MAX_BYTES / info.metaSlotBytes;
-    uint64_t tokenCountPerAiv =
-        (static_cast<uint64_t>(info.cfg.numTokens) + info.aivNum - 1UL) / info.aivNum;
+    uint64_t tokenCountPerAiv = (static_cast<uint64_t>(info.cfg.numTokens) + info.aivNum - 1UL) / info.aivNum;
     uint64_t metaBatch = std::min(std::min(maxBatchByUb, maxBatchByCopy),
                                   std::min(tokenCountPerAiv, static_cast<uint64_t>(MOE_EP_META_BATCH_MAX)));
     info.metaBatch = static_cast<uint32_t>(std::max(metaBatch, 1UL));

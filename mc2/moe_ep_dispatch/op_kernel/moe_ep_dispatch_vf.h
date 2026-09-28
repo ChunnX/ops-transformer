@@ -31,10 +31,10 @@ constexpr uint32_t B32_ELEMENTS_PER_VECTOR = 64U;
 constexpr uint32_t HISTOGRAM_BINS_PER_REG = 128U;
 constexpr uint32_t HISTOGRAM_BINS_PER_PASS = 2U * HISTOGRAM_BINS_PER_REG;
 constexpr uint32_t HISTOGRAM_BINS_PER_BATCH = 2U * HISTOGRAM_BINS_PER_PASS;
-constexpr static Reg::CastTrait HIST_U16_TO_U32_EVEN = {
-    Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static Reg::CastTrait HIST_U16_TO_U32_ODD = {
-    Reg::RegLayout::ONE, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr static Reg::CastTrait HIST_U16_TO_U32_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr static Reg::CastTrait HIST_U16_TO_U32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
 /** Narrow expert ids to int16 and derive the raw destination rank. */
 __simd_callee__ inline void PrepareExpertAndRank(__ubuf__ int32_t *topkIds, __ubuf__ int16_t *expertIds,
@@ -123,9 +123,10 @@ __simd_callee__ inline void StoreHistogramBin(__ubuf__ uint32_t *dst, Reg::RegTe
 }
 
 /** Export four histogram registers, covering at most 512 bins, to UB. */
-__simd_callee__ inline void StoreBatchHistogram(
-    __ubuf__ uint32_t *dst, Reg::RegTensor<uint16_t> &histogramReg0, Reg::RegTensor<uint16_t> &histogramReg1,
-    Reg::RegTensor<uint16_t> &histogramReg2, Reg::RegTensor<uint16_t> &histogramReg3, uint32_t validBinCount)
+__simd_callee__ inline void StoreBatchHistogram(__ubuf__ uint32_t *dst, Reg::RegTensor<uint16_t> &histogramReg0,
+                                                Reg::RegTensor<uint16_t> &histogramReg1,
+                                                Reg::RegTensor<uint16_t> &histogramReg2,
+                                                Reg::RegTensor<uint16_t> &histogramReg3, uint32_t validBinCount)
 {
     __ubuf__ uint32_t *dstAddr = dst;
     uint32_t remainCount = validBinCount;
@@ -148,9 +149,10 @@ __simd_callee__ inline void StoreBatchHistogram(
 }
 
 /** Clear four histogram registers covering one 512-bin batch. */
-__simd_callee__ inline void ResetHistogramBatch(
-    Reg::RegTensor<uint16_t> &histogramReg0, Reg::RegTensor<uint16_t> &histogramReg1,
-    Reg::RegTensor<uint16_t> &histogramReg2, Reg::RegTensor<uint16_t> &histogramReg3, Reg::MaskReg &allMask)
+__simd_callee__ inline void ResetHistogramBatch(Reg::RegTensor<uint16_t> &histogramReg0,
+                                                Reg::RegTensor<uint16_t> &histogramReg1,
+                                                Reg::RegTensor<uint16_t> &histogramReg2,
+                                                Reg::RegTensor<uint16_t> &histogramReg3, Reg::MaskReg &allMask)
 {
     Reg::Duplicate(histogramReg0, static_cast<uint16_t>(0), allMask);
     Reg::Duplicate(histogramReg1, static_cast<uint16_t>(0), allMask);
@@ -159,10 +161,11 @@ __simd_callee__ inline void ResetHistogramBatch(
 }
 
 /** Count one pair of B16 register vectors into a 256-bin histogram. */
-__simd_callee__ inline void AccumulateHistogramBins(
-    Reg::RegTensor<uint16_t> &histogramReg0, Reg::RegTensor<uint16_t> &histogramReg1,
-    Reg::RegTensor<int16_t> &valueReg0, Reg::RegTensor<int16_t> &valueReg1, Reg::MaskReg &activeMask0,
-    Reg::MaskReg &activeMask1, uint32_t binBase, uint32_t validBinCount)
+__simd_callee__ inline void AccumulateHistogramBins(Reg::RegTensor<uint16_t> &histogramReg0,
+                                                    Reg::RegTensor<uint16_t> &histogramReg1,
+                                                    Reg::RegTensor<int16_t> &valueReg0,
+                                                    Reg::RegTensor<int16_t> &valueReg1, Reg::MaskReg &activeMask0,
+                                                    Reg::MaskReg &activeMask1, uint32_t binBase, uint32_t validBinCount)
 {
     Reg::RegTensor<int16_t> relativeReg0;
     Reg::RegTensor<int16_t> relativeReg1;
@@ -185,10 +188,10 @@ __simd_callee__ inline void AccumulateHistogramBins(
                       reinterpret_cast<Reg::RegTensor<uint8_t> &>(relativeReg1));
     Reg::MaskDeInterleave<uint8_t>(histogramMask, discardedMask, inRangeMask0, inRangeMask1);
     Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::FREQUENCY>(
-                    histogramReg0, histogramInput, histogramMask);
+        histogramReg0, histogramInput, histogramMask);
     if (validBinCount > HISTOGRAM_BINS_PER_REG) {
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::FREQUENCY>(
-                        histogramReg1, histogramInput, histogramMask);
+            histogramReg1, histogramInput, histogramMask);
     }
 }
 
@@ -200,8 +203,8 @@ __simd_callee__ inline void AccumulateHistogramBatch(
     Reg::MaskReg &activeMask1, uint32_t binBase, uint32_t validBinCount)
 {
     uint32_t firstPassBinCount = validBinCount > HISTOGRAM_BINS_PER_PASS ? HISTOGRAM_BINS_PER_PASS : validBinCount;
-    AccumulateHistogramBins(histogramReg0, histogramReg1, valueReg0, valueReg1, activeMask0, activeMask1,
-                            binBase, firstPassBinCount);
+    AccumulateHistogramBins(histogramReg0, histogramReg1, valueReg0, valueReg1, activeMask0, activeMask1, binBase,
+                            firstPassBinCount);
     if (validBinCount > HISTOGRAM_BINS_PER_PASS) {
         AccumulateHistogramBins(histogramReg2, histogramReg3, valueReg0, valueReg1, activeMask0, activeMask1,
                                 binBase + HISTOGRAM_BINS_PER_PASS, validBinCount - HISTOGRAM_BINS_PER_PASS);
@@ -224,8 +227,8 @@ __simd_callee__ inline void CalSendCntPerExpert(__ubuf__ int16_t *expertIds, __u
 
     for (uint16_t binLoop = 0; binLoop < binLoopCount; ++binLoop) {
         uint32_t binBase = static_cast<uint32_t>(binLoop) * HISTOGRAM_BINS_PER_BATCH;
-        uint32_t validBinCount = (expertCount - binBase) > HISTOGRAM_BINS_PER_BATCH ?
-                                 HISTOGRAM_BINS_PER_BATCH : (expertCount - binBase);
+        uint32_t validBinCount =
+            (expertCount - binBase) > HISTOGRAM_BINS_PER_BATCH ? HISTOGRAM_BINS_PER_BATCH : (expertCount - binBase);
         uint32_t remaining = elementCount;
         __ubuf__ int16_t *valueAddr = expertIds;
         Reg::UnalignRegForLoad loadState;
@@ -243,8 +246,8 @@ __simd_callee__ inline void CalSendCntPerExpert(__ubuf__ int16_t *expertIds, __u
             }
             Reg::LoadUnAlign(valueReg0, loadState, valueAddr, HISTOGRAM_BINS_PER_REG);
             Reg::LoadUnAlign(valueReg1, loadState, valueAddr, HISTOGRAM_BINS_PER_REG);
-            AccumulateHistogramBatch(histogram0, histogram1, histogram2, histogram3, valueReg0, valueReg1,
-                                     activeMask0, activeMask1, binBase, validBinCount);
+            AccumulateHistogramBatch(histogram0, histogram1, histogram2, histogram3, valueReg0, valueReg1, activeMask0,
+                                     activeMask1, binBase, validBinCount);
             remaining -= validElements;
         }
 
@@ -255,8 +258,8 @@ __simd_callee__ inline void CalSendCntPerExpert(__ubuf__ int16_t *expertIds, __u
 
 /** Remove repeated destination ranks in each token row and count small-rank histograms in registers. */
 __simd_callee__ inline void DedupAndSendDirect(__ubuf__ int16_t *dstRank, __ubuf__ int16_t *rawRank,
-                                               __ubuf__ int32_t *rankCounter, uint32_t tokenCount,
-                                               uint32_t topK, uint32_t rankCount)
+                                               __ubuf__ int32_t *rankCounter, uint32_t tokenCount, uint32_t topK,
+                                               uint32_t rankCount)
 {
     Reg::RegTensor<int16_t> rankReg;
     Reg::RegTensor<int16_t> dedupReg;
@@ -312,19 +315,18 @@ __simd_callee__ inline void DedupAndSendDirect(__ubuf__ int16_t *dstRank, __ubuf
 
         for (uint16_t k = 0; k < static_cast<uint16_t>(topK); ++k) {
             Reg::Adds(gatherIndexReg, rowBaseReg, static_cast<int16_t>(k), activeMask);
-            Reg::Gather(previousRankReg, rankReg,
-                        reinterpret_cast<Reg::RegTensor<uint16_t> &>(gatherIndexReg));
+            Reg::Gather(previousRankReg, rankReg, reinterpret_cast<Reg::RegTensor<uint16_t> &>(gatherIndexReg));
             Reg::CompareScalar<int16_t, CMPMODE::GT>(earlierMask, laneReg, static_cast<int16_t>(k), activeMask);
             Reg::Compare<int16_t, CMPMODE::EQ>(equalMask, rankReg, previousRankReg, earlierMask);
             Reg::MaskOr(duplicateMask, duplicateMask, equalMask, activeMask);
         }
         Reg::Select(dedupReg, negOneReg, rankReg, duplicateMask);
         Reg::StoreUnAlign(rankWriteAddr, dedupReg, storeState, validElements);
-        AccumulateHistogramBatch(histogram0, histogram1, histogram2, histogram3, dedupReg, negOneReg,
-                                 activeMask, noMask, 0U, firstBatchBinCount);
+        AccumulateHistogramBatch(histogram0, histogram1, histogram2, histogram3, dedupReg, negOneReg, activeMask,
+                                 noMask, 0U, firstBatchBinCount);
         if (secondBatchBinCount > 0U) {
-            AccumulateHistogramBatch(histogram4, histogram5, histogram6, histogram7, dedupReg, negOneReg,
-                                     activeMask, noMask, HISTOGRAM_BINS_PER_BATCH, secondBatchBinCount);
+            AccumulateHistogramBatch(histogram4, histogram5, histogram6, histogram7, dedupReg, negOneReg, activeMask,
+                                     noMask, HISTOGRAM_BINS_PER_BATCH, secondBatchBinCount);
         }
         remaining -= validElements;
     }
@@ -333,19 +335,19 @@ __simd_callee__ inline void DedupAndSendDirect(__ubuf__ int16_t *dstRank, __ubuf
     __ubuf__ uint32_t *rankCounterAddr = reinterpret_cast<__ubuf__ uint32_t *>(rankCounter);
     StoreBatchHistogram(rankCounterAddr, histogram0, histogram1, histogram2, histogram3, firstBatchBinCount);
     if (secondBatchBinCount > 0U) {
-        StoreBatchHistogram(rankCounterAddr + HISTOGRAM_BINS_PER_BATCH,
-                            histogram4, histogram5, histogram6, histogram7, secondBatchBinCount);
+        StoreBatchHistogram(rankCounterAddr + HISTOGRAM_BINS_PER_BATCH, histogram4, histogram5, histogram6, histogram7,
+                            secondBatchBinCount);
     }
 }
 
 /**
  * Direct count pipeline. One VF call performs conversion, both histograms and row-wise rank deduplication.
  */
-__simd_vf__ __aicore__ inline void DedupAndCalCnt(
-    __ubuf__ int32_t *topkIds, __ubuf__ int16_t *expertScratch, __ubuf__ int16_t *rawRankScratch,
-    __ubuf__ int16_t *dstRank, __ubuf__ int32_t *expertCounter, __ubuf__ int32_t *rankCounter,
-    uint32_t elementCount, uint32_t tokenCount, uint32_t topK, uint32_t expertCount,
-    uint32_t rankCount, uint32_t expertsNumPerRank)
+__simd_vf__ __aicore__ inline void DedupAndCalCnt(__ubuf__ int32_t *topkIds, __ubuf__ int16_t *expertScratch,
+                                                  __ubuf__ int16_t *rawRankScratch, __ubuf__ int16_t *dstRank,
+                                                  __ubuf__ int32_t *expertCounter, __ubuf__ int32_t *rankCounter,
+                                                  uint32_t elementCount, uint32_t tokenCount, uint32_t topK,
+                                                  uint32_t expertCount, uint32_t rankCount, uint32_t expertsNumPerRank)
 {
     PrepareExpertAndRank(topkIds, expertScratch, rawRankScratch, elementCount, expertsNumPerRank);
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
