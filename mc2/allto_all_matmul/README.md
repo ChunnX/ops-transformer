@@ -280,10 +280,11 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：仅支持非量化场景下输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持；仅支持输入x2的转置非连续tensor，其它非连续tensor均不支持。
 * 输入x1必须是2维，其shape为(BS, H)，BS必须整除NPU卡数，BS和N的值不得超过2147483647(INT32_MAX)，不支持转置。
 * 输入x2必须是2维，其shape为(H\*rankSize, N)，H*rankSize范围根据芯片型号和场景不同有不同约束，详见[量化aclnn约束说明](./docs/aclnnAlltoAllQuantMatmul.md#约束说明)
-  和[非量化aclnn约束说明](./docs/aclnnAlltoAllMatmul.md#约束说明)。当处于mx量化场景时，x2必须转置，其shape为(N, H\*rankSize)，transpose_x2配置为True。
+  和[非量化aclnn约束说明](./docs/aclnnAlltoAllMatmul.md#约束说明)。当处于mx量化场景时，x2必须转置，其shape为(N, H\*rankSize)，transpose_x2配置为True；
+  <term>Ascend 950PR/Ascend 950DT</term>上，当满足Apace实现路线准入条件（allToAllOutOptional为空且rankSize不超过8）时，mx量化场景额外支持x2非转置，其shape为(H\*rankSize, N)，transpose_x2配置为False。
 * bias若非空，其维度必须为1维，shape为(N)。
 * x1_scale若非空，在mx量化场景时，其维度为3维，shape为(BS, ceil(H/64), 2)；在K-C量化场景时，其维度为1维，shape为(BS)；在K-C动态量化场景时，其维度为1维，shape为(H*rankSize)。
-* x2_scale若非空，在mx量化场景时，其维度为3维，shape为(N, ceil(H\*rankSize/64), 2)；其它场景中其维度为1维，shape为(N)。
+* x2_scale若非空，在mx量化场景时，其维度为3维：x2转置时shape为(N, ceil(H\*rankSize/64), 2)，x2非转置时shape为(ceil(H\*rankSize/64), N, 2)；其它场景中其维度为1维，shape为(N)。
 * all2all_axes为1维数组，shape必须为(2)。
 * 目前支持的量化模式，根据设备型号有不同限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持K-C量化和K-C动态量化模式，x1QuantMode=3或7，x2QuantMode=2。

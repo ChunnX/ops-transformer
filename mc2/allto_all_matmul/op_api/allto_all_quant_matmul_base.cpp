@@ -190,10 +190,9 @@ static bool CheckScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const
     bool scaleShapeValid = true;
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
         static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
-        OP_API_CHECK(!transposeX2, {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the mx quantization scenario, x2 must be transposed.");
-            return false;
-        });
+        // mx量化场景支持x2非转置,但仅apace实现路线(all2all_out为空且rankSize<=8)生效,
+        // 其余场景由tiling层CheckX2Transpose做精确拦截; 此处仅校验scale shape与x2布局的一致性
+        OP_LOGI("In the mx quantization scenario, x2 transpose flag is %d.", transposeX2);
         scaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2);
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
                static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
