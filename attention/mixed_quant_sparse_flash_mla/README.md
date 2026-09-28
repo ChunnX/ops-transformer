@@ -21,6 +21,12 @@
   - **CSA（Compressed Sparse Attention）**：同时传入`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和topK选择出的压缩KV共同做注意力。
   - **HCA（Heavily Compressed Attention）**：同时传入`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
+  <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>支持TurboQuant TQ4，通过原有量化模式参数`quant_mode=3`启用，仅支持CSA路径。DeepSeek V4框架当前仅对C4压缩KV启用此能力。接口名、参数数量、顺序、声明类型、默认值和返回值保持不变。
+
+  <term>Ascend 950PR&950DT系列产品</term>使用原有的`quant_mode=1`和`quant_mode=2`量化模式。
+
+  TurboQuant TQ4的KV数据类型、存储布局及码本约定详见`quant_mode`参数说明。相对512维BFLOAT16的1024字节，单个被量化token的有效载荷减少约74.8%（约3.97倍压缩）。整个KV cache的收益还需计入未量化部分、物理页步长和对齐开销，不能直接按此倍率估算。
+
   调用时需要使用`MixedQuantSparseFlashMlaMetadata`生成的任务列表`metadata`，在主算子执行前生成，当前版本主算子必须传入该`metadata`。典型调用流程如下：
 
   1. 根据调用场景准备`q`、`ori_kv`、`cmp_kv`等对应输入。
@@ -284,32 +290,6 @@
   </tbody>
 </table>
 
-## A2/A3 TurboQuant 补充说明
-
-- Atlas A2、Atlas A3 支持 TurboQuant TQ4；A5 仍使用原有quant_mode=1和quant_mode=2。
-- 复用原有接口和量化模式参数，设置quant_mode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quant_mode=3下生效。
-- 主算子只支持 CSA 路径。DeepSeek V4 框架当前仅对 C4 压缩 KV 启用此能力。
-- KV数据类型、存储布局及码本约定详见quant_mode描述。
-- 相对512维 BF16 的1024字节，单个被量化 token 的有效载荷减少约74.8%（约3.97倍压缩）。整个 KV cache 的收益需另外计入未量化部分、物理页步长和对齐开销，不能直接按此倍率估算。
-
-quant_mode=3的参数约束如下；以下字段均为原有参数，不增加新的位置参数。
-
-| 参数 | A2/A3 quant_mode=3约束 |
-| --- | --- |
-| `quant_mode` | 3 |
-| `q`、`attn_out` | FLOAT16 或 BFLOAT16，类型和 shape 一致；TND 布局，shape `(q_t, q_n, 512)`；`q_n` 为4到128的4的倍数，`q_t` 允许为0 |
-| `ori_kv` | 必传；数据类型、布局和shape详见quant_mode描述 |
-| `cmp_kv` | 必传；数据类型、布局和shape详见quant_mode描述 |
-| `layout_q`、`layout_kv` | 分别为 TND、PA_BBND；两路 KV 的 block_size 均为16到1024的16的倍数，0轴 stride 必须覆盖一个完整物理块 |
-| `cmp_sparse_indices` | 必传 INT32，shape `(q_t, 1, 512)` 或 `(q_t, 1, 1024)`；无效位置填 -1 |
-| `ori_block_table`、`cmp_block_table`、`cu_seqlens_q`、`seqused_ori_kv` | 均必传，沿用原有 INT32 类型和参数含义 |
-| `ori_sparse_indices`、`ori_topk_length`、`cmp_topk_length`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_q`、`seqused_cmp_kv`、`cmp_residual_kv` | 不支持传入，保留原有可选参数位置 |
-| `ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`、`ori_win_right` | 分别为4、3、非负值、0 |
-| `cmp_ratio`、`rope_head_dim`、`topk_value_mode` | 分别支持4或128、64、1；算子的压缩倍率支持范围不代表框架会量化全部压缩 KV |
-| `metadata` | 必传，由前置 Metadata 接口以相同quant_mode=3及相同输入属性生成，INT32、shape `(1024,)` |
-
-Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的布局、dtype 和空查询特例不会放宽 A5 quant_mode=1和quant_mode=2的校验条件。
-
 ## 约束说明
 
 <!-- npu="950" id1 -->
@@ -323,6 +303,28 @@ Sinks 和 Softmax LSE 继续使用原有参数及返回形式。quant_mode=3的�
 <!-- npu="910b" id3 -->
 - <term>Atlas A2系列产品</term>：仅支持`quant_mode=3`的TurboQuant CSA场景，数据类型和KV存储布局详见quant_mode描述。
 <!-- end id3 -->
+
+### TurboQuant参数约束
+
+以下约束适用于<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>的`quant_mode=3`场景。以下字段均为原有参数，不增加新的位置参数；新增的Tensor数据类型和布局仅在`quant_mode=3`下生效。
+
+| 参数 | `quant_mode=3`约束 |
+| --- | --- |
+| `quant_mode` | 3 |
+| `q`、`attn_out` | FLOAT16或BFLOAT16，类型和shape一致；TND布局，shape为`(q_t, q_n, 512)`；`q_n`为4到128的4的倍数，`q_t`允许为0 |
+| `ori_kv` | 必传；数据类型、布局和shape详见`quant_mode`描述 |
+| `cmp_kv` | 必传；数据类型、布局和shape详见`quant_mode`描述 |
+| `layout_q`、`layout_kv` | 分别为TND、PA_BBND；两路KV的block_size均为16到1024的16的倍数，0轴stride必须覆盖一个完整物理块 |
+| `cmp_sparse_indices` | 必传INT32，shape为`(q_t, 1, 512)`或`(q_t, 1, 1024)`；无效位置填-1 |
+| `ori_block_table`、`cmp_block_table`、`cu_seqlens_q`、`seqused_ori_kv` | 均必传，沿用原有INT32类型和参数含义 |
+| `ori_sparse_indices`、`ori_topk_length`、`cmp_topk_length`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_q`、`seqused_cmp_kv`、`cmp_residual_kv` | 不支持传入，保留原有可选参数位置 |
+| `ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`、`ori_win_right` | 分别为4、3、非负值、0 |
+| `cmp_ratio`、`rope_head_dim`、`topk_value_mode` | 分别支持4或128、64、1；算子的压缩倍率支持范围不代表框架会量化全部压缩KV |
+| `metadata` | 必传，由前置Metadata接口以相同`quant_mode=3`及相同输入属性生成，INT32、shape为`(1024,)` |
+
+`sinks`和Softmax LSE继续使用原有参数及返回形式。
+
+<term>Ascend 950PR&950DT系列产品</term>的`quant_mode=1`和`quant_mode=2`参数校验条件保持不变。
 
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
