@@ -34,12 +34,6 @@
 #include "stage/mega_moe_unpermute.h"
 #include "../../../common/op_kernel/quantize_functions.h"
 
-// 设为 1 或编译时传入 -DMEGA_MOE_PROFILE_INPUT=1：在共享 GMM1 后退出。
-// 仅用于同一用例的局部性能采集；测试脚本在轮间执行 barrier，跳过输出精度检查。
-#ifndef MEGA_MOE_PROFILE_INPUT
-#define MEGA_MOE_PROFILE_INPUT 0
-#endif
-
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -1037,20 +1031,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
             }
         }
     }
-
-#if MEGA_MOE_PROFILE_INPUT
-    if constexpr (g_coreType == AIC) {
-        if (sharedGmmStartCondition == SharedGmmStartCondition::InputDirectly) {
-            // 截断路径在共享 GMM 后回收延后的输入准备事件。
-            CrossCoreWaitFlag<AIC_SINGLE_AIV_SYNC_MODE, PIPE_MTE2>(INPUT_PREPARE_DONE_FLAG);
-        }
-    }
-    sharedGmm1ActivationSync.EndSync();
-    PipeBarrier<PIPE_ALL>();
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
-    return;
-#endif
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     Gmm1ActivationSync gmm1ActivationSync(MoeQuantConfig::AXW_MODE == AxWMode::A8W4 ? 1U : 0U);
