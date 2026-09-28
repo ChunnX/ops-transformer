@@ -25,6 +25,25 @@ using std::string;
 namespace optiling {
 
 static const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
+    {ge::DT_COMPLEX128, "DT_COMPLEX128"}, // complex128 type
+    {ge::DT_QINT8, "DT_QINT8"},           // qint8 type
+    {ge::DT_QINT16, "DT_QINT16"},         // qint16 type
+    {ge::DT_QINT32, "DT_QINT32"},         // qint32 type
+    {ge::DT_QUINT8, "DT_QUINT8"},         // quint8 type
+    {ge::DT_QUINT16, "DT_QUINT16"},       // quint16 type
+    {ge::DT_RESOURCE, "DT_RESOURCE"},     // resource type
+    {ge::DT_STRING_REF, "DT_STRING_REF"}, // string ref type
+    {ge::DT_STRING, "DT_STRING"},         // string type
+    {ge::DT_VARIANT, "DT_VARIANT"},       // dt_variant type
+    {ge::DT_BF16, "DT_BFLOAT16"},         // dt_bfloat16 type
+    {ge::DT_INT4, "DT_INT4"},             // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"},           // dt_variant type
+    {ge::DT_INT2, "DT_INT2"},             // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"},           // dt_variant type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
+    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"},
+    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"},
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
     {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
@@ -42,26 +61,8 @@ static const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
     {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
-    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
-    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
-    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
-    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
-    {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
-    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
-    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
-    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
-    {ge::DT_STRING, "DT_STRING"},                 // string type
-    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
-    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
-    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
-    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
+    {ge::DT_COMPLEX64, "DT_COMPLEX64"}            // complex64 type
+};
 
 std::string QLIV2DataTypeToSerialString(ge::DataType type)
 {
@@ -913,22 +914,22 @@ ge::graphStatus QLIV2InfoParser::GetBatchSize()
 ge::graphStatus QLIV2InfoParser::GetHeadDim()
 {
     // 以query的D维度为基准
-    uint32_t dIndex = DIM_IDX_TWO;
+    uint32_t qliV2DIndex = DIM_IDX_TWO;
     // 根据layout确定D维度在shape中的位置
     switch (qLayout_) {
         case DataLayout::TND:
             // TND格式: [Total, N, D] -> D是第2维(索引2)
-            dIndex = DIM_IDX_TWO;
+            qliV2DIndex = DIM_IDX_TWO;
             break;
         case DataLayout::BSND:
             // BSND格式: [Batch, SeqLen, N, D] -> D是第3维(索引3)
-            dIndex = DIM_IDX_THREE;
+            qliV2DIndex = DIM_IDX_THREE;
             break;
         default:
             OP_LOGE(opName_, "unsupported layout for getting head dim.");
             return ge::GRAPH_FAILED;
     }
-    headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(dIndex);
+    headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(qliV2DIndex);
     OP_CHECK_IF(
         headDim_ != HEAD_DIM_LIMIT,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "q", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()),
@@ -1016,6 +1017,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
     act_seq_k [BatchSize]
     act_seq_q [BatchSize],
     out [T,N2,topk]
+    QuantLightningIndexerV2 输入输出shape约束:
     ----------------------
     BSND:
     query [BatchSize,S1,N1,D],
@@ -1026,8 +1028,8 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
     act_seq_q [BatchSize] 可选
     out [BatchSize,S1,N2,topk]
     */
-    uint32_t queryWeightsN1Dim = 1;
-    uint32_t outN2Dim = 1;
+    uint32_t qliV2QueryWeightsN1Dim = 1;
+    uint32_t qliV2OutN2Dim = 1;
 
     if (qLayout_ == DataLayout::TND) {
         // -----------------------check BatchSize-------------------
@@ -1151,17 +1153,17 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                             std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1)) +
                             " respectively, they must be same"),
                     return ge::GRAPH_FAILED);
-        queryWeightsN1Dim = DIM_IDX_TWO;
-        outN2Dim = DIM_IDX_TWO;
+        qliV2QueryWeightsN1Dim = DIM_IDX_TWO;
+        qliV2OutN2Dim = DIM_IDX_TWO;
     }
     // -----------------------check N1-------------------
-    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
+    OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(qliV2QueryWeightsN1Dim) != n1Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "q and w",
                     Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()),
                     "BSND case the head num of q, w are " + std::to_string(n1Size_) + ", " +
-                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim)) +
+                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(qliV2QueryWeightsN1Dim)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
@@ -1178,25 +1180,26 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                                                    " respectively, they must be same"),
         return ge::GRAPH_FAILED);
     // -----------------------check N2-------------------
-    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliV2OutN2Dim) != n2Size_),
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName_, "k and sparse_indices",
                     Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "BSND case the head num of k, sparse_indices are " + std::to_string(n2Size_) + ", " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim)) +
+                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliV2OutN2Dim)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check sparse_count-------------------
-    OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "sparse_count and sparse_indices",
-                    Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
-                        Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
-                    "BSND case sparse_count, sparse_indices last dim are " + std::to_string(*opParamInfo_.sparseCount) +
-                        ", " + std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) +
-                        " respectively, they must be same"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliV2OutN2Dim + 1) != *opParamInfo_.sparseCount),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            opName_, "sparse_count and sparse_indices",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+            "BSND case sparse_count, sparse_indices last dim are " + std::to_string(*opParamInfo_.sparseCount) + ", " +
+                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(qliV2OutN2Dim + 1)) +
+                " respectively, they must be same"),
+        return ge::GRAPH_FAILED);
     // -----------------------check cmp_residual_k-------------------
     if (opParamInfo_.cmpResidualK.tensor != nullptr) {
         OP_CHECK_IF(
@@ -1209,21 +1212,21 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
     // -----------------------check sparse_values------------------
     if (npuArch_ == NpuArch::DAV_3510) {
         if (*opParamInfo_.returnValue == 1) {
-            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
+            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(qliV2OutN2Dim) != n2Size_),
                         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                             opName_, "k and sparse_values",
                             Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
                                 Ops::Base::ToString(opParamInfo_.sparseValues.shape->GetStorageShape()),
                             "The head num of k and sparse_values must be same"),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(
-                (opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "topk and sparse_values",
-                    std::to_string(*opParamInfo_.sparseCount) + " and " +
-                        Ops::Base::ToString(opParamInfo_.sparseValues.shape->GetStorageShape()),
-                    "The last dim of sparse_values must be same as topk"),
-                return ge::GRAPH_FAILED);
+            OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(qliV2OutN2Dim + 1) !=
+                         *opParamInfo_.sparseCount),
+                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                            opName_, "topk and sparse_values",
+                            std::to_string(*opParamInfo_.sparseCount) + " and " +
+                                Ops::Base::ToString(opParamInfo_.sparseValues.shape->GetStorageShape()),
+                            "The last dim of sparse_values must be same as topk"),
+                        return ge::GRAPH_FAILED);
         }
     }
     // -----------------------check metadata-------------------

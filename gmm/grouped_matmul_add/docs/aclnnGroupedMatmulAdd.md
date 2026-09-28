@@ -268,12 +268,17 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
 - aclnnGroupedMatmulAdd默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于INT32的最大值2147483647。
-- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型为：
   - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
   - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
 - groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以K=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
 - groupList第1维最大支持1024，即最多支持1024个group。
+
+<!-- npu="A3,910b" id10 -->
+### Atlas A3/A2 系列产品
+
+- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
+<!-- end id10 -->
 
 ## 调用示例
 

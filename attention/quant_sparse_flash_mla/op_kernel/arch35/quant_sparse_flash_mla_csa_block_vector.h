@@ -1385,12 +1385,18 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
 
     if (qsmlaCoreNum != 0) {
         uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * qsmlaCoreNum) - 1) / (CV_RATIO * qsmlaCoreNum);
-        uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
-        uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+        uint64_t tailSize;
+        uint64_t singleInitOutputSize = 0;
+        if (constInfo.aivIdx * singleCoreSize < totalOutputSize) {
+            tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
+            singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+        }
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                                         0);
+            if (constInfo.aivIdx * singleCoreSize < totalOutputSize) {
+                matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize],
+                                             singleInitOutputSize, 0);
+            }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -1454,19 +1460,19 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
                                                                                     ConstInfo &constInfo)
 {
     // per-batch执行一次,  per-s1循环内不再判断maskmode
-    PhyAddrValidInfo validInfo;
+    PhyAddrValidInfo qsmlaValidInfo;
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        validInfo.oriS2Act = actualOriS2Size;
+        qsmlaValidInfo.oriS2Act = actualOriS2Size;
         if (isOriKv) {
             if (constInfo.oriMaskMode == 0U) {
-                validInfo.oriTopkMode = true;
+                qsmlaValidInfo.oriTopkMode = true;
             } else if (constInfo.oriMaskMode == 3U) {
-                validInfo.oriRightBias = 0;
+                qsmlaValidInfo.oriRightBias = 0;
             } else {
-                validInfo.oriLeftBias =
+                qsmlaValidInfo.oriLeftBias =
                     (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
-                validInfo.oriRightBias =
+                qsmlaValidInfo.oriRightBias =
                     (constInfo.oriWinRight == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinRight;
             }
         }
@@ -1474,11 +1480,11 @@ __aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidI
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (!isOriKv) {
-            validInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
-            validInfo.cmpBase = restoredSize - actualS1Size + 1;
+            qsmlaValidInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
+            qsmlaValidInfo.cmpBase = restoredSize - actualS1Size + 1;
         }
     }
-    return validInfo;
+    return qsmlaValidInfo;
 }
 
 TEMPLATES_DEF_NO_DEFAULT

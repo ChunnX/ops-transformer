@@ -522,6 +522,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         OP_CHECK_IF(tmpData.n2 == 0, OP_LOGE(context_, "N2 is 0"), return ge::GRAPH_FAILED);
         tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
         tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
+        // BSND 下 kernel 用 S1 做 t1Idx / curS1 分核，S1 须严格为正
+        OP_CHECK_IF(tmpData.s1 <= 0, OP_LOGE(context_, "S1 must be > 0, but got S1=%ld.", tmpData.s1),
+                    return ge::GRAPH_FAILED);
     }
 
     if (cmpKvTensor != nullptr) {
@@ -562,8 +565,8 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     }
 
     int64_t cmpRatio = *cmpRatioPtr;
-    if (!(cmpRatio >= 0 && cmpRatio <= 128)) {
-        OP_LOGE(context_, "SparseFlashMlaGrad only support cmpRatio >= 0 and <=128, but got cmpRatio=%ld.", cmpRatio);
+    if (!(cmpRatio >= 1 && cmpRatio <= 128)) {
+        OP_LOGE(context_, "SparseFlashMlaGrad only support cmpRatio >= 1 and <=128, but got cmpRatio=%ld.", cmpRatio);
         return ge::GRAPH_FAILED;
     }
 
@@ -639,11 +642,6 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     }
 
     if (tmpData.mode == SMLAG_CFA_MODE || tmpData.mode == SMLAG_SCFA_MODE) {
-        if (cmpRatio == 0) {
-            OP_LOGE(context_, "SparseFlashMlaGrad CFA/SCFA does not support cmpRatio=0, but got cmpRatio=%ld.",
-                    cmpRatio);
-            return ge::GRAPH_FAILED;
-        }
         OP_CHECK_IF(cmpMaskModePtr == nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpMaskModePtr is null"),
                     return ge::GRAPH_FAILED);
         int64_t cmpMaskMode = *cmpMaskModePtr;

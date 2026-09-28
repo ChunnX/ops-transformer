@@ -571,7 +571,14 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
                                               "Block counts and sparse count must be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.dSize != QBSA_D_SIZE || tilingInfo_.dSizeV != QBSA_D_SIZE) {
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+        if (!QBSAIsSupportedMxHeadDim(tilingInfo_.dSize) || tilingInfo_.dSizeV != tilingInfo_.dSize) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "dSize/dSizeV", std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
+                "MXFP8 requires dSize=dSizeV in {64,128,256}");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (tilingInfo_.dSize != QBSA_D_SIZE || tilingInfo_.dSizeV != QBSA_D_SIZE) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "dSize/dSizeV", std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
             "Only dSize=128 and dSizeV=128 are currently supported");

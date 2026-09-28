@@ -163,6 +163,9 @@ private:
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParamsEach();
+    __aicore__ inline void InitWorkspaceGlobalTensor(__gm__ uint8_t *workspace);
+    __aicore__ inline void InitVectorService();
+    __aicore__ inline void InitMatmulService();
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
     __aicore__ inline void InitOutputSingleCore();
@@ -220,6 +223,12 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitTilingData()
     constInfo.sparseMode = tilingData->baseParams.sparseMode;
     constInfo.quantScaleRepoMode = QUANT_SCALE_REPO_MODE::COMBINE;
     constInfo.attentionMode = ATTENTION_MODE::MLA_ABSORB;
+    // TQ4 uses a packed 386-byte slot (256B int4 nope + 64 BF16 RoPE + 2B
+    // scale).  The storage dimension is available in tiling data and is a
+    // reliable kernel-side discriminator because the quant-mode attribute is
+    // not copied into the device tiling structure.
+    constInfo.keyQuantMode = (tilingData->baseParams.dSizeVInput == 386) ? QUANT_MODE::TQ4 : QUANT_MODE::PER_TILE;
+    constInfo.valueQuantMode = constInfo.keyQuantMode;
     constInfo.combineHeadDim =
         (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ? headDim + headDimRope : headDim;
 
@@ -467,6 +476,20 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
     }
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
 
+    InitWorkspaceGlobalTensor(workspace);
+
+    InitVectorService();
+    InitMatmulService();
+
+    // 要在InitParams之后执行
+    if (pipe != nullptr) {
+        InitBuffers();
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitWorkspaceGlobalTensor(__gm__ uint8_t *workspace)
+{
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
@@ -493,12 +516,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
 
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // s2  d+rope bufNum
-        kvMergeGm_.SetGlobalBuffer(
-            (__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * 512 * 576 * 4 * sizeof(K_ROPE_T)));
-        qsfaOffset += GetBlockNum() * 512 * 576 * 4 * sizeof(K_ROPE_T);
+        uint64_t kvMergeBytesPerCore = 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
+        kvMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + qsfaOffset + aiCoreIdx * kvMergeBytesPerCore));
+        qsfaOffset += GetBlockNum() * kvMergeBytesPerCore;
 
+        // 每核 4 份：2 份 AIV 有效 size 分区 + 等大的 TQ4 逐 token FP16 scale 区
         kvValidSizeGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
     }
 
     if constexpr (FLASH_DECODE) {
@@ -509,7 +533,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
                                    tilingData->splitKVParams.logSumExpSize / 2);
         qsfaOffset = qsfaOffset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
     }
+}
 
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitVectorService()
+{
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitMm2ResInt32GmGlobalTensor(mm2ResInt32Gm);
@@ -520,7 +548,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
                                            lseSumFdGm, topKGm);
         vectorService.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }
+}
 
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitMatmulService()
+{
     if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
@@ -528,60 +560,56 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::Init(
         matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
                                             constInfo.maxBlockNumPerBatch);
     }
-    // 要在InitParams之后执行
-    if (pipe != nullptr) {
-        InitBuffers();
-    }
 }
 
 template <typename QSFAT>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach()
 {
     // 计算总的基本块
-    uint32_t totalBaseNum = 0;
-    uint32_t s1GBaseSize = constInfo.gSize;
-    uint32_t actBatchS2 = 1;
-    uint32_t coreNum = GetBlockNum();
-    uint32_t actBatchS1 = 1;
-    uint32_t currCoreIdx = aiCoreIdx;
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
-        uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-        if (actBatchS1 < constInfo.qSeqSize) {
+    uint32_t qsfaTotalBaseNum = 0;
+    uint32_t qsfaS1GBaseSize = constInfo.gSize;
+    uint32_t qsfaActBatchS2 = 1;
+    uint32_t qsfaCoreNum = GetBlockNum();
+    uint32_t qsfaActBatchS1 = 1;
+    uint32_t qsfaCurrCoreIdx = aiCoreIdx;
+    for (uint32_t qsfaBIdx = 0; qsfaBIdx < constInfo.batchSize; qsfaBIdx++) {
+        uint32_t qsfaActBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBIdx);
+        if (qsfaActBatchS1 < constInfo.qSeqSize) {
             constInfo.needInit = true;
         }
-        totalBaseNum += actBatchS1 * actBatchS2;
+        qsfaTotalBaseNum += qsfaActBatchS1 * qsfaActBatchS2;
     }
-    uint32_t avgBaseNum = 1;
-    if (totalBaseNum > coreNum) {
-        avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+    uint32_t qsfaAvgBaseNum = 1;
+    if (qsfaTotalBaseNum > qsfaCoreNum) {
+        qsfaAvgBaseNum = (qsfaTotalBaseNum + qsfaCoreNum - 1) / qsfaCoreNum;
     } else {
-        usedCoreNum = totalBaseNum;
+        usedCoreNum = qsfaTotalBaseNum;
     }
     if (aiCoreIdx >= usedCoreNum) {
         return;
     }
     // 计算当前核的基本块
-    uint32_t accumBaseNum = 0; // 当前累积的基本块数
-    uint32_t targetBaseNum = 0;
-    uint32_t lastValidBIdx = 0;
-    uint32_t lastValidactBatchS1 = 0;
-    bool setStart = false;
-    targetBaseNum = (currCoreIdx + 1) * avgBaseNum; // 计算当前的目标权重
-    uint32_t targetStartBaseNum = targetBaseNum - avgBaseNum;
-    for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kvHeadNum; bN2Idx++) {
-        uint32_t bIdx = bN2Idx / constInfo.kvHeadNum;
-        actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-        for (uint32_t s1GIdx = 0; s1GIdx < actBatchS1; s1GIdx++) {
-            accumBaseNum += 1;
-            if (!setStart && accumBaseNum >= targetStartBaseNum) {
-                constInfo.bN2Start = bN2Idx;
-                constInfo.gS1Start = s1GIdx;
-                setStart = true;
+    uint32_t qsfaAccumBaseNum = 0; // 当前累积的基本块数
+    uint32_t qsfaTargetBaseNum = 0;
+    uint32_t qsfaLastValidBIdx = 0;
+    uint32_t qsfaLastValidactBatchS1 = 0;
+    bool qsfaSetStart = false;
+    qsfaTargetBaseNum = (qsfaCurrCoreIdx + 1) * qsfaAvgBaseNum; // 计算当前的目标权重
+    uint32_t qsfaTargetStartBaseNum = qsfaTargetBaseNum - qsfaAvgBaseNum;
+    for (uint32_t qsfaBN2Idx = 0; qsfaBN2Idx < constInfo.batchSize * constInfo.kvHeadNum; qsfaBN2Idx++) {
+        uint32_t qsfaBIdx = qsfaBN2Idx / constInfo.kvHeadNum;
+        qsfaActBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBIdx);
+        for (uint32_t qsfaS1GIdx = 0; qsfaS1GIdx < qsfaActBatchS1; qsfaS1GIdx++) {
+            qsfaAccumBaseNum += 1;
+            if (!qsfaSetStart && qsfaAccumBaseNum >= qsfaTargetStartBaseNum) {
+                constInfo.bN2Start = qsfaBN2Idx;
+                constInfo.gS1Start = qsfaS1GIdx;
+                qsfaSetStart = true;
             }
-            if (accumBaseNum >= targetBaseNum) {
+            if (qsfaAccumBaseNum >= qsfaTargetBaseNum) {
                 // 更新当前核的End分核信息
-                constInfo.bN2End = bN2Idx;
-                constInfo.gS1End = s1GIdx;
+                constInfo.bN2End = qsfaBN2Idx;
+                constInfo.gS1End = qsfaS1GIdx;
                 constInfo.coreStartKVSplitPos = 0;
                 constInfo.s2End = 0;
                 if (aiCoreIdx != 0) {
@@ -590,19 +618,19 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsEach
                 return;
             }
         }
-        if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
-            lastValidactBatchS1 = actBatchS1;
-            lastValidBIdx = bIdx;
+        if ((qsfaActBatchS1 > 0) && (qsfaActBatchS2 > 0)) {
+            qsfaLastValidactBatchS1 = qsfaActBatchS1;
+            qsfaLastValidBIdx = qsfaBIdx;
         }
     }
-    if (!setStart) {
-        constInfo.bN2Start = lastValidBIdx;
-        constInfo.gS1Start = lastValidactBatchS1 - 1;
+    if (!qsfaSetStart) {
+        constInfo.bN2Start = qsfaLastValidBIdx;
+        constInfo.gS1Start = qsfaLastValidactBatchS1 - 1;
     }
-    if (accumBaseNum < targetBaseNum) {
+    if (qsfaAccumBaseNum < qsfaTargetBaseNum) {
         // 更新最后一个核的End分核信息
-        constInfo.bN2End = lastValidBIdx;
-        constInfo.gS1End = lastValidactBatchS1 - 1;
+        constInfo.bN2End = qsfaLastValidBIdx;
+        constInfo.gS1End = qsfaLastValidactBatchS1 - 1;
         constInfo.s2End = 0;
         constInfo.coreStartKVSplitPos = 0;
         if (aiCoreIdx != 0) {

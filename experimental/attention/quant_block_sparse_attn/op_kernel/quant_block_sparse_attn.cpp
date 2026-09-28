@@ -93,12 +93,40 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
-        // MX 当前支持 TND/BSND/BNSD + PA BNBD，S2 logical tile 为 512。
-        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-                      "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
-        QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                        S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                        RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+        int64_t originalCastMode = 0;
+        int64_t originalGlobalSatMode = 0;
+        if ASCEND_IS_AIV {
+            // MX Reg Casts use their own SAT/NO_SAT trait; global NO_SAT is reserved for Tensor Casts.
+            originalCastMode =
+                AscendC::GetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>();
+            originalGlobalSatMode = AscendC::GetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT,
+                                                        FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>();
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
+                FaVectorApi::CAST_GLOBAL_NO_SAT_MODE);
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                FaVectorApi::CAST_USE_INSTRUCTION_SAT_MODE);
+        }
+        // MX supports TND/BSND/BNSD with PA BNBD; the logical S2 tile is 256 for D256 and 512 otherwise.
+        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 ||
+                          Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ||
+                          Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256,
+                      "MXFullQuantMode requires D=DV in {64,128,256}");
+        constexpr DTemplateType mxD =
+            Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ?
+                DTemplateType::Aligned64 :
+                (Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 ? DTemplateType::Aligned256 :
+                                                                                       DTemplateType::Aligned128);
+        constexpr S2TemplateType mxS2 =
+            mxD == DTemplateType::Aligned256 ? S2TemplateType::Aligned256 : S2TemplateType::Aligned512;
+        QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128, mxS2, mxD, mxD,
+                        HAS_ATTENTION, RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+        if ASCEND_IS_AIV {
+            // Restore once at the MX kernel exit so the operator cannot leak CTRL state to subsequent work.
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_GLOBAL_SAT_MODE_CTRL_BIT>(
+                originalGlobalSatMode);
+            AscendC::SetCtrlSpr<FaVectorApi::CAST_SAT_MODE_CTRL_BIT, FaVectorApi::CAST_SAT_MODE_CTRL_BIT>(
+                originalCastMode);
+        }
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
