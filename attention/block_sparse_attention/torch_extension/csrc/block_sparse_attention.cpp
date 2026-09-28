@@ -17,7 +17,7 @@ const int64_t FLOAT4_E2M1 = static_cast<int64_t>(296);
 const int64_t FLOAT8_E8M0 = static_cast<int64_t>(293);
 // Match quant_flash_attn: this is the ACL dtype value, not the Python-side
 // torch_npu.hifloat8 enum value (290).
-const int64_t HIFLOAT8 =  static_cast<int64_t>(34);
+const int64_t HIFLOAT8 = static_cast<int64_t>(34);
 
 TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
 {

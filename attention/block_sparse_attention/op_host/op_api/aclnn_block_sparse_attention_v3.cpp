@@ -173,8 +173,8 @@ static bool CheckQuantModeAndDtype(int64_t quantMode, const aclTensor *query, co
         case HIF8_PER_TENSOR_QUANT:
             return CheckHif8PerTensorParams(query, key, value, qScale, kScale, vScale, pScale);
         default:
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Invalid quantMode %ld. Supported: 0/1/2/3/5 (4 is reserved for MXFP8).", quantMode);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid quantMode %ld. Supported: 0/1/2/3/5 (4 is reserved for MXFP8).",
+                    quantMode);
             return false;
     }
 }
@@ -433,7 +433,10 @@ static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLs
     return ACLNN_SUCCESS;
 }
 
-static string ConvertLayoutString(char *layoutStr) { return op::ToString(layoutStr).GetString(); }
+static string ConvertLayoutString(char *layoutStr)
+{
+    return op::ToString(layoutStr).GetString();
+}
 
 } // namespace
 
@@ -448,9 +451,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     double dstTypeMax, aclTensor *attentionOut, aclTensor *softmaxLseOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    aclnnStatus ret = ValidateParams(query, key, value, attentionOut, qDequantScaleOptional, kDequantScaleOptional,
-                                     vDequantScaleOptional, pQuantScaleOptional, qInputLayout, kvInputLayout,
-                                     blockShape, quantMode);
+    aclnnStatus ret =
+        ValidateParams(query, key, value, attentionOut, qDequantScaleOptional, kDequantScaleOptional,
+                       vDequantScaleOptional, pQuantScaleOptional, qInputLayout, kvInputLayout, blockShape, quantMode);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }

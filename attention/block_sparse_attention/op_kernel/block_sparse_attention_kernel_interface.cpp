@@ -466,8 +466,8 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
 }
 
 template <class InDtype, class SMDtype, class REDtype, class Otype, Format qFormat, Format kvFormat,
-          Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat,
-          Gemm::Tile::CopyL0CToUBMode mm1L0C2UBMode, bool transposedMm1>
+          Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat, Gemm::Tile::CopyL0CToUBMode mm1L0C2UBMode,
+          bool transposedMm1>
 __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask, GM_ADDR blockTable,
     GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv, GM_ADDR qDequantScale, GM_ADDR kDequantScale,
@@ -511,9 +511,9 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     // base block instead of two). With NO_QUANT the dequant moves to the vector
     // side of the two epilogues and the fixpipe keeps dualDstCtl=2, matching QFA
     // HIF8 and the FP16 path.
-    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
-                                                         LayoutS, void, mm1L0C2UBMode, false,
-                                                         Gemm::Tile::ScaleGranularity::NO_QUANT>;
+    using TileCopyQK =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
+                                          mm1L0C2UBMode, false, Gemm::Tile::ScaleGranularity::NO_QUANT>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
 

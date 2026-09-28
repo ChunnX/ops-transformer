@@ -263,8 +263,7 @@ ge::graphStatus BSATiling::CheckNDFormat(gert::TilingContext *bsaContext)
     }
     const auto *pQuantScaleTensor = bsaContext->GetOptionalInputTensor(P_QUANT_SCALE_INDEX);
     if (pQuantScaleTensor != nullptr) {
-        auto pQuantScaleFormat =
-            static_cast<ge::Format>(ge::GetPrimaryFormat(pQuantScaleTensor->GetStorageFormat()));
+        auto pQuantScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(pQuantScaleTensor->GetStorageFormat()));
         OP_CHECK_IF(CheckFormat(pQuantScaleFormat) != ge::GRAPH_SUCCESS,
                     OP_LOGE(bsaContext->GetNodeName(), "pQuantScale check format failed"), return ge::GRAPH_FAILED);
     }
@@ -767,12 +766,10 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     // boundaries may be smaller and are handled through the existing Q/KV
     // tail and cross-block gather paths.  Require the Cube minimum alignment
     // for both logical sparse block dimensions.
-    if (IsHif8Quant(quantMode_) &&
-        (blockShapeX_ % MIN_BLOCK_ALIGN != 0 || blockShapeY_ % MIN_BLOCK_ALIGN != 0)) {
+    if (IsHif8Quant(quantMode_) && (blockShapeX_ % MIN_BLOCK_ALIGN != 0 || blockShapeY_ % MIN_BLOCK_ALIGN != 0)) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "quantMode 5 requires blockShapeX and blockShapeY to be divisible by %ld, but got [%ld, %ld].",
-                MIN_BLOCK_ALIGN,
-                blockShapeX_, blockShapeY_);
+                MIN_BLOCK_ALIGN, blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -799,7 +796,7 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 }
 
 static ge::graphStatus ValidateHif8PerTensorScale(gert::TilingContext *bsaContext, const int parameterIndex,
-                                                   const char *parameterName, bool optional)
+                                                  const char *parameterName, bool optional)
 {
     const auto *scaleTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
     if (scaleTensor == nullptr) {
@@ -1022,8 +1019,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 
     const auto *pQuantScaleTensor = bsaContext->GetOptionalInputTensor(P_QUANT_SCALE_INDEX);
     if (IsHif8Quant(quantMode_)) {
-        if (ValidateHif8PerTensorScale(bsaContext, P_QUANT_SCALE_INDEX, "pQuantScale", true) !=
-            ge::GRAPH_SUCCESS) {
+        if (ValidateHif8PerTensorScale(bsaContext, P_QUANT_SCALE_INDEX, "pQuantScale", true) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     } else if (pQuantScaleTensor != nullptr) {
@@ -1064,8 +1060,8 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
     int64_t quantModeValue = (quantModePtr == nullptr) ? 0 : *quantModePtr;
     if (quantModeValue != NO_QUANT && quantModeValue != FP8_QUANT && quantModeValue != MXFP4_OCP_QUANT &&
         quantModeValue != MXFP4_CX_QUANT && quantModeValue != HIF8_PER_TENSOR_QUANT) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "Invalid quantMode %ld. Supported: 0/1/2/3/5 (4 is reserved for MXFP8).", quantModeValue);
+        OP_LOGE(bsaContext->GetNodeName(), "Invalid quantMode %ld. Supported: 0/1/2/3/5 (4 is reserved for MXFP8).",
+                quantModeValue);
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<uint32_t>(quantModeValue);

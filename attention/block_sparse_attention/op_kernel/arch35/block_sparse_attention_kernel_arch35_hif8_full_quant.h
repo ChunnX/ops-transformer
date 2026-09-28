@@ -414,8 +414,7 @@ public:
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     // HIF8 P keeps a fixed 64-Q-row L1 slot for each AIV even
                     // on a Q tail, matching the QFA HIF8 DN layout.
-                    auto l1PLayoutTla =
-                        tla::MakeLayout<ElementP, NpuArch::layout::zN>(qBaseTile_, kvSTileSizeAct);
+                    auto l1PLayoutTla = tla::MakeLayout<ElementP, NpuArch::layout::zN>(qBaseTile_, kvSTileSizeAct);
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
                     epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, (gatheredKvSTileIdx == 0), ubSBufId,

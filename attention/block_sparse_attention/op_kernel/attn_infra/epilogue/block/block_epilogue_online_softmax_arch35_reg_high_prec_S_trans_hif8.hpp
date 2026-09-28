@@ -157,8 +157,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
         uint32_t mAlignedTile = mRound / 4;
-        uint32_t mFirstTile = m % mAlignedTile;  // Valid rows in the final tile.
-        uint32_t mAligned16TileNum = m / mAlignedTile;  // Number of full tiles.
+        uint32_t mFirstTile = m % mAlignedTile;        // Valid rows in the final tile.
+        uint32_t mAligned16TileNum = m / mAlignedTile; // Number of full tiles.
         if (mAligned16TileNum == 4) {
             mFirstTile = mAlignedTile;
         }
@@ -270,8 +270,8 @@ private:
                                                    __ubuf__ ElementS *expSumUb, uint16_t mRound, uint16_t m,
                                                    uint32_t tailN, uint32_t mFirstTile, ElementInput dScale,
                                                    ElementInput pScale, __ubuf__ uint8_t *pGatherIndexUb,
-                                                   uint16_t s2BaseSize, uint32_t blockStride,
-                                                   __ubuf__ float *expMaxUb, __ubuf__ ElementS *lastExpSumUb)
+                                                   uint16_t s2BaseSize, uint32_t blockStride, __ubuf__ float *expMaxUb,
+                                                   __ubuf__ ElementS *lastExpSumUb)
     {
         using namespace AscendC::Reg;
         RegTensor<float> src0Vreg;
@@ -310,14 +310,14 @@ private:
         RegTensor<ElementP> packedPVreg;
         RegTensor<uint8_t> pGatherIndexVreg;
 
-        constexpr static CastTrait castTraitZeroRound = {
-            RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
-        constexpr static CastTrait castTraitOneRound = {
-            RegLayout::ONE, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
-        constexpr static CastTrait castTraitTwoRound = {
-            RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
-        constexpr static CastTrait castTraitThreeRound = {
-            RegLayout::THREE, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitZeroRound = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                         AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitOneRound = {RegLayout::ONE, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                        AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitTwoRound = {RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                        AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitThreeRound = {RegLayout::THREE, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                          AscendC::RoundMode::CAST_ROUND};
 
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<float>(tailN);
@@ -396,16 +396,16 @@ private:
             Cast<ElementP, float, castTraitOneRound>(exp1Vreg16, exp1Vreg32, pregFull);
             Cast<ElementP, float, castTraitTwoRound>(exp2Vreg16, exp2Vreg32, pregFull);
             Cast<ElementP, float, castTraitThreeRound>(exp3Vreg16, exp3Vreg32, pregFull);
-            Or((RegTensor<uint8_t> &)merge01Vreg, (RegTensor<uint8_t> &)exp0Vreg16,
-               (RegTensor<uint8_t> &)exp1Vreg16, pregFullB8);
-            Or((RegTensor<uint8_t> &)merge23Vreg, (RegTensor<uint8_t> &)exp2Vreg16,
-               (RegTensor<uint8_t> &)exp3Vreg16, pregFullB8);
-            Or((RegTensor<uint8_t> &)packedPVreg, (RegTensor<uint8_t> &)merge01Vreg,
-               (RegTensor<uint8_t> &)merge23Vreg, pregFullB8);
+            Or((RegTensor<uint8_t> &)merge01Vreg, (RegTensor<uint8_t> &)exp0Vreg16, (RegTensor<uint8_t> &)exp1Vreg16,
+               pregFullB8);
+            Or((RegTensor<uint8_t> &)merge23Vreg, (RegTensor<uint8_t> &)exp2Vreg16, (RegTensor<uint8_t> &)exp3Vreg16,
+               pregFullB8);
+            Or((RegTensor<uint8_t> &)packedPVreg, (RegTensor<uint8_t> &)merge01Vreg, (RegTensor<uint8_t> &)merge23Vreg,
+               pregFullB8);
             Gather(packedPVreg, packedPVreg, pGatherIndexVreg);
             __ubuf__ ElementP *dstUb = expUb + static_cast<uint32_t>(i) * 32;
-            StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                dstUb, packedPVreg, blockStride, pregFullB8);
+            StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(dstUb, packedPVreg, blockStride,
+                                                                              pregFullB8);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
@@ -449,8 +449,8 @@ private:
                    (RegTensor<uint8_t> &)merge23Vreg, pregFullB8);
                 Gather(packedPVreg, packedPVreg, pGatherIndexVreg);
                 __ubuf__ ElementP *dstUb = expUb + static_cast<uint32_t>(i) * 32;
-                StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(
-                    dstUb, packedPVreg, blockStride, pregFullB8);
+                StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(dstUb, packedPVreg, blockStride,
+                                                                                  pregFullB8);
 
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);

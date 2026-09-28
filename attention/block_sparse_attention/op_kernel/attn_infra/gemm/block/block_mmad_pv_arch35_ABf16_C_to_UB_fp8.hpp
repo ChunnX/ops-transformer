@@ -207,8 +207,8 @@ public:
                                       AscendC::GlobalTensor<int32_t> gSparseBlockIdx, GemmCoord actualOriShape,
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                                      uint64_t &l0Stage,
-                                      Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
+                                      uint64_t &l0Stage, Arch::CrossCoreFlag smToMm2Flag,
+                                      Arch::CrossCoreFlag mm2ToReFlag)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -255,9 +255,8 @@ public:
                         (kL0Itr == kL0LoopNum - 1) ? (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
                     uint32_t kMicroLoopNum = CeilDiv(l0TileKAct, L0_TILE_K_MICRO);
                     for (uint32_t microK = 0; microK < kMicroLoopNum; microK++) {
-                        uint32_t microKAct = (microK == kMicroLoopNum - 1)
-                                                 ? (l0TileKAct - microK * L0_TILE_K_MICRO)
-                                                 : L0_TILE_K_MICRO;
+                        uint32_t microKAct =
+                            (microK == kMicroLoopNum - 1) ? (l0TileKAct - microK * L0_TILE_K_MICRO) : L0_TILE_K_MICRO;
                         uint32_t microKOffset = kL0Itr * L0_TILE_K + microK * L0_TILE_K_MICRO;
                         // Rotate within the allocated micro-slots for K tails and reuse.
                         const uint32_t l0AEventId = l0AMicroBase + microK % L0_MICRO_STAGES;
@@ -266,12 +265,10 @@ public:
                         bool lastK = (kL0Itr == kL0LoopNum - 1) && (microK == kMicroLoopNum - 1);
 
                         // Reuse L0B across the K loop when possible.
-                        auto l1BTensorTlaTile =
-                            GetTile(l1BTensorTla, tla::MakeCoord(microKOffset, nL0Itr * L0_TILE_N),
-                                    tla::MakeShape(microKAct, l0TileNAct));
+                        auto l1BTensorTlaTile = GetTile(l1BTensorTla, tla::MakeCoord(microKOffset, nL0Itr * L0_TILE_N),
+                                                        tla::MakeShape(microKAct, l0TileNAct));
                         auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(microKAct, l0TileNAct);
-                        auto l0BTensorTla =
-                            tla::MakeTensor(l0BTensor[l0BSlot], l0BLayoutTla, Arch::PositionL0B{});
+                        auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BSlot], l0BLayoutTla, Arch::PositionL0B{});
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                         copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
@@ -281,12 +278,10 @@ public:
                             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
                         }
 
-                        auto l1ATensorTlaTile =
-                            GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, microKOffset),
-                                    tla::MakeShape(l0TileMAct, microKAct));
+                        auto l1ATensorTlaTile = GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M, microKOffset),
+                                                        tla::MakeShape(l0TileMAct, microKAct));
                         auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, microKAct);
-                        auto l0ATensorTla =
-                            tla::MakeTensor(l0ATensor[l0AEventId], l0ALayoutTla, Arch::PositionL0A{});
+                        auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0AEventId], l0ALayoutTla, Arch::PositionL0A{});
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                         copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
@@ -333,8 +328,8 @@ public:
             // (it becomes mSize) and the full N of the chunk; the dequantization is done by the
             // rescale-O epilogue instead of by the Fixpipe.
             CopyL0CToDst copyL0CToDst;
-            auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                            tla::MakeShape(mFixPAligned, nFixPAligned8));
+            auto ubCTensorTlaTile =
+                GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned, nFixPAligned8));
             copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }

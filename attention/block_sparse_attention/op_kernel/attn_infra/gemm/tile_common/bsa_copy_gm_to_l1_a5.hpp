@@ -271,14 +271,12 @@ template <class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
 struct TileCopyTla<
     Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<hifloat8_t>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
     tla::Tensor<AscendC::LocalTensor<hifloat8_t>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
-    std::enable_if_t<tla::detail::isRowMajor<LayoutSrc>::value &&
-                     tla::detail::isnZ<hifloat8_t, LayoutDst>::value>> {
+    std::enable_if_t<tla::detail::isRowMajor<LayoutSrc>::value && tla::detail::isnZ<hifloat8_t, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<hifloat8_t>::value;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
-                                      uint32_t ndNum = 1, uint32_t srcNdMatrixStride = 0,
-                                      uint32_t dstNzMatrixStride = 0)
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
+                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
         AscendC::Nd2NzParams params;
         params.ndNum = ndNum;
@@ -300,14 +298,12 @@ template <class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
 struct TileCopyTla<
     Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<hifloat8_t>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
     tla::Tensor<AscendC::LocalTensor<hifloat8_t>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
-    std::enable_if_t<tla::detail::isColumnMajor<LayoutSrc>::value &&
-                     tla::detail::iszN<hifloat8_t, LayoutDst>::value>> {
+    std::enable_if_t<tla::detail::isColumnMajor<LayoutSrc>::value && tla::detail::iszN<hifloat8_t, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<hifloat8_t>::value;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
-                                      uint32_t ndNum = 1, uint32_t srcNdMatrixStride = 0,
-                                      uint32_t dstNzMatrixStride = 0)
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
+                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
         AscendC::Nd2NzParams params;
         params.ndNum = ndNum;

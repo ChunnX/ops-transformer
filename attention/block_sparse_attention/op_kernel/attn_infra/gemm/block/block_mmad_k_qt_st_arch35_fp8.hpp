@@ -232,21 +232,19 @@ public:
 
                 // Launch MMAD for all micro-slots before collecting Fixpipe results.
                 for (uint32_t microIdx = 0; microIdx < microLoopNum; microIdx++) {
-                    uint32_t microMAct = (microIdx == microLoopNum - 1) ? (l0TileMAct - microIdx * L0_TILE_M_MICRO)
-                                                                        : L0_TILE_M_MICRO;
+                    uint32_t microMAct =
+                        (microIdx == microLoopNum - 1) ? (l0TileMAct - microIdx * L0_TILE_M_MICRO) : L0_TILE_M_MICRO;
                     uint32_t microMOffset = mL0Itr * L0_TILE_M + microIdx * L0_TILE_M_MICRO;
                     const uint32_t l0AEventId = l0AMicroBase + microIdx;
                     const uint32_t l0CMicroEventId = l0CMicroBase + microIdx;
                     auto l0CLayoutTla = tla::MakeLayoutL0C(microMAct, qSTile);
-                    auto l0CTensorTla =
-                        tla::MakeTensor(l0CTensor[l0CMicroEventId], l0CLayoutTla, Arch::PositionL0C{});
+                    auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CMicroEventId], l0CLayoutTla, Arch::PositionL0C{});
                     for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
                         uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (qSTile - nL0Itr * L0_TILE_N) : L0_TILE_N;
                         auto l0CTensorTlaTile = GetTile(l0CTensorTla, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
                                                         tla::MakeShape(microMAct, l0TileNAct));
                         for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
-                            uint32_t l0TileKAct =
-                                (kL0Itr == kL0LoopNum - 1) ? (embed - kL0Itr * L0_TILE_K) : L0_TILE_K;
+                            uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ? (embed - kL0Itr * L0_TILE_K) : L0_TILE_K;
 
                             auto l1KTensorTlaTile =
                                 GetTile(l1KTensorTla, tla::MakeCoord(microMOffset, kL0Itr * L0_TILE_K),
@@ -267,12 +265,10 @@ public:
                                 GetTile(l1QTensorTla, tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N),
                                         tla::MakeShape(l0TileKAct, l0TileNAct));
                             auto l0BLayoutTla = tla::MakeLayout<ElementQ, LayoutTagL0B>(l0TileKAct, l0TileNAct);
-                            auto l0BTensorTla =
-                                tla::MakeTensor(l0BTensor[l0BSlot], l0BLayoutTla, Arch::PositionL0B{});
+                            auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BSlot], l0BLayoutTla, Arch::PositionL0B{});
 
                             // Load the shared Q tile only for the first micro-slot.
-                            bool loadQ =
-                                l1ToL0BNoRepeatFlag && (mL1Itr == 0) && (mL0Itr == 0) && (microIdx == 0);
+                            bool loadQ = l1ToL0BNoRepeatFlag && (mL1Itr == 0) && (mL0Itr == 0) && (microIdx == 0);
                             if (loadQ) {
                                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                                 copyL1ToL0B(l0BTensorTla, l1QTensorTlaTile);
@@ -307,13 +303,12 @@ public:
                     WaitCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);
                 }
                 for (uint32_t microIdx = 0; microIdx < microLoopNum; microIdx++) {
-                    uint32_t microMAct = (microIdx == microLoopNum - 1) ? (l0TileMAct - microIdx * L0_TILE_M_MICRO)
-                                                                        : L0_TILE_M_MICRO;
+                    uint32_t microMAct =
+                        (microIdx == microLoopNum - 1) ? (l0TileMAct - microIdx * L0_TILE_M_MICRO) : L0_TILE_M_MICRO;
                     uint32_t microMOffset = mL0Itr * L0_TILE_M + microIdx * L0_TILE_M_MICRO;
                     const uint32_t l0CMicroEventId = l0CMicroBase + microIdx;
                     auto l0CLayoutTla = tla::MakeLayoutL0C(microMAct, qSTile);
-                    auto l0CTensorTla =
-                        tla::MakeTensor(l0CTensor[l0CMicroEventId], l0CLayoutTla, Arch::PositionL0C{});
+                    auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CMicroEventId], l0CLayoutTla, Arch::PositionL0C{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CMicroEventId);
 
                     uint32_t mFixPAligned8 = RoundUp(microMAct, 8);
