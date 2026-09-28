@@ -35,15 +35,13 @@ __simd_callee__ inline AscendC::MicroAPI::RegTensor<float> UpdateSoftmaxRescaleF
     using namespace AscendC::MicroAPI;
     RegTensor<half> oldMax, newMax;
     RegTensor<float> ratio;
-    LoadAlign(oldMax, maxima);
-    LoadAlign(newMax, blockMax);
+    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
+    LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, blockMax);
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
     Adds(newMax, newMax, SOFTMAX_FP8_SHIFT, h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
-    uint32_t validRows = 64;
-    auto h64 = UpdateMask<half>(validRows);
-    StoreAlign(maxima, newMax, h64);
+    StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
     StoreAlign(alpha, ratio, f);
     return ratio;
 }
@@ -190,31 +188,34 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
         const uint16_t row_b = row + 1;
 
         RegTensor<half> m_a, m_b;
-        RegTensor<half> x0_a, x1_a;
-        RegTensor<half> x0_b, x1_b;
+        RegTensor<half> x0_a, x1_a, x2_a, x3_a;
+        RegTensor<half> x0_b, x1_b, x2_b, x3_b;
 
         LoadAlign<half, LoadDist::DIST_BRC_B16>(m_a, maxima + row_a);
         LoadAlign<half, LoadDist::DIST_BRC_B16>(m_b, maxima + row_b);
 
-        LoadAlign(x0_a, scores + row_a * COLS + 0);
-        LoadAlign(x1_a, scores + row_a * COLS + 128);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x0_a, scores + row_a * COLS + 0);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x1_a, scores + row_a * COLS + 64);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x2_a, scores + row_a * COLS + 128);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x3_a, scores + row_a * COLS + 192);
 
-        LoadAlign(x0_b, scores + row_b * COLS + 0);
-        LoadAlign(x1_b, scores + row_b * COLS + 128);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x0_b, scores + row_b * COLS + 0);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x1_b, scores + row_b * COLS + 64);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x2_b, scores + row_b * COLS + 128);
+        LoadAlign<half, LoadDist::DIST_UNPACK_B16>(x3_b, scores + row_b * COLS + 192);
 
         RegTensor<float> p0_a, p1_a, p2_a, p3_a;
         RegTensor<float> p0_b, p1_b, p2_b, p3_b;
 
-        // 8 ExpSubs issued concurrently across row_a and row_b using contiguous halfs
+        // 8 ExpSubs issued concurrently across row_a and row_b
         ExpSub<float, half, RegLayout::ZERO>(p0_a, x0_a, m_a, h);
-        ExpSub<float, half, RegLayout::ONE>(p1_a, x0_a, m_a, h);
-        ExpSub<float, half, RegLayout::ZERO>(p2_a, x1_a, m_a, h);
-        ExpSub<float, half, RegLayout::ONE>(p3_a, x1_a, m_a, h);
-
         ExpSub<float, half, RegLayout::ZERO>(p0_b, x0_b, m_b, h);
-        ExpSub<float, half, RegLayout::ONE>(p1_b, x0_b, m_b, h);
-        ExpSub<float, half, RegLayout::ZERO>(p2_b, x1_b, m_b, h);
-        ExpSub<float, half, RegLayout::ONE>(p3_b, x1_b, m_b, h);
+        ExpSub<float, half, RegLayout::ZERO>(p1_a, x1_a, m_a, h);
+        ExpSub<float, half, RegLayout::ZERO>(p1_b, x1_b, m_b, h);
+        ExpSub<float, half, RegLayout::ZERO>(p2_a, x2_a, m_a, h);
+        ExpSub<float, half, RegLayout::ZERO>(p2_b, x2_b, m_b, h);
+        ExpSub<float, half, RegLayout::ZERO>(p3_a, x3_a, m_a, h);
+        ExpSub<float, half, RegLayout::ZERO>(p3_b, x3_b, m_b, h);
 
         RegTensor<float8_e4m3_t> packed0_a, packed1_a, packed2_a, packed3_a;
         RegTensor<float8_e4m3_t> packed0_b, packed1_b, packed2_b, packed3_b;
