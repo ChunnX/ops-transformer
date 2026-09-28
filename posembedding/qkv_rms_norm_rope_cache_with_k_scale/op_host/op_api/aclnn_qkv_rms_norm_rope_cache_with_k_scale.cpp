@@ -277,9 +277,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     L2_DFX_PHASE_1(
         aclnnQkvRmsNormRopeCacheWithKScale,
         DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
-               seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-               layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode, kQuantMode),
-        DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
+               seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkv,
+               layoutQOut, epsilon, mropeSectionOptional, qQuantMode, kQuantMode),
+        DFX_OUT(kCacheRef, vCacheRef, kScaleCacheRef, qOut, qScaleOptional));
 
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
