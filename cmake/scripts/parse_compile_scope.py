@@ -17,6 +17,8 @@ import re
 from collections import defaultdict, deque
 from pathlib import Path
 
+import yaml
+
 OP_DOMAINS = (
     "attention",
     "ffn",
@@ -30,6 +32,7 @@ OP_DOMAINS = (
 SKIP_EXTS = {".md", ".json", ".ini"}
 EXCLUDE_DIRS = {"common", "3rd", "tools"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
+WHITELIST_PATH = REPO_ROOT / "tests" / "compile_scope_whitelist.yaml"
 DEPEND_RE = re.compile(r"set\(\s*[A-Za-z0-9_]*depends\s+([^)]*?)\s+PARENT_SCOPE", re.I)
 LONG_SOC = {
     "ascend310p": "Ascend310P3",
@@ -45,11 +48,7 @@ LONG_SOC = {
     "ascend5162a": "Ascend5162A",
     "ascend610lite": "Ascend610Lite",
 }
-METADATA_SUFFIX = "_metadata"
-AICPU_ONLY_ASCEND910B_OPS = {
-    "attention/attention_worker_scheduler",
-    "ffn/ffn_worker_scheduler",
-}
+_WHITELIST_CACHE = None
 
 
 def read_changed_files(changed_file):
@@ -74,6 +73,19 @@ def iter_ops(experimental):
             for child in sorted(base.iterdir()):
                 if child.is_dir() and child.name not in EXCLUDE_DIRS:
                     yield domain, child.name, child
+
+
+def load_whitelist():
+    global _WHITELIST_CACHE
+    if _WHITELIST_CACHE is not None:
+        return _WHITELIST_CACHE
+    if not WHITELIST_PATH.is_file():
+        _WHITELIST_CACHE = {}
+        return _WHITELIST_CACHE
+    with open(WHITELIST_PATH, "r", encoding="utf-8") as fh:
+        cfg = yaml.safe_load(fh) or {}
+    _WHITELIST_CACHE = cfg.get("ops") or {}
+    return _WHITELIST_CACHE
 
 
 def dep_key_from_path(path):
@@ -148,7 +160,9 @@ def reverse_closure(edges, starts):
 def split_socs(text):
     if not text:
         return []
-    return [x.strip().lower() for x in re.split(r"[,;]", text) if x.strip()]
+    if isinstance(text, (list, tuple)):
+        return [str(x).strip().lower() for x in text if str(x).strip()]
+    return [x.strip().lower() for x in re.split(r"[,;]", str(text)) if x.strip()]
 
 
 def def_supports(op_path, soc):
@@ -170,35 +184,59 @@ def def_supports(op_path, soc):
 def filter_by_soc(ops, socs):
     if not socs:
         return ops
-    chosen = []
-    for domain, name, path in ops:
-        key = f"{domain}/{name}"
-        if key in AICPU_ONLY_ASCEND910B_OPS:
-            if any(soc == "ascend910b" for soc in socs):
-                chosen.append((domain, name, path))
+    return [item for item in ops if any(def_supports(item[2], soc) for soc in socs)]
+
+
+def whitelist_selection(key, entry, by_key, target_socs):
+    domain = key.split("/", 1)[0]
+    impact = entry.get("impact")
+    if impact is None:
+        impact_keys = [key]
+    else:
+        impact_keys = []
+        for item in impact:
+            item = str(item)
+            impact_keys.append(item if "/" in item else f"{domain}/{item}")
+    entry_socs = split_socs(entry.get("soc")) if "soc" in entry else None
+    selected = set()
+    for impact_key in impact_keys:
+        if impact_key not in by_key:
             continue
-        if any(def_supports(path, soc) for soc in socs):
-            chosen.append((domain, name, path))
-    return chosen
+        domain, name, path = by_key[impact_key]
+        if entry_socs is None:
+            if target_socs and not any(def_supports(path, soc) for soc in target_socs):
+                continue
+        elif (
+            target_socs and entry_socs and not set(entry_socs).intersection(target_socs)
+        ):
+            continue
+        selected.add(name)
+    return selected
 
 
 def collect_compile_ops(changed_file, soc_text, experimental):
     ops = list(iter_ops(experimental))
-    edges = build_edges(ops)
-    starts = changed_keys(changed_file, experimental)
-    selected = reverse_closure(edges, starts)
     by_key = {f"{domain}/{name}": (domain, name, path) for domain, name, path in ops}
-    for key in list(selected):
-        if "/" not in key:
-            continue
-        domain, name = key.split("/", 1)
-        if name.endswith(METADATA_SUFFIX):
-            base_key = f"{domain}/{name[: -len(METADATA_SUFFIX)]}"
-            if base_key in by_key:
-                selected.add(base_key)
-    chosen = [by_key[key] for key in selected if key in by_key]
-    chosen = filter_by_soc(chosen, split_socs(soc_text))
-    return sorted({name for _, name, _ in chosen})
+    starts = changed_keys(changed_file, experimental)
+    whitelist = load_whitelist()
+    target_socs = split_socs(soc_text)
+
+    chosen_names = set()
+    fallback_starts = set()
+    for key in sorted(starts):
+        entry = whitelist.get(key)
+        if entry is None:
+            fallback_starts.add(key)
+        else:
+            chosen_names.update(whitelist_selection(key, entry, by_key, target_socs))
+
+    if fallback_starts:
+        edges = build_edges(ops)
+        selected = reverse_closure(edges, fallback_starts)
+        chosen = [by_key[key] for key in selected if key in by_key]
+        chosen = filter_by_soc(chosen, target_socs)
+        chosen_names.update(name for _, name, _ in chosen)
+    return sorted(chosen_names)
 
 
 def main():

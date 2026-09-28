@@ -1,0 +1,48 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+# PR_COMPILE 白名单：命中后直接使用 impact/soc；未命中回退到 CMake depends + def.cpp AddConfig 流程。
+version: 1
+ops:
+  attention/dense_lightning_indexer_kl_loss_grad_metadata:
+    impact: [dense_lightning_indexer_kl_loss_grad]
+  attention/dense_lightning_indexer_softmax_lse_v2_metadata:
+    impact: [dense_lightning_indexer_softmax_lse_v2]
+  attention/flash_attn_metadata:
+    impact: [flash_attn]
+  attention/flash_mla_with_kvcache_metadata:
+    impact: [flash_mla_with_kvcache]
+  attention/generic_block_sparse_attention_grad_metadata:
+    impact: [generic_block_sparse_attention_grad]
+  attention/generic_block_sparse_attention_metadata:
+    impact: [generic_block_sparse_attention]
+  attention/lightning_indexer_v2_metadata:
+    impact: [lightning_indexer_v2]
+  attention/mixed_quant_sparse_flash_mla_metadata:
+    impact: [mixed_quant_sparse_flash_mla]
+  attention/quant_flash_attn_metadata:
+    impact: [quant_flash_attn]
+  attention/quant_lightning_indexer_v2_metadata:
+    impact: [quant_lightning_indexer_v2]
+  attention/quant_sparse_flash_mla_metadata:
+    impact: [quant_sparse_flash_mla]
+  attention/sparse_flash_mla_grad_metadata:
+    impact: [sparse_flash_mla_grad]
+  attention/sparse_flash_mla_metadata:
+    impact: [sparse_flash_mla]
+  attention/sparse_flash_mla_softmax_l1_norm_metadata:
+    impact: [sparse_flash_mla_softmax_l1_norm]
+  attention/sparse_lightning_indexer_kl_loss_grad_metadata:
+    impact: [sparse_lightning_indexer_kl_loss_grad]
+  attention/attention_worker_scheduler:
+    impact: [attention_worker_scheduler]
+    soc: [ascend910b]
+  ffn/ffn_worker_scheduler:
+    impact: [ffn_worker_scheduler]
+    soc: [ascend910b]
