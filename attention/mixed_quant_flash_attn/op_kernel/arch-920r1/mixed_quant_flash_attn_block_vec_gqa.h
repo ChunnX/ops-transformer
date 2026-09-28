@@ -550,8 +550,7 @@ public:
         uint64_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
 
         WaitFlag<HardEvent::V_MTE2>(V_MTE2_SINK);
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSND || layout == LayOutTypeEnum::LAYOUT_TND ||
-                      layout == LayOutTypeEnum::LAYOUT_BSH) {
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH) {
             MixedQuantFlashAttnSink::SinkCopyInS1G(sinkInput, this->sinkGm, static_cast<uint32_t>(gs1Start),
                                                    runInfo.actVecMSize, runInfo.actS1Size, runInfo.n2Idx,
                                                    constInfo.gSize);
