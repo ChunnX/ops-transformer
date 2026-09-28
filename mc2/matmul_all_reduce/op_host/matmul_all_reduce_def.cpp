@@ -103,7 +103,6 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend910b", aicore_config_910b);
-        this->AICore().AddConfig("ascend910_93", aicore_config_910b);
         this->MC2().HcclGroup("group");
 
         OpAICoreConfig aicore_config_310p;
