@@ -249,17 +249,13 @@ __aicore__ void HeadStats(GM_ADDR k, GM_ADDR mean, SageParams p)
 template <class T>
 __aicore__ void Stats(GM_ADDR k, GM_ADDR mean, SageParams p)
 {
-    const bool grouped = UseDieGroups(p);
-    const uint32_t workers = grouped ? p.cores : 2 * p.cores;
-    const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
-    if (p.d == p.dp && heads >= 8) {
-        HeadStats<T>(k, mean, p);
-        return;
-    }
     if (p.smoothK && p.d == p.dp && p.sk >= 1024) {
         StreamKStats<T>(k, mean, p);
         return;
     }
+    const bool grouped = UseDieGroups(p);
+    const uint32_t workers = grouped ? p.cores : 2 * p.cores;
+    const uint64_t heads = uint64_t(p.b) * p.hk / (grouped ? 2 : 1);
     FixedResource r;
     GlobalTensor<T> kg;
     kg.SetGlobalBuffer((__gm__ T *)k);
