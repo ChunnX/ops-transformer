@@ -42,7 +42,9 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
     using T = int8_t;
     using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<Arch, T, layout::RowMajor, T, layout::ColumnMajor, float,
                                                         layout::RowMajor>;
-    WaitFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
+    if (loadA) {
+        WaitFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
+    }
     auto la = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(0),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1A>(M, k), Catlass::Arch::PositionL1{});
     auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + kParity * 65536),
@@ -73,7 +75,9 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
         }
     }
     SetFlag<HardEvent::MTE1_MTE2>(kEvent);
-    SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
+    if (loadA) {
+        SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
+    }
     Sync<HardEvent::MTE1_M>();
     // Overlap MMAD and Fixpipe: MMAD 0 and MMAD 1 run consecutively on Cube (PIPE_M),
     // while Fixpipe 0 runs concurrently on Fixpipe (PIPE_FIX) during MMAD 1.
