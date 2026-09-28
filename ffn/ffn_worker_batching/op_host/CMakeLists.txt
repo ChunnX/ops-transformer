@@ -9,7 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    # Generate only the internal ABI; public V1/V2 signatures are maintained in op_api.
+    target_sources(op_host_aclnnInner PRIVATE
         ffn_worker_batching_def.cpp
     )
     if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
@@ -31,8 +32,8 @@ if (BUILD_OPEN_PROJECT)
                             -cce-aicore-dcci-before-kernel-end=false
             )
         endif()
-        add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)
+        add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn_inner)
     endif()
 else() # 回黄host
-    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn)  
+    add_modules_sources(OPTYPE ffn_worker_batching ACLNNTYPE aclnn_inner)
 endif()

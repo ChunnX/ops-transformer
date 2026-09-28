@@ -15,6 +15,7 @@
 #ifndef FLASH_ATTENTION_SCORE_BLOCK_VEC_BASE_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_BLOCK_VEC_BASE_FULLQUANT_H_
 #include "../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/arch_info.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -395,7 +396,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
             this->attenMaskInQue[0], this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr,
             (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
                 ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) && (runInfo.s2LoopCount == runInfo.s2LoopLimit)),
-            subLoop);
+            constInfo.s1BaseSize / ArchInfo::CV_RATIO, subLoop);
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
 
@@ -504,7 +505,8 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
         AttenMaskCopyInDn<hasAtten>(
             this->attenMaskInQue[0], this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr,
             (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
-                ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) && (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
+                ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) && (runInfo.s2LoopCount == runInfo.s2LoopLimit)),
+            constInfo.s1BaseSize / ArchInfo::CV_RATIO);
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];

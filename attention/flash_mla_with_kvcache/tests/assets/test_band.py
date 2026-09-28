@@ -77,6 +77,41 @@ def reference(q, pages, q_lens, kv_lens, mode, left, right, sinks=None):
 
 
 class BandGoldenTest(unittest.TestCase):
+    def test_fully_masked_rows_with_nonfinite_kv(self):
+        for value in [float("inf"), float("nan")]:
+            q, k, table, cu, lens, _ = make_case([3], [1], 64, torch.bfloat16)
+            k.fill_(value)
+            for mode in [3, 4]:
+                for sink in [None, torch.zeros(64)]:
+                    for crossover in [0, 10**12]:
+                        with self.subTest(
+                            value=value,
+                            mode=mode,
+                            sink=sink is not None,
+                            crossover=crossover,
+                        ):
+                            golden = FlashMlaWithKvcacheGolden()
+                            golden.TILED_CROSSOVER = crossover
+                            out, lse = golden.forward_golden(
+                                q,
+                                k,
+                                block_table=table,
+                                cache_seqlens=lens,
+                                cu_seqlens_q=cu,
+                                mask_mode=mode,
+                                win_left=-1,
+                                win_right=0 if mode == 4 else -1,
+                                sinks=sink,
+                                layout_q="TND",
+                                layout_kv="PA_NZ",
+                                layout_out="NTD",
+                                return_softmax_lse=True,
+                                device_mode="cpu",
+                            )
+                            self.assertTrue((out[:, :2] == 0).all())
+                            self.assertTrue(torch.isposinf(lse[:, :2]).all())
+                            self.assertFalse(torch.isfinite(out[:, 2]).all())
+
     def test_inclusive_right_aligned_bounds(self):
         q = torch.arange(3)
         k = torch.arange(6)

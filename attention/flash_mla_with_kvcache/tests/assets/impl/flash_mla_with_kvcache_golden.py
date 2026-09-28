@@ -557,8 +557,7 @@ class FlashMlaWithKvcacheGolden:
                     o, l = self._compute_full_single(
                         flat_q, k_bh, v_bh, selected_mask, scale, sink_rows
                     )
-                # Match the operator's invalid-row contract even when a sink is present.
-                if sinks is not None and mask_mode in (3, 4):
+                if mask_mode in (3, 4):
                     pos = torch.arange(sq, device=q.device) + delta
                     lower = (
                         torch.zeros_like(pos)
@@ -575,7 +574,12 @@ class FlashMlaWithKvcacheGolden:
                         )
                     )
                     valid = lower.clamp(min=0) <= upper.clamp(max=skv - 1)
-                    l = l.masked_fill(~valid.repeat(last - first), float("inf"))
+                    # Zero weights can still produce NaN in PV with Inf/NaN V.
+                    # Use positions to identify invalid rows, including with sinks,
+                    # and preserve non-finite values in visible rows.
+                    fully_masked = ~valid.repeat(last - first)
+                    o = o.masked_fill(fully_masked[:, None], 0.0)
+                    l = l.masked_fill(fully_masked, float("inf"))
                 o = o.reshape(last - first, sq, dv)
                 l = l.reshape(last - first, sq)
                 if is_tnd_out:

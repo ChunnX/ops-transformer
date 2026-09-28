@@ -416,6 +416,7 @@ def _mxfp8_customize_inputs(
     **kwargs,
 ):
     module = _mxfp8_load_golden_module()
+    s2_base_size = 256 if int(query.shape[-1]) == 256 else 512
     case = _mxfp8_assemble_case(
         query,
         key,

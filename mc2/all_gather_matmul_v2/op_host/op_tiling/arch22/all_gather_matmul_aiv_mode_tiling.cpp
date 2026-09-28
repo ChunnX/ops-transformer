@@ -20,7 +20,6 @@
 #include "op_host/op_tiling/mc2_matmul_aiv_mode_common.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/op_def_registry.h"
-#include "mc2_log.h"
 #include "tiling_func.h"
 #include "../../../op_kernel/all_gather_matmul_aiv_mode_tiling.h"
 #include "../../../op_kernel/all_gather_matmul_v2_tiling_key.h"
@@ -42,6 +41,7 @@ constexpr uint32_t B_INDEX = 1;
 constexpr uint32_t BIAS_INDEX = 2;
 constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
+constexpr uint32_t INT4_ELEMENTS_PER_BYTE = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
@@ -310,7 +310,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(const gert::
         return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
-        OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
+        OP_TILING_CHECK(K % INT4_ELEMENTS_PER_BYTE != 0 || N % INT4_ELEMENTS_PER_BYTE != 0,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             context->GetNodeName(), "K/N",
                             (std::string("K=") + std::to_string(K) + " N=" + std::to_string(N)).c_str(),
@@ -404,7 +404,7 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
         } else {
             info.aAlignSize =
                 (info.isTransposeX1 ? static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) /
-                2;
+                INT4_ELEMENTS_PER_BYTE;
         }
         userWorkSpaceSize += info.aAlignSize;
     }
@@ -416,7 +416,7 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
         } else {
             info.bAlignSize =
                 (info.isTransposeX2 ? static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) /
-                2;
+                INT4_ELEMENTS_PER_BYTE;
         }
         userWorkSpaceSize += info.bAlignSize;
     }
@@ -597,7 +597,6 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     uint32_t elementSize = 0;
     uint32_t nElemAlign = 0;
     if (aType == ge::DT_INT4) {
-        constexpr uint32_t INT4_ELEMENTS_PER_BYTE = 2U;
         nElemAlign = HALF_KBYTE * INT4_ELEMENTS_PER_BYTE;
     } else {
         elementSize = D_TYPE_SIZE_MAP.at(aType);

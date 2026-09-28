@@ -166,7 +166,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
 }
 
 // ============================================================================
-// Case 3: metadata is required by Contiguous path (nullptr -> INNER_NULLPTR)
+// Case 3: null metadata is rejected before the Contiguous path (nullptr -> PARAM_NULLPTR)
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
 {
@@ -217,7 +217,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 // ============================================================================
