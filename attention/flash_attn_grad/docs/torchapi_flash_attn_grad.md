@@ -144,7 +144,7 @@ cann_ops_transformer.flash_attn_grad(
 | cu_seqlens_kv | Tensor | 可选 | TND布局下KV的累积序列长度，第一个元素必须为0，最后一个元素等于T2。`layout_kv`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。默认值为None | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。默认值为None | int32 | ND | (B,) |
-| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性，shape为(N1,)。默认值为None | float32 | ND | (N1,) |
+| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性，shape为(N1,)。默认值为None，此时`dsink`内容未定义（不应读取） | float32 | ND | (N1,) |
 | attn_mask | Tensor | 可选 | 掩码矩阵。默认值为None | int8 | ND | (2048, 2048) |
 | metadata | Tensor | 可选 | `flash_attn_metadata`生成的FAG任务切分数据。schema中为可选参数，但实际调用时必须传入 | int32 | ND | shape根据batch大小和N2动态计算 |
 | softmax_scale | float | 可选 | Softmax缩放系数。默认值为0.0，表示使用$1/\sqrt{D}$ | float32 | - | - |
@@ -168,7 +168,7 @@ cann_ops_transformer.flash_attn_grad(
 | dq | Tensor | 必选 | 公式中的dQ，Query的梯度 | bfloat16/float16 | ND | shape与`q`相同 |
 | dk | Tensor | 必选 | 公式中的dK，Key的梯度 | bfloat16/float16 | ND | shape与`k`相同 |
 | dv | Tensor | 必选 | 公式中的dV，Value的梯度 | bfloat16/float16 | ND | shape与`v`相同 |
-| dsink | Tensor | 必选 | 公式中的dSink，sink参数的梯度 | float32 | ND | (N1,) |
+| dsink | Tensor | 必选 | 公式中的dSink，sink参数的梯度；仅在传入`sinks`时有定义 | float32 | ND | (N1,)；`sinks`为None时内容未定义 |
 
 ## 约束说明
 
@@ -331,6 +331,7 @@ cann_ops_transformer.flash_attn_metadata(
     assert dq.shape == q.shape
     assert dk.shape == k.shape
     assert dv.shape == v.shape
+    # 未传 sinks 时 dsink 内容未定义，仅在传入 sinks 时才有意义
     assert dsink.shape == (N1,)
     assert dsink.dtype == torch.float32
     ```

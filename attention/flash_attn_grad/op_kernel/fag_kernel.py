@@ -33,8 +33,8 @@ vector 子核各自发来的信号。
 
 以下是这两个模板共同的设计约束，改动前务必读完。
 
-当前裁剪范围：非 TND（BSND/BNSD）、FP16。mask_mode 0=dense，3=causal，
-4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 mask 按列分核。
+当前裁剪范围：非 TND（BSND/BNSD）、FP16/BF16。mask_mode 0=dense，3=causal，
+4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 packed 有效块分核。
 BN2 支持 mask，禁止 BN2+swizzle。
 
 dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
@@ -200,13 +200,13 @@ def flash_attn_grad_preload3(
         q,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dQ],
         [s1ndQ, d2dQ, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_k = pl.make_tensor(
         k,
         [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, dQ],
         [s2ndKV, d2dKV, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     # MM3(dQ = dS@K) 需要「未转置」的 K，而 MM2 需要 K^T。
     # 每个 GM tensor 只会推导出一种 Layout：tensor_k 因 MM2 的转置读被定成
@@ -217,26 +217,26 @@ def flash_attn_grad_preload3(
         k,
         [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, dQ],
         [s2ndKV, d2dKV, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     # V/dO/attn_out 是 Dv 宽
     tensor_v = pl.make_tensor(
         v,
         [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, dV],
         [s2ndKVv, d2dKVv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_dy = pl.make_tensor(
         dout,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dV],
         [s1ndQv, d2dQv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_y = pl.make_tensor(
         attn_out,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dV],
         [s1ndQv, d2dQv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     # softmax_lse : [B,N1,S1] —— 按 Q 的 head 数(n1 = n2*G)存，因为每个 Q head
     # 的 softmax 归一化因子不同，G 个 Q head 不能共享同一份 lse。
@@ -305,9 +305,9 @@ def flash_attn_grad_preload3(
     tensor_dv_ws_flat = pl.make_tensor(
         dv_workspace, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP32
     )
-    tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
-    tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
-    tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+    tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=input_dtype)
+    tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=input_dtype)
+    tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=input_dtype)
     # dsink : [N1] fp32，post 阶段由 AIV0 固定次序归约后全量写出。
     tensor_dsink_out = pl.make_tensor(dsink, [1, n1Size], [n1Size, 1], dtype=pl.DT_FP32)
     # V1 列宽就是 dv_align。D=256 不进本函数。
@@ -692,9 +692,9 @@ def flash_attn_grad_preload3(
             taskId = taskId + 1
             localIdx = localIdx + 1
 
-    # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->fp16 ====
+    # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->16-bit ====
     # scale 在矩阵乘之后、fp32 结果上施加(而非提前乘进 dS)：先乘会让
-    # fp16 舍入发生在不同量级上，网络训练中误差会累积。
+    # 16-bit 舍入发生在不同量级上，网络训练中误差会累积。
     # 只有 dQ/dK 乘 scale，dV 不乘（传 1.0，fp32 乘 1.0 精确）。
     # 进 post 前必须 sync_all：要等所有核的 atomicAdd 都落盘。
     pl.system.sync_all()
@@ -786,7 +786,7 @@ def flash_attn_grad_preload2(
     ``template!=Tmpl.BN2``（当前即 D=256 GS1S2）：store 到 fp32 workspace；
     进循环前清 workspace，循环后再 scale+cast。不算 BN2 直出 v5/v6。
     ``Tmpl.BN2``：一个核独占整个 (b, n2) head；
-    不跑 workspace pre/post（仅 ``bn2_need_zero`` 清 fp16 out）。
+    不跑 workspace pre/post（仅 ``bn2_need_zero`` 清 16-bit out）。
 
     MultiBlk（is_bn2_multiblk）：dQ 首有效 s2 覆盖 workspace，其余 AtomicAdd，
     vector 只在 isLastS1Outer 从 GM Muls+Cast；dK/dV 在 L0C 累加到换 s2 再写回。
@@ -824,38 +824,38 @@ def flash_attn_grad_preload2(
         q,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dQ],
         [s1ndQ, d2dQ, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_k = pl.make_tensor(
         k,
         [viewD0KV, constInfo.s2Size, viewD2KV, dQ],
         [s2ndKV, d2dKV, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     # MM3 需要未转置的 K，必须与 MM2 的 K^T 视图分开(layout 各自推导)
     tensor_k_nt = pl.make_tensor(
         k,
         [viewD0KV, constInfo.s2Size, viewD2KV, dQ],
         [s2ndKV, d2dKV, dQ, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_v = pl.make_tensor(
         v,
         [viewD0KV, constInfo.s2Size, viewD2KV, dV],
         [s2ndKVv, d2dKVv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_dy = pl.make_tensor(
         dout,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dV],
         [s1ndQv, d2dQv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     tensor_y = pl.make_tensor(
         attn_out,
         [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dV],
         [s1ndQv, d2dQv, dV, 1],
-        dtype=pl.DT_FP16,
+        dtype=input_dtype,
     )
     # BN2 无 GQA（g=1），n1==n2，与原先 [B,n2,S1] 等价。
     n1Size = constInfo.n2Size * constInfo.gSize
@@ -868,27 +868,27 @@ def flash_attn_grad_preload2(
 
     ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
     if template == Tmpl.BN2:
-        # 单块直出 fp16；dq workspace 是 per-core 条带，不是全量 4D。
+        # 单块直出 16-bit；dq workspace 是 per-core 条带，不是全量 4D。
         tensor_dq_out = pl.make_tensor(
             dq,
             [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dQ],
             [s1ndQ, d2dQ, dQ, 1],
-            dtype=pl.DT_FP16,
+            dtype=input_dtype,
         )
         tensor_dk_out = pl.make_tensor(
             dk,
             [viewD0KV, constInfo.s2Size, viewD2KV, dQ],
             [s2ndKV, d2dKV, dQ, 1],
-            dtype=pl.DT_FP16,
+            dtype=input_dtype,
         )
         tensor_dv_out = pl.make_tensor(
             dv,
             [viewD0KV, constInfo.s2Size, viewD2KV, dV],
             [s2ndKVv, d2dKVv, dV, 1],
-            dtype=pl.DT_FP16,
+            dtype=input_dtype,
         )
         # 单块 BN2 的 C3 被 tilingkey 剪掉 store，不能把 UB
-        # 或 fp16 out 冒充成 fp32 GM 参数。
+        # 或 16-bit out 冒充成 fp32 GM 参数。
         alignS1 = constInfo.s1Outer * CUBE_BASEM
         tensor_dq_ws = pl.make_tensor(
             ws_ptr, [constInfo.coreNum * alignS1, dQ], [dQ, 1], dtype=pl.DT_FP32
@@ -930,9 +930,15 @@ def flash_attn_grad_preload2(
         tensor_dv_ws_flat = pl.make_tensor(
             dv_workspace, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP32
         )
-        tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
-        tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
-        tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+        tensor_dq_out = pl.make_tensor(
+            dq, [1, dqElems], [dqElems, 1], dtype=input_dtype
+        )
+        tensor_dk_out = pl.make_tensor(
+            dk, [1, dkElems], [dkElems, 1], dtype=input_dtype
+        )
+        tensor_dv_out = pl.make_tensor(
+            dv, [1, dvElems], [dvElems, 1], dtype=input_dtype
+        )
         # V1 列宽：768 档工作 tile 仍是 256，其余等于 dv_align。
         v1w = 256 if dv_align == 768 else dv_align
 
@@ -1010,13 +1016,13 @@ def flash_attn_grad_preload2(
                     * constInfo.dvSize
                 )
                 tensor_dq_flat = pl.make_tensor(
-                    dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16
+                    dq, [1, dqElems], [dqElems, 1], dtype=input_dtype
                 )
                 tensor_dk_flat = pl.make_tensor(
-                    dk, [1, dkElems], [dqElems, 1], dtype=pl.DT_FP16
+                    dk, [1, dkElems], [dqElems, 1], dtype=input_dtype
                 )
                 tensor_dv_flat = pl.make_tensor(
-                    dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16
+                    dv, [1, dvElems], [dvElems, 1], dtype=input_dtype
                 )
                 zero_ub = make_pre_zero_buffer_f16()
                 process_pre_from_meta(
