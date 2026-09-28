@@ -20,6 +20,7 @@
 #include "flash_attention_score_common_regbase_arch38.h"
 #include "kernel_operator.h"
 #include "attenmask_arch38.h"
+#include "const_def.h"
 
 // 线上编包
 #include "matmul_arch38.h"
@@ -536,7 +537,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.s2AlignedSize = runInfo.s2RealSize;
     if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
         runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+        runInfo.s2AlignedSize = AttentionCommon::Align(
+            (uint32_t)runInfo.s2RealSize, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
     }
 }
 } // namespace BaseApi

@@ -250,6 +250,10 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
         }
         gS1StartIdx = 0;
     }
+    WaitFlag<HardEvent::V_FIX>(this->cvSync.syncC1V1VFix[0]);
+    WaitFlag<HardEvent::V_FIX>(this->cvSync.syncC1V1VFix[1]);
+    WaitFlag<HardEvent::V_FIX>(this->cvSync.syncC2V2VFix[0]);
+    WaitFlag<HardEvent::V_FIX>(this->cvSync.syncC2V2VFix[1]);
 }
 
 template <typename CubeBlockType, typename VecBlockType>

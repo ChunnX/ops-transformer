@@ -34,7 +34,7 @@ public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize;
+    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
     static constexpr uint32_t vec1HalfS1BaseSize = s1BaseSize; // __NPU_ARCH__ == 5102 does not have sameab
     static constexpr uint32_t vec1S2CopyCountDn = s1BaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
@@ -276,7 +276,15 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     stage1CastTensor = this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     //-------------------------Data copy to l1-------------------------
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-    DataCopy(mm2AL1Tensor, stage1CastTensor, {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, 0});
+    if (runInfo.s2RealSize > vec1S2CopyLenDn) {
+        DataCopy(mm2AL1Tensor[0], stage1CastTensor[0], {vec1S2CopyCountDn, vec1S2CopyLenDn, 0, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn)});
+        DataCopy(mm2AL1Tensor[s2BaseSize * 16], stage1CastTensor[s2BaseSize * 64],
+                {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn), static_cast<uint16_t>(s2BaseSize - runInfo.s2AlignedSize), vec1S2CopyLenDn});
+    } else {
+        DataCopy(mm2AL1Tensor, stage1CastTensor, 
+            {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize), static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.s2AlignedSize), static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.s2AlignedSize)});
+    }
+    
     SetFlag<HardEvent::MTE3_MTE1>(cvSyncPtr->syncV1C2Mte3Mte1[runInfo.taskIdMod3]);
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
