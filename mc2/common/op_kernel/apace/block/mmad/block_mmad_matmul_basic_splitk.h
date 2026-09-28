@@ -48,7 +48,7 @@
 #define A2A_DBG_DUMP_BT 0
 #endif
 #ifndef A2A_DBG_LOCKMTE2_SYNC
-#define A2A_DBG_LOCKMTE2_SYNC 1
+#define A2A_DBG_LOCKMTE2_SYNC 0
 #endif
 
 #include "blaze/gemm/utils/common_utils.h"
