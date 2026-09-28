@@ -705,6 +705,17 @@ inline 对照：np 读 input_query/key.bin(fp16,reshape [1,N,1024,128]) → 上�
 - 下轮：①读完 boundary-bin 内选取与 mask 写回代码（line 1000-1654）②对照 golden stable
   argsort 语义定位差异点 ③若 tie-break 不可改，评估 mask compare 边界容差放宽的合理性。
 
+### TopK 审计续二（同日）：数量对、选中集错——前缀/重构位级错误
+- **NPU ones=480 与 golden 完全相等**（8 个 (B,H) 全部）——count/kValue/sortLen 全对。
+- 但选中集差 2 处 swap：rank 399/400 的 (22,1)/(26,1)（att=0.035382）被排除，2 个更低排名
+  被换入。**排除 tie-break 语义**（GT/EQ 双通道=golden 一致且 tie 容忍工作正常）、排除数量
+  错误——**剩余 = ①boundaryHalf 重构（involvedMask16_ 逆 twiddle，line 1567 的位表达式可疑）
+  或 ②radix 多轮前缀追踪丢位**（per-round boundaryBin 的 OR 拼接 vs 实际位前缀）。
+- 判据：NPU 选中集非 value-order（排除 0.035382 却含更低值）⟹ boundaryHalf > 真 480th 值
+  的可能性大（重构偏高）→ 被排除的 2 个=值低于错误 boundary 的真 top-480 成员。
+- 下轮：①逐位验证 involvedMask16_ 重构公式（对比标准 fp16→ordered-int16 twiddle 逆变换）
+  ②AIC/AIV printf 打印 boundaryHalf 与各轮 boundaryBin ③小 grid 手工 case 单步仿真。
+
 ### 下轮任务（按序）
 1. ~~blk8 级联修复~~（第十三轮，9238a7b19）
 2. ~~GeneralFinalize 行均值~~（第十四轮，366b5c986）
