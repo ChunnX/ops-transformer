@@ -305,7 +305,7 @@ aclnnStatus aclnnMlaProlog(
           <td>BFLOAT16、INT8</td>
           <td>ND</td>
           <td>(BlockNum,BlockSize,Nkv,Hckv)</td>
-          <td>×</td>
+          <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
         </tr>
         <tr>
           <td>krCacheRef</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnMlaProlog(
           <td>BFLOAT16、INT8</td>
           <td>ND</td>
           <td>(BlockNum,BlockSize,Nkv,Dr)</td>
-          <td>×</td>
+          <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
         </tr>
         <tr>
           <td>dequantScaleXOptional</td>
