@@ -230,7 +230,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式。</td>
-      <td><ul><li>quantMode=1：Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。groupSize=64; rope: non-quantized and consistent with q; scale: bf16; kvCacheLayout: blockSize*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])</li><li>quantMode=2：Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。groupSize=64; rope: non-quantized and consistent with q; scale: e8m0; kvCacheLayout: blockSize*(nope+rope)+blockSize*(scale+pad[1])</li><li>Atlas A2/A3平台新增quantMode=3：TurboQuant TQ4配套metadata。</li></ul></td>
+      <td>表示量化模式，支持1、2、3，必须与主算子的quantMode一致。quantMode=1表示KV nope采用per-token-group量化、scale类型为BFLOAT16；quantMode=2表示KV nope采用per-token-group量化、scale类型为FLOAT8_E8M0；quantMode=3表示生成TurboQuant TQ4配套分核信息。本接口不执行KV量化或注意力计算；各模式的KV数据类型和存储布局详见<a href="../../mixed_quant_sparse_flash_mla/docs/aclnnMixedQuantSparseFlashMla.md#quantMode">quantMode描述</a>。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -515,7 +515,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 - 复用原有接口和量化模式参数，设置quantMode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quantMode=3下生效。
 - Metadata 接口通过原有 `quantMode=3` 生成 A2/A3 TQ4 配套分核信息；本接口不执行 KV 量化或注意力计算。输出仍为 INT32、shape `(1024,)`。
 - 必须与主算子的量化模式、head 数、序列长度、布局、mask、压缩倍率和稀疏长度保持一致；主算子的必传项及quantMode=3限制见[MixedQuantSparseFlashMla 说明](../../mixed_quant_sparse_flash_mla/docs/aclnnMixedQuantSparseFlashMla.md)。
-- A5 quantMode=1和quantMode=2仍沿用上文完整的 per-token-group FP8、RoPE、scale 和 KV cache 布局定义；不使用quantMode=3的258字节格式。
+- 各量化模式的KV数据类型和存储布局详见quantMode描述。
 
 ## 约束说明
 
