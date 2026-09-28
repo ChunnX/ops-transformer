@@ -1,6 +1,6 @@
 # Quant Lightning Indexer DSL
 
-QLI 对 MXFP4 Q/K 计算带权归约分数、mask 和 TopK，可同时生成 candidate block 索引。本文以 [Torch 接口](torch_extension/quant_lightning_indexer.py) 的实际签名为准。
+QLI 对 MXFP4 Q/K 计算带权归约分数、mask 和 TopK，可同时生成 candidate block 索引。本文以 Torch 接口 的实际签名为准。
 
 ## 必选数据输入
 
@@ -168,4 +168,4 @@ indices, values, candidate_indices, candidate_length = quant_lightning_indexer(
 
 Torch 接口分别调用 `ops.quant_lightning_indexer_dsl` / `ops.quant_sparse_lightning_indexer_dsl` 及对应 metadata 模块。使用 native 包时须保持源码、Torch 接口和导出产物版本一致。静态配置变化是否命中取决于包内导出的组合与缓存，不能仅凭第二次调用耗时推断；metadata 调用与 DSL 计算 kernel 编译是不同环节。
 
-测试入口及数据准备见 [pytest 文档](pytest/README.md)，典型用例位于 [pytest/excel](pytest/excel)。回归应通过真实 Torch 接口先生成 metadata，再传给计算接口，并检查实际加载的 DSL 路径。
+pytest 公共调用会通过真实 Torch 接口先生成 metadata，再传给计算接口。回归时记录实际加载的实现及其校验值。批跑用例由调用者提供，算子目录不附带用例表。

@@ -409,6 +409,28 @@ def run_qliv2_case_data(data, device_id=0):
     npu_kwargs = {name: _to_npu(value) for name, value in kwargs.items()}
     topk = npu_kwargs.pop("topk")
     quant_mode = npu_kwargs.pop("quant_mode")
+    npu_kwargs["metadata"] = (
+        torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer_metadata(
+            npu_kwargs["cu_seqlens_q"],
+            npu_kwargs["cu_seqlens_k"],
+            npu_kwargs["seqused_q"],
+            npu_kwargs["seqused_k"],
+            npu_kwargs["cmp_residual_k"],
+            batch_size=int(p["batch_size"]),
+            max_seqlen_q=npu_kwargs["max_seqlen_q"],
+            max_seqlen_k=int(p["k_seq"]),
+            num_heads_q=int(p["q_head_num"]),
+            num_heads_k=int(p["k_head_num"]),
+            head_dim=int(p["head_dim"]),
+            topk=topk,
+            mask_mode=npu_kwargs["mask_mode"],
+            cmp_ratio=npu_kwargs["cmp_ratio"],
+            layout_q=npu_kwargs["layout_q"],
+            layout_k=npu_kwargs["layout_k"],
+            candidate_topk_blocks=npu_kwargs["candidate_topk_blocks"],
+            candidate_block_size=npu_kwargs["candidate_block_size"],
+        )
+    )
     npu_outputs = quant_lightning_indexer(
         data.q.npu(),
         k_npu,
