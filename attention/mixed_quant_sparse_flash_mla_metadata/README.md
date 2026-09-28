@@ -121,7 +121,7 @@
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式，quant_mode=1表示K、V nope为per-token-group量化，scale类型为bfloat16，quant_mode=2表示K、V nope为per-token-group量化，scale类型为float8_e8m0。在Atlas A2/A3平台新增quant_mode=3表示TurboQuant TQ4配套metadata。</td>
+      <td>表示量化模式，支持1、2、3，必须与主算子的quant_mode一致。quant_mode=1表示KV nope采用per-token-group量化、scale类型为BFLOAT16；quant_mode=2表示KV nope采用per-token-group量化、scale类型为FLOAT8_E8M0；quant_mode=3表示生成TurboQuant TQ4配套分核信息。本接口不执行KV量化或注意力计算；各模式的KV数据类型和存储布局详见<a href="../mixed_quant_sparse_flash_mla/README.md#quant_mode">quant_mode描述</a>。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -253,7 +253,7 @@
 - 复用原有接口和量化模式参数，设置quant_mode=3启用。接口名、参数数量、顺序、声明类型、默认值、返回值和 ACLNN 两阶段调用形式均不变；新增的 Tensor 数据类型和布局仅在quant_mode=3下生效。
 - Metadata 接口通过原有 `quant_mode=3` 生成 A2/A3 TQ4 配套分核信息；本接口不执行 KV 量化或注意力计算。输出仍为 INT32、shape `(1024,)`。
 - 必须与主算子的量化模式、head 数、序列长度、布局、mask、压缩倍率和稀疏长度保持一致；主算子的必传项及quant_mode=3限制见[MixedQuantSparseFlashMla 说明](../mixed_quant_sparse_flash_mla/README.md)。
-- A5 quant_mode=1和quant_mode=2仍沿用上文完整的 per-token-group FP8、RoPE、scale 和 KV cache 布局定义；不使用quant_mode=3的258字节格式。
+- 各量化模式的KV数据类型和存储布局详见quant_mode描述。
 
 ## 约束说明
 
