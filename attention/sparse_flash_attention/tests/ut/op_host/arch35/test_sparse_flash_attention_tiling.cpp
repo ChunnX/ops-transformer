@@ -9,6 +9,7 @@
  */
 
 #include <iostream>
+#include <tuple>
 #include <gtest/gtest.h>
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
@@ -148,4 +149,42 @@ TEST_F(SparseFlashAttentionTilingArch35, SparseFlashAttention_tiling_data_class_
     EXPECT_NE(factory.CreateTilingDataInstance("SparseFlashAttentionSingleCoreTensorSizeMlaOp"), nullptr);
     EXPECT_NE(factory.CreateTilingDataInstance("SparseFlashAttentionSplitKVParamsMlaOp"), nullptr);
     EXPECT_NE(factory.CreateTilingDataInstance("SparseFlashAttentionInnerSplitParamsOp"), nullptr);
+}
+
+TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
+{
+    struct SparseFlashAttentionCompileInfo {
+    } compileInfo;
+    for (const auto &[queryCount, aicCores, expectedSplits] :
+         {std::tuple<int64_t, int64_t, uint32_t>{1, 8, 8}, {1, 24, 16}, {4, 24, 4}, {4, 56, 8}}) {
+        int32_t actualSeqQ[] = {static_cast<int32_t>(queryCount)};
+        int32_t actualSeqKV[] = {4096};
+        gert::TilingContextPara para(
+            "SparseFlashAttention",
+            {{{{queryCount, 8, 512}, {queryCount, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+             {{{32, 128, 1, 512}, {32, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+             {{{32, 128, 1, 512}, {32, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+             {{{queryCount, 1, 2048}, {queryCount, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+             {{{1, 32}, {1, 32}}, ge::DT_INT32, ge::FORMAT_ND},
+             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
+             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKV},
+             {{{queryCount, 8, 64}, {queryCount, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+             {{{32, 128, 1, 64}, {32, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}},
+            {{{{queryCount, 8, 512}, {queryCount, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+             {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+             {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+            {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+             {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+             {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+             {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+             {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+             {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+            &compileInfo, "Ascend950", aicCores, 262144, 16384);
+        TilingInfo info;
+        ASSERT_TRUE(ExecuteTiling(para, info)) << "Q=" << queryCount << ", AIC=" << aicCores;
+        EXPECT_EQ(info.blockNum, queryCount * expectedSplits);
+    }
 }
