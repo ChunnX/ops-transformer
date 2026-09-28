@@ -17,10 +17,14 @@ import torch
 torch_npu = pytest.importorskip("torch_npu")
 
 
-@pytest.mark.parametrize("query_count", [1, 4])
-@pytest.mark.parametrize("valid_count", [256, 2048, "mixed"])
+@pytest.mark.parametrize(
+    ("query_count", "topk_count", "valid_count"),
+    [(q, 2048, valid) for q in (1, 4) for valid in (256, 2048, "mixed")]
+    + [(q, topk, topk) for q in (1, 4) for topk in (256, 512, 768, 1000, 1024, 1536)]
+    + [(q, topk, topk) for q, topk in ((2, 768), (3, 1024), (8, 2048), (16, 2048))],
+)
 @pytest.mark.parametrize("replay_graph", [False, True])
-def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
+def test_split_kv_pa_bsnd(query_count, topk_count, valid_count, replay_graph):
     if "950" not in torch.npu.get_device_name(0):
         pytest.skip("This tiling is only selected on Ascend 950")
     if valid_count == "mixed" and query_count == 1:
@@ -39,10 +43,12 @@ def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
     rope_pages = rope_flat.reshape(-1, page_size, 1, 64)
     index_rows = []
     for row in range(query_count):
-        row_count = (2048 if row == 0 else 256) if valid_count == "mixed" else seed
+        row_count = (
+            (topk_count if row == 0 else 256) if valid_count == "mixed" else seed
+        )
         selected = torch.randperm(kv_length, generator=generator)[:row_count].int()
         index_rows.append(
-            torch.nn.functional.pad(selected, (0, 2048 - row_count), value=-1)
+            torch.nn.functional.pad(selected, (0, topk_count - row_count), value=-1)
         )
     indices = torch.stack(index_rows).unsqueeze(1).npu()
     block_table = (
@@ -83,7 +89,7 @@ def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
 
     torch.npu.synchronize()
     assert torch.isfinite(actual).all()
-    if valid_count == 256:
+    if valid_count == 256 and topk_count > 256:
         # The installed operator's padded-index output differs from a naive
         # reference and its Q=4 graph replay differs from eager. This is a
         # fallback smoke check only; full TopK cases carry accuracy assertions.
@@ -92,7 +98,7 @@ def test_split_kv_pa_bsnd(query_count, valid_count, replay_graph):
     expected = []
     checked_rows = 1 if valid_count == "mixed" else query_count
     for row in range(checked_rows):
-        selected = indices[row, 0, :2048].long()
+        selected = indices[row, 0, :topk_count].long()
         q = torch.cat((query[row].float(), query_rope[row].float()), dim=-1)
         k = torch.cat((key_flat[selected].float(), rope_flat[selected].float()), dim=-1)
         scores = torch.matmul(q, k.T) * scale

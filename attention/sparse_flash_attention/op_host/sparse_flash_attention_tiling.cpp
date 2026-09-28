@@ -404,21 +404,24 @@ void SFAMlaTiling::SplitBalanced()
     tilingData_.innerSplitParams.set_s2BaseSize(sfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
+    const uint32_t sparseBlocks = (sfaInfo_->sparseBlockCount + 127U) / 128U;
     const bool splitKVSupported = sfaInfo_->isA5 && sfaInfo_->bSize == 1 && sfaInfo_->n2Size == 1 &&
-                                  (sfaInfo_->s1Size == 1 || sfaInfo_->s1Size == 4) && sfaInfo_->s2Size >= 2048 &&
-                                  sfaInfo_->sparseBlockCount == 2048 && sfaInfo_->sparseBlockSize == 1 &&
+                                  sfaInfo_->s1Size > 0 && sfaInfo_->s2Size >= sfaInfo_->sparseBlockCount &&
+                                  sfaInfo_->sparseBlockCount >= 256 && sfaInfo_->sparseBlockCount <= 2048 &&
+                                  sfaInfo_->sparseBlockSize == 1 &&
                                   sfaInfo_->gSize == 8 && sfaInfo_->ropeHeadDim == 64 &&
                                   sfaInfo_->inputQType == ge::DT_BF16 && sfaInfo_->inputKvType == ge::DT_BF16 &&
                                   sfaInfo_->outputType == ge::DT_BF16 && sfaInfo_->qLayout == SFALayout::TND &&
                                   sfaInfo_->kvLayout == SFALayout::PA_BSND && sfaInfo_->sparseMode == 0 &&
                                   !sfaInfo_->returnSoftmaxLse && sfaInfo_->opParamInfo.sinks.tensor == nullptr;
-    // Each partition must contain at least 128 indices; the merge UB supports at most 16 partitions.
-    const uint32_t maxSplitCount = splitKVSupported ? std::min(16U, aicNum_ / sfaInfo_->s1Size) : 1U;
+    // Each split processes at least one 128-index block. The merge UB holds at most 16 splits.
+    const uint32_t maxSplitCount =
+        splitKVSupported ? std::min({16U, aicNum_ / sfaInfo_->s1Size, sparseBlocks}) : 1U;
     uint32_t splitCount = 1;
     while (splitCount * 2U <= maxSplitCount) {
         splitCount *= 2U;
     }
-    if (splitKVSupported && splitCount > 1) {
+    if (splitCount > 1) {
         splitKVFlag_ = true;
         kvSplitPart_ = splitCount;
         usedCoreNum_ = sfaInfo_->s1Size * splitCount;

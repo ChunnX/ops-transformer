@@ -155,8 +155,23 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
-    for (const auto &[queryCount, aicCores, expectedSplits] :
-         {std::tuple<int64_t, int64_t, uint32_t>{1, 8, 8}, {1, 24, 16}, {4, 24, 4}, {4, 56, 8}}) {
+    for (const auto &[queryCount, topK, aicCores, expectedBlocks] :
+         {std::tuple<int64_t, int64_t, int64_t, uint32_t>{1, 2048, 8, 8},
+          {1, 2048, 24, 16},
+          {4, 2048, 24, 16},
+          {4, 2048, 56, 32},
+          {1, 1024, 24, 8},
+          {4, 1024, 24, 16},
+          {1, 256, 24, 2},
+          {4, 256, 24, 8},
+          {1, 768, 24, 4},
+          {1, 1000, 24, 8},
+          {4, 512, 24, 16},
+          {4, 1000, 24, 16},
+          {3, 1024, 24, 24},
+          {8, 2048, 24, 16},
+          {16, 2048, 56, 32},
+          {1, 128, 24, 24}}) {
         int32_t actualSeqQ[] = {static_cast<int32_t>(queryCount)};
         int32_t actualSeqKV[] = {4096};
         gert::TilingContextPara para(
@@ -164,7 +179,7 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
             {{{{queryCount, 8, 512}, {queryCount, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
              {{{32, 128, 1, 512}, {32, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
              {{{32, 128, 1, 512}, {32, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-             {{{queryCount, 1, 2048}, {queryCount, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+             {{{queryCount, 1, topK}, {queryCount, 1, topK}}, ge::DT_INT32, ge::FORMAT_ND},
              {{{1, 32}, {1, 32}}, ge::DT_INT32, ge::FORMAT_ND},
              {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
              {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKV},
@@ -184,7 +199,7 @@ TEST_F(SparseFlashAttentionTilingArch35, SplitKvRespectsAvailableAicCores)
              {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
             &compileInfo, "Ascend950", aicCores, 262144, 16384);
         TilingInfo info;
-        ASSERT_TRUE(ExecuteTiling(para, info)) << "Q=" << queryCount << ", AIC=" << aicCores;
-        EXPECT_EQ(info.blockNum, queryCount * expectedSplits);
+        ASSERT_TRUE(ExecuteTiling(para, info)) << "Q=" << queryCount << ", TopK=" << topK << ", AIC=" << aicCores;
+        EXPECT_EQ(info.blockNum, expectedBlocks) << "Q=" << queryCount << ", TopK=" << topK << ", AIC=" << aicCores;
     }
 }
