@@ -185,16 +185,6 @@ public:
         curNOut_ = static_cast<uint64_t>(curN);
 
         kL1Iter_ = Blaze::Gemm::CeilDiv(oriK, kL1_);
-        dbgCurN0_ = static_cast<uint32_t>(curN); // DEBUG
-        if (dbgBiasDumpCnt_ < 1) {
-            printf("[DBG] cfg: l1Stages=%u mL1=%u nL1=%u kL1=%u baseM=%u baseN=%u baseK=%u aL1=%u bL1=%u totalL1=%u\n",
-                   static_cast<uint32_t>(l1Stages_), static_cast<uint32_t>(mL1_), static_cast<uint32_t>(nL1_),
-                   static_cast<uint32_t>(kL1_), static_cast<uint32_t>(baseM_), static_cast<uint32_t>(baseN_),
-                   static_cast<uint32_t>(baseK_),
-                   static_cast<uint32_t>(mL1_ * kL1_ * sizeof(AType)),
-                   static_cast<uint32_t>(nL1_ * kL1_ * sizeof(BType)),
-                   static_cast<uint32_t>(AscendC::TOTAL_L1_SIZE));
-        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             auto curKL1 = (iter0 + 1 == kL1Iter_) ? (oriK - kL1_ * iter0) : kL1_;
             uint64_t l1BufId = abL1LoopCnt_ & (l1Stages_ - 1);
@@ -218,8 +208,6 @@ public:
             for (uint64_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 uint64_t curK0 = (iter1 + 1 == kL0Iter) ? (curKL1 - iter1 * baseK_) : baseK_;
                 const auto &l0Slot = bufMgr_.GetL0Slot(l0PingPong_ & 0x1);
-                dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
-                dbgIter0_ = static_cast<uint32_t>(iter0);         // DEBUG
 
                 // A L1->L0
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
@@ -323,21 +311,6 @@ private:
         if (isBias_ && kIdx == 0 && isFirstSplitK) {
             auto lock = biasL1Slot.LockMte2();
             AscendC::Te::Copy(copyGM2L1, tensorBiasL1, tensorBias);
-            
-            // === DEBUG (temporary): GM bias 源 + L1 目标 ===
-            if (dbgBiasDumpCnt_ < 4) {
-                dbgBiasDumpCnt_++;
-                uint64_t dumpN = (curNL1 < 8) ? curNL1 : 8;
-                printf("[DBG] biasCopy: l1Addr=%u curNL1=%u curN0=%u\n",
-                       static_cast<uint32_t>(biasL1Slot.Addr()), static_cast<uint32_t>(curNL1),
-                       static_cast<uint32_t>(dbgCurN0_));
-                for (uint64_t d = 0; d < dumpN; ++d) {
-                    float gv = static_cast<float>(tensorBias[AscendC::Te::MakeCoord(0, d)]);
-                    printf("[DBG]   gmbias[%u]=%f\n", static_cast<uint32_t>(d), gv);
-                }
-            }
-            // === DEBUG end ===
-            
         }
 
         // Scale GM->L1 (int8 output fixpipe quantization)
@@ -457,29 +430,6 @@ private:
             auto btLock = btSlot.LockMte1();
             auto copyL12BT = AscendC::Te::MakeCopy(AscendC::Te::CopyL12BT{});
             AscendC::Te::Copy(copyL12BT, tensorBiasL0, tensorBiasL1);
-            
-            // === DEBUG (temporary): L1 bias 内容（L1 可解引用） ===
-            if (dbgBiasDumpCnt_ < 4) {
-                dbgBiasDumpCnt_++;
-                uint64_t dumpN = (nl1Align < 8) ? nl1Align : 8;
-                printf("[DBG] bias L1: l1Addr=%u nl1Align=%u curN0=%u splitKIdx=%u iter0=%u\n",
-                       static_cast<uint32_t>(biasL1Slot.Addr()), static_cast<uint32_t>(nl1Align),
-                       static_cast<uint32_t>(curN0), static_cast<uint32_t>(dbgSplitKIdx_),
-                       static_cast<uint32_t>(dbgIter0_));
-                float *l1Dbg = reinterpret_cast<float *>(biasL1Slot.Addr());
-                for (uint64_t d = 0; d < dumpN; ++d) {
-                    printf("[DBG]   l1b[%u]=%f\n", static_cast<uint32_t>(d), static_cast<float>(l1Dbg[d]));
-                }
-                // A/B L1 前几个值（对比是否也 0）
-                half *aDbg = reinterpret_cast<half *>(aL1Slot.Addr());
-                half *bDbg = reinterpret_cast<half *>(bL1Slot.Addr());
-                printf("[DBG]   aL1Addr=%u bL1Addr=%u a0=%f a1=%f b0=%f b1=%f\n",
-                       static_cast<uint32_t>(aL1Slot.Addr()), static_cast<uint32_t>(bL1Slot.Addr()),
-                       static_cast<float>(aDbg[0]), static_cast<float>(aDbg[1]),
-                       static_cast<float>(bDbg[0]), static_cast<float>(bDbg[1]));
-            }
-            // === DEBUG end ===
-            
         }
 
         return AscendC::Std::make_tuple(tensorAL0, tensorBL0, tensorBiasL0);
@@ -529,10 +479,6 @@ private:
     uint64_t baseM_{16};
     uint64_t baseN_{16};
     uint64_t baseK_{16};
-    uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
-    uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
-    uint32_t dbgIter0_{0};       // DEBUG (temporary)
-    uint32_t dbgCurN0_{0};       // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
