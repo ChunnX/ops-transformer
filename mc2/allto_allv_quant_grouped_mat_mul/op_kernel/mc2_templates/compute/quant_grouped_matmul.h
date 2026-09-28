@@ -246,21 +246,22 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
             uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
                               Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
             uint64_t batchScaleBaseOffset = expertTokenOffset_ * scaleK;
-            uint64_t currentBatchRankScaleSize[MAX_EP_RANK_SIZE] = {0};
+            // data块(aGroupOffsetTable)已构建完成，currentBatchRankSize/rankStartBase无后续引用，
+            // scale块完整重算覆写以复用数组，压缩kernel栈占用
             for (uint32_t r = 0; r < epWorldSize_; r++) {
+                currentBatchRankSize[r] = 0UL;
                 for (uint32_t e = 0; e < expertNum; e++) {
                     uint32_t absExpertIdx = startExpertIdx + e;
-                    currentBatchRankScaleSize[r] +=
+                    currentBatchRankSize[r] +=
                         static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * scaleK;
                 }
             }
-            uint64_t rankScaleStartBase[MAX_EP_RANK_SIZE] = {0};
-            rankScaleStartBase[0] = batchScaleBaseOffset;
+            rankStartBase[0] = batchScaleBaseOffset;
             for (uint32_t r = 1; r < epWorldSize_; r++) {
-                rankScaleStartBase[r] = rankScaleStartBase[r - 1] + currentBatchRankScaleSize[r - 1];
+                rankStartBase[r] = rankStartBase[r - 1] + currentBatchRankSize[r - 1];
             }
             for (uint32_t r = 0; r < epWorldSize_; r++) {
-                uint64_t scaleRunningOffset = rankScaleStartBase[r];
+                uint64_t scaleRunningOffset = rankStartBase[r];
                 for (uint32_t e = 0; e < expertNum; e++) {
                     uint32_t absExpertIdx = startExpertIdx + e;
                     uint32_t groupIdx = e * epWorldSize_ + r;

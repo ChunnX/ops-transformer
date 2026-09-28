@@ -94,7 +94,8 @@ private:
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
 
-    A2avCommParams commParams_;
+    A2avCommParams dataCommParams_;
+    A2avCommParams scaleCommParams_;
 
     uint64_t dataSendOffsetLastSum_ = 0UL;
     uint64_t dataRecvOffsetLastSum_ = 0UL;
@@ -171,13 +172,12 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 {
     A2AV_AIV_ONLY();
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    // AllToAllV在调用时同步消费counts(多轮Launch复用同一参数结构已证明)，scale与data串行发射，共用commParams_以压缩kernel栈
-    CalcA2avCommBeforeParams(commParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
+    CalcA2avCommBeforeParams(scaleCommParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
                              startExpertIdx, expertNum, axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), commParams_.sendCnt, commParams_.sendOffset,
-        HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), commParams_.recvCnt,
-        commParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt, scaleCommParams_.sendOffset,
+        HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.recvCnt,
+        scaleCommParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -187,15 +187,16 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     A2AV_AIV_ONLY();
     if constexpr (commBeforeComputeFlag) {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-        CalcA2avCommBeforeParams(commParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
+        CalcA2avCommBeforeParams(dataCommParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
                                  startExpertIdx, expertNum, axis, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     } else {
-        CalcA2avCommAfterParams(commParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
+        CalcA2avCommAfterParams(dataCommParams_, taskTilingInfo_->sendCnt, taskTilingInfo_->recvCnt, rankDim_, e_,
                                 startExpertIdx, expertNum, N1_, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     }
     alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), commParams_.sendCnt, commParams_.sendOffset, hcclDataType_,
-        (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), commParams_.recvCnt, commParams_.recvOffset, hcclDataType_);
+        (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), dataCommParams_.sendCnt, dataCommParams_.sendOffset,
+        hcclDataType_, (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt,
+        dataCommParams_.recvOffset, hcclDataType_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
