@@ -19,36 +19,17 @@ namespace l0op {
 OP_TYPE_REGISTER(MixedQuantFlashAttn);
 
 const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *kDescale, 
-    const aclTensor *vDescale, 
-    const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantComputeMode,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutAttnOut,
-    bool returnSoftmaxLse,
-    aclOpExecutor *executor)
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, int64_t quantComputeMode, double softmaxScale, int32_t maskMode, int32_t winLeft,
+    int32_t winRight, int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutAttnOut, bool returnSoftmaxLse, aclOpExecutor *executor)
 {
-    L0_DFX(MixedQuantFlashAttn, q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional,
-           sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional, quantComputeMode,
-           softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutAttnOut,
-           returnSoftmaxLse);
-    
+    L0_DFX(MixedQuantFlashAttn, q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional, sequsedQOptional,
+           sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional, quantComputeMode, softmaxScale,
+           maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse);
+
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
@@ -74,12 +55,13 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     auto attentionOutAlloc = executor->AllocTensor(q->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(MixedQuantFlashAttn,
-                           OP_INPUT(q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional,
-                                    sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
-                           OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                           OP_ATTR(quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse));
+    auto ret =
+        INFER_SHAPE(MixedQuantFlashAttn,
+                    OP_INPUT(q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional, sequsedQOptional,
+                             sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
+                    OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
+                    OP_ATTR(quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
+                            layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantFlashAttn InferShape failed.");
         return {nullptr, nullptr};
@@ -87,11 +69,11 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MixedQuantFlashAttn,
-        OP_INPUT(q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional,
-                 sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
+        OP_INPUT(q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional, sequsedQOptional,
+                 sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-        OP_ATTR(quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse));
+        OP_ATTR(quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv,
+                layoutAttnOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantFlashAttn launch kernel failed.");
         return {nullptr, nullptr};
@@ -100,4 +82,4 @@ const std::array<const aclTensor *, 2> MixedQuantFlashAttn(
     return {attentionOutAlloc, softmaxLseAlloc};
 }
 
-}  // namespace l0op
+} // namespace l0op

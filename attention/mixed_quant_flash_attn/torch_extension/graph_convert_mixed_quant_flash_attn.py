@@ -72,6 +72,4 @@ if _TORCHAIR_AVAILABLE:
         return_softmax_lse: bool = False,
         meta_outputs: TensorSpec = None,
     ):
-        raise RuntimeError(
-            "GE converter doesn't support op: 'mixed_quant_flash_attn'"
-        )
+        raise RuntimeError("GE converter doesn't support op: 'mixed_quant_flash_attn'")

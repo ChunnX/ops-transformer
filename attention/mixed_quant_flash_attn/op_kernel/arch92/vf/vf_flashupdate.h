@@ -33,9 +33,9 @@ static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::ZERO, Mic
 // fp32->Q_T
 static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                    MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-// fp16 -> bf16                                                      
+// fp16 -> bf16
 static constexpr MicroAPI::CastTrait castTrait1 = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::UNKNOWN,
-                                                      MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                   MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp8->fp32
 static constexpr MicroAPI::CastTrait castTraitFp8_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
@@ -48,12 +48,13 @@ static constexpr MicroAPI::CastTrait castTraitFp8_3 = {MicroAPI::RegLayout::ZERO
 // fp32->fp16
 static constexpr MicroAPI::CastTrait castTraitFp8_4 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-constexpr static MicroAPI::CastTrait castTrait16232_0 = {AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-                                                         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
-constexpr static MicroAPI::CastTrait castTrait16232_1 = {AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN,
-                                                         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+constexpr static MicroAPI::CastTrait castTrait16232_0 = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
+constexpr static MicroAPI::CastTrait castTrait16232_1 = {
+    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
 
-                                                         
 /*
  * @ingroup FlashUpdateTail_VF
  * @brief compute, dstTensor = (preTensor + curTensor) * expMaxTensor
@@ -65,13 +66,14 @@ constexpr static MicroAPI::CastTrait castTrait16232_1 = {AscendC::MicroAPI::RegL
  * @param [in] d, input colums, should be 64 aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateTail_VF(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor,
+                                          const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                          const uint16_t m, const uint16_t d, float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -95,73 +97,89 @@ __aicore__ inline void FlashUpdateTail_VF(const LocalTensor<T>& dstTensor, const
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegAdd, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegAdd,
+                                                                                 maskRegAll);
+
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur,
+                                                                                  curUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegTailD);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegTailD);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegAdd, maskRegTailD);
+                                                                                 vDstRegAdd, maskRegTailD);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                         preUb + i * dSize + j * floatRepSize);
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrcCur, curUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                             curUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                     MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegAdd, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegAdd, maskRegAll);
                 }
                 // 尾块处理
-                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + dLoops * floatRepSize);
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                     preUb + i * dSize + dLoops * floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                        vregSrcCur, curUb + i * dSize + dLoops * floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                         curUb + i * dSize + dLoops * floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegTailD);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegTailD);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + dLoops * floatRepSize,
-                    vDstRegAdd, maskRegTailD);
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                    dstUb + i * dSize + dLoops * floatRepSize, vDstRegAdd, maskRegTailD);
             }
         }
     }
@@ -179,15 +197,16 @@ __aicore__ inline void FlashUpdateTail_VF(const LocalTensor<T>& dstTensor, const
  * @param [in] d, input colums, should be 32 bytes aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateLastTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateLastTail_VF(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor,
+                                              const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                              const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                              float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -216,77 +235,93 @@ __aicore__ inline void FlashUpdateLastTail_VF(const LocalTensor<T>& dstTensor, c
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv,
+                                                                                 maskRegAll);
+
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur,
+                                                                                  curUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegTailD);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegTailD);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegTailD);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegDiv, maskRegTailD);
+                                                                                 vDstRegDiv, maskRegTailD);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                         preUb + i * dSize + j * floatRepSize);
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrcCur, curUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                             curUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                     MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                     MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegDiv, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegDiv, maskRegAll);
                 }
                 // 尾块处理
-                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + dLoops * floatRepSize);
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                     preUb + i * dSize + dLoops * floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                        vregSrcCur, curUb + i * dSize + dLoops * floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                         curUb + i * dSize + dLoops * floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegTailD);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegTailD);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegTailD);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + dLoops * floatRepSize,
-                    vDstRegDiv, maskRegTailD);
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                    dstUb + i * dSize + dLoops * floatRepSize, vDstRegDiv, maskRegTailD);
             }
         }
     }
@@ -302,12 +337,13 @@ __aicore__ inline void FlashUpdateLastTail_VF(const LocalTensor<T>& dstTensor, c
  * @param [in] d, input colums, should be 32 bytes aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateDivTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& preTensor,
-    const LocalTensor<T>& expSumTensor, const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateDivTail_VF(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &preTensor,
+                                             const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                             float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * preUb = (__ubuf__ MMOUTPUT_T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *preUb = (__ubuf__ MMOUTPUT_T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -331,65 +367,79 @@ __aicore__ inline void FlashUpdateDivTail_VF(const LocalTensor<T>& dstTensor, co
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv,
+                                                                                 maskRegAll);
+
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc,
+                                                                                  preUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegTailD);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegDiv, maskRegTailD);
+                                                                                 vDstRegDiv, maskRegTailD);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrc, preUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                             preUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegDiv, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegDiv, maskRegAll);
                 }
                 // 尾块处理
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                        vregSrc, preUb + i * dSize + dLoops * floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + dLoops * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                         preUb + i * dSize + dLoops * floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegTailD);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + dLoops * floatRepSize,
-                    vDstRegDiv, maskRegTailD);
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                    dstUb + i * dSize + dLoops * floatRepSize, vDstRegDiv, maskRegTailD);
             }
         }
     }
@@ -406,13 +456,14 @@ __aicore__ inline void FlashUpdateDivTail_VF(const LocalTensor<T>& dstTensor, co
  * @param [in] d, input colums, should be 64 aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateNoTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateNoTail_VF(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor,
+                                            const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                            const uint16_t m, const uint16_t d, float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -433,56 +484,67 @@ __aicore__ inline void FlashUpdateNoTail_VF(const LocalTensor<T>& dstTensor, con
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegAdd, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegAdd,
+                                                                                 maskRegAll);
+
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur,
+                                                                                  curUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegAdd, maskRegAll);
+                                                                                 vDstRegAdd, maskRegAll);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                         preUb + i * dSize + j * floatRepSize);
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrcCur, curUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                             curUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                     MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegAdd, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegAdd, maskRegAll);
                 }
             }
         }
@@ -499,15 +561,17 @@ __aicore__ inline void FlashUpdateNoTail_VF(const LocalTensor<T>& dstTensor, con
  * @param [in] m, input rows
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateNoTailAntiQuant(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<INPUT_T>& antiQuantResUb,
-    const uint16_t m, const uint16_t d)
+__aicore__ inline void FlashUpdateNoTailAntiQuant(const LocalTensor<T> &dstTensor,
+                                                  const LocalTensor<MMOUTPUT_T> &curTensor,
+                                                  const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                                  const LocalTensor<INPUT_T> &antiQuantResUb, const uint16_t m,
+                                                  const uint16_t d)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ INPUT_T * antiQuantUb = (__ubuf__ INPUT_T*)antiQuantResUb.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ INPUT_T *antiQuantUb = (__ubuf__ INPUT_T *)antiQuantResUb.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -621,16 +685,16 @@ __aicore__ inline void FlashUpdateNoTailAntiQuant(const LocalTensor<T>& dstTenso
             // MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, vSrcRegQuantEven, maskRegAll);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
             MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
-            MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize,
-                vDstRegAdd, maskRegAll);
+            MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegAdd, maskRegAll);
 
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre1, preUb + i * dSize + floatRepSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur1, curUb + i * dSize + floatRepSize);
-            // MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur1, vSrcRegCur1, vSrcRegQuantEven1, maskRegAll);
+            // MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur1, vSrcRegCur1, vSrcRegQuantEven1,
+            // maskRegAll);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul1, vSrcRegMax, vSrcRegPre1, maskRegAll);
             MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vDstRegAdd1, vSrcRegMul1, vSrcRegCur1, maskRegAll);
             MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                vDstRegAdd1, maskRegAll);
+                                                                             vDstRegAdd1, maskRegAll);
 
             if constexpr (dSize > 128) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre2, preUb + i * dSize + 2 * floatRepSize);
@@ -703,15 +767,17 @@ __aicore__ inline void FlashUpdateNoTailAntiQuant(const LocalTensor<T>& dstTenso
  * @param [in] d, input colums, should be 32 bytes aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateLastNoTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateLastNoTail_VF(const LocalTensor<T> &dstTensor,
+                                                const LocalTensor<MMOUTPUT_T> &curTensor,
+                                                const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                                const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                                float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -737,59 +803,70 @@ __aicore__ inline void FlashUpdateLastNoTail_VF(const LocalTensor<T>& dstTensor,
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-            if constexpr (dSize ==128) {
+            if constexpr (dSize == 128) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv,
+                                                                                 maskRegAll);
+
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur,
+                                                                                  curUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                 MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegAll);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegDiv, maskRegAll);
+                                                                                 vDstRegDiv, maskRegAll);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
-                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                    MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                         preUb + i * dSize + j * floatRepSize);
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrcCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrcCur, curUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegCur, vregSrcCur, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur,
+                                                                             curUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegCur, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul, vSrcRegMax, vSrcRegPre, maskRegAll);
                     MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
                     MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegAdd, vSrcRegSum, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegDiv, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegDiv, maskRegAll);
                 }
             }
         }
@@ -807,21 +884,21 @@ __aicore__ inline void FlashUpdateLastNoTail_VF(const LocalTensor<T>& dstTensor,
  * @param [in] m, input rows
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<INPUT_T>& antiQuantResUb,
+__aicore__ inline void FlashUpdateLastNoTailAntiQuant(
+    const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor, const LocalTensor<T> &preTensor,
+    const LocalTensor<T> &expMaxTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<INPUT_T> &antiQuantResUb,
     const uint16_t m, const uint16_t d)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * curUb = (__ubuf__ MMOUTPUT_T*)curTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ INPUT_T * antiQuantUb = (__ubuf__ INPUT_T*)antiQuantResUb.GetPhyAddr();
- 
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *curUb = (__ubuf__ MMOUTPUT_T *)curTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ INPUT_T *antiQuantUb = (__ubuf__ INPUT_T *)antiQuantResUb.GetPhyAddr();
+
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
- 
+
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<T> vSrcRegSum;
@@ -866,7 +943,7 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
         MicroAPI::RegTensor<T> vSrcRegMul7;
         MicroAPI::RegTensor<T> vSrcRegAdd7;
         MicroAPI::RegTensor<T> vDstRegDiv7;
- 
+
         MicroAPI::RegTensor<INPUT_T> vSrcRegQuant;
         MicroAPI::RegTensor<T> vSrcRegQuantEven;
         MicroAPI::RegTensor<T> vSrcRegQuantOdd;
@@ -892,11 +969,11 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
         MicroAPI::RegTensor<T> vSrcRegQuantEven7;
         MicroAPI::RegTensor<T> vSrcRegQuantOdd7;
         MicroAPI::MaskReg pRegAllB16 = MicroAPI::CreateMask<INPUT_T, MicroAPI::MaskPattern::ALL>();
- 
+
         // false: normal mode; true: higher precision mode
         static constexpr MicroAPI::DivSpecificMode mode = {MicroAPI::MaskMergeMode::ZEROING, false};
         MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
- 
+
         MicroAPI::DataCopy<INPUT_T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegQuant, antiQuantUb);
         MicroAPI::Cast<T, INPUT_T, castTrait16232_0>(vSrcRegQuantEven, vSrcRegQuant, pRegAllB16);
         MicroAPI::Cast<T, INPUT_T, castTrait16232_1>(vSrcRegQuantOdd, vSrcRegQuant, pRegAllB16);
@@ -935,7 +1012,7 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
- 
+
             // 手动unroll 性能最优
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur, curUb + i * dSize);
@@ -943,9 +1020,8 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
             MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegAdd, vSrcRegMul, vSrcRegCur, maskRegAll);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur, vSrcRegAdd, vSrcRegQuantEven, maskRegAll);
             MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegCur, vSrcRegSum, maskRegAll);
-            MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize,
-                vDstRegDiv, maskRegAll);
- 
+            MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
+
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre1, preUb + i * dSize + floatRepSize);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegCur1, curUb + i * dSize + floatRepSize);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegMul1, vSrcRegMax, vSrcRegPre1, maskRegAll);
@@ -953,7 +1029,7 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegCur1, vSrcRegAdd1, vSrcRegQuantEven1, maskRegAll);
             MicroAPI::Div<T, &mode>(vDstRegDiv1, vSrcRegCur1, vSrcRegSum, maskRegAll);
             MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                vDstRegDiv1, maskRegAll);
+                                                                             vDstRegDiv1, maskRegAll);
 
             if constexpr (dSize > 128) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre2, preUb + i * dSize + 2 * floatRepSize);
@@ -1030,12 +1106,14 @@ __aicore__ inline void FlashUpdateLastNoTailAntiQuant(const LocalTensor<T>& dstT
  * @param [in] d, input colums, should be 32 bytes aligned
  */
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateDivNoTail_VF(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& preTensor,
-    const LocalTensor<T>& expSumTensor, const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateDivNoTail_VF(const LocalTensor<T> &dstTensor,
+                                               const LocalTensor<MMOUTPUT_T> &preTensor,
+                                               const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
+                                               float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * preUb = (__ubuf__ MMOUTPUT_T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *preUb = (__ubuf__ MMOUTPUT_T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -1056,50 +1134,60 @@ __aicore__ inline void FlashUpdateDivNoTail_VF(const LocalTensor<T>& dstTensor, 
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv,
+                                                                                 maskRegAll);
+
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc,
+                                                                                  preUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 }
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 }
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegDiv, maskRegAll);
+                                                                                 vDstRegDiv, maskRegAll);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrc, preUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                               maskRegAll);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                             preUb + i * dSize + j * floatRepSize);
                     }
                     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value) {
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                               maskRegAll);
                     }
                     MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegDiv, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegDiv, maskRegAll);
                 }
             }
         }
@@ -1107,13 +1195,16 @@ __aicore__ inline void FlashUpdateDivNoTail_VF(const LocalTensor<T>& dstTensor, 
 }
 
 template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0>
-__aicore__ inline void FlashUpdateDivNoTailAntiQuant(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& preTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<INPUT_T>& antiQuantResUb, const uint16_t m, const uint16_t d, float dequantScale2)
+__aicore__ inline void FlashUpdateDivNoTailAntiQuant(const LocalTensor<T> &dstTensor,
+                                                     const LocalTensor<MMOUTPUT_T> &preTensor,
+                                                     const LocalTensor<T> &expSumTensor,
+                                                     const LocalTensor<INPUT_T> &antiQuantResUb, const uint16_t m,
+                                                     const uint16_t d, float dequantScale2)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ MMOUTPUT_T * preUb = (__ubuf__ MMOUTPUT_T*)preTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ INPUT_T * antiQuantUb = (__ubuf__ INPUT_T*)antiQuantResUb.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ MMOUTPUT_T *preUb = (__ubuf__ MMOUTPUT_T *)preTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ INPUT_T *antiQuantUb = (__ubuf__ INPUT_T *)antiQuantResUb.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t reduceSize = 1;
@@ -1142,24 +1233,29 @@ __aicore__ inline void FlashUpdateDivNoTailAntiQuant(const LocalTensor<T>& dstTe
         for (uint16_t i = 0; i < m; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
-                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
             if constexpr (dSize == 128) { // 真实d向上对齐至128的情况
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
                     MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
                 }
-                MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantEven, maskRegAll);
+                MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantEven,
+                                                                   maskRegAll);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv, maskRegAll);
-                
+                MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize, vDstRegDiv,
+                                                                                 maskRegAll);
+
                 if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + floatRepSize);
+                    MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc,
+                                                                                  preUb + i * dSize + floatRepSize);
                     MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
+                    MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                           maskRegAll);
                 } else {
                     MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + floatRepSize);
                 }
@@ -1167,68 +1263,78 @@ __aicore__ inline void FlashUpdateDivNoTailAntiQuant(const LocalTensor<T>& dstTe
                 MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantOdd, maskRegAll);
                 MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
                 MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + floatRepSize,
-                    vDstRegDiv, maskRegAll);
+                                                                                 vDstRegDiv, maskRegAll);
             } else {
                 for (uint16_t j = 0; j < dLoops; ++j) {
                     if constexpr (IsSameType<MMOUTPUT_T, int32_t>::value) {
-                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(vregSrc, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<MMOUTPUT_T, MicroAPI::LoadDist::DIST_NORM>(
+                            vregSrc, preUb + i * dSize + j * floatRepSize);
                         MicroAPI::Cast<T, MMOUTPUT_T, castTrait>(vSrcRegPre, vregSrc, maskRegAll);
-                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2, maskRegAll);
-                        
-                        MicroAPI::DataCopy<INPUT_T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegQuant, antiQuantUb + j * floatRepSize);
+                        MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, dequantScale2,
+                                                                               maskRegAll);
+
+                        MicroAPI::DataCopy<INPUT_T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegQuant,
+                                                                                   antiQuantUb + j * floatRepSize);
                         MicroAPI::Cast<T, INPUT_T, castTrait16232_0>(vSrcRegQuantEven, vSrcRegQuant, pRegAllB16);
                     } else {
-                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize + j * floatRepSize);
+                        MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre,
+                                                                             preUb + i * dSize + j * floatRepSize);
                     }
-                    
-                    MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantEven, maskRegAll);
+
+                    MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantEven,
+                                                                       maskRegAll);
                     MicroAPI::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSum, maskRegAll);
-                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * dSize + j * floatRepSize,
-                        vDstRegDiv, maskRegAll);
+                    MicroAPI::DataCopy<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                        dstUb + i * dSize + j * floatRepSize, vDstRegDiv, maskRegAll);
                 }
             }
         }
     }
 }
-template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0, bool isPseudoQuant = false>
-__aicore__ inline void FlashUpdate(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<INPUT_T>& antiQuantResUb,
-    const uint16_t m, const uint16_t d, float dequantScale2)
+template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0,
+          bool isPseudoQuant = false>
+__aicore__ inline void FlashUpdate(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor,
+                                   const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                   const LocalTensor<INPUT_T> &antiQuantResUb, const uint16_t m, const uint16_t d,
+                                   float dequantScale2)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr (isPseudoQuant) {
         FlashUpdateNoTailAntiQuant<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor,
-            expMaxTensor, antiQuantResUb, m, d);
+                                                                            expMaxTensor, antiQuantResUb, m, d);
     } else {
         if (d % floatRepSize == 0) {
             FlashUpdateNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor, expMaxTensor,
-                m, d, dequantScale2);
+                                                                          m, d, dequantScale2);
         } else {
-            FlashUpdateTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor, expMaxTensor, m, d, dequantScale2);
+            FlashUpdateTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor, expMaxTensor,
+                                                                        m, d, dequantScale2);
         }
     }
 }
 
-template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0, bool isPseudoQuant = false>
-__aicore__ inline void FlashUpdateLast(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<INPUT_T>& antiQuantResUb,
-    const uint16_t m, const uint16_t d, float dequantScale2)
+template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0,
+          bool isPseudoQuant = false>
+__aicore__ inline void FlashUpdateLast(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &curTensor,
+                                       const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                       const LocalTensor<T> &expSumTensor, const LocalTensor<INPUT_T> &antiQuantResUb,
+                                       const uint16_t m, const uint16_t d, float dequantScale2)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr (isPseudoQuant) {
-        FlashUpdateLastNoTailAntiQuant<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor,
-            expMaxTensor, expSumTensor, antiQuantResUb, m, d);
+        FlashUpdateLastNoTailAntiQuant<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(
+            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, antiQuantResUb, m, d);
     } else {
         if (d % floatRepSize == 0) {
-            FlashUpdateLastNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor,
-                expMaxTensor, expSumTensor, m, d, dequantScale2);
+            FlashUpdateLastNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(
+                dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, dequantScale2);
         } else {
-            FlashUpdateLastTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, dequantScale2);
+            FlashUpdateLastTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(
+                dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, dequantScale2);
         }
     }
 }
@@ -1241,21 +1347,26 @@ __aicore__ inline void FlashUpdateLast(const LocalTensor<T>& dstTensor, const Lo
 
 //     constexpr uint16_t floatRepSize = 64;
 //     if (d % floatRepSize == 0) {
-//         FlashUpdateDivNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, m, d, dequantScale2);
-//     } 
+//         FlashUpdateDivNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, m, d,
+//         dequantScale2);
+//     }
 // }
-template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0, bool isPseudoQuant = false>
-__aicore__ inline void FlashUpdateDiv(const LocalTensor<T>& dstTensor, const LocalTensor<MMOUTPUT_T>& preTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<INPUT_T>& antiQuantResUb, const uint16_t m, const uint16_t d, float dequantScale2)
+template <typename T, typename OUTPUT_T, typename INPUT_T, typename MMOUTPUT_T, uint32_t dSize = 0,
+          bool isPseudoQuant = false>
+__aicore__ inline void FlashUpdateDiv(const LocalTensor<T> &dstTensor, const LocalTensor<MMOUTPUT_T> &preTensor,
+                                      const LocalTensor<T> &expSumTensor, const LocalTensor<INPUT_T> &antiQuantResUb,
+                                      const uint16_t m, const uint16_t d, float dequantScale2)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateDiv, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr (isPseudoQuant) {
-        FlashUpdateDivNoTailAntiQuant<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, antiQuantResUb, m, d, dequantScale2);
+        FlashUpdateDivNoTailAntiQuant<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor,
+                                                                               antiQuantResUb, m, d, dequantScale2);
     } else if (d % floatRepSize == 0) {
-        FlashUpdateDivNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, m, d, dequantScale2);
-    } 
+        FlashUpdateDivNoTail_VF<T, OUTPUT_T, INPUT_T, MMOUTPUT_T, dSize>(dstTensor, preTensor, expSumTensor, m, d,
+                                                                         dequantScale2);
+    }
 }
 
 // template <typename T>
@@ -1289,12 +1400,13 @@ __aicore__ inline void FlashUpdateDiv(const LocalTensor<T>& dstTensor, const Loc
 // }
 
 template <typename T, typename INPUT_T, uint32_t dSize = 0>
-__aicore__ inline void ComputeFirstInQuantVecNoTail(const LocalTensor<T>& dstTensor, const LocalTensor<T>& preTensor,
-    const LocalTensor<INPUT_T>& antiQuantResUb, const uint16_t m, const uint16_t d)
+__aicore__ inline void ComputeFirstInQuantVecNoTail(const LocalTensor<T> &dstTensor, const LocalTensor<T> &preTensor,
+                                                    const LocalTensor<INPUT_T> &antiQuantResUb, const uint16_t m,
+                                                    const uint16_t d)
 {
-    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
-    __ubuf__ INPUT_T * antiQuantUb = (__ubuf__ INPUT_T*)antiQuantResUb.GetPhyAddr();
+    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
+    __ubuf__ INPUT_T *antiQuantUb = (__ubuf__ INPUT_T *)antiQuantResUb.GetPhyAddr();
     constexpr uint16_t floatRepSize = 64;
 
     __VEC_SCOPE__
@@ -1393,13 +1505,12 @@ __aicore__ inline void ComputeFirstInQuantVecNoTail(const LocalTensor<T>& dstTen
             // 手动unroll，性能达到最优
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * d);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre, vSrcRegPre, vSrcRegQuantEven, maskRegAll);
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * d,
-                vSrcRegPre, maskRegAll);
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * d, vSrcRegPre, maskRegAll);
 
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre1, preUb + i * d + floatRepSize);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vSrcRegPre1, vSrcRegPre1, vSrcRegQuantEven1, maskRegAll);
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * d + floatRepSize,
-                vSrcRegPre1, maskRegAll);
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + i * d + floatRepSize, vSrcRegPre1,
+                                                                      maskRegAll);
 
             if constexpr (dSize > 128) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vSrcRegPre2, preUb + i * d + 2 * floatRepSize);
@@ -1442,6 +1553,6 @@ __aicore__ inline void ComputeFirstInQuantVecNoTail(const LocalTensor<T>& dstTen
     }
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // VF_FLASH_UPDATE_H

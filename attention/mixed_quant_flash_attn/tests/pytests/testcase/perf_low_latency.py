@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 TestCases = {
     "low_latency_A16C4_KV_MXFP4_SOFTMAX_FP32_O1-1_1_16_4_1_8192_128_128_BNSD_PA_NZ_000001": {
         "B": [1],
@@ -5982,5 +5989,5 @@ TestCases = {
         "quant_compute_mode": [1],
         "mask_mode": [3],
         "seqused_kv": [[8192, 8192, 8192, 8192]],
-    }
+    },
 }

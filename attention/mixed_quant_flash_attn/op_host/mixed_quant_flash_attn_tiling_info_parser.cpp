@@ -134,14 +134,12 @@ ge::graphStatus FaInfoParser::GetOpName()
 ge::graphStatus FaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
@@ -244,11 +242,12 @@ ge::graphStatus FaInfoParser::GetQuantModeInfo()
 {
     quantMode_ = (opParamInfo_.quantComputeMode == nullptr) ? 1 : *opParamInfo_.quantComputeMode;
     OP_CHECK_IF(quantMode_ != 1 && quantMode_ != 2,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_compute_mode",
-                    std::to_string(quantMode_).c_str(), "quant_compute_mode must be 1 or 2"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_compute_mode", std::to_string(quantMode_).c_str(),
+                                                      "quant_compute_mode must be 1 or 2"),
                 return ge::GRAPH_FAILED);
 
-    faQuantMode_ = (quantMode_ == 2) ? FaQuantMode::A16C4_KV_HIF4_SOFTMAX_FP32 : FaQuantMode::A16C4_KV_MXFP4_SOFTMAX_FP32;
+    faQuantMode_ =
+        (quantMode_ == 2) ? FaQuantMode::A16C4_KV_HIF4_SOFTMAX_FP32 : FaQuantMode::A16C4_KV_MXFP4_SOFTMAX_FP32;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -307,9 +306,8 @@ ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
         OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
-            OP_LOGE(opName_, "max_seqlen_q",
-                "max_seqlen_q cannot be empty when layout_q is TND"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "max_seqlen_q", "max_seqlen_q cannot be empty when layout_q is TND"),
+                    return ge::GRAPH_FAILED);
         s1Size_ = *opParamInfo_.maxSeqlenQ;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
@@ -333,9 +331,8 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
     if (layoutKV_ == FaLayout::TND) {
         OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
-            OP_LOGE(opName_, "max_seqlen_kv",
-                "max_seqlen_kv cannot be empty when layout_kv is TND"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "max_seqlen_kv", "max_seqlen_kv cannot be empty when layout_kv is TND"),
+                    return ge::GRAPH_FAILED);
         s2Size_ = *opParamInfo_.maxSeqlenKV;
     } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
@@ -364,8 +361,8 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 ge::graphStatus FaInfoParser::GetMaxBlockNumPerBatch()
 {
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-        OP_LOGE(opName_, "block_table must be provided for PagedAttention in mixed quant mode."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "block_table must be provided for PagedAttention in mixed quant mode."),
+                return ge::GRAPH_FAILED);
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     return ge::GRAPH_SUCCESS;
 }
@@ -407,8 +404,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -416,8 +412,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itKV = layoutMap.find(opParamInfo_.layoutKV);
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -425,8 +420,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itOut = layoutMap.find(opParamInfo_.layoutOut);
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_attn_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_attn_out",
-            opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_attn_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -474,9 +468,9 @@ ge::graphStatus FaInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;

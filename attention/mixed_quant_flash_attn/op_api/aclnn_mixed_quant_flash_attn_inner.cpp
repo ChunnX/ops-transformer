@@ -20,8 +20,8 @@ extern "C" {
 
 namespace {
 
-void MixedQuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse, 
-    const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+void MixedQuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
+                                          const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (returnSoftmaxLse == false) {
         std::vector<int64_t> shape = {0};

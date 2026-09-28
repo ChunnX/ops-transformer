@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """Compare / convert between pytest input.pt and TTK case_gen input_N_*.bin.
@@ -36,6 +43,7 @@ Output layout (pytest cpu/npu .pt is a dict; ttk dumps golden_N_<dtype>__shape_*
     attn_out        golden_0_<dtype>__shape_*.bin
     softmax_lse     golden_1_<dtype>__shape_*.bin
 """
+
 import os
 import sys
 import hashlib
@@ -122,8 +130,11 @@ def compare(input_pt, ttk_case_dir):
             status = "SAME"
         else:
             if pt_t is not None and pt_raw:
-                same_len = "len-match" if len(pt_raw) == len(bin_raw) else \
-                    f"len {len(pt_raw)} vs {len(bin_raw)}"
+                same_len = (
+                    "len-match"
+                    if len(pt_raw) == len(bin_raw)
+                    else f"len {len(pt_raw)} vs {len(bin_raw)}"
+                )
             else:
                 same_len = "pt-empty"
             status = "DIFF (" + same_len + ")"
@@ -150,14 +161,16 @@ def load_golden_bin(bin_path):
     """Load a ttk golden .bin into a flat numpy float32 array by dtype hint in name."""
     base = os.path.basename(bin_path)
     dt = base.split("_")[2]  # golden_<idx>_<dtype>__shape_...
-    npt = {"float16": np.float16, "float32": np.float32,
-           "bfloat16": bf16_dtype()}.get(dt, np.float32)
+    npt = {"float16": np.float16, "float32": np.float32, "bfloat16": bf16_dtype()}.get(
+        dt, np.float32
+    )
     return np.fromfile(bin_path, dtype=npt).astype(np.float32)
 
 
 def bf16_dtype():
     try:
         from ml_dtypes import bfloat16
+
         return bfloat16
     except Exception:
         return None
@@ -186,8 +199,10 @@ def cmpout(pt_out_path, ttk_case_dir, rtol=1e-2, atol=1e-3):
             if "input" in os.path.basename(pt_out_path):
                 hint = "  (这是 _input.pt，不含输出；请传 _cpu.pt 或 _npu.pt)"
             else:
-                avail = ", ".join(k2 for k2 in ("attn_out", "softmax_lse")
-                                  if k2 in data) or "无 attn_out/softmax_lse"
+                avail = (
+                    ", ".join(k2 for k2 in ("attn_out", "softmax_lse") if k2 in data)
+                    or "无 attn_out/softmax_lse"
+                )
                 hint = f"  (该文件只有: {avail})"
             print(f"    WARN: pytest 输出缺少 key '{k}'{hint}")
             n_missing += 1
@@ -213,15 +228,22 @@ def cmpout(pt_out_path, ttk_case_dir, rtol=1e-2, atol=1e-3):
         inf_agree = np.array_equal(pt_inf, tb_inf)
         finite = np.isfinite(pt) & np.isfinite(tb)
         abs_err = np.abs(pt[finite] - tb[finite]) if finite.any() else np.array([0.0])
-        rel_err = abs_err / np.maximum(np.abs(tb[finite]), atol) if finite.any() else np.array([0.0])
-        passed = bool(inf_agree and
-                      (abs_err <= atol).all() and (rel_err <= rtol).all())
-        print(f"[{idx}] {name:14s}  max_abserr={abs_err.max():.3e} "
-              f"max_relerr={rel_err.max():.3e}  {'PASS' if passed else 'FAIL'}")
+        rel_err = (
+            abs_err / np.maximum(np.abs(tb[finite]), atol)
+            if finite.any()
+            else np.array([0.0])
+        )
+        passed = bool(inf_agree and (abs_err <= atol).all() and (rel_err <= rtol).all())
+        print(
+            f"[{idx}] {name:14s}  max_abserr={abs_err.max():.3e} "
+            f"max_relerr={rel_err.max():.3e}  {'PASS' if passed else 'FAIL'}"
+        )
         if not passed:
             failed += 1
-    print(f"\n{'ALL PASS' if failed == 0 and n_missing == 0 else 'FAILED'}: "
-          f"{failed} failed, {n_missing} missing golden.")
+    print(
+        f"\n{'ALL PASS' if failed == 0 and n_missing == 0 else 'FAILED'}: "
+        f"{failed} failed, {n_missing} missing golden."
+    )
     sys.exit(1 if (failed or n_missing) else 0)
 
 
@@ -252,8 +274,13 @@ def ptout2bin(pt_out_path, out_dir):
         if t is None:
             print(f"[{idx}] {key:14s}  ABSENT in pytest output, skip")
             continue
-        base = "float32" if key == "softmax_lse" else \
-               ("float16" if t.dtype == torch.float16 else str(t.dtype).split(".")[-1])
+        base = (
+            "float32"
+            if key == "softmax_lse"
+            else (
+                "float16" if t.dtype == torch.float16 else str(t.dtype).split(".")[-1]
+            )
+        )
         arr, dstr = _tensor_to_bin_file(t, base)
         shape = "x".join(str(x) for x in t.shape)
         path = os.path.join(out_dir, f"golden_{idx}_{dstr}__shape_{shape}.bin")
@@ -277,11 +304,21 @@ def bin2ptout(ttk_case_dir, out_pt):
         arr = load_golden_bin(goldens[idx])
         shape = parse_shape_from_name(os.path.basename(goldens[idx]))
         if key == "softmax_lse":
-            t = torch.from_numpy(arr).float().reshape(shape) if shape else torch.from_numpy(arr).float()
+            t = (
+                torch.from_numpy(arr).float().reshape(shape)
+                if shape
+                else torch.from_numpy(arr).float()
+            )
         else:
-            t = torch.from_numpy(arr).half().reshape(shape) if shape else torch.from_numpy(arr).half()
+            t = (
+                torch.from_numpy(arr).half().reshape(shape)
+                if shape
+                else torch.from_numpy(arr).half()
+            )
         out[key] = t
-        print(f"[{idx}] {key:14s} shape={tuple(t.shape)} {t.dtype}  <- {os.path.basename(goldens[idx])}")
+        print(
+            f"[{idx}] {key:14s} shape={tuple(t.shape)} {t.dtype}  <- {os.path.basename(goldens[idx])}"
+        )
     torch.save(out, out_pt)
     print(f"wrote {out_pt}")
 
@@ -337,7 +374,9 @@ def merge(target_pt, ttk_case_dir, out_pt):
             new[name] = orig.get(name)
     os.makedirs(os.path.dirname(os.path.abspath(out_pt)) or ".", exist_ok=True)
     torch.save(new, out_pt)
-    print(f"wrote {out_pt} (tensors from ttk, params from {os.path.basename(target_pt)})")
+    print(
+        f"wrote {out_pt} (tensors from ttk, params from {os.path.basename(target_pt)})"
+    )
     for k, v in new.items():
         if torch.is_tensor(v):
             print(f"  {k}: {tuple(v.shape)} {v.dtype}")
@@ -352,15 +391,29 @@ def restore_bin_tensor(bin_path, tmpl):
     dtype_str = base.rsplit(".", 1)[0].split("_")[-1]
     if torch.is_tensor(tmpl):
         if tmpl.dtype == torch.float8_e8m0fnu:
-            return torch.from_numpy(np.frombuffer(raw, dtype=np.uint8).copy()
-                                    ).view(torch.float8_e8m0fnu).reshape(tmpl.shape)
+            return (
+                torch.from_numpy(np.frombuffer(raw, dtype=np.uint8).copy())
+                .view(torch.float8_e8m0fnu)
+                .reshape(tmpl.shape)
+            )
         if tmpl.dtype == torch.bfloat16:
-            return torch.from_numpy(np.frombuffer(raw, dtype=np.int16).copy()
-                                    ).view(torch.bfloat16).reshape(tmpl.shape)
+            return (
+                torch.from_numpy(np.frombuffer(raw, dtype=np.int16).copy())
+                .view(torch.bfloat16)
+                .reshape(tmpl.shape)
+            )
         npt = np.dtype(str(tmpl.dtype).split(".")[-1])
-        return torch.from_numpy(np.frombuffer(raw, dtype=npt).copy()).reshape(tmpl.shape)
-    npt = {"float16": np.float16, "float32": np.float32, "uint8": np.uint8,
-           "int8": np.int8, "int32": np.int32, "int16": np.int16}.get(dtype_str)
+        return torch.from_numpy(np.frombuffer(raw, dtype=npt).copy()).reshape(
+            tmpl.shape
+        )
+    npt = {
+        "float16": np.float16,
+        "float32": np.float32,
+        "uint8": np.uint8,
+        "int8": np.int8,
+        "int32": np.int32,
+        "int16": np.int16,
+    }.get(dtype_str)
     arr = np.frombuffer(raw, dtype=npt if npt is not None else np.uint8).copy()
     if dtype_str == "float8_e8m0":
         return torch.from_numpy(arr).view(torch.float8_e8m0fnu)
@@ -393,8 +446,11 @@ def bin2pt(ttk_case_dir, out_pt, template_pt=None):
         dtype_str = base.rsplit(".", 1)[0].split("_")[-1]
         if t is not None and torch.is_tensor(t):
             npt = {
-                "float16": np.float16, "float32": np.float32,
-                "uint8": np.uint8, "int8": np.int8, "int32": np.int32,
+                "float16": np.float16,
+                "float32": np.float32,
+                "uint8": np.uint8,
+                "int8": np.int8,
+                "int32": np.int32,
                 "int16": np.int16,
             }.get(dtype_str)
             if t.dtype == torch.float8_e8m0fnu:
@@ -404,15 +460,17 @@ def bin2pt(ttk_case_dir, out_pt, template_pt=None):
                 arr = np.frombuffer(raw, dtype=np.int16).copy()
                 store = torch.from_numpy(arr).view(torch.bfloat16)
             else:
-                npt = npt if npt is not None else np.dtype(
-                    str(t.dtype).split(".")[-1])
+                npt = npt if npt is not None else np.dtype(str(t.dtype).split(".")[-1])
                 arr = np.frombuffer(raw, dtype=npt).copy()
                 store = torch.from_numpy(arr)
             save[name] = store.reshape(t.shape)
         else:
             npt = {
-                "float16": np.float16, "float32": np.float32,
-                "uint8": np.uint8, "int8": np.int8, "int32": np.int32,
+                "float16": np.float16,
+                "float32": np.float32,
+                "uint8": np.uint8,
+                "int8": np.int8,
+                "int32": np.int32,
                 "int16": np.int16,
             }.get(dtype_str)
             arr = np.frombuffer(raw, dtype=npt if npt is not None else np.uint8).copy()

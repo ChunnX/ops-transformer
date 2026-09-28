@@ -16,10 +16,9 @@ from typing import Optional, List
 
 
 class MixedQuantFlashAttnMetadataOp:
-
     def __init__(
-            self,
-            binary_name: str = "mixed_quant_flash_attn_metadata_test",
+        self,
+        binary_name: str = "mixed_quant_flash_attn_metadata_test",
     ):
         work_dir = os.path.dirname(os.path.abspath(__file__))
         self.work_dir = work_dir
@@ -34,24 +33,24 @@ class MixedQuantFlashAttnMetadataOp:
         self.aiv_core_num = 0
 
     def _build_input_json(
-            self,
-            cu_seqlens_q: Optional[list],
-            cu_seqlens_kv: Optional[list],
-            seqused_q: Optional[list],
-            seqused_kv: Optional[list],
-            batch_size: Optional[int],
-            max_seqlen_q: Optional[int],
-            max_seqlen_kv: Optional[int],
-            num_heads_q: int,
-            num_heads_kv: int,
-            head_dim: int,
-            quant_compute_mode: int,
-            mask_mode: Optional[int],
-            win_left: Optional[int],
-            win_right: Optional[int],
-            layout_q: Optional[str],
-            layout_kv: Optional[str],
-            layout_out: Optional[str],
+        self,
+        cu_seqlens_q: Optional[list],
+        cu_seqlens_kv: Optional[list],
+        seqused_q: Optional[list],
+        seqused_kv: Optional[list],
+        batch_size: Optional[int],
+        max_seqlen_q: Optional[int],
+        max_seqlen_kv: Optional[int],
+        num_heads_q: int,
+        num_heads_kv: int,
+        head_dim: int,
+        quant_compute_mode: int,
+        mask_mode: Optional[int],
+        win_left: Optional[int],
+        win_right: Optional[int],
+        layout_q: Optional[str],
+        layout_kv: Optional[str],
+        layout_out: Optional[str],
     ) -> dict:
         if batch_size is None:
             if cu_seqlens_q is not None:
@@ -103,7 +102,7 @@ class MixedQuantFlashAttnMetadataOp:
             "fdOn": True,
             "mode": 0,
             "mBaseSize": m_base_size,
-            "s2BaseSize": 512
+            "s2BaseSize": 512,
         }
 
     def _write_case_json(self, input_json: dict):
@@ -116,8 +115,10 @@ class MixedQuantFlashAttnMetadataOp:
 
         command = [
             self.binary_path,
-            "-i", "mixed_quant_flash_attn_metadata_case.json",
-            "-o", "./"
+            "-i",
+            "mixed_quant_flash_attn_metadata_case.json",
+            "-o",
+            "./",
         ]
         result = subprocess.run(
             command,
@@ -136,9 +137,7 @@ class MixedQuantFlashAttnMetadataOp:
             output_json = json.load(f)
 
         if output_json.get("errorMessage", ""):
-            raise RuntimeError(
-                f"Operator error: {output_json['errorMessage']}"
-            )
+            raise RuntimeError(f"Operator error: {output_json['errorMessage']}")
 
         return output_json
 
@@ -203,26 +202,26 @@ class MixedQuantFlashAttnMetadataOp:
         return metadata
 
     def npu_mixed_quant_flash_attn_metadata(
-            self,
-            num_heads_q: int,
-            num_heads_kv: int,
-            head_dim: int,
-            quant_compute_mode: int,
-            cu_seqlens_q: Optional[list] = None,
-            cu_seqlens_kv: Optional[list] = None,
-            seqused_q: Optional[list] = None,
-            seqused_kv: Optional[list] = None,
-            batch_size: Optional[int] = None,
-            max_seqlen_q: Optional[int] = None,
-            max_seqlen_kv: Optional[int] = None,
-            mask_mode: Optional[int] = None,
-            win_left: Optional[int] = None,
-            win_right: Optional[int] = None,
-            layout_q: Optional[str] = None,
-            layout_kv: Optional[str] = None,
-            layout_out: Optional[str] = None,
-            aic_core_num: int = 64,
-            aiv_core_num: int = 64,
+        self,
+        num_heads_q: int,
+        num_heads_kv: int,
+        head_dim: int,
+        quant_compute_mode: int,
+        cu_seqlens_q: Optional[list] = None,
+        cu_seqlens_kv: Optional[list] = None,
+        seqused_q: Optional[list] = None,
+        seqused_kv: Optional[list] = None,
+        batch_size: Optional[int] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_kv: Optional[int] = None,
+        mask_mode: Optional[int] = None,
+        win_left: Optional[int] = None,
+        win_right: Optional[int] = None,
+        layout_q: Optional[str] = None,
+        layout_kv: Optional[str] = None,
+        layout_out: Optional[str] = None,
+        aic_core_num: int = 64,
+        aiv_core_num: int = 64,
     ) -> List[int]:
         self.aic_core_num = aic_core_num
         self.aiv_core_num = aiv_core_num

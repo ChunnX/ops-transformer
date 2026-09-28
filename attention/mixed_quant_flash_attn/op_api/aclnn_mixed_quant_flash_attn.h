@@ -75,12 +75,12 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional, int64_t quantComputeMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
-    bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    const aclTensor *metadataOptional, int64_t quantComputeMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutAttnOut, bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
@@ -91,7 +91,8 @@ aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
+aclnnStatus aclnnMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     const aclrtStream stream);
 
 #ifdef __cplusplus
 }

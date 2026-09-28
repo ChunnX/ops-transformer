@@ -45,8 +45,10 @@ class PostProcessor:
         print(f"\n┌{SEP}┐")
         print(f"│  Summary ({len(self._results)} cases)")
         print(f"├{SEP}┤")
-        hdr = (f"│  {'Case':<{max_len}}  {'Attn':>6}  {'MaxAbsErr':>12}  "
-               f"{'FailRatio':>10}  {'LSE':>6}  {'Error':>20}")
+        hdr = (
+            f"│  {'Case':<{max_len}}  {'Attn':>6}  {'MaxAbsErr':>12}  "
+            f"{'FailRatio':>10}  {'LSE':>6}  {'Error':>20}"
+        )
         print(hdr)
         print(f"├{SEP}┤")
 
@@ -56,10 +58,18 @@ class PostProcessor:
             a_tag = "PASS" if r["attn_passed"] else "FAIL"
             l_tag = "PASS" if r["lse_passed"] else "FAIL"
             a_max = f"{r['attn_max_abs']:.6f}" if r["attn_total"] > 0 else "N/A"
-            a_fr = f"{r['attn_fail_ratio']*100:.4f}%" if r["attn_total"] > 0 else "N/A"
-            err = (r["error"][:18] + "..") if r["error"] and len(r["error"]) > 20 else (r["error"] or "")
-            print(f"│  {r['case_name']:<{max_len}}  {a_tag:>6}  {a_max:>12}  "
-                  f"{a_fr:>10}  {l_tag:>6}  {err:>20}")
+            a_fr = (
+                f"{r['attn_fail_ratio'] * 100:.4f}%" if r["attn_total"] > 0 else "N/A"
+            )
+            err = (
+                (r["error"][:18] + "..")
+                if r["error"] and len(r["error"]) > 20
+                else (r["error"] or "")
+            )
+            print(
+                f"│  {r['case_name']:<{max_len}}  {a_tag:>6}  {a_max:>12}  "
+                f"{a_fr:>10}  {l_tag:>6}  {err:>20}"
+            )
             if r["attn_passed"] and r["lse_passed"]:
                 pass_cnt += 1
             else:
@@ -68,18 +78,32 @@ class PostProcessor:
         print(f"├{SEP}┤")
         total = len(self._results)
         pass_rate = pass_cnt / total * 100 if total > 0 else 0
-        print(f"│  Pass: {pass_cnt}   Fail: {fail_cnt}   Total: {total}   PassRate: {pass_rate:.1f}%")
+        print(
+            f"│  Pass: {pass_cnt}   Fail: {fail_cnt}   Total: {total}   PassRate: {pass_rate:.1f}%"
+        )
         print(f"└{SEP}┘")
         return fail_cnt
 
     def save_csv(self, csv_path):
-        os.makedirs(os.path.dirname(csv_path) if os.path.dirname(csv_path) else ".", exist_ok=True)
+        os.makedirs(
+            os.path.dirname(csv_path) if os.path.dirname(csv_path) else ".",
+            exist_ok=True,
+        )
         with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, [
-                "case_name", "attn_passed", "attn_max_abs", "attn_mean_abs",
-                "attn_fail_cnt", "attn_total", "attn_fail_ratio",
-                "lse_passed", "error"
-            ])
+            writer = csv.DictWriter(
+                f,
+                [
+                    "case_name",
+                    "attn_passed",
+                    "attn_max_abs",
+                    "attn_mean_abs",
+                    "attn_fail_cnt",
+                    "attn_total",
+                    "attn_fail_ratio",
+                    "lse_passed",
+                    "error",
+                ],
+            )
             writer.writeheader()
             for r in self._results:
                 writer.writerow(r)

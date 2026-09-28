@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -83,15 +90,20 @@ CSV_SCALE_RANGE = {1: (0.01, 10.0), 2: (125.0, 129.0)}
 
 # 跳过的边界/异常用例字段（这些用例构造非法输入，TTK CSV 模式无法表达）
 SKIP_FIELDS = {
-    "q_shape_override", "k_descale_shape_override", "block_table_override",
-    "kv_scale_dtype_override", "attn_mask_shape_override",
+    "q_shape_override",
+    "k_descale_shape_override",
+    "block_table_override",
+    "kv_scale_dtype_override",
+    "attn_mask_shape_override",
 }
 
 
 # ============================================================================
 # shape 计算（与 xlsx_to_testcase.py 一致，对齐 doc 公式）
 # ============================================================================
-def gen_pa_shape(num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is_key, dtype):
+def gen_pa_shape(
+    num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is_key, dtype
+):
     """
     按公式计算 PA 布局的物理存储 shape（对齐 pytest gen_data.generate_input_shape）。
 
@@ -110,22 +122,34 @@ def gen_pa_shape(num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is
         if kv:
             return (num_blocks, n, d // 64, block_size, 32)
         if quant_compute_mode == 1:
-            return ((num_blocks, n, block_size // 16, d // 64, 16, 2) if is_key
-                    else (num_blocks, n, d // 16, block_size // 64, 16, 2))
-        return ((num_blocks, n, block_size // 16, d // 64, 16) if is_key
-                else (num_blocks, n, d // 16, block_size // 64, 16))
+            return (
+                (num_blocks, n, block_size // 16, d // 64, 16, 2)
+                if is_key
+                else (num_blocks, n, d // 16, block_size // 64, 16, 2)
+            )
+        return (
+            (num_blocks, n, block_size // 16, d // 64, 16)
+            if is_key
+            else (num_blocks, n, d // 16, block_size // 64, 16)
+        )
 
-    if layout_kv == "PA_BBND":   # (blockNum, S, N, D)
+    if layout_kv == "PA_BBND":  # (blockNum, S, N, D)
         if kv:
             return (num_blocks, block_size, n, d // 2)
-        return ((num_blocks, block_size, n, d // group) if is_key
-                else (num_blocks, n, d, block_size // group))
+        return (
+            (num_blocks, block_size, n, d // group)
+            if is_key
+            else (num_blocks, n, d, block_size // group)
+        )
 
-    if layout_kv == "PA_BNBD":   # (blockNum, N, S, D)
+    if layout_kv == "PA_BNBD":  # (blockNum, N, S, D)
         if kv:
             return (num_blocks, n, block_size, d // 2)
-        return ((num_blocks, n, block_size, d // group) if is_key
-                else (num_blocks, n, d, block_size // group))
+        return (
+            (num_blocks, n, block_size, d // group)
+            if is_key
+            else (num_blocks, n, d, block_size // group)
+        )
 
     raise ValueError(f"不支持的 layout_kv: {layout_kv}")
 
@@ -191,9 +215,11 @@ def parse_pytest_case(name, case):
     layout_kv = _val(case, "layout_kv", layout_q)
     layout_out = _val(case, "layout_attn_out", layout_q)
     q_dtype = _val(case, "q_dtype", "bf16")
-    quant_compute_mode = _val(case, "quant_compute_mode", None) or _val(case, "quant_mode", 1)
+    quant_compute_mode = _val(case, "quant_compute_mode", None) or _val(
+        case, "quant_mode", 1
+    )
     mask_mode = _val(case, "mask_mode", 0)
-    softmax_scale = _val(case, "softmax_scale", 1.0 / (D ** 0.5))
+    softmax_scale = _val(case, "softmax_scale", 1.0 / (D**0.5))
 
     seqused_q = _val(case, "seqused_q", None)
     seqused_kv = _val(case, "seqused_kv", None)
@@ -214,22 +240,39 @@ def parse_pytest_case(name, case):
         seqused_q = seqused_q[0]
     if isinstance(seqused_kv, list) and seqused_kv and isinstance(seqused_kv[0], list):
         seqused_kv = seqused_kv[0]
-    if isinstance(cu_seqlens_q, list) and cu_seqlens_q and isinstance(cu_seqlens_q[0], list):
+    if (
+        isinstance(cu_seqlens_q, list)
+        and cu_seqlens_q
+        and isinstance(cu_seqlens_q[0], list)
+    ):
         cu_seqlens_q = cu_seqlens_q[0]
 
     return {
         "name": name,
-        "B": B, "N1": N1, "N2": N2, "S1": S1, "S2": S2, "D": D,
+        "B": B,
+        "N1": N1,
+        "N2": N2,
+        "S1": S1,
+        "S2": S2,
+        "D": D,
         "block_size": block_size,
-        "layout_q": layout_q, "layout_kv": layout_kv, "layout_out": layout_out,
-        "q_dtype": q_dtype, "quant_compute_mode": quant_compute_mode, "mask_mode": mask_mode,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+        "q_dtype": q_dtype,
+        "quant_compute_mode": quant_compute_mode,
+        "mask_mode": mask_mode,
         "softmax_scale": softmax_scale,
-        "seqused_q": seqused_q, "seqused_kv": seqused_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
         "cu_seqlens_q": cu_seqlens_q,
-        "max_seqlen_q": max_seqlen_q, "max_seqlen_kv": max_seqlen_kv,
-        "win_left": win_left, "win_right": win_right,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "win_left": win_left,
+        "win_right": win_right,
         "return_softmax_lse": return_softmax_lse,
-        "q_range": q_range, "kv_range": kv_range,
+        "q_range": q_range,
+        "kv_range": kv_range,
     }
 
 
@@ -279,14 +322,20 @@ def build_csv_row(c, prefix):
     scale_dtype = "fp8_e8m0" if qcm == 1 else "hifp4_scale"
     k_shape = gen_pa_shape(num_blocks, N2, bs, D, qcm, layout_kv, True, kv_dtype)
     v_shape = gen_pa_shape(num_blocks, N2, bs, D, qcm, layout_kv, False, kv_dtype)
-    k_scale_shape = gen_pa_shape(num_blocks, N2, bs, D, qcm, layout_kv, True, scale_dtype)
-    v_scale_shape = gen_pa_shape(num_blocks, N2, bs, D, qcm, layout_kv, False, scale_dtype)
+    k_scale_shape = gen_pa_shape(
+        num_blocks, N2, bs, D, qcm, layout_kv, True, scale_dtype
+    )
+    v_scale_shape = gen_pa_shape(
+        num_blocks, N2, bs, D, qcm, layout_kv, False, scale_dtype
+    )
 
     block_table_shape = (B, max_blocks_per_batch)
 
     # cu_seqlens_q: TND 时输出
     if layout_q == "TND":
-        cu_seqlens_q_shape = (len(c["cu_seqlens_q"]),) if c["cu_seqlens_q"] else (B + 1,)
+        cu_seqlens_q_shape = (
+            (len(c["cu_seqlens_q"]),) if c["cu_seqlens_q"] else (B + 1,)
+        )
     else:
         cu_seqlens_q_shape = None
 
@@ -314,16 +363,35 @@ def build_csv_row(c, prefix):
     metadata_shape = DEFAULT_METADATA_SHAPE
 
     view_shapes = [
-        q_shape, k_shape, v_shape, k_scale_shape, v_scale_shape,
-        block_table_shape, cu_seqlens_q_shape, seqused_q_shape, seqused_kv_shape,
-        sinks_shape, attn_mask_shape, metadata_shape,
+        q_shape,
+        k_shape,
+        v_shape,
+        k_scale_shape,
+        v_scale_shape,
+        block_table_shape,
+        cu_seqlens_q_shape,
+        seqused_q_shape,
+        seqused_kv_shape,
+        sinks_shape,
+        attn_mask_shape,
+        metadata_shape,
     ]
 
     q_csv_dtype = CSV_DTYPE_MAP.get(c["q_dtype"], "bfloat16")
     scale_csv_dtype = CSV_SCALE_DTYPE.get(qcm, "float8_e8m0fnu")
     dtypes = [
-        q_csv_dtype, "uint8", "uint8", scale_csv_dtype, scale_csv_dtype,
-        "int32", "int32", "int32", "int32", "int32", "int8", "int32",
+        q_csv_dtype,
+        "uint8",
+        "uint8",
+        scale_csv_dtype,
+        scale_csv_dtype,
+        "int32",
+        "int32",
+        "int32",
+        "int32",
+        "int32",
+        "int8",
+        "int32",
     ]
 
     attrs = {
@@ -362,14 +430,24 @@ def build_csv_row(c, prefix):
     metadata_range = (0, 0)
 
     ranges = [
-        q_range, kv_range, kv_range, scale_range, scale_range,
-        block_table_range, cu_seqlens_q_range, seqused_q_range, seqused_kv_range,
-        sinks_range, attn_mask_range, metadata_range,
+        q_range,
+        kv_range,
+        kv_range,
+        scale_range,
+        scale_range,
+        block_table_range,
+        cu_seqlens_q_range,
+        seqused_q_range,
+        seqused_kv_range,
+        sinks_range,
+        attn_mask_range,
+        metadata_range,
     ]
 
     testcase_name = prefix + c["name"]
     fields = [
-        testcase_name, API_NAME,
+        testcase_name,
+        API_NAME,
         _fmt_shapes(view_shapes),
         _fmt_dtypes(dtypes),
         _fmt_storage_shapes(view_shapes),
@@ -437,15 +515,21 @@ def main():
   %(prog)s --pytest functional_stc.py --csv cases.csv --dry-run
         """,
     )
-    parser.add_argument("--pytest", required=True,
-                        help="输入 pytest 用例文件路径 (含 TestCases 字典)")
-    parser.add_argument("--csv", required=True,
-                        help="输出 ttk CSV 文件路径")
-    parser.add_argument("--prefix", default=DEFAULT_TTK_PREFIX,
-                        help=f"ttk 用例名前缀 (默认: '{DEFAULT_TTK_PREFIX}')")
+    parser.add_argument(
+        "--pytest", required=True, help="输入 pytest 用例文件路径 (含 TestCases 字典)"
+    )
+    parser.add_argument("--csv", required=True, help="输出 ttk CSV 文件路径")
+    parser.add_argument(
+        "--prefix",
+        default=DEFAULT_TTK_PREFIX,
+        help=f"ttk 用例名前缀 (默认: '{DEFAULT_TTK_PREFIX}')",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只解析不写文件")
-    parser.add_argument("--skip-invalid", action="store_true",
-                        help="跳过含 override 字段的边界/异常用例")
+    parser.add_argument(
+        "--skip-invalid",
+        action="store_true",
+        help="跳过含 override 字段的边界/异常用例",
+    )
     args = parser.parse_args()
 
     print(f"输入 pytest: {args.pytest}")
@@ -481,9 +565,11 @@ def main():
 
     print(f"有效用例 {len(parsed)} 个:")
     for c in parsed:
-        print(f"  {c['name']}: B={c['B']} N1={c['N1']} N2={c['N2']} S1={c['S1']} "
-              f"S2={c['S2']} bs={c['block_size']} qcm={c['quant_compute_mode']} "
-              f"layout_q={c['layout_q']}")
+        print(
+            f"  {c['name']}: B={c['B']} N1={c['N1']} N2={c['N2']} S1={c['S1']} "
+            f"S2={c['S2']} bs={c['block_size']} qcm={c['quant_compute_mode']} "
+            f"layout_q={c['layout_q']}"
+        )
     print()
 
     if args.dry_run:
