@@ -394,11 +394,11 @@ class TestSageAttention2PythonAPI(unittest.TestCase):
         heads = 4 if is_npu else 2
         for s in seq_lens:
             with self.subTest(seq_len=s):
-                q = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
-                k = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
-                v = torch.randn(1, heads, s, 64, dtype=torch.float16, device=device)
+                q = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
+                k = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
+                v = torch.randn(1, heads, s, 128, dtype=torch.float16, device=device)
                 out = sageattn(q, k, v, tensor_layout="HND")
-                self.assertEqual(out.shape, (1, heads, s, 64))
+                self.assertEqual(out.shape, (1, heads, s, 128))
                 self.assertFalse(torch.isnan(out).any())
 
     # -------------------------------------------------------------------------

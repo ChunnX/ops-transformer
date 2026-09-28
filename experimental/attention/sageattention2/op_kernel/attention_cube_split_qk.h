@@ -115,7 +115,7 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
     CrossCoreSetFlag<4, PIPE_FIX>(QK_READY);
 
     // Fixpipe for Sub 1:
-    WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
+    WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(QK_SECOND_FIX_EVENT));
     FixpipeParamsArch3510<CO2Layout::NZ> fp1;
     fp1.mSize = HALF;
     fp1.nSize = n;
