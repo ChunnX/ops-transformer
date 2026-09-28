@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef MIXED_QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define MIXED_QUANT_FLASH_ATTN_COMMON_DEF_H_
 
@@ -267,6 +266,7 @@ struct RunInfoX {
     bool isChangeBatch = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+    bool isFirstFdBlock = false;
 
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
@@ -293,7 +293,6 @@ struct RunInfoX {
     uint64_t qPaddingBeginOffset = 0;
     uint64_t kvPaddingBeginOffset = 0;
 };
-
 
 struct CommonConstInfo {
     /* 轴长度 */
@@ -406,12 +405,8 @@ template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::ANTI_QUANT> : CommonConstInfo,
-                                                PAConstInfo,
-                                                LseConstInfo,
-                                                SinkConstInfo,
-                                                TensorListConstInfo,
-                                                AntiQuantConstInfo {};
+struct ConstInfo_t<FiaKernelType::ANTI_QUANT>
+    : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo, TensorListConstInfo, AntiQuantConstInfo {};
 
 static constexpr uint32_t MQFA_CV_RATIO = 2;
 static constexpr uint32_t MQFA_BYTE_BLOCK = 32;
