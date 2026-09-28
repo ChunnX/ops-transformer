@@ -12,7 +12,7 @@
 
 #include "kernel_operator.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 using namespace AscendC;
 
 constexpr uint32_t kRegFloatLanes = 64;
@@ -224,6 +224,6 @@ __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float
     }
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_COMMON_H

@@ -14,7 +14,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "compute/rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Kernel {
+namespace MegaMhc::Kernel {
 using namespace AscendC;
 
 constexpr uint32_t kRowsPerMSubblock = 16;
@@ -198,6 +198,6 @@ __aicore__ inline void GetPlannedL1Tile(const MegaMhcTilingData &tiling, uint32_
     }
 }
 
-} // namespace AiInfraMegaMhc::Kernel
+} // namespace MegaMhc::Kernel
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_KERNEL_CONTEXT_H

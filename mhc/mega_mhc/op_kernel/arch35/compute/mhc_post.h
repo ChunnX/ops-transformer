@@ -13,7 +13,7 @@
 #include "kernel_operator.h"
 #include "rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 using namespace AscendC;
 
 /** Add one source head to four output heads: sum[n] += FP32(source[d]) * weight[n].
@@ -244,6 +244,6 @@ __aicore__ inline void ComputePostTile(__ubuf__ T *x1, __ubuf__ T *residual, __u
     }
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_POST_H

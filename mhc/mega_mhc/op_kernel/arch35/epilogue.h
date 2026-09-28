@@ -14,7 +14,7 @@
 #include "compute/rms_norm_1.h"
 #include "mega_mhc_kernel_context.h"
 
-namespace AiInfraMegaMhc::Schedule {
+namespace MegaMhc::Schedule {
 using namespace AscendC;
 
 /** Load consecutive rows from each projection group; UB layout is [group, planned rows, stride]. */
@@ -222,6 +222,6 @@ __aicore__ inline void RunEpilogue(Kernel::Tensors<T> &tensors, const MegaMhcTil
     }
 }
 
-} // namespace AiInfraMegaMhc::Schedule
+} // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_EPILOGUE_H

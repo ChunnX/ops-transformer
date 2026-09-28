@@ -203,10 +203,16 @@ class TestMegaMhcNpu(unittest.TestCase):
                                     "compute_mode": mode,
                                 }
                                 actual = cann_ops_transformer.mega_mhc(
-                                    *device_inputs, **kwargs
+                                    *device_inputs[:8],
+                                    None,
+                                    *device_inputs[8:],
+                                    **kwargs,
                                 )
                                 repeated = cann_ops_transformer.mega_mhc(
-                                    *device_inputs, **kwargs
+                                    *device_inputs[:8],
+                                    None,
+                                    *device_inputs[8:],
+                                    **kwargs,
                                 )
                                 torch.npu.synchronize()
                                 tolerance = (
@@ -214,8 +220,10 @@ class TestMegaMhcNpu(unittest.TestCase):
                                     if dtype == torch.bfloat16 or mode == 1
                                     else 0.005
                                 )
+                                self.assertEqual(len(actual), 5)
+                                self.assertIsNone(actual[4])
                                 for result, repeat, want in zip(
-                                    actual, repeated, expected
+                                    actual[:4], repeated[:4], expected
                                 ):
                                     host_result = result.cpu()
                                     torch.testing.assert_close(
@@ -232,7 +240,7 @@ class TestMegaMhcNpu(unittest.TestCase):
     def test_independent_pre_norm_epsilon(self):
         """A distinct Pre epsilon changes gates but must not change the upstream x2."""
         torch.manual_seed(71)
-        m, d = 17, 2560
+        m, d = 34, 2560
         for dtype in (torch.float16, torch.bfloat16):
             for mid in (False, True):
                 inputs = [
@@ -246,6 +254,8 @@ class TestMegaMhcNpu(unittest.TestCase):
                     0.9 + 0.2 * torch.rand(d),
                     0.9 + 0.2 * torch.rand(d),
                 ]
+                # Cover three-dimensional inputs in addition to the flat-token matrix tests.
+                inputs[:4] = [x.reshape(2, 17, *x.shape[1:]) for x in inputs[:4]]
                 gamma2 = 0.9 + 0.2 * torch.rand(4 * d) if mid else None
                 expected = reference(
                     *inputs,
@@ -263,14 +273,20 @@ class TestMegaMhcNpu(unittest.TestCase):
                         compute_mode=mode,
                     )
                     actual = cann_ops_transformer.mega_mhc(
-                        *device_inputs, mhc_pre_norm_eps=0.25, **kwargs
+                        *device_inputs[:8],
+                        None,
+                        *device_inputs[8:],
+                        mhc_pre_norm_eps=0.25,
+                        **kwargs,
                     )
                     default_pre = cann_ops_transformer.mega_mhc(
-                        *device_inputs, **kwargs
+                        *device_inputs[:8], None, *device_inputs[8:], **kwargs
                     )
                     torch.npu.synchronize()
                     tolerance = 0.02 if dtype == torch.bfloat16 or mode == 1 else 0.005
-                    for got, want in zip(actual, expected):
+                    self.assertEqual(len(actual), 5)
+                    self.assertIsNone(actual[4])
+                    for got, want in zip(actual[:4], expected):
                         torch.testing.assert_close(
                             got.cpu(), want, atol=tolerance, rtol=tolerance
                         )
@@ -334,7 +350,7 @@ class TestMegaMhcNpu(unittest.TestCase):
                                     if dtype == torch.bfloat16 or mode == 1
                                     else 0.005
                                 )
-                                for result, want in zip(actual, expected):
+                                for result, want in zip(actual[:4], expected):
                                     host_result = result.cpu()
                                     self.assertTrue(
                                         torch.isfinite(host_result).all().item()

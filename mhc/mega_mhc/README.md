@@ -3,11 +3,14 @@
 950 专用 M-K/ND/BS 实现：N=4、2560≤D≤7168 且 D 为256的倍数，FP16/BF16 输入，FP32/HF32 投影。
 扩展范围目前为实验实现，数值验收例外见[通用 D 分块实验](docs/generic_d_tiling_experiment.md)。
 `gamma_0` 必须非空；gamma_2=None 为四算子，提供 [4D] gamma_2 为五算子。
-保留四个输出及阶段舍入点，无 Sinkhorn、3BF16。
+`pre_mix` 位于 `gamma_0` 前，`h_pre` 位于 `x_2_out` 后；两者均为可选预留字段，
+本版要求 pre_mix=None、h_pre 输出指针为空。Torch 返回 `(h_in_prime,h_post_new,h_res_new,x_2_out,None)`。
+未来二者约定 FP32 ND `[T,4]` 或 `[B,S,4]`，pre_mix 不支持非连续；本版不启用相关计算或写出。
+原四个输出及阶段舍入点保持不变，无 Sinkhorn、3BF16。
 
 ## 目录与调用链
 
-- op_host/op_api：aclnnAiInfraMegaMhc 参数校验、Contiguous、L0 launch、ViewCopy。
+- op_host/op_api：aclnnMegaMhc 参数校验、Contiguous、L0 launch、ViewCopy。
 - op_host/op_tiling：GE总注册与arch35 host分块；memory_plan逐buffer计数，TilingData负责下发。
 - op_kernel/arch35/compute：五阶段RegBase数学函数，公式与舍入点写在函数注释中。
 - op_kernel/arch35/schedule_mk.h、schedule_bs.h、schedule_nd.h、epilogue.h：四/五调度、行归属、同步和最终归约。

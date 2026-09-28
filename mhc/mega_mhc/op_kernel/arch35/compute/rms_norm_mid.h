@@ -12,7 +12,7 @@
 
 #include "rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 
 /** Normalize rounded Post with its fused square sum: x2[k]=Cast<T>(FP32(post[k])*rsqrt(sum/K+eps)*gamma2[k]). */
 template <typename T>
@@ -37,6 +37,6 @@ __aicore__ inline void ComputeRmsNormMidRow(__ubuf__ T *postRow, __ubuf__ float 
     ComputeRmsNormMidFromSquares<T>(postRow, gamma2, k, epsilon, sumScratch, invRmsScratch, x2);
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_MID_H

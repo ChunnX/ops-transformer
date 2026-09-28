@@ -120,7 +120,7 @@ TILING_DATA_FIELD_DEF(uint64_t, ubPeakBytes);
 TILING_DATA_FIELD_DEF(uint64_t, l1PeakBytes);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(AiInfraMegaMhc, MegaMhcTilingData);
+REGISTER_TILING_DATA_CLASS(MegaMhc, MegaMhcTilingData);
 
 } // namespace optiling
 

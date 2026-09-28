@@ -13,13 +13,15 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-/** Allocate the four public outputs on h_out.device and dispatch the ACLNN forward operation. */
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
+/** Allocate four outputs on h_out.device, dispatch ACLNN, and return None for reserved h_pre. */
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, c10::optional<at::Tensor>> mega_mhc(
     const at::Tensor &h_out, const at::Tensor &residual, const at::Tensor &h_post, const at::Tensor &h_res,
     const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias, const at::Tensor &gamma_1,
-    const c10::optional<at::Tensor> &gamma_0, const c10::optional<at::Tensor> &gamma_2, double norm_eps,
-    double mhc_pre_norm_eps, double hc_eps, int64_t compute_mode)
+    const c10::optional<at::Tensor> &pre_mix, const c10::optional<at::Tensor> &gamma_0,
+    const c10::optional<at::Tensor> &gamma_2, double norm_eps, double mhc_pre_norm_eps, double hc_eps,
+    int64_t compute_mode)
 {
+    TORCH_CHECK(!pre_mix.has_value(), "pre_mix is reserved and must be None in this version");
     constexpr int64_t HEADS = 4;
     constexpr int64_t PROJECTION = 24;
     TORCH_CHECK(h_out.device().type() == c10::DeviceType::PrivateUse1, "h_out must be an NPU tensor");
@@ -69,16 +71,17 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mega_mhc(
         check(*gamma_2, "gamma_2", {HEADS * d}, at::kFloat);
     }
     at::Tensor h_in_prime, h_post_new, h_res_new, x_2_out;
+    const c10::optional<at::Tensor> h_pre = c10::nullopt;
     {
         const c10::OptionalDeviceGuard guard(h_out.device());
         h_in_prime = at::empty(h_out.sizes(), h_out.options());
         h_post_new = at::empty(post_shape, h_out.options().dtype(at::kFloat));
         h_res_new = at::empty(res_shape, h_out.options().dtype(at::kFloat));
         x_2_out = at::empty(x2_shape, h_out.options());
-        ACLNN_CMD(aclnnAiInfraMegaMhc, h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, gamma_0, gamma_2,
-                  norm_eps, mhc_pre_norm_eps, hc_eps, compute_mode, h_in_prime, h_post_new, h_res_new, x_2_out);
+        ACLNN_CMD(aclnnMegaMhc, h_out, residual, h_post, h_res, phi, alpha, bias, gamma_1, pre_mix, gamma_0, gamma_2,
+                  norm_eps, mhc_pre_norm_eps, hc_eps, compute_mode, h_in_prime, h_post_new, h_res_new, x_2_out, h_pre);
     }
-    return {h_in_prime, h_post_new, h_res_new, x_2_out};
+    return {h_in_prime, h_post_new, h_res_new, x_2_out, h_pre};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

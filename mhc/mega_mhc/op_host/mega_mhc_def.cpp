@@ -10,9 +10,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AiInfraMegaMhc : public OpDef {
+class MegaMhc : public OpDef {
 public:
-    explicit AiInfraMegaMhc(const char *name) : OpDef(name)
+    explicit MegaMhc(const char *name) : OpDef(name)
     {
         this->Input("h_out").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
@@ -38,6 +38,8 @@ public:
         this->Input("gamma_1").ParamType(REQUIRED).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("pre_mix").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("gamma_0").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -54,11 +56,14 @@ public:
         this->Output("x_2_out").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
+        this->Output("h_pre").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true).DynamicFormatFlag(false).DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true).NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "mega_mhc_apt")
-            .ExtendCfgInfo("opInterface.value", "ai_infra_mega_mhc");
+            .ExtendCfgInfo("opInterface.value", "mega_mhc");
         this->AICore().AddConfig("ascend950", config);
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("mhc_pre_norm_eps").AttrType(OPTIONAL).Float(1e-6f);
@@ -67,5 +72,5 @@ public:
     }
 };
 
-OP_ADD(AiInfraMegaMhc);
+OP_ADD(MegaMhc);
 }  // namespace ops

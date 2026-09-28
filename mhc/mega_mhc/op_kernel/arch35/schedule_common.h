@@ -18,7 +18,7 @@
 #include "compute/projection_cube.h"
 #include "transfer.h"
 
-namespace AiInfraMegaMhc::Schedule {
+namespace MegaMhc::Schedule {
 using namespace AscendC;
 
 /** Return the number of valid rows from the host-planned M wave and tile index. */
@@ -427,6 +427,6 @@ __aicore__ inline void RunPrefetchedFiveProducer(Kernel::Tensors<T> &tensors, co
     }
 }
 
-} // namespace AiInfraMegaMhc::Schedule
+} // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_COMMON_H

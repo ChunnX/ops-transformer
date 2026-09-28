@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "aclnn_ai_infra_mega_mhc.h"
-#include "ai_infra_mega_mhc.h"
+#include "aclnn_mega_mhc.h"
+#include "mega_mhc.h"
 
 #include <array>
 #include <cmath>
@@ -23,9 +23,11 @@
 #include "opdev/op_log.h"
 
 namespace {
-constexpr size_t INPUT_COUNT = 10;
-constexpr size_t OUTPUT_COUNT = 4;
-constexpr size_t MID_INDEX = 9;
+constexpr size_t INPUT_COUNT = 11;
+constexpr size_t OUTPUT_COUNT = 5;
+constexpr size_t H_PRE_INDEX = 4;
+constexpr size_t MID_INDEX = 10;
+constexpr size_t PRE_MIX_INDEX = 8;
 constexpr int64_t HEADS = 4;
 constexpr int64_t PROJECTION = 24;
 using Inputs = std::array<const aclTensor *, INPUT_COUNT>;
@@ -48,15 +50,26 @@ bool CheckTensor(const aclTensor *tensor, const char *name, const std::vector<in
     return true;
 }
 
-/** Check N=4, aligned D in [2560,7168], optional Mid and four outputs; M is the product of leading axes. */
+/** Check N=4, aligned D in [2560,7168], optional Mid, four active outputs and reserved h_pre; M is the product of
+ * leading axes. */
 aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double normEps, double mhcPreNormEps,
                           double hcEps, int64_t mode)
 {
     for (size_t i = 0; i < MID_INDEX; ++i) {
-        CHECK_RET(inputs[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        if (i != PRE_MIX_INDEX) {
+            CHECK_RET(inputs[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        }
     }
-    for (const auto *output : outputs) {
-        CHECK_RET(output != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (inputs[PRE_MIX_INDEX] != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pre_mix is reserved and must be null in this version");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (outputs[H_PRE_INDEX] != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "h_pre is reserved and must be null in this version");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    for (size_t i = 0; i < H_PRE_INDEX; ++i) {
+        CHECK_RET(outputs[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
     const float norm = static_cast<float>(normEps);
     const float preNorm = static_cast<float>(mhcPreNormEps);
@@ -95,19 +108,21 @@ aclnnStatus CheckContract(const Inputs &inputs, const Outputs &outputs, double n
                                                                   std::vector<int64_t>{3},
                                                                   std::vector<int64_t>{PROJECTION},
                                                                   std::vector<int64_t>{d},
+                                                                  postShape,
                                                                   std::vector<int64_t>{d},
                                                                   std::vector<int64_t>{HEADS * d}};
-    const char *names[] = {"hOut", "residual", "hPost", "hRes", "phi", "alpha", "bias", "gamma1", "gamma0", "gamma2"};
+    const char *names[] = {"hOut", "residual", "hPost",  "hRes",   "phi",   "alpha",
+                           "bias", "gamma1",   "preMix", "gamma0", "gamma2"};
     for (size_t i = 0; i < INPUT_COUNT; ++i) {
-        if (i == MID_INDEX && inputs[i] == nullptr) {
+        if (i == PRE_MIX_INDEX || (i == MID_INDEX && inputs[i] == nullptr)) {
             continue;
         }
         CHECK_RET(CheckTensor(inputs[i], names[i], shapes[i], i < 2 ? dtype : op::DataType::DT_FLOAT),
                   ACLNN_ERR_PARAM_INVALID);
     }
-    const size_t outputSources[] = {0, 2, 3, 1};
-    const char *outputNames[] = {"hInPrime", "hPostNew", "hResNew", "x2Out"};
-    for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
+    const size_t outputSources[] = {0, 2, 3, 1, 2};
+    const char *outputNames[] = {"hInPrime", "hPostNew", "hResNew", "x2Out", "hPre"};
+    for (size_t i = 0; i < H_PRE_INDEX; ++i) {
         CHECK_RET(CheckTensor(outputs[i], outputNames[i], shapes[outputSources[i]],
                               i == 0 || i == 3 ? dtype : op::DataType::DT_FLOAT),
                   ACLNN_ERR_PARAM_INVALID);
@@ -131,17 +146,21 @@ aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps
         }
     }
     Outputs contiguousOutputs{};
-    for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
+    for (size_t i = 0; i < H_PRE_INDEX; ++i) {
         contiguousOutputs[i] =
             owner->AllocTensor(outputs[i]->GetViewShape(), outputs[i]->GetDataType(), op::Format::FORMAT_ND);
         CHECK_RET(contiguousOutputs[i] != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    const bool launched = AiInfraMegaMhcl0op::AiInfraMegaMhc(
+    // CANN-0830 drops null output slots when packing kernel arguments. An empty tensor preserves
+    // the reserved h_pre slot without allocating output storage; the public argument remains null.
+    contiguousOutputs[H_PRE_INDEX] = owner->AllocTensor(op::Shape{0}, op::DataType::DT_FLOAT, op::Format::FORMAT_ND);
+    CHECK_RET(contiguousOutputs[H_PRE_INDEX] != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const bool launched = MegaMhcl0op::MegaMhc(
         inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], inputs[6], inputs[7], inputs[8], inputs[9],
-        normEps, mhcPreNormEps, hcEps, mode, contiguousOutputs[0], contiguousOutputs[1], contiguousOutputs[2],
-        contiguousOutputs[3], owner.get());
+        inputs[10], normEps, mhcPreNormEps, hcEps, mode, contiguousOutputs[0], contiguousOutputs[1],
+        contiguousOutputs[2], contiguousOutputs[3], contiguousOutputs[4], owner.get());
     CHECK_RET(launched, ACLNN_ERR_INNER_NULLPTR);
-    for (size_t i = 0; i < OUTPUT_COUNT; ++i) {
+    for (size_t i = 0; i < H_PRE_INDEX; ++i) {
         CHECK_RET(l0op::ViewCopy(contiguousOutputs[i], outputs[i], owner.get()) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     *workspaceSize = owner->GetWorkspaceSize();
@@ -151,27 +170,29 @@ aclnnStatus BuildExecution(Inputs inputs, const Outputs &outputs, double normEps
 } // namespace
 
 /** Build the execution graph and report its workspace; no kernel executes in this phase. */
-aclnnStatus aclnnAiInfraMegaMhcGetWorkspaceSize(const aclTensor *hOut, const aclTensor *residual,
-                                                const aclTensor *hPost, const aclTensor *hRes, const aclTensor *phi,
-                                                const aclTensor *alpha, const aclTensor *bias, const aclTensor *gamma1,
-                                                const aclTensor *gamma0Optional, const aclTensor *gamma2Optional,
-                                                double normEps, double mhcPreNormEps, double hcEps, int64_t computeMode,
-                                                const aclTensor *hInPrimeOut, const aclTensor *hPostNewOut,
-                                                const aclTensor *hResNewOut, const aclTensor *x2Out,
-                                                uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMegaMhcGetWorkspaceSize(const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost,
+                                         const aclTensor *hRes, const aclTensor *phi, const aclTensor *alpha,
+                                         const aclTensor *bias, const aclTensor *gamma1,
+                                         const aclTensor *preMixOptional, const aclTensor *gamma0Optional,
+                                         const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
+                                         double hcEps, int64_t computeMode, const aclTensor *hInPrimeOut,
+                                         const aclTensor *hPostNewOut, const aclTensor *hResNewOut,
+                                         const aclTensor *x2Out, const aclTensor *hPreOut, uint64_t *workspaceSize,
+                                         aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnAiInfraMegaMhc,
-                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional,
-                          normEps, mhcPreNormEps, hcEps, computeMode),
-                   DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out));
-    return BuildExecution({hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, gamma0Optional, gamma2Optional},
-                          {hInPrimeOut, hPostNewOut, hResNewOut, x2Out}, normEps, mhcPreNormEps, hcEps, computeMode,
-                          workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMegaMhc,
+                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, preMixOptional, gamma0Optional,
+                          gamma2Optional, normEps, mhcPreNormEps, hcEps, computeMode),
+                   DFX_OUT(hInPrimeOut, hPostNewOut, hResNewOut, x2Out, hPreOut));
+    return BuildExecution(
+        {hOut, residual, hPost, hRes, phi, alpha, bias, gamma1, preMixOptional, gamma0Optional, gamma2Optional},
+        {hInPrimeOut, hPostNewOut, hResNewOut, x2Out, hPreOut}, normEps, mhcPreNormEps, hcEps, computeMode,
+        workspaceSize, executor);
 }
 
 /** Execute the prepared graph on the caller's stream using its allocated workspace. */
-aclnnStatus aclnnAiInfraMegaMhc(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMegaMhc(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    L2_DFX_PHASE_2(aclnnAiInfraMegaMhc);
+    L2_DFX_PHASE_2(aclnnMegaMhc);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }

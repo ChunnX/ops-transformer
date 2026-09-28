@@ -12,7 +12,7 @@
 
 #include "rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 /** Convert an entire AIV tile and accumulate Pre statistics in the same VF.
  * Formula: stage[r,c] = FP32(x2[r,c]); squares[r] += sum_c stage[r,c]^2.
  * Input is packed by valid K; stage uses the host-planned L1 row stride.
@@ -341,6 +341,6 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
     }
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_PRE_H

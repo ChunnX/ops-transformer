@@ -11,7 +11,7 @@
 #define OPS_TRANSFORMER_MHC_MEGA_MHC_EXECUTION_POLICY_H
 #include <cstdint>
 
-namespace AiInfraMegaMhc {
+namespace MegaMhc {
 /** Compile-time transport selection shared by host planning and the scheduling templates. */
 enum class ProjectionTransport : uint32_t {
     GmStage = 0U,
@@ -19,5 +19,5 @@ enum class ProjectionTransport : uint32_t {
 };
 constexpr ProjectionTransport kFourProjectionTransport = ProjectionTransport::GmStage;
 constexpr ProjectionTransport kFiveProjectionTransport = ProjectionTransport::GmStage;
-} // namespace AiInfraMegaMhc
+} // namespace MegaMhc
 #endif

@@ -13,7 +13,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 
-namespace AiInfraMegaMhc::Cube {
+namespace MegaMhc::Cube {
 using namespace AscendC;
 
 /** Execute host-described FP32/HF32 projection tiles; this class owns only the AIC Cube micro-pipeline. */
@@ -235,6 +235,6 @@ private:
     uint32_t cSlot_ = 0;
 };
 
-} // namespace AiInfraMegaMhc::Cube
+} // namespace MegaMhc::Cube
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_PROJECTION_CUBE_H

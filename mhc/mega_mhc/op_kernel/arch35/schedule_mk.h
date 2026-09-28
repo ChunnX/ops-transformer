@@ -13,7 +13,7 @@
 #include "schedule_common.h"
 #include "epilogue.h"
 
-namespace AiInfraMegaMhc::Schedule {
+namespace MegaMhc::Schedule {
 using namespace AscendC;
 
 /** Initialize the four-op completion epochs to zero before any group starts producing.
@@ -242,6 +242,6 @@ __aicore__ inline void RunMkSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
     epiloguePipe.Destroy();
 }
 
-} // namespace AiInfraMegaMhc::Schedule
+} // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_MK_H

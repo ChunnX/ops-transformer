@@ -69,7 +69,7 @@ bool CheckedBytes(uint64_t first, uint64_t second, uint64_t third, uint64_t elem
 
 } // namespace
 
-REGISTER_OPS_TILING_TEMPLATE(AiInfraMegaMhc, MegaMhcTiling, 1000);
+REGISTER_OPS_TILING_TEMPLATE(MegaMhc, MegaMhcTiling, 1000);
 
 /** Select this host tiler only when the graph is targeting an Ascend 950 platform. */
 bool MegaMhcTiling::IsCapable()
@@ -110,11 +110,25 @@ ge::graphStatus MegaMhcTiling::GetShapeAttrsInfo()
 /** Parse and validate the N=4, aligned D in [2560,7168] mega_mhc input contract. */
 ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
 {
-    constexpr size_t kInputCount = 10;
+    if (context_->GetDynamicInputTensor(8, 0) != nullptr) {
+        OP_LOGE(context_->GetNodeName(), "pre_mix is reserved and must be absent in this version");
+        return ge::GRAPH_FAILED;
+    }
+    // The ACLNN launcher uses a [0] FP32 output to preserve the reserved kernel argument slot.
+    const auto *hPreDesc = context_->GetOutputDesc(4);
+    const auto *hPreShape = context_->GetOutputShape(4);
+    if (hPreDesc != nullptr &&
+        (hPreShape == nullptr || hPreDesc->GetDataType() != ge::DT_FLOAT ||
+         hPreShape->GetStorageShape().GetDimNum() != 1 || hPreShape->GetStorageShape().GetDim(0) != 0)) {
+        OP_LOGE(context_->GetNodeName(), "h_pre is reserved; only an empty internal placeholder is supported");
+        return ge::GRAPH_FAILED;
+    }
+    constexpr size_t kInputCount = 11;
     for (size_t index = 0; index < kInputCount; ++index) {
-        const bool optional = index == 9;
-        const auto *desc = context_->GetInputDesc(index);
-        const auto *shapeContext = context_->GetInputShape(index);
+        const bool optional = index == 8 || index == 10;
+        // Optional inputs are indexed by their prototype position even when earlier options are absent.
+        const auto *desc = index >= 8 ? context_->GetOptionalInputDesc(index) : context_->GetInputDesc(index);
+        const auto *shapeContext = index >= 8 ? context_->GetOptionalInputShape(index) : context_->GetInputShape(index);
         const auto *tensor = context_->GetDynamicInputTensor(index, 0);
         if ((!optional && (desc == nullptr || shapeContext == nullptr || tensor == nullptr)) ||
             (optional && tensor != nullptr && (desc == nullptr || shapeContext == nullptr))) {
@@ -193,20 +207,21 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         return ge::GRAPH_FAILED;
     }
     for (size_t index = 2; index < kInputCount; ++index) {
-        if (index == 9) {
+        if (index == 8 || index == 10) {
             if (context_->GetDynamicInputTensor(index, 0) == nullptr) {
                 continue;
             }
         }
-        if (context_->GetInputDesc(index)->GetDataType() != ge::DT_FLOAT) {
+        const auto *desc = index >= 8 ? context_->GetOptionalInputDesc(index) : context_->GetInputDesc(index);
+        if (desc->GetDataType() != ge::DT_FLOAT) {
             OP_LOGE(context_->GetNodeName(), "mega_mhc coefficient and gamma inputs must be FP32");
             return ge::GRAPH_FAILED;
         }
     }
 
-    hasMid_ = context_->GetDynamicInputTensor(9, 0) != nullptr;
+    hasMid_ = context_->GetDynamicInputTensor(10, 0) != nullptr;
     {
-        const auto *gamma0Context = context_->GetInputShape(8);
+        const auto *gamma0Context = context_->GetOptionalInputShape(9);
         if (gamma0Context == nullptr || gamma0Context->GetStorageShape().GetDimNum() != 1 ||
             gamma0Context->GetStorageShape().GetDim(0) != d_) {
             OP_LOGE(context_->GetNodeName(), "gamma0 must have shape [D]");
@@ -214,7 +229,7 @@ ge::graphStatus MegaMhcTiling::ParseInputsAndAttributes()
         }
     }
     if (hasMid_) {
-        const auto &gamma2 = context_->GetInputShape(9)->GetStorageShape();
+        const auto &gamma2 = context_->GetOptionalInputShape(10)->GetStorageShape();
         if (gamma2.GetDimNum() != 1 || gamma2.GetDim(0) != k_) {
             OP_LOGE(context_->GetNodeName(), "gamma2 must have shape [4D] when RMSNorm_mid is enabled");
             return ge::GRAPH_FAILED;

@@ -13,7 +13,7 @@
 #include "schedule_common.h"
 #include "epilogue.h"
 
-namespace AiInfraMegaMhc::Schedule {
+namespace MegaMhc::Schedule {
 using namespace AscendC;
 
 /** BS owns distinct token tiles and full K; retain the staged barrier protocol.
@@ -43,6 +43,6 @@ __aicore__ inline void RunBsSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
     epiloguePipe.Destroy();
 }
 
-} // namespace AiInfraMegaMhc::Schedule
+} // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_BS_H

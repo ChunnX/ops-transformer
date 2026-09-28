@@ -19,6 +19,7 @@ constexpr int64_t kHInPrime = 0;
 constexpr int64_t kHPostNew = 1;
 constexpr int64_t kHResNew = 2;
 constexpr int64_t kX2Out = 3;
+constexpr int64_t kHPre = 4;
 
 /** Copy a shape and append the fixed four-head dimension used by MHC. */
 void CopyWithHeadAxis(const gert::Shape &source, gert::Shape *destination)
@@ -41,7 +42,7 @@ void CopyWithResidualAxes(const gert::Shape &source, gert::Shape *destination)
     destination->SetDim(source.GetDimNum(), 4);
 }
 
-/** Infer the four outputs from h_out/residual leading dimensions; N is fixed to four. */
+/** Infer the five outputs from h_out/residual leading dimensions; N is fixed to four. */
 ge::graphStatus InferShape(gert::InferShapeContext *context)
 {
     const gert::Shape *x = context->GetDynamicInputShape(kX, 0);
@@ -54,6 +55,7 @@ ge::graphStatus InferShape(gert::InferShapeContext *context)
     gert::Shape *hPostNew = context->GetOutputShape(kHPostNew);
     gert::Shape *hResNew = context->GetOutputShape(kHResNew);
     gert::Shape *x2Out = context->GetOutputShape(kX2Out);
+    gert::Shape *hPre = context->GetOutputShape(kHPre);
     if (hInPrime == nullptr || hPostNew == nullptr || hResNew == nullptr || x2Out == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -63,6 +65,11 @@ ge::graphStatus InferShape(gert::InferShapeContext *context)
         hInPrime->SetDim(axis, x->GetDim(axis));
     }
     CopyWithHeadAxis(*x, hPostNew);
+    if (hPre != nullptr) {
+        // Reserved output: retain a zero-element launcher slot without producing pre coefficients.
+        hPre->SetDimNum(1);
+        hPre->SetDim(0, 0);
+    }
     CopyWithResidualAxes(*x, hResNew);
     x2Out->SetDimNum(residual->GetDimNum());
     for (int64_t axis = 0; axis < residual->GetDimNum(); ++axis) {
@@ -79,9 +86,10 @@ ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
     context->SetOutputDataType(kHPostNew, ge::DT_FLOAT);
     context->SetOutputDataType(kHResNew, ge::DT_FLOAT);
     context->SetOutputDataType(kX2Out, inputType);
+    context->SetOutputDataType(kHPre, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace
 
-IMPL_OP_INFERSHAPE(AiInfraMegaMhc).InferShape(InferShape).InferDataType(InferDataType);
+IMPL_OP_INFERSHAPE(MegaMhc).InferShape(InferShape).InferDataType(InferDataType);
 } // namespace ops

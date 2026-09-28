@@ -14,7 +14,7 @@
 #include "mega_mhc_kernel_context.h"
 #include "compute/projection_cube.h"
 
-namespace AiInfraMegaMhc::Transfer {
+namespace MegaMhc::Transfer {
 using namespace AscendC;
 
 /** GM-backed transfer policy for AIV UB -> staging GM -> AIC L1, with pair-mode credit handshakes. */
@@ -165,6 +165,6 @@ struct StagePolicy<ProjectionTransport::UbToL1> {
 template <ProjectionTransport TRANSPORT>
 using StagePolicyT = typename StagePolicy<TRANSPORT>::Type;
 
-} // namespace AiInfraMegaMhc::Transfer
+} // namespace MegaMhc::Transfer
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_TRANSFER_H

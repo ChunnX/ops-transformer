@@ -12,7 +12,7 @@
 
 #include "rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 
 /**
  * What: compute the RMSNorm_0 statistic before any dependent Post work begins.
@@ -55,6 +55,6 @@ __aicore__ inline void ComputeRmsNorm0Row(__ubuf__ T *hOut, __ubuf__ float *gamm
     ApplyGammaAndCastRow<T, true>(hOut, gamma0, d, sumScratch, x1, epsilon);
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_0_H

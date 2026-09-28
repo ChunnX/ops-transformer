@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 if(BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE ai_infra_mega_mhc_def.cpp)
+    target_sources(op_host_aclnnExc PRIVATE mega_mhc_def.cpp)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE ai_infra_mega_mhc ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE mega_mhc ACLNNTYPE aclnn_exclude)
 endif()

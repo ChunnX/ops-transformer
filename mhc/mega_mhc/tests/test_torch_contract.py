@@ -84,6 +84,7 @@ def make_inputs(leading=(33,), d=2560, dtype="float16", mid=False):
         TensorMetadata(shape, dtype if i < 2 else "float32")
         for i, shape in enumerate(shapes)
     ]
+    values.insert(8, None)
     return values, {"gamma_2": TensorMetadata((4 * d,), "float32") if mid else None}
 
 
@@ -93,9 +94,7 @@ class TestTorchContract(unittest.TestCase):
     def test_registered_prototype_order_and_defaults(self):
         """Protect the public GE and Torch contract against attribute/index drift."""
         root = Path(__file__).parents[1]
-        definition = (root / "op_host/ai_infra_mega_mhc_def.cpp").read_text(
-            encoding="utf-8"
-        )
+        definition = (root / "op_host/mega_mhc_def.cpp").read_text(encoding="utf-8")
         inputs = re.findall(r'Input\("([^"]+)"\)\.ParamType\((\w+)\)', definition)
         names = [
             "h_out",
@@ -106,13 +105,14 @@ class TestTorchContract(unittest.TestCase):
             "alpha",
             "bias",
             "gamma_1",
+            "pre_mix",
             "gamma_0",
             "gamma_2",
         ]
-        self.assertEqual(inputs, list(zip(names, ["REQUIRED"] * 8 + ["OPTIONAL"] * 2)))
+        self.assertEqual(inputs, list(zip(names, ["REQUIRED"] * 8 + ["OPTIONAL"] * 3)))
         self.assertEqual(
             re.findall(r'Output\("([^"]+)"\)', definition),
-            ["h_in_prime", "h_post_new", "h_res_new", "x_2_out"],
+            ["h_in_prime", "h_post_new", "h_res_new", "x_2_out", "h_pre"],
         )
         self.assertEqual(
             re.findall(
@@ -139,8 +139,10 @@ class TestTorchContract(unittest.TestCase):
             for n in schema_method.body
             if isinstance(n, ast.Return)
         )
-        self.assertIn("Tensor? gamma_0=None", schema)
+        self.assertIn("Tensor? pre_mix=None, Tensor? gamma_0=None", schema)
         self.assertNotIn("schedule_mode", schema)
+        self.assertTrue(schema.endswith("Tensor?)"))
+        self.assertIn('Output("h_pre").ParamType(OPTIONAL)', definition)
         attrs = ["norm_eps", "mhc_pre_norm_eps", "hc_eps", "compute_mode"]
         self.assertEqual(
             [n.arg for n in self._meta_ast(tree).args.kwonlyargs], ["gamma_2"] + attrs
@@ -168,18 +170,30 @@ class TestTorchContract(unittest.TestCase):
                                 args, kwargs = make_inputs(leading, d, dtype, mid)
                                 outputs = self.meta(*args, **kwargs, compute_mode=mode)
                                 self.assertEqual(
-                                    [x.shape for x in outputs],
-                                    [args[i].shape for i in (0, 2, 3, 1)],
+                                    [
+                                        x.shape if x is not None else None
+                                        for x in outputs
+                                    ],
+                                    [args[i].shape for i in (0, 2, 3, 1)] + [None],
                                 )
                                 self.assertEqual(
-                                    [x.dtype for x in outputs],
-                                    [dtype, "float32", "float32", dtype],
+                                    [
+                                        x.dtype if x is not None else None
+                                        for x in outputs
+                                    ],
+                                    [dtype, "float32", "float32", dtype, None],
                                 )
 
     def test_schedule_is_not_a_public_attribute(self):
         args, kwargs = make_inputs()
         with self.assertRaises(TypeError):
             self.meta(*args, **kwargs, schedule_mode=0)
+
+    def test_pre_mix_is_reserved(self):
+        args, kwargs = make_inputs()
+        args[8] = TensorMetadata((33, 4), "float32")
+        with self.assertRaisesRegex(RuntimeError, "pre_mix is reserved"):
+            self.meta(*args, **kwargs)
 
     def test_required_gamma0_and_optional_gamma2(self):
         args, kwargs = make_inputs()
@@ -194,7 +208,7 @@ class TestTorchContract(unittest.TestCase):
             self.meta(*args, **kwargs)
 
     def test_each_tensor_shape_dtype_and_device(self):
-        for i in range(9):
+        for i in (*range(8), 9):
             for attr, bad in (
                 ("dtype", "float64"),
                 ("device", "other"),

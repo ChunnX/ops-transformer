@@ -13,7 +13,7 @@
 #include "schedule_common.h"
 #include "epilogue.h"
 
-namespace AiInfraMegaMhc::Schedule {
+namespace MegaMhc::Schedule {
 using namespace AscendC;
 
 /** ND owns K shards of the same token tile; reduce all shards after projection.
@@ -43,6 +43,6 @@ __aicore__ inline void RunNdSchedule(Kernel::Tensors<T> &tensors, const MegaMhcT
     epiloguePipe.Destroy();
 }
 
-} // namespace AiInfraMegaMhc::Schedule
+} // namespace MegaMhc::Schedule
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_SCHEDULE_ND_H

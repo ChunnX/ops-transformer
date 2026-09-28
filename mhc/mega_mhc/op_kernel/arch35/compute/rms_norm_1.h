@@ -12,7 +12,7 @@
 
 #include "rms_norm_common.h"
 
-namespace AiInfraMegaMhc::Compute {
+namespace MegaMhc::Compute {
 
 /** Normalize rounded h_in using its fused square sum: y[d]=Cast<T>(FP32(hIn[d])*rsqrt(sum/D+eps)*gamma1[d]). */
 template <typename T>
@@ -38,6 +38,6 @@ __aicore__ inline void ComputeRmsNorm1Row(__ubuf__ T *hIn, __ubuf__ float *gamma
     ComputeRmsNorm1FromSquares<T>(hIn, gamma1, d, epsilon, sumScratch, invRmsScratch, hInPrime);
 }
 
-} // namespace AiInfraMegaMhc::Compute
+} // namespace MegaMhc::Compute
 
 #endif // OPS_TRANSFORMER_MHC_MEGA_MHC_RMS_NORM_1_H

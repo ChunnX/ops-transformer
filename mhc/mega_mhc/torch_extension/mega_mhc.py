@@ -27,6 +27,7 @@ def _check_inputs(
     alpha,
     bias,
     gamma_1,
+    pre_mix,
     gamma_0,
     gamma_2,
     norm_eps,
@@ -35,6 +36,9 @@ def _check_inputs(
     compute_mode,
 ):
     """Validate the common eager/Meta contract; leading token axes remain symbolic."""
+    torch._check(
+        pre_mix is None, lambda: "pre_mix is reserved and must be None in this version"
+    )
     torch._check(h_out.dim() in (2, 3), lambda: "h_out must be [T,D] or [B,S,D]")
     torch._check(
         h_out.dtype in (torch.float16, torch.bfloat16),
@@ -107,13 +111,13 @@ class MegaMhcOpBuilder(OpBuilder):
         """gamma_0 is required; gamma_2 alone selects the optional Mid stage."""
         return (
             "mega_mhc(Tensor h_out, Tensor residual, Tensor h_post, Tensor h_res, "
-            "Tensor phi, Tensor alpha, Tensor bias, Tensor gamma_1, Tensor? gamma_0=None, *, "
+            "Tensor phi, Tensor alpha, Tensor bias, Tensor gamma_1, Tensor? pre_mix=None, Tensor? gamma_0=None, *, "
             "Tensor? gamma_2=None, float norm_eps=1e-6, float mhc_pre_norm_eps=1e-6, "
-            "float hc_eps=1e-6, int compute_mode=0) -> (Tensor, Tensor, Tensor, Tensor)"
+            "float hc_eps=1e-6, int compute_mode=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor?)"
         )
 
     def register_meta(self):
-        """Infer four output shapes/types without loading the NPU extension."""
+        """Infer four tensor outputs and reserved None without loading the NPU extension."""
 
         @impl(get_as_library(), self.name, "Meta")
         def mega_mhc_meta(
@@ -125,6 +129,7 @@ class MegaMhcOpBuilder(OpBuilder):
             alpha,
             bias,
             gamma_1,
+            pre_mix=None,
             gamma_0=None,
             *,
             gamma_2=None,
@@ -142,6 +147,7 @@ class MegaMhcOpBuilder(OpBuilder):
                 alpha,
                 bias,
                 gamma_1,
+                pre_mix,
                 gamma_0,
                 gamma_2,
                 norm_eps,
@@ -155,6 +161,7 @@ class MegaMhcOpBuilder(OpBuilder):
                 h_out.new_empty((*leading, 4), dtype=torch.float32),
                 h_out.new_empty((*leading, 4, 4), dtype=torch.float32),
                 h_out.new_empty(residual.shape),
+                None,
             )
 
 
@@ -172,6 +179,7 @@ def _mega_mhc(
     alpha,
     bias,
     gamma_1,
+    pre_mix=None,
     gamma_0=None,
     *,
     gamma_2=None,
@@ -190,6 +198,7 @@ def _mega_mhc(
         alpha,
         bias,
         gamma_1,
+        pre_mix,
         gamma_0,
         gamma_2,
         norm_eps,
@@ -206,6 +215,7 @@ def _mega_mhc(
         alpha,
         bias,
         gamma_1,
+        pre_mix,
         gamma_0,
         gamma_2,
         norm_eps,
@@ -224,6 +234,7 @@ def mega_mhc(
     alpha: torch.Tensor,
     bias: torch.Tensor,
     gamma_1: torch.Tensor,
+    pre_mix: Optional[torch.Tensor] = None,
     gamma_0: Optional[torch.Tensor] = None,
     *,
     gamma_2: Optional[torch.Tensor] = None,
@@ -231,7 +242,9 @@ def mega_mhc(
     mhc_pre_norm_eps: float = 1e-6,
     hc_eps: float = 1e-6,
     compute_mode: int = 0,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]
+]:
     """Compute RMS0 -> Post -> optional RMSMid -> Pre -> RMS1 on Ascend 950.
 
     Args:
@@ -243,6 +256,7 @@ def mega_mhc(
         alpha: FP32 [3], scales for pre/post/residual gates.
         bias: FP32 [24], gate offsets.
         gamma_1: FP32 [D], final RMS scale.
+        pre_mix: Reserved optional FP32 [...,4] ND contiguous input; must be None in this version.
         gamma_0: Required FP32 [D], initial RMS scale.
         gamma_2: Optional FP32 [4D]; provided means five-stage execution.
         norm_eps: Finite positive FP32-representable RMS epsilon.
@@ -251,8 +265,9 @@ def mega_mhc(
         compute_mode: 0 for FP32 projection, 1 for HF32; no 3BF16.
 
     Returns:
-        (h_in_prime, h_post_new, h_res_new, x_2_out), shaped like
-        (h_out, h_post, h_res, residual), dtypes (input, FP32, FP32, input).
+        (h_in_prime, h_post_new, h_res_new, x_2_out, h_pre), shaped like
+        (h_out, h_post, h_res, residual, None), dtypes (input, FP32, FP32, input, None).
+        h_pre is a reserved optional output and is always None in this version.
         Noncontiguous inputs are accepted. Forward only; no Sinkhorn stage.
     """
     return torch.ops.cann_ops_transformer.mega_mhc(
@@ -264,6 +279,7 @@ def mega_mhc(
         alpha,
         bias,
         gamma_1,
+        pre_mix,
         gamma_0,
         gamma_2=gamma_2,
         norm_eps=norm_eps,

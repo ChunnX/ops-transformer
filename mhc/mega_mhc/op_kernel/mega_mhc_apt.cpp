@@ -17,7 +17,7 @@
 #include "arch35/schedule_nd.h"
 
 using namespace AscendC;
-using namespace AiInfraMegaMhc;
+using namespace MegaMhc;
 
 /**
  * Total entry for the 950 four-op/five-op M-K, ND and BS families.
@@ -27,10 +27,10 @@ using namespace AiInfraMegaMhc;
  * All variants reuse the same ordered Pre/RMS1 compute routines.
  */
 template <uint16_t TILING_MODE, bool WITH_MID, bool USE_HF32>
-__global__ __aicore__ void ai_infra_mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
-                                             GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR gamma0,
-                                             GM_ADDR gamma2, GM_ADDR hInPrime, GM_ADDR hPostNew, GM_ADDR hResNew,
-                                             GM_ADDR x2Out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void mega_mhc(GM_ADDR hOut, GM_ADDR residual, GM_ADDR hPost, GM_ADDR hRes, GM_ADDR phi,
+                                    GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma1, GM_ADDR preMix, GM_ADDR gamma0,
+                                    GM_ADDR gamma2, GM_ADDR hInPrime, GM_ADDR hPostNew, GM_ADDR hResNew, GM_ADDR x2Out,
+                                    GM_ADDR hPre, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     GET_TILING_DATA(tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

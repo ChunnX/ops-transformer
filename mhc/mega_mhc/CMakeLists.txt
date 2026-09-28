@@ -11,9 +11,9 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/op_host/CMakeLists.txt")
     add_subdirectory(op_host)
 endif()
 
-# AiInfraMegaMhc's generated dynamic wrapper searches the snake-case OpType.
+# MegaMhc's generated dynamic wrapper searches the snake-case OpType.
 if(BUILD_OPEN_PROJECT AND DEFINED IMPL_INSTALL_DIR)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/op_kernel/"
-            DESTINATION "${IMPL_INSTALL_DIR}/ascendc/ai_infra_mega_mhc/op_kernel"
+            DESTINATION "${IMPL_INSTALL_DIR}/ascendc/mega_mhc/op_kernel"
             FILES_MATCHING PATTERN "*.cpp" PATTERN "*.h")
 endif()

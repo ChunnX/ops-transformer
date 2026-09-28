@@ -29,5 +29,5 @@ static ge::graphStatus TilingMegaMhc(gert::TilingContext *context)
     }
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
-IMPL_OP_OPTILING(AiInfraMegaMhc).Tiling(TilingMegaMhc).TilingParse<MegaMhcCompileInfo>(ParseMegaMhc);
+IMPL_OP_OPTILING(MegaMhc).Tiling(TilingMegaMhc).TilingParse<MegaMhcCompileInfo>(ParseMegaMhc);
 } // namespace optiling
