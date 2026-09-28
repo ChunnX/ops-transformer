@@ -12,16 +12,12 @@
 1. torch.npu.NPUGraph（torch_npu 原生 aclgraph 捕获）：DSL kernel launch 可被
    图捕获，重放时对新输入数据/新 mask 值结果正确（kernel 侧按运行时值读取）。
 2. torchair npugraph_ex（依赖 torchair，缺失时跳过）：经 torch_extension 自定
-   义算子边界被 dynamo 全图捕获并重放。
+   义算子边界（已安装 wheel 的 ``torch.ops.cann_ops_transformer.ds41``）被
+   dynamo 全图捕获并重放。
 """
-
-import os
-import sys
 
 import pytest
 import torch
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from ops.engram_gate import engram_gate  # noqa: E402
 
@@ -124,7 +120,9 @@ def test_engram_gate_torchair_npugraph_ex(t, hc, dim, use_mask):
     torchair = pytest.importorskip("torchair", reason="torchair not installed")
     from torchair.configs.compiler_config import CompilerConfig
 
-    from torch_extension import engram_gate_torch
+    # Explicit import surfaces DSL registration failures instead of testing
+    # another implementation.
+    from cann_ops_transformer.ops.engram.engram_gate_dsl import engram_gate_torch
 
     torch.npu.set_device(0)
 

@@ -8,8 +8,7 @@
 
 """PyTorch custom-op boundary for the engram_gate CANNBotDSL operator.
 
-dynamo/torch.compile 无法直接穿透 CANNBotDSL 的 jit 派发；本模块以
-torch.library.custom_op 注册算子边界（含 FakeTensor 实现），供
+本模块将算子注册进 ``cann_ops_transformer`` 库（PrivateUse1 + Meta），供
 torch.compile / torchair npugraph_ex（ACL Graph）等图模式使用。
 """
 

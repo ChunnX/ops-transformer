@@ -93,11 +93,18 @@ EngramGate(eps=1e-6, clamp_value=1e-6).run.compile(
 
 ## torch_extension（图模式接入）
 
-dynamo/torch.compile 无法直接穿透 CANNBotDSL 的 jit 派发；[torch_extension](torch_extension)
-以 `torch.library.custom_op` 注册算子边界（含 FakeTensor 实现），供图模式使用：
+[torch_extension](torch_extension) 将算子注册进 `cann_ops_transformer` 库
+（`torch.ops.cann_ops_transformer.ds41.engram_gate`，含 Meta/FakeTensor 实现），
+供图模式使用。经仓库 torch_extension 构建流程安装
+cann_ops_transformer 后使用：
+
+```bash
+bash build.sh --torch_extension
+python3 -m pip install build_out/*.whl --force-reinstall --no-deps
+```
 
 ```python
-from torch_extension import engram_gate_torch
+from cann_ops_transformer.ops.engram.engram_gate_dsl import engram_gate_torch
 
 out = engram_gate_torch(x, key, value, weight)          # 与 engram_gate 语义一致
 ```
