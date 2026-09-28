@@ -330,7 +330,7 @@ public:
         LocalTensor<float> lseUb = softmaxLseUB;                 // 单buffer
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT1);              // softmaxLseUB AllocTensor
 
-        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize);
+        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, minValue_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT1);  // softmaxLseUB EnQue
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT1); // softmaxLseUB DeQue
 
