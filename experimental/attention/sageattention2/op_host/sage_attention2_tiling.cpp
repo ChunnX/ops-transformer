@@ -19,7 +19,6 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../op_kernel/sage_attention2_tiling_data.h"
 #include "../op_kernel/sage_attention2_template_tiling_key.h"
-#include "adaptive_tiling.h"
 
 namespace optiling {
 namespace {
@@ -130,9 +129,8 @@ ge::graphStatus Tile(gert::TilingContext *c)
         return Failure(__LINE__);
     }
     c->SetBlockDim(p.cores);
-    auto tileSel = AdaptiveTileSelect(p.b, p.hq, p.hk, p.sq, p.sk, p.d, p.causal, p.cores);
-    p.qp = (p.sq + tileSel.tileM - 1U) & ~(tileSel.tileM - 1U);
-    p.kp = (p.sk + tileSel.tileN - 1U) & ~(tileSel.tileN - 1U);
+    p.qp = (p.sq + 127U) & ~127U;
+    p.kp = (p.sk + 511U) & ~511U;
     const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
     c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
     // SyncAll requires the entire MIX 1:2 grid to be resident together.

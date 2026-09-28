@@ -32,7 +32,6 @@
 #include <vector>
 
 #define SAGE_STANDALONE_TEST 1
-#include "../op_kernel/wht.h"
 
 namespace {
 
@@ -520,96 +519,6 @@ void TestSmoothVPartitionOfUnityAndError(std::mt19937 &rng)
     Report("error reduction ratio (>2.5x)", worstDirectRelErr / worstSmoothRelErr, 2.5, reduced);
 }
 
-void TestFastWalshHadamardTransform(std::mt19937 &rng)
-{
-    std::printf("[10] Fast Walsh-Hadamard Transform (WHT) Incoherent Rotation\n");
-
-    // 1. Orthogonality: |H_D * H_D^T - I| < 1e-12 for D=64 and D=128
-    double maxOrthoErr64 = 0.0, maxOrthoErr128 = 0.0;
-    {
-        std::vector<double> H64(64 * 64);
-        Sage::FastWalshHadamardTransform<64>::GenerateMatrix(H64.data(), true);
-        for (int r = 0; r < 64; ++r) {
-            for (int c = 0; c < 64; ++c) {
-                double dot = 0.0;
-                for (int k = 0; k < 64; ++k) dot += H64[r * 64 + k] * H64[c * 64 + k];
-                maxOrthoErr64 = std::fmax(maxOrthoErr64, std::fabs(dot - (r == c ? 1.0 : 0.0)));
-            }
-        }
-    }
-    {
-        std::vector<double> H128(128 * 128);
-        Sage::FastWalshHadamardTransform<128>::GenerateMatrix(H128.data(), true);
-        for (int r = 0; r < 128; ++r) {
-            for (int c = 0; c < 128; ++c) {
-                double dot = 0.0;
-                for (int k = 0; k < 128; ++k) dot += H128[r * 128 + k] * H128[c * 128 + k];
-                maxOrthoErr128 = std::fmax(maxOrthoErr128, std::fabs(dot - (r == c ? 1.0 : 0.0)));
-            }
-        }
-    }
-    double worstOrtho = std::fmax(maxOrthoErr64, maxOrthoErr128);
-    Report("orthogonality |H * H^T - I| (<1e-12)", worstOrtho, 1e-12, worstOrtho < 1e-12);
-
-    // 2. Attention Score Invariance: |(Q*H)*(K*H)^T - Q*K^T| < 1e-12
-    double worstScoreErr = 0.0;
-    for (uint32_t d : {64u, 128u}) {
-        const uint32_t n = 32;
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<double> Q(n * d), K(n * d);
-        for (auto &v : Q) v = dist(rng);
-        for (auto &v : K) v = dist(rng);
-
-        std::vector<double> S_orig(n * n, 0.0);
-        for (uint32_t i = 0; i < n; ++i) {
-            for (uint32_t j = 0; j < n; ++j) {
-                double dot = 0.0;
-                for (uint32_t c = 0; c < d; ++c) dot += Q[i * d + c] * K[j * d + c];
-                S_orig[i * n + j] = dot;
-            }
-        }
-
-        std::vector<double> Q_tilde = Q, K_tilde = K;
-        if (d == 64) {
-            Sage::FastWalshHadamardTransform<64>::TransformRows(Q_tilde.data(), n, 64, true);
-            Sage::FastWalshHadamardTransform<64>::TransformRows(K_tilde.data(), n, 64, true);
-        } else {
-            Sage::FastWalshHadamardTransform<128>::TransformRows(Q_tilde.data(), n, 128, true);
-            Sage::FastWalshHadamardTransform<128>::TransformRows(K_tilde.data(), n, 128, true);
-        }
-
-        for (uint32_t i = 0; i < n; ++i) {
-            for (uint32_t j = 0; j < n; ++j) {
-                double dot = 0.0;
-                for (uint32_t c = 0; c < d; ++c) dot += Q_tilde[i * d + c] * K_tilde[j * d + c];
-                worstScoreErr = std::fmax(worstScoreErr, std::fabs(dot - S_orig[i * n + j]));
-            }
-        }
-    }
-    Report("attention score invariance (<1e-12)", worstScoreErr, 1e-12, worstScoreErr < 1e-12);
-
-    // 3. Outlier peak suppression (> 3.0x)
-    double minSuppressionRatio = 1000.0;
-    for (uint32_t d : {64u, 128u}) {
-        std::normal_distribution<float> noise(0.0f, 0.5f);
-        std::vector<float> token(d);
-        for (auto &v : token) v = noise(rng);
-        token[7] += 100.0f; // extreme outlier
-        float peakBefore = 0.0f;
-        for (auto v : token) peakBefore = std::fmax(peakBefore, std::fabs(v));
-
-        std::vector<float> tokenTrans = token;
-        if (d == 64) Sage::FastWalshHadamardTransform<64>(tokenTrans.data(), true);
-        else Sage::FastWalshHadamardTransform<128>(tokenTrans.data(), true);
-
-        float peakAfter = 0.0f;
-        for (auto v : tokenTrans) peakAfter = std::fmax(peakAfter, std::fabs(v));
-        double ratio = static_cast<double>(peakBefore) / static_cast<double>(peakAfter);
-        minSuppressionRatio = std::fmin(minSuppressionRatio, ratio);
-    }
-    Report("outlier peak suppression ratio (>3.0x)", minSuppressionRatio, 3.0, minSuppressionRatio > 3.0);
-}
-
 }  // namespace
 
 int main()
@@ -626,7 +535,6 @@ int main()
     TestLseIdentity(rng);
     TestSmoothKInvariance(rng);
     TestSmoothVPartitionOfUnityAndError(rng);
-    TestFastWalshHadamardTransform(rng);
     std::printf("================================================================\n");
     if (g_failures == 0) {
         std::printf("ALL NUMERIC ERROR TESTS PASSED\n");
