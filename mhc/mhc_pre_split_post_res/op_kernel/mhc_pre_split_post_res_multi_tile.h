@@ -126,9 +126,7 @@ private:
     // 计算 tile d 的 copyD：最后一个 tile 取尾部实际列数，其余取 dimTile_
     __aicore__ inline int64_t TileCopyD(int64_t d) const
     {
-        int64_t dimOff = d * dimTile_;
-        int64_t copyDRaw = (d == dimLoop_ - 1) ? (d_ - dimOff) : dimTile_;
-        return copyDRaw;
+        return (d == dimLoop_ - 1) ? (d_ - d * dimTile_) : dimTile_;
     }
 
     __aicore__ inline void ProcessOneToken(int64_t tokenIdx, int64_t phiRowStart, int64_t phiRowEnd)

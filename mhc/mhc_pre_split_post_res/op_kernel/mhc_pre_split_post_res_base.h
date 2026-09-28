@@ -143,7 +143,6 @@ protected:
         auto srcAddr = (__ubuf__ float *)xFp32.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)sqDot.GetPhyAddr();
         const uint32_t elemCount = static_cast<uint32_t>(n_ * copyD);
-        uint32_t sreg = elemCount;
         const uint16_t repeatTimes = static_cast<uint16_t>((elemCount + REG_VL_FP32 - 1U) / REG_VL_FP32);
         __VEC_SCOPE__
         {
@@ -151,7 +150,6 @@ protected:
             AscendC::Reg::RegTensor<float> prod;
             AscendC::Reg::RegTensor<float> part;
             AscendC::Reg::RegTensor<float> acc;
-            AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
             // fast_kernel_launch_example 的 fkle ReduceLoop（MicroAPI，DAV_2201 族）——源码经 VF_CALL
@@ -163,10 +161,11 @@ protected:
             AscendC::Reg::MaskReg maskFirst = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
             AscendC::Reg::Duplicate(acc, FLOAT_ZERO, maskAll);
             for (uint16_t i = 0; i < repeatTimes; ++i) {
-                mask = AscendC::Reg::UpdateMask<float>(sreg);
+                // N×copyD 恒为 VL 整数倍无尾块，段掩码恒为全 1，直接用 maskAll
+                // （UpdateMask 尾块写法系 fkle 模板残留，sreg 不递减时与其等价）
                 AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_NORM>(x, srcAddr + i * REG_VL_FP32);
-                AscendC::Reg::Mul(prod, x, x, mask);
-                AscendC::Reg::ReduceSum(part, prod, mask);
+                AscendC::Reg::Mul(prod, x, x, maskAll);
+                AscendC::Reg::ReduceSum(part, prod, maskAll);
                 AscendC::Reg::Add(acc, acc, part, maskFirst);
             }
             AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, acc, maskFirst);
@@ -202,7 +201,6 @@ protected:
         auto phiAddr = (__ubuf__ float *)phiRow.GetPhyAddr();
         auto dstAddr = (__ubuf__ float *)dot.GetPhyAddr();
         const uint32_t elemCount = static_cast<uint32_t>(n_ * copyD);
-        uint32_t sreg = elemCount;
         const uint16_t repeatTimes = static_cast<uint16_t>((elemCount + REG_VL_FP32 - 1U) / REG_VL_FP32);
         __VEC_SCOPE__
         {
@@ -211,7 +209,6 @@ protected:
             AscendC::Reg::RegTensor<float> prod;
             AscendC::Reg::RegTensor<float> part;
             AscendC::Reg::RegTensor<float> acc;
-            AscendC::Reg::MaskReg mask;
             AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             // 段间累加与落盘只取 lane0（ReduceSum 结果有效 lane）。写法来源：仓内参考实现
             // fast_kernel_launch_example 的 fkle ReduceLoop（MicroAPI，DAV_2201 族）——源码经 VF_CALL
@@ -223,11 +220,10 @@ protected:
             AscendC::Reg::MaskReg maskFirst = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
             AscendC::Reg::Duplicate(acc, FLOAT_ZERO, maskAll);
             for (uint16_t i = 0; i < repeatTimes; ++i) {
-                mask = AscendC::Reg::UpdateMask<float>(sreg);
                 AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_NORM>(x, xAddr + i * REG_VL_FP32);
                 AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_NORM>(phi, phiAddr + i * REG_VL_FP32);
-                AscendC::Reg::Mul(prod, phi, x, mask);
-                AscendC::Reg::ReduceSum(part, prod, mask);
+                AscendC::Reg::Mul(prod, phi, x, maskAll);
+                AscendC::Reg::ReduceSum(part, prod, maskAll);
                 AscendC::Reg::Add(acc, acc, part, maskFirst);
             }
             AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, acc, maskFirst);
