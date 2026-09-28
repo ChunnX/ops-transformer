@@ -52,7 +52,7 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 from .quant_reduce_scatter import *
-from ..common import get_quant_mte_context
+from ..common import get_quant_mte_context_data
 import logging
 
 if _TORCHAIR_AVAILABLE:
@@ -172,8 +172,10 @@ if _TORCHAIR_AVAILABLE:
 
         # trace 阶段 context 是占位 tensor、hccl_buffer_size 是 0；
         # converter 在 GE 序列化/tiling 前创建幂等 context，并固化真实查询值。
-        context, hccl_buffer_size = get_quant_mte_context(hcom)
-        context = ge.Const(context.cpu().tolist(), dtype=int(DataType.DT_INT32))
+        # 注意：converter 运行于 AOT 编译期的 FakeTensorMode 下，必须使用不做
+        # tensor op 的 data 接口，直接以 host int32 列表构造 ge.Const。
+        ctx_data, hccl_buffer_size = get_quant_mte_context_data(hcom)
+        context = ge.Const(ctx_data, dtype=int(DataType.DT_INT32))
 
         if x_dtype is not None:
             if x_dtype == 296 or x_dtype == 297:
