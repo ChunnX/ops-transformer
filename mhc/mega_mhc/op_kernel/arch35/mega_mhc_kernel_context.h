@@ -92,12 +92,13 @@ __aicore__ inline void ZeroFp32Values(__ubuf__ float *values, uint32_t valueCoun
     const uint16_t repeats = static_cast<uint16_t>((valueCount + 63U) / 64U);
     __VEC_SCOPE__
     {
+        Reg::MaskReg mask;
         Reg::RegTensor<float> zero;
         Reg::MaskReg fullMask = Compute::MaskForCount(64U);
         Reg::Duplicate(zero, 0.0f, fullMask);
         uint32_t remaining = valueCount;
         for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
-            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+            mask = Reg::UpdateMask<float>(remaining);
             Reg::StoreAlign<float>(values + repeat * 64U, zero, mask);
         }
     }

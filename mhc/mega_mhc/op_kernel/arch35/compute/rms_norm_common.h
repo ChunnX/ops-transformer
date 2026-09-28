@@ -46,6 +46,7 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
     const uint16_t tailStart = static_cast<uint16_t>(pairedRepeats * 2U);
     __VEC_SCOPE__
     {
+        Reg::MaskReg mask;
         Reg::RegTensor<T> input;
         Reg::RegTensor<float> value;
         Reg::RegTensor<float> square;
@@ -60,7 +61,7 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
         for (uint16_t repeat = 0; repeat < pairedRepeats; ++repeat) {
             {
                 const uint32_t offset = (repeat * 2U + 0U) * Compute::kRegCastVectorLanes;
-                Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+                mask = Reg::UpdateMask<float>(remaining);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
@@ -69,7 +70,7 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
             }
             {
                 const uint32_t offset = (repeat * 2U + 1U) * Compute::kRegCastVectorLanes;
-                Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+                mask = Reg::UpdateMask<float>(remaining);
                 Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
@@ -79,7 +80,7 @@ __aicore__ inline void AccumulateValuesSquares(__ubuf__ T *inputRow, uint32_t ro
         }
         for (uint16_t repeat = tailStart; repeat < repeatTimes; ++repeat) {
             const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
-            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+            mask = Reg::UpdateMask<float>(remaining);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             // Cast zeroes inactive tail lanes, so all lane accumulators stay defined.
@@ -195,6 +196,7 @@ __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float
         static_cast<uint16_t>((rowLength + Compute::kRegCastVectorLanes - 1U) / Compute::kRegCastVectorLanes);
     __VEC_SCOPE__
     {
+        Reg::MaskReg mask;
         Reg::RegTensor<T> input;
         Reg::RegTensor<float> value;
         Reg::RegTensor<float> gamma;
@@ -212,7 +214,7 @@ __aicore__ inline void ApplyGammaAndCastRow(__ubuf__ T *inputRow, __ubuf__ float
         uint32_t remaining = rowLength;
         for (uint16_t repeat = 0; repeat < repeatTimes; ++repeat) {
             const uint32_t offset = repeat * Compute::kRegCastVectorLanes;
-            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
+            mask = Reg::UpdateMask<float>(remaining);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, inputRow + offset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::LoadAlign<float>(gamma, gammaRow + offset);

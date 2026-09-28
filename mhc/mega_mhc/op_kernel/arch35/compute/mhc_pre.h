@@ -27,28 +27,31 @@ __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, u
     const uint16_t repeats = static_cast<uint16_t>((kCount + 63U) / 64U);
     __VEC_SCOPE__
     {
+        Reg::RegTensor<float> sum;
+        Reg::RegTensor<float> compensation;
+        Reg::RegTensor<float> value;
+        Reg::RegTensor<float> square;
+        Reg::RegTensor<float> corrected;
+        Reg::RegTensor<float> next;
+        Reg::RegTensor<float> difference;
+        Reg::RegTensor<float> partial;
+        Reg::RegTensor<float> previous;
+        Reg::RegTensor<T> raw;
+        Reg::MaskReg mask;
         Reg::MaskReg fullMask = MaskForCount(64U);
         Reg::MaskReg scalarMask = MaskForCount(1U);
         for (uint16_t row = 0; row < rowCount; ++row) {
-            Reg::RegTensor<float> sum;
-            Reg::RegTensor<float> compensation;
-            Reg::RegTensor<float> value;
-            Reg::RegTensor<float> square;
-            Reg::RegTensor<float> corrected;
-            Reg::RegTensor<float> next;
-            Reg::RegTensor<float> difference;
-            Reg::RegTensor<float> partial;
-            Reg::RegTensor<float> previous;
-            Reg::RegTensor<T> raw;
             Reg::Duplicate(sum, 0.0f, fullMask);
             Reg::Duplicate(compensation, 0.0f, fullMask);
+            auto inputRow = input + row * kCount;
+            auto stageRow = stage + row * stageStride;
             uint32_t remaining = kCount;
             for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
                 const uint32_t column = repeat * 64U;
-                Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(raw, input + row * kCount + column);
+                mask = Reg::UpdateMask<float>(remaining);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(raw, inputRow + column);
                 Reg::Cast<float, T, kCastInputToFloat>(value, raw, mask);
-                Reg::StoreAlign<float>(stage + row * stageStride + column, value, mask);
+                Reg::StoreAlign<float>(stageRow + column, value, mask);
                 Reg::Mul(square, value, value, fullMask);
                 if constexpr (COMPENSATE) {
                     Reg::Sub(corrected, square, compensation, fullMask);
@@ -88,14 +91,16 @@ __aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__
         Reg::RegTensor<float> sum, value, squares, mean, inverse, one, negative, product, error, half;
         Reg::Duplicate(one, 1.0f, mask);
         for (uint16_t row = 0; row < rowCount; ++row) {
+            auto partialRow = partial + row * rowStride;
+            auto rmsRow = rms + row;
             Reg::Duplicate(sum, 0.0f, mask);
             for (uint16_t group = 0; group < groupCount; ++group) {
-                Reg::LoadAlign(value, partial + group * groupStride + row * rowStride);
+                Reg::LoadAlign(value, partialRow + group * groupStride);
                 Reg::Add(sum, sum, value, mask);
             }
             Reg::Duplicate(squares, 0.0f, mask);
             for (uint16_t shard = 0; shard < shardCount; ++shard) {
-                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(value, rms + shard * rmsStride + row);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(value, rmsRow + shard * rmsStride);
                 Reg::Add(squares, squares, value, mask);
             }
             Reg::Muls(mean, squares, meanScale, mask);
@@ -109,7 +114,7 @@ __aicore__ inline void NormalizeProjectionRows(__ubuf__ float *partial, __ubuf__
             Reg::Muls(half, inverse, 0.5f, mask);
             Reg::MulAddDst(inverse, error, half, mask);
             Reg::Mul(sum, sum, inverse, mask);
-            Reg::StoreAlign(partial + row * rowStride, sum, mask);
+            Reg::StoreAlign(partialRow, sum, mask);
         }
     }
 }
@@ -220,10 +225,11 @@ __aicore__ inline void ComputeGateRows(__ubuf__ float *normalized, __ubuf__ floa
     __VEC_SCOPE__
     {
         for (uint16_t row = 0; row < rowCount; ++row) {
-            ComputePreGates(normalized + row * rowStride, alpha, bias, eps, coefficients + row * 4U);
-            ComputePostGates(normalized + row * rowStride, alpha, bias, coefficients + alignedRows * 4U + row * 4U);
-            ComputeResidualGates(normalized + row * rowStride, alpha, bias,
-                                 coefficients + alignedRows * 8U + row * 16U);
+            auto normalizedRow = normalized + row * rowStride;
+            auto preRow = coefficients + row * 4U;
+            ComputePreGates(normalizedRow, alpha, bias, eps, preRow);
+            ComputePostGates(normalizedRow, alpha, bias, preRow + alignedRows * 4U);
+            ComputeResidualGates(normalizedRow, alpha, bias, coefficients + alignedRows * 8U + row * 16U);
         }
     }
 }
@@ -244,6 +250,7 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
     const uint16_t tailStart = static_cast<uint16_t>(pairedRepeats * 2U);
     __VEC_SCOPE__
     {
+        Reg::MaskReg mask;
         Reg::RegTensor<T> input;
         Reg::RegTensor<float> value;
         Reg::RegTensor<float> weight0, weight1, weight2, weight3;
@@ -260,22 +267,26 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
         uint32_t remaining = dCount;
         Reg::RegTensor<float> oddSquares;
         Reg::Duplicate(oddSquares, 0.0f, fullMask);
+        auto x2Head0 = x2 + 0U * d + dStart;
+        auto x2Head1 = x2 + 1U * d + dStart;
+        auto x2Head2 = x2 + 2U * d + dStart;
+        auto x2Head3 = x2 + 3U * d + dStart;
         for (uint16_t repeat = 0; repeat < pairedRepeats; ++repeat) {
             {
                 const uint32_t tileOffset = (repeat * 2U + 0U) * kRegCastVectorLanes;
-                Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
+                mask = Reg::UpdateMask<float>(remaining);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head0 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(sum, value, weight0, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head1 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight1, mask);
                 Reg::Add(sum, sum, product, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 2U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head2 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight2, mask);
                 Reg::Add(sum, sum, product, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 3U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head3 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight3, mask);
                 Reg::Add(sum, sum, product, mask);
@@ -287,19 +298,19 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
             }
             {
                 const uint32_t tileOffset = (repeat * 2U + 1U) * kRegCastVectorLanes;
-                Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
+                mask = Reg::UpdateMask<float>(remaining);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head0 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(sum, value, weight0, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head1 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight1, mask);
                 Reg::Add(sum, sum, product, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 2U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head2 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight2, mask);
                 Reg::Add(sum, sum, product, mask);
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 3U * d + dStart + tileOffset);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head3 + tileOffset);
                 Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
                 Reg::Mul(product, value, weight3, mask);
                 Reg::Add(sum, sum, product, mask);
@@ -312,19 +323,19 @@ __aicore__ inline void ComputeHInTile(__ubuf__ float *hPre, __ubuf__ T *x2, uint
         }
         for (uint16_t repeat = tailStart; repeat < repeatTimes; ++repeat) {
             const uint32_t tileOffset = repeat * kRegCastVectorLanes;
-            Reg::MaskReg mask = Reg::UpdateMask<float>(remaining);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 0U * d + dStart + tileOffset);
+            mask = Reg::UpdateMask<float>(remaining);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head0 + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::Mul(sum, value, weight0, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 1U * d + dStart + tileOffset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head1 + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::Mul(product, value, weight1, mask);
             Reg::Add(sum, sum, product, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 2U * d + dStart + tileOffset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head2 + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::Mul(product, value, weight2, mask);
             Reg::Add(sum, sum, product, mask);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2 + 3U * d + dStart + tileOffset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(input, x2Head3 + tileOffset);
             Reg::Cast<float, T, kCastInputToFloat>(value, input, mask);
             Reg::Mul(product, value, weight3, mask);
             Reg::Add(sum, sum, product, mask);
