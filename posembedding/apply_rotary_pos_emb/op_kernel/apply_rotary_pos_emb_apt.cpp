@@ -32,6 +32,7 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
         return;
     }
     AscendC::TPipe pipe;
+    // du_test diff
     if (TILING_KEY_IS(TILING_KEY_AB)) {
         GET_TILING_DATA_WITH_STRUCT(ApplyRotaryPosEmbRegbaseABTilingData, tiling_data_in, tiling);
         const ApplyRotaryPosEmbRegbaseABTilingData* __restrict tilingData = &tiling_data_in;
