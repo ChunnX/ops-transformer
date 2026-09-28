@@ -1,48 +1,72 @@
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-# PR_COMPILE 白名单：命中后直接使用 impact/soc；未命中回退到 CMake depends + def.cpp AddConfig 流程。
 version: 1
 ops:
   attention/dense_lightning_indexer_kl_loss_grad_metadata:
-    impact: [dense_lightning_indexer_kl_loss_grad]
+    impact:
+    - dense_lightning_indexer_kl_loss_grad_metadata
+    - dense_lightning_indexer_kl_loss_grad
   attention/dense_lightning_indexer_softmax_lse_v2_metadata:
-    impact: [dense_lightning_indexer_softmax_lse_v2]
+    impact:
+    - dense_lightning_indexer_softmax_lse_v2_metadata
+    - dense_lightning_indexer_softmax_lse_v2
   attention/flash_attn_metadata:
-    impact: [flash_attn]
+    impact:
+    - flash_attn_metadata
+    - flash_attn
   attention/flash_mla_with_kvcache_metadata:
-    impact: [flash_mla_with_kvcache]
+    impact:
+    - flash_mla_with_kvcache_metadata
+    - flash_mla_with_kvcache
   attention/generic_block_sparse_attention_grad_metadata:
-    impact: [generic_block_sparse_attention_grad]
+    impact:
+    - generic_block_sparse_attention_grad_metadata
+    - generic_block_sparse_attention_grad
   attention/generic_block_sparse_attention_metadata:
-    impact: [generic_block_sparse_attention]
+    impact:
+    - generic_block_sparse_attention_metadata
+    - generic_block_sparse_attention
   attention/lightning_indexer_v2_metadata:
-    impact: [lightning_indexer_v2]
+    impact:
+    - lightning_indexer_v2_metadata
+    - lightning_indexer_v2
   attention/mixed_quant_sparse_flash_mla_metadata:
-    impact: [mixed_quant_sparse_flash_mla]
+    impact:
+    - mixed_quant_sparse_flash_mla_metadata
+    - mixed_quant_sparse_flash_mla
   attention/quant_flash_attn_metadata:
-    impact: [quant_flash_attn]
+    impact:
+    - quant_flash_attn_metadata
+    - quant_flash_attn
   attention/quant_lightning_indexer_v2_metadata:
-    impact: [quant_lightning_indexer_v2]
+    impact:
+    - quant_lightning_indexer_v2_metadata
+    - quant_lightning_indexer_v2
   attention/quant_sparse_flash_mla_metadata:
-    impact: [quant_sparse_flash_mla]
+    impact:
+    - quant_sparse_flash_mla_metadata
+    - quant_sparse_flash_mla
   attention/sparse_flash_mla_grad_metadata:
-    impact: [sparse_flash_mla_grad]
+    impact:
+    - sparse_flash_mla_grad_metadata
+    - sparse_flash_mla_grad
   attention/sparse_flash_mla_metadata:
-    impact: [sparse_flash_mla]
+    impact:
+    - sparse_flash_mla_metadata
+    - sparse_flash_mla
   attention/sparse_flash_mla_softmax_l1_norm_metadata:
-    impact: [sparse_flash_mla_softmax_l1_norm]
+    impact:
+    - sparse_flash_mla_softmax_l1_norm_metadata
+    - sparse_flash_mla_softmax_l1_norm
   attention/sparse_lightning_indexer_kl_loss_grad_metadata:
-    impact: [sparse_lightning_indexer_kl_loss_grad]
+    impact:
+    - sparse_lightning_indexer_kl_loss_grad_metadata
+    - sparse_lightning_indexer_kl_loss_grad
   attention/attention_worker_scheduler:
-    impact: [attention_worker_scheduler]
-    soc: [ascend910b]
+    impact:
+    - attention_worker_scheduler
+    soc:
+    - ascend910b
   ffn/ffn_worker_scheduler:
-    impact: [ffn_worker_scheduler]
-    soc: [ascend910b]
+    impact:
+    - ffn_worker_scheduler
+    soc:
+    - ascend910b

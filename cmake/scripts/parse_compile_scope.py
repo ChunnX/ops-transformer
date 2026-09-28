@@ -203,13 +203,9 @@ def whitelist_selection(key, entry, by_key, target_socs):
         if impact_key not in by_key:
             continue
         domain, name, path = by_key[impact_key]
-        if entry_socs is None:
-            if target_socs and not any(def_supports(path, soc) for soc in target_socs):
+        if entry_socs is not None and target_socs and entry_socs:
+            if not set(entry_socs).intersection(target_socs):
                 continue
-        elif (
-            target_socs and entry_socs and not set(entry_socs).intersection(target_socs)
-        ):
-            continue
         selected.add(name)
     return selected
 
