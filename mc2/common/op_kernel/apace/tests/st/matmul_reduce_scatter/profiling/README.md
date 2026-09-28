@@ -1,8 +1,8 @@
 # profiling 目录 — quant_matmul_reduce_scatter (apace ST) 性能分析总览
 
-> **代码版本**: ops-transformer upstream-apace @ 022ebbd48 (v8 + 检视修复 + 注释清理, kernel 有效执行路径同 v8 @ 4d3de33a3)
+> **代码版本**: ops-transformer upstream-apace @ 20aec923b (v8 + 检视修复 + 注释清理 + L1 排空条件化)
 > **环境**: Ascend950PR ×4, CANN 9.2.0 (`/home/l00947526/Ascend915/cann-9.2.0`), bisheng (dav-3510)
-> **数据采集**: 2026-09-10 ~ 2026-09-23 (v1 基线 ~ v8 全量)
+> **数据采集**: 2026-09-10 ~ 2026-09-28 (v1 基线 ~ v8 全量 + 隔离指标重测)
 > **当前版本精度**: 101/101 case PASS
 
 ## 报告索引
@@ -10,6 +10,7 @@
 | 报告 | 位置 | 内容 |
 |---|---|---|
 | **★ 全量 v5 vs v8 对比** | [reports/full_suite_v5_vs_v8_report.md](reports/full_suite_v5_vs_v8_report.md) | **101/101 用例** v5/v8 同日同机交替 A/B；优化收益归因、机制要点、已验证不可行/关闭方向 (P0/P3/P2-AIC) |
+| 隔离测试（当前代码重测） | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) | 四分量分解 (T_mm/T_a2a/T_rs/T_before/T_after)、融合加速比与掩盖率（12 代表 case），与 v1 期对比 |
 
 > v1 期外部基线对比 (97 用例 vs 级联/MC2 融合)、v6/v7/v8 分轮专项 A/B 报告已移除:
 > 核心结论分别保留于本文件「v1 期外部基线结论」小节与 full_suite 报告第三/四节, 明细可查 git 历史。
@@ -40,6 +41,14 @@
 - **rank4 (-6.1%) 略优于 rank2 (-5.2%)**: 通信核多，v7 fence 重叠化收益放大
 - **大 M (≥8192) 收窄至 -4.1%**: 通信量主导，受单通道 ~40GB/s 链路上限约束 (P0 已证不可破)
 
+### 隔离指标（2026-09-28 当前代码重测，12 代表 case）
+
+| 指标 | 结果 |
+|---|---|
+| 融合加速比 | 中位 **1.29x**（min 1.02x / max 1.48x，全部 ≥ 1 无融合回退） |
+| 掩盖率（修正） | 中位 **0.68**（通信 Bound 族 0.83 / 均衡族 0.57 / 计算 Bound 0.14） |
+| 明细 | [reports/isolation_metrics_report.md](reports/isolation_metrics_report.md) |
+
 ## v1 期外部基线结论（历史参考，2026-09-12）
 
 > 以下为 v1 版本 (ed7d74662) 的 97 用例对比数据结论（报告明细已移除, git 历史可查）。
@@ -49,8 +58,8 @@
 |---|---|
 | **vs 小算子级联基线** | **93/97 更快**，中位 **1.23x**，avg 1.25x，max 1.65x |
 | **vs MC2 融合算子** | **88/97 更快**，中位 **1.14x**，avg 1.17x，max 1.69x |
-| **通算融合加速比** (隔离) | 中位 **1.20x**，avg 1.22x，max 1.51x |
-| **流水掩盖率** (修正) | 中位 **0.70**，通信 Bound 场景中位 0.83 |
+| **通算融合加速比** (隔离) | v1 中位 **1.20x** → 当前重测 **1.29x**（见 isolation_metrics_report.md） |
+| **流水掩盖率** (修正) | v1 中位 **0.70** → 当前重测 **0.68**（均衡族 0.38→0.57） |
 
 ### v1 期已知劣势与 v8 修复状态
 
@@ -71,7 +80,8 @@
 profiling/
 ├── README.md                             # 本文件（总览入口 + v1 期外部基线结论留存）
 └── reports/
-    └── full_suite_v5_vs_v8_report.md     # ★ v8 全量 101 case A/B + 归因 + 机制要点 + 已关闭方向
+    ├── full_suite_v5_vs_v8_report.md     # ★ v8 全量 101 case A/B + 归因 + 机制要点 + 已关闭方向
+    └── isolation_metrics_report.md       # 隔离测试（当前代码重测）：四分量分解 + 加速比/掩盖率
 ```
 
 > **数据口径**: v8 报告采用同日同机交替双二进制 A/B (v5 md5=1883722f / v8 md5=7abed458)，
