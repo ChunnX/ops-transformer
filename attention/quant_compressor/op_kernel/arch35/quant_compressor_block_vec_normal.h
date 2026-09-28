@@ -226,7 +226,6 @@ __aicore__ inline void QuantCompressorBlockVectorNormal<COMP>::OverLapScoreKv(
     this->inputQue1.template DeQue<T>();
     this->template Dequant<false>(scoreUb, scoreUb, this->xWGateDescaleUb[dStartIdx], statisticInfo.dealSeqCnt,
                                   dDealSize, dDealSize);
-    PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
@@ -254,7 +253,6 @@ __aicore__ inline void QuantCompressorBlockVectorNormal<COMP>::OverLapScoreKv(
     this->inputQue1.template DeQue<T>();
     this->template Dequant<false>(kvUb, kvUb, this->xWKvDescaleUb[dStartIdx], statisticInfo.dealSeqCnt, dDealSize,
                                   dDealSize);
-    PipeBarrier<PIPE_V>();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
 

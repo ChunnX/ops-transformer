@@ -531,6 +531,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::LoadFromWorkSpace(
             AddMultiDataToUb(dstLocal[dstLocalOffset], srcGm[srcLocalOffset], copyRowCount, dDealSize,
                              srcSingleRowElemNum, coff_ * dDealSize, constInfo_.kBaseNum, constInfo_.mm1KvResSize);
         }
+        PipeBarrier<PIPE_V>();
         if constexpr (IS_SCORE) {
             Dequant<true, NEED_BARRIER>(dstLocal[dstLocalOffset], dstLocal[dstLocalOffset], xWGateDescaleUb[dStartIdx],
                                         copyRowCount, dDealSize, coff_ * dDealSize);
