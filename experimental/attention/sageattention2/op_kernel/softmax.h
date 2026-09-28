@@ -169,7 +169,7 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
     auto f = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> oldDen;
     LoadAlign(oldDen, denom);
-    RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
+    RegTensor<float> ratio = UpdateSoftmaxRescaleFactors(maxima, (__ubuf__ half *)alpha, alpha, f, h);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // NZ planes store 32 of the 64 float lanes each; the boundary between the
     // two planes of an 8x8 fragment sits inside one 64-lane register.
@@ -216,6 +216,15 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ half *maxi
         ExpSub<float, half, RegLayout::ZERO>(p2_b, x2_b, m_b, h);
         ExpSub<float, half, RegLayout::ZERO>(p3_a, x3_a, m_a, h);
         ExpSub<float, half, RegLayout::ZERO>(p3_b, x3_b, m_b, h);
+
+        Mins(p0_a, p0_a, 448.0f, f);
+        Mins(p0_b, p0_b, 448.0f, f);
+        Mins(p1_a, p1_a, 448.0f, f);
+        Mins(p1_b, p1_b, 448.0f, f);
+        Mins(p2_a, p2_a, 448.0f, f);
+        Mins(p2_b, p2_b, 448.0f, f);
+        Mins(p3_a, p3_a, 448.0f, f);
+        Mins(p3_b, p3_b, 448.0f, f);
 
         RegTensor<float8_e4m3_t> packed0_a, packed1_a, packed2_a, packed3_a;
         RegTensor<float8_e4m3_t> packed0_b, packed1_b, packed2_b, packed3_b;

@@ -102,6 +102,15 @@ __simd_callee__ inline void ComputeProbAndPackNZPair(
     ExpSub<float, half, RegLayout::ZERO>(p2_1, x1_1, m, h);
     ExpSub<float, half, RegLayout::ONE>(p3_1, x1_1, m, h);
 
+    Mins(p0_0, p0_0, 448.0f, f);
+    Mins(p1_0, p1_0, 448.0f, f);
+    Mins(p2_0, p2_0, 448.0f, f);
+    Mins(p3_0, p3_0, 448.0f, f);
+    Mins(p0_1, p0_1, 448.0f, f);
+    Mins(p1_1, p1_1, 448.0f, f);
+    Mins(p2_1, p2_1, 448.0f, f);
+    Mins(p3_1, p3_1, 448.0f, f);
+
     RegTensor<float> pair0_0, pair1_0, pair0_1, pair1_1;
     Add(pair0_0, p0_0, p1_0, f);
     Add(pair0_1, p0_1, p1_1, f);
@@ -189,7 +198,7 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     StoreUnAlignPost(blockMax, maxStore, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
-    UpdateSoftmaxRescaleFactors(maxima, blockMax, alpha, f, h);
+    UpdateSoftmaxRescaleFactors(maxima, (__ubuf__ half *)alpha, alpha, f, h);
 }
 
 template <bool FIRST>
