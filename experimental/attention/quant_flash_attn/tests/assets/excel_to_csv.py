@@ -324,6 +324,14 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
             if raw is not None and str(raw).strip() != ""
             else ""
         )
+        dt = {
+            "fp4_e2m1": "float4_e2m1",
+            "f4_e2m1": "float4_e2m1",
+            "fp4e2m1": "float4_e2m1",
+            "float4_e2m1fn": "float4_e2m1",
+            "fp8_e8m0": "float8_e8m0",
+            "f8_e8m0": "float8_e8m0",
+        }.get(dt, dt)
         return repr(dt) if dt else repr(default)
 
     dtypes = [
