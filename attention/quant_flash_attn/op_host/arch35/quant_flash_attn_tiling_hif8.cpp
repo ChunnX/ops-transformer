@@ -184,7 +184,8 @@ void QuantFlashAttnTilingHif8Impl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.quantMode,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
+                                    false);
 
     OP_LOGI(qfaInfo_->opName, "HIF8 The tilingkey is %llu.", tilingKey_);
     OP_LOGI(qfaInfo_->opName,
