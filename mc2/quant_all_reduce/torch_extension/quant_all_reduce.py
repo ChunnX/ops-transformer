@@ -14,8 +14,7 @@ import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from ..common import CommContextManager
-import atexit
+from ..common import CommChannelBuilderManager
 
 
 TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
@@ -152,13 +151,20 @@ def npu_quant_all_reduce(
 
 
 class QuantAllReduceBuffer:
+    """基于 CommChannelBuilderManager 的通信上下文持有类。
+
+    - context 为 apace CommChannelBuilder(UBMEM) 创建的通道上下文（dataCtx/barrierCtx 布局），
+      dataCtx.commBufferAddrs 为各 rank 的 HCCL 内置 buffer 地址（UB_MEM 协议，可直通 GM 读写），
+      HCCL engine 按 ctx tag 幂等复用，win 区直接使用 HCCL 内置 buffer（HCCL_BUFFSIZE 定容）
+    - 仅支持单机（单通信域）部署，跨机拓扑的远端地址不可直通 GM 访问
+    """
+
     def __init__(
         self,
         group,
         world_size: int,
         x: torch.Tensor,
         scales: torch.Tensor,
-        op_name: str = "quant_all_reduce",
     ):
         self.group = group
         self.world_size = world_size
@@ -166,53 +172,48 @@ class QuantAllReduceBuffer:
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             self.rank_id, init_comm=False
         )
-        required_ccl_buffer_size = _get_quant_all_reduce_ccl_buffer_size(
-            x, scales, world_size
+
+        self._builder = CommChannelBuilderManager(self.group_name)
+        if not self._builder.is_single_server_topology():
+            raise RuntimeError(
+                "quant_all_reduce only supports single-server deployment "
+                f"(all ranks in one communication domain), group: {self.group_name}. "
+                "Cross-server topology is not supported."
+            )
+        # 固定 ctx tag：engine context 按 tag 幂等复用，重复调用仅查表返回，无重复建链
+        # UBMEM data channel：远端内置 buffer 地址可直通 GM 读写（URMA channel 地址仅可作
+        # WriteNbi/ReadNbi 参数，直写会导致对端读不到状态位而软同步死锁）
+        self.context = self._builder.create_ubmem_context(self.group_name + "quant_all_reduce")
+        self.hccl_buffer_size = self._builder.get_hccl_buffer_size()
+        _check_hccl_buffer(x, scales, self.hccl_buffer_size)
+
+
+def _align_up(value: int, base: int) -> int:
+    return (value + base - 1) // base * base
+
+
+def _check_hccl_buffer(x: torch.Tensor, scales: torch.Tensor, hccl_buffer_size: int) -> None:
+    """校验 HCCL 内置 buffer 容量，公式与 host 侧 tiling CheckWindowSize 一致：
+
+    每个 rank 的 win 区需求 = align32(x) + align32(scales) + 1MB 状态区，
+    in/out 双分区（hcclBufferSize/2 切分）共需 2 份。
+    """
+    win_addr_align = 32
+    mb_size = 1024 * 1024
+    x_data_size = _align_up(x.numel() * x.element_size(), win_addr_align)
+    scales_data_size = _align_up(scales.numel() * scales.element_size(), win_addr_align)
+    required = 2 * (x_data_size + scales_data_size + mb_size)
+    if required > hccl_buffer_size:
+        raise ValueError(
+            f"Communication window size ({required} bytes = 2 * (x {x_data_size} + "
+            f"scales {scales_data_size} + state region {mb_size})) exceeds hccl_buffer_size "
+            f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
+            "Please increase HCCL_BUFFSIZE environment variable."
         )
-
-        self._ctx_manager = CommContextManager(
-            self.group_name,
-            self.world_size,
-            backend={
-                "Ascend950": "channel",
-            },
-            opName=op_name,
-            customCclBufferSize=required_ccl_buffer_size,
-        )
-        self.context = self._ctx_manager.create_context()
-        self.hccl_buffer_size = self._ctx_manager.ccl_buffer_size
-
-    def destroy(self):
-        self._ctx_manager.destroy()
-
-
-def get_quant_all_reduce_buffer(
-    group, world_size, x, scales, op_name: str = "quant_all_reduce"
-) -> QuantAllReduceBuffer:
-    return QuantAllReduceBuffer(group, world_size, x, scales, op_name=op_name)
-
-
-def _get_quant_all_reduce_ccl_buffer_size(
-    x: torch.Tensor, scales: torch.Tensor, world_size: int
-) -> int:
-    def inline_align(value, base):
-        return (value + base - 1) // base * base
-
-    WIN_ADDR_ALIGN = 32
-    MB_SIZE = 1024 * 1024
-    HCCL_BUFFSIZE_FACTOR = 2
-
-    x_data_size = inline_align(x.numel() * x.element_size(), WIN_ADDR_ALIGN)
-    scales_data_size = inline_align(
-        scales.numel() * scales.element_size(), WIN_ADDR_ALIGN
-    )
-    actual_win_size = (x_data_size + scales_data_size) * world_size + MB_SIZE
-    return HCCL_BUFFSIZE_FACTOR * actual_win_size
 
 
 _buffer_cache: dict[str, QuantAllReduceBuffer] = {}
 _context_data_cache: dict[tuple, list[int]] = {}
-_buffer_seq = 0
 
 
 def _dynamo_disable(fn):
@@ -225,70 +226,43 @@ def _dynamo_disable(fn):
 
 @_dynamo_disable
 def _create_and_cache_buffer(
-    hcom: str,
+    group_name: str,
     group,
     world_size: int,
     x: torch.Tensor,
     scales: torch.Tensor,
-    op_name: str = "quant_all_reduce",
 ) -> QuantAllReduceBuffer:
-    """
-    缓存未命中时创建buffer路径。必须对dynamo透明(graph break)，
-    context.cpu().tolist()会把2048个int32展开成数千个符号量，
-    若被trace，npu backend将在aten._local_scalar_dense上编译失败，
-    并把整段字节码反汇编打进warning，浪费一次编译+重trace
-    """
-    cached = _buffer_cache.get(hcom)
-    if cached is not None:
-        # 旧buffer尺寸不够，同步后销毁重建
-        torch.npu.synchronize()
-        cached.destroy()
-        _buffer_cache.pop(hcom, None)
-    buffer = get_quant_all_reduce_buffer(group, world_size, x, scales, op_name=op_name)
-    _buffer_cache[hcom] = buffer
-    cache_key = (world_size, buffer.hccl_buffer_size)
-    # 始终用最新buffer的context数据覆盖，避免命中已销毁buffer的过期context
-    _context_data_cache[cache_key] = buffer.context.cpu().tolist()
+    """缓存未命中时创建 buffer。必须对 dynamo 透明(graph break)：
+    context.cpu().tolist() 会把上千个 int32 展开成大量符号量，若被 trace，
+    npu backend 将在 aten._local_scalar_dense 上编译失败。"""
+    buffer = QuantAllReduceBuffer(group, world_size, x, scales)
+    _buffer_cache[group_name] = buffer
+    # 始终用最新 context 数据覆盖，供 GE 图模式经 get_cached_context_data 注入 Const
+    _context_data_cache[(world_size, buffer.hccl_buffer_size)] = buffer.context.cpu().tolist()
     return buffer
 
 
 def _get_or_create_buffer(
-    hcom: str,
+    group_name: str,
     group,
     world_size: int,
     x: torch.Tensor,
     scales: torch.Tensor,
-    op_name: str = "quant_all_reduce",
 ) -> QuantAllReduceBuffer:
+    """按 group 查找缓存：
+
+    1. 命中时直接复用——本函数必须可被 dynamo 完整 trace（op 调用作为节点捕获后
+       经 torchair 转 GE 图），禁止对命中路径加 @_dynamo_disable 导致断图退化 eager
+    2. 未命中时走 _create_and_cache_buffer（dynamo 透明，graph break 后急执行）
+
+    注：win 区为 HCCL 内置 buffer（HCCL_BUFFSIZE 定容），不存在"尺寸不足销毁重建"路径，
+    容量不足在创建时由 _check_hccl_buffer 直接报错；engine context 按 tag 幂等复用，
+    进程内无 python 侧持有的 device 资源需要主动释放。
     """
-    按hcom字符串查找缓存：
-    1.命中且尺寸足够时直接复用(可被完整trace，走GE入图)
-    2.未命中或现有buffer尺寸不足时新建(对dynamo透明，graph break后急执行)
-    注意：destroy不会反注册HCCL channel/mem资源，频繁销毁重建会在HCCL内部残留失效注册，
-    可能引发后续用例kernel软同步死锁，因此尺寸足够时必须复用而非重建
-    """
-    required_size = _get_quant_all_reduce_ccl_buffer_size(x, scales, world_size)
-    cached = _buffer_cache.get(hcom)
-    if (
-        cached is not None
-        and cached.world_size == world_size
-        and cached.hccl_buffer_size >= required_size
-    ):
-        return cached
-    return _create_and_cache_buffer(hcom, group, world_size, x, scales, op_name=op_name)
-
-
-def _cleanup_all_buffers():
-    for buf in _buffer_cache.values():
-        try:
-            buf.destroy()
-        except Exception:
-            pass
-    _buffer_cache.clear()
-    _context_data_cache.clear()
-
-
-atexit.register(_cleanup_all_buffers)
+    buffer = _buffer_cache.get(group_name)
+    if buffer is not None:
+        return buffer
+    return _create_and_cache_buffer(group_name, group, world_size, x, scales)
 
 
 def get_cached_context_data(world_size: int, hccl_buffer_size: int) -> list[int]:
@@ -306,10 +280,6 @@ def quant_all_reduce(
     x_dtype: Optional[int] = None,
     scales_dtype: Optional[int] = None,
 ):
-    global _buffer_seq
-    # 不再每次销毁重建buffer：优先复用缓存（_get_or_create_buffer），仅尺寸不足时才重建
-    _buffer_seq += 1
-    op_name = f"quant_all_reduce_{_buffer_seq}"
     group = torch.distributed.distributed_c10d._get_default_group()
     group_name = (
         hcom
@@ -318,9 +288,7 @@ def quant_all_reduce(
             torch.distributed.get_rank(group), init_comm=False
         )
     )
-    buffer = _get_or_create_buffer(
-        group_name, group, world_size, x, scales, op_name=op_name
-    )
+    buffer = _get_or_create_buffer(group_name, group, world_size, x, scales)
     return torch.ops.cann_ops_transformer.npu_quant_all_reduce(
         buffer.context,
         x,

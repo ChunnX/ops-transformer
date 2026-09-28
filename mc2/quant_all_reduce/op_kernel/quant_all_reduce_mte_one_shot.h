@@ -91,7 +91,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR cont
                                                                     GM_ADDR output, TPipe *tPipe,
                                                                     const QuantAllReduceTilingData *tilingData)
 {
-    mteComm_.InitHcclContext(context, tilingData->quantAllReduceTilingInfo.hcclBufferSize);
+    mteComm_.InitHcclContextFromChannel(context, tilingData->quantAllReduceTilingInfo.hcclBufferSize);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
