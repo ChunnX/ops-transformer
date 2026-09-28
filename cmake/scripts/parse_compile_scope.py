@@ -84,7 +84,17 @@ def load_whitelist():
         return _WHITELIST_CACHE
     with open(WHITELIST_PATH, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
-    ops = cfg.get("ops") or {}
+    raw_ops = cfg.get("ops") or {}
+    ops = {}
+    for key, entry in raw_ops.items():
+        if not isinstance(entry, dict):
+            continue
+        if "impact" in entry or "soc" in entry:
+            ops[key] = entry
+            continue
+        for op_name, sub_entry in entry.items():
+            if isinstance(sub_entry, dict):
+                ops[f"{key}/{op_name}"] = sub_entry
     for key, entry in ops.items():
         soc_value = entry.get("soc")
         if isinstance(soc_value, list):
