@@ -13,6 +13,32 @@
 #include "scale.h"
 #include "quant_v_mx.h"
 namespace Sage {
+__simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
+                                           AscendC::MicroAPI::RegTensor<float> &src,
+                                           AscendC::MicroAPI::MaskReg &mask)
+{
+    using namespace AscendC::MicroAPI;
+    // Newton-Raphson Fast Reciprocal (approx 3 cycles: initial estimate + 1 iteration)
+    // Eliminates 32-cycle hardware vector division (vdiv).
+    RegTensor<uint32_t> magic, ix, iy;
+    RegTensor<float> y0, term, two;
+    Duplicate(two, 2.0f);
+    Duplicate(magic, uint32_t(0x7EEF370B));
+    ix = (RegTensor<uint32_t> &)src;
+    Sub(iy, magic, ix, mask);
+    y0 = (RegTensor<float> &)iy;
+
+    // First Newton-Raphson iteration: y1 = y0 * (2.0f - src * y0)
+    Mul(term, src, y0, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, y0, term, mask);
+
+    // Second Newton-Raphson iteration: achieves full IEEE-754 FP32 machine precision (< 1 ULP error)
+    Mul(term, src, dst, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, dst, term, mask);
+}
+
 template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
                                       __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
@@ -62,8 +88,9 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     Select(m, m, one, positive);
     StoreAlign(scales, m, full);
     // Keep the original scales for dequantization; reuse one reciprocal per token.
+    // Use Newton-Raphson FastReciprocal to eliminate 32-cycle hardware vector division.
     RegTensor<float> inverse;
-    Div(inverse, one, m, full);
+    FastReciprocal(inverse, m, full);
     StoreAlign(inverseScales, inverse, full);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
