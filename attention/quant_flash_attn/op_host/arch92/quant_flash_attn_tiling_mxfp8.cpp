@@ -28,7 +28,7 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace arch92QFA;
+using namespace arch35QFA;
 
 void QuantFlashAttnTilingArch92::InitTilingInfo(TilingInfo *tilingInfo)
 {
