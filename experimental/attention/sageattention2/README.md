@@ -114,31 +114,19 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
-内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（e0^4 包络 2^-16）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 恒等式（含 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 不变性（<= 1e-12）：
+内核数值规格另有独立的可移植 C++ 误差一致性测试（无 AscendC 依赖，宿主机或容器均可编译运行），固化各数值构件的浮点误差界：FastReciprocal（e0^4 包络 2^-16）、per-token INT8 往返（<= scale/2）、E4M3 饱和舍入（<= 2^-4）、E8M0 分组 scale 覆盖性与紧致性、DEQF16(2^-11)×FP16 平衡 scale 的 2048 抵消恒等式（<= 2^-9）、ln(448) 平移的满量程/饱和裕量、LSE 契约（raw log2 内核值 + 开源平滑校正与 GQA 广播，双精度参考 <= 1e-5）与 smooth-K softmax 不变性（<= 1e-12）：
 
 ```bash
 g++ -O2 -std=c++17 tests/numeric_error_test.cpp -o build/numeric_error_test && ./build/numeric_error_test
 ```
 
-接入结构、安装与图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
-
 ## 测试说明
 
 CPU 参考采用 per-token Q/K 与 32-token MXFP8 V 量化，使用上述 FP16 平移 max 定义及 FP8 饱和转换；独立 SDPA 标准未改变。
 
-测试全部通过公开 ACLNN 路径运行，并对照独立 per-token QK / MXFP8 PV CPU 算法、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride/GQA/causal、smooth K、smooth_v warning/ignore、LSE、长序列、模板选择边界、重复调用、并发流和独立 C++ ACLNN 入口。
-
-PyTorch 接入测试另覆盖 Meta/FakeTensor、dispatcher schema、`torch.compile(backend="eager", fullgraph=True)` 和私有存储格式检查；图模式范围见 [PyTorch 接入说明](docs/PyTorch接入说明.md)。
-
-[测试矩阵](tests/task_cases.py) 由 Python 参数组合直接生成并去重，包含 204 条功能、16 条精度及 5 条非法参数用例。正向用例统一使用标准 `per_thread`、`fp32+fp16` 和 `smooth_v=False`，出现 fallback 告警即判失败；兼容别名、回退告警和忽略参数由 `tests/test_mxfp8.py` 专门验证。性能用例统一定义在 [benchmarks/cases.py](benchmarks/cases.py)。
-
-MXFP8 PV 用例采用 CPU 独立量化的端到端对照，使用下述统一标准，并检查重复调用数值一致性及独立 SDPA 误差。wide 的 LSE 对照包含 FP16 scale/score 舍入的量化参考。
+测试全部通过公开 ACLNN 路径运行（`python/test_python_api.py`），并对照独立 per-token QK / MXFP8 PV CPU 算法（`python/sageattention2/reference.py`）、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride、GQA、causal、smooth_k、smooth_v warning/ignore、LSE shape/数值、head_dim padding（D=48→64、D=96→128）、非法参数报错与 SDPA 替换冒烟。
 
 数值参考是本目录的 per-token QK / MXFP8 PV CPU 算法及独立 FP32 SDPA。CPU 同算法检查采用 FP16 rtol/atol=2^-9、BF16=2^-6、至少 99% 匹配比例；最大绝对误差通常分别限于 0.1/1。SDPA 的 max/mean/RMSE 误差比例门限为 2/1.2/1.2。
-
-MXFP8 回归统一检查最大绝对误差上限：FP16 为 0.1，BF16 为 1.0。分组 scale、非对齐尾块和 L1 缓存容量边界另有独立可解析输入测试。
-
-`tests/test_wide_sequence.py` 补充 4K/8K/16K 完整序列的 wide 精度覆盖：12 项双 dtype、causal/non-causal、GQA 和 HND/NHD 用例逐元素对照 CPU 同算法（`block_k=512`），同时检查可选 LSE。另以 P-01～P-07 的完整 B/H/S 尺寸运行两条公开接口，检查全部输出和 LSE 的一致性，并对首尾 query head 的全部 batch/序列做 CPU 对照；这七项 CPU 对照是 head 抽样，不代表全 head 的独立精度验证。
 
 FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。零 score、V 全 1 时，FP16 输出为约 0.999512；较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
 
@@ -150,25 +138,7 @@ FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 
 
 PyTorch 默认预热 50 次，参数为 `--warmup` 或 `SAGEATTN_PERF_WARMUP`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`，默认 100 次。预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
 
-```bash
-python benchmarks/run_validation_performance.py --output build/performance_batch
-bash benchmarks/build_aclnn_benchmark.sh
-mkdir -p build/performance_batch/aclnn
-./build/benchmarks/benchmark_aclnn 4096 1 32 0 0 50 100 build/performance_batch/aclnn/P-01.json
-```
-
-### msprof op
-
-采集单个完整算子；应用只调用一次目标算子，预热和重放由 msprof op 默认配置处理。不设置 `--warm-up`、`--aic-metrics` 或 `--launch-count`，保留默认指标。
-
-```bash
-msprof op --kernel-name=SageAttention2 --output=build/msprof/P-01/sage \
-    --application="python benchmarks/profile_single_op.py --case P-01 --operator sage"
-msprof op --kernel-name=FusedInferAttentionScore --output=build/msprof/P-01/fia \
-    --application="python benchmarks/profile_single_op.py --case P-01 --operator fia"
-```
-
-`benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_CALLS REPEATS OUTPUT_JSON`。性能结果随自测材料提供。
+PyTorch 路径以 `python/test_python_api.py` 同源的公开接口调用测量；aclnn 路径每次正常调用 GetWorkspaceSize 与执行接口，两阶段调用均位于批量计时区间内。性能结果（P-01～P-07，PyTorch 与 aclnn 双路径）随自测报告提供，msprof op 采集时应用只调用一次目标算子，预热和重放由 msprof op 默认配置处理。
 
 ## 目录说明
 
@@ -177,5 +147,4 @@ msprof op --kernel-name=FusedInferAttentionScore --output=build/msprof/P-01/fia 
 | `op_kernel` | Stats、Quant、Cube/Vector 分块、online softmax 和 O 更新 |
 | `op_host`、`op_api` | 参数校验、注册、tiling 和两阶段 ACLNN |
 | `python` | PyTorch ACLNN 适配层和 CPU 参考 |
-| `tests` | 公开接口功能、精度和多流回归 |
-| `benchmarks` | 性能测试脚本和独立 ACLNN 调用示例 |
+| `tests` | 内核数值规格一致性测试（可移植 C++） |
