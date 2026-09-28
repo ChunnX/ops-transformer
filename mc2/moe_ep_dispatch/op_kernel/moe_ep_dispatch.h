@@ -44,6 +44,7 @@
 #endif
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch_base.h"
+#include "moe_ep_dispatch_vf.h"
 
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
@@ -627,31 +628,34 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
     uint32_t calCnt = perGroupTokenNum_ * axisK_;
     LocalTensor<int32_t> topkIdsGroupTensor = topkIdsBuf_.Get<int32_t>();
     LocalTensor<int16_t> tempTensorInt16 = tempBuf_.Get<int16_t>();
-    LocalTensor<uint8_t> maskTensor = maskBuf_.GetWithOffset<uint8_t>(maskBytesAlign_, 0);
     for (uint32_t group = 0; group < groupCnt; group++) {
         uint32_t groupOffset = group * perGroupTokenNum_;
+        uint32_t tokenCnt = (group == groupCnt - 1) ? (sendTokenNum_ - groupOffset) : perGroupTokenNum_;
         if (group == groupCnt - 1) {
-            calCnt = (sendTokenNum_ - groupOffset) * axisK_;
+            calCnt = tokenCnt * axisK_;
         }
         uint32_t topkIdxOffset = (startTokenId_ + groupOffset) * axisK_;
         uint32_t tmpOffset = Ceil(calCnt * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
         uint32_t calCntAlign = tmpOffset / sizeof(int16_t);
         DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
         dstRankTensor_ = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
+        LocalTensor<int16_t> rawRankTensor = dstExpBuf_.GetWithOffset<int16_t>(calCntAlign, tmpOffset);
         if (group > 0) {
             SyncFunc<AscendC::HardEvent::V_MTE2>();
+            SyncFunc<AscendC::HardEvent::MTE3_V>(); // Wait previous dstRank buffer.
         }
         DataCopyPad(topkIdsGroupTensor, topkIdxGMTensor_[topkIdxOffset], topkIdsCntParams,
                     routePadParams_); // copy topkId
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Cast(tempTensorInt16, topkIdsGroupTensor, RoundMode::CAST_NONE, calCnt);
 
-        // perExpert 计算
-        CalSendCntPerExpert(tempTensorInt16, calCnt, calCntAlign, tmpOffset);
-
-        // 去重，计算 per-rank
-        DedupAndSendDirect(calCnt, calCntAlign, tmpOffset, tempTensorInt16, maskTensor); // 去重
-        CalSendCntPerRank(calCnt, calCntAlign, tmpOffset, maskTensor);                   // 计算 per-rank
+        asc_vf_call<MoeEpDispatchVf::DedupAndCalCnt>(
+            reinterpret_cast<__ubuf__ int32_t *>(topkIdsGroupTensor.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ int16_t *>(tempTensorInt16.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ int16_t *>(rawRankTensor.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ int16_t *>(dstRankTensor_.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ int32_t *>(sendCntPerExpertTensor_.GetPhyAddr()),
+            reinterpret_cast<__ubuf__ int32_t *>(sendCntPerRankTensor_.GetPhyAddr()),
+            calCnt, tokenCnt, axisK_, moeExpertNum_, epWorldSize_, moeExpertNumPerRank_);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
         DataCopyPad(dstRankGMTensor_[topkIdxOffset], dstRankTensor_, dstRankCopyParams);
