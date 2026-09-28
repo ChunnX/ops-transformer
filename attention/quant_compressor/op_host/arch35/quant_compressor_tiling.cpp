@@ -81,6 +81,11 @@ void QuantCompressorTiling::ConvertOptionalParams(gert::TilingContext &context,
     quantCompressorContext.seqUsed.shape = context.GetOptionalInputShape(SEQ_USED_INPUT_INDEX);
     quantCompressorContext.startPos.desc = context.GetOptionalInputDesc(START_POS_INPUT_INDEX);
     quantCompressorContext.startPos.shape = context.GetOptionalInputShape(START_POS_INPUT_INDEX);
+    quantCompressorContext.xCache.desc = context.GetOptionalInputDesc(X_CACHE_INPUT_INDEX);
+    quantCompressorContext.xCache.shape = context.GetOptionalInputShape(X_CACHE_INPUT_INDEX);
+    quantCompressorContext.xCacheSlotMapping.desc = context.GetOptionalInputDesc(X_CACHE_SLOT_MAPPING_INPUT_INDEX);
+    quantCompressorContext.xCacheSlotMapping.shape =
+        context.GetOptionalInputShape(X_CACHE_SLOT_MAPPING_INPUT_INDEX);
 }
 
 ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &context,
@@ -109,6 +114,7 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
     quantCompressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     quantCompressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
     quantCompressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    quantCompressorContext.xCacheUpdate = attrs->GetAttrPointer<bool>(X_CACHE_UPDATE_ATTR_INDEX);
     quantCompressorContext.batchConsistency = context.GetDeterministicLevel();
     OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
@@ -148,18 +154,31 @@ ge::graphStatus QuantCompressorTiling::GetNpuInfo()
 
 ge::graphStatus QuantCompressorTiling::SetBaseInfo()
 {
+    const bool hasXCache = context_->xCache.desc != nullptr;
+    baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
+    // The grouped decode window is exactly one compression group, derived from
+    // cmpRatio instead of a caller-provided projection size.
+    groupedDecodeParams_->xCacheReadSize = hasXCache ? baseParams_->cmpRatio : 0;
+
+    uint32_t computeSeqSize = 0;
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3) {
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
-        baseParams_->tokenSize = baseParams_->batchSize * baseParams_->seqSize;
+        computeSeqSize = hasXCache ? groupedDecodeParams_->xCacheReadSize : baseParams_->seqSize;
+        baseParams_->tokenSize = baseParams_->batchSize * computeSeqSize;
     } else {
         baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
         baseParams_->tokenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        groupedDecodeParams_->xCacheReadSize = 0;
+        computeSeqSize = baseParams_->tokenSize;
     }
-
-    baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
+    groupedDecodeParams_->xCacheSize = hasXCache ?
+        context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) : 0;
+    const bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
+    groupedDecodeParams_->xCacheUpdateBatchSize =
+        (hasXCache && xCacheUpdate) ? baseParams_->batchSize : 0;
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coff;
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
@@ -210,8 +229,10 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId() const
     if (npuArch_ == NpuArch::DAV_3510) {
         // 设置高性能模板
         // 4: max S; 256: max tokensize
+        // Grouped decode must stay on the normal template: FULL_LOAD reads the
+        // one-token x tensor instead of composing the ring window.
         if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= FULL_LOAD_MAX_SEQ_SIZE &&
-            baseParams_->tokenSize <= FULL_LOAD_MAX_TOKEN_SIZE) {
+            baseParams_->tokenSize <= FULL_LOAD_MAX_TOKEN_SIZE && context_->xCache.desc == nullptr) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -344,6 +365,7 @@ ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingD
     this->pageAttentionParams_ = &tilingData->pageAttentionParams;
     this->innerSplitParams_ = &tilingData->innerSplitParams;
     this->workspaceParams_ = &tilingData->workspaceParams;
+    this->groupedDecodeParams_ = &tilingData->groupedDecodeParams;
     using StatusFunction = std::function<ge::graphStatus()>;
     std::vector<StatusFunction> requiredTilingFuncs{std::bind(&QuantCompressorTiling::GetNpuInfo, this),
                                                     std::bind(&QuantCompressorTiling::CheckRequiredParaExistence, this),
@@ -424,6 +446,7 @@ ge::graphStatus QuantCompressorTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaStateCache() || ge::GRAPH_SUCCESS != CheckSingleParaApe() ||
         ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() || ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSeqused() || ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaXCache() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpKv()) {
         return ge::GRAPH_FAILED;
     }
@@ -737,6 +760,67 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaStartPos() const
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->startPos.shape, START_POS_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantCompressorTiling::CheckSingleParaXCache() const
+{
+    if (context_->xCache.desc == nullptr) {
+        OP_CHECK_IF(context_->xCacheSlotMapping.desc != nullptr,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        context_->opName, X_CACHE_SLOT_MAPPING_NAME,
+                        "x_cache_slot_mapping requires x_cache to be present"),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(context_->x.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_3,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, X_CACHE_NAME,
+                                                         "grouped decode requires BSH x layout"),
+                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCache.desc, X_CACHE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCache.shape, X_CACHE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(context_->xCache.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_3 ||
+                    context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) <= 0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_CACHE_NAME, "ring",
+                                                      "x_cache should be [bank, ringLen, hidden] with ringLen > 0"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2) !=
+                    context_->x.shape->GetStorageShape().GetDim(
+                        context_->x.shape->GetStorageShape().GetDimNum() - 1),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_CACHE_NAME, "hidden mismatch",
+                                                      "x_cache hidden size must match x hidden size"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->xCacheSlotMapping.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, X_CACHE_SLOT_MAPPING_NAME,
+                                                         "x_cache requires x_cache_slot_mapping"),
+                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCacheSlotMapping.desc, X_CACHE_SLOT_MAPPING_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCacheSlotMapping.shape, X_CACHE_SLOT_MAPPING_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(context_->startPos.desc == nullptr || context_->seqUsed.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, X_CACHE_NAME,
+                                                         "x_cache requires start_pos and seqused"),
+                return ge::GRAPH_FAILED);
+    // Grouped decode composes one complete compression window per active
+    // request inside a single call.
+    const auto cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
+    const auto rawSeqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    OP_CHECK_IF(cmpRatio == 0 || static_cast<uint32_t>(rawSeqSize) > cmpRatio,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_CACHE_NAME, "seq > cmp_ratio",
+                                                      "grouped decode requires the raw step to be <= cmp_ratio"),
+                return ge::GRAPH_FAILED);
+    const auto ringLen = context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    OP_CHECK_IF(ringLen < static_cast<int64_t>(cmpRatio) || ringLen % cmpRatio != 0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_CACHE_NAME, "ring not group aligned",
+                                                      "x_cache ring length must be a positive multiple of cmp_ratio"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ringLen < static_cast<int64_t>(cmpRatio) + rawSeqSize - 1,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_CACHE_NAME, "ring too short for step",
+                    "x_cache must preserve the completed group while writing every token in the raw step"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

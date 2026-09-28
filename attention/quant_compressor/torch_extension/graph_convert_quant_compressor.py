@@ -43,7 +43,7 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
-    @auto_convert_to_tensor([False] * 13, [False] * 13)
+    @auto_convert_to_tensor([False] * 15, [False] * 15)
     def QuantCompressor(
         x: Tensor,
         wkv: Tensor,
@@ -57,11 +57,14 @@ if _TORCHAIR_AVAILABLE:
         cu_seqlens: Optional[Tensor],
         seqused: Optional[Tensor],
         start_pos: Optional[Tensor],
+        x_cache: Optional[Tensor],
+        x_cache_slot_mapping: Optional[Tensor],
         cmp_kv: Tensor,
         quant_mode: int,
         cmp_ratio: int,
         coff: int = 1,
         cache_mode: int = 1,
+        x_cache_update: bool = True,
         state_cache_stride_dim0: int = 0,
     ):
         result = x.new_empty(x.size())
@@ -86,8 +89,11 @@ if _TORCHAIR_AVAILABLE:
         cu_seqlens: Tensor = None,
         seqused: Tensor = None,
         start_pos: Tensor = None,
+        x_cache: Tensor = None,
+        x_cache_slot_mapping: Tensor = None,
         coff: int = 1,
         cache_mode: int = 1,
+        x_cache_update: bool = True,
         state_cache_stride_dim0: int = 0,
     ):
         raise AssertionError(

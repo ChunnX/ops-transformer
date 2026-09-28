@@ -81,6 +81,18 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        // Optional grouped-decode shared ring cache. The KV/HCA compressor
+        // refreshes it; the same-layer LI compressor only reads the window.
+        this->Input("x_cache")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_HIFLOAT8})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("x_cache_slot_mapping")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("cmp_kv").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("state_cache").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("quant_mode").AttrType(REQUIRED).Int(QUANT_MODE_VALUE);
@@ -88,6 +100,7 @@ public:
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
+        this->Attr("x_cache_update").AttrType(OPTIONAL).Bool(true);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

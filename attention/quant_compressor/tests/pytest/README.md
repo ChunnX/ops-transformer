@@ -174,3 +174,75 @@ bash batch_isolated_run.sh ./pt_path 1         # 采集性能（挂载msprof）
 | `batch_summary.log` | 批量隔离执行详细日志 |
 | `batch_fail_list.log` | 失败用例清单 |
 | `PROF_*/` | msprof性能原始数据目录 |
+
+## Pro0921 latent grouped 用例（新增）
+
+QuantCompressor 同样增加 `x_cache` / `x_cache_slot_mapping` / `x_cache_update` grouped
+输入；量化载体是 HiFloat8（uint8 字节承载，`ACL_HIFLOAT8`），x / wkv / wgate / x_cache
+保存 HiFloat8 码，三个 descale 位于 `ape` 之后。普通路径与 grouped 路径**显式二选一**。
+
+### 用例契约
+
+- `path=normal`：关闭 grouped，不传 `x_cache`，语义与既有普通路径一致。
+- `path=grouped`：必须携带 `x_cache_update`（布尔）以及 `x_cache` / `x_cache_slot_mapping`；
+  缺失 grouped 字段直接报错，绝不静默当作 normal。
+
+用例集是纯 JSON 文件（`contract=pro0921-grouped-quant-compressor-v1`），新增用例无需改 Excel。
+固定小形状为 hidden=1024 / head=128 / cmp_ratio=128 / quant_mode=1。
+
+### 直接可执行入口
+
+```bash
+python3 pro0921_grouped_cases.py --emit /tmp/pro0921_quant_cases
+python3 pro0921_grouped_cases.py --run /tmp/pro0921_quant_cases/cases.json   # 退出码非 0 即不通过
+python3 pro0921_grouped_cases.py --plan
+python3 pro0921_grouped_cases.py --emit-pt /tmp/pro0921_quant_pt
+```
+
+`quant_compressor_golden.py` 的显式 grouped 入口（普通 CLI 语义不变）：
+
+```bash
+python3 quant_compressor_golden.py --grouped_cases cases.json --emit /tmp/pro0921_quant_cases
+```
+
+批量入口 `batch/quant_compressor_pt_save.py`：
+
+```bash
+python3 batch/quant_compressor_pt_save.py --cases-json cases.json /tmp/pro0921_quant_pt
+python3 batch/quant_compressor_pt_save.py excel/test_cases.xlsx pt_path
+```
+
+Excel 可选 `path` / `case_variant` 列；`path=grouped` 行的 `case_variant` 取
+`boundary` / `update_only`，且几何要与冻结值一致，否则报错。缺列时全部按既有 normal 处理。
+`batch/quant_compressor_pt_loadprocess.py` 按 `.pt` 的 `path` 字段显式选择调用。
+
+**`.pt` 路径契约（无兼容回退）**：当前 writer 生成的每个 `.pt` 都带显式 `path`
+（`normal`/`grouped`）。Excel 无 `path` 列时是该列在**生成阶段**默认写 `normal`，
+不是读取旧 `.pt` 时的运行期回退。`pt_grouped_args` 要求 `path` 显式存在，缺失即报错；
+历史无 `path` 的旧 `.pt` 不支持直接运行，请用当前 writer 重新生成。grouped `.pt`
+额外带完整 `expected_x_cache`（HiFloat8 uint8 码），
+`batch/quant_compressor_pt_loadprocess.py` 调用后逐位比较读回，并对全量 `state_cache`
+与独立 golden 比较，失败直接 `raise AssertionError`。
+
+### 冻结覆盖
+
+| 用例 | path | 覆盖 |
+| --- | --- | --- |
+| `quant_normal_r128` | normal | 开关关闭、普通路径 |
+| `quant_grouped_boundary` | grouped | 量化边界投影 + x_cache 回写 |
+| `quant_grouped_update_only` | grouped | 非边界只更新，state 不变 |
+
+精度使用 `../compressor/tests/pro0921_latent_smoke/latent_ref.py` 的独立 numpy golden
+（HiFloat8 codec 来自本目录 `hif8_utils.py`），并用 `independent_contract_check` 二次重算。
+
+### 板上必要前置
+
+1. 安装 torch → torch_npu → 本任务正式 provider（`cann_ops_transformer`）并保持导入顺序。
+2. 安装当前双仓算子与 wheel（含 `ACL_HIFLOAT8` 绑定）。
+3. 无 NPU 时明确失败或只 `--plan`，不生成伪精度/性能结果。
+
+### 聚焦 CPU 测试
+
+```bash
+python3 -m pytest -q tests/test_pro0921_grouped_accuracy_cases.py
+```

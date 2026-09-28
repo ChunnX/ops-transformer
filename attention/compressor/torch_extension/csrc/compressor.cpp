@@ -92,8 +92,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> ConstructCompressorOutputTensor(
 std::tuple<at::Tensor, at::Tensor, at::Tensor> Compressor(
     const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &stateCache, const at::Tensor &ape,
     int64_t cmpRatio, const c10::optional<at::Tensor> &stateBlockTable, const c10::optional<at::Tensor> &cuSeqlens,
-    const c10::optional<at::Tensor> &seqused, const c10::optional<at::Tensor> &startPos, int64_t coff,
-    int64_t cacheMode, bool gradEnabled)
+    const c10::optional<at::Tensor> &seqused, const c10::optional<at::Tensor> &startPos,
+    const c10::optional<at::Tensor> &xCache, const c10::optional<at::Tensor> &xCacheSlotMapping, int64_t coff,
+    int64_t cacheMode, bool xCacheUpdate, bool gradEnabled)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto xDim = x.dim();
@@ -110,8 +111,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> Compressor(
                 "state_cache must be contiguous on all axes except axis 0");
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
-    ACLNN_CMD(aclnnCompressor, x, wkv, wgate, stateCache, ape, stateBlockTable, cuSeqlens, seqused, startPos, cmpRatio,
-              coff, cacheMode, stateCacheStrideDim0, gradEnabled, cmpKv, softmaxScore, kv);
+    ACLNN_CMD(aclnnCompressor, x, wkv, wgate, stateCache, ape, stateBlockTable, cuSeqlens, seqused, startPos, xCache,
+              xCacheSlotMapping, cmpRatio, coff, cacheMode, stateCacheStrideDim0, gradEnabled, xCacheUpdate, cmpKv,
+              softmaxScore, kv);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(cmpKv, softmaxScore, kv);
 }
