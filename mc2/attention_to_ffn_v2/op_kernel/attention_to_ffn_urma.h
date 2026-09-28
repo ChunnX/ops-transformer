@@ -894,7 +894,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
                 static_cast<uint32_t>(tableStart.GetValue(rank)) + static_cast<uint32_t>(writePrefix.GetValue(rank));
             DataCopyExtParams entryCopyParams{1U, static_cast<uint32_t>(count * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(bucketTablesGM[writeStart], bucketEntries[rank * entriesPerRank_], entryCopyParams);
-            writePrefix.SetValue(rank, static_cast<int32_t>(writeStart + count));
+            writePrefix.SetValue(rank, static_cast<int32_t>(writePrefix.GetValue(rank) + count));
         }
         SyncFunc<HardEvent::MTE3_S>();
     }
