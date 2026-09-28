@@ -229,11 +229,11 @@ public:
         }
     }
 
-    template <typename RT, bool IS_AIC>
-    __aicore__ inline void FlashAttentionImpl(RT taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    template <typename RUNINFO_T, bool IS_AIC>
+    __aicore__ inline void FlashAttentionImpl(RUNINFO_T taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
         ICachePreLoad(2);
-        uint64_t t = 0;
+        uint64_t taskLoop = 0;
         incBIdx_ = bN2Start_ / constInfo.n2Size;
         curN2Idx_ = bN2Start_ % constInfo.n2Size;
         curKvHeadIdx_ = curN2Idx_ / constInfo.gRealSize;
@@ -253,13 +253,13 @@ public:
                     curS2Start = (bN2 == bN2Start_ && gS1 == gS1OStart_) ? s2OStart_ : 0U;
                     curS2End = (bN2 == bN2End_ && gS1 == gS1OEnd_) ? s2OEnd_ : static_cast<uint32_t>(s2LoopTimes_);
                     for (uint32_t s2 = curS2Start; s2 < curS2End; ++s2) {
-                        CreateTask(t, bN2, gS1, s2, taskRunInfo);
-                        ExecuteTask<RT, IS_AIC>(t, taskRunInfo);
-                        t++;
+                        CreateTask(taskLoop, bN2, gS1, s2, taskRunInfo);
+                        ExecuteTask<RUNINFO_T, IS_AIC>(taskLoop, taskRunInfo);
+                        taskLoop++;
                     }
                 }
             }
-            if (bN2 == bN2End_) {
+            if (bN2 >= bN2End_) {
                 break;
             }
             if (++curN2Idx_ == constInfo.n2Size) {
@@ -274,45 +274,20 @@ public:
                 curKvHeadIdx_++;
             }
         }
-        if (t != 0) {
-            uint32_t d = 0;
-            while (d < PRELOAD_N) {
-                ExecuteTask<RT, IS_AIC>(t, taskRunInfo);
-                t++;
-                d++;
+        if (taskLoop != 0) {
+            uint32_t drainCnt = 0;
+            while (drainCnt < PRELOAD_N) {
+                ExecuteTask<RUNINFO_T, IS_AIC>(taskLoop, taskRunInfo);
+                taskLoop++;
+                drainCnt++;
             }
         }
     }
 
-    template <typename RT, bool IS_AIC>
-    __aicore__ inline void ExecuteTask(uint64_t loop, RT taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    template <typename RUNINFO_T, bool IS_AIC>
+    __aicore__ inline void ExecuteTask(uint64_t loop, RUNINFO_T taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RT &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-
-        if (runInfo0.isValid) {
-            if constexpr (IS_AIC) {
-                uint32_t mm1ResBufId = (runInfo0.loop / 2) % 2;
-                uint32_t subBlockIdx = runInfo0.loop % 2;
-                CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
-                cubeBlock.ComputeMm1(runInfo0);
-                CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
-            }
-        }
-
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
-        }
-        if (s2Cur == curS2Start) {
-            mloop++;
-        }
-
-        return TASK_DEAL_MODE::CREATE_TASK;
-    }
-
-    template <typename RT, bool IS_AIC>
-    __aicore__ inline void ExecuteTask(uint64_t loop, RT taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
-    {
-        RT& runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RUNINFO_T& runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
 
         if (runInfo0.isValid) {
             if constexpr (IS_AIC) {
@@ -325,7 +300,7 @@ public:
         }
 
         if (loop >= PRELOAD_N) {
-            RT& runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T& runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo20.isValid) {
                 if constexpr (IS_AIC) {
                     if (unlikely(runInfo20.isC2Sync)) {
@@ -347,13 +322,14 @@ public:
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         vectorBlock.ComputeVec2(runInfo20);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
+                    }
                 }
                 runInfo20.isValid = false;
             }
         }
 
         if (loop >= DELAY_P_SCALE_N) {
-            RT &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            RUNINFO_T& runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
             if (runInfo3.isValid && unlikely(runInfo3.isUpdatePScale)) {
                 if constexpr (IS_AIC) {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
@@ -399,69 +375,24 @@ public:
         }
     }
 
-<<<<<<< ours
-    __aicore__ inline void ComputeMm1(RunInfo& runInfo)
-    {
-        cubeBlock.ComputeMm1(runInfo);
-    }
-
-    __aicore__ inline void ComputeMm2(RunInfo& runInfo)
-    {
-        cubeBlock.ComputeMm2(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec1(RunInfo& runInfo)
-    {
-        vectorBlock.ComputeVec1(runInfo);
-    }
-
-    __aicore__ inline void CopyGMaxUbToL1(RunInfo& runInfo)
-    {
-        vectorBlock.CopyGMaxUbToL1(runInfo);
-    }
-
-    __aicore__ inline void CopyGMaxL1ToUb(RunInfo& runInfo)
-    {
-        cubeBlock.CopyGMaxL1ToUb(runInfo);
-    }
-
-    __aicore__ inline void UpdatePScale(RunInfo& runInfo)
-    {
-        vectorBlock.UpdatePScale(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec2(RunInfo& runInfo)
-    {
-        vectorBlock.ComputeVec2(runInfo);
-=======
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       CubeRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        CubeRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        CubeRunInfo& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
         CalcCubeParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
->>>>>>> theirs
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       VecRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-<<<<<<< ours
-        RunInfo& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
-    }
-
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo& info)
-=======
-        VecRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        VecRunInfo& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
         CalcVecParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
     __aicore__ inline void CalcCubeParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                          CubeRunInfo &info)
->>>>>>> theirs
+                                          CubeRunInfo& info)
     {
         info.loop = loop;
         info.bIdx = incBIdx_;
@@ -508,7 +439,7 @@ public:
     }
 
     __aicore__ inline void CalcVecParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                         VecRunInfo &info)
+                                         VecRunInfo& info)
     {
         info.loop = loop;
         info.bIdx = incBIdx_;
@@ -550,65 +481,6 @@ public:
         info.tileMaxIdx = tileMaxIdx;
         info.isS2FirstTilePerCore = (info.curS2LoopIdx % TILE_N / 2 == 0);
         info.pscaleNum = pscaleNum / 10;
-<<<<<<< ours
-
-        if constexpr (SOFTMAX_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actMSizeAlign128 = (info.actMSize + 127) >> 7 << 7;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
-    }
-
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t& bN2Cur, uint32_t& gS1Cur,
-                                          uint32_t& s2Cur)
-    {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
-        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
-            s2Cur = curS2Start;
-            return;
-        }
-        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
-            if (s2Cur + 1 < s2LoopTimes) {
-                s2Cur++;
-                return;
-            }
-        }
-
-        s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
-            gS1Cur++;
-            return;
-        }
-
-        // 当前BN2已处理完
-        gS1Cur = 0;
-        bN2Cur++;
-=======
->>>>>>> theirs
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
