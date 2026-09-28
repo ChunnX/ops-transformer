@@ -96,7 +96,7 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     // both ping-pong operands; reduction batching is planned independently so
     // the epilogue can safely reuse the projection UB allocation.
     const uint64_t largeMTile = request.preferWideTile ? kFiveCubeMTile : kLargeCubeMTile;
-    // Target at least two waves: 2*C*R rows per wave, R<=16 and a power of two.
+    // Select K ownership using at least two waves: 2*C*R rows per wave, R<=16 and a power of two.
     // Increase K parallelism as R shrinks so the Cube M tile remains 64 or 128 rows.
     const uint64_t rowBudget = std::min(kMaxWaveRowsPerAiv, std::max<uint64_t>(1U, request.rows / (4U * active)));
     uint64_t waveRowsPerAiv = 1U;
@@ -128,6 +128,15 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     }
     if (request.wavePipeline && waveKGrid < minWaveKGrid) {
         return false;
+    }
+    // Widen M without changing K ownership: R*g*L1K<=8192 and L1K>=128.
+    // Keep at least two waves and preserve the selected complete-wave constraint.
+    const uint64_t waveRowCapacity =
+        std::min(request.rows / (4U * active), kWaveProjectionElements / (waveKGrid * kL1KAlign));
+    while (waveRowsPerAiv * 2U <= waveRowCapacity &&
+           (!request.preferCompleteWaves || request.rows % (2U * active) != 0U ||
+            request.rows % (4U * active * waveRowsPerAiv) == 0U)) {
+        waveRowsPerAiv *= 2U;
     }
     uint64_t selectedMTile = request.wavePipeline ? 2U * waveRowsPerAiv * waveKGrid :
                                                     (request.rows >= kLargeMThreshold ? largeMTile : kCubeMTile);
@@ -173,9 +182,10 @@ bool BuildCubePlan(const CubePlanRequest &request, CubePlan &plan)
     const uint64_t selectedActive = selectedMGrid * selectedKGrid;
     const uint64_t rowsPerWave = selectedMGrid * selectedMTile;
     const uint64_t mWaveCount = CeilDiv(request.rows, rowsPerWave);
-    const uint64_t l1KMax = std::min<uint64_t>({request.wavePipeline ? waveKProduct / waveKGrid : 1024U,
-                                                request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
-                                                request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
+    const uint64_t l1KMax =
+        std::min<uint64_t>({request.wavePipeline ? kWaveProjectionElements / (waveRowsPerAiv * waveKGrid) : 1024U,
+                            request.l1ABytes / (2 * selectedMTile * kFp32Bytes),
+                            request.l1BBytes / (2 * AlignUp(request.q, kNzNAlign) * kFp32Bytes)});
     // L1 transfers must not cross an ordered partial boundary. A small unsplit shard may end with an L1 tail.
     uint64_t l1K = AlignDown(std::min(l1KMax, partialGroupK), kL1KAlign);
     while (useSequentialPartials && l1K != 0 && partialGroupK % l1K != 0) {
