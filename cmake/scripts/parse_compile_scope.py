@@ -29,11 +29,7 @@ OP_DOMAINS = (
 )
 SKIP_EXTS = {".md", ".json", ".ini"}
 EXCLUDE_DIRS = {"common", "3rd", "tools"}
-SCAN_DIRS = ("op_host", "op_kernel", "framework")
-SCAN_EXTS = {".h", ".hpp", ".hh", ".cpp", ".cc", ".cxx", ".c"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOMAIN_RE = "|".join(OP_DOMAINS)
-INCLUDE_RE = re.compile(r"#\s*include\s+[\"<]([^\">]+)")
 DEPEND_RE = re.compile(r"set\(\s*[A-Za-z0-9_]*depends\s+([^)]*?)\s+PARENT_SCOPE", re.I)
 LONG_SOC = {
     "ascend310p": "Ascend310P3",
@@ -101,38 +97,11 @@ def parse_cmake_depends(edges, domain, op_name, op_path, op_key):
                 add_edge(edges, dep, op_key)
 
 
-def parse_include_depends(edges, domain, op_name, op_path, op_key):
-    for scan_dir in SCAN_DIRS:
-        base = op_path / scan_dir
-        if not base.is_dir():
-            continue
-        for root, _, files in os.walk(base):
-            for name in files:
-                if Path(name).suffix.lower() not in SCAN_EXTS:
-                    continue
-                file_path = Path(root) / name
-                try:
-                    text = file_path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    continue
-                for inc in INCLUDE_RE.findall(text):
-                    m = re.search(rf"({DOMAIN_RE})/([A-Za-z0-9_]+)/", inc)
-                    if not m:
-                        continue
-                    dep_domain, dep_op = m.group(1), m.group(2)
-                    if dep_op in EXCLUDE_DIRS:
-                        dep = f"{dep_domain}/{dep_op}"
-                    else:
-                        dep = f"{dep_domain}/{dep_op}"
-                    add_edge(edges, dep, op_key)
-
-
 def build_edges(ops):
     edges = defaultdict(set)
     for domain, op_name, op_path in ops:
         op_key = f"{domain}/{op_name}"
         parse_cmake_depends(edges, domain, op_name, op_path, op_key)
-        parse_include_depends(edges, domain, op_name, op_path, op_key)
     return edges
 
 
@@ -180,16 +149,16 @@ def split_socs(text):
 
 def def_supports(op_path, soc):
     long_soc = LONG_SOC.get(soc, "")
-    if (op_path / "op_host" / "config" / soc).is_dir():
-        return True
+    soc_pattern = re.escape(soc)
+    if long_soc:
+        soc_pattern = f"(?:{soc_pattern}|{re.escape(long_soc)})"
+    add_config_re = re.compile(r"AddConfig\s*\(\s*[\"']?(?:" + soc_pattern + r")[\"']?")
     for def_file in glob.glob(str(op_path / "**" / "*def.cpp"), recursive=True):
         try:
             text = Path(def_file).read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if "AddConfig" not in text:
-            continue
-        if soc in text or (long_soc and long_soc in text):
+        if add_config_re.search(text):
             return True
     return False
 
