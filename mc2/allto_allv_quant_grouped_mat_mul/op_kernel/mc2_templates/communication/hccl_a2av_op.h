@@ -102,8 +102,8 @@ private:
     uint64_t scaleSendOffsetLastSum_ = 0UL;
     uint64_t scaleRecvOffsetLastSum_ = 0UL;
 
-    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
-    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
+    uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
+    uint64_t sendCounts_[MAX_EXPERT_SIZE] = {0UL};
 
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
@@ -143,8 +143,6 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
     permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
-    // Init有效期内快照counts：taskTilingInfo_指向scheduler Init的栈上tiling拷贝，
-    // 该帧不保证在Init返回后存活，事后直读属未定义行为，必须在此拷贝
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         sendCounts_[i] = taskTilingInfo_->sendCnt[i];
@@ -182,7 +180,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     A2AV_AIV_ONLY();
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
     CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis,
-                             scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_, SCALE_COMM_ALIGN_BYTES);
+                             scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
         (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt, scaleCommParams_.sendOffset,
         HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.recvCnt,

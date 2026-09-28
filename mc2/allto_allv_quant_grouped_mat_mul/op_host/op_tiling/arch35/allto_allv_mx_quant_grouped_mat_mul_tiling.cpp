@@ -544,8 +544,6 @@ void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
     if (e_ >= SCALE_BATCH_THRESHOLD) {
         permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
     }
-    // scale通信recv段基址按512B对齐累加(kernel侧SCALE_COMM_ALIGN_BYTES)，预留每段最大padding余量
-    permuteScaleOutSize_ += e_ * epWorldSize_ * (MC2KernelTemplate::SCALE_COMM_ALIGN_BYTES - 1);
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB)
