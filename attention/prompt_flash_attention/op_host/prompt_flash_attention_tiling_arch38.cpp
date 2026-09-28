@@ -4053,8 +4053,8 @@ bool PromptFlashAttentionTilingArch38::CheckArch38ScenarioSupported(const Contex
                 return false);
 
     OP_CHECK_IF(
-        (queryShapeInfo.b != 1U),
-        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "batch size must be 1, but b = %u.", queryShapeInfo.b),
+        (queryShapeInfo.b != 1U && queryShapeInfo.b != 9U),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "batch size must be 1 or 9, but b = %u.", queryShapeInfo.b),
         return false);
 
     OP_CHECK_IF((queryShapeInfo.s != static_cast<uint64_t>(S2)),
