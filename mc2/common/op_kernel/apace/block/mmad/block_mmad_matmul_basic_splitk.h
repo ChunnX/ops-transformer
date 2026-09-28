@@ -48,7 +48,7 @@
 #define A2A_DBG_DUMP_BT 0
 #endif
 #ifndef A2A_DBG_LOCKMTE2_SYNC
-#define A2A_DBG_LOCKMTE2_SYNC 1
+#define A2A_DBG_LOCKMTE2_SYNC 0
 #endif
 
 #include "blaze/gemm/utils/common_utils.h"
@@ -221,6 +221,7 @@ public:
             for (uint64_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
                 uint64_t curK0 = (iter1 + 1 == kL0Iter) ? (curKL1 - iter1 * baseK_) : baseK_;
                 const auto &l0Slot = bufMgr_.GetL0Slot(l0PingPong_ & 0x1);
+                dbgSplitKIdx_ = static_cast<uint32_t>(splitKIdx); // DEBUG
 
                 // A L1->L0
                 TripleShape l0Shape{curM, curN, static_cast<int64_t>(curK0)};
@@ -459,11 +460,12 @@ private:
             // 判别法1（dump BT）：用 tensor API print_tensor 同步读 cube 真正读的 bias 表（BT），
             //                     走 debug bus，反映 mmad 实际拿到的 bias。
             // 判别法2（LockMte2 sync）：在 L1 bias 写 与 L1->BT 读 之间加显式同步。
-            if (dbgBiasDumpCnt_ < 4) {
+            if (dbgBiasDumpCnt_ < 8) {
                 dbgBiasDumpCnt_++;
-                printf("[DBG] bias: btAddr=%u nl1Align=%u curN0=%u\n",
+                printf("[DBG] bias: abL1=%u btBufId=%u btAddr=%u nl1Align=%u curN0=%u splitKIdx=%u\n",
+                       static_cast<uint32_t>(abL1LoopCnt_), static_cast<uint32_t>(btBufId),
                        static_cast<uint32_t>(btSlot.Addr()), static_cast<uint32_t>(nl1Align),
-                       static_cast<uint32_t>(curN0));
+                       static_cast<uint32_t>(curN0), static_cast<uint32_t>(dbgSplitKIdx_));
 #if A2A_DBG_DUMP_BT
                 AscendC::Te::print_tensor(tensorBiasL0, true);
 #endif
@@ -519,6 +521,7 @@ private:
     uint64_t baseN_{16};
     uint64_t baseK_{16};
     uint32_t dbgBiasDumpCnt_{0}; // DEBUG (temporary)
+    uint32_t dbgSplitKIdx_{0};   // DEBUG (temporary)
 
     uint64_t kL1Iter_{0};
     uint64_t splitKNum_{1};
