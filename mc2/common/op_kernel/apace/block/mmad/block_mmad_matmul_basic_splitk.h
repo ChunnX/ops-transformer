@@ -41,13 +41,14 @@
 // === DEBUG (temporary): bias race 判别实验开关 ===
 // A2A_DBG_DUMP_BT    = 1 : CopyL12BT 后用 tensor API 同步 dump BT（bias 表，cube 真正读的表）。
 //                          之前用 `float*` 直读 L1 不可靠（与 MTE2 写 L1 无 barrier，可能读到 stale 0）。
+//                          注意：当前工具链 AscendC::Te::print_tensor 不可用，默认置 0。
 // A2A_DBG_LOCKMTE2_SYNC = 1 : 在 L1 bias 写(MTE2) 与 L1->BT 读(MTE1) 之间加显式 MTE2->MTE1 同步，
 //                          对照 qmm 参考实现；若结果变化则 race 被证实。
 #ifndef A2A_DBG_DUMP_BT
-#define A2A_DBG_DUMP_BT 1
+#define A2A_DBG_DUMP_BT 0
 #endif
 #ifndef A2A_DBG_LOCKMTE2_SYNC
-#define A2A_DBG_LOCKMTE2_SYNC 0
+#define A2A_DBG_LOCKMTE2_SYNC 1
 #endif
 
 #include "blaze/gemm/utils/common_utils.h"
