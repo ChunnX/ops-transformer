@@ -68,8 +68,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 保留Process预载的gamma0供后续token复用；多分块仍复用gamma0缓冲。
             // 首个gamma2搬运和x2缓存恢复重叠，后续搬运与前一head的Vector计算重叠。
             LocalTensor<float> gammaEven = bufGamma2Fp32_.Get<float>();
-            LocalTensor<float> gammaOdd =
-                dimLoop_ == 1U ? bufResFp32_.Get<float>() : bufGamma0Fp32_.Get<float>();
+            LocalTensor<float> gammaOdd = dimLoop_ == 1U ? bufResFp32_.Get<float>() : bufGamma0Fp32_.Get<float>();
             LoadGammaInto(gammaEven, gamma2Gm_, tOff, tD);
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
             for (uint32_t n = 0; n < N_MAX; ++n) {
@@ -135,12 +134,19 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            FenceVToMte2();
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 

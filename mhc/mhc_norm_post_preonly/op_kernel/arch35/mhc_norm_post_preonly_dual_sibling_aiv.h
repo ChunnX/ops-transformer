@@ -57,8 +57,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufResFp32_.Get<float>()[N_MAX * dimTile_];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
-            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(
-                hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0, tD);
+            MhcNormRegBase::VFCastB16ScaleGammaQuantizeToFp32(hOut, hOutCache, bufGamma0Fp32_.Get<float>()[tOff],
+                                                              invRms0, tD);
             PipeBarrier<PIPE_V>();
 
             const bool residualFromQueue = (tile & 1U) == 0U;
@@ -250,12 +250,19 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         } else {
             gamma1 = gamma1[tOff];
         }
-        MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
-        PipeBarrier<PIPE_V>();
-        if (D_ > GAMMA1_CACHE_MAX_D) {
-            FenceVToMte2();
+        if constexpr (RETURN_H_IN_F32) {
+            MhcNormRegBase::VFCastB16ScaleAndMulGamma(hIn, hInCache, gamma1, invRms1, tD);
+            PipeBarrier<PIPE_V>();
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
+        } else {
+            if (D_ > GAMMA1_CACHE_MAX_D) {
+                FenceVToMte2();
+            }
+            WriteHInPrimeTileFromCache(hInCache, gamma1, invRms1, (uint64_t)token * D_ + tOff, tD);
         }
-        WriteHInPrimeTile(hIn, (uint64_t)token * D_ + tOff, tD);
     }
 }
 
