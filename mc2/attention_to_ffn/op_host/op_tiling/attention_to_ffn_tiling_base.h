@@ -47,6 +47,7 @@ struct AttentionToFFNTilingConfig {
     bool isMc2Context = false;
     bool allowMxQuantMode = false;
     bool allowMultiLayer = false;
+    int64_t maxWorldSize = 768;
 };
 
 ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const AttentionToFFNTilingConfig &config);

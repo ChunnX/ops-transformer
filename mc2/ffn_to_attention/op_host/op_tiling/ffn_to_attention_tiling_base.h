@@ -37,7 +37,7 @@ struct FFNToAttentionTilingConfig {
     uint32_t attrTokenInfoTableShapeIndex = 2U;
     uint32_t attrTokenDataShapeIndex = 3U;
     uint32_t attrCclBufferSizeIndex = UINT32_MAX;
-
+    bool allowMultiMicroBatch = false;
     bool isMc2Context = false;
 };
 

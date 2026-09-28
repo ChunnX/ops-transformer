@@ -67,9 +67,13 @@ namespace {
 constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
 constexpr int64_t BYTES_PER_FP16 = 2;
 constexpr int64_t BYTES_PER_INT32 = 4;
+constexpr int64_t WIN_REGION_ALIGN = 512;          // window region start alignment (matches kernel WIN_ALIGN)
+constexpr int64_t FLAG_SLOT_BYTES = 32;            // URMA flag staging slot (matches kernel URMA_FLAG_SLOT_SIZE)
+constexpr int64_t REMOTE_ADDRESS_ENTRY_BYTES = 16; // address table entry: slot id + source token index
+constexpr int64_t WORLD_SIZE_UPPER_BOUND = 1024;
 // Reserve for up to 1024 AIVs; host tiling uses the actual core count.
 constexpr int64_t AIV_RESERVE_COUNT = 1024LL;
-constexpr int64_t FLAG_SOURCE_RESERVE_BYTES = AIV_RESERVE_COUNT * 32LL;
+constexpr int64_t FLAG_SOURCE_RESERVE_BYTES = AIV_RESERVE_COUNT * FLAG_SLOT_BYTES;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -107,15 +111,21 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     TORCH_CHECK(microBatchNum > 0 && bs > 0 && expertNumPerToken > 0 && hs > 0, "Token dimensions must be positive");
     TORCH_CHECK(std::equal(tokenInfoTableShape.begin(), tokenInfoTableShape.end(), tokenDataShape.begin()),
                 "Token info/data dimensions must match");
-    TORCH_CHECK(worldSize > 0 && worldSize <= 1024, "Complete window sizing requires world_size in [1, 1024]");
+    TORCH_CHECK(worldSize > 0 && worldSize <= WORLD_SIZE_UPPER_BOUND,
+                "Complete window sizing requires world_size in [1, ", WORLD_SIZE_UPPER_BOUND, "]");
     int64_t tokenSlots = CheckedMul(CheckedMul(microBatchNum, bs), expertNumPerToken);
-    int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
-    int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);
-    int64_t rawSize = CeilAlign(CheckedAdd(tokenInfoSize, tokenDataSize), 32);
-    rawSize = CeilAlign(CheckedAdd(rawSize, FLAG_SOURCE_RESERVE_BYTES), 512);
+    int64_t maxWorkerNum = worldSize - 1;
+    int64_t infoTableLastDim = CheckedAdd(CheckedMul(bs, expertNumPerToken), 2);
+    int64_t recvInfoSize =
+        CeilAlign(CheckedMul(CheckedMul(CheckedMul(maxWorkerNum, microBatchNum), infoTableLastDim), BYTES_PER_INT32),
+                  WIN_REGION_ALIGN);
+    int64_t recvDataSize =
+        CeilAlign(CheckedMul(CheckedMul(CheckedMul(maxWorkerNum, tokenSlots), hs), BYTES_PER_FP16), WIN_REGION_ALIGN);
+    int64_t rawSize =
+        CeilAlign(CheckedAdd(CheckedAdd(recvInfoSize, recvDataSize), FLAG_SOURCE_RESERVE_BYTES), WIN_REGION_ALIGN);
     const int64_t tokenCapacity = CheckedMul(worldSize, tokenSlots);
-    const int64_t rankTableStride = CeilAlign(CheckedMul(tokenCapacity, 16), 512);
-    const int64_t countRowStride = CeilAlign(CheckedMul(worldSize, BYTES_PER_INT32), 512);
+    const int64_t rankTableStride = CeilAlign(CheckedMul(tokenCapacity, REMOTE_ADDRESS_ENTRY_BYTES), WIN_REGION_ALIGN);
+    const int64_t countRowStride = CeilAlign(CheckedMul(worldSize, BYTES_PER_INT32), WIN_REGION_ALIGN);
     const int64_t tableBytes =
         CheckedAdd(CheckedMul(worldSize, rankTableStride), CheckedMul(AIV_RESERVE_COUNT + 1, countRowStride));
     rawSize = CheckedAdd(rawSize, tableBytes);
@@ -128,6 +138,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("npu_ffn_to_attention", &NpuFFNToAttention, "npu_ffn_to_attention");
     m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
           pybind11::arg("token_info_table_shape"), pybind11::arg("token_data_shape"), pybind11::arg("world_size"),
-          "URMA window size including flag sources, rank address tables and count rows");
+          "URMA window size hosting the attention_to_ffn receiving area, flag sources, rank address tables and "
+          "count rows");
 }
 } // namespace op_api
