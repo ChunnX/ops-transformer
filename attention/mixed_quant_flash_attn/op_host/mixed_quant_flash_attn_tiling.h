@@ -29,6 +29,6 @@ namespace optiling {
 ASCENDC_EXTERN_C ge::graphStatus TilingMixedQuantFlashAttn(gert::TilingContext *context);
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMixedQuantFlashAttn(gert::TilingParseContext *context);
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // MIXED_QUANT_FLASH_ATTN_TILING_H_
+#endif // MIXED_QUANT_FLASH_ATTN_TILING_H_

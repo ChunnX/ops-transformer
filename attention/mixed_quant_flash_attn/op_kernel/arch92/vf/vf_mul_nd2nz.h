@@ -33,19 +33,18 @@ namespace AscendC {
  * @param [out] dstTensor output LocalTensor
  * @param [in] srcTensor input src LocalTensor
  */
-template <typename T, uint8_t mode =0>
-__aicore__ inline void MulND2NZ(const LocalTensor<T>& dstTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& antiQuantUb,
-    uint32_t srcM, uint32_t realM, uint32_t srcN)
+template <typename T, uint8_t mode = 0>
+__aicore__ inline void MulND2NZ(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
+                                const LocalTensor<T> &antiQuantUb, uint32_t srcM, uint32_t realM, uint32_t srcN)
 {
     constexpr uint32_t blockSize = 32;
     constexpr uint32_t blockN = blockSize / sizeof(T);
     const uint32_t fullExeSize = 128;
     uint64_t srcLocalInt = srcTensor.GetPhyAddr();
-    __ubuf__ T* srcAddr = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ T* antiAddr = (__ubuf__ T*)antiQuantUb.GetPhyAddr();
+    __ubuf__ T *srcAddr = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T *antiAddr = (__ubuf__ T *)antiQuantUb.GetPhyAddr();
     uint64_t dstLocalInt = dstTensor.GetPhyAddr();
-    __ubuf__ T* dstAddr = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ T *dstAddr = (__ubuf__ T *)dstTensor.GetPhyAddr();
     uint16_t blockStride = ((srcM + 1) * blockN) * sizeof(T) / blockSize;
     constexpr uint16_t repeatStride = 1;
 
@@ -62,15 +61,15 @@ __aicore__ inline void MulND2NZ(const LocalTensor<T>& dstTensor,
                     MicroAPI::DataCopy<T>(vregRes, (srcAddr + m * srcN));
                     MicroAPI::Mul<T>(vregRes, vregRes, vregAnti, pregRealExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr,
-                        vregRes, blockStride, repeatStride, pregRealExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr, vregRes, blockStride,
+                                                                                repeatStride, pregRealExe);
                 }
             }
         }
     } else if constexpr (mode == 1) {
-        __ubuf__ T* srcAddr1 = (__ubuf__ T*)(srcTensor.GetPhyAddr() + fullExeSize * sizeof(T));
-        __ubuf__ T* dstAddr1 = (__ubuf__ T*)(dstTensor.GetPhyAddr() + (srcM + 1) * fullExeSize * sizeof(T));
-        __ubuf__ T* antiAddr1 = (__ubuf__ T*)(antiQuantUb.GetPhyAddr() + fullExeSize * sizeof(T));
+        __ubuf__ T *srcAddr1 = (__ubuf__ T *)(srcTensor.GetPhyAddr() + fullExeSize * sizeof(T));
+        __ubuf__ T *dstAddr1 = (__ubuf__ T *)(dstTensor.GetPhyAddr() + (srcM + 1) * fullExeSize * sizeof(T));
+        __ubuf__ T *antiAddr1 = (__ubuf__ T *)(antiQuantUb.GetPhyAddr() + fullExeSize * sizeof(T));
         if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
             __VEC_SCOPE__
             {
@@ -87,24 +86,24 @@ __aicore__ inline void MulND2NZ(const LocalTensor<T>& dstTensor,
                     MicroAPI::Mul<T>(vregRes, vregRes, vregAnti, pregFullExe);
                     MicroAPI::Mul<T>(vregRes1, vregRes1, vregAnti1, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr,
-                        vregRes, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr, vregRes, blockStride,
+                                                                                repeatStride, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr1,
-                        vregRes1, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr1, vregRes1, blockStride,
+                                                                                repeatStride, pregFullExe);
                 }
             }
         }
     } else if constexpr (mode == 2) {
-        __ubuf__ T* srcAddr1 = (__ubuf__ T*)(srcTensor.GetPhyAddr() + fullExeSize * sizeof(T));
-        __ubuf__ T* srcAddr2 = (__ubuf__ T*)(srcTensor.GetPhyAddr() + fullExeSize * 2 * sizeof(T));
-        __ubuf__ T* srcAddr3 = (__ubuf__ T*)(srcTensor.GetPhyAddr() + fullExeSize * 3 * sizeof(T));
-        __ubuf__ T* dstAddr1 = (__ubuf__ T*)(dstTensor.GetPhyAddr() + (srcM + 1)  * fullExeSize * sizeof(T));
-        __ubuf__ T* dstAddr2 = (__ubuf__ T*)(dstTensor.GetPhyAddr() + (srcM + 1)  * fullExeSize * 2 * sizeof(T));
-        __ubuf__ T* dstAddr3 = (__ubuf__ T*)(dstTensor.GetPhyAddr() + (srcM + 1)  * fullExeSize * 3 * sizeof(T));
-        __ubuf__ T* antiAddr1 = (__ubuf__ T*)(antiQuantUb.GetPhyAddr() + fullExeSize * sizeof(T));
-        __ubuf__ T* antiAddr2 = (__ubuf__ T*)(antiQuantUb.GetPhyAddr() + fullExeSize * 2 * sizeof(T));
-        __ubuf__ T* antiAddr3 = (__ubuf__ T*)(antiQuantUb.GetPhyAddr() + fullExeSize * 3 * sizeof(T));
+        __ubuf__ T *srcAddr1 = (__ubuf__ T *)(srcTensor.GetPhyAddr() + fullExeSize * sizeof(T));
+        __ubuf__ T *srcAddr2 = (__ubuf__ T *)(srcTensor.GetPhyAddr() + fullExeSize * 2 * sizeof(T));
+        __ubuf__ T *srcAddr3 = (__ubuf__ T *)(srcTensor.GetPhyAddr() + fullExeSize * 3 * sizeof(T));
+        __ubuf__ T *dstAddr1 = (__ubuf__ T *)(dstTensor.GetPhyAddr() + (srcM + 1) * fullExeSize * sizeof(T));
+        __ubuf__ T *dstAddr2 = (__ubuf__ T *)(dstTensor.GetPhyAddr() + (srcM + 1) * fullExeSize * 2 * sizeof(T));
+        __ubuf__ T *dstAddr3 = (__ubuf__ T *)(dstTensor.GetPhyAddr() + (srcM + 1) * fullExeSize * 3 * sizeof(T));
+        __ubuf__ T *antiAddr1 = (__ubuf__ T *)(antiQuantUb.GetPhyAddr() + fullExeSize * sizeof(T));
+        __ubuf__ T *antiAddr2 = (__ubuf__ T *)(antiQuantUb.GetPhyAddr() + fullExeSize * 2 * sizeof(T));
+        __ubuf__ T *antiAddr3 = (__ubuf__ T *)(antiQuantUb.GetPhyAddr() + fullExeSize * 3 * sizeof(T));
         if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
             __VEC_SCOPE__
             {
@@ -131,23 +130,23 @@ __aicore__ inline void MulND2NZ(const LocalTensor<T>& dstTensor,
                     MicroAPI::Mul<T>(vregRes2, vregRes2, vregAnti2, pregFullExe);
                     MicroAPI::Mul<T>(vregRes3, vregRes3, vregAnti3, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr,
-                        vregRes, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr, vregRes, blockStride,
+                                                                                repeatStride, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr1,
-                        vregRes1, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr1, vregRes1, blockStride,
+                                                                                repeatStride, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr2,
-                        vregRes2, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr2, vregRes2, blockStride,
+                                                                                repeatStride, pregFullExe);
                     MicroAPI::DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                        MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr3,
-                        vregRes3, blockStride, repeatStride, pregFullExe);
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr3, vregRes3, blockStride,
+                                                                                repeatStride, pregFullExe);
                 }
             }
         }
     }
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // VF_MUL_ND2NZ_H

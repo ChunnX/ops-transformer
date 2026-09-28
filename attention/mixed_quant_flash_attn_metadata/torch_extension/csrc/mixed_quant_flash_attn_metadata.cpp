@@ -19,15 +19,16 @@
 namespace op_api {
 
 at::Tensor mixed_quant_flash_attn_metadata(const c10::optional<at::Tensor> &cu_seqlens_q,
-                                   const c10::optional<at::Tensor> &seqused_q,
-                                   const c10::optional<at::Tensor> &seqused_kv, int64_t num_heads_q,
-                                   int64_t num_heads_kv, int64_t head_dim, int64_t quant_compute_mode, int64_t batch_size, int64_t max_seqlen_q,
-                                   int64_t max_seqlen_kv, int64_t mask_mode, int64_t win_left, int64_t win_right,
-                                   std::string layout_q, std::string layout_kv, std::string layout_attn_out, const at::Tensor &output)
+                                           const c10::optional<at::Tensor> &seqused_q,
+                                           const c10::optional<at::Tensor> &seqused_kv, int64_t num_heads_q,
+                                           int64_t num_heads_kv, int64_t head_dim, int64_t quant_compute_mode,
+                                           int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_kv,
+                                           int64_t mask_mode, int64_t win_left, int64_t win_right, std::string layout_q,
+                                           std::string layout_kv, std::string layout_attn_out, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnMixedQuantFlashAttnMetadata, cu_seqlens_q, seqused_q, seqused_kv, batch_size, max_seqlen_q,
-              max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, quant_compute_mode, mask_mode, win_left, win_right, layout_q, layout_kv,
-              layout_attn_out, output);
+              max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, quant_compute_mode, mask_mode, win_left, win_right,
+              layout_q, layout_kv, layout_attn_out, output);
     return output;
 }
 

@@ -12,6 +12,7 @@
 import numpy as np
 from typing import Tuple
 
+
 # ----------------------------------------------------------------------
 # mxfp4e2m1 编解码（4位）
 # 位布局: [s][e1][e0][m]
@@ -28,10 +29,11 @@ def _mxfp4_decode(bits: int) -> float:
     e = (bits >> 1) & 0x3
     m = bits & 0x1
     if e == 0:
-        val = (m / 4.0)   # 非规格化
+        val = m / 4.0  # 非规格化
     else:
         val = (1 + m / 2.0) * (1 << (e - 1))  # 规格化
     return -val if s else val
+
 
 def _mxfp4_encode(x: float) -> int:
     """将浮点数舍入到最近的mxfp4表示，返回4位编码(0~15)"""
@@ -41,8 +43,10 @@ def _mxfp4_encode(x: float) -> int:
     best_idx = min(candidates, key=lambda t: abs(t[1] - x))[0]
     return best_idx
 
+
 # 预计算所有编码的值，用于向量化量化（可选）
 _MXFP4_VALUES = np.array([_mxfp4_decode(i) for i in range(16)], dtype=np.float32)
+
 
 def quantize_to_mxfp4(x: np.ndarray) -> np.ndarray:
     """将浮点数数组量化为mxfp4，返回uint8数组，每个元素存储低4位编码"""
@@ -57,6 +61,7 @@ def quantize_to_mxfp4(x: np.ndarray) -> np.ndarray:
         codes[i] = _mxfp4_encode(clipped)
     return codes.reshape(x.shape)
 
+
 # ----------------------------------------------------------------------
 # fp8e8m0 编解码（8位）
 # 位布局: [s][e6][e5][e4][e3][e2][e1][e0]
@@ -70,10 +75,11 @@ def float_to_fp8e8m0(x: float) -> np.uint8:
     # 计算指数: 2^(e-63) ≈ x  => e = round(log2(x)) + 63
     log2x = np.log2(x)
     e = int(np.round(log2x)) + 63
-    e = np.clip(e, 0, 127)   # 7位指数范围
+    e = np.clip(e, 0, 127)  # 7位指数范围
     # 符号位为0，组合成8位
     bits = (0 << 7) | e
     return np.uint8(bits)
+
 
 def fp8e8m0_to_float(bits: np.uint8) -> float:
     """将fp8e8m0位表示转换回浮点数"""
@@ -82,12 +88,13 @@ def fp8e8m0_to_float(bits: np.uint8) -> float:
     val = 2.0 ** (e - 63)
     return -val if s else val
 
+
 # ----------------------------------------------------------------------
 # 主量化函数
 # ----------------------------------------------------------------------
 def quantize_bf16_to_mxfp4(
     array: np.ndarray,
-    dtype_in: np.dtype = np.float32   # 实际应为bfloat16，但numpy无原生支持，用float32代替
+    dtype_in: np.dtype = np.float32,  # 实际应为bfloat16，但numpy无原生支持，用float32代替
 ) -> Tuple[np.ndarray, np.uint8]:
     """
     将bfloat16数组量化为mxfp4，并返回量化系数(fp8e8m0格式)。
@@ -115,7 +122,7 @@ def quantize_bf16_to_mxfp4(
     # 确定缩放因子 scale = 2^exp，使得 max_abs/scale ≤ 6
     # 即 scale = 2^ceil(log2(max_abs/6))
     exp = int(np.ceil(np.log2(max_abs / 6.0)))
-    scale = 2.0 ** exp
+    scale = 2.0**exp
     scale_fp8 = float_to_fp8e8m0(scale)
 
     # 缩放并量化
@@ -123,6 +130,7 @@ def quantize_bf16_to_mxfp4(
     quantized = quantize_to_mxfp4(x_scaled)
 
     return quantized, scale_fp8
+
 
 # ----------------------------------------------------------------------
 # 反量化（验证用）
@@ -150,12 +158,12 @@ if __name__ == "__main__":
     codes, scale_fp8 = quantize_bf16_to_mxfp4(data)
     print("原始数据 (部分):\n", data[:2, :2])
     print("\n量化编码 (uint8, 低4位有效):\n", codes[:2, :2])
-    print(f"缩放因子 (fp8e8m0): 0x{scale_fp8:02X}, 值 = {fp8e8m0_to_float(scale_fp8):.6g}")
+    print(
+        f"缩放因子 (fp8e8m0): 0x{scale_fp8:02X}, 值 = {fp8e8m0_to_float(scale_fp8):.6g}"
+    )
 
     # 反量化对比
     reconstructed = dequantize_mxfp4(codes, scale_fp8)
     print("\n反量化结果 (部分):\n", reconstructed[:2, :2])
     error = np.abs(data - reconstructed)
     print(f"最大绝对误差: {np.max(error):.6f}")
-
-

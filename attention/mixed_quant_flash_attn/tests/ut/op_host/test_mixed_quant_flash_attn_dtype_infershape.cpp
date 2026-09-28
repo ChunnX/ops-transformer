@@ -69,11 +69,9 @@ TEST_P(MixedQuantFlashAttnInferDTypeTest, param)
     auto *dtypeContext = contextHolder.GetContext<gert::InferDataTypeContext>();
     ASSERT_EQ(inferDtypeFunc(dtypeContext), param.expectResult);
     if (param.expectResult == ge::GRAPH_SUCCESS) {
-        EXPECT_EQ(dtypeContext->GetOutputDataType(0),
-                  param.expect_attn_out_dtype);
+        EXPECT_EQ(dtypeContext->GetOutputDataType(0), param.expect_attn_out_dtype);
         if (param.expect_softmax_lse_dtype != ge::DT_UNDEFINED) {
-            EXPECT_EQ(dtypeContext->GetOutputDataType(1),
-                      param.expect_softmax_lse_dtype);
+            EXPECT_EQ(dtypeContext->GetOutputDataType(1), param.expect_softmax_lse_dtype);
         }
     }
 }
@@ -84,4 +82,3 @@ INSTANTIATE_TEST_SUITE_P(
     PrintCaseInfoString<MixedQuantFlashAttnInferDTypeUtParam>);
 
 } // namespace MixedQuantFlashAttnUT
-

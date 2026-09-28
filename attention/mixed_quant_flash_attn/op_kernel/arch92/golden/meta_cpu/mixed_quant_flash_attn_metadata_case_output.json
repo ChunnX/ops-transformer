@@ -1,6 +1,6 @@
 {
 	"errorMessage" : "",
-	"input" : 
+	"input" :
 	{
 		"aicCoreMaxNum" : 64,
 		"aicCoreMinNum" : 64,
@@ -34,10 +34,10 @@
 		"mBaseSize" : 32,
 		"s2BaseSize" : 512
 	},
-	"output" : 
+	"output" :
 	{
 		"sectionNum" : 1,
-		"sectionFaResult" : 
+		"sectionFaResult" :
 		[
 			{
 				"usedCoreNum" : 1,
@@ -47,7 +47,7 @@
 				"firstFdDataWorkspaceIdx" : [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 			}
 		],
-		"sectionFdResult" : 
+		"sectionFdResult" :
 		[
 			{
 				"usedVecNum" : 0,

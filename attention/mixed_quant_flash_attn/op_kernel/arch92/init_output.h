@@ -24,7 +24,8 @@
 #endif
 
 namespace AttentionCommon {
-template <typename T, uint32_t SYNC_ID, uint32_t POP_BUF_START_ADDR, uint32_t POP_BUF_ELE_SIZE, bool ENABLE_LOCK = false>
+template <typename T, uint32_t SYNC_ID, uint32_t POP_BUF_START_ADDR, uint32_t POP_BUF_ELE_SIZE,
+          bool ENABLE_LOCK = false>
 __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNum, uint32_t vecCoreNum, T initValue)
 {
     if ASCEND_IS_AIV {
@@ -33,9 +34,12 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
         uint64_t gmOffset = tmpBlockIdx * singleCoreMaxElementNum;
         if (gmOffset < totalElementNum) {
             uint64_t singleCoreActualElementNum = (gmOffset + singleCoreMaxElementNum > totalElementNum) ?
- 	                                                (totalElementNum - gmOffset) : singleCoreMaxElementNum;
-            LocalTensor<T> popBuffer = AscendC::LocalTensor<uint8_t>(TPosition::VECIN, POP_BUF_START_ADDR, POP_BUF_ELE_SIZE * sizeof(T)).template ReinterpretCast<T>();
- 
+                                                      (totalElementNum - gmOffset) :
+                                                      singleCoreMaxElementNum;
+            LocalTensor<T> popBuffer =
+                AscendC::LocalTensor<uint8_t>(TPosition::VECIN, POP_BUF_START_ADDR, POP_BUF_ELE_SIZE * sizeof(T))
+                    .template ReinterpretCast<T>();
+
             if constexpr (ENABLE_LOCK) {
                 Mutex::Lock<PIPE_V>(SYNC_ID);
             } else {
@@ -48,7 +52,7 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
             } else {
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_ID);
             }
- 
+
             if constexpr (ENABLE_LOCK) {
                 Mutex::Lock<PIPE_MTE3>(SYNC_ID);
             } else {
@@ -77,6 +81,6 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
         }
     }
 }
-}
+} // namespace AttentionCommon
 
 #endif // INIT_OUTPUT_H

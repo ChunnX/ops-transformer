@@ -22,7 +22,7 @@ pytest/
 ├── testcase/
 │   ├── functional_stc.py                # STC 功能用例
 │   └── functional_rdv.py                # RDV 功能用例
-│   
+│
 ├── data/
 │   └── <testset>/                       # 默认 functional_stc；按用例名分子目录
 │       └── <case_safe>/                 # 例 functional_stc_fp4e2m1_stc_bnsd_bf16

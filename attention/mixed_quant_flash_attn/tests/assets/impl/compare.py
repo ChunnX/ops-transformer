@@ -43,7 +43,17 @@ def _get_tolerance(dtype_str):
     return 0.000025, 0.005
 
 
-def _check(atol, rtol, npu_out, golden_out, label, except_label="CPU", comp_label="NPU", verbose_diff=False, max_err_show=10):
+def _check(
+    atol,
+    rtol,
+    npu_out,
+    golden_out,
+    label,
+    except_label="CPU",
+    comp_label="NPU",
+    verbose_diff=False,
+    max_err_show=10,
+):
     """精度对比 + 详细报告打印。返回 TTK compare 结果 dict。
 
     打印风格对齐 pytests/core/compare.py::check_result_：
@@ -55,22 +65,55 @@ def _check(atol, rtol, npu_out, golden_out, label, except_label="CPU", comp_labe
 
     # None / shape / size 校验
     if real is None and expect is None:
-        print(f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})  [both None → PASS]\n└{_SEP}┘", flush=True)
-        return {"pass": True, "precision": 100.0, "error_info": None, "metrics": {"rows": 0}}
+        print(
+            f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})  [both None → PASS]\n└{_SEP}┘",
+            flush=True,
+        )
+        return {
+            "pass": True,
+            "precision": 100.0,
+            "error_info": None,
+            "metrics": {"rows": 0},
+        }
     if real is None or expect is None:
-        print(f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})\n│  [ERROR] one side is None\n└{_SEP}┘", file=sys.stderr, flush=True)
-        return {"pass": False, "precision": 0.0, "error_info": f"{label}: one side is None", "metrics": {}}
+        print(
+            f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})\n│  [ERROR] one side is None\n└{_SEP}┘",
+            file=sys.stderr,
+            flush=True,
+        )
+        return {
+            "pass": False,
+            "precision": 0.0,
+            "error_info": f"{label}: one side is None",
+            "metrics": {},
+        }
     if real.shape != expect.shape:
-        print(f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})\n│  [ERROR] shape不匹配: expect={tuple(expect.shape)}  {comp_label}={tuple(real.shape)}\n└{_SEP}┘", file=sys.stderr, flush=True)
-        return {"pass": False, "precision": 0.0,
-                "error_info": f"{label}: shape mismatch npu={real.shape} gold={expect.shape}", "metrics": {}}
+        print(
+            f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})\n│  [ERROR] shape不匹配: expect={tuple(expect.shape)}  {comp_label}={tuple(real.shape)}\n└{_SEP}┘",
+            file=sys.stderr,
+            flush=True,
+        )
+        return {
+            "pass": False,
+            "precision": 0.0,
+            "error_info": f"{label}: shape mismatch npu={real.shape} gold={expect.shape}",
+            "metrics": {},
+        }
 
     real = real.astype(np.float32).reshape(-1)
     expect = expect.astype(np.float32).reshape(-1)
     total = real.size
     if total == 0:
-        print(f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})  [空输出 → PASS]\n└{_SEP}┘", flush=True)
-        return {"pass": True, "precision": 100.0, "error_info": None, "metrics": {"rows": 0}}
+        print(
+            f"\n┌{_SEP}┐\n│  精度报告: {label}  ({except_label} vs {comp_label})  [空输出 → PASS]\n└{_SEP}┘",
+            flush=True,
+        )
+        return {
+            "pass": True,
+            "precision": 100.0,
+            "error_info": None,
+            "metrics": {"rows": 0},
+        }
 
     # isclose 判定
     diff_result = np.isclose(real, expect, rtol=rtol, atol=atol, equal_nan=True)
@@ -106,9 +149,14 @@ def _check(atol, rtol, npu_out, golden_out, label, except_label="CPU", comp_labe
     print(f"│  MeanAbsErr  : {mean_abs:.8f}", flush=True)
     print(f"│  MaxRelErr   : {max_rel:.8f}", flush=True)
     print(f"│  MeanRelErr  : {mean_rel:.8f}", flush=True)
-    print(f"│  FailElems   : {fail_cnt} / {total}  ({fail_ratio*100:.4f}%)", flush=True)
+    print(
+        f"│  FailElems   : {fail_cnt} / {total}  ({fail_ratio * 100:.4f}%)", flush=True
+    )
     print(f"│  PctRlt      : {fulfill_percent:.6f}%", flush=True)
-    print(f"│  Threshold   : atol={atol}  rtol={rtol*100:.2f}%  pctThd≥{pct_thd:.2f}%  maxRelErr<{MAX_DIFF_HD}", flush=True)
+    print(
+        f"│  Threshold   : atol={atol}  rtol={rtol * 100:.2f}%  pctThd≥{pct_thd:.2f}%  maxRelErr<{MAX_DIFF_HD}",
+        flush=True,
+    )
     print(f"│  结论        : {'✓ PASS' if passed else '✗ FAIL'}", flush=True)
 
     # ===== 失败点位明细 =====
@@ -116,44 +164,71 @@ def _check(atol, rtol, npu_out, golden_out, label, except_label="CPU", comp_labe
         print(f"├{_SEP}┤", flush=True)
         show_cnt = len(err_idx) if verbose_diff else min(max_err_show, len(err_idx))
         if verbose_diff:
-            print(f"│  全部 {len(err_idx)} 个超阈値元素 (rtol={rtol*100:.2f}%):", flush=True)
+            print(
+                f"│  全部 {len(err_idx)} 个超阈値元素 (rtol={rtol * 100:.2f}%):",
+                flush=True,
+            )
         else:
             print(f"│  前{show_cnt}个不通过元素:", flush=True)
-        print(f"│  {'idx':>10}  {except_label:>14}  {comp_label:>14}  {'absErr':>12}  {'relErr':>12}", flush=True)
+        print(
+            f"│  {'idx':>10}  {except_label:>14}  {comp_label:>14}  {'absErr':>12}  {'relErr':>12}",
+            flush=True,
+        )
         for i in err_idx[:show_cnt]:
-            print(f"│  {int(i):>10}  {float(expect[i]):>+14.8f}  {float(real[i]):>+14.8f}"
-                  f"  {float(diff_abs[i]):>12.8f}  {float(rel_err[i]):>12.6f}", flush=True)
+            print(
+                f"│  {int(i):>10}  {float(expect[i]):>+14.8f}  {float(real[i]):>+14.8f}"
+                f"  {float(diff_abs[i]):>12.8f}  {float(rel_err[i]):>12.6f}",
+                flush=True,
+            )
         if not verbose_diff and len(err_idx) > max_err_show:
-            print(f"│  ... (共 {len(err_idx)} 个失败点，仅显示前 {max_err_show} 个)", flush=True)
+            print(
+                f"│  ... (共 {len(err_idx)} 个失败点，仅显示前 {max_err_show} 个)",
+                flush=True,
+            )
 
         # max rel err 点位（即使不 verbose 也打印）
         if err_idx.size > 0:
             max_rel_idx = int(err_idx[np.argmax(err_diff)])
             print(f"├{_SEP}┤", flush=True)
-            print(f"│  MaxRelErr 点位:", flush=True)
-            print(f"│  idx={max_rel_idx}  {except_label}={float(expect[max_rel_idx]):>+14.8f}"
-                  f"  {comp_label}={float(real[max_rel_idx]):>+14.8f}"
-                  f"  absErr={float(diff_abs[max_rel_idx]):>12.8f}"
-                  f"  relErr={float(rel_err[max_rel_idx]):>12.6f}", flush=True)
+            print("│  MaxRelErr 点位:", flush=True)
+            print(
+                f"│  idx={max_rel_idx}  {except_label}={float(expect[max_rel_idx]):>+14.8f}"
+                f"  {comp_label}={float(real[max_rel_idx]):>+14.8f}"
+                f"  absErr={float(diff_abs[max_rel_idx]):>12.8f}"
+                f"  relErr={float(rel_err[max_rel_idx]):>12.6f}",
+                flush=True,
+            )
     print(f"└{_SEP}┘", flush=True)
 
     # 失败时同时打到 stderr 便于 TTK log 抓取
     if not passed:
-        print(f"[compare:{label}] FAIL fulfill={fulfill_percent:.4f}% (thd={pct_thd:.2f}%) "
-              f"fail={fail_cnt}/{total} max_abs={max_abs:.8f} max_rel={max_rel:.8f} (thd={MAX_DIFF_HD})",
-              file=sys.stderr, flush=True)
+        print(
+            f"[compare:{label}] FAIL fulfill={fulfill_percent:.4f}% (thd={pct_thd:.2f}%) "
+            f"fail={fail_cnt}/{total} max_abs={max_abs:.8f} max_rel={max_rel:.8f} (thd={MAX_DIFF_HD})",
+            file=sys.stderr,
+            flush=True,
+        )
 
     return {
         "pass": bool(passed),
         "precision": float(fulfill_percent),
-        "error_info": None if passed else (
-            f"{label}: fail={fail_cnt}/{total} ({fail_ratio*100:.4f}%) "
-            f"max_abs={max_abs:.8f} max_rel={max_rel:.8f}"),
+        "error_info": None
+        if passed
+        else (
+            f"{label}: fail={fail_cnt}/{total} ({fail_ratio * 100:.4f}%) "
+            f"max_abs={max_abs:.8f} max_rel={max_rel:.8f}"
+        ),
         "metrics": {
-            "max_abs": max_abs, "mean_abs": mean_abs,
-            "max_rel": max_rel, "mean_rel": mean_rel,
-            "fail_cnt": fail_cnt, "total": total, "fail_ratio": float(fail_ratio),
-            "fulfill_percent": float(fulfill_percent), "atol": atol, "rtol": rtol,
+            "max_abs": max_abs,
+            "mean_abs": mean_abs,
+            "max_rel": max_rel,
+            "mean_rel": mean_rel,
+            "fail_cnt": fail_cnt,
+            "total": total,
+            "fail_ratio": float(fail_ratio),
+            "fulfill_percent": float(fulfill_percent),
+            "atol": atol,
+            "rtol": rtol,
         },
     }
 
@@ -170,8 +245,11 @@ def compare(*outputs, **kwargs):
       - max_err_show: 非 verbose 时显示的失败点数（默认 10）
     """
     if len(outputs) < 2 or len(outputs) % 2 != 0:
-        return {"pass": False, "precision": "invalid",
-                "error_info": "compare expects NPU outputs followed by golden outputs"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": "compare expects NPU outputs followed by golden outputs",
+        }
     half = len(outputs) // 2
     npu_outputs = outputs[:half]
     golden_outputs = outputs[half:]
@@ -183,16 +261,39 @@ def compare(*outputs, **kwargs):
     dtype_str = str(getattr(npu_attn, "dtype", "float32"))
     atol, rtol = _get_tolerance(dtype_str)
 
-    attn_stats = _check(atol, rtol, npu_attn, golden_outputs[0], "attn_out",
-                        verbose_diff=verbose_diff, max_err_show=max_err_show)
+    attn_stats = _check(
+        atol,
+        rtol,
+        npu_attn,
+        golden_outputs[0],
+        "attn_out",
+        verbose_diff=verbose_diff,
+        max_err_show=max_err_show,
+    )
 
-    lse_stats = {"pass": True, "precision": 100.0, "error_info": None, "metrics": {"rows": 0}}
+    lse_stats = {
+        "pass": True,
+        "precision": 100.0,
+        "error_info": None,
+        "metrics": {"rows": 0},
+    }
     if half >= 2:
         npu_lse_np = _to_numpy(npu_outputs[1])
         gold_lse_np = _to_numpy(golden_outputs[1])
-        if (npu_lse_np is not None and gold_lse_np is not None
-                and npu_lse_np.size > 0 and gold_lse_np.size > 0):
-            lse_stats = _check(atol, rtol, npu_outputs[1], golden_outputs[1], "softmax_lse",
-                               verbose_diff=verbose_diff, max_err_show=max_err_show)
+        if (
+            npu_lse_np is not None
+            and gold_lse_np is not None
+            and npu_lse_np.size > 0
+            and gold_lse_np.size > 0
+        ):
+            lse_stats = _check(
+                atol,
+                rtol,
+                npu_outputs[1],
+                golden_outputs[1],
+                "softmax_lse",
+                verbose_diff=verbose_diff,
+                max_err_show=max_err_show,
+            )
 
     return [attn_stats, lse_stats]

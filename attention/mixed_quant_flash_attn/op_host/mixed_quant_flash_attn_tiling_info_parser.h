@@ -22,9 +22,9 @@ namespace optiling {
 namespace mixed_quant_flash_attn {
 class FaInfoParser {
 public:
-    explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FaInfoParser(const gert::TilingContext *context)
+        : context_(context)
+    {}
     ~FaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;

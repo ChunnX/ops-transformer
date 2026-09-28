@@ -14,8 +14,8 @@ import os
 import subprocess
 from typing import Optional, List
 
-class MixedQuantFlashAttnMetadataOp:
 
+class MixedQuantFlashAttnMetadataOp:
     def __init__(
         self,
         binary_name: str = "mixed_quant_flash_attn_metadata_test",
@@ -102,11 +102,13 @@ class MixedQuantFlashAttnMetadataOp:
     def _run_binary(self) -> dict:
         if not os.path.isfile(self.binary_path):
             raise FileNotFoundError(f"Binary not found: {self.binary_path}")
-        
+
         command = [
             self.binary_path,
-            "-i", "mixed_quant_flash_attn_metadata_case.json",
-            "-o", "./"
+            "-i",
+            "mixed_quant_flash_attn_metadata_case.json",
+            "-o",
+            "./",
         ]
         result = subprocess.run(
             command,
@@ -125,9 +127,7 @@ class MixedQuantFlashAttnMetadataOp:
             output_json = json.load(f)
 
         if output_json.get("errorMessage", ""):
-            raise RuntimeError(
-                f"Operator error: {output_json['errorMessage']}"
-            )
+            raise RuntimeError(f"Operator error: {output_json['errorMessage']}")
 
         return output_json
 

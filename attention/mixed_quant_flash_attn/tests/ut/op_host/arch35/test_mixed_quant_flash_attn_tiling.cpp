@@ -69,9 +69,9 @@ TEST_P(MixedQuantFlashAttnArch35TilingTest, tiling)
                     true);
 }
 
-INSTANTIATE_TEST_SUITE_P(MixedQuantFlashAttn, MixedQuantFlashAttnArch35TilingTest,
-                         testing::ValuesIn(GetCasesFromCsv<MixedQuantFlashAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<MixedQuantFlashAttnTilingUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    MixedQuantFlashAttn, MixedQuantFlashAttnArch35TilingTest,
+    testing::ValuesIn(GetCasesFromCsv<MixedQuantFlashAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<MixedQuantFlashAttnTilingUtParam>);
 
 } // namespace MixedQuantFlashAttnUT
-

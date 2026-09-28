@@ -23,7 +23,7 @@
 #endif
 
 namespace regbaseutil {
-enum class PseLayoutTypeEnum: uint32_t{
+enum class PseLayoutTypeEnum : uint32_t {
     PSE_S1S2 = 0,
     PSE_1S2 = 1,
     PSE_SLOPE_BN = 2,
@@ -54,5 +54,5 @@ struct PseInfo {
     int64_t qStartIdx;
     int64_t kvStartIdx;
 };
-}
+} // namespace regbaseutil
 #endif

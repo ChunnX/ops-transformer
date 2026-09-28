@@ -44,24 +44,24 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     const std::vector<FaLayout> supportedKvLayouts = {FaLayout::PA_NZ, FaLayout::PA_BNBD, FaLayout::PA_BBND};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
-    if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
-        supportedQLayouts.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
-            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND");
+    if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) == supportedQLayouts.end()) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q", LayoutToSerialString(faInfo.qLayout).c_str(),
+                                              "The value of layout_q must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
-                    supportedKvLayouts.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-                    "The value of layout_kv(layout of K/V) can only be PA_NZ for MixedQuantFlashAttn"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+            "The value of layout_kv(layout of K/V) can only be PA_NZ for MixedQuantFlashAttn"),
+        return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_attn_out",
-            LayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_attn_out must be in BNSD/BSND/TND");
+                                              LayoutToSerialString(faInfo.outLayout).c_str(),
+                                              "The value of layout_attn_out must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
@@ -80,28 +80,28 @@ ge::graphStatus CommonChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     // Shape dimension checks (single-para: only dim count, no layout dependency)
     const auto &qShape = faInfo.opParamInfo.query.shape->GetStorageShape();
-    OP_CHECK_IF(qShape.GetDimNum() < INPUT_Q_SHAPE_MIN_DIMS || qShape.GetDimNum() > INPUT_Q_SHAPE_MAX_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "query",
-            std::to_string(qShape.GetDimNum()).c_str(), "3D or 4D"),
+    OP_CHECK_IF(
+        qShape.GetDimNum() < INPUT_Q_SHAPE_MIN_DIMS || qShape.GetDimNum() > INPUT_Q_SHAPE_MAX_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "query", std::to_string(qShape.GetDimNum()).c_str(), "3D or 4D"),
         return ge::GRAPH_FAILED);
 
     const auto &kShape = faInfo.opParamInfo.key.shape->GetStorageShape();
-    OP_CHECK_IF(kShape.GetDimNum() < INPUT_KV_SHAPE_MIN_DIMS || kShape.GetDimNum() > INPUT_KV_SHAPE_MAX_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "key",
-            std::to_string(kShape.GetDimNum()).c_str(), "3D to 5D"),
+    OP_CHECK_IF(
+        kShape.GetDimNum() < INPUT_KV_SHAPE_MIN_DIMS || kShape.GetDimNum() > INPUT_KV_SHAPE_MAX_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "key", std::to_string(kShape.GetDimNum()).c_str(), "3D to 5D"),
         return ge::GRAPH_FAILED);
 
     const auto &vShape = faInfo.opParamInfo.value.shape->GetStorageShape();
-    OP_CHECK_IF(vShape.GetDimNum() < INPUT_KV_SHAPE_MIN_DIMS || vShape.GetDimNum() > INPUT_KV_SHAPE_MAX_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "value",
-            std::to_string(vShape.GetDimNum()).c_str(), "3D to 5D"),
+    OP_CHECK_IF(
+        vShape.GetDimNum() < INPUT_KV_SHAPE_MIN_DIMS || vShape.GetDimNum() > INPUT_KV_SHAPE_MAX_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "value", std::to_string(vShape.GetDimNum()).c_str(), "3D to 5D"),
         return ge::GRAPH_FAILED);
 
     const auto &attnOutShape = faInfo.opParamInfo.attnOut.shape->GetStorageShape();
     OP_CHECK_IF(attnOutShape.GetDimNum() < INPUT_Q_SHAPE_MIN_DIMS || attnOutShape.GetDimNum() > INPUT_Q_SHAPE_MAX_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "attn_out",
-            std::to_string(attnOutShape.GetDimNum()).c_str(), "3D or 4D"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "attn_out",
+                                             std::to_string(attnOutShape.GetDimNum()).c_str(), "3D or 4D"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -157,10 +157,10 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (attnOutDesc != nullptr) {
         if (attnOutDesc->GetDataType() != queryDtype) {
-            std::string reason = "The dtype of attn_out must be the same as dtype(" +
-                ToString(queryDtype) + ") of query";
+            std::string reason =
+                "The dtype of attn_out must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "attn_out",
-                ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
+                                                  ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -168,9 +168,9 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
     if (kDescaleDesc != nullptr && vDescaleDesc != nullptr) {
         if (kDescaleDesc->GetDataType() != vDescaleDesc->GetDataType()) {
             std::string reason = "The dtype of v_descale must be the same as dtype(" +
-                ToString(kDescaleDesc->GetDataType()) + ") of k_descale";
+                                 ToString(kDescaleDesc->GetDataType()) + ") of k_descale";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "v_descale",
-                ToString(vDescaleDesc->GetDataType()).c_str(), reason.c_str());
+                                                  ToString(vDescaleDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -186,9 +186,9 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FaTilingInfo &faInfo)
 {
     if ((faInfo.n1Size < 0) || (faInfo.n2Size < 0)) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-            ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key",
-            shapeStr.c_str(), "N of query and key must be greater than or equal to 0");
+                               ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key", shapeStr.c_str(),
+                                               "N of query and key must be greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(faInfo.n1Size < faInfo.n2Size,
@@ -198,9 +198,9 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FaTilingInfo &faInfo)
 
     if (faInfo.n1Size % faInfo.n2Size != 0) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-            ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                               ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
 
@@ -215,41 +215,41 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
 {
     if (faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0) {
         std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ")";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis B",
-            std::to_string(faInfo.bSize).c_str(), reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis B", std::to_string(faInfo.bSize).c_str(),
+                                              reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (faInfo.qLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.qTSize <= 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-                ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                "T of query must be greater than 0"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        faInfo.opName, "query", ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                        "T of query must be greater than 0"),
+                    return ge::GRAPH_FAILED);
     }
     if (faInfo.kvLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.kTSize <= 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "key",
-                ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
-                "T of key/value must be greater than 0"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        faInfo.opName, "key", ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
+                        "T of key/value must be greater than 0"),
+                    return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(faInfo.n1Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-            ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "N of query must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    faInfo.opName, "query", ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                    "N of query must be greater than 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "key",
-            ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
-            "N of key/value must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "key",
+                                                      ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
+                                                      "N of key/value must be greater than 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s1Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-            ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "S of query must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    faInfo.opName, "query", ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                    "S of query must be greater than 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s2Size <= 0,
                 OP_LOGE(faInfo.opName, "The axis KV_S must be greater than 0, the current is %ld.", faInfo.s2Size),
                 return ge::GRAPH_FAILED);
@@ -260,11 +260,11 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                        std::to_string(faInfo.qkHeadDim).c_str(),
                                                        "The value of axis D of query and key can only be 128"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value",
-                                                      std::to_string(faInfo.vHeadDim).c_str(),
-                                                      "The value of axis D of value can only be 128"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value", std::to_string(faInfo.vHeadDim).c_str(),
+                                              "The value of axis D of value can only be 128"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -279,8 +279,7 @@ struct LayoutConstraintConfig {
 };
 
 static const std::map<FaLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    {FaLayout::BNSD,
-      {{FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
+    {FaLayout::BNSD, {{FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
     {FaLayout::BSND, {{FaLayout::PA_NZ}, {FaLayout::BSND}}},
     {FaLayout::TND, {{FaLayout::PA_NZ}, {FaLayout::TND}}},
 };
@@ -358,9 +357,9 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FaTilingInfo &
 
     if (faInfo.blockSize % kvBlockElemNum != 0) {
         std::string reason = "The value of block_size must be a multiple of " + std::to_string(kvBlockElemNum) +
-            " (32 / sizeof(kv_dtype))";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size",
-            std::to_string(faInfo.blockSize).c_str(), reason.c_str());
+                             " (32 / sizeof(kv_dtype))";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                              reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -385,15 +384,15 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FaTilingInfo &
 
 ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
 {
-    if (faInfo.kvLayout == FaLayout::PA_NZ|| faInfo.kvLayout == FaLayout::PA_BBND ||
+    if (faInfo.kvLayout == FaLayout::PA_NZ || faInfo.kvLayout == FaLayout::PA_BBND ||
         faInfo.kvLayout == FaLayout::PA_BNBD) {
         return CheckKVShapeForPageAttention(faInfo);
     }
 
     std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) +
-        " is not supported for MixedQuantFlashAttn, only PA_NZ is supported";
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
-        LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
+                         " is not supported for MixedQuantFlashAttn, only PA_NZ is supported";
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                                          reason.c_str());
     return ge::GRAPH_FAILED;
 }
 

@@ -61,22 +61,21 @@ struct FaMetaData {
     uint32_t aicCoreNum_;
     uint32_t aivCoreNum_;
     uint32_t *headMetadata; // [HEAD_METADATA_SIZE];
-    uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
+    uint32_t *faMetadata;   // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
+    uint32_t *fdMetadata;   // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr, uint32_t sectionNum)
         : FaMetaData(metadataPtr, sectionNum, AIC_CORE_NUM, AIV_CORE_NUM)
-    {
-    }
+    {}
 
     FaMetaData(void *metadataPtr, uint32_t sectionNum, uint32_t aicCoreNum, uint32_t aivCoreNum)
         : sectionNum(sectionNum),
-        aicCoreNum_(aicCoreNum),
-        aivCoreNum_(aivCoreNum),
-        headMetadata(static_cast<uint32_t*>(metadataPtr)),
-        faMetadata(headMetadata + HEAD_METADATA_SIZE),
-        fdMetadata(faMetadata + sectionNum * aicCoreNum_ * FA_METADATA_SIZE)
+          aicCoreNum_(aicCoreNum),
+          aivCoreNum_(aivCoreNum),
+          headMetadata(static_cast<uint32_t *>(metadataPtr)),
+          faMetadata(headMetadata + HEAD_METADATA_SIZE),
+          fdMetadata(faMetadata + sectionNum * aicCoreNum_ * FA_METADATA_SIZE)
     {
-            headMetadata[0] = sectionNum;
+        headMetadata[0] = sectionNum;
     }
 
     void SetHeadMetadata(uint32_t metaIdx, uint32_t val)

@@ -46,7 +46,7 @@ public:
     static constexpr uint8_t QUANT_COMPUTE_MODE = CubeBlockType::QUANT_COMPUTE_MODE;
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT_Q;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT_Q; //todo 整改
+    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT_Q; // todo 整改
     using Q_T = typename CubeBlockType::Q_T;
     using MM_T = typename CubeBlockType::MM_T;
     using OUT_T = typename VecFaBlockType::OUT_T;
@@ -56,10 +56,10 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
     /* ===== 核间共享 buffer [静态 LocalTensor]===== */
-    LocalTensor<uint8_t> l1PBuffers[CubeBlockType::L1_P_BUF_NUM];     // 2 buf, 按bank布局
-    LocalTensor<uint8_t> l1QBuffers[CubeBlockType::L1_Q_BUF_NUM];     // 2 buf, 按bank布局
-    LocalTensor<uint8_t> ubBmm1Buffers;   // BMM1 result buf
-    LocalTensor<uint8_t> ubBmm2Buffers;   // BMM2 result buf
+    LocalTensor<uint8_t> l1PBuffers[CubeBlockType::L1_P_BUF_NUM]; // 2 buf, 按bank布局
+    LocalTensor<uint8_t> l1QBuffers[CubeBlockType::L1_Q_BUF_NUM]; // 2 buf, 按bank布局
+    LocalTensor<uint8_t> ubBmm1Buffers;                           // BMM1 result buf
+    LocalTensor<uint8_t> ubBmm2Buffers;                           // BMM2 result buf
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> seqUsedGmQ;
@@ -73,7 +73,7 @@ public:
 
     ConstInfoX constInfo;
 
-    __tiling_data_ptr__ MixedQuantFlashAttnTiling* tilingData = nullptr;
+    __tiling_data_ptr__ MixedQuantFlashAttnTiling *tilingData = nullptr;
 
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -114,15 +114,16 @@ public:
     static constexpr uint32_t mm2ResSize = UB_MM2RES_BYTE * UB_MM2RES_BUF_NUM; // 2buf
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionAntiQuantGqaKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+    __aicore__ inline FlashAttentionAntiQuantGqaKernel()
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                __gm__ uint8_t *learnableSink, __gm__ uint8_t *attenMask,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, 
-                                __gm__ uint8_t *workspace, __gm__ uint8_t *faMetaData,
-                                 __tiling_data_ptr__ MixedQuantFlashAttnTiling* tiling)
+                                __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *seqUsedQ,
+                                __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink, __gm__ uint8_t *attenMask,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *faMetaData, __tiling_data_ptr__ MixedQuantFlashAttnTiling *tiling)
     {
         this->tilingData = tiling;
 
@@ -139,27 +140,27 @@ public:
         // valuePtr = value;
 
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1); 
+            cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
 
-        qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);  // TODO parser需适配
+        qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size); // TODO parser需适配
         kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
 
         InitShareBuf();
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock();
-            cubeBlock.InitCubeInput(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, 
-                                    seqUsedQ, seqUsedKv, blockTable, kDescale, vDescale);
+            cubeBlock.InitCubeInput(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, seqUsedQ, seqUsedKv,
+                                    blockTable, kDescale, vDescale);
         }
 
         if ASCEND_IS_AIV {
             vecFaBlock.InitVecBlock();
-            vecFaBlock.InitVecInput(query, seqUsedQ, seqUsedKv, attenMask,
-                                  learnableSink, softmaxLse, attentionOut, workspace);
+            vecFaBlock.InitVecInput(query, seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
+                                    workspace);
             if constexpr (QUANT_COMPUTE_MODE == AntiquantMode_FP8_PC) {
                 vecFaBlock.InitQuant(kDescale, vDescale);
             }
@@ -173,8 +174,9 @@ public:
 
             if (isFd) {
                 vecFdBlock.InitParams();
-                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm, this->vecFaBlock.accumOutGm, 
-                                            this->vecFaBlock.attentionOutGm, this->seqUsedGmQ, this->seqUsedGmKv, keyPtr);
+                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
+                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
+                                            this->seqUsedGmQ, this->seqUsedGmKv, keyPtr);
                 if (learnableSink != nullptr) {
                     sinkGm.SetGlobalBuffer((__gm__ Q_T *)learnableSink);
                     constInfo.learnableSinkFlag = true;
@@ -191,7 +193,7 @@ public:
 
     __aicore__ inline void InitShareBuf()
     {
-        if constexpr(QUANT_COMPUTE_MODE == AntiquantMode_FP8_PC) {
+        if constexpr (QUANT_COMPUTE_MODE == AntiquantMode_FP8_PC) {
             l1QBuffers[0] = LocalTensor<uint8_t>(TPosition::A1, GET_OFFSET(L1BufView, l1QBuffer0), L1_Q_SLOT_BYTES);
             l1QBuffers[1] = LocalTensor<uint8_t>(TPosition::A1, GET_OFFSET(L1BufView, l1QBuffer1), L1_Q_SLOT_BYTES);
         }
@@ -235,7 +237,7 @@ public:
         const auto &workspaceParams = this->tilingData->mixedQuantFlashAttnWorkspaceParams;
         const auto &pageAttentionParams = this->tilingData->mixedQuantFlashAttnPageAttentionParams;
         // 必须先设置核号，后续 GetFAMetaDataIndex(constInfo.aicIdx,...) 依赖它
-        //spilit param
+        // spilit param
         if ASCEND_IS_AIC {
             constInfo.aicIdx = GetBlockIdx();
             // pageAttention
@@ -258,20 +260,25 @@ public:
             constInfo.logSumExpSize = workspaceParams.logSumExpSize;
             // LSE
             constInfo.isSoftmaxLseEnable = baseParams.isSoftMaxLseEnable;
-            //fd
+            // fd
             constInfo.isFd = faMetaDataGm.GetValue(MIXED_QUANT_FLASH_ATTN_IS_FD_INDEX);
             isFd = constInfo.isFd;
         }
-        //share param
-        constInfo.bN2Start = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_BN2_START_INDEX));
-        constInfo.gS1OStart = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_M_START_INDEX));
-        constInfo.s2OStart = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_S2_START_INDEX));
-        constInfo.bN2End = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_BN2_END_INDEX));
-        constInfo.gS1OEnd = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx,MIXED_QUANT_FLASH_ATTN_M_END_INDEX));
-        constInfo.s2OEnd = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_S2_END_INDEX));
+        // share param
+        constInfo.bN2Start =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_BN2_START_INDEX));
+        constInfo.gS1OStart =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_M_START_INDEX));
+        constInfo.s2OStart =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_S2_START_INDEX));
+        constInfo.bN2End =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_BN2_END_INDEX));
+        constInfo.gS1OEnd =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_M_END_INDEX));
+        constInfo.s2OEnd =
+            faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_S2_END_INDEX));
         constInfo.coreFirstTmpOutWsPos = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX)
-        );
+            GetFAMetaDataIndex(constInfo.aicIdx, MIXED_QUANT_FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
 
         constInfo.bSize = baseParams.bSize;
         constInfo.t1Size = baseParams.t1Size;
@@ -302,7 +309,8 @@ public:
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx)
     {
-       return MIXED_QUANT_FLASH_ATTN_METADATA_HEAD_SIZE + MIXED_QUANT_FLASH_ATTN_METADATA_SIZE * aicCoreNum + MQFA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return MIXED_QUANT_FLASH_ATTN_METADATA_HEAD_SIZE + MIXED_QUANT_FLASH_ATTN_METADATA_SIZE * aicCoreNum +
+               MQFA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void FlashAttention()
@@ -348,7 +356,6 @@ public:
                 }
             }
         }
-
     }
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -363,7 +370,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            //TODO TND适配
+            // TODO TND适配
             if (constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
@@ -405,8 +412,8 @@ public:
         return TASK_DEAL_MODE::CREATE_TASK;
     }
 
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t & preTokenLeftUp,
-                                                 int64_t & nextTokenLeftUp)
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
+                                                 int64_t &nextTokenLeftUp)
     {
         preTokenLeftUp = constInfo.preTokens;
         nextTokenLeftUp = constInfo.nextTokens;
@@ -449,8 +456,10 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) - 1;
+        int64_t s1GLastToken =
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+            1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
@@ -494,13 +503,14 @@ public:
         }
         if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) { // last line
             tailS2Split = constInfo.s2OEnd > 0U ? true : false;
-            curS2End = constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
+            curS2End =
+                constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
         }
     }
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];          // 本轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
 
         if (runInfo0.isValid) {
@@ -512,7 +522,7 @@ public:
 
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
-            } else{
+            } else {
                 ComputeVec1(runInfo0);
             }
         }
@@ -529,9 +539,9 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX & runInfo)
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        uint32_t l1QBufId = runInfo.mloop % L1_Q_BUF_NUM; 
+        uint32_t l1QBufId = runInfo.mloop % L1_Q_BUF_NUM;
         LocalTensor<Q_T> l1QBuf = l1QBuffers[l1QBufId].template ReinterpretCast<Q_T>();
 
         uint32_t bmm1BufId = runInfo.loop % UB_MM1RES_BUF_NUM;
@@ -541,22 +551,21 @@ public:
         cubeBlock.IterateBmm1(l1QBuf, bmm1Buf, bmm1BufId, runInfo);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX & runInfo)
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        uint32_t l1PBufId = runInfo.loop % L1_P_BUF_NUM; 
+        uint32_t l1PBufId = runInfo.loop % L1_P_BUF_NUM;
         LocalTensor<Q_T> l1PBuf = l1PBuffers[l1PBufId].template ReinterpretCast<Q_T>();
 
         uint32_t bmm2BufId = runInfo.loop % UB_MM2RES_BUF_NUM;
         uint32_t bmm2BufOffset = bmm2BufId * UB_MM2RES_BYTE;
         LocalTensor<MM_T> bmm2Buf = ubBmm2Buffers[bmm2BufOffset].template ReinterpretCast<MM_T>();
-        
+
         cubeBlock.IterateBmm2(l1PBuf, bmm2Buf, l1PBufId, bmm2BufId, runInfo);
     }
 
-    __aicore__ inline void ComputeVec0(RunInfoX & runInfo)
+    __aicore__ inline void ComputeVec0(RunInfoX &runInfo)
     {
-        
-        uint32_t l1QBufId = runInfo.mloop % L1_Q_BUF_NUM; 
+        uint32_t l1QBufId = runInfo.mloop % L1_Q_BUF_NUM;
         LocalTensor<Q_T> l1QBuf = l1QBuffers[l1QBufId].template ReinterpretCast<Q_T>();
 
         uint32_t bmm2BufId = runInfo.loop % UB_MM2RES_BUF_NUM;
@@ -566,9 +575,9 @@ public:
         vecFaBlock.ProcessVec0(l1QBuf, l1QBufId, bmm2Buf, runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX & runInfo)
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        uint32_t l1PBufId = runInfo.loop % L1_P_BUF_NUM; 
+        uint32_t l1PBufId = runInfo.loop % L1_P_BUF_NUM;
         LocalTensor<Q_T> l1PBuf = l1PBuffers[l1PBufId].template ReinterpretCast<Q_T>();
 
         uint32_t bmm1BufId = runInfo.loop % UB_MM1RES_BUF_NUM;
@@ -578,7 +587,7 @@ public:
         vecFaBlock.ProcessVec1(l1PBuf, l1PBufId, bmm1Buf, bmm1BufId, runInfo);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX & runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
         uint32_t bmm2BufId = runInfo.loop % UB_MM2RES_BUF_NUM;
         uint32_t bmm2BufOffset = bmm2BufId * UB_MM2RES_BYTE;
@@ -595,7 +604,7 @@ public:
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX & info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
         info.loop = loop;
         info.mloop = mloop;
@@ -701,12 +710,14 @@ public:
         FDparamsX fdParams;
         fdParams.fdBN2Idx = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_BN2_IDX_INDEX));
         fdParams.fdMIdx = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_M_IDX_INDEX));
-        fdParams.fdWorkspaceIdx = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_WORKSPACE_IDX_INDEX));
-        fdParams.fdS2SplitNum = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_WORKSPACE_NUM_INDEX));
+        fdParams.fdWorkspaceIdx =
+            faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_WORKSPACE_IDX_INDEX));
+        fdParams.fdS2SplitNum =
+            faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_WORKSPACE_NUM_INDEX));
         fdParams.mStart = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_M_START_INDEX));
         fdParams.mLen = faMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, MQFA_FD_M_NUM_INDEX));
         fdParams.fdCoreEnable = fdParams.mLen > 0 ? 1U : 0U;
-        
+
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         SyncAll();

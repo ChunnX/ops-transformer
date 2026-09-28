@@ -18,14 +18,16 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus aclnnMixedQuantFlashAttnMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional,const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-    int64_t numHeadsKv, int64_t headDim, int64_t quantComputeMode, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+    int64_t quantComputeMode, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
     const char *layoutKv, const char *layoutAttnOut, const aclTensor *metaData, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnMixedQuantFlashAttnMetadata(void *workspace, uint64_t workspaceSize,
-                                                                          aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnMixedQuantFlashAttnMetadata(void *workspace,
+                                                                                    uint64_t workspaceSize,
+                                                                                    aclOpExecutor *executor,
+                                                                                    aclrtStream stream);
 
 #ifdef __cplusplus
 }

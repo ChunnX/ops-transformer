@@ -22,14 +22,14 @@ const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 
-std::tuple<at::Tensor, at::Tensor>
-mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &k_descale, const at::Tensor &v_descale,
-               const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
-               const c10::optional<at::Tensor> &seqused_q,
-               const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
-               const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
-               int64_t quant_compute_mode, double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
-               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_attn_out, bool return_softmax_lse)
+std::tuple<at::Tensor, at::Tensor> mixed_quant_flash_attn(
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &k_descale,
+    const at::Tensor &v_descale, const c10::optional<at::Tensor> &block_table,
+    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata, int64_t quant_compute_mode,
+    double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
+    int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_attn_out, bool return_softmax_lse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -77,7 +77,6 @@ mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tenso
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_attn_out_ptr = const_cast<char *>(layout_attn_out.c_str());
 
-
     TensorWrapper wrapperK = {k, ACL_DT_UNDEFINED};
     int64_t tempK = static_cast<int64_t>(k.scalar_type());
     if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(k.scalar_type())] == ACL_UINT8) {
@@ -122,9 +121,10 @@ mixed_quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tenso
         wrapperVDescale.dtype = kATenScalarTypeToAclDataTypeTable[tempVDescale];
     }
 
-    ACLNN_CMD(aclnnMixedQuantFlashAttn, q, wrapperK, wrapperV, wrapperKDescale, wrapperVDescale, block_table, cu_seqlens_q, seqused_q, seqused_kv, sinks, attn_mask,
-              metadata, quant_compute_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
-              layout_kv_ptr, layout_attn_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
+    ACLNN_CMD(aclnnMixedQuantFlashAttn, q, wrapperK, wrapperV, wrapperKDescale, wrapperVDescale, block_table,
+              cu_seqlens_q, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_compute_mode, softmax_scale,
+              mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_kv_ptr,
+              layout_attn_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }

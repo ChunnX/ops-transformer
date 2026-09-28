@@ -81,10 +81,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
                 OP_LOGE(faInfo.opName, "seqused_kv dim num must be 1, but got %u.", sequsedKvDimNum),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        faInfo.seqUsedKvSize != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%d).", faInfo.seqUsedKvSize, faInfo.bSize),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.seqUsedKvSize != faInfo.bSize,
+                OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%d).", faInfo.seqUsedKvSize,
+                        faInfo.bSize),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -112,8 +112,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(faInfo.cuSeqLensQSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%d).", faInfo.cuSeqLensQSize,
-                        faInfo.bSize + 1),
+                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%d).",
+                        faInfo.cuSeqLensQSize, faInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -186,23 +186,25 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
         bool aGroupProvided = (sequsedQTensor != nullptr) || (sequsedKvTensor != nullptr);
         bool bGroupProvided = (faInfo.maxSeqQ != -1) || (faInfo.maxSeqKv != -1);
         OP_CHECK_IF(!aGroupProvided && !bGroupProvided,
-            OP_LOGE(faInfo.opName,
-                "In the non-TND layout, at least one of group A (seqused_q/seqused_kv) or "
-                "group B (max_seqlen_q/max_seqlen_kv) must be provided."),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "In the non-TND layout, at least one of group A (seqused_q/seqused_kv) or "
+                                           "group B (max_seqlen_q/max_seqlen_kv) must be provided."),
+                    return ge::GRAPH_FAILED);
 
         // 非TND场景下，若只传了B组(max_seqlen_q、max_seqlen_kv)参数，则max_seqlen_q需等于Q_S，max_seqlen_kv需等于KV_S
         if (!aGroupProvided && bGroupProvided) {
-            OP_CHECK_IF(faInfo.maxSeqQ != static_cast<int64_t>(faInfo.s1Size),
-                OP_LOGE(faInfo.opName,
+            OP_CHECK_IF(
+                faInfo.maxSeqQ != static_cast<int64_t>(faInfo.s1Size),
+                OP_LOGE(
+                    faInfo.opName,
                     "In the non-TND layout, if only group B is provided, max_seqlen_q(%ld) must be equal to Q_S(%ld).",
                     faInfo.maxSeqQ, static_cast<int64_t>(faInfo.s1Size)),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(faInfo.maxSeqKv != static_cast<int64_t>(faInfo.s2Size),
-                OP_LOGE(faInfo.opName,
-                    "In the non-TND layout, if only group B is provided, max_seqlen_kv(%ld) must be equal to KV_S(%ld).",
-                    faInfo.maxSeqKv, static_cast<int64_t>(faInfo.s2Size)),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE(faInfo.opName,
+                                "In the non-TND layout, if only group B is provided, max_seqlen_kv(%ld) must be equal "
+                                "to KV_S(%ld).",
+                                faInfo.maxSeqKv, static_cast<int64_t>(faInfo.s2Size)),
+                        return ge::GRAPH_FAILED);
         }
     }
 

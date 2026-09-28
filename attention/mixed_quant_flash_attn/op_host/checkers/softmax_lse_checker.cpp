@@ -44,7 +44,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     OP_CHECK_IF(lseOutDesc->GetDataType() != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "lse_out",
-                        Ops::Base::ToString(lseOutDesc->GetDataType()).c_str(), "FP32"),
+                                          Ops::Base::ToString(lseOutDesc->GetDataType()).c_str(), "FP32"),
                 return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(lseOutDesc, SOFTMAX_LSE_NAME)) {
@@ -59,8 +59,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FaTilingInfo &faInfo
     if (faInfo.softmaxLseFlag) {
         const gert::StorageShape *lseOutShape = faInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseOutShape == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "lse_out", "empty",
-                "When softmaxLSE is enabled, lse_out cannot be empty"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "lse_out", "empty",
+                                                          "When softmaxLSE is enabled, lse_out cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -84,39 +84,38 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (faInfo.qLayout == FaLayout::TND) {
         // (Q_T, Q_N) ¡ª 2D
         OP_CHECK_IF(dimNum != 2,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "softmax_lse",
-                (std::to_string(dimNum) + "D").c_str(), "2D (Q_T, Q_N) for TND layout"),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "softmax_lse", (std::to_string(dimNum) + "D").c_str(),
+                                                 "2D (Q_T, Q_N) for TND layout"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            lseShape.GetDim(0) != faInfo.qTSize,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse", ToStringRaw(lseShape).c_str(),
+                                                  ("dim[0] must be Q_T=" + std::to_string(faInfo.qTSize)).c_str()),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(lseShape.GetDim(0) != faInfo.qTSize,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse",
-                ToStringRaw(lseShape).c_str(),
-                ("dim[0] must be Q_T=" + std::to_string(faInfo.qTSize)).c_str()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(lseShape.GetDim(1) != faInfo.n1Size,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse",
-                ToStringRaw(lseShape).c_str(),
-                ("dim[1] must be Q_N=" + std::to_string(faInfo.n1Size)).c_str()),
+        OP_CHECK_IF(
+            lseShape.GetDim(1) != faInfo.n1Size,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse", ToStringRaw(lseShape).c_str(),
+                                                  ("dim[1] must be Q_N=" + std::to_string(faInfo.n1Size)).c_str()),
             return ge::GRAPH_FAILED);
     } else {
         // (B, Q_N, Q_S) ¡ª 3D for BNSD/BSND
         OP_CHECK_IF(dimNum != 3,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "softmax_lse",
-                (std::to_string(dimNum) + "D").c_str(), "3D (B, Q_N, Q_S) for non-TND layout"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "softmax_lse", (std::to_string(dimNum) + "D").c_str(),
+                                                 "3D (B, Q_N, Q_S) for non-TND layout"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(lseShape.GetDim(0) != faInfo.bSize,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse",
-                ToStringRaw(lseShape).c_str(),
-                ("dim[0] must be B=" + std::to_string(faInfo.bSize)).c_str()),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse", ToStringRaw(lseShape).c_str(),
+                                                          ("dim[0] must be B=" + std::to_string(faInfo.bSize)).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            lseShape.GetDim(1) != faInfo.n1Size,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse", ToStringRaw(lseShape).c_str(),
+                                                  ("dim[1] must be Q_N=" + std::to_string(faInfo.n1Size)).c_str()),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(lseShape.GetDim(1) != faInfo.n1Size,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse",
-                ToStringRaw(lseShape).c_str(),
-                ("dim[1] must be Q_N=" + std::to_string(faInfo.n1Size)).c_str()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(lseShape.GetDim(2) != faInfo.s1Size,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse",
-                ToStringRaw(lseShape).c_str(),
-                ("dim[2] must be Q_S=" + std::to_string(faInfo.s1Size)).c_str()),
+        OP_CHECK_IF(
+            lseShape.GetDim(2) != faInfo.s1Size,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "softmax_lse", ToStringRaw(lseShape).c_str(),
+                                                  ("dim[2] must be Q_S=" + std::to_string(faInfo.s1Size)).c_str()),
             return ge::GRAPH_FAILED);
     }
 

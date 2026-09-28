@@ -27,12 +27,11 @@ using namespace AscendC;
 using namespace MicroAPI;
 using namespace regbaseutil;
 
-template <typename Q_T, typename OUTPUT_T, typename KV_T, typename KV_SCALE_T,
-          bool PAGE_ATTENTION, LayOutTypeEnum LAYOUT_Q, uint8_t LAYOUT_KV, LayOutTypeEnum LAYOUT_OUT,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          bool HAS_MASK = false, bool USE_DN = false, uint8_t QUANT_COMPUTE_MODE = 0, typename... Args>
+template <
+    typename Q_T, typename OUTPUT_T, typename KV_T, typename KV_SCALE_T, bool PAGE_ATTENTION, LayOutTypeEnum LAYOUT_Q,
+    uint8_t LAYOUT_KV, LayOutTypeEnum LAYOUT_OUT, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
+    bool HAS_MASK = false, bool USE_DN = false, uint8_t QUANT_COMPUTE_MODE = 0, typename... Args>
 struct MQFAType {
     using qType = Q_T;
     using outType = OUTPUT_T;
@@ -56,14 +55,14 @@ class SeqLensTool {
 public:
     ActualSeqLensParser<ActualSeqLensMode::ACCUM, SEQLEN_T, true> cuSeqLensParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, SEQLEN_T, false> seqUsedParser;
- 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t cuSeqLensDims,
-        __gm__ uint8_t *seqUsedGmAddr, uint32_t seqUsedDims, uint64_t defaultSeqUsedVal)
+
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t cuSeqLensDims, __gm__ uint8_t *seqUsedGmAddr,
+                                uint32_t seqUsedDims, uint64_t defaultSeqUsedVal)
     {
         cuSeqLensParser.Init(cuSeqLensGmAddr, cuSeqLensDims, seqUsedGmAddr, seqUsedDims);
         seqUsedParser.Init(seqUsedGmAddr, seqUsedDims, defaultSeqUsedVal);
     }
- 
+
     __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx)
     {
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
@@ -76,7 +75,8 @@ public:
 
 #define MOD2(x) ((x) & 1)
 
-__aicore__ constexpr uint16_t Align64Func(uint16_t data) {
+__aicore__ constexpr uint16_t Align64Func(uint16_t data)
+{
     return (data + 63) >> 6 << 6;
 }
 
@@ -101,7 +101,8 @@ struct GmLayout<GmFormat::BNDS> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t d, uint32_t s) {
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t d, uint32_t s)
+    {
         shape = AscendC::MakeShape(b, n, d, s);
         uint64_t sStride = 1;
         uint64_t dStride = sStride * s;
@@ -117,7 +118,8 @@ struct GmLayout<GmFormat::PA_NZ_V_SCALE> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d1, uint32_t d0) {
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize, uint32_t d1, uint32_t d0)
+    {
         shape = AscendC::MakeShape(n, d1, blockSize, d0);
         uint64_t d0Stride = 1;
         uint64_t bsStride = d0Stride * d0;
@@ -176,7 +178,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNDBs, ACTLEN_T> {
     {
         return AscendC::Std::get<0>(gmLayout.shape);
     }
-    
+
     __aicore__ inline uint64_t GetD()
     {
         return AscendC::Std::get<1>(gmLayout.shape);
@@ -268,8 +270,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_PA_NZ, ACTLEN_T> 
         uint64_t bs1Idx = bsIdx / (GetD0BS0() / d0);
         uint32_t d1Idx = dIdx / d0;
         uint32_t d0Idx = dIdx % d0;
-        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() +
-                          d1Idx * GetStrideD1() + bs1Idx * GetStrideBS1() + d0Idx * GetStrideD0BS0() * (GetD0BS0() / d0);
+        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + d1Idx * GetStrideD1() +
+                          bs1Idx * GetStrideBS1() + d0Idx * GetStrideD0BS0() * (GetD0BS0() / d0);
         return offset;
     }
 
@@ -324,9 +326,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_PA_NZ, ACTLEN_T> 
     }
 };
 
-template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0>
-__aicore__ inline constexpr GmFormat GetKVGmFormat() {
-    
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0>
+__aicore__ inline constexpr GmFormat GetKVGmFormat()
+{
     if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
             return GmFormat::BSND;
@@ -382,7 +384,8 @@ __aicore__ inline constexpr GmFormat GetVDescaleGmFormat()
     }
 }
 
-uint32_t ceil(double x) {
+uint32_t ceil(double x)
+{
     uint32_t intPart = static_cast<uint32_t>(x);
     double epsilon = 1e-9;
     double diff = std::abs(x - static_cast<double>(intPart));
@@ -410,11 +413,7 @@ struct TypeLookup<qType, A16C4_KV_HIF4_SOFTMAX_FP32> {
 template <typename qType>
 struct TypeLookup<qType, AntiquantMode_FP8_PC> {
     using kv_dtype = float8_e4m3_t;
-    using kvscale_dtype = std::conditional_t<
-        std::is_same_v<qType, bfloat16_t>,
-        bfloat16_t,
-        half
-    >;
+    using kvscale_dtype = std::conditional_t<std::is_same_v<qType, bfloat16_t>, bfloat16_t, half>;
 };
 
-#endif  // MIXED_QUANT_FLASH_ATTN_UTILS_H_
+#endif // MIXED_QUANT_FLASH_ATTN_UTILS_H_

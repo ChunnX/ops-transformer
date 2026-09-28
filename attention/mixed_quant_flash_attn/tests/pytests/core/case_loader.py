@@ -22,8 +22,9 @@ def load_testcase_files(testset=None):
     tc_dir = os.path.join(_PYT_DIR, "testcase")
     if not os.path.isdir(tc_dir):
         raise FileNotFoundError(f"testcase directory not found: {tc_dir}")
-    all_files = sorted(f for f in os.listdir(tc_dir)
-                       if f.endswith(".py") and not f.startswith("_"))
+    all_files = sorted(
+        f for f in os.listdir(tc_dir) if f.endswith(".py") and not f.startswith("_")
+    )
     if testset:
         matched = [f for f in all_files if testset in f]
         if not matched:
@@ -38,8 +39,10 @@ def expand_cases(module_names):
         mod = importlib.import_module(f"testcase.{mod_name}")
         for case_name, case_dict in mod.TestCases.items():
             keys = list(case_dict.keys())
-            values = [case_dict[k] if isinstance(case_dict[k], list) else [case_dict[k]]
-                      for k in keys]
+            values = [
+                case_dict[k] if isinstance(case_dict[k], list) else [case_dict[k]]
+                for k in keys
+            ]
             combos = list(itertools.product(*values))
             if len(combos) == 1:
                 all_cases[f"{mod_name}/{case_name}"] = dict(zip(keys, combos[0]))
@@ -62,16 +65,19 @@ def normalize_params(raw):
     c.setdefault("mask_mode", 0)
     c.setdefault("quant_compute_mode", c.get("quant_compute_mode"))
     c.setdefault("q_dtype", c.get("q_dtype", "bf16"))
-    c.setdefault("kv_dtype", "fp4_e2m1" if c.get("quant_compute_mode", 1) != 2 else "fp4_e1m2")
+    c.setdefault(
+        "kv_dtype", "fp4_e2m1" if c.get("quant_compute_mode", 1) != 2 else "fp4_e1m2"
+    )
 
     from core.gen_data import resolve_kv_scale_dtype
+
     kv_dtype = c["kv_dtype"]
     q_dtype = c["q_dtype"]
     quant_compute_mode = c["quant_compute_mode"]
     c.setdefault("kv_scale_dtype", resolve_kv_scale_dtype(quant_compute_mode, q_dtype))
 
     d = c["D"]
-    c.setdefault("softmax_scale", 1.0 / (d ** 0.5))
+    c.setdefault("softmax_scale", 1.0 / (d**0.5))
 
     b = c.get("B")
     s1 = c.get("S1")
@@ -82,16 +88,33 @@ def normalize_params(raw):
 
     if layout_q == "TND":
         if "seqused_q" in c:
-            c.setdefault("cu_seqlens_q",
-                         torch.tensor([0]+[sum(c["seqused_q"][:i]) for i in range(len(c["seqused_q"]))], dtype=torch.int32))
+            c.setdefault(
+                "cu_seqlens_q",
+                torch.tensor(
+                    [0] + [sum(c["seqused_q"][:i]) for i in range(len(c["seqused_q"]))],
+                    dtype=torch.int32,
+                ),
+            )
         else:
-            c.setdefault("cu_seqlens_q", torch.tensor([i*s1 for i in range(b+1)], dtype=torch.int32))
+            c.setdefault(
+                "cu_seqlens_q",
+                torch.tensor([i * s1 for i in range(b + 1)], dtype=torch.int32),
+            )
     if layout_kv == "TND":
         if "seqused_kv" in c:
-            c.setdefault("cu_seqlens_kv",
-                         torch.tensor([0]+[sum(c["seqused_kv"][:i]) for i in range(len(c["seqused_kv"]))], dtype=torch.int32))
+            c.setdefault(
+                "cu_seqlens_kv",
+                torch.tensor(
+                    [0]
+                    + [sum(c["seqused_kv"][:i]) for i in range(len(c["seqused_kv"]))],
+                    dtype=torch.int32,
+                ),
+            )
         else:
-            c.setdefault("cu_seqlens_kv", torch.tensor([i*s2 for i in range(b+1)], dtype=torch.int32))
+            c.setdefault(
+                "cu_seqlens_kv",
+                torch.tensor([i * s2 for i in range(b + 1)], dtype=torch.int32),
+            )
     if "PA" in layout_kv:
         c.setdefault("block_size", 128)
         if "seqused_kv" not in c:
@@ -99,7 +122,9 @@ def normalize_params(raw):
         if isinstance(c.get("block_table"), list):
             bt_raw = c["block_table"]
             c["block_table"] = torch.tensor(bt_raw, dtype=torch.int32)
-            c["block_num"] = max(int(max(max(row) for row in bt_raw)) + 1, c.get("block_num", 0))
+            c["block_num"] = max(
+                int(max(max(row) for row in bt_raw)) + 1, c.get("block_num", 0)
+            )
         else:
             seqused_kv = torch.tensor(c["seqused_kv"], dtype=torch.int32)
             block_size = c["block_size"]
@@ -110,13 +135,17 @@ def normalize_params(raw):
     if c.get("max_seqlen_q", -1) == -1:
         if "seqused_q" in c and c["seqused_q"] is not None:
             sq = c["seqused_q"]
-            c["max_seqlen_q"] = int(max(sq.tolist() if isinstance(sq, torch.Tensor) else sq))
+            c["max_seqlen_q"] = int(
+                max(sq.tolist() if isinstance(sq, torch.Tensor) else sq)
+            )
         else:
             c["max_seqlen_q"] = s1
     if c.get("max_seqlen_kv", -1) == -1:
         if "seqused_kv" in c and c["seqused_kv"] is not None:
             skv = c["seqused_kv"]
-            c["max_seqlen_kv"] = int(max(skv.tolist() if isinstance(skv, torch.Tensor) else skv))
+            c["max_seqlen_kv"] = int(
+                max(skv.tolist() if isinstance(skv, torch.Tensor) else skv)
+            )
         else:
             c["max_seqlen_kv"] = s2
     return c
@@ -129,9 +158,13 @@ def resolve_case_ids(case_id_arg, all_cases):
     result = []
     missing = []
     for cid in ids:
-        matches = [k for k in all_cases
-                   if k.endswith(f"/{cid}") or k == cid
-                   or k.rsplit("/", 1)[-1].startswith(f"{cid}_")]
+        matches = [
+            k
+            for k in all_cases
+            if k.endswith(f"/{cid}")
+            or k == cid
+            or k.rsplit("/", 1)[-1].startswith(f"{cid}_")
+        ]
         if matches:
             result.extend(matches)
         else:

@@ -58,9 +58,9 @@ static uint16_t float_to_fp16(float f)
 
 #define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                                    \
-    do {                                                                                                                           \
-        printf(message, ##__VA_ARGS__);                                                                                            \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -118,9 +118,9 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-static void cpu_flash_attention(const std::vector<float> &Q, const std::vector<float> &K,
-                                const std::vector<float> &V, std::vector<float> &Out,
-                                int64_t B, int64_t N_q, int64_t N_kv, int64_t S_q, int64_t S_kv, int64_t D)
+static void cpu_flash_attention(const std::vector<float> &Q, const std::vector<float> &K, const std::vector<float> &V,
+                                std::vector<float> &Out, int64_t B, int64_t N_q, int64_t N_kv, int64_t S_q,
+                                int64_t S_kv, int64_t D)
 {
     float scale = 1.0f / std::sqrt((float)D);
     std::vector<float> score(S_q * S_kv);
@@ -223,13 +223,21 @@ int main()
     std::vector<uint16_t> outHostData(GetShapeSize(outShape), 0);
 
     ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &qTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
     ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &kTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
     ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &vTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { return ret; }
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
 
     double softmaxScale = 1.0 / sqrt((double)D);
     int64_t maskMode = 0;
@@ -247,20 +255,9 @@ int main()
     aclOpExecutor *executor = nullptr;
 
     ret = aclnnMixedQuantFlashAttnGetWorkspaceSize(
-        qTensor, kTensor, vTensor,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv,
-        layoutQ, layoutKv, layoutOut,
-        returnSoftmaxLse, outTensor,
-        nullptr,
-        &workspaceSize, &executor);
+        qTensor, kTensor, vTensor, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxseqlenq, maxseqlenkv, layoutQ, layoutKv,
+        layoutOut, returnSoftmaxLse, outTensor, nullptr, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnMixedQuantFlashAttnGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;

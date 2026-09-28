@@ -47,9 +47,9 @@ constexpr uint32_t DSIZE_256 = 256;
  * @param sOuterFactor [out] sOuter 切块大小
  * @param sInnerFactor [out] sInner 切块大小
  */
-inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode,
-                                  int64_t winLeft, int64_t winRight, uint32_t qLayout, uint32_t &sOuterFactor,
-                                  uint32_t &sInnerFactor)
+inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t maxSeqQ, int64_t maxSeqKv,
+                                  int32_t maskMode, int64_t winLeft, int64_t winRight, uint32_t qLayout,
+                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor)
 {
     if (maxSeqQ != -1) {
         if (maxSeqQ * gSize <= 32) {
@@ -70,7 +70,6 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
         sInnerFactor = SINNER_512;
     }
 }
-
 
 } // namespace fa_tiling_util
 } // namespace mixed_quant_flash_attn

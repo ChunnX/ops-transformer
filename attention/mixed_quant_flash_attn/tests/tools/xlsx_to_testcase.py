@@ -1,3 +1,10 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -180,7 +187,9 @@ def parse_int(s, default=None):
         return default
 
 
-def gen_pa_shape(num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is_key, dtype):
+def gen_pa_shape(
+    num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is_key, dtype
+):
     """
     按公式计算 PA 布局的物理 tensor 存储形状（与 pytest gen_data.generate_input_shape 一致）。
 
@@ -204,28 +213,51 @@ def gen_pa_shape(num_blocks, n, block_size, d, quant_compute_mode, layout_kv, is
         if kv:
             return (num_blocks, n, d // 64, block_size, 32)
         if quant_compute_mode == 1:
-            return ((num_blocks, n, block_size // 16, d // 64, 16, 2) if is_key
-                    else (num_blocks, n, d // 16, block_size // 64, 16, 2))
-        return ((num_blocks, n, block_size // 16, d // 64, 16) if is_key
-                else (num_blocks, n, d // 16, block_size // 64, 16))
+            return (
+                (num_blocks, n, block_size // 16, d // 64, 16, 2)
+                if is_key
+                else (num_blocks, n, d // 16, block_size // 64, 16, 2)
+            )
+        return (
+            (num_blocks, n, block_size // 16, d // 64, 16)
+            if is_key
+            else (num_blocks, n, d // 16, block_size // 64, 16)
+        )
 
-    if layout_kv == "PA_BBND":   # (block_num, S, N, D)
+    if layout_kv == "PA_BBND":  # (block_num, S, N, D)
         if kv:
             return (num_blocks, block_size, n, d // 2)
-        return ((num_blocks, block_size, n, d // group) if is_key
-                else (num_blocks, n, d, block_size // group))
+        return (
+            (num_blocks, block_size, n, d // group)
+            if is_key
+            else (num_blocks, n, d, block_size // group)
+        )
 
-    if layout_kv == "PA_BNBD":   # (block_num, N, S, D)
+    if layout_kv == "PA_BNBD":  # (block_num, N, S, D)
         if kv:
             return (num_blocks, n, block_size, d // 2)
-        return ((num_blocks, n, block_size, d // group) if is_key
-                else (num_blocks, n, d, block_size // group))
+        return (
+            (num_blocks, n, block_size, d // group)
+            if is_key
+            else (num_blocks, n, d, block_size // group)
+        )
 
     raise ValueError(f"不支持的 layout_kv: {layout_kv}")
 
 
-def _resolve_pa_shape(xlsx_shape, num_blocks, n, block_size, d, quant_compute_mode, layout_kv,
-                      is_key, dtype, testcase_name="", tensor_name=""):
+def _resolve_pa_shape(
+    xlsx_shape,
+    num_blocks,
+    n,
+    block_size,
+    d,
+    quant_compute_mode,
+    layout_kv,
+    is_key,
+    dtype,
+    testcase_name="",
+    tensor_name="",
+):
     """从 xlsx PA shape 构建最终 shape，或按公式计算。
 
     xlsx_shape: xlsx 中的 PA shape tuple，第1维是 block_num（padding，可信），其余维度可信。
@@ -236,22 +268,42 @@ def _resolve_pa_shape(xlsx_shape, num_blocks, n, block_size, d, quant_compute_mo
     xlsx 第1维 block_num 与 seqused_kv 计算值不一致时打警告，但仍用 xlsx 值。
     """
     # block_num: 优先用 xlsx 第1维（padding 预留值），否则用计算值
-    xlsx_block_num = xlsx_shape[0] if (xlsx_shape and len(xlsx_shape) >= 1) else num_blocks
+    xlsx_block_num = (
+        xlsx_shape[0] if (xlsx_shape and len(xlsx_shape) >= 1) else num_blocks
+    )
     if xlsx_block_num != num_blocks:
-        print(f"[WARN] {testcase_name} {tensor_name}: xlsx block_num={xlsx_block_num} "
-              f"与 seqused_kv 计算值={num_blocks} 不一致，采用 xlsx 值 {xlsx_block_num} "
-              f"(block_table id 将取模复用)")
+        print(
+            f"[WARN] {testcase_name} {tensor_name}: xlsx block_num={xlsx_block_num} "
+            f"与 seqused_kv 计算值={num_blocks} 不一致，采用 xlsx 值 {xlsx_block_num} "
+            f"(block_table id 将取模复用)"
+        )
 
     # descale（非 fp4 kv）: 按公式重建，保证 N2 等维度正确（xlsx 个别行 N2 写错过，如 1 vs 8）。
     # 仅保留 xlsx 第1维 block_num padding。
     if dtype not in ("fp4_e2m1", "fp4_e1m2"):
-        return gen_pa_shape(xlsx_block_num, n, block_size, d, quant_compute_mode, layout_kv,
-                            is_key, dtype)
+        return gen_pa_shape(
+            xlsx_block_num,
+            n,
+            block_size,
+            d,
+            quant_compute_mode,
+            layout_kv,
+            is_key,
+            dtype,
+        )
 
     # k/v fp4: 优先用 xlsx 其余维度，最后一维物理 pack 减半（64→32 或 128→64）
     if not xlsx_shape or len(xlsx_shape) < 2:
-        return gen_pa_shape(xlsx_block_num, n, block_size, d, quant_compute_mode, layout_kv,
-                            is_key, dtype)
+        return gen_pa_shape(
+            xlsx_block_num,
+            n,
+            block_size,
+            d,
+            quant_compute_mode,
+            layout_kv,
+            is_key,
+            dtype,
+        )
     shape = list(xlsx_shape)
     shape[0] = xlsx_block_num
     shape[-1] = shape[-1] // 2
@@ -297,10 +349,22 @@ class XlsxReader:
     """读取 xlsx 并解析为用例列表。按列名查找，不依赖列位置。"""
 
     REQUIRED_COLS = [
-        "Testcase_Name", "batch_size", "num_heads_q", "num_heads_kv",
-        "Q_S", "KV_S", "head_dim", "blocksize", "quant_compute_mode", "mask_mode",
-        "layout_q", "layout_kv", "q_dtype", "softmax_scale",
-        "max_seqlen_q", "max_seqlen_kv",
+        "Testcase_Name",
+        "batch_size",
+        "num_heads_q",
+        "num_heads_kv",
+        "Q_S",
+        "KV_S",
+        "head_dim",
+        "blocksize",
+        "quant_compute_mode",
+        "mask_mode",
+        "layout_q",
+        "layout_kv",
+        "q_dtype",
+        "softmax_scale",
+        "max_seqlen_q",
+        "max_seqlen_kv",
     ]
 
     def __init__(self, xlsx_path):
@@ -355,7 +419,8 @@ class XlsxReader:
                 "softmax_scale": float(self.get(row_idx, "softmax_scale")),
                 "max_seqlen_q": parse_int(self.get(row_idx, "max_seqlen_q"), -1),
                 "max_seqlen_kv": parse_int(self.get(row_idx, "max_seqlen_kv"), -1),
-                "return_softmax_lse": str(self.get(row_idx, "return_softmax_lse")) == "True",
+                "return_softmax_lse": str(self.get(row_idx, "return_softmax_lse"))
+                == "True",
                 "q_datarange": parse_datarange(self.get(row_idx, "q_datarange")),
                 "seqused_q": seqused_q,
                 "seqused_kv": seqused_kv,
@@ -363,8 +428,12 @@ class XlsxReader:
                 # xlsx PA shape 列（第1维 block_num 是 padding，其余维度可信）
                 "xlsx_k_shape": parse_shape(self.get(row_idx, "k_shape")),
                 "xlsx_v_shape": parse_shape(self.get(row_idx, "v_shape")),
-                "xlsx_k_descale_shape": parse_shape(self.get(row_idx, "k_descale_shape")),
-                "xlsx_v_descale_shape": parse_shape(self.get(row_idx, "v_descale_shape")),
+                "xlsx_k_descale_shape": parse_shape(
+                    self.get(row_idx, "k_descale_shape")
+                ),
+                "xlsx_v_descale_shape": parse_shape(
+                    self.get(row_idx, "v_descale_shape")
+                ),
             }
 
             self._validate_case(case)
@@ -373,12 +442,24 @@ class XlsxReader:
 
     def _validate_case(self, c):
         errors = []
-        for field in ("B", "N1", "N2", "S1", "S2", "D", "block_size", "quant_compute_mode"):
+        for field in (
+            "B",
+            "N1",
+            "N2",
+            "S1",
+            "S2",
+            "D",
+            "block_size",
+            "quant_compute_mode",
+        ):
             if c[field] is None:
                 errors.append(f"{field} 为空")
         if c["D"] is not None and c["D"] != 128:
             errors.append(f"D={c['D']} 不等于 128")
-        if c["quant_compute_mode"] is not None and c["quant_compute_mode"] not in (1, 2):
+        if c["quant_compute_mode"] is not None and c["quant_compute_mode"] not in (
+            1,
+            2,
+        ):
             errors.append(f"quant_compute_mode={c['quant_compute_mode']} 不在 [1, 2]")
         if c["layout_kv"] is not None and not c["layout_kv"].startswith("PA_"):
             errors.append(f"layout_kv={c['layout_kv']} 非 PA 布局")
@@ -388,8 +469,10 @@ class XlsxReader:
         if c["seqused_q"] and c["B"] is not None and len(c["seqused_q"]) != c["B"]:
             errors.append(f"seqused_q 长度 {len(c['seqused_q'])} ≠ B={c['B']}")
         if errors:
-            print(f"  [警告] 用例 {c['name']} 校验问题: {', '.join(errors)}",
-                  file=sys.stderr)
+            print(
+                f"  [警告] 用例 {c['name']} 校验问题: {', '.join(errors)}",
+                file=sys.stderr,
+            )
 
 
 # ============================================================================
@@ -436,13 +519,13 @@ def gen_pytest(cases, out_path):
         if c["win_right"] != -1:
             lines.append(f'        "win_right": [{c["win_right"]}],')
         if c["return_softmax_lse"]:
-            lines.append(f'        "return_softmax_lse": [True],')
+            lines.append('        "return_softmax_lse": [True],')
 
         # attn_mask: mask_mode in [3,4] 时 pytest 自动生成 (2048,2048) causal mask
         # q_range / kv_range: pytest 默认 (-10, 10)
         if c["q_datarange"]:
             lines.append(f'        "q_range": [{c["q_datarange"]!r}],')
-        lines.append(f'        "kv_range": [(-10.0, 10.0)],')
+        lines.append('        "kv_range": [(-10.0, 10.0)],')
         lines.append("    },")
     lines.append("}")
 
@@ -472,7 +555,7 @@ def gen_ttk(cases, out_path, prefix=DEFAULT_TTK_PREFIX):
 
 def _build_csv_row(c, prefix):
     """构建单行 CSV。
-    
+
     xlsx k/v/descale shape 列是 PA shape，第4维=block_size 可信，第1维=block_num 是 padding。
     本脚本用 xlsx k_shape 第4维覆盖 blocksize 列，计算真实 block_num 替换第1维，
     k/v 最后一维 64(逻辑)→32(物理 pack)。
@@ -520,15 +603,59 @@ def _build_csv_row(c, prefix):
     # block_num 用 xlsx 值，不一致时警告。无 xlsx shape 时按公式算。
     kv_dtype = "fp4_e2m1" if qm == 1 else "fp4_e1m2"
     tc_name = c.get("name", "")
-    k_shape = _resolve_pa_shape(c.get("xlsx_k_shape"), num_blocks, N2, bs, D, qm, layout_kv,
-                                True, kv_dtype, tc_name, "k")
-    v_shape = _resolve_pa_shape(c.get("xlsx_v_shape"), num_blocks, N2, bs, D, qm, layout_kv,
-                                False, kv_dtype, tc_name, "v")
+    k_shape = _resolve_pa_shape(
+        c.get("xlsx_k_shape"),
+        num_blocks,
+        N2,
+        bs,
+        D,
+        qm,
+        layout_kv,
+        True,
+        kv_dtype,
+        tc_name,
+        "k",
+    )
+    v_shape = _resolve_pa_shape(
+        c.get("xlsx_v_shape"),
+        num_blocks,
+        N2,
+        bs,
+        D,
+        qm,
+        layout_kv,
+        False,
+        kv_dtype,
+        tc_name,
+        "v",
+    )
     scale_dtype = "fp8_e8m0" if qm == 1 else "hifp4_scale"
-    k_scale_shape = _resolve_pa_shape(c.get("xlsx_k_descale_shape"), num_blocks, N2, bs, D, qm,
-                                      layout_kv, True, scale_dtype, tc_name, "k_descale")
-    v_scale_shape = _resolve_pa_shape(c.get("xlsx_v_descale_shape"), num_blocks, N2, bs, D, qm,
-                                      layout_kv, False, scale_dtype, tc_name, "v_descale")
+    k_scale_shape = _resolve_pa_shape(
+        c.get("xlsx_k_descale_shape"),
+        num_blocks,
+        N2,
+        bs,
+        D,
+        qm,
+        layout_kv,
+        True,
+        scale_dtype,
+        tc_name,
+        "k_descale",
+    )
+    v_scale_shape = _resolve_pa_shape(
+        c.get("xlsx_v_descale_shape"),
+        num_blocks,
+        N2,
+        bs,
+        D,
+        qm,
+        layout_kv,
+        False,
+        scale_dtype,
+        tc_name,
+        "v_descale",
+    )
 
     # --- block_table ---
     block_table_shape = (B, max_blocks_per_batch)
@@ -563,17 +690,36 @@ def _build_csv_row(c, prefix):
 
     # --- 组装 12 tensor ---
     view_shapes = [
-        q_shape, k_shape, v_shape, k_scale_shape, v_scale_shape,
-        block_table_shape, cu_seqlens_q_shape, seqused_q_shape, seqused_kv_shape,
-        sinks_shape, attn_mask_shape, metadata_shape,
+        q_shape,
+        k_shape,
+        v_shape,
+        k_scale_shape,
+        v_scale_shape,
+        block_table_shape,
+        cu_seqlens_q_shape,
+        seqused_q_shape,
+        seqused_kv_shape,
+        sinks_shape,
+        attn_mask_shape,
+        metadata_shape,
     ]
 
     # --- dtypes ---
     q_csv_dtype = CSV_DTYPE_MAP.get(c["q_dtype"].upper(), "bfloat16")
     scale_csv_dtype = CSV_SCALE_DTYPE.get(qm, "float8_e8m0fnu")
     dtypes = [
-        q_csv_dtype, "uint8", "uint8", scale_csv_dtype, scale_csv_dtype,
-        "int32", "int32", "int32", "int32", "int32", "int8", "int32",
+        q_csv_dtype,
+        "uint8",
+        "uint8",
+        scale_csv_dtype,
+        scale_csv_dtype,
+        "int32",
+        "int32",
+        "int32",
+        "int32",
+        "int32",
+        "int8",
+        "int32",
     ]
 
     # --- attributes ---
@@ -615,9 +761,18 @@ def _build_csv_row(c, prefix):
     metadata_range = (0, 0)
 
     ranges = [
-        q_range, kv_range, kv_range, scale_range, scale_range,
-        block_table_range, cu_seqlens_q_range, seqused_q_range, seqused_kv_range,
-        sinks_range, attn_mask_range, metadata_range,
+        q_range,
+        kv_range,
+        kv_range,
+        scale_range,
+        scale_range,
+        block_table_range,
+        cu_seqlens_q_range,
+        seqused_q_range,
+        seqused_kv_range,
+        sinks_range,
+        attn_mask_range,
+        metadata_range,
     ]
 
     # --- 格式化 ---
@@ -698,17 +853,31 @@ def main():
   %(prog)s --xlsx input.xlsx --dry-run
         """,
     )
-    parser.add_argument("--xlsx", required=True,
-                        help="输入 xlsx 文件路径")
-    parser.add_argument("--pytest-out", default=None,
-                        help="输出的 pytest 用例文件路径 (不指定且非 --ttk-only 时报错)")
-    parser.add_argument("--ttk-out", default=None,
-                        help="输出的 ttk CSV 文件路径 (不指定且非 --pytest-only 时报错)")
-    parser.add_argument("--prefix", default=DEFAULT_TTK_PREFIX,
-                        help=f"ttk 用例名前缀 (默认: '{DEFAULT_TTK_PREFIX}')")
+    parser.add_argument("--xlsx", required=True, help="输入 xlsx 文件路径")
+    parser.add_argument(
+        "--pytest-out",
+        default=None,
+        help="输出的 pytest 用例文件路径 (不指定且非 --ttk-only 时报错)",
+    )
+    parser.add_argument(
+        "--ttk-out",
+        default=None,
+        help="输出的 ttk CSV 文件路径 (不指定且非 --pytest-only 时报错)",
+    )
+    parser.add_argument(
+        "--prefix",
+        default=DEFAULT_TTK_PREFIX,
+        help=f"ttk 用例名前缀 (默认: '{DEFAULT_TTK_PREFIX}')",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只解析不写文件")
-    parser.add_argument("--pytest-only", action="store_true", help="只生成 pytest 文件 (需 --pytest-out)")
-    parser.add_argument("--ttk-only", action="store_true", help="只生成 ttk CSV 文件 (需 --ttk-out)")
+    parser.add_argument(
+        "--pytest-only",
+        action="store_true",
+        help="只生成 pytest 文件 (需 --pytest-out)",
+    )
+    parser.add_argument(
+        "--ttk-only", action="store_true", help="只生成 ttk CSV 文件 (需 --ttk-out)"
+    )
     args = parser.parse_args()
 
     # 校验输出路径
@@ -740,9 +909,11 @@ def main():
     print(f"解析到 {len(cases)} 个用例:")
     for c in cases:
         print(f"  {c['name']}")
-        print(f"    B={c['B']} N1={c['N1']} N2={c['N2']} S1={c['S1']} S2={c['S2']} "
-              f"D={c['D']} bs={c['block_size']} qm={c['quant_compute_mode']} "
-              f"mask={c['mask_mode']} layout_q={c['layout_q']}")
+        print(
+            f"    B={c['B']} N1={c['N1']} N2={c['N2']} S1={c['S1']} S2={c['S2']} "
+            f"D={c['D']} bs={c['block_size']} qm={c['quant_compute_mode']} "
+            f"mask={c['mask_mode']} layout_q={c['layout_q']}"
+        )
     print()
 
     if args.dry_run:

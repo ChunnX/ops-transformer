@@ -40,7 +40,7 @@ else()
     )
 endif()
 
-file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES 
+file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ../op_host/checkers/*checker*.cpp
 )
 

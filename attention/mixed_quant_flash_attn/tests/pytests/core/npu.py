@@ -14,6 +14,7 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 import npu_ops_transformer
+
 # from npu_ops_transformer.ops import mixed_quant_flash_attn
 from .cpu import get_axis_from_tensor
 from .meta_cpu.mixed_quant_flash_attn_metadata_op import MixedQuantFlashAttnMetadataOp
@@ -21,7 +22,10 @@ from .meta_cpu.mixed_quant_flash_attn_metadata_op import MixedQuantFlashAttnMeta
 # 'esl' 'npu'
 RUN_METHOD = "esl"
 
-def _to_npu_quant_dtype(tensor: torch.Tensor, quant_compute_mode: int, is_scale: bool) -> torch.Tensor:
+
+def _to_npu_quant_dtype(
+    tensor: torch.Tensor, quant_compute_mode: int, is_scale: bool
+) -> torch.Tensor:
     """Convert generated placeholder dtype to the NPU-expected dtype for the
     mixed_quant_flash_attn operator.
 
@@ -51,36 +55,61 @@ class MixedFlashAttnGraphNetwork(torch.nn.Module):
     def __init__(self):
         super(MixedFlashAttnGraphNetwork, self).__init__()
 
-    def forward(self, q, k, v, k_descale, v_descale, block_table,
-                cu_seqlens_q, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_compute_mode,
-                softmax_scale, mask_mode, win_left, win_right,
-                max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_attn_out,
-                return_softmax_lse):
+    def forward(
+        self,
+        q,
+        k,
+        v,
+        k_descale,
+        v_descale,
+        block_table,
+        cu_seqlens_q,
+        seqused_q,
+        seqused_kv,
+        sinks,
+        attn_mask,
+        metadata,
+        quant_compute_mode,
+        softmax_scale,
+        mask_mode,
+        win_left,
+        win_right,
+        max_seqlen_q,
+        max_seqlen_kv,
+        layout_q,
+        layout_kv,
+        layout_attn_out,
+        return_softmax_lse,
+    ):
         attn_out, softmax_lse = torch.ops.npu_ops_transformer.mixed_quant_flash_attn(
-            q, k, v, k_descale, v_descale,
-            block_table     = block_table,
-            cu_seqlens_q    = cu_seqlens_q,
-            seqused_q       = seqused_q,
-            seqused_kv      = seqused_kv,
-            sinks           = sinks,
-            attn_mask       = attn_mask,
-            metadata        = metadata,
-            quant_compute_mode = quant_compute_mode,
-            softmax_scale   = softmax_scale,
-            mask_mode       = mask_mode,
-            win_left        = win_left,
-            win_right       = win_right,
-            max_seqlen_q    = max_seqlen_q,
-            max_seqlen_kv   = max_seqlen_kv,
-            layout_q        = layout_q,
-            layout_kv       = layout_kv,
-            layout_attn_out = layout_attn_out,
-            return_softmax_lse = return_softmax_lse
+            q,
+            k,
+            v,
+            k_descale,
+            v_descale,
+            block_table=block_table,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            sinks=sinks,
+            attn_mask=attn_mask,
+            metadata=metadata,
+            quant_compute_mode=quant_compute_mode,
+            softmax_scale=softmax_scale,
+            mask_mode=mask_mode,
+            win_left=win_left,
+            win_right=win_right,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_attn_out=layout_attn_out,
+            return_softmax_lse=return_softmax_lse,
         )
         return attn_out, softmax_lse
 
-def run_npu(input_data, device_id=0, mode="eager"):
 
+def run_npu(input_data, device_id=0, mode="eager"):
     q = input_data["q"]
     k = input_data["k"]
     v = input_data["v"]
@@ -109,7 +138,7 @@ def run_npu(input_data, device_id=0, mode="eager"):
     d = input_data["head_dim"]
 
     # quant_compute_mode = 1
-    if RUN_METHOD == 'esl':
+    if RUN_METHOD == "esl":
         meta_op = MixedQuantFlashAttnMetadataOp()
         metadata = meta_op.npu_mixed_quant_flash_attn_metadata(
             num_heads_q=n1,
@@ -117,9 +146,15 @@ def run_npu(input_data, device_id=0, mode="eager"):
             head_dim=d,
             quant_compute_mode=quant_compute_mode,
             batch_size=batch if layout_q != "TND" else None,
-            cu_seqlens_q=cu_seqlens_q.cpu().tolist() if cu_seqlens_q is not None else None,
-            seqused_q=seqused_q.cpu().tolist() if isinstance(seqused_q, torch.Tensor) else seqused_q,
-            seqused_kv=seqused_kv.cpu().tolist() if isinstance(seqused_kv, torch.Tensor) else seqused_kv,
+            cu_seqlens_q=cu_seqlens_q.cpu().tolist()
+            if cu_seqlens_q is not None
+            else None,
+            seqused_q=seqused_q.cpu().tolist()
+            if isinstance(seqused_q, torch.Tensor)
+            else seqused_q,
+            seqused_kv=seqused_kv.cpu().tolist()
+            if isinstance(seqused_kv, torch.Tensor)
+            else seqused_kv,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
             mask_mode=mask_mode,
@@ -130,24 +165,24 @@ def run_npu(input_data, device_id=0, mode="eager"):
             layout_out=layout_attn_out,
         )
         metadata = torch.tensor(metadata, dtype=torch.int32).to("npu:%s" % device_id)
-    elif RUN_METHOD == 'npu':
+    elif RUN_METHOD == "npu":
         metadata = torch.ops.npu_ops_transformer.mixed_quant_flash_attn_metadata(
-        num_heads_q=n1,
-        num_heads_kv=n2,
-        head_dim=d,
-        quant_compute_mode=quant_compute_mode,
-        cu_seqlens_q=cu_seqlens_q,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        batch_size=batch if layout_q != "TND" else None,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_kv=max_seqlen_kv,
-        mask_mode=mask_mode,
-        win_left=win_left,
-        win_right=win_right,
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        layout_attn_out=layout_attn_out,
+            num_heads_q=n1,
+            num_heads_kv=n2,
+            head_dim=d,
+            quant_compute_mode=quant_compute_mode,
+            cu_seqlens_q=cu_seqlens_q,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            batch_size=batch if layout_q != "TND" else None,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            mask_mode=mask_mode,
+            win_left=win_left,
+            win_right=win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_attn_out=layout_attn_out,
         )
 
     q = q.to("npu:%s" % device_id)
@@ -175,9 +210,9 @@ def run_npu(input_data, device_id=0, mode="eager"):
         sinks = sinks.to("npu:%s" % device_id)
 
     if attn_mask is not None:
-        print(f'attn_mask: device {attn_mask.device}')
+        print(f"attn_mask: device {attn_mask.device}")
         attn_mask = attn_mask.to("npu:%s" % device_id)
-        print(f'attn_mask: device {attn_mask.device}')
+        print(f"attn_mask: device {attn_mask.device}")
     if mode == "eager":
         attn_out, softmax_lse = torch.ops.npu_ops_transformer.mixed_quant_flash_attn(
             q=q,
@@ -202,7 +237,7 @@ def run_npu(input_data, device_id=0, mode="eager"):
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_attn_out=layout_attn_out,
-            return_softmax_lse=return_softmax_lse
+            return_softmax_lse=return_softmax_lse,
         )
     elif mode == "aclgraph":
         torch._dynamo.reset()
@@ -215,7 +250,9 @@ def run_npu(input_data, device_id=0, mode="eager"):
         config.experimental_config.tiling_schedule_optimize = True
         config.experimental_config.topology_sorting_strategy = "StableRDFS"
         npu_backend = torchair.get_npu_backend(compiler_config=config)
-        graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+        graph_net = torch.compile(
+            net, fullgraph=False, backend=npu_backend, dynamic=False
+        )
         attn_out, softmax_lse = graph_net(
             q=q,
             k=k,
@@ -239,9 +276,12 @@ def run_npu(input_data, device_id=0, mode="eager"):
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_attn_out=layout_attn_out,
-            return_softmax_lse=return_softmax_lse
+            return_softmax_lse=return_softmax_lse,
         )
     else:
         raise ValueError("mode must be 'eager' or 'aclgraph'")
     torch.npu.synchronize()
-    return {"attn_out": attn_out.cpu(), "softmax_lse": softmax_lse.cpu() if softmax_lse is not None else None}
+    return {
+        "attn_out": attn_out.cpu(),
+        "softmax_lse": softmax_lse.cpu() if softmax_lse is not None else None,
+    }

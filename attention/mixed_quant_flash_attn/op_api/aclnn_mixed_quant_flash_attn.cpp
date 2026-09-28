@@ -29,12 +29,12 @@ extern "C" {
 
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional, int64_t quantComputeMode, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutAttnOut,
-    bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    const aclTensor *metadataOptional, int64_t quantComputeMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutAttnOut, bool returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("start aclnnMixedQuantFlashAttnGetWorkspaceSize");
@@ -49,9 +49,9 @@ aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMixedQuantFlashAttnGetWorkspaceSize(
         q, k, v, kDescale, vDescale, blockTableOptional, cuSeqlensQOptional, sequsedQOptional, sequsedKvOptional,
-        sinksOptional, attnMaskOptional, metadataOptional, quantComputeMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ,
-        maxSeqlenKV, layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse, attnOut, placeHolder, workspaceSize,
-        executor);
+        sinksOptional, attnMaskOptional, metadataOptional, quantComputeMode, softmaxScale, maskMode, winLeft, winRight,
+        maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutAttnOut, returnSoftmaxLse, attnOut, placeHolder,
+        workspaceSize, executor);
 
     // 销毁占位符
     if (returnSoftmaxLse == false) {
@@ -62,7 +62,8 @@ aclnnStatus aclnnMixedQuantFlashAttnGetWorkspaceSize(
 }
 
 // 第二段接口：执行计算
-aclnnStatus aclnnMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
+aclnnStatus aclnnMixedQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     const aclrtStream stream)
 {
     return aclnnInnerMixedQuantFlashAttn(workspace, workspaceSize, executor, stream);
 }

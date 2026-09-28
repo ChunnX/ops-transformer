@@ -18,6 +18,7 @@ import torch
 
 from core.npu import run_npu
 
+
 def call_npu(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -47,7 +48,6 @@ def call_npu(
     num_heads_kv: int = 1,
     head_dim: int = 128,
 ):
-    
     inputs = {
         "q": q,
         "k": k,
@@ -75,7 +75,7 @@ def call_npu(
         "batch_size": batch_size,
         "num_heads_q": num_heads_q,
         "num_heads_kv": num_heads_kv,
-        "head_dim": head_dim
+        "head_dim": head_dim,
     }
     result = run_npu(inputs)
     return result.get("attn_out"), result.get("softmax_lse")
