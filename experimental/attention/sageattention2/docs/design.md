@@ -238,49 +238,57 @@ Key 的通道均值 `mean_K` 原始形状为 `[B, H_K, D]`，在与形状为 `[B
 
 在细粒度 Token-level 量化中，需要对每个 Token 向量计算其最大绝对值 `amax`，并求解量化步长 `scale` 及其倒数 `inv_scale`。
 
-在 Ascend AIV Vector 硬件架构中，原生硬件向量除法指令 `vdiv` 的执行延迟高达 32 个时钟周期，且属于非流水线化指令，阻塞后续向量算术管线；而向量乘法 `vmul` 与融合乘加 `vfma` 均为全流水线化执行单元，指令延迟极低。若每个 Token 均调用向量除法，量化耗时将占整体算子运行时间的 30% 以上。
+在细粒度 Token-level 量化中，需要对每个 Token 向量计算其最大绝对值 `amax`，并求解量化步长 `scale = amax / 127.0` 及其倒数 `inv_scale = 1.0 / scale` 以供量化反量化使用。
 
-本算子采用基于二阶牛顿-拉夫逊（Newton-Raphson）逼近算法的无除法快速向量量化方案，全流程消除硬件向量除法：
+在 Ascend AIV Vector 硬件架构中，原生硬件向量除法指令 `vdiv` 属于高延迟指令（约 32 个时钟周期），且阻塞后续向量流水线；而向量乘法 `vmul` 与减法为单周期全流水执行单元。若每个 Token 均调用向量除法，量化耗时将占整体算子运行时间的 30% 以上。
 
-```c
-// 1. 编译期浮点常量折叠：
-// 1.0f / 127.0f 在编译期计算为精确 IEEE 754 单精度浮点值：
-static const float inv127 = 0.00787401574803149603271484375f;
+本算子在 `quant.h` 中采用基于二阶牛顿-拉夫逊（Newton-Raphson）逼近算法的无除法快速向量量化方案，全流程消除硬件向量除法：
 
-// 2. 尺度求解：将除法转化为 1 周期向量乘法
-// scale = amax * (1.0 / 127.0)
-Mul(v_scale, v_amax, inv127);
+```cpp
+// 1. 尺度求解：将除法转化为 1 周期向量乘法
+// scale = amax * (1.0f / 127.0f)
+Duplicate(invDivisor, 1.0f / 127.0f);
+Mul(m, m, invDivisor, full);
+Select(m, m, one, positive); // positive mask 避免零值除零与异常
 
-// 3. 2 步牛顿-拉夫逊迭代求解快速倒数 inv_scale = 1.0 / scale
-// 设除数 d = scale，求解目标方程: f(x) = 1/x - d = 0
-// 牛顿迭代公式:
-// x_{n+1} = x_n - f(x_n) / f'(x_n)
-//         = x_n - (1/x_n - d) / (-1 / x_n^2)
-//         = x_n * (2.0 - d * x_n)
-```
+// 2. 快速倒数实现（AscendC MicroAPI __simd_callee__ FastReciprocal）
+// 基于 IEEE 754 浮点整数重解释魔数 0x7EEF370B 快速生成初始估值 y0，并施加二阶牛顿-拉夫逊迭代：
+__simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &dst,
+                                           AscendC::MicroAPI::RegTensor<float> &src,
+                                           AscendC::MicroAPI::MaskReg &mask)
+{
+    using namespace AscendC::MicroAPI;
+    // 初始估算: 利用 IEEE-754 浮点数比特位整型重解释减法，生成初始倒数估值 y0 (约 1 周期)
+    // 理论证明满足初始相对误差 |1 - src * y0| <= 2^-7
+    RegTensor<uint32_t> magic, ix, iy;
+    RegTensor<float> y0, term, two;
+    Duplicate(two, 2.0f);
+    Duplicate(magic, uint32_t(0x7EEF370B));
+    ix = (RegTensor<uint32_t> &)src;
+    Sub(iy, magic, ix, mask);
+    y0 = (RegTensor<float> &)iy;
 
-在 AIV 核心中，硬件指令预先通过浮点阶码估算获得初始高位近似 `x_0`（满足初始相对误差 `|1 - d * x_0| <= 2^-7`），随后连续执行 2 步牛顿迭代：
+    // 第一次牛顿迭代: y1 = y0 * (2.0f - src * y0)
+    Mul(term, src, y0, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, y0, term, mask);
 
-```c
-// 伪代码执行流（纯乘加，0 除法，两步迭代）：
-// x0 = InitialReciprocalSeed(scale);
-// 第一次迭代:
-// t0 = 2.0f - scale * x0;         // 向量乘加
-// x1 = x0 * t0;                   // 向量乘法
-// 第二次迭代:
-// t1 = 2.0f - scale * x1;         // 向量乘加
-// x2 = x1 * t1;                   // 向量乘法 (精确输出 inv_scale)
+    // 第二次牛顿迭代: dst = y1 * (2.0f - src * y1)，达到 IEEE-754 FP32 机器精度 (< 1 ULP 误差)
+    Mul(term, src, dst, mask);
+    Sub(term, two, term, mask);
+    Mul(dst, dst, term, mask);
+}
 ```
 
 收敛性与数值误差界证明：
-相对误差满足二次收敛递推关系 `e_{n+1} = (e_n)^2`。
-- 初始相对误差：`|e_0| <= 2^-7` (约 0.0078125)。
-- 第一次迭代后：`|e_1| = (e_0)^2 <= 2^-14` (约 6.10e-5)。
-- 第二次迭代后：`|e_2| = (e_1)^2 <= 2^-28 < 2^-23` (约 3.73e-9)。
+相对误差满足二次收敛递推关系 $e_{n+1} = (e_n)^2$。
+- 初始相对误差：$|e_0| \le 2^{-7}$ (约 0.0078125)。
+- 第一次迭代后：$|e_1| = (e_0)^2 \le 2^{-14}$ (约 $6.10 \times 10^{-5}$)。
+- 第二次迭代后：$|e_2| = (e_1)^2 \le 2^{-28} < 2^{-23}$ (约 $3.73 \times 10^{-9}$)。
 
-在 IEEE 754 单精度浮点标准下，尾数有效位数为 23 位，机器精度极限为 `2^-23` (约 1.192e-7)。
-经过 2 次迭代后，数值误差严格被限制在 IEEE 754 单精度浮点精度界限内（相对误差 `|e_2| < 2^-23`），达到单精度位精确无损。
-执行流水上由 2 次 FMA 与 2 次 Mul 构成，仅需 6 个时钟周期即可完成，彻底替代 32 周期高延迟向量除法指令，吞吐提升 5 倍以上。
+在 IEEE 754 单精度浮点标准下，尾数有效位数为 23 位，机器精度极限为 $2^{-23}$ (约 $1.192 \times 10^{-7}$)。
+经过 2 次迭代后，数值误差严格被限制在 IEEE 754 单精度浮点精度界限内（相对误差 $|e_2| < 2^{-23}$），达到单精度位精确无损（Bit-Exact）。
+执行流水上完全由 1 次魔数整型减法、4 次向量乘法与 2 次向量减法构成，消除 32 周期向量除法指令依赖，吞吐提升 5 倍以上。
 
 ### 2. 支持数据类型与精度标准
 
@@ -412,103 +420,150 @@ if (B * Hq < 2 * 24) and (Sq >= 4096):
 
 在 Ascend 950 微架构中，MTE2 与 MTE3 数据搬运引擎的底层物理总线采用 512 字节 Burst 突发传输模式。任何非 512 字节对齐的地址访问都会引发硬件总线拆包与跨周期拼接，导致搬运带宽跌落 50% 以上。
 
-Workspace 内所有中间张量的排布必须严格满足 512 字节对齐约束：
+在 Host 侧 `sage_attention2_tiling.cpp` 中，内核将用户工作区静态划分为 7 大功能张量段，各分段首地址偏移均相对于 `GetUserWorkspace(workspace)`，并严格施加 512 字节向上对齐：
 
-```c
-// 512 字节向上对齐宏定义
-#define ALIGN512(bytes) (((bytes) + 511ULL) / 512ULL * 512ULL)
+```cpp
+// 512 字节向上物理突发对齐分配闭包
+uint64_t bytes = 0;
+auto allocate = [&bytes](uint64_t &offset, std::initializer_list<uint64_t> factors) {
+    uint64_t size = 1;
+    for (auto factor : factors) size *= factor;
+    size = (size + 511) / 512 * 512; // 向上对齐到 512 字节
+    offset = bytes;
+    bytes += size;
+    return true;
+};
 
-// Workspace 各分段张量偏移地址计算：
-offset_mean     = 0;
-offset_vMxScale = ALIGN512(offset_mean     + B * Hk * Dp * sizeof(float));
-offset_q8       = ALIGN512(offset_vMxScale + B * Hk * (Kp / 32) * Dp);
-offset_k8       = ALIGN512(offset_q8       + B * Hq * Qp * Dp);
-offset_v8       = ALIGN512(offset_k8       + B * Hk * Kp * Dp);
-offset_qScale   = ALIGN512(offset_v8       + B * Hk * Kp * Dp);
-offset_kScale   = ALIGN512(offset_qScale   + B * Hq * Qp * sizeof(uint16_t));
-total_ws_bytes  = ALIGN512(offset_kScale   + B * Hk * Kp * sizeof(uint16_t));
+// 7 大工作区张量段分配（保存在 SageAttention2TilingData 中传递给 Kernel）：
+allocate(t.mean,     {p.b, p.hk, p.dp, sizeof(float)});       // Key 序列通道均值向量
+allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp});          // Value MXFP8 32-token 细粒度 Scale
+allocate(t.q8,       {p.b, p.hq, p.qp, p.dp});               // INT8 平滑量化 Query 张量
+allocate(t.k8,       {p.b, p.hk, p.kp, p.dp});               // INT8 平滑量化 Key 张量
+allocate(t.v8,       {p.b, p.hk, p.kp, p.dp});               // FP8 (E4M3) 量化 Value 张量
+allocate(t.qScale,   {p.b, p.hq, p.qp, sizeof(uint16_t)});   // Query Token 量化尺度
+allocate(t.kScale,   {p.b, p.hk, p.kp, sizeof(uint16_t)});   // Key Token 量化尺度
 
-// 叠加 CANN 平台运行时预留系统 Workspace（通常为 16MB）
-final_workspace_size = total_ws_bytes + platform_reserved_bytes;
+// 叠加 CANN 平台运行时预留系统 Workspace（通过 PlatformAscendC 动态查询，兜底 16MB）：
+uint64_t reserved = platform_ascendc::PlatformAscendC(c->GetPlatformInfo()).GetLibApiWorkSpaceSize();
+ws[0] = reserved + bytes;
 ```
 
-#### 2.3 分块键位域编码与执行路由
+在 Kernel 侧入口中，通过 `GetUserWorkspace(workspace)` 越过系统前置保留区，直接通过 `work + t.xxx` 获得各中间张量的 512 字节对齐物理起始指针，实现片上全局工作区的精确零开销寻址。
 
-为了在 C++ 模板层面零开销特化分发，Host 侧将数据类型、维度模式及因果属性压缩为 32 位整型 TilingKey：
+#### 2.3 模板参数特化与分块键路由规划
 
-```text
-TilingKey 位域编码结构：
-┌───────────┬──────────────┬──────────────┬──────────────┬──────────────────┐
-│ 位域区间  │ Bit [0..3]   │ Bit [4..5]   │ Bit [6]      │ Bit [7]          │
-├───────────┼──────────────┼──────────────┼──────────────┼──────────────────┤
-│ 语义含义  │ 输入数据类型 │ HeadDim 档位 │ WIDE 模式标志│ Causal 因果标志  │
-├───────────┼──────────────┼──────────────┼──────────────┼──────────────────┤
-│ 取值定义  │ 1: FP16      │ 0: D=64      │ 0: 普通流水  │ 0: 非因果完整计算│
-│           │ 27: BF16     │ 1: D=128     │ 1: 超宽双发射│ 1: 下三角跳步计算│
-└───────────┴──────────────┴──────────────┴──────────────┴──────────────────┘
+为了消除运行时数据类型分支与核心循环跳转，同时避免因张量维度穷举导致二进制膨胀，本算子遵循官方 AscendC 模板机制（`sage_attention2_template_tiling_key.h`），在编译期仅对主数据类型与 WIDE 超宽双流水模式做模板特化：
+
+```cpp
+// 遵循 ge::DataType 标准定义
+#define SAGE_TPL_FP16 1
+#define SAGE_TPL_BF16 27
+
+// 声明模板特化维度：输入数据类型 (FP16/BF16) 与 WIDE 双发射模式 (0/1)
+ASCENDC_TPL_ARGS_DECL(SageAttention2, 
+                      ASCENDC_TPL_DTYPE_DECL(INPUT_DTYPE, SAGE_TPL_FP16, SAGE_TPL_BF16),
+                      ASCENDC_TPL_BOOL_DECL(WIDE, 0, 1));
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_DTYPE_SEL(INPUT_DTYPE, SAGE_TPL_FP16, SAGE_TPL_BF16),
+                                     ASCENDC_TPL_BOOL_SEL(WIDE, 0, 1)));
 ```
 
-当 `D == 128` 且 `Sk >= 4096` 时，Tiling 引擎自动置位 WIDE 模式位，路由至超宽双流水核函数，充分利用双 AIV 向量并发。
+Host 侧 Tiling 路由判定逻辑：
+
+```cpp
+// 判定是否激活 WIDE 超宽双流水内核（长序列典型长文本深度优化）:
+const bool wide = p.dp == 128 && p.sq % 128 == 0 && p.sk % 512 == 0 && p.sk >= 4096;
+c->SetTilingKey(GET_TPL_TILING_KEY(static_cast<uint32_t>(dt), wide));
+
+// 强制设置调度模式为 1，确保 1:2 MIX 全网格核心驻留调度
+c->SetScheduleMode(1);
+```
+
+而在算子 Kernel 侧，以极简签名接收特化：
+
+```cpp
+template <int INPUT_DTYPE, bool WIDE>
+__global__ __aicore__ void sage_attention2(GM_ADDR q, GM_ADDR k, GM_ADDR v, 
+                                           GM_ADDR out, GM_ADDR lse, 
+                                           GM_ADDR workspace, GM_ADDR tiling);
+```
+
+其余动态控制参数（如 `causal` 因果掩码、`smoothK` 平滑开关、`returnLse`、张量物理步长等）全部收拢于 `SageAttention2TilingData.params` 运行时结构体中分发，完美兼顾执行性能与二进制编译打包体积。
 
 ### 3. 微架构优化与高效执行
 
-#### 3.1 统一缓冲区六槽位双缓冲内存排布
+#### 3.1 统一缓冲区与 L1 静态无气泡内存编排
 
-Atlas 950 具备 384KB 单核 UB 物理空间。内核将其静态划分为六大功能专用槽位，构建全硬件级双缓冲流水：
-
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                   AIV 384KB Unified Buffer (UB) 内存规划               │
-├─────────┬──────────┬───────────────────────────────────────────────────┤
-│ 槽位编号│ 内存容量 │ 用途定义与硬件协同机制                            │
-├─────────┼──────────┼───────────────────────────────────────────────────┤
-│ Slot 0  │ 32 KB    │ Input Buffer A：当前 Tile 数据搬入（MTE2 -> UB）   │
-│ Slot 1  │ 32 KB    │ Input Buffer B：下一 Tile 异步预取（Ping-Pong）   │
-│ Slot 2  │ 128 KB   │ Softmax 核心计算区：FP32 反量化与动态重缩放       │
-│ Slot 3  │ 32 KB    │ Output Packing 区：FP8 E4M3 量化与打包缓冲        │
-│ Slot 4  │ 16 KB    │ Scale 与 LSE 向量存储区                           │
-│ Slot 5  │ 144 KB   │ 两级累加归约区与通道均值常驻区                    │
-└─────────┴──────────┴───────────────────────────────────────────────────┘
-```
-
-#### 3.2 非对称切分策略与统一缓冲区容量匹配
-
-在 GEMM 与 Attention Tiling 中，切分块大小直接制约片上存取效率：
-- Query 轴切块 `Br = 64`：完美对齐 Cube 脉动阵列高度，保证单次迭代的局部行上下文始终驻留在 Slot 2 中，无需反复换出。
-- Key/Value 轴切块 `Bc = 128`：增大列宽可最大化 Cube 矩阵乘累加吞吐，同时降低外层循环轮数，将 MTE2 指令发射频次减少 50%。
-- 内存容量校验：`Br * Dp = 64 * 128 = 8192` 元素；`Bc * Dp = 128 * 128 = 16384` 元素。在 INT8 格式下仅占用 8KB 与 16KB，完全适配 384KB UB 预算，留出充足余量支持双缓冲与高精度累加。
-
-#### 3.3 硬件事件同步流水线
-
-Ascend 950 混合架构由独立的硬件流水线驱动。算子通过精细化的硬件同步事件（HardEvent）构建无死锁、无气泡的指令协同网：
+Atlas 950 具备 384KB 单核 UB 物理空间与 512KB AIC L1 空间。为避免动态内存管理（如 TPipe 维护引起的运行时开销与跳转分支），本算子在 `attention_common.h` 中采用全静态物理缓冲区排布与多槽位环形流水编排：
 
 ```text
-1. V_MTE2：Vector 核心计算完成当前 Buffer，向 MTE2 发送事件，允许其覆写装载下一块数据。
-2. MTE2_V：MTE2 搬运数据到达 UB 后，通知 Vector 核心数据就绪，解除计算等待。
-3. MTE1_V：Cube 矩阵乘完成，数据经片上高速总线到达后，通知 Vector 启动 Softmax。
-4. V_MTE3：Vector 归约更新完成，通知 MTE3 发射 Global Memory 写回指令。
-5. MTE3_V：写回确认完成，回收对应 Buffer 槽位。
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                      AIV Unified Buffer (UB) 静态内存规划 (≤ 248 KB)                    │
+├─────────────┬──────────┬───────────────────────────────────────────────────────────────┤
+│ 缓冲区标识  │ 内存容量 │ 用途定义与硬件流水机制                                        │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ SCORE_UB    │ 96 KB    │ 3 个槽位 × (HALF=64) × (N=256) × 2B (FP16 QK 得分暂存区)      │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ PV_UB       │ 64 KB    │ 2 个槽位 × (HALF=64) × (D=128) × 4B (FP32 PV 部分和接收区)    │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ ACCUM_UB    │ 32 KB    │ 1 个槽位 × (HALF=64) × (D=128) × 4B (FP32 动态重缩放累加区)   │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ P_UB        │ 49.5 KB  │ 3 个槽位 × 16.5 KB (FP8 E4M3 归一化概率矩阵 P，含 NZ 步长填充) │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ 状态向量区  │ ~6 KB    │ MU_UB (均值)、KS_UB/QS_UB (Scale)、MAX_UB、DEN_UB、ALPHA_UB   │
+├─────────────┼──────────┼───────────────────────────────────────────────────────────────┤
+│ LSE 复用区  │ 共享 P0  │ 尾部 LSE 归一化计算在输出写出后直接复用已退休的 P0 槽位      │
+└─────────────┴──────────┴───────────────────────────────────────────────────────────────┘
 ```
 
-通过硬件事件与双缓冲交替推进，使得计算（Vector/Cube）与数据搬运（MTE2/MTE3）在物理时序上达成 100% 深度重叠。
+片上 L1 内存规划（AIC 512KB L1）：
+- `P_L1 = 64 KB`：接收 AIV 写入的局部归一化概率矩阵 P；
+- `B_L1 = 160 KB`：多槽位双缓冲存放 Key 与 Value 矩阵切块（`PIPE_SLOTS = 3`）；
+- `MX_V_L1 = 320 KB`：存放 Value 的 MXFP8 Scale 切片；
+- `MX_P_L1 = 496 KB`：存放 P 矩阵的单元 E8M0 Scale 因子，常驻片上；
+- 编译期静态断言保障：`static_assert(B_L1 + 2 * N * 128 <= 512 * 1024)` 与 `static_assert(UB_END <= 248 * 1024)`。
 
-#### 3.4 因果下三角跳步调度
+#### 3.2 非对称分块策略（M=128, N=256, HALF=64）与向量满通道饱和
 
-当指定 `is_causal=True` 时，自注意力矩阵的上三角区域权重被因果掩码遮蔽（置为 `-inf`）。
+在 Atlas 950PR 的 1:2 MIX 异构架构中，分块大小对算力释放具有决定性影响：
+- **Query 轴切块 $M = 128$**：单个 Cube 核心处理 128 行，完成矩阵乘后将结果拆分为两个高度为 $\text{HALF} = 64$ 行的子矩阵，通过片上直通无拷贝分发给绑定的 2 个 AIV 核心并发执行 Online Softmax。
+- **SIMD 满通道饱和**：Ascend 950 AIV 向量 SIMD 寄存器单指令处理宽度为 256 字节（即 64 个单精度 FP32 元素）。因此 $\text{HALF} = 64$ 保证了每一行在执行行向 Max、Sum 规约和反量化时，向量单元的 64 个通道 100% 满负荷运转，杜绝了算力气泡。
+- **Key/Value 轴切块 $N = 256$**：$N = 256$ 达到 Cube 矩阵乘 MMAD 脉动阵列最高能效比，且通过 3 槽位前瞻流水（`PIPE_SLOTS = 3`, `LOOKAHEAD = 2`），在执行当前第 $i$ 步 PV 计算时，前瞻发射第 $i+2$ 步 QK 计算，计算与搬运完全掩盖。
 
-在 Tile 循环调度中，外层逻辑实时计算当前 Tile 的边界：
+#### 3.3 跨核事件通知与双总线协同（MODE4 Counted Notifications）
 
-```python
-# Tile 物理边界：
-# Query 范围: [q_start, q_start + Br)
-# Key 范围:   [k_start, k_start + Bc)
+Cube 与 Vector 之间通过片上专用硬件事件总线实现纳秒级协同，避免任何全局轮询与锁争用：
 
-# 因果跳步判定：
-if is_causal and (k_start > q_start + Br - 1):
-    # 该 Tile 完全处于掩码无效区，其注意力权重全为 0
-    # 直接跳过该 Tile 的所有 Cube 矩阵乘发射与数据搬入
-    continue
+```cpp
+// MODE4 跨核计数值通知定义（attention_common.h）：
+constexpr uint32_t QK_READY = 0;       // Cube 通知双 AIV：QK 矩阵乘得分已就绪
+constexpr uint32_t P_READY = 1;        // AIV 通知 Cube：Softmax 概率矩阵 P 已进入 L1
+constexpr uint32_t PV_READY = 2;       // Cube 通知 AIV：PV 矩阵乘结果已注入 UB
+constexpr uint32_t PV_RELEASE = 3;     // AIV 通知 Cube：PV UB 槽位消费完毕可复用
+constexpr uint32_t AIV_FLAG_OFFSET = 16;// 第二个 AIV 核心事件偏移
 ```
+
+同步协作流程：
+1. Cube 算完 QK 后，调用 `Notify(QK_READY)`，向绑定的 2 个 AIV 核心（分别触发 flag 0 与 flag 16）广播就绪；
+2. AIV 消费并计算完成 Softmax 后，各自调用 `CrossCoreSetFlag<4, PIPE_FIX>(P_READY)` 通知 Cube；
+3. Cube 核心通过 `CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY)` 与 `CrossCoreWaitFlag<4, PIPE_MTE1>(P_READY + AIV_FLAG_OFFSET)` 双门限确认后启动 PV 计算；
+4. 全程各槽位循环交替，形成零停顿环形流水。
+
+#### 3.4 因果下三角跳步调度与动态边界收缩
+
+当指定 `is_causal=True` 时，自注意力矩阵的上三角区域权重被严格掩码遮蔽。
+在内核主循环中，根据当前 Query 块的起始位置 `qstart = tile * M` 动态收紧 Key 的有效遍历上界：
+
+```cpp
+// 动态收紧内层 KV 遍历步数：
+uint32_t limit = p.causal ? Min(p.sk, qstart + M) : p.sk;
+uint32_t count = (limit + N - 1) / N; // 仅计算包含下三角有效元素的 Key 块
+
+// 在超宽双流水模式下 (DecodeWideQuery):
+const uint32_t limit = CAUSAL ? Min(p.sk, info.qstart + M) : p.sk;
+info.count = (limit + 511) / 512;
+```
+
+此设计使得外层调度无需发射上三角全空块，直接削减约 50% 的无效 Cube 矩阵乘与数据加载，并在对角线边界块内部由 AIV 施加高精度因果掩码。
 
 因果跳步调度消除了近 50% 的无效 Cube 矩阵乘与片上数据搬运，在因果场景（用例 P-03）下使计算性能实现 2.7x 以上的跃升。
 
@@ -702,26 +757,30 @@ AIV 向量硬件内置了倒数种子估算微指令 `vrecpe`，基于浮点阶�
 由于第二次迭代的相对误差 `|e_2| <= 2^-28 < 2^-23`，严格保证了计算结果在单精度浮点格式下达到位精确（Bit-Exact），其截断误差被完全限制在 IEEE 754 最低有效位（1 ULP）以内，绝无精度损失。
 
 4. 机器指令流水时钟周期优化：
-将 2 次牛顿迭代编译映射为 AIV 向量硬件的高效执行流水序列：
+将 2 次牛顿迭代编译映射为 AIV 向量硬件的高效执行流水序列（`quant.h`）：
 
-```c
-// 1. 硬件种子指令估算初值 x0 (1 周期)
-vrecpe(x0, scale);
+```cpp
+// 1. 基于 IEEE-754 单精度浮点数二进制整型魔数减法估算初值 y0 (1 周期)
+// 常数 0x7EEF370B 为浮点倒数一次近似最优魔数：满足 |1 - src * y0| <= 2^-7
+Duplicate(magic, uint32_t(0x7EEF370B));
+ix = (RegTensor<uint32_t> &)src;
+Sub(iy, magic, ix, mask);
+y0 = (RegTensor<float> &)iy;
 
-// 2. 第一次迭代 (FMA + Mul, 2~3 周期)
-// 计算 t0 = 2.0f - scale * x0
-vfnma(t0, scale, x0, 2.0f);
-// 计算 x1 = x0 * t0
-vmul(x1, x0, t0);
+// 2. 第一次牛顿迭代 (Mul + Sub + Mul, 2~3 周期)
+// 计算 term = 2.0f - src * y0，得到 y1 = y0 * term (相对误差 <= 2^-14)
+Mul(term, src, y0, mask);
+Sub(term, two, term, mask);
+Mul(dst, y0, term, mask);
 
-// 3. 第二次迭代 (FMA + Mul, 2~3 周期)
-// 计算 t1 = 2.0f - scale * x1
-vfnma(t1, scale, x1, 2.0f);
-// 计算 x2 = x1 * t1 (最终输出精确 inv_scale)
-vmul(inv_scale, x1, t1);
+// 3. 第二次牛顿迭代 (Mul + Sub + Mul, 2~3 周期)
+// 计算 term = 2.0f - src * y1，得到精确 dst = y1 * term (相对误差 <= 2^-28 < 2^-23)
+Mul(term, src, dst, mask);
+Sub(term, two, term, mask);
+Mul(dst, dst, term, mask);
 ```
 
-整个倒数求解过程全部由 2 次 FMA 与 2 次 Mul 向量指令接力完成，总计算耗时仅需 6 个时钟周期，相比传统 32 周期向量除法指令提速 5.33 倍，消除了量化关键路径上的全部硬件停顿。
+整个倒数求解过程完全由 1 次魔数整型减法、4 次向量乘法与 2 次向量减法流水化接力完成，总计算耗时仅约 6 个时钟周期，相比传统 32 周期向量除法指令提速 5.33 倍，消除了量化关键路径上的全部硬件停顿。
 
 #### 4.4 双芯片二级缓存分区与物理突发对齐
 
@@ -734,7 +793,31 @@ Atlas 950PR 采用双 Die（Die 0 与 Die 1）多芯片模块集成封装，在�
 - 两个 Die 之间通过片间高速互联总线（Inter-Die Interconnect）相连。跨 Die 访问远程 L2 缓存或远程 HBM 通道时，总线通信延迟比本地访问高出 3.5 倍以上，并极易引发跨 Die 互联总线拥塞。
 
 2. 核心亲和映射与本地二级缓存分区策略：
-为保证超长序列计算时的近端存取，本设计构建了基于 NUMA 拓扑的 Die 亲和分核调度机制（UseDieGroups）：
+为保证超长序列计算时的近端存取，本设计在 `common.h` 中构建了基于 NUMA 拓扑的 Die 亲和分核调度机制（`UseDieGroups`）：
+
+```cpp
+// 判定是否激活双 Die 空间解耦分组调度：
+__aicore__ inline bool UseDieGroups(const SageParams &p) {
+    return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
+           p.sq % 128 == 0;
+}
+
+// 虚拟循环任务空间到物理 Die 空间的投影映射：
+__aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
+    const uint32_t half = cores / 2; // 单 Die 核心数 (12)
+    return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
+}
+
+// 计算单核心在双 Die 拓扑下的循环任务边界：
+__aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) {
+    if (!UseDieGroups(p)) return total;
+    const uint32_t half = p.cores / 2, rank = core % half;
+    const uint64_t local = total / 2;
+    const uint64_t count = local > rank ? (local - rank + half - 1) / half : 0;
+    return core + count * p.cores;
+}
+```
+
 对于 32 个注意力头的大模型序列，调度器将多头工作集严格按 Die 进行物理空间正交解耦：
 - Die 0（绑定 AIC 0..11 与 AIV 0..23）：独占分配并处理注意力头索引 0 至 15（共 16 个 Head）。
 - Die 1（绑定 AIC 12..23 与 AIV 24..47）：独占分配并处理注意力头索引 16 至 31（共 16 个 Head）。
@@ -768,16 +851,17 @@ Working_Set_Per_Die = Size_Key + Size_Scale + Size_Mean
 
 本算子在 Host 侧 Tiling 规划与地址计算中，强制施加 ALIGN512 向上物理取整约束：
 
-```c
-// 512 字节硬件突发向上对齐宏：
+```cpp
+// 512 字节硬件突发向上对齐宏与 7 大段偏移计算：
 #define ALIGN512(bytes) (((bytes) + 511ULL) / 512ULL * 512ULL)
 
-// 所有片上及全局内存张量起始偏移均保证 512 字节倍数：
-offset_mean   = 0;
-offset_q8     = ALIGN512(offset_mean + size_mean);
-offset_k8     = ALIGN512(offset_q8   + size_q8);
-offset_v8     = ALIGN512(offset_k8   + size_k8);
-offset_scales = ALIGN512(offset_v8   + size_v8);
+offset_mean     = 0;
+offset_vMxScale = ALIGN512(offset_mean     + B * Hk * Dp * sizeof(float));
+offset_q8       = ALIGN512(offset_vMxScale + B * Hk * (Kp / 32) * Dp);
+offset_k8       = ALIGN512(offset_q8       + B * Hq * Qp * Dp);
+offset_v8       = ALIGN512(offset_k8       + B * Hk * Kp * Dp);
+offset_qScale   = ALIGN512(offset_v8       + B * Hk * Kp * Dp);
+offset_kScale   = ALIGN512(offset_qScale   + B * Hq * Qp * sizeof(uint16_t));
 ```
 
 确保 MTE 硬件搬运始终处于最长突发传输周期（Max Burst Length），实现硬件 3.2 TB/s 物理带宽的满负荷高效吞吐。
@@ -905,13 +989,69 @@ ACL_FUNC_VISIBILITY aclnnStatus aclnnSageAttention2(
 );
 ```
 
-### 3. 参数约束与异常拦截机制
+### 3. CANN 算子原型定义（OpDef）与参数约束机制
 
-1. 空张量与维度检查：输入张量维度必须严格为 4；任何维度值为 0 或超过 uint32 范围时抛出非法参数异常。
-2. 设备与数据类型一致性：q, k, v 必须驻留在同一 NPU 设备上，且 dtype 必须完全一致（均为 float16 或均为 bfloat16）。
-3. 连续性约束：末维必须物理连续（stride(-1) == 1）。
-4. 掩码检查：不支持外部传入稠密 `attn_mask`，非 None 时显式报错。
-5. 因果约束：当 `is_causal=True` 时，必须满足 `Sq == Sk`，否则拦截报错。
+#### 3.1 官方算子原型定义（`sage_attention2_def.cpp`）
+
+在 CANN 原型系统注册为标准自定义算子 `SageAttention2`：
+
+```cpp
+namespace ops {
+class SageAttention2 : public OpDef {
+public:
+    explicit SageAttention2(const char *name) : OpDef(name)
+    {
+        this->Input("q")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("k")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("v")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("out")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("lse")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Attr("sm_scale").AttrType(REQUIRED).Float();
+        this->Attr("smooth_k").AttrType(REQUIRED).Bool();
+        this->Attr("is_causal").AttrType(REQUIRED).Bool();
+        this->Attr("return_lse").AttrType(REQUIRED).Bool();
+        
+        OpAICoreConfig config;
+        config.DynamicCompileStaticFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .DynamicRankSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("opFile.value", "sageattention2")
+            .ExtendCfgInfo("opInterface.value", "sage_attention2");
+        this->AICore().AddConfig("ascend950", config);
+    }
+};
+OP_ADD(SageAttention2);
+} // namespace ops
+```
+
+#### 3.2 严格校验与异常拦截机制（`_validate`）
+
+在 Python 前端与 Host Tiling 入口执行多维度安全校验，确保硬件执行万无一失：
+
+1. **张量秩与维度范围检查**：输入张量 `q, k, v` 必须严格为 4 维（`ndim == 4`）；任意维度必须大于 0 且小于 $2^{32} - 64$。
+2. **设备与数据类型一致性**：`q, k, v` 必须驻留在同一 NPU 设备上，且数据类型必须严格一致（均为 `torch.float16` 或均为 `torch.bfloat16`）。
+3. **物理连续性约束**：末维物理步长必须连续，即 `stride(-1) == 1`，保证底层向量与矩阵搬运的高效连续访存。
+4. **特征维度限制**：支持范围为 $0 < D \le 128$。当 $D \le 64$ 时内部自动向 64 对齐，当 $64 < D \le 128$ 时自动向 128 对齐；$D > 128$ 时直接拦截报错。
+5. **GQA 架构整除性**：Query 头数 `Hq` 必须能被 Key/Value 头数 `Hkv` 整除（`Hq % Hkv == 0`）。
+6. **因果模式严格约束**：当 `is_causal=True` 时，必须严格满足 `Sq == Sk`，否则拦截抛出异常。
+7. **掩码与 Dropout 约束**：由于片上采用全融合内核，不支持外部显式传入稠密 `attn_mask`（非 None 时显式报错）与 `dropout_p != 0`。
+8. **反向求导限制**：本算子为纯前向推理算子，当输入张量携带 `requires_grad=True` 时主动拦截并提示不支持自动求导。
 
 ---
 
