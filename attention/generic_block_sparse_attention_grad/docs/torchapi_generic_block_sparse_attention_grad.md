@@ -256,9 +256,9 @@ $$
 
 ## 约束说明
 
-- `layout_sparse_pattern`当前仅支持1（BNKQ），包括Q/K/V为TND的场景；`sparse_block_idx`仍为四维，`sparse_block_count`仍为三维。
+- `layout_sparse_pattern`当前仅支持1（BNKQ）。
 - `residual_block_mode`当前仅支持 `ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX`（0），不支持隐式加入尾部不完整KV块。
-- `is_consistent_topk`支持False和True；它描述前置Q选择KV的情况，不要求反向每个KV块的Q数量相等。
+- `is_consistent_topk`支持False和True。
 
 - 确定性计算：`generic_block_sparse_attention_grad`默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
 - 参数`cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv`、`sparse_block_idx`、`sparse_block_count`属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
