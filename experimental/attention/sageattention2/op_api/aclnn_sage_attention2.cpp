@@ -123,8 +123,10 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (!qc || !kc || !vc) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    auto result = owner->AllocTensor(a, q->GetDataType());
-    auto resultLse = owner->AllocTensor(lseShape, DataType::DT_FLOAT);
+    const bool directOut = !nhd && (oc->GetStorageShape() == oc->GetViewShape());
+    const aclTensor *result = directOut ? oc : owner->AllocTensor(a, q->GetDataType());
+    const bool directLse = (!returnLse) || (!nhd && (lse->GetStorageShape() == lse->GetViewShape()));
+    const aclTensor *resultLse = (returnLse && directLse) ? lse : owner->AllocTensor(lseShape, DataType::DT_FLOAT);
     if (!result || !resultLse) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
@@ -133,7 +135,10 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    if (!l0op::ViewCopy(result, oc, owner.get()) || (returnLse && !l0op::ViewCopy(resultLse, lse, owner.get()))) {
+    if (!directOut && !l0op::ViewCopy(result, oc, owner.get())) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    if (returnLse && !directLse && !l0op::ViewCopy(resultLse, lse, owner.get())) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
     *workspaceSize = owner->GetWorkspaceSize();

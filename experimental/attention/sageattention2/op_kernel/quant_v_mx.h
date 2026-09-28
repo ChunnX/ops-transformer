@@ -74,38 +74,58 @@ __simd_vf__ inline void QuantVRowsMxVF(__ubuf__ T *x, __ubuf__ T *maxima, __ubuf
 
             if constexpr (PERMUTE_V) {
                 __ubuf__ float8_e4m3_t *outBase = out + (group * 32) * dp + col;
-                for (uint16_t row = 0; row < 16; ++row) {
-                    RegTensor<T> x0, x1;
-                    RegTensor<float> a0, a1;
-                    RegTensor<float8_e4m3_t> p0, p1;
+                for (uint16_t row = 0; row < 16; row += 2) {
+                    RegTensor<T> x0, x1, x2, x3;
+                    RegTensor<float> a0, a1, a2, a3;
+                    RegTensor<float8_e4m3_t> p0, p1, p2, p3;
                     LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x0, xBase0 + row * dp);
                     LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x1, xBase1 + row * dp);
+                    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x2, xBase0 + (row + 1) * dp);
+                    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x3, xBase1 + (row + 1) * dp);
                     Cast<float, T, toFloat>(a0, x0, f);
                     Cast<float, T, toFloat>(a1, x1, f);
+                    Cast<float, T, toFloat>(a2, x2, f);
+                    Cast<float, T, toFloat>(a3, x3, f);
                     Mul(a0, a0, inv, f);
                     Mul(a1, a1, inv, f);
+                    Mul(a2, a2, inv, f);
+                    Mul(a3, a3, inv, f);
                     Cast<float8_e4m3_t, float, cast>(p0, a0, f);
                     Cast<float8_e4m3_t, float, cast>(p1, a1, f);
+                    Cast<float8_e4m3_t, float, cast>(p2, a2, f);
+                    Cast<float8_e4m3_t, float, cast>(p3, a3, f);
                     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase + (row * 2) * dp, p0, f);
                     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase + (row * 2 + 1) * dp, p1, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase + ((row + 1) * 2) * dp, p2, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase + ((row + 1) * 2 + 1) * dp, p3, f);
                 }
             } else {
                 __ubuf__ float8_e4m3_t *outBase0 = out + (group * 32) * dp + col;
                 __ubuf__ float8_e4m3_t *outBase1 = out + (group * 32 + 16) * dp + col;
-                for (uint16_t row = 0; row < 16; ++row) {
-                    RegTensor<T> x0, x1;
-                    RegTensor<float> a0, a1;
-                    RegTensor<float8_e4m3_t> p0, p1;
+                for (uint16_t row = 0; row < 16; row += 2) {
+                    RegTensor<T> x0, x1, x2, x3;
+                    RegTensor<float> a0, a1, a2, a3;
+                    RegTensor<float8_e4m3_t> p0, p1, p2, p3;
                     LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x0, xBase0 + row * dp);
                     LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x1, xBase1 + row * dp);
+                    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x2, xBase0 + (row + 1) * dp);
+                    LoadAlign<T, LoadDist::DIST_UNPACK_B16>(x3, xBase1 + (row + 1) * dp);
                     Cast<float, T, toFloat>(a0, x0, f);
                     Cast<float, T, toFloat>(a1, x1, f);
+                    Cast<float, T, toFloat>(a2, x2, f);
+                    Cast<float, T, toFloat>(a3, x3, f);
                     Mul(a0, a0, inv, f);
                     Mul(a1, a1, inv, f);
+                    Mul(a2, a2, inv, f);
+                    Mul(a3, a3, inv, f);
                     Cast<float8_e4m3_t, float, cast>(p0, a0, f);
                     Cast<float8_e4m3_t, float, cast>(p1, a1, f);
+                    Cast<float8_e4m3_t, float, cast>(p2, a2, f);
+                    Cast<float8_e4m3_t, float, cast>(p3, a3, f);
                     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase0 + row * dp, p0, f);
                     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase1 + row * dp, p1, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase0 + (row + 1) * dp, p2, f);
+                    StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(outBase1 + (row + 1) * dp, p3, f);
                 }
             }
         }
