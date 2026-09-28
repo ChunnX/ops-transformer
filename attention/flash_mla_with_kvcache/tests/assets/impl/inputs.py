@@ -25,6 +25,8 @@ def customize_inputs(
     head_dim_v=512,
     softmax_scale=1.0,
     mask_mode=0,
+    win_left=-1,
+    win_right=-1,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
     layout_q="BSND",
@@ -80,7 +82,7 @@ def customize_inputs(
             offset += count
         block_table.copy_(table)
     if attn_mask is not None:
-        if mask_mode == 3:
+        if mask_mode in (3, 4):
             attn_mask.copy_(torch.ones_like(attn_mask).triu(diagonal=1))
         elif mask_mode == 0:
             attn_mask.zero_()

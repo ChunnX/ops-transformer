@@ -210,6 +210,38 @@ attention:
     options:
       - sparse_flash_attention_grad
 
+  flash_mla_with_kvcache:
+    module: True
+    src:
+      - attention/flash_mla_with_kvcache
+    exclude:
+      - attention/flash_mla_with_kvcache/docs
+      - attention/flash_mla_with_kvcache/README.md
+    ut_cov_exclude:
+      - attention/flash_mla_with_kvcache/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - flash_mla_with_kvcache
+      - flash_mla_with_kvcache_metadata
+
+  flash_mla_with_kvcache_metadata:
+    module: True
+    src:
+      - attention/flash_mla_with_kvcache_metadata
+    exclude:
+      - attention/flash_mla_with_kvcache_metadata/docs
+      - attention/flash_mla_with_kvcache_metadata/README.md
+    ut_cov_exclude:
+      - attention/flash_mla_with_kvcache_metadata/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - flash_mla_with_kvcache
+      - flash_mla_with_kvcache_metadata
+
   sparse_flash_mla:
     module: True
     src:

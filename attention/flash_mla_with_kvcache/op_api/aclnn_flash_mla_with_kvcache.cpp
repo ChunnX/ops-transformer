@@ -31,10 +31,11 @@ extern "C" {
 extern aclnnStatus aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
-    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, const aclTensor *sinksOptional,
+    int64_t headDimV, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft,
+    int64_t winRight, const aclTensor *attnOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                  const aclrtStream stream);
@@ -61,13 +62,20 @@ void FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTen
 aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
     const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
-    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
-    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, const aclTensor *sinksOptional,
+    int64_t headDimV, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse, int64_t winLeft,
+    int64_t winRight, const aclTensor *attnOut, const aclTensor *softmaxLseOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_LOGD("start aclnnFlashMlaWithKvcacheGetWorkspaceSize");
 
+    if (sinksOptional != nullptr) {
+        const auto &shape = sinksOptional->GetViewShape();
+        if (shape.GetDimNum() == 1 && shape.GetDim(0) == 0) {
+            sinksOptional = nullptr;
+        }
+    }
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
 
@@ -75,8 +83,8 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
         q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional, sequsedQOptional, attnMaskOptional,
-        metadataOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
-        returnSoftmaxLse, attnOut, placeHolder, workspaceSize, executor);
+        metadataOptional, sinksOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv,
+        layoutOut, returnSoftmaxLse, winLeft, winRight, attnOut, placeHolder, workspaceSize, executor);
 
     // 销毁占位符
     if (returnSoftmaxLse == 0) {

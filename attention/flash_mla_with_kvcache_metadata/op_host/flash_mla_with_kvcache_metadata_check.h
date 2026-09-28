@@ -35,13 +35,13 @@ public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
                                           const aclTensor *sequsedQOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                           int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
-                                          int64_t maskMode, const char *layoutQ, const aclTensor *metadata,
-                                          uint32_t aicCoreNum, uint32_t aivCoreNum);
+                                          int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
+                                          const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum);
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
     // MLA 硬约束：kv head num 恒 1；head_dim_qk = q/k_cache 最后维 576（nope 512 + rope 64）；
-    // head_dim_v = 512（value/输出宽）；mask {0,3}；q 布局 ∈ {TND,BNSD,BSND}
+    // head_dim_v = 512（value/输出宽）；mask {0,3,4}；q 布局 ∈ {TND,BNSD,BSND}
     static constexpr int64_t MLA_KV_HEADS = 1;
     static constexpr int64_t MLA_HEAD_DIM_QK = 576;
     static constexpr int64_t MLA_HEAD_DIM_V = 512;
@@ -53,7 +53,7 @@ private:
                                             int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
                                             const char *layoutQ);
 
-    static inline aclnnStatus CheckMask(int64_t maskMode);
+    static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
 
     // cache_seqlens 必传，batch 由其长度推导；存在性规则与主算子 seq_len_checker 一致
     static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, const char *layoutQ,
@@ -74,14 +74,15 @@ private:
 inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
-    int64_t maskMode, const char *layoutQ, const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum)
+    int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ, const aclTensor *metadata,
+    uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum should be larger than 0, but got %u", aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum should be larger than 0, but got %u", aivCoreNum);
 
     auto ret = CheckBaseAttr(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, layoutQ);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckMask(maskMode);
+    ret = CheckMask(maskMode, winLeft, winRight);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），与 Python/dispatcher 侧同源（无 batch_size attr）
     int64_t batchSize = NONE_VALUE;
@@ -100,12 +101,14 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSe
                                                                    int64_t headDimQk, int64_t headDimV,
                                                                    const char *layoutQ)
 {
+    CHECK_COND(layoutQ != nullptr, ACLNN_ERR_PARAM_NULLPTR, "layoutQ must not be null");
     CHECK_COND((maxSeqlenQ == NONE_VALUE || maxSeqlenQ >= 0), ACLNN_ERR_RUNTIME_ERROR,
                "maxSeqlenQ must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenQ);
     CHECK_COND((maxSeqlenKv == NONE_VALUE || maxSeqlenKv >= 0), ACLNN_ERR_RUNTIME_ERROR,
                "maxSeqlenKv must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenKv);
 
-    CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
+    CHECK_COND(numHeadsQ >= 1 && numHeadsQ <= 128, ACLNN_ERR_RUNTIME_ERROR,
+               "numHeadsQ must be in [1, 128], but got %ld", numHeadsQ);
     CHECK_COND(numHeadsKv == MLA_KV_HEADS, ACLNN_ERR_RUNTIME_ERROR, "MLA kv head num must be %ld, but got %ld",
                MLA_KV_HEADS, numHeadsKv);
     CHECK_COND(headDimQk == MLA_HEAD_DIM_QK, ACLNN_ERR_RUNTIME_ERROR,
@@ -121,14 +124,19 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSe
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
 
-    static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK};
-    CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports %ld, %ld, but got %ld",
-               NO_MASK, CAUSAL_MASK, maskMode);
+    constexpr int64_t BAND_MASK = 4;
+    static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK, BAND_MASK};
+    CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports 0, 3, 4, but got %ld",
+               maskMode);
+    CHECK_COND(winLeft >= -1 && winLeft <= INT32_MAX && winRight >= -1 && winRight <= INT32_MAX,
+               ACLNN_ERR_PARAM_INVALID, "win_left and win_right must be in [-1, INT32_MAX]");
+    CHECK_COND(maskMode == BAND_MASK || (winLeft == -1 && winRight == -1), ACLNN_ERR_PARAM_INVALID,
+               "win_left and win_right must be -1 for mask_mode 0 or 3");
     return ACLNN_SUCCESS;
 }
 

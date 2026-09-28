@@ -17,11 +17,13 @@
 extern "C" {
 #endif
 
+// winLeft/winRight: inclusive BAND window sizes, -1 means unbounded.
+// Pass the same maskMode and windows to FlashMlaWithKvcache.
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
-    int64_t maskMode, const char *layoutQ, const aclTensor *metaData, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    int64_t maskMode, const char *layoutQ, int64_t winLeft, int64_t winRight, const aclTensor *metaData,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaWithKvcacheMetadata(void *workspace,
                                                                                     uint64_t workspaceSize,

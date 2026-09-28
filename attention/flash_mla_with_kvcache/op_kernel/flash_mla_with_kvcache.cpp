@@ -88,8 +88,9 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
                                                   __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqlens,
                                                   __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                                   __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                                                  __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                                  __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                                  __gm__ uint8_t *sinks, __gm__ uint8_t *attnOut,
+                                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                                  __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::FlashMlaWithKvcacheTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
@@ -152,7 +153,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
     // 静态 tensor 模型：block 内自管 buffer，入口仅接地址
-    op.Init(query, kCache, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user,
+    op.Init(query, kCache, attnMask, sinks, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user,
             metadata, tilingData);
     op.Process();
 

@@ -22,6 +22,8 @@ def build_metadata(
     seqused_q=None,
     head_dim_v=512,
     mask_mode=0,
+    win_left=-1,
+    win_right=-1,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
     layout_q="BSND",
@@ -44,5 +46,7 @@ def build_metadata(
         head_dim_qk=int(q.shape[-1]),
         head_dim_v=int(head_dim_v),
         mask_mode=int(mask_mode),
+        win_left=int(win_left),
+        win_right=int(win_right),
         layout_q=layout_q,
     ).to(device=q.device)

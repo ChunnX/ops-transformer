@@ -109,9 +109,9 @@ public:
           vecFaBlock_(constInfo_, seqLensTool_),
           vecFdBlock_(constInfo_, seqLensTool_){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *kCache, __gm__ uint8_t *attenMask,
-                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cacheSeqlens,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
+                                __gm__ uint8_t *sinks, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tiling)
     {
         this->tilingData_ = tiling;
@@ -132,6 +132,7 @@ public:
             metaAivCoreNum_ * FA_FD_METADATA_SIZE * sectionNum_);
 
         InitConstInfo();
+        constInfo_.learnableSinkFlag = (sinks != nullptr);
 
         // seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
         // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用
@@ -139,7 +140,7 @@ public:
         seqLensTool_.InitKv(cacheSeqlens, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
 
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitVecBlock(attenMask, softmaxLse, attentionOut, workspace);
+            vecFaBlock_.InitVecBlock(attenMask, sinks, softmaxLse, attentionOut, workspace);
             vecFaBlock_.ClearOutput(tilingData_->flashMlaWithKvcacheEmptyTensorParams.needInit != 0);
         }
 
@@ -639,6 +640,7 @@ public:
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
         // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
+        info.isFirstFdBlock = !(headS2Split_ && bN2Cur == constInfo_.bN2Start && gS1Cur == constInfo_.gS1OStart);
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo_.coreFirstTmpOutWsPos;

@@ -178,6 +178,8 @@ void FlashMlaWithKvcacheInfoParser::GetInputParaInfo()
     opParamInfo_.kCache.desc = context_->GetInputDesc(K_CACHE_INDEX);
     opParamInfo_.kCache.shape = context_->GetInputShape(K_CACHE_INDEX);
     GetOptionalInputParaInfo();
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
+    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
 }
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetStrides()
@@ -233,15 +235,17 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetAttrParaInfo()
 
     // 索引8: return_softmax_lse (Int)
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
+    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
 
 void FlashMlaWithKvcacheInfoParser::GetMaskParams()
 {
-    // 文档约束：不传或传入-1代表正无穷，默认值为-1；win_left/win_right 已从接口移除，恒为 -1
-    winLeft_ = -1;
-    winRight_ = -1;
+    // A value of -1 means that side of the right-aligned window is unbounded.
+    winLeft_ = opParamInfo_.winLeft == nullptr ? -1 : *opParamInfo_.winLeft;
+    winRight_ = opParamInfo_.winRight == nullptr ? -1 : *opParamInfo_.winRight;
     maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
 }
 
@@ -585,7 +589,7 @@ void FlashMlaWithKvcacheInfoParser::GenerateFeatureInfo(FlashMlaWithKvcacheTilin
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 
-    // Mask 参数组（maskMode ∈ {NO_MASK, RIGHT_DOWN}；attenMaskFlag = attn_mask 张量存在，FIA 语义）
+    // Mask 参数组（maskMode ∈ {NO_MASK, RIGHT_DOWN, BAND}；attenMaskFlag = attn_mask 张量存在，FIA 语义）
     faInfo.maskMode = maskMode_;
     faInfo.attenMaskFlag = (opParamInfo_.attnMask.tensor != nullptr) &&
                            (opParamInfo_.attnMask.tensor->GetStorageShape().GetShapeSize() != 0);
@@ -597,6 +601,9 @@ void FlashMlaWithKvcacheInfoParser::GenerateFeatureInfo(FlashMlaWithKvcacheTilin
     faInfo.nextTokens = MASK_MODE_INT_MAX;
     if (maskMode_ == static_cast<int64_t>(MaskMode::CAUSAL)) {
         faInfo.nextTokens = 0;
+    } else if (maskMode_ == static_cast<int64_t>(MaskMode::BAND)) {
+        faInfo.preTokens = winLeft_ == -1 ? MASK_MODE_INT_MAX : winLeft_;
+        faInfo.nextTokens = winRight_ == -1 ? MASK_MODE_INT_MAX : winRight_;
     }
 
     // SoftmaxLSE 参数组
@@ -757,11 +764,12 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::ParseAxisInfo()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::ParseFeatureInfo()
 {
-    // Mask 参数组解析；合法集 {NO_MASK(0), RIGHT_DOWN(3)}（FIA MLA 仅验证过这两个 sparseMode）
+    // Supported mask modes: no mask, right-down causal and right-aligned band.
     GetMaskParams();
-    if (maskMode_ != static_cast<int64_t>(MaskMode::NO_MASK) && maskMode_ != static_cast<int64_t>(MaskMode::CAUSAL)) {
+    if (maskMode_ != static_cast<int64_t>(MaskMode::NO_MASK) && maskMode_ != static_cast<int64_t>(MaskMode::CAUSAL) &&
+        maskMode_ != static_cast<int64_t>(MaskMode::BAND)) {
         OP_LOGE_FOR_INVALID_VALUE(opName_, "mask_mode", std::to_string(maskMode_).c_str(),
-                                  "0 (no mask) or 3 (right-down causal)");
+                                  "0 (no mask), 3 (right-down causal) or 4 (band)");
         return ge::GRAPH_FAILED;
     }
     if (maskMode_ == static_cast<int64_t>(MaskMode::NO_MASK) && opParamInfo_.attnMask.tensor != nullptr) {

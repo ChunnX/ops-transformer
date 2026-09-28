@@ -45,7 +45,15 @@ def attention_single(
             dtype=torch.float32,
             device=q.device,
         )
-        maximum = torch.full_like(total, float("-inf") if sink is None else sink)
+        if isinstance(sink, torch.Tensor) and sink.numel() > 1:
+            maximum = (
+                sink[qs:qe]
+                .to(device=q.device, dtype=torch.float32)
+                .reshape(-1, 1)
+                .clone()
+            )
+        else:
+            maximum = torch.full_like(total, float("-inf") if sink is None else sink)
         first, stop = (0, skv) if kv_bounds is None else kv_bounds(qs, qe)
         first = max(0, first // tile_size * tile_size)
         stop = min(skv, max(0, stop))

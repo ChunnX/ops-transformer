@@ -17,6 +17,8 @@
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
 
+#include "../utils/flash_mla_attn_sink_gs1.h"
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -121,6 +123,39 @@ __simd_vf__ inline void MlaStreamUpdate(__ubuf__ float *dst, __ubuf__ float *cur
     }
 }
 
+// A sink must not turn a fully masked query row into a valid row.
+template <bool GS1>
+__simd_vf__ inline void MaskInvalidSinkRows(__ubuf__ float *maxUb, __ubuf__ float *sumUb, uint32_t start, uint32_t rows,
+                                            uint32_t s1Size, uint32_t gSize, int32_t firstValid, int32_t endValid)
+{
+    RegTensor<int32_t> index, divisor, quotient, position;
+    RegTensor<float> maximum, total, invalidMax, zero;
+    MaskReg all = CreateMask<float, Reg::MaskPattern::ALL>();
+    Reg::Arange<int32_t>(index, static_cast<int32_t>(start));
+    Reg::Duplicate<int32_t>(divisor, static_cast<int32_t>(GS1 ? s1Size : gSize), all);
+    Reg::Div<int32_t>(quotient, index, divisor, all);
+    if constexpr (GS1) {
+        Reg::Mul<int32_t>(position, quotient, divisor, all);
+        Reg::Sub<int32_t>(position, index, position, all);
+    } else {
+        Reg::Adds<int32_t>(position, quotient, 0, all);
+    }
+    LoadAlign<float, Reg::LoadDist::DIST_NORM>(maximum, maxUb);
+    Reg::Duplicate<float>(total, 1.0f, all);
+    Reg::Duplicate<float>(invalidMax, -std::numeric_limits<float>::infinity(), all);
+    Reg::Duplicate<float>(zero, 0.0f, all);
+    MaskReg valid;
+    Reg::Compares<int32_t, CMPMODE::GE>(valid, position, firstValid, all);
+    Reg::Select<float>(maximum, maximum, invalidMax, valid);
+    Reg::Select<float>(total, total, zero, valid);
+    Reg::Compares<int32_t, CMPMODE::LT>(valid, position, endValid, all);
+    Reg::Select<float>(maximum, maximum, invalidMax, valid);
+    Reg::Select<float>(total, total, zero, valid);
+    MaskReg tail = UpdateMask<float>(rows);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(maxUb, maximum, tail);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(sumUb, total, tail);
+}
+
 template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockVec {
 public:
@@ -212,6 +247,8 @@ public:
     // gm
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<float> sinkGm_;
+    LocalTensor<uint8_t> sinkTmpUb_;
     // seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），ACTLEN_T=uint32_t；
     // parser 所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
     SeqLensToolType &seqLensTool_;
@@ -255,13 +292,13 @@ public:
         : constInfo(constInfo),
           seqLensTool_(seqLensTool){};
 
-    __aicore__ inline void InitVecBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *sinks, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
-        InitVecInput(attenMask, softmaxLse, attentionOut, workspace);
+        InitVecInput(attenMask, sinks, softmaxLse, attentionOut, workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+    __aicore__ inline void InitVecInput(__gm__ uint8_t *attenMask, __gm__ uint8_t *sinks, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -279,6 +316,9 @@ public:
             softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
             softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
                                            constInfo.logSumExpSize);
+        }
+        if (constInfo.learnableSinkFlag) {
+            sinkGm_.SetGlobalBuffer((__gm__ float *)sinks);
         }
         InitAttenOutBuffer();
     }
@@ -311,7 +351,7 @@ public:
         // ResetSoftmaxBuffer 把 mloop 槽 sum/max 置 0/-inf 替代旧 isFirstS2Loop 区分
         // （消除首次 softmax VF 分支）
         if (unlikely(runInfo.isFirstS2Loop)) {
-            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_BUFCNT);
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -774,6 +814,7 @@ public:
             uint8_t sumBrdcstBuf[UB_BRDCST_BUF_BYTES];                      // 2K，FD sum/max staging
             // FD max/sum 共用 2K staging，并使用同一个 V/MTE3 Mutex。
             uint8_t tmpBuf[UB_TMP_BUF_BYTES]; // 0.5K，softmax 中间结果缓存
+            uint8_t sinkTmp[512U];            // Preserve the fixed Cube communication buffer offsets.
         };
         static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
         ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm2ResBuffers),
@@ -797,6 +838,8 @@ public:
                              .template ReinterpretCast<float>();
         ubLseOutBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, lseOutBuf),
                                             SIZE_OF_MEMBER(UbLayout, lseOutBuf));
+        sinkTmpUb_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, sinkTmp),
+                                          SIZE_OF_MEMBER(UbLayout, sinkTmp));
         ubSumBrdcstBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, sumBrdcstBuf),
                                                SIZE_OF_MEMBER(UbLayout, sumBrdcstBuf));
         ubMaxBrdcstBuf_ = ubSumBrdcstBuf_;
@@ -804,13 +847,45 @@ public:
                                               SIZE_OF_MEMBER(UbLayout, tmpBuf));
     }
 
-    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_BUF_BYTES / sizeof(float);
         LocalTensor<float> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<float> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        Duplicate<float>(sumUb, static_cast<float>(0), softmaxBufElementCount);
-        Duplicate<float>(maxUb, static_cast<float>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        if (constInfo.learnableSinkFlag && runInfo.isFirstFdBlock && runInfo.actVecMSize > 0) {
+            Duplicate<float>(sumUb, 1.0f, softmaxBufElementCount);
+            const uint32_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+            LocalTensor<float> sinkTmp = sinkTmpUb_.template ReinterpretCast<float>();
+            Mutex::Lock<PIPE_MTE2>(EVENT_ID0);
+            if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
+                AttentionCommon::SinkCopyInGS1(sinkTmp, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                               runInfo.n2Idx, constInfo.gSize);
+            } else {
+                AttentionCommon::SinkCopyInS1G(sinkTmp, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                               runInfo.n2Idx, constInfo.gSize);
+            }
+            Mutex::Unlock<PIPE_MTE2>(EVENT_ID0);
+            Mutex::Lock<PIPE_V>(EVENT_ID0);
+            AttentionCommon::SinkExpandMaxVf<float, float, LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD>(
+                maxUb, sinkTmp, gs1Start, runInfo.actVecMSize, runInfo.actS1Size, constInfo.gSize);
+            if constexpr (hasAtten) {
+                int64_t firstValid =
+                    AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+                int64_t endValid = AttentionCommon::Min(
+                    AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+                if (firstValid > 0 || endValid < runInfo.actS1Size) {
+                    AscendC::PipeBarrier<PIPE_V>();
+                    MaskInvalidSinkRows<LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD>(
+                        (__ubuf__ float *)maxUb.GetPhyAddr(), (__ubuf__ float *)sumUb.GetPhyAddr(), gs1Start,
+                        runInfo.actVecMSize, runInfo.actS1Size, constInfo.gSize, static_cast<int32_t>(firstValid),
+                        static_cast<int32_t>(endValid));
+                }
+            }
+            Mutex::Unlock<PIPE_V>(EVENT_ID0);
+        } else {
+            Duplicate<float>(sumUb, 0.0f, softmaxBufElementCount);
+            Duplicate<float>(maxUb, -std::numeric_limits<float>::infinity(), softmaxBufElementCount);
+        }
     }
 
     __aicore__ inline void InitCrossCoreSync()

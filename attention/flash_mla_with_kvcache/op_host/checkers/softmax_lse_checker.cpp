@@ -47,9 +47,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FlashMlaWithKvcacheTili
     }
 
     const gert::CompileTimeTensorDesc *lseOutDesc = faInfo.opParamInfo.lseOut.desc;
-    if (lseOutDesc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
+    OP_CHECK_IF(lseOutDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "TensorDesc of lse_out"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(lseOutDesc->GetDataType() != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "lse_out",
@@ -66,6 +65,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FlashMlaWithKvcacheTili
 ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     if (faInfo.softmaxLseFlag) {
+        OP_CHECK_IF(faInfo.opParamInfo.lseOut.desc == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "TensorDesc of lse_out"), return ge::GRAPH_FAILED);
         const gert::StorageShape *lseOutShape = faInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseOutShape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "lse_out", "empty",
@@ -73,6 +74,25 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FlashMlaWithKvcacheT
                     return ge::GRAPH_FAILED);
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FlashMlaWithKvcacheTilingInfo &faInfo)
+{
+    if (!faInfo.softmaxLseFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(faInfo.opParamInfo.lseOut.shape == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "Shape of lse_out"), return ge::GRAPH_FAILED);
+    const auto &actual = faInfo.opParamInfo.lseOut.shape->GetStorageShape();
+    // LSE always puts heads before tokens, including TND -> TND output.
+    const gert::Shape expected = faInfo.qLayout == FlashMlaWithKvcacheLayout::TND ?
+                                     gert::Shape({faInfo.n1Size, faInfo.qTSize}) :
+                                     gert::Shape({faInfo.bSize, faInfo.n1Size, faInfo.s1Size});
+    OP_CHECK_IF(actual != expected,
+                OP_LOGE(faInfo.opName, "lse_out shape must be %s, but got %s", Ops::Base::ToString(expected).c_str(),
+                        Ops::Base::ToString(actual).c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
