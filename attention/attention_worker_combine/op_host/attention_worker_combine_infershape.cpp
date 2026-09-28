@@ -29,6 +29,7 @@ constexpr size_t OUTPUT_IDX_NEXT_LAYER_ID = 1;
 constexpr size_t IDX_ZERO = 0;
 constexpr size_t IDX_ONE = 1;
 constexpr int64_t DIM_NUM = 2;
+constexpr size_t DIM_MIN = 1;
 constexpr int64_t TOKEN_DTYPE_FP16 = 0;
 constexpr int64_t TOKEN_DTYPE_BF16 = 1;
 
@@ -43,6 +44,14 @@ graphStatus InferShape4AttentionWorkerCombine(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, scheduleContextInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertScalesInputShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, layerIdInputShape);
+
+    // Guard against GetDim(0) out-of-range access: each input rank must be >= 1.
+    OP_CHECK_IF(scheduleContextInputShape->GetDimNum() < DIM_MIN,
+                OP_LOGE(context->GetNodeName(), "schedule_context dim num must be >= 1."), return GRAPH_FAILED);
+    OP_CHECK_IF(expertScalesInputShape->GetDimNum() < DIM_MIN,
+                OP_LOGE(context->GetNodeName(), "expert_scales dim num must be >= 1."), return GRAPH_FAILED);
+    OP_CHECK_IF(layerIdInputShape->GetDimNum() < DIM_MIN,
+                OP_LOGE(context->GetNodeName(), "layer_id dim num must be >= 1."), return GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);

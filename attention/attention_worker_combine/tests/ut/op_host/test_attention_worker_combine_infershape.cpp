@@ -48,6 +48,60 @@ TEST_F(AttentionWorkerCombineInfershapeTest, AttentionWorkerCombine_infershape_t
     std::vector<std::vector<int64_t>> expectOutputShape = {{32, 7168}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+// Issue #4534: illegal input ranks must be rejected in Host InferShape instead of
+// returning GRAPH_SUCCESS with an out-of-range GetDim(0) access.
+TEST_F(AttentionWorkerCombineInfershapeTest, expert_scales_rank0_should_fail)
+{
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+    gert::StorageShape expert_scales_shape = {{}, {}}; // rank 0
+    gert::StorageShape layer_id_shape = {{1}, {1}};
+    gert::InfershapeContextPara para(
+        "AttentionWorkerCombine",
+        {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND},
+         {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(AttentionWorkerCombineInfershapeTest, schedule_context_rank0_should_fail)
+{
+    gert::StorageShape schedule_context_shape = {{}, {}}; // rank 0
+    gert::StorageShape expert_scales_shape = {{4, 2}, {4, 2}};
+    gert::StorageShape layer_id_shape = {{1}, {1}};
+    gert::InfershapeContextPara para(
+        "AttentionWorkerCombine",
+        {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND},
+         {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(AttentionWorkerCombineInfershapeTest, layer_id_rank0_should_fail)
+{
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+    gert::StorageShape expert_scales_shape = {{4, 2}, {4, 2}};
+    gert::StorageShape layer_id_shape = {{}, {}}; // rank 0
+    gert::InfershapeContextPara para(
+        "AttentionWorkerCombine",
+        {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND},
+         {expert_scales_shape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {layer_id_shape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
 TEST_F(AttentionWorkerCombineInfershapeTest, mxfp8_output_shape)
 {
     for (int64_t dtype : {2, 3, 4}) {

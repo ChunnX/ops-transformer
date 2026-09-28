@@ -283,3 +283,35 @@ TEST_F(AttentionWorkerCombineTilingTest, mxfp_k_batch_and_tail)
     CheckMxfpTiling(8193, 258, 4, ge::DT_FLOAT8_E8M0, ge::GRAPH_SUCCESS, 3, 65, "Ascend950", ge::DT_BF16, 11020, 0,
                     "3 3 65 8193 0 1 3 1 1 8224 8193 1 1 1 43 22 1 ");
 }
+
+namespace {
+// Drive the Ascend950 (arch35) tiling path with configurable schedule_context / layer_id ranks
+// to cover the rank validation added for issue #4534.
+void CheckArch35InputRank(const gert::StorageShape &scheduleContextShape, const gert::StorageShape &layerIdShape,
+                          ge::graphStatus status)
+{
+    constexpr int64_t r = 3;
+    constexpr int64_t k = 2;
+    constexpr int64_t h = 64;
+    AttentionWorkerCombineCompileInfo compileInfo = {8, 256 * 1024};
+    gert::TilingContextPara para(
+        "AttentionWorkerCombine",
+        {{scheduleContextShape, ge::DT_INT8, ge::FORMAT_ND},
+         {{{r, k}, {r, k}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {layerIdShape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{r, h}, {r, h}}, ge::DT_BF16, ge::FORMAT_ND}, {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(h)},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1}, {1, 1}, &compileInfo, "Ascend950", 8, 256 * 1024, 8192);
+    ExecuteTestCase(para, status, 0);
+}
+} // namespace
+
+TEST_F(AttentionWorkerCombineTilingTest, arch35_reject_invalid_input_rank)
+{
+    // schedule_context must be rank 1 (legal 1D inputs are already covered by the other arch35 cases).
+    CheckArch35InputRank({{2, 512}, {2, 512}}, {{1}, {1}}, ge::GRAPH_FAILED);
+    // layer_id must be rank 1.
+    CheckArch35InputRank({{1024}, {1024}}, {{1, 1}, {1, 1}}, ge::GRAPH_FAILED);
+}

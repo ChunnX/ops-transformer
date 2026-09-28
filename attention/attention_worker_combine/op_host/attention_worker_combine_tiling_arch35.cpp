@@ -18,7 +18,11 @@
 
 namespace optiling {
 
+constexpr int64_t SCHEDULE_CONTEXT_INDEX = 0;
 constexpr int64_t EXPERT_SCALES_INDEX = 1;
+constexpr int64_t LAYER_ID_INDEX = 2;
+constexpr size_t SCHEDULE_CONTEXT_RANK = 1U;
+constexpr size_t LAYER_ID_RANK = 1U;
 constexpr int64_t HIDDEN_SIZE_INDEX = 0;
 constexpr int64_t TOKEN_DTYPE_INDEX = 1;
 constexpr int64_t NEED_SCHEDULE_INDEX = 2;
@@ -132,6 +136,22 @@ ge::graphStatus AttentionWorkerCombineTilingArch35::ParseAttrs()
 
 ge::graphStatus AttentionWorkerCombineTilingArch35::ValidateInputs()
 {
+    const auto *ctxShapePtr = context_->GetInputShape(SCHEDULE_CONTEXT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, ctxShapePtr);
+    OP_CHECK_IF(ctxShapePtr->GetStorageShape().GetDimNum() != SCHEDULE_CONTEXT_RANK,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    context_->GetNodeName(), "schedule_context",
+                    std::to_string(ctxShapePtr->GetStorageShape().GetDimNum()).c_str(), "Rank must be 1."),
+                return ge::GRAPH_FAILED);
+
+    const auto *layerIdShapePtr = context_->GetInputShape(LAYER_ID_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, layerIdShapePtr);
+    OP_CHECK_IF(layerIdShapePtr->GetStorageShape().GetDimNum() != LAYER_ID_RANK,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    context_->GetNodeName(), "layer_id",
+                    std::to_string(layerIdShapePtr->GetStorageShape().GetDimNum()).c_str(), "Rank must be 1."),
+                return ge::GRAPH_FAILED);
+
     const auto *shapePtr = context_->GetInputShape(EXPERT_SCALES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
     const auto &shape = shapePtr->GetStorageShape();
