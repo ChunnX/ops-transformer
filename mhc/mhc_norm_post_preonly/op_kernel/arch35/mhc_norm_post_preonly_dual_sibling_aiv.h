@@ -20,16 +20,16 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     float dotHalf[2][N_MAX] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 0.0f}};
     float midSqHalf[2] = {0.0f, 0.0f};
     CacheHOut((uint64_t)token * D_);
-    // 单分块gamma0通常由Process预载；5op会在R3复用该缓冲缓存gamma2，
+    // 单分块gamma0通常由Process预载；5op会在中间归一化复用该缓冲缓存gamma2，
     // 因此同一核处理后续token时需恢复gamma0。4op不增加重复搬运。
-    if (dimLoop_ != 1U || (USE_RMS_MID && token != tokenStart_)) {
+    if (dLoop_ != 1U || (USE_RMS_MID && token != tStart_)) {
         CacheGamma0();
     }
-    const uint32_t headBegin = laneId_ * 2U;
+    const uint32_t headBegin = siblingAivIdx_ * 2U;
     LoadTokenWeights(token, postVals, headBegin, headBegin + 2U);
 
-    // Start the first residual tile before R1. Its queue storage is disjoint
-    // from the R1 square scratch, so MTE2 can overlap the reduction/Scalar work.
+    // Start the first residual tile before 输入归一化. Its queue storage is disjoint
+    // from the 输入归一化 square scratch, so MTE2 can overlap the reduction/Scalar work.
     if constexpr (USE_RMS_MID) {
         LocalTensor<T> firstResidual = bufResidualBf16_.AllocTensor<T>();
         const uint32_t firstTD = GetTileD(0U);
@@ -37,29 +37,29 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         DataCopyExtParams residualCopy = {N_MAX, 0, 0, 0, 0};
         residualCopy.blockLen = firstTD * sizeof(T);
         residualCopy.srcStride = (D_ - firstTD) * sizeof(T);
-        residualCopy.dstStride = (dimTile_ - firstTD) * sizeof(T) / 32U;
+        residualCopy.dstStride = (dTile_ - firstTD) * sizeof(T) / 32U;
         DataCopyPadExtParams<T> residualPad = {false, 0, 0, 0};
         DataCopyPad(firstResidual, residualGm_[firstBaseOffset], residualCopy, residualPad);
         bufResidualBf16_.EnQue(firstResidual);
     }
 
-    // 两个lane按完全相同的分块和顺序冗余执行R1。
+    // 两个lane按完全相同的分块和顺序冗余执行输入归一化。
     float sumSq0 = 0.0f;
     if constexpr (USE_RMS_MID) {
         sumSq0 = ReduceSumSqFromCache(0U, D_);
     } else {
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        for (uint32_t tile = 0; tile < dLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
+            const uint32_t tOff = tile * dTile_;
             sumSq0 += ReduceSumSqFromCache(tOff, tD);
         }
     }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     // 两个lane分别构造自己负责的两个x2 head。
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
+        const uint32_t tOff = tile * dTile_;
         if constexpr (USE_RMS_MID) {
             LocalTensor<float> hOut = bufGamma2Fp32_.Get<float>()[tOff];
             LocalTensor<T> hOutCache = bufX2Cache_.Get<T>()[tOff];
@@ -73,15 +73,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 residual = bufResFp32_.Get<T>();
             }
 
-            if (tile + 1U < dimLoop_) {
+            if (tile + 1U < dLoop_) {
                 const uint32_t nextTile = tile + 1U;
-                const uint32_t nextTOff = nextTile * dimTile_;
+                const uint32_t nextTOff = nextTile * dTile_;
                 const uint32_t nextTD = GetTileD(nextTile);
                 const uint64_t nextBaseOffset = (uint64_t)token * N_ * D_ + nextTOff;
                 DataCopyExtParams residualCopy = {N_MAX, 0, 0, 0, 0};
                 residualCopy.blockLen = nextTD * sizeof(T);
                 residualCopy.srcStride = (D_ - nextTD) * sizeof(T);
-                residualCopy.dstStride = (dimTile_ - nextTD) * sizeof(T) / 32U;
+                residualCopy.dstStride = (dTile_ - nextTD) * sizeof(T) / 32U;
                 DataCopyPadExtParams<T> residualPad = {false, 0, 0, 0};
                 if (residualFromQueue) {
                     LocalTensor<T> nextResidual = bufResFp32_.Get<T>();
@@ -98,7 +98,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
             LocalTensor<float> combWeights = bufPostComb_.Get<float>()[ALIGN8];
             MhcNormRegBase::VFComputePostHeadPair<T, true>(
                 x2Cache[headBegin * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], hOut, residual, combWeights,
-                dimTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD,
+                dTile_, headBegin, postVals[headBegin], postVals[headBegin + 1U], tD,
                 hOutCache, bufGamma0Fp32_.Get<float>()[tOff], invRms0);
             PipeBarrier<PIPE_V>();
             if (residualFromQueue) {
@@ -110,15 +110,15 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         CacheX2TileForLane(token, tOff, tD, !USE_RMS_MID);
 
         if constexpr (USE_RMS_MID) {
-            // All tile squares are retained; reduce once after R2 completes.
+            // All tile squares are retained; reduce once after 残差融合 completes.
         } else {
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
         }
     }
 
     if constexpr (USE_RMS_MID) {
-        midSqHalf[laneId_] = ReduceSumPrecise(bufGamma2Fp32_.Get<float>(), D_);
-        // R2结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
+        midSqHalf[siblingAivIdx_] = ReduceSumPrecise(bufGamma2Fp32_.Get<float>(), D_);
+        // 残差融合结束后gamma0不再使用：整段预取本lane第一个gamma2 head，
         // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
         LocalTensor<float> gammaEvenCache = bufGamma0Fp32_.Get<float>();
         FenceVToMte2();
@@ -126,25 +126,25 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
         LocalTensor<float> midBuf = bufScalar_.Get<float>();
-        midBuf.SetValue(0, midSqHalf[laneId_]);
+        midBuf.SetValue(0, midSqHalf[siblingAivIdx_]);
         // 32B槽的其余元素不会被sibling读取，无需在关键同步路径上做Scalar清零。
         SetFlag<HardEvent::S_MTE3>(evtStoMte3_);
         WaitFlag<HardEvent::S_MTE3>(evtStoMte3_);
-        const uint64_t ownSlot = ((uint64_t)token * 2U + laneId_) * PARTIAL_SLOT_ELEMS;
+        const uint64_t ownSlot = ((uint64_t)token * 2U + siblingAivIdx_) * PARTIAL_SLOT_ELEMS;
         DataCopy(partial1Gm_[ownSlot], midBuf, PARTIAL_SLOT_ELEMS);
         CrossCoreSetFlag<0x1, PIPE_MTE3>(MID_READY_FLAG);
         CrossCoreWaitFlag<0x1, PIPE_MTE2>(MID_READY_FLAG);
-        const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - laneId_)) * PARTIAL_SLOT_ELEMS;
+        const uint64_t siblingSlot = ((uint64_t)token * 2U + (1U - siblingAivIdx_)) * PARTIAL_SLOT_ELEMS;
         DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
         SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
         WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
-        midSqHalf[1U - laneId_] = midBuf.GetValue(0);
+        midSqHalf[1U - siblingAivIdx_] = midBuf.GetValue(0);
         const float totalMidSq = midSqHalf[0] + midSqHalf[1];
         const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
-        for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+        for (uint32_t tile = 0; tile < dLoop_; ++tile) {
             const uint32_t tD = GetTileD(tile);
-            const uint32_t tOff = tile * dimTile_;
+            const uint32_t tOff = tile * dTile_;
             LocalTensor<float> gammaEven = gammaEvenCache[tOff];
             LocalTensor<float> gammaOdd = bufGamma2Fp32_.Get<float>();
             LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
@@ -161,13 +161,13 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
                 x2Cache[(headBegin + 1U) * D_ + tOff], x2Cache[(headBegin + 1U) * D_ + tOff], gammaOdd, invRmsMid, tD);
             PipeBarrier<PIPE_V>();
             CacheX2TileForLane(token, tOff, tD, true);
-            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, laneId_, laneId_ + 1U);
+            AccumulateHalfPartials(tOff, tD, sumSqHalf, dotHalf, siblingAivIdx_, siblingAivIdx_ + 1U);
         }
     }
 
     // follower把五个有效partial写入独占的32B槽；leader的partial0始终留在本核。
     LocalTensor<float> partialBuf = bufScalar_.Get<float>();
-    if (laneId_ == 1U) {
+    if (siblingAivIdx_ == 1U) {
         partialBuf.SetValue(0, sumSqHalf[1]);
         for (uint32_t o = 0; o < N_MAX; ++o) {
             partialBuf.SetValue(o + 1U, dotHalf[1][o]);
@@ -182,7 +182,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     // 两个lane均无条件执行一次mode1 Set/Wait；该等待不替代本核流水事件。
     CrossCoreSetFlag<0x1, PIPE_MTE3>(PAIR_READY_FLAG);
     CrossCoreWaitFlag<0x1, PIPE_MTE2>(PAIR_READY_FLAG);
-    if (laneId_ == 1U) {
+    if (siblingAivIdx_ == 1U) {
         return;
     }
 
@@ -199,7 +199,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
 
     // follower负责的两个head在GM和UB中均连续。partial到达后立即发起2D回读，
-    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；R6消费x2前再等待完成。
+    // 用下方Gate的Scalar/Vector计算隐藏这段MTE2；门控融合消费x2前再等待完成。
     LocalTensor<T> x2Cache = bufX2Cache_.Get<T>();
     const uint64_t followerHeadOffset = (uint64_t)token * N_ * D_ + 2U * D_;
     if constexpr (USE_RMS_MID) {
@@ -214,7 +214,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
     ComputeGateValues(totalSumSqPre, xHatVals);
 
-    // 会合后只有leader继续执行R6、R7和最终输出。
+    // 会合后只有leader继续执行门控融合、输出归一化和最终输出。
     if constexpr (!USE_RMS_MID) {
         DataCopy(x2Cache[2U * D_], x2OutGm_[followerHeadOffset], 2U * D_);
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
@@ -222,11 +222,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     float sumSq1 = 0.0f;
-    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方R6的Vector计算重叠。
+    // 提前发起gamma1搬运（到bufGamma0Fp32_），与下方门控融合的Vector计算重叠。
     StartCacheGamma1();
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
+        const uint32_t tOff = tile * dTile_;
         LocalTensor<T> x2Cache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gateBuf = bufScalar_.Get<float>()[EXP_DIV_ELEM];
         if constexpr (USE_RMS_MID) {
@@ -243,10 +243,10 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     }
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
     WaitCacheGamma1();
-    for (uint32_t tile = 0; tile < dimLoop_; ++tile) {
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
-        const uint32_t tOff = tile * dimTile_;
-        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dimTile_];
+        const uint32_t tOff = tile * dTile_;
+        LocalTensor<float> hIn = bufResFp32_.Get<float>()[N_MAX * dTile_];
         LocalTensor<T> hInCache = bufX2Cache_.Get<T>()[tOff];
         LocalTensor<float> gamma1 = bufGamma0Fp32_.Get<float>()[tOff];
         if constexpr (RETURN_H_IN_F32) {

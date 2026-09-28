@@ -18,6 +18,9 @@
 #include "mhc_norm_post_preonly.h"
 #include "aclnn_mhc_norm_post_preonly.h"
 
+#include <cstddef>
+#include <initializer_list>
+
 using namespace op;
 
 #ifdef __cplusplus
@@ -30,10 +33,26 @@ constexpr int64_t SUPPORTED_D_2560 = 2560;
 constexpr int64_t SUPPORTED_D_5120 = 5120;
 constexpr int64_t SUPPORTED_D_6144 = 6144;
 constexpr int64_t SUPPORTED_D_7168 = 7168;
+constexpr int64_t SUPPORTED_N = 4;
+constexpr int64_t MAX_TOKENS = 1024 * 1024;
 
 static bool IsSupportedD(int64_t d)
 {
     return d == SUPPORTED_D_2560 || d == SUPPORTED_D_5120 || d == SUPPORTED_D_6144 || d == SUPPORTED_D_7168;
+}
+
+static bool HasShape(const aclTensor *tensor, std::initializer_list<int64_t> expected)
+{
+    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() != expected.size()) {
+        return false;
+    }
+    size_t i = 0;
+    for (int64_t dim : expected) {
+        if (tensor->GetViewShape().GetDim(i++) != dim) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const aclTensor *residual,
@@ -47,6 +66,13 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const 
                                                    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
+
+    CHECK_COND(hOut != nullptr && residual != nullptr && hPost != nullptr && phi != nullptr && alpha != nullptr &&
+                   bias != nullptr && gamma1 != nullptr && hInPrimeOut != nullptr && x2Out != nullptr &&
+                   workspaceSize != nullptr && executor != nullptr,
+               ACLNN_ERR_PARAM_NULLPTR, "Required tensor or output pointer must not be nullptr.");
+    CHECK_COND(normEps >= 0.0F && mhcPreNormEps >= 0.0F && hcEps >= 0.0F, ACLNN_ERR_PARAM_INVALID,
+               "normEps, mhcPreNormEps and hcEps must be non-negative.");
 
     // pre_mix、h_pre 为接口预留的可选输入/输出，当前暂不支持。
     CHECK_COND(preMixOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
@@ -73,6 +99,12 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const 
                "The last dimension D of hOut must be one of 2560, 5120, 6144, or 7168, but got %ld.", d);
     CHECK_COND(hOut->GetDataType() == DataType::DT_FLOAT16 || hOut->GetDataType() == DataType::DT_BF16,
                ACLNN_ERR_PARAM_INVALID, "hOut dtype must be FLOAT16 or BFLOAT16.");
+    const int64_t tokenDim0 = hOutShape.GetDim(0);
+    const int64_t tokenDim1 = hOutDimNum == 3U ? hOutShape.GetDim(1) : 1;
+    CHECK_COND(tokenDim0 > 0 && tokenDim1 > 0 && tokenDim0 <= MAX_TOKENS &&
+                   tokenDim1 <= MAX_TOKENS / tokenDim0,
+               ACLNN_ERR_PARAM_INVALID,
+               "B*S must be in [1, %ld].", MAX_TOKENS);
 
     residual = l0op::Contiguous(residual, uniqueExecutor.get());
     CHECK_COND(residual != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous residual failed.");
@@ -108,6 +140,43 @@ static aclnnStatus MhcNormPostPreonlyCommonProcess(const aclTensor *hOut, const 
         gamma2Optional = l0op::Contiguous(gamma2Optional, uniqueExecutor.get());
         CHECK_COND(gamma2Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma2 failed.");
     }
+
+    const bool is3D = hOutDimNum == 3U;
+    CHECK_COND(is3D ? HasShape(residual, {tokenDim0, tokenDim1, SUPPORTED_N, d})
+                    : HasShape(residual, {tokenDim0, SUPPORTED_N, d}),
+               ACLNN_ERR_PARAM_INVALID, "residual shape must match hOut with an additional N=4 dimension.");
+    CHECK_COND(is3D ? HasShape(hPost, {tokenDim0, tokenDim1, SUPPORTED_N})
+                    : HasShape(hPost, {tokenDim0, SUPPORTED_N}),
+               ACLNN_ERR_PARAM_INVALID, "hPost shape must be [T,4] or [B,S,4].");
+    CHECK_COND(is3D ? HasShape(hResOptional, {tokenDim0, tokenDim1, SUPPORTED_N, SUPPORTED_N})
+                    : HasShape(hResOptional, {tokenDim0, SUPPORTED_N, SUPPORTED_N}),
+               ACLNN_ERR_PARAM_INVALID, "hResOptional shape must be [T,4,4] or [B,S,4,4].");
+    CHECK_COND(HasShape(phi, {SUPPORTED_N, SUPPORTED_N * d}) && HasShape(alpha, {1}) &&
+                   HasShape(bias, {SUPPORTED_N}) && HasShape(gamma0Optional, {d}) && HasShape(gamma1, {d}),
+               ACLNN_ERR_PARAM_INVALID, "phi, alpha, bias, gamma0 and gamma1 shapes must match N=4 and D.");
+    CHECK_COND(gamma2Optional == nullptr || HasShape(gamma2Optional, {SUPPORTED_N * d}),
+               ACLNN_ERR_PARAM_INVALID, "gamma2Optional shape must be [4*D] when present.");
+    CHECK_COND(is3D ? HasShape(hInPrimeOut, {tokenDim0, tokenDim1, d})
+                    : HasShape(hInPrimeOut, {tokenDim0, d}),
+               ACLNN_ERR_PARAM_INVALID, "hInPrimeOut shape must match hOut.");
+    CHECK_COND(is3D ? HasShape(x2Out, {tokenDim0, tokenDim1, SUPPORTED_N, d})
+                    : HasShape(x2Out, {tokenDim0, SUPPORTED_N, d}),
+               ACLNN_ERR_PARAM_INVALID, "x2Out shape must match residual.");
+    CHECK_COND(hInF32OutOptional == nullptr ||
+                   (is3D ? HasShape(hInF32OutOptional, {tokenDim0, tokenDim1, d})
+                         : HasShape(hInF32OutOptional, {tokenDim0, d})),
+               ACLNN_ERR_PARAM_INVALID, "hInF32OutOptional shape must match hOut when present.");
+
+    const auto fp32 = DataType::DT_FLOAT;
+    CHECK_COND(hPost->GetDataType() == fp32 && hResOptional->GetDataType() == fp32 && phi->GetDataType() == fp32 &&
+                   alpha->GetDataType() == fp32 && bias->GetDataType() == fp32 &&
+                   gamma0Optional->GetDataType() == fp32 && gamma1->GetDataType() == fp32 &&
+                   (gamma2Optional == nullptr || gamma2Optional->GetDataType() == fp32),
+               ACLNN_ERR_PARAM_INVALID, "hPost, hRes, phi, alpha, bias and gamma inputs must be FLOAT32.");
+    CHECK_COND(hInPrimeOut->GetDataType() == hOut->GetDataType() &&
+                   x2Out->GetDataType() == hOut->GetDataType() &&
+                   (hInF32OutOptional == nullptr || hInF32OutOptional->GetDataType() == fp32),
+               ACLNN_ERR_PARAM_INVALID, "Output dtypes must match hOut; hInF32OutOptional must be FLOAT32.");
 
     bool isLaunchPrepared = MhcNormPostPreonlyl0op::MhcNormPostPreonly(
         hOut, residual, hPost, hResOptional, phi, alpha, bias, preMixOptional, gamma0Optional, gamma1, gamma2Optional,
