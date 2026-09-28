@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "mqfa_public_define_arch920r1.h"
+#include "mqfa_public_define_arch92.h"
 #include "mixed_quant_flash_attn_block_cube_gqa.h"
 #include "mixed_quant_flash_attn_block_vec_gqa.h"
 #include "mixed_quant_flash_attn_block_vec_flashdecode.h"
