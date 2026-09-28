@@ -37,7 +37,9 @@
 #include "tensor_api/tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 
-namespace Apace {
+namespace Blaze {
+namespace Gemm {
+namespace Block {
 
 template <uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
           class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
@@ -377,4 +379,6 @@ private:
     uint64_t l1BufferBiasOffset_[2] = {0UL}; // default 2 buffer
 };
 #endif
-} // namespace Apace
+} // namespace Block
+} // namespace Gemm
+} // namespace Blaze

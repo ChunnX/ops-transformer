@@ -84,7 +84,8 @@ public:
 
     // ---- Fragment MMAD types ----
     using BlockMmadFrag =
-        Apace::BmmBlockMmadFragment<0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutC>;
+        Blaze::Gemm::Block::BmmBlockMmadFragment<0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType,
+            LayoutC>;
     static constexpr bool weightNz = BlockMmadFrag::weightNz;
     using FragL1Params = typename BlockMmadFrag::L1Params;
     using FragBlockShape = typename BlockMmadFrag::BlockShape;
