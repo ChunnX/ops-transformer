@@ -152,7 +152,7 @@ Q/K 以 INT8 进入 Cube 后，GEMM-1 在 L0C 中以 INT32 精确累加（无舍
      = (Q · K^T) * sm_scale                        （2048 * 2^-11 = 1，精确抵消）
 ```
 
-数学结论：`2048 * 2^-11 = 1`，DEQF16 引入的 2^-11 缩放被预融合进 scale 的 2048 因子严格抵消，最终 FP16 得分即 `sm_scale * Q·K^T` 的量化近似，且全程只需每行一次 FP16 向量乘法，无独立反量化通道。该方案对齐开源 SageAttention 在 sm89 per_thread 路径的 FP16 平衡 scale 手法（开源侧将 2048 因子折叠进 qk scale，硬件 mma 输出以 FP16 承接）。
+数学结论：`2048 * 2^-11 = 1`，DEQF16 引入的 2^-11 缩放被预融合进 scale 的 2048 因子严格抵消，最终 FP16 得分即 `sm_scale * Q·K^T` 的量化近似，且全程只需每行一次 FP16 向量乘法，无独立反量化通道。该方案对齐开源 SageAttention 在 sm89 per_thread 路径的 FP16 平衡 scale 手法（开源侧将 2048 因子折叠进 qk scale，硬件 mma 输出以 FP16 承接）。工程上 qh/kh 各含一次 FP16 RNE 舍入，恒等式的实测相对误差包络 ≤ 2^-9（`tests/numeric_error_test.cpp` 断言 [5] 以位级 FP16 RNE 镜像实测最大 9.1e-04）。
 
 负 sm_scale 的符号位折叠在 Q 的 scale 上（`Select` 按 `sm_scale < 0` 取负），K scale 恒正，保证乘积符号正确。
 
@@ -236,6 +236,8 @@ LSE_real[i] = (m̂_final + ln(den_final)) + sm_scale * dot(Q[i, :], mean_K)
 
 该式与开源 `core.py` 返回路径 `lse / 1.44269504 + lse_correction * sm_scale` 语义一致：开源侧硬件 softmax 状态以 2 为底，故需 `/log2(e)` 换底；本内核状态本身即为自然底数，无需换底项。LSE 以 FP32 写出，形状 `[B, Hq, Sq]`。
 
+接口层的对应约束：Python 适配层（`_ops.py`）对内核返回的 `lse` 直接透传，不再施加 `/1.44269504` 换底或 `lse_correction * sm_scale` 二次校正——上述两项已由 `StoreTileLse` 在内核内以自然底数一次完成。若在 Python 层再套用开源 epilogue 公式，将对已含校正的自然对数值做双重校正与错误换底（偏差约 0.31·lse + 校正项量级），导致 TC-04 与 `test_aclnn_matches_reference(return_lse=True)` 失败；该等价性由 CPU 参考实现（`reference.py` 以 `m + ln(den) + ⟨q,mean⟩·scale` 同构对账）与 `tests/numeric_error_test.cpp` 断言 [7]（LSE 恒等式 ≤ 1e-5，含 GQA 广播）双向锁定。
+
 GQA 场景广播规则：
 在 Grouped Query Attention 场景下，Query 头数 `H_Q` 大于 Key/Value 头数 `H_K`。每个 KV 头对应一个分组，组内大小为 `group_size = H_Q // H_K`。Key 的通道均值 `mean_K` 原始形状为 `[B, H_K, D]`，Query 头 h 在校正项点积前按
 
@@ -259,7 +261,7 @@ __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &
                                            AscendC::MicroAPI::MaskReg &mask)
 {
     // 初始估算: 利用 IEEE-754 浮点数比特位整型重解释减法，生成初始倒数估值 y0
-    // 魔数 0x7EEF370B 满足初始相对误差 |1 - src * y0| <= 2^-7 量级
+    // 魔数 0x7EEF370B 的初始相对误差随 binade 摆动，最差约 2^-4（非常数 2^-7）
     RegTensor<uint32_t> magic, ix, iy;
     RegTensor<float> y0, term, two;
     Duplicate(two, 2.0f);
@@ -280,13 +282,13 @@ __simd_callee__ inline void FastReciprocal(AscendC::MicroAPI::RegTensor<float> &
 }
 ```
 
-收敛性与数值误差界证明：
-相对误差满足二次收敛递推关系 $e_{n+1} = (e_n)^2$。
-- 初始相对误差：$|e_0| \le 2^{-7}$ (约 0.0078125)。
-- 第一次迭代后：$|e_1| = (e_0)^2 \le 2^{-14}$ (约 $6.10 \times 10^{-5}$)。
-- 第二次迭代后：$|e_2| = (e_1)^2 \le 2^{-28} < 2^{-23}$ (约 $3.73 \times 10^{-9}$)。
+收敛性与数值误差界（实测口径，见 `tests/numeric_error_test.cpp` 断言 [1]）：
+牛顿迭代在精确算术下满足二次收敛 $e_{n+1} = e_n^2$，但魔数初值的相对误差并非一致小量——它随操作数所在 binade 摆动，最差约 $2^{-4}$。
+- 初始相对误差：$|e_0| \lesssim 2^{-4}$（随 binade 摆动，均值约 2^-6~2^-7）。
+- 两次迭代后：$|e_2| \approx e_0^4$，实测全量程包络 $\approx 2^{-16}$（20 万均匀采样 [1e-6, 1e6] 实测最大相对误差 1.9e-05 ≈ 2^-15.7；测试断言界 2^-14）。
+- 该残差并非 IEEE-754 机器精度（2^-23）级别的位精确结果，但远小于其下游的所有舍入环节：FP16 平衡 scale 舍入（2^-11）、E4M3 量化噪声（~2^-5）与最终输出 FP16 舍入（2^-11），对最终输出的误差贡献可忽略。
 
-在 IEEE 754 单精度浮点标准下，尾数有效位数为 23 位，机器精度极限为 $2^{-23}$ (约 $1.192 \times 10^{-7}$)。经过 2 次迭代后，数值误差严格被限制在 IEEE 754 单精度浮点精度界限内（相对误差 $|e_2| < 2^{-23}$），达到单精度位精确无损（Bit-Exact）。执行流水上完全由 1 次魔数整型减法、4 次向量乘法与 2 次向量减法构成，消除 32 周期向量除法指令依赖。
+执行流水上完全由 1 次魔数整型减法、4 次向量乘法与 2 次向量减法构成，消除 32 周期向量除法指令依赖。
 
 V 的 MXFP8 scale 生成同样无除法（`quant_v_mx.h`）：`scale = 2^ceil(log2(amax/448))` 通过对 `amax * (1/448)` 的位模式加舍入偏置后掩码取阶码域直接构造 2 的整数次幂，其倒数由 `2^127 阶码基准 - 舍入后位模式` 的整型减法拼出，全零分组以 `2^-100` 兜底，避免除零。
 
