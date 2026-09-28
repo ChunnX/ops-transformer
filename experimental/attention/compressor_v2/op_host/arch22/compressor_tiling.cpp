@@ -181,6 +181,22 @@ ge::graphStatus CompressorV2Tiling::SetWorkSpaceInfo()
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
+    workspaceParams_->stateCacheSnapshotOffset = 0;
+    workspaceParams_->stateCacheSnapshotSize = 0;
+
+    uint32_t maxSeqPerBatch =
+        context_->layout == LayoutType::LAYOUT_BSH ? baseParams_->seqSize : baseParams_->tokenSize;
+    uint32_t maxWriteRows = std::min(maxSeqPerBatch, pageAttentionParams_->blockSize);
+    bool canWrapIntoReadPrefix =
+        baseParams_->cmpRatio > 1 && maxSeqPerBatch > 0 &&
+        static_cast<uint64_t>(maxWriteRows) + baseParams_->cmpRatio - 1 > pageAttentionParams_->blockSize;
+    if (context_->templateId != TemplateId::FULL_LOAD && canWrapIntoReadPrefix) {
+        constexpr uint32_t STATE_NUM = 2;
+        constexpr uint32_t SNAPSHOT_ELEMENT_SIZE = sizeof(float);
+        workspaceParams_->stateCacheSnapshotSize = static_cast<uint64_t>(baseParams_->batchSize) * STATE_NUM *
+                                                   (baseParams_->cmpRatio - 1) * baseParams_->headDim *
+                                                   SNAPSHOT_ELEMENT_SIZE;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -268,6 +284,8 @@ ge::graphStatus CompressorV2Tiling::CalcWorkSpace()
         workspaceParams_->vec1TailCacheSize * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio * 2; // 2 kv和score
     workspaceSize_ +=
         workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    workspaceParams_->stateCacheSnapshotOffset = workspaceSize_ - libapiSize_;
+    workspaceSize_ += workspaceParams_->stateCacheSnapshotSize;
 
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

@@ -53,7 +53,11 @@ public:
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
-                                                GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
+                                                GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
+                                                GlobalTensor<T> stateCacheSnapshotGm);
+    __aicore__ inline bool IsPotentialStateCacheConflict();
+    __aicore__ inline void SetStateCacheSnapshotEnabled(bool enabled);
+    __aicore__ inline void SnapshotStateCache();
 
 protected:
     GlobalTensor<T> scoreMm1ResGm_;
@@ -104,6 +108,9 @@ private:
                                               const GlobalTensor<int32_t> &blockTableGm, uint32_t batchIdx,
                                               uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
                                               uint32_t dDealSize, uint32_t stateIdx);
+    __aicore__ inline void ReadFromStateCacheSnapshot(const LocalTensor<T> &output, const Vec1SliceInfo &sliceInfo,
+                                                      uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
+                                                      uint32_t dDealSize, uint32_t stateIdx);
     __aicore__ inline void SaveToWorkSpace(const LocalTensor<T> srcLocal, const GlobalTensor<T> &cacheTcGm,
                                            const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo, uint32_t dStartIdx,
                                            uint32_t dDealSize);
@@ -159,7 +166,9 @@ private:
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
+    GlobalTensor<T> stateCacheSnapshotGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
+    bool isStateCacheSnapshotEnabled_ = false;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -231,12 +240,117 @@ template <typename COMP>
 __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm,
                                                                                GlobalTensor<T> scoreMm1ResGm,
                                                                                GlobalTensor<T> kvCacheTcGm,
-                                                                               GlobalTensor<T> scoreCacheTcGm)
+                                                                               GlobalTensor<T> scoreCacheTcGm,
+                                                                               GlobalTensor<T> stateCacheSnapshotGm)
 {
     this->kvMm1ResGm_ = kvMm1ResGm;
     this->scoreMm1ResGm_ = scoreMm1ResGm;
     this->kvCacheTcGm_ = kvCacheTcGm;
     this->scoreCacheTcGm_ = scoreCacheTcGm;
+    this->stateCacheSnapshotGm_ = stateCacheSnapshotGm;
+}
+
+template <typename COMP>
+__aicore__ inline bool CompressorV2BlockVectorPerf<COMP>::IsPotentialStateCacheConflict()
+{
+    if (constInfo_.stateCacheSnapshotSize == 0 || constInfo_.blockSize == 0 || cmpRatio_ <= 1) {
+        return false;
+    }
+
+    bool hasRingSlotOverlap = false;
+    uint64_t totalDealTcNum = 0;
+    for (uint32_t batchIdx = 0; batchIdx < constInfo_.batchSize; ++batchIdx) {
+        uint64_t startPos = tools_.GetStartPos(batchIdx);
+        uint32_t seqLength = tools_.GetSeqLength(batchIdx);
+        uint32_t seqUsed = tools_.GetSeqUsed(batchIdx);
+        uint32_t prefixSize = startPos % cmpRatio_;
+        totalDealTcNum += CeilDivT(prefixSize + seqLength, cmpRatio_);
+
+        if (prefixSize == 0 || seqUsed == 0 || (startPos + seqUsed) / cmpRatio_ == startPos / cmpRatio_) {
+            continue;
+        }
+        uint32_t writeSize = min(seqUsed, constInfo_.blockSize);
+        if (prefixSize + writeSize > constInfo_.blockSize) {
+            hasRingSlotOverlap = true;
+        }
+    }
+
+    if (!hasRingSlotOverlap || totalDealTcNum == 0) {
+        return false;
+    }
+
+    Vec1RunInfo maxWorkInfo{};
+    maxWorkInfo.dealTcNum = static_cast<uint32_t>(totalDealTcNum);
+    Vec1SplitInfo maxWorkSplitInfo{};
+    CalcGroupInfo(maxWorkInfo, maxWorkSplitInfo);
+    return maxWorkSplitInfo.vec1GroupNum > 1;
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorV2BlockVectorPerf<COMP>::SetStateCacheSnapshotEnabled(bool enabled)
+{
+    isStateCacheSnapshotEnabled_ = enabled;
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorV2BlockVectorPerf<COMP>::SnapshotStateCache()
+{
+    isStateCacheSnapshotEnabled_ = true;
+    const uint32_t maxPrefixSize = cmpRatio_ - 1;
+    const uint32_t dChunkAlignment = BlockElementNum<T>();
+    const uint32_t maxDChunkSize = (BUFFER_SIZE_BYTE_32K / sizeof(T)) / maxPrefixSize;
+    const uint32_t dChunkSize =
+        min(constInfo_.headDim, max(dChunkAlignment, (maxDChunkSize / dChunkAlignment) * dChunkAlignment));
+    const uint32_t dChunkNum = CeilDivT(constInfo_.headDim, dChunkSize);
+    LocalTensor<T> snapshotUb = tmpBuff1.Get<T>();
+
+    for (uint32_t dChunkIdx = 0; dChunkIdx < dChunkNum; ++dChunkIdx) {
+        uint32_t dStartIdx = dChunkIdx * dChunkSize;
+        uint32_t dDealSize = min(dChunkSize, constInfo_.headDim - dStartIdx);
+        for (uint32_t batchIdx = 0; batchIdx < constInfo_.batchSize; ++batchIdx) {
+            uint64_t startPos = tools_.GetStartPos(batchIdx);
+            uint32_t seqUsed = tools_.GetSeqUsed(batchIdx);
+            uint32_t prefixSize = startPos % cmpRatio_;
+            if (prefixSize == 0 || seqUsed == 0 || (startPos + seqUsed) / cmpRatio_ == startPos / cmpRatio_) {
+                continue;
+            }
+
+            uint64_t ringBlockId = stateBlockTableGm_.GetValue(batchIdx);
+            uint64_t seqIdx = startPos - prefixSize;
+            uint32_t copiedRows = 0;
+            for (uint32_t stateIdx = 0; stateIdx < STATE_INTERLEAVE_FACTOR; ++stateIdx) {
+                copiedRows = 0;
+                seqIdx = startPos - prefixSize;
+                while (copiedRows < prefixSize) {
+                    uint32_t ringOffset = seqIdx % constInfo_.blockSize;
+                    uint32_t copyRows = min(constInfo_.blockSize - ringOffset, prefixSize - copiedRows);
+                    uint64_t stateOffset = ringBlockId * constInfo_.stateCacheStrideDim0 +
+                                           ringOffset * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+                                           stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+                    DataCopyAlignGmToUb(snapshotUb[copiedRows * dDealSize], stateCacheGm_[stateOffset], copyRows,
+                                        dDealSize, STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim, dDealSize);
+                    event_t eventIdMte2Mte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+                    SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2Mte3);
+                    WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2Mte3);
+
+                    uint64_t snapshotOffset =
+                        ((static_cast<uint64_t>(batchIdx) * STATE_INTERLEAVE_FACTOR + stateIdx) * maxPrefixSize +
+                         copiedRows) *
+                            constInfo_.headDim +
+                        dStartIdx;
+                    DataCopyAlignUbToGm(stateCacheSnapshotGm_[snapshotOffset], snapshotUb[copiedRows * dDealSize],
+                                        copyRows, dDealSize, dDealSize, constInfo_.headDim);
+                    event_t eventIdMte3Mte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3Mte2);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3Mte2);
+                    copiedRows += copyRows;
+                    seqIdx += copyRows;
+                }
+            }
+        }
+    }
+
+    PipeBarrier<PIPE_MTE3>();
 }
 
 template <typename COMP>
@@ -520,6 +634,27 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::ReadFromCacheState(con
 }
 
 template <typename COMP>
+__aicore__ inline void CompressorV2BlockVectorPerf<COMP>::ReadFromStateCacheSnapshot(
+    const LocalTensor<T> &output, const Vec1SliceInfo &sliceInfo, uint32_t startSeqIdx, uint32_t endSeqIdx,
+    uint32_t dStartIdx, uint32_t dDealSize, uint32_t stateIdx)
+{
+    if (endSeqIdx <= startSeqIdx) {
+        return;
+    }
+
+    uint32_t prefixStartSeqIdx = sliceInfo.bStartPos - sliceInfo.bStartPos % cmpRatio_;
+    uint32_t rowStart = startSeqIdx - prefixStartSeqIdx;
+    uint32_t copyRowCount = endSeqIdx - startSeqIdx;
+    uint32_t maxPrefixSize = cmpRatio_ - 1;
+    uint64_t snapshotOffset =
+        ((static_cast<uint64_t>(sliceInfo.bIdx) * STATE_INTERLEAVE_FACTOR + stateIdx) * maxPrefixSize + rowStart) *
+            constInfo_.headDim +
+        dStartIdx;
+    DataCopyAlignGmToUb(output, stateCacheSnapshotGm_[snapshotOffset], copyRowCount, dDealSize, constInfo_.headDim,
+                        coff_ * dDealSize);
+}
+
+template <typename COMP>
 __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::WriteToCacheState(const GlobalTensor<T> &state,
                                                                             const GlobalTensor<int32_t> &blockTableGm,
                                                                             const LocalTensor<T> &input,
@@ -623,8 +758,13 @@ __aicore__ inline void CompressorV2BlockVectorPerf<COMP>::ReadState(const LocalT
         uint64_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)constInfo_.cmpRatio);
         uint32_t endSeqIdx = sliceInfo.bStartPos;
         uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * constInfo_.cmpRatio * coff_ * dDealSize;
-        ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
-                           dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize, stateIdx);
+        if (isStateCacheSnapshotEnabled_) {
+            ReadFromStateCacheSnapshot(dstLocal[dstBaseOffset], sliceInfo, startSeqIdx, endSeqIdx,
+                                       dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize, stateIdx);
+        } else {
+            ReadFromCacheState(dstLocal[dstBaseOffset], stateGm, blockTableGm, sliceInfo.bIdx, startSeqIdx, endSeqIdx,
+                               dStartIdx + (coff_ - 1) * constInfo_.headDim, dDealSize, stateIdx);
+        }
     }
 
     // 填充左边

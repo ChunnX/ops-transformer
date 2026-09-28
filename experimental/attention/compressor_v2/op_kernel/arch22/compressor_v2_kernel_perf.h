@@ -88,6 +88,7 @@ private:
     GlobalTensor<MM1_OUT_T> vec1ScoreCacheGm;
     GlobalTensor<MM1_OUT_T> Vec1InputKvGm;
     GlobalTensor<MM1_OUT_T> Vec1InputScoreGm;
+    GlobalTensor<MM1_OUT_T> stateCacheSnapshotGm;
     // ================================Task Info====================================
     CompressorV2Tools<COMP> tools_;
     ConstInfo constInfo{};
@@ -152,7 +153,8 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::Init(__gm__ uint8_t *x, __g
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
-        blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
+        blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm,
+                                       stateCacheSnapshotGm);
     }
 }
 
@@ -175,6 +177,7 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::InitTilingData()
     constInfo.nSize = tilingData_->baseParams.nSize;
     constInfo.vec1TailCacheSize = tilingData_->workspaceParams.vec1TailCacheSize;
     constInfo.dbWorkspaceRatio = tilingData_->workspaceParams.dbWorkspaceRatio;
+    constInfo.stateCacheSnapshotSize = tilingData_->workspaceParams.stateCacheSnapshotSize;
 }
 
 template <typename COMP>
@@ -422,6 +425,9 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::InitWorkspace(__gm__ uint8_
 
     vec1ScoreCacheGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
     offset += constInfo.dbWorkspaceRatio * constInfo.vec1TailCacheSize * sizeof(MM1_OUT_T);
+
+    stateCacheSnapshotGm.SetGlobalBuffer(
+        (__gm__ MM1_OUT_T *)(workspace + tilingData_->workspaceParams.stateCacheSnapshotOffset));
 }
 
 template <typename COMP>
@@ -507,6 +513,19 @@ __aicore__ inline void CompressorV2KernelPerf<COMP>::Process()
         return;
     }
     AllocEventID();
+
+    if ASCEND_IS_AIV {
+        if (constInfo.stateCacheSnapshotSize != 0) {
+            bool needSnapshot = blockVec_.IsPotentialStateCacheConflict();
+            blockVec_.SetStateCacheSnapshotEnabled(needSnapshot);
+            if (needSnapshot && GetBlockIdx() == 1) {
+                blockVec_.SnapshotStateCache();
+            }
+            if (needSnapshot) {
+                SyncAll<true>();
+            }
+        }
+    }
 
     BatchInfo batchInfo{};
 
