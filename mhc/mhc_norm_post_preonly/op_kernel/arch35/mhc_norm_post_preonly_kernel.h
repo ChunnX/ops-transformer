@@ -568,16 +568,19 @@ private:
         copyParams.dstStride = (dimTile_ - tD) * sizeof(float) / 32U;
         DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
-        // 尾块的x2/phi行跨度仍为dimTile_，但归约结果可紧凑写入现有五行工作区。
-        // 每个half的五个结果只触发一次二维归约，避免逐行Vector到Scalar等待。
+        // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
+        // 尾块保持逐行归约，完整分块才使用五行批量归约。
         if (tD != dimTile_) {
+            LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
             for (uint32_t half = halfBegin; half < halfEnd; ++half) {
                 const uint32_t h0 = half * 2;
                 const uint32_t h1 = h0 + 1;
                 const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
                 const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
 
-                MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+                MhcNormRegBase::VFPairSquareAdd(out, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+                PipeBarrier<PIPE_V>();
+                sumSqHalf[half] += ReduceSumPrecise(out, tD);
 
                 for (uint32_t o = 0; o < N_MAX; ++o) {
                     LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
@@ -585,21 +588,10 @@ private:
                     DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
                     bufPhiFp32_.EnQue(phi0);
                     phi0 = bufPhiFp32_.DeQue<float>();
-                    LocalTensor<float> dotRow = reduceRows[(o + 1U) * tD];
-                    MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_],
-                                                 phi0[dimTile_], tD);
+                    MhcNormRegBase::VFPairMulAdd(out, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_], phi0[dimTile_], tD);
                     PipeBarrier<PIPE_V>();
                     bufPhiFp32_.FreeTensor(phi0);
-                }
-
-                PipeBarrier<PIPE_V>();
-                LocalTensor<float> scBuf = bufScalar_.Get<float>();
-                uint32_t reduceShape[2] = {N_MAX + 1U, tD};
-                ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
-                PipeBarrier<PIPE_V>();
-                sumSqHalf[half] += scBuf.GetValue(0);
-                for (uint32_t o = 0; o < N_MAX; ++o) {
-                    dotHalf[half][o] += scBuf.GetValue(o + 1U);
+                    dotHalf[half][o] += ReduceSumPrecise(out, tD);
                 }
             }
             return;
