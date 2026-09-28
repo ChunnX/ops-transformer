@@ -35,7 +35,7 @@ TQ4 的每个 KV token 使用一个 386 字节的槽位，布局如下：
 
 TQ4 使用 16 个 codebook centroid 进行反量化，算子内部通过 byte-LUT 将 packed byte 解码为两个 centroid，再结合 token scale 参与 key/value 计算。TQ4 不需要额外提供 `key_dequant_scale` 和 `value_dequant_scale` 输入，量化参数随 KV cache 槽位存放。
 
-TQ4 当前面向 Ascend 910B 的 MLA-absorb 场景，query 支持 FLOAT16/BFLOAT16，`attention_mode=2`，`rope_head_dim=64`。现有单算子参数集中的 TQ4 用例采用 `layout_kv=PA_BSND`。
+TQ4 面向 MLA-absorb 场景，query 支持 FLOAT16/BFLOAT16，`attention_mode=2`，`rope_head_dim=64`。
 本次公布的`kv_quant_sparse_flash_attention`是面向Sparse Attention的全新算子，针对离散访存进行了指令缩减及搬运聚合的细致优化。
 
 ## 参数说明
@@ -230,7 +230,6 @@ TQ4 当前面向 Ascend 910B 的 MLA-absorb 场景，query 支持 FLOAT16/BFLOAT
 - TQ4 INT4 模式仅在 `key_quant_mode=value_quant_mode=3` 时启用，key/value 的 KV_D 必须为 386；模式 3 不支持与模式 2 混用。
 - TQ4 的 query 头维度为 576（nope 512 + rope 64），`attention_mode=2`，`rope_head_dim=64`，KV_N 仅支持 1。
 - TQ4 的 token scale 为 KV cache 槽位中的 FP16 值；属性 `scale_value` 仍用于 query-key 矩阵乘后的整体缩放，两者不可混淆。
-- TQ4 当前支持 Ascend 910B 的 MLA-absorb 场景，单算子测试用例采用 `layout_kv=PA_BSND`。
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - 参数key、value数据类型仅支持float8_e4m3、int8、hifloat8数据类型。
   - 参数sparse\_block\_size仅支持1。
