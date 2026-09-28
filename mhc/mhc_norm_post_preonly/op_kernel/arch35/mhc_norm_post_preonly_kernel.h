@@ -499,8 +499,43 @@ private:
         copyParams.dstStride = (dimTile_ - tD) * sizeof(float) / 32U;
         DataCopyPadExtParams<float> copyPad = {false, 0, 0, 0};
 
-        // 尾块的物理行跨度仍为dimTile_，不能作为紧凑二维张量归约；
-        // 尾块保持逐行归约，完整分块才使用五行批量归约。
+        // 长D尾块使用紧凑五行结果，复用现有工作区做一次二维归约。
+        // 短D仍走逐行归约，避免此前全D启用时的性能退化。
+        if (tD != dimTile_ && (D_ == 6144U || D_ == 7168U)) {
+            for (uint32_t half = halfBegin; half < halfEnd; ++half) {
+                const uint32_t h0 = half * 2;
+                const uint32_t h1 = h0 + 1;
+                const uint32_t x2h0 = DUAL_SIBLING ? 0U : h0;
+                const uint32_t x2h1 = DUAL_SIBLING ? 1U : h1;
+
+                MhcNormRegBase::VFPairSquareAdd(reduceRows, x2[x2h0 * dimTile_], x2[x2h1 * dimTile_], tD);
+                for (uint32_t o = 0; o < N_MAX; ++o) {
+                    LocalTensor<float> phi0 = bufPhiFp32_.AllocTensor<float>();
+                    const uint64_t phiBaseOffset = (uint64_t)o * phiCols_ + tOff;
+                    DataCopyPad(phi0, phiGm_[phiBaseOffset + (uint64_t)h0 * D_], copyParams, copyPad);
+                    bufPhiFp32_.EnQue(phi0);
+                    phi0 = bufPhiFp32_.DeQue<float>();
+                    LocalTensor<float> dotRow = reduceRows[(o + 1U) * tD];
+                    MhcNormRegBase::VFPairMulAdd(dotRow, x2[x2h0 * dimTile_], phi0, x2[x2h1 * dimTile_],
+                                                 phi0[dimTile_], tD);
+                    PipeBarrier<PIPE_V>();
+                    bufPhiFp32_.FreeTensor(phi0);
+                }
+
+                PipeBarrier<PIPE_V>();
+                LocalTensor<float> scBuf = bufScalar_.Get<float>();
+                uint32_t reduceShape[2] = {N_MAX + 1U, tD};
+                ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
+                PipeBarrier<PIPE_V>();
+                sumSqHalf[half] += scBuf.GetValue(0);
+                for (uint32_t o = 0; o < N_MAX; ++o) {
+                    dotHalf[half][o] += scBuf.GetValue(o + 1U);
+                }
+            }
+            return;
+        }
+
+        // 短D尾块的物理行跨度为dimTile_，继续逐行归约。
         if (tD != dimTile_) {
             LocalTensor<float> out = reduceRows[N_MAX * dimTile_];
             for (uint32_t half = halfBegin; half < halfEnd; ++half) {
