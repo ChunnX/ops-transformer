@@ -25,12 +25,11 @@
 // ============================================================================
 //  文件拆分: 引擎按功能分层(fit_balance_tiling/ 目录), 消费方
 // include 本伞形头即可(路径与拆分前完全一致):
-//   fit_balance_types.h  零: 公共类型/枚举/常量
+//   fit_balance_types.h  零: 公共类型/枚举/常量 + FitBalanceCalibration 标定总集
 //   comm_model.h         一.1: 通信模型(y=k·x+N·b+c 三口径, 零份数乘子)
 //   matmul_model.h       一.2: 计算模型(利用率双口径/梯度/正反解)
 //   cut_planner.h        二: 离散切分引擎(CutPlanner 七步)
-//   calibration.h        三.1: 客户标定数据总集(CommProfile + k/b/c + 算力档)
-//   solver.h             三.2/四: 求解层(ctx/InitCtx/公共片段/Schedule)
+//   solver.h             三: 求解层(ctx/InitCtx/公共片段/Schedule)
 // ============================================================================
 
 #ifndef __APACE_FIT_BALANCE_TILING_H__
