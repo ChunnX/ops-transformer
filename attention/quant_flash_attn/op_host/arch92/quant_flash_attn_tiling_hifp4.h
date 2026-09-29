@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_flash_attn_tiling_hifp4.h
- * \brief QuantFlashAttn arch-920r1 tiling implementation
+ * \brief QuantFlashAttn arch92 tiling implementation
  */
 #ifndef QUANT_FLASH_ATTN_TILING_HIFP4_IMPL_H_
 #define QUANT_FLASH_ATTN_TILING_HIFP4_IMPL_H_
@@ -19,8 +19,8 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "../qfa_tiling_info.h"
 #include "tiling/tiling_api.h"
-#include "../../op_kernel/arch-920r1/quant_flash_attn_tiling_data.h"
-#include "../../op_kernel/arch-920r1/quant_flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch92/quant_flash_attn_tiling_data.h"
+#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key.h"
 
 namespace optiling {
 namespace quant_flash_attn {

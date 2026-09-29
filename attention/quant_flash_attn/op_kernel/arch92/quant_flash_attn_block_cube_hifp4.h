@@ -17,7 +17,7 @@
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "matmul_hif4.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
-#include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "memory_copy_arch92_quant_flash_attn.h"
 #include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
