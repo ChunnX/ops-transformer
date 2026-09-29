@@ -94,27 +94,27 @@ public:
     {
         if ASCEND_IS_AIV {
             if (cuSeqlensQ != nullptr) {
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensQ);
             }
             if (cuSeqlensOriKv != nullptr) {
-                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+                cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                           TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
                 if (cuSeqlensCmpKv != nullptr) {
-                    cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+                    cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t*)cuSeqlensCmpKv);
                 }
             }
             if (sequsedOriKv != nullptr) {
-                actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+                actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t*)sequsedOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                           TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
                 if (sequsedCmpKv != nullptr) {
-                    actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
+                    actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t*)sequsedCmpKv);
                 }
                 if (cmpResidualKv != nullptr) {
-                    cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
+                    cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t*)cmpResidualKv);
                 }
             }
             this->GetExtremeValue(this->negativeFloatScalar);
@@ -163,8 +163,8 @@ public:
     __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
                                         uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
                                         bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
-                                        GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-                                        GlobalTensor<int32_t> &cuSeqlensOriKvGm, GlobalTensor<int32_t> &oriTopkLengthGm,
+                                        GlobalTensor<int32_t>& actualSeqOriKvlenGm,
+                                        GlobalTensor<int32_t>& cuSeqlensOriKvGm, GlobalTensor<int32_t>& oriTopkLengthGm,
                                         bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv,
                                         GlobalTensor<int32_t> &actualSeqCmpKvlenGm,
                                         GlobalTensor<int32_t> &cuSeqlensCmpKvGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
@@ -353,11 +353,11 @@ private:
     int64_t processSize;
     int64_t processS2Start;
     int64_t processS2End;
-    __gm__ uint8_t *fdStagingBase = nullptr;
+    __gm__ uint8_t* fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
-    __gm__ uint8_t *intraCoreCombineBase = nullptr;
+    __gm__ uint8_t* intraCoreCombineBase = nullptr;
     GlobalTensor<float> intraCoreCombineGm;
-    __gm__ uint8_t *crossCoreCombineBase = nullptr;
+    __gm__ uint8_t* crossCoreCombineBase = nullptr;
     GlobalTensor<float> crossCoreCombineGm;
 };
 
@@ -474,8 +474,10 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetKeyOffset(int64_t
         int64_t blkTableIdx = s2Idx / mqActiveBlockSize;
         int64_t blkTableOffset = s2Idx % mqActiveBlockSize;
         int64_t paBlockStride = mq35VecRunInfo.isCmp ? mq35VecConstInfo.cmpKvStride : mq35VecConstInfo.oriKvStride;
-        int32_t physBlockId =
-            mqActiveBlockTableGm.GetValue(mq35VecRunInfo.boIdx * mqActiveMaxBlocksPerBatch + blkTableIdx);
+        int32_t physBlockId = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockId = blockTableGm.GetValue(mq35VecRunInfo.boIdx * maxBlockNumPerBatch + blkTableIdx);
+        }
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             realKeyOffset = physBlockId * paBlockStride + blkTableOffset * mq35VecConstInfo.dSizeVInput;
         } else {
@@ -705,14 +707,14 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
     Reg::RegTensor<fp8_e8m0_t> vScale0;
     Reg::RegTensor<bfloat16_t> vScalebf16Res0;
     Reg::RegTensor<float> vScalefp32Res0;
-    __ubuf__ int8_t *ubScaleSrcAddrTemp = ubSrcAddr;
-    __ubuf__ float *ubDstAddrTmp = ubDstAddr;
+    __ubuf__ int8_t* ubScaleSrcAddrTemp = ubSrcAddr;
+    __ubuf__ float* ubDstAddrTmp = ubDstAddr;
     Reg::MaskReg bf16TypeMaskAll = Reg::CreateMask<bfloat16_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg fp32MaskAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
     for (uint16_t i = 0; i < static_cast<uint16_t>(mq35DealRows); i++) {
         // load scale
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-            (Reg::RegTensor<int8_t> &)vScale0, ubScaleSrcAddrTemp, 608);
+            (Reg::RegTensor<int8_t>&)vScale0, ubScaleSrcAddrTemp, 608);
 
         Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8EvenToFp32>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
         Reg::Cast<float, bfloat16_t, castTraitFp8EvenToFp32>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
@@ -771,13 +773,13 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
         for (uint16_t i = 0; i < static_cast<uint16_t>(mq35DealRows); i++) {
             // load scale
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, tileSize);
+                (Reg::RegTensor<int8_t>&)vKvData0, ubSrcTemp, tileSize);
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData1, ubSrcTemp, combineDim - tileSize);
+                (Reg::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize);
 
-            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale0Bf16,
+            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t>&)vScale0Bf16,
                                                                     ubScaleSrcAddrTemp + i * (combineDim / 2));
-            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale1Bf16,
+            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t>&)vScale1Bf16,
                                                                     ubScaleSrcAddrTemp + 1 + i * (combineDim / 2));
 
             Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
@@ -797,17 +799,17 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
     }
 
     uint16_t lastLoopOffset = nopeDim / kvNumPerLoop; // 偏移已经处理的循环次数
-    __ubuf__ int8_t *ubSrcTemp = ubSrcAddr + lastLoopOffset * kvNumPerLoop;
-    __ubuf__ Q_T *ubScaleSrcAddrTemp = ubScaleSrcAddr + lastLoopOffset * scaleNumPerLoop;
-    __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride;
+    __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + lastLoopOffset * kvNumPerLoop;
+    __ubuf__ Q_T* ubScaleSrcAddrTemp = ubScaleSrcAddr + lastLoopOffset * scaleNumPerLoop;
+    __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride;
     Reg::Duplicate(vCastRes1, 0.0);
     for (uint16_t i = 0; i < static_cast<uint16_t>(mq35DealRows); i++) {
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-            (Reg::RegTensor<int8_t> &)vKvRope, ubKRopeAddr, combineDim);
+            (Reg::RegTensor<int8_t>&)vKvRope, ubKRopeAddr, combineDim);
         // load scale
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-            (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, combineDim);
-        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale0Bf16,
+            (Reg::RegTensor<int8_t>&)vKvData0, ubSrcTemp, combineDim);
+        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t>&)vScale0Bf16,
                                                                 ubScaleSrcAddrTemp + i * (combineDim / 2));
         Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
         Reg::Cast<Q_T, float, castTraitFp32ToFp16Even>(vCastRes0, vCastFp32Res0, fp16MaskAll);
@@ -817,7 +819,7 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
         Reg::StoreAlign<Q_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp, vCastResPack0, blockStride, repeatStride, kvRopeTypeMaskHalf);
         Reg::StoreAlign<Q_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ubKRopeNzAddr, (Reg::RegTensor<Q_T> &)vKvRope, blockStride, repeatStride, kvRopeTypeMaskHalf);
+            ubKRopeNzAddr, (Reg::RegTensor<Q_T>&)vKvRope, blockStride, repeatStride, kvRopeTypeMaskHalf);
     }
 }
 
@@ -828,12 +830,12 @@ __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T> &kRopeUbNz, LocalTens
 {
     const uint32_t nopeDim = 448;
     const uint32_t ropeDim = 64;
-    __ubuf__ int8_t *ubSrcAddr = (__ubuf__ int8_t *)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
+    __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
     // sizeof(bf16) / sizeof(fp8) = 2
-    __ubuf__ Q_T *ubScaleAddr = (__ubuf__ Q_T *)(scaleUb[ropeDim + nopeDim / 2].GetPhyAddr());
-    __ubuf__ int8_t *ubKRopeAddr = (__ubuf__ int8_t *)(kRopeUb.GetPhyAddr());
-    __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(outputUb.GetPhyAddr());
-    __ubuf__ Q_T *ubKRopeNzAddr = (__ubuf__ Q_T *)(kRopeUbNz.GetPhyAddr());
+    __ubuf__ Q_T* ubScaleAddr = (__ubuf__ Q_T*)(scaleUb[ropeDim + nopeDim / 2].GetPhyAddr());
+    __ubuf__ int8_t* ubKRopeAddr = (__ubuf__ int8_t*)(kRopeUb.GetPhyAddr());
+    __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
+    __ubuf__ Q_T* ubKRopeNzAddr = (__ubuf__ Q_T*)(kRopeUbNz.GetPhyAddr());
 
     AntiquantVFImplFp8D448<Q_T, KV_T>(ubKRopeNzAddr, ubSrcAddr, ubDstAddr, ubScaleAddr, ubKRopeAddr, mq35DealRows);
 }
@@ -875,14 +877,14 @@ __simd_vf__ void AntiquantVFImplFp8D448_FloatScale(__ubuf__ Q_T *ubKRopeNzAddr, 
         __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + j * kvNumPerLoop * blockStride;
         for (uint16_t i = 0; i < static_cast<uint16_t>(mq35DealRows); i++) {
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, tileSize);
+                (Reg::RegTensor<int8_t>&)vKvData0, ubSrcTemp, tileSize);
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-                (Reg::RegTensor<int8_t> &)vKvData1, ubSrcTemp, combineDim - tileSize);
+                (Reg::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize);
 
             Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
-                (Reg::RegTensor<float> &)vScale0, ubScaleSrcAddrTemp, 1);
+                (Reg::RegTensor<float>&)vScale0, ubScaleSrcAddrTemp, 1);
             Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
-                (Reg::RegTensor<float> &)vScale1, ubScaleSrcAddrTemp, tileSize - 1);
+                (Reg::RegTensor<float>&)vScale1, ubScaleSrcAddrTemp, tileSize - 1);
 
             Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
             Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res1, vKvData1, fp32MaskAll);
@@ -901,15 +903,15 @@ __simd_vf__ void AntiquantVFImplFp8D448_FloatScale(__ubuf__ Q_T *ubKRopeNzAddr, 
     }
 
     uint16_t lastLoopOffset = nopeDim / kvNumPerLoop;
-    __ubuf__ int8_t *ubSrcTemp = ubSrcAddr + lastLoopOffset * kvNumPerLoop;
-    __ubuf__ float *ubScaleSrcAddrTemp = ubScaleSrcAddr + lastLoopOffset * scaleNumPerLoop;
-    __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride;
+    __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + lastLoopOffset * kvNumPerLoop;
+    __ubuf__ float* ubScaleSrcAddrTemp = ubScaleSrcAddr + lastLoopOffset * scaleNumPerLoop;
+    __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride;
     Reg::Duplicate(vCastRes1, 0.0);
     for (uint16_t i = 0; i < static_cast<uint16_t>(mq35DealRows); i++) {
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-            (Reg::RegTensor<int8_t> &)vKvRope, ubKRopeAddr, combineDim);
+            (Reg::RegTensor<int8_t>&)vKvRope, ubKRopeAddr, combineDim);
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-            (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, combineDim);
+            (Reg::RegTensor<int8_t>&)vKvData0, ubSrcTemp, combineDim);
         Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
             (Reg::RegTensor<float> &)vScale0, ubScaleSrcAddrTemp, tileSize);
         Reg::Cast<float, KV_T, castTraitFp8EvenToFp32>(vCastFp32Res0, vKvData0, fp32MaskAll);
@@ -920,7 +922,7 @@ __simd_vf__ void AntiquantVFImplFp8D448_FloatScale(__ubuf__ Q_T *ubKRopeNzAddr, 
         Reg::StoreAlign<Q_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp, vCastResPack0, blockStride, repeatStride, kvRopeTypeMaskHalf);
         Reg::StoreAlign<Q_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ubKRopeNzAddr, (Reg::RegTensor<Q_T> &)vKvRope, blockStride, repeatStride, kvRopeTypeMaskHalf);
+            ubKRopeNzAddr, (Reg::RegTensor<Q_T>&)vKvRope, blockStride, repeatStride, kvRopeTypeMaskHalf);
     }
 }
 
@@ -929,11 +931,11 @@ __aicore__ inline void AntiquantVFFp8D448_FloatScale(LocalTensor<Q_T> &kRopeUbNz
                                                      LocalTensor<KV_T> &inputUb, LocalTensor<float> &scaleUb,
                                                      LocalTensor<int8_t> &kRopeUb, uint32_t mq35DealRows)
 {
-    __ubuf__ int8_t *ubSrcAddr = (__ubuf__ int8_t *)(inputUb.GetPhyAddr());
-    __ubuf__ int8_t *ubKRopeAddr = (__ubuf__ int8_t *)(kRopeUb.GetPhyAddr());
-    __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(outputUb.GetPhyAddr());
-    __ubuf__ Q_T *ubKRopeNzAddr = (__ubuf__ Q_T *)(kRopeUbNz.GetPhyAddr());
-    __ubuf__ float *ubScaleAddr = (__ubuf__ float *)(scaleUb.GetPhyAddr());
+    __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb.GetPhyAddr());
+    __ubuf__ int8_t* ubKRopeAddr = (__ubuf__ int8_t*)(kRopeUb.GetPhyAddr());
+    __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
+    __ubuf__ Q_T* ubKRopeNzAddr = (__ubuf__ Q_T*)(kRopeUbNz.GetPhyAddr());
+    __ubuf__ float* ubScaleAddr = (__ubuf__ float*)(scaleUb.GetPhyAddr());
 
     AntiquantVFImplFp8D448_FloatScale<Q_T, KV_T>(ubKRopeNzAddr, ubSrcAddr, ubDstAddr, ubScaleAddr, ubKRopeAddr,
                                                  mq35DealRows);
@@ -1868,7 +1870,7 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::CleanOutput(__gm__ u
                                                                         ConstInfo<HIGH_PERF> &mq35VecConstInfo)
 {
     if ASCEND_IS_AIV {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
         if constexpr (!HIGH_PERF) {
             if (mq35VecConstInfo.isSoftmaxLseEnable && softmaxLse != nullptr) {
                 this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
@@ -2189,14 +2191,14 @@ __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
     __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
-    oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
+    oriKVGm.SetGlobalBuffer((__gm__ KV_T*)(oriKV));
     if (oriBlockTable != nullptr) {
         mqsmlaOriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
-        cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
+        cmpKVGm.SetGlobalBuffer((__gm__ KV_T*)cmpKV);
         if (cmpBlockTable != nullptr) {
             mqsmlaCmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
         }
@@ -2384,7 +2386,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void MqsmlaCsaBlockVector<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
 {
     uint32_t mqsmlaTmp1 = NEGATIVE_MIN_VALUE_FP32;
-    negativeScalar = *((float *)&mqsmlaTmp1);
+    negativeScalar = *((float*)&mqsmlaTmp1);
 }
 
 TEMPLATES_DEF
@@ -2394,12 +2396,12 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
                                        ConstInfo<HIGH_PERF> &mq35VecConstInfo)
     {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                                            __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
-                                            __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
-                                            __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
-                                            __gm__ uint8_t *cmpResidualKv)
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV,
+                                            __gm__ uint8_t* oriSparseIndices, __gm__ uint8_t* cmpSparseIndices,
+                                            __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable,
+                                            __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sinks,
+                                            __gm__ uint8_t* sequsedOriKv, __gm__ uint8_t* sequsedCmpKv,
+                                            __gm__ uint8_t* cmpResidualKv)
     {}
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                                         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv,
