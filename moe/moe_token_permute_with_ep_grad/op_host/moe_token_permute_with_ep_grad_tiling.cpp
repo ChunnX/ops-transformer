@@ -168,7 +168,7 @@ static inline ge::graphStatus Init(const gert::TilingContext* context, const int
     auto attrPtr = context->GetAttrs();
     int64_t inputTopK = 0;
     if (GetTopKAttr(context, inputTopK) != ge::GRAPH_SUCCESS) {
-        return;
+        return ge::GRAPH_FAILED;
     }
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
