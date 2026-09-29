@@ -19,8 +19,6 @@
 // ============================================================================
 // ============================================================================
 
-//  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子
-//  经 grep 证实零调用, 已随旧芯片逻辑剥离; B 家族原位副本不受影响)
 constexpr uint64_t GOOD_LINEARITY_NK_BYTES = 32;
 constexpr uint64_t SMALL_CUT_COUNT = 2;
 constexpr double BACK_TILE_RATIO = 0.75;
@@ -73,7 +71,7 @@ public:
     void NoCutTiling();
     void MaxTileCntUniform();
 
-    // 离散切分对齐 (A 家族全部算子的 Adjust 阶段使用)
+    // 离散切分对齐(求解层 Adjust 阶段使用)
     void AlignTileSmall();
     void AlignTileLarge();
     void FitTileLengthDiscrete(bool goodLinearityShape, bool localBlockProtected = false);

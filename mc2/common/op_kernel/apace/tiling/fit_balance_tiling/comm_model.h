@@ -21,11 +21,8 @@ constexpr uint64_t FP4_PACK_RATIO = 2;
 // 一、模型层
 // ============================================================================
 // ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, 950 专用）----
-// 本引擎按设计仅在 950 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
-// 双环/基表两段式查表——其结果恒被 950 查表覆盖)经 grep 证实 5 个消费
-// 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
-// op_tiling)满足。活跃 API 面(键控分支/P2 算子实测): CommTime/InverseCommTime/
-// SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
+// 本引擎仅在 950 标卡 4P/8P 生效; 其他芯片形态由算子侧分派走别的切分策略。活跃 API 面(键控分支/P2 算子实测):
+// CommTime/InverseCommTime/ SetCommShapeLen/SetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
 // commTimeFactor_/commRankCnt_/commRankCntForMm_(InitCtx 内部口径参数)。
 
 // ====== 拟合表（引擎内部结构——算子侧一律使用 FitBalanceCalibration 大结构体,
@@ -43,7 +40,7 @@ public:
         // 通信域卡数(op 侧来自 GetRankSize(group)), 下限钳位 2, 三层原因:
         //   ① 防 uint64 下溢: AG 远程流转份数 = rankDim-1, rankDim=0 时下溢;
         //   ② 防退化: 单卡无集合通信可建模, 拟合表均按 ≥2 卡标定, 退化输入按最接近的 2 卡建模;
-        //   ③ 历史防御: 老基类服务全家族, rankDim 来源多样(attr/group/shape 推导)不可靠, 入口统一兜底
+        //   ③ 防御: rankDim 来源多样(attr/group/shape 推导), 入口统一兜底
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_RANK_DIM);
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         commEstimatePar_ = commFitParams; // InitCtx 按 rankDim 选定的标定行(miss=零值行)

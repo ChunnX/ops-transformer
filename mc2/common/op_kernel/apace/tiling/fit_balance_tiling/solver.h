@@ -50,7 +50,7 @@ struct FitBasedBalanceCtx {
 //     五算子逐行对比提取, 覆盖率注明各行;  后由键控分支/P2 迁移消费）
 // ============================================================================
 
-// 短长块等长归一（5/5 算子 Adjust 尾部逐字一致）
+// 短长块等长归一(等长时"长短"结构退化为纯等分, 去掉多余的块类型标记)
 inline void MergeEqualTiles(CutPlanner &tilingM)
 {
     if (tilingM.cutRes.shortTileLen == tilingM.cutRes.longTileLen) {
@@ -60,17 +60,15 @@ inline void MergeEqualTiles(CutPlanner &tilingM)
     }
 }
 
-// 线性度好的 shape（k×n 较大, 通信拟合更可信; 4/5 算子一致, agmm 传字面 true,
-// allto_all_matmul 自有离散切分不用）
+// 线性度好的 shape（k×n 较大, 通信拟合更可信）
 inline bool IsGoodLinearityShape(const MatmulShapeInfo &mmInfo)
 {
     return mmInfo.kValue * mmInfo.nValue >= GOOD_LINEARITY_NK_BYTES * BYTES_PER_MB;
 }
 
-// 双向配平长块（3/5 算子一致: mmrs / all_reduce / matmul_allto_all）:
+// 双向配平长块(无本地块形态): 短块是流水线垫片, 长块按它反解——
 //   短块后置(计算 bound) → 长块 = 反解通信时长(掩盖短块计算);
 //   短块前置(通信 bound) → 长块 = 反解计算时长(掩盖短块通信)。
-// agmm 不用(其长块掩盖的是 frontMMTime 本地首轮计算); allto_all_matmul 自有模型。
 inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 {
     if (ctx.tilingM.cutRes.shortTileAtBack) {
@@ -86,12 +84,9 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx)
 //      (调=走公共逻辑, 不调=走各自键控分支), 不设引擎级 bool 开关——片段与键控
 //      分支逻辑交错, 引擎级开关无法表达交错顺序且会重演配置汤) ----
 
-// Estimate 骨干（4/5: agmm/mmrs/all_reduce/matmul_allto_all 一致）:
-// FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
-// (各算子语义相反: mmrs 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
-// 总量倍数 ctx.mmRankMul 由 InitCtx 按通信原语单次派生(见 MmRankMul 注释)。
-// [已废弃 ] mmTimeScale/KC_QUANT×1.43 补偿不再保留——与 A2AMM 独立拟合
-// 同根因(老切分尾块引发 matmul 膨胀, 理论失准), 新架构不引入该膨胀, 无需补偿;
+// Estimate 骨干: FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比;
+// shortTileAtBack 判定不在此(各键控分支语义不同, 见 Schedule)。
+// mmRankMul 由 InitCtx 从标定 CommProfile 换算。
 struct EstimateTimesResult {
     double totalMatmulTime = 0.0;
     double totalTpTime = 0.0;
@@ -109,7 +104,7 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     return r;
 }
 
-// L2 占用判定（3/3 逐字一致: mmrs/all_reduce/matmul_allto_all, 含 128MB 同值常量）
+// L2 占用判定: A+B 权重工作集超 128MB 时切分收益变化
 inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
 {
     constexpr uint64_t L2_CACHE_SIZE = 128UL * BYTES_PER_MB;
@@ -118,8 +113,8 @@ inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
     return l2UseSize > L2_CACHE_SIZE;
 }
 
-// L2 超限鼓励大块: minLen×2（3/5; mmrs 附加 m>minLen×4 守卫 → mGuardMul=4,
-// all_reduce/matmul_allto_all 无守卫 → mGuardMul=0; agmm/allto_all_matmul 不用）
+// L2 超限鼓励大块: minLen×2; mGuardMul 为 m 下限守卫倍数(0=无守卫,
+// 4=仅当 m>minLen×4 才抬升, 防小 m 抬完即不切)
 inline void ApplyL2MinLenBoost(CutPlanner &tilingM, const MatmulShapeInfo &mmInfo, bool exceedsL2,
                                uint64_t mGuardMul = 0UL)
 {
@@ -129,7 +124,7 @@ inline void ApplyL2MinLenBoost(CutPlanner &tilingM, const MatmulShapeInfo &mmInf
     }
 }
 
-// 小 shape 整 M 单块装下: minLen 提到 m（2/2 逐字一致: mmrs/matmul_allto_all;
+// 小 shape 整 M 单块装下: minLen 提到 m(单块能铺满核阵列就不切;
 // 判据 m×n ≤ 2×coreNum×baseM×baseN; GetBaseM/N 为非 const 成员故 ctx 取非常量引用）
 inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
 {
@@ -143,7 +138,7 @@ inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
 // HCCL 单次通信调用有 256MB 上限——单块通信量(块长×单行通信字节)超过时按候选表
 // {2048,1024,512,256}(大块优先=少轮次)等长重切, 尾块吸收余数, 完全覆盖长短结构
 // (超限属极端大 shape, 约束满足优先); 轮次预算 = MAX_COMM_ROUNDS−1(1 轮保留给 scale
-// 通道通信, AGMM quant 语义, 与老 HCCL_MAX_TOTAL_TILES=62 一致)。
+// 通道通信)。
 // 量级安全: 块长×单行字节 ≤ 1e6×5e5 = 5e11 << uint64 上限, 无需分段溢出回检;
 // 两约束(256MB/轮次预算)冲突时放弃整形, 保持原切分。
 // 流水线总时估计: 切 N 轮的近似总时——不可重叠段在

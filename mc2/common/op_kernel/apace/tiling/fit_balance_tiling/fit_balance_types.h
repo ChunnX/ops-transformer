@@ -32,7 +32,7 @@ constexpr uint64_t MIN_RANK_DIM = 2;
 
 enum class TilingSocVersion {
     SOC950 = 4, // 值 4 为键约定: 查表 key 前缀 "{soc}_" 的 soc 段沿用旧枚举序(950=4), 勿改;
-                // 引擎仅支持 950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域; 后续芯片在此扩展)
+                // 引擎仅支持 950; 后续芯片在此扩展
 };
 
 enum class MatmulDtypeKind {
@@ -156,18 +156,18 @@ enum class CommComputeOrder {
 // 引擎唯一的结构键控是"本地 mm 块在流水线的位置"(不经通信的数据块, 前按
 // 通信原语隐式表达, 现显式化):
 enum class LocalMMPosition {
-    FRONT, // 本地 mm 块前置: 流水线首端(AGMM——本卡 A 块已在手, 聚合前即可计算, 启动端
-           // 被本地块免费占据, 短块退到尾部专职快速收尾)
-    BACK,  // 本地 mm 块后置: 流水线尾端(matmul_allto_all——本地保留份无需发出、无通信
+    FRONT, // 本地 mm 块前置: 流水线首端(输入侧通信场景——本卡 A 块已在手, 聚合前即可计算,
+           // 启动端被本地块免费占据, 短块退到尾部专职快速收尾)
+    BACK, // 本地 mm 块后置: 流水线尾端(输出侧通信场景——本地保留份无需发出、无通信
           // deadline, 放尾部与末块通信重叠, 收尾端被本地块占据, 短块前置专职启动通信管道)
-    NONE, // 无本地 mm 块(MMRS/MMAR/MMA2A——短块作流水线垫片, 按 bound 判定放首/尾)
+    NONE, // 无本地 mm 块——短块作流水线垫片, 按 bound 判定放首/尾
 };
 
 // ====== 标定层结构参数的模式枚举(CommProfile 消费; 倍数依赖运行时 rankDim, 标定层存模式,
 //       引擎一处集中换算——避免按原语的散落取值表) ======
 enum class CommAxis { // 通信承载的数据侧(决定通信矩阵另一维与 dtype 字节取值)
-    K,                // A 侧(输入): 通信沿 K 轴聚散(AGMM/A2A-in——传 A 矩阵行, kValue)
-    N,                // C 侧(输出): 沿 N 轴(RS/AR/A2A-out——传 C 矩阵行, nValue)
+    K,                // A 侧(输入): 输入侧通信, 传 A 矩阵行(另一维取 kValue)
+    N,                // C 侧(输出): 输出侧通信, 传 C 矩阵行(另一维取 nValue)
 };
 enum class RankMul { // m 的倍数模式(换算: ONE=1, RANK_DIM=rankDim, RANK_DIM_MINUS_ONE=rankDim-1)
     ONE,
