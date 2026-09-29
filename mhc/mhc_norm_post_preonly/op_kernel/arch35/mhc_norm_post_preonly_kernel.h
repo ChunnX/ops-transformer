@@ -657,8 +657,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
-                                                  float (&dotHalf)[2][N], uint32_t halfBegin = 0,
-                                                  uint32_t halfEnd = 2, bool firstPhiPrefetched)
+                                                  float (&dotHalf)[2][N], uint32_t halfBegin,
+                                                  uint32_t halfEnd, bool firstPhiPrefetched)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<float> reduceRows = bufResFp32_.Get<float>();
