@@ -142,7 +142,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
-        LocalTensor<float> hOut = bufScratchFp32_.Get<float>()[tOff];
+        LocalTensor<float> hOut = bufScratchFp32_.Get<float>()[tile * MhcNormRegBase::VL_FP32];
         LocalTensor<T> hOutCache = bufActivationLowp_.Get<T>()[tOff];
 
         const bool residualFromQueue = (tile & 1U) == 0U;
@@ -187,7 +187,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         }
     }
 
-    midSqHalf[siblingAivIdx_] = ReduceSumPrecise(bufScratchFp32_.Get<float>(), D_);
+    midSqHalf[siblingAivIdx_] =
+        ReduceSumPrecise(bufScratchFp32_.Get<float>(), dLoop_ * MhcNormRegBase::VL_FP32);
     // 残差融合结束后gamma0不再使用：整段预取本sibling AIV第一个gamma2 head，
     // 用下方RMS_mid跨核交换的Scalar/MTE3/MTE2时间隐藏这次搬运。
     LocalTensor<float> gammaEvenCache = bufGammaFp32_.Get<float>();
