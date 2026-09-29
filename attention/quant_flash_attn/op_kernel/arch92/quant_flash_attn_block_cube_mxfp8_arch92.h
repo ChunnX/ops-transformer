@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_block_cube_mxfp8.h
+ * \file quant_flash_attn_block_cube_mxfp8_arch92.h
  * \brief
  */
-#ifndef QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_H_
-#define QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_H_
+#ifndef QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_ARCH92_H_
+#define QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_ARCH92_H_
 
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
@@ -888,4 +888,4 @@ public:
 };
 } // namespace BaseApi
 
-#endif // QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_H_
+#endif // QUANT_FLASH_ATTN_BLOCK_CUBE_MXFP8_ARCH92_H_

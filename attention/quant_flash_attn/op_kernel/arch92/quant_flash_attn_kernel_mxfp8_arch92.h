@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file quant_flash_attn_kernel_mxfp8.h
+ * \file quant_flash_attn_kernel_mxfp8_arch92.h
  * \brief
  */
 
-#ifndef QUANT_FLASH_ATTN_KERNEL_MXFP8_H_
-#define QUANT_FLASH_ATTN_KERNEL_MXFP8_H_
+#ifndef QUANT_FLASH_ATTN_KERNEL_MXFP8_ARCH92_H_
+#define QUANT_FLASH_ATTN_KERNEL_MXFP8_ARCH92_H_
 
 #include "../../../common/op_kernel/vector_common.h"
 #include "../arch35/memory_copy_arch35_quant_flash_attn.h"
-#include "quant_flash_attn_common_def.h"
-#include "quant_flash_attn_block_cube_mxfp8.h"
-#include "quant_flash_attn_block_vec_mxfp8.h"
-#include "quant_flash_attn_block_vec_flashdecode.h"
+#include "quant_flash_attn_common_def_arch92.h"
+#include "quant_flash_attn_block_cube_mxfp8_arch92.h"
+#include "quant_flash_attn_block_vec_mxfp8_arch92.h"
+#include "quant_flash_attn_block_vec_flashdecode_arch92.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -29,7 +29,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "quant_flash_attn_tiling_data.h"
+#include "quant_flash_attn_tiling_data_arch92.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -819,4 +819,4 @@ public:
 
 } // namespace BaseApi
 
-#endif // QUANT_FLASH_ATTN_KERNEL_MXFP8_H_
+#endif // QUANT_FLASH_ATTN_KERNEL_MXFP8_ARCH92_H_

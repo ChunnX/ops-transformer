@@ -23,11 +23,11 @@
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
 
 /* --- arch92 --- */
-#include "arch92/quant_flash_attn_common_def.h"
-#include "arch92/quant_flash_attn_kernel_mxfp8.h"
-#include "arch92/quant_flash_attn_kernel_mxfp8_nd.h"
-#include "arch92/quant_flash_attn_template_tiling_key.h"
-#include "arch92/quant_flash_attn_tiling_data.h"
+#include "arch92/quant_flash_attn_common_def_arch92.h"
+#include "arch92/quant_flash_attn_kernel_mxfp8_arch92.h"
+#include "arch92/quant_flash_attn_kernel_mxfp8_nd_arch92.h"
+#include "arch92/quant_flash_attn_template_tiling_key_arch92.h"
+#include "arch92/quant_flash_attn_tiling_data_arch92.h"
 
 using namespace AscendC;
 using namespace optiling;

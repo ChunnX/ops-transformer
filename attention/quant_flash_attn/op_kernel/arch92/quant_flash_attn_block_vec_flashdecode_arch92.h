@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file quant_flash_attn_block_vec_flashdecode.h
+ * \file quant_flash_attn_block_vec_flashdecode_arch92.h
  * \brief
  */
-#ifndef QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
-#define QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
+#ifndef QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_ARCH92_H_
+#define QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_ARCH92_H_
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -22,7 +22,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def_arch92.h"
 #include "../arch35/memory_copy_arch35_quant_flash_attn.h"
 
 namespace BaseApi {
@@ -604,4 +604,4 @@ public:
 };
 
 } // namespace BaseApi
-#endif // QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
+#endif // QUANT_FLASH_ATTN_BLOCK_VEC_FLASHDECODE_ARCH92_H_

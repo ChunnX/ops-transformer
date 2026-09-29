@@ -13,13 +13,13 @@
  * \brief QuantFlashAttn arch92 tiling implementation (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)
  */
 
-#include "quant_flash_attn_tiling_mxfp8.h"
+#include "quant_flash_attn_tiling_mxfp8_arch92.h"
 #include "../quant_flash_attn_tiling.h"
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../quant_flash_attn_tiling_utils.h"
-#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch92/quant_flash_attn_template_tiling_key_arch92.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../qfa_adjust_sinner_souter.h"
 #include "../quant_flash_attn_tiling_constants.h"
