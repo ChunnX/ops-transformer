@@ -99,6 +99,9 @@ struct CutParams {
     uint64_t maxTileCnt;
 };
 
+// 950 芯片 L2 缓存容量(E11 L2 工作集判定的阈值)
+constexpr uint64_t L2_CACHE_BYTES = 128UL * BYTES_PER_MB;
+
 // 通信轮次硬上限（通信 API 的 FFTS 队列大小限制; 随 API 上限放宽 16→63）
 constexpr uint64_t MAX_COMM_ROUNDS = 63;
 

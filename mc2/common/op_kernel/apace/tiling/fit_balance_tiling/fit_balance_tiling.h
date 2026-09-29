@@ -200,7 +200,8 @@ inline CommCutResult Schedule(FitBasedBalanceCtx &ctx)
         ctx.tilingM.cutRes.shortTileAtBack = (estimate.totalTpTime > estimate.totalMatmulTime);
     }
 
-    // ---- ② SetShort: 短块落位(minTileLen 为短块长度种子; NoCut 几何门在落位后) ----
+    // ---- ② SetShort: 短块下限闸门(E11/E12) + 落位(NoCut 几何门在落位后) ----
+    ApplyL2MinLenBoost(ctx.tilingM, ExceedsL2Cache(ctx.matmulPerf.mmShapeInfo_));
     ctx.tilingM.cutRes.shortTileLen = ctx.tilingM.GetMinLen();
     ctx.tilingM.cutRes.numShortTile = 1U;
 

@@ -99,33 +99,19 @@ inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx)
     return r;
 }
 
-// L2 占用判定: A+B 权重工作集超 128MB 时切分收益变化
+// L2 占用判定: A+B 权重工作集超 950 L2 容量(L2_CACHE_BYTES)时切分收益变化
 inline bool ExceedsL2Cache(const MatmulShapeInfo &mmInfo)
 {
-    constexpr uint64_t L2_CACHE_SIZE = 128UL * BYTES_PER_MB;
     const uint64_t l2UseSize = mmInfo.mValue * mmInfo.kValue * mmInfo.inMatrixADtypeSize +
                                mmInfo.kValue * mmInfo.nValue * mmInfo.inMatrixBDtypeSize;
-    return l2UseSize > L2_CACHE_SIZE;
+    return l2UseSize > L2_CACHE_BYTES;
 }
 
-// L2 超限鼓励大块: minLen×2; mGuardMul 为 m 下限守卫倍数(0=无守卫,
-// 4=仅当 m>minLen×4 才抬升, 防小 m 抬完即不切)
-inline void ApplyL2MinLenBoost(CutPlanner &tilingM, const MatmulShapeInfo &mmInfo, bool exceedsL2,
-                               uint64_t mGuardMul = 0UL)
+// L2 超限鼓励大块: minLen×2——超限的工作集切成小块会令 L2 反复换入换出, 抬下限让块变大
+inline void ApplyL2MinLenBoost(CutPlanner &tilingM, bool exceedsL2)
 {
-    const bool guardOk = (mGuardMul == 0UL) || (mmInfo.mValue > tilingM.GetMinLen() * mGuardMul);
-    if (exceedsL2 && guardOk) {
+    if (exceedsL2) {
         tilingM.SetMinLenByMax(tilingM.GetMinLen() * 2U);
-    }
-}
-
-// 小 shape 整 M 单块装下: minLen 提到 m(单块能铺满核阵列就不切;
-// 判据 m×n ≤ 2×coreNum×baseM×baseN; GetBaseM/N 为非 const 成员故 ctx 取非常量引用）
-inline void ApplySmallShapeMinLen(CutPlanner &tilingM, FitBasedBalanceCtx &ctx)
-{
-    if (ctx.matmulPerf.mmShapeInfo_.mValue * ctx.matmulPerf.mmShapeInfo_.nValue <=
-        ctx.matmulPerf.mmShapeInfo_.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * 2U) {
-        tilingM.SetMinLenByMax(ctx.matmulPerf.mmShapeInfo_.mValue);
     }
 }
 
